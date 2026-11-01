@@ -155,7 +155,7 @@ const forbiddenSteerChars = `'"\`
 const forbiddenNoticeChars = forbiddenSteerChars + "\n\r"
 
 // Rows returns a fresh slice of the shell guard rows in table order.
-// foreground is the engine's phrase for running a long command in the foreground, which the raw go and refuse-raw rows' steers and notices carry.
+// foreground is the engine's phrase for running a long command in the foreground, which the gate rule in the raw go row's steer and notice and the refuse-raw row's steer carries.
 // refuseRaw lists the command prefixes the hub refuses to run raw; a non-empty list adds the refuse-raw row after the raw go row, and an empty one adds none.
 func Rows(foreground string, refuseRaw []string) []Row {
 	rawGoSteer := "raw module-wide, tmux-tier and llm-tier go runs are refused here. Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, for example lym gate test ./internal/x, and use its --tier flag for a tier. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls. Run every other check in the foreground too, and never cd into the directory you already work in. The slot, strand and prebuilt-binary environment variables belong to lym, and a command setting or reading any of them is refused"
@@ -172,16 +172,18 @@ func refuseRawRow(foreground string, refuseRaw []string) Row {
 	for i, prefix := range refuseRaw {
 		forms[i] = strings.Fields(prefix)
 	}
-	steer := "a raw " + strings.Join(refuseRaw, " or ") + " run is refused here. Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, with --tier to name the tiers or --card to name a card, for example lym gate test ./internal/x. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls"
+	refused := "a raw " + strings.Join(refuseRaw, " or ") + " run is refused here"
+	steer := refused + ". Gate rule: run lym gate test in the foreground " + foreground + ", never in the background, with --tier to name the tiers or --card to name a card, for example lym gate test ./internal/x. When it answers that no gate slot is free yet, run the same command again in a turn that does nothing else, so the prompt cache stays warm between calls"
 	return Row{
 		// Installed for every run, the orch included, when the hub's gate config lists a prefix.
 		// A guardrail, not a barrier: refuseRawPattern states what it lets through.
 		Name:     "refuse-raw",
 		Patterns: []string{refuseRawPattern(refuseRaw)},
 		Steer:    steer,
-		Notice:   steer + ".",
-		Switch:   SwitchNone,
-		Forms:    forms,
+		// The notice names only what is refused and the scopes it adds.
+		Notice: refused + "; run it through lym gate test, with --tier to name the tiers or --card to name a card.",
+		Switch: SwitchNone,
+		Forms:  forms,
 	}
 }
 

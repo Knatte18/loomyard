@@ -14,6 +14,9 @@
 // A command substitution inside a double-quoted string and a < before a quote or a backslash, as in <"f" or <<<"f", are not read as command position either, so a command behind them passes.
 // Every row is a guardrail over static text and not a barrier; each pattern's comment states what it lets through and what it falsely denies.
 //
+// The gate rule, how to run lym gate test, is stated once in the system prompt, in the raw go row's notice;
+// the refuse-raw row's notice names only what it refuses, while the steers of the raw go and refuse-raw rows each carry the full rule, so a denied call has the way forward at hand.
+//
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.
 // SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec, so only the session that sets it cannot run git push or gh.

@@ -24,28 +24,39 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 }
 
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
-// it also asserts the shipped refuse-raw row, rendered over a sample list, passes checkTexts and names the gate verb, its tier and card scopes, the foreground phrase and the no-free-slot re-run.
+// it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule in one notice, and that the refuse-raw steer carries the full rule while its notice names only the refusal and the tier and card scopes.
 func TestCheckTexts(t *testing.T) {
 	t.Parallel()
 	t.Run("ShippedRefuseRawRow", func(t *testing.T) {
 		t.Parallel()
 		found := false
+		gateRuleNotices := 0
 		for _, row := range Rows("with a long timeout", []string{"go test", "dotnet test"}) {
 			if err := checkTexts([]Row{row}); err != nil {
 				t.Errorf("checkTexts(%q row) = %v; want nil", row.Name, err)
+			}
+			if strings.Contains(row.Notice, "Gate rule") {
+				gateRuleNotices++
 			}
 			if row.Name != "refuse-raw" {
 				continue
 			}
 			found = true
-			for _, want := range []string{"lym gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
-				if !strings.Contains(row.Steer, want) || !strings.Contains(row.Notice, want) {
-					t.Errorf("refuse-raw steer %q and notice %q: want both to name %q", row.Steer, row.Notice, want)
+			for _, want := range []string{"Gate rule", "lym gate test", "--tier", "--card", "with a long timeout", "no gate slot is free"} {
+				if !strings.Contains(row.Steer, want) {
+					t.Errorf("refuse-raw steer %q: want it to name %q", row.Steer, want)
 				}
+			}
+			wantNotice := "a raw go test or dotnet test run is refused here; run it through lym gate test, with --tier to name the tiers or --card to name a card."
+			if row.Notice != wantNotice {
+				t.Errorf("refuse-raw notice = %q; want %q", row.Notice, wantNotice)
 			}
 		}
 		if !found {
 			t.Error("Rows() with a non-empty refuse list has no refuse-raw row")
+		}
+		if gateRuleNotices != 1 {
+			t.Errorf("Rows() notices state the gate rule %d times; want once", gateRuleNotices)
 		}
 	})
 	tests := []struct {
