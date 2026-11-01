@@ -1,5 +1,3 @@
-//go:build tier0
-
 // interactivespawn_test.go enforces `PATTERN-interactive-spawn`: no production Go file spawns claude headless, with `-p` or `--print`.
 // It parses each file, so a comment naming the forbidden form never counts.
 
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedHeadlessSpawn is the `PATTERN-interactive-spawn` allowlist, keyed by module-relative file path.
@@ -150,6 +149,7 @@ func headlessSpawnFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 //
 //lym:guard
 func TestInteractiveSpawn_NoHeadlessClaude(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	allow := scankit.NewAllowlist(allowedHeadlessSpawn)
 	failures, scanned := headlessSpawnFailures(t, scankit.Options{}, allow)
@@ -161,6 +161,7 @@ func TestInteractiveSpawn_NoHeadlessClaude(t *testing.T) {
 }
 
 func TestInteractiveSpawn_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const header = "package p\n\nimport \"os/exec\"\n\n"
 	tests := []struct {
@@ -205,6 +206,7 @@ func TestInteractiveSpawn_FixtureTrees(t *testing.T) {
 }
 
 func TestInteractiveSpawn_Allowlist(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const header = "package p\n\nimport \"os/exec\"\n\n"
 	tests := []struct {

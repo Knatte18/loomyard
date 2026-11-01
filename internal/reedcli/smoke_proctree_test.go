@@ -1,5 +1,3 @@
-//go:build tier2 || tier3
-
 // smoke_proctree_test.go provides the process-tree probes the smoke harness uses on Linux.
 // They are the analogue of the Windows helpers' Get-CimInstance Win32_Process scripts (paneProcessTree, panePaneSubtree, tmuxSocketPids, pidClosure, hubHolders, serverProcCountForSession in smoke_test.go).
 // Every read of the kernel's process table goes through the tmuxkit probes for the pid list, parent pid, argv, cwd and comm, so this file opens nothing under /proc itself and shells out to nothing.

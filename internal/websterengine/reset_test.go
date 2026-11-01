@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reset_test.go pins the PlanReset refusals that need no real git: the held run lock, the missing state, the --batch pairing and each target's resolution refusal.
 // Tier 1: package websterengine_test over the package's fakeGit, a reports directory under t.TempDir() and a fake reed; no git process.
 
@@ -14,10 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 func TestPlanReset_HeldRunLockIsTransientBusy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	scratch := t.TempDir()
@@ -52,6 +52,7 @@ func TestPlanReset_HeldRunLockIsTransientBusy(t *testing.T) {
 }
 
 func TestPlanReset_NoStateNamesRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	_, err := websterengine.PlanReset(websterengine.ResetDeps{Geom: websterengine.Geometry{ScratchDir: t.TempDir()}}, websterengine.ResetToPreFix, 0)
@@ -126,6 +127,7 @@ const (
 // the --batch pairing, an unknown target, and each target's own resolution.
 // The plans the targets resolve to are pinned in TestPlanReset over a real repository.
 func TestPlanReset_Resolution(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

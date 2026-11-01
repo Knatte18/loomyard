@@ -1,5 +1,3 @@
-//go:build tier0
-
 // archivedrecords_test.go tests the decoders of archived parent-review round files and alignment attempt files.
 
 package reportengine
@@ -10,9 +8,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParentReviewRoundNumber(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		dirName string
@@ -39,6 +40,7 @@ func TestParentReviewRoundNumber(t *testing.T) {
 }
 
 func TestParseParentReviewRound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	opened := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
 	delivered := opened.Add(time.Hour)
@@ -100,6 +102,7 @@ func TestParseParentReviewRound(t *testing.T) {
 }
 
 func TestParseAlignmentAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	spawned := time.Date(2026, 3, 1, 11, 3, 0, 0, time.UTC)
 	deadline := spawned.Add(10 * time.Minute)

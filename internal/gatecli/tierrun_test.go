@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tierrun_test.go covers the one rerun of a tier that failed on a resource shortage and how the closing line names such a run, over fake attempts that spawn nothing.
 
 package gatecli
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cancelOnWrite cancels a call at its first write, standing in for a cancellation that arrives while a tier waits to rerun.
@@ -27,6 +26,7 @@ func (w cancelOnWrite) Write(p []byte) (int, error) {
 }
 
 func TestRetryOnShortage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	failed := func(exit int, log string) tierResult {
@@ -94,6 +94,7 @@ func TestRetryOnShortage(t *testing.T) {
 }
 
 func TestFailedRunLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

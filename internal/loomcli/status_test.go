@@ -1,5 +1,3 @@
-//go:build tier0
-
 // status_test.go drives loom's status verb in-process and pins the envelope key set it emits and the interrupt policy it adds.
 // The generic status line rendering is tested in internal/shedverbs.
 
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStatusCmd_EnvelopeKeySet drives statusCmd()'s RunE in-process against a hand-populated
@@ -31,6 +30,7 @@ import (
 // InterruptPolicyFor returns: "handback" for NameWebster, "reinvoke" for another named row, and the
 // empty string for a current_producer naming no row at all.
 func TestStatusCmd_EnvelopeKeySet(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		currentProducer string

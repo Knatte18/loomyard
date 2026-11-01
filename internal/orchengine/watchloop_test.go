@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // flakySession fails StrandAlive per a script, then defers to the embedded fake.
@@ -51,6 +50,7 @@ func holdWatchLock(t *testing.T, p Paths) *lock.FileLock {
 }
 
 func TestRun_ErrWatcherRunningWhileLockHeld(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	l := holdWatchLock(t, e.paths)
 	defer l.Release()
@@ -66,6 +66,7 @@ func TestRun_ErrWatcherRunningWhileLockHeld(t *testing.T) {
 }
 
 func TestRun_TakesLockReleasedBetweenRetries(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.alive = false
 	l := holdWatchLock(t, e.paths)
@@ -86,6 +87,7 @@ func TestRun_TakesLockReleasedBetweenRetries(t *testing.T) {
 }
 
 func TestWatcherLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 	live, err := WatcherLive(p)
 	if err != nil || live {
@@ -106,6 +108,7 @@ func TestWatcherLive(t *testing.T) {
 // TestRun_ReturnsWhenStrandGone asserts Run reads the creel mailbox once before its first tick and returns when the strand is gone.
 // A mailbox read that fails is logged only: Run still ticks and returns, and records no tick error.
 func TestRun_ReturnsWhenStrandGone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -157,6 +160,7 @@ func TestRun_ReturnsWhenStrandGone(t *testing.T) {
 }
 
 func TestRun_CancelledContextRecordsSignal(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	sleeps := 0
@@ -176,6 +180,7 @@ func TestRun_CancelledContextRecordsSignal(t *testing.T) {
 }
 
 func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -240,6 +245,7 @@ func TestRun_RecordsStoppingBeforeTheInFlightTickFinishes(t *testing.T) {
 }
 
 func TestRun_StopsAtErrorCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	fs := &flakySession{fakeSession: e.s, errs: make([]bool, 0)}
 	for i := 0; i < maxConsecutiveTickErrors+10; i++ {
@@ -263,6 +269,7 @@ func TestRun_StopsAtErrorCap(t *testing.T) {
 // TestRun_SuccessfulTickResetsErrorCount asserts a successful tick resets the consecutive-failure count, so the cap is reached only by one unbroken run of failures.
 // It captures the log at Info and asserts each run of failures warns once, with one Info between the two runs saying a tick succeeded again.
 func TestRun_SuccessfulTickResetsErrorCount(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	e := newWatchEnv(t)
 	fs := &flakySession{fakeSession: e.s}
@@ -301,6 +308,7 @@ func countOrchLines(log, level, text string) int {
 // TestRun_ChecksTheBinaryOnlyAtARestartSafeTick drives Run with a check that counts its calls, standing in for the re-exec, since a test binary never execs.
 // The third poll sleep ends the strand, so a row that checks every tick counts three calls.
 func TestRun_ChecksTheBinaryOnlyAtARestartSafeTick(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

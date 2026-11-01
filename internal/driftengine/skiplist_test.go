@@ -1,5 +1,3 @@
-//go:build tier0
-
 // skiplist_test.go — tier 0 tests for the skip list a compare is told.
 
 package driftengine
@@ -7,10 +5,13 @@ package driftengine
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSkipList covers off and full scope with no acceptance, partial scope's skips, added acceptances, a withdrawn test and a test both skipped and accepted.
 func TestSkipList(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	accepted := func(tests ...string) []Acceptance {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's import allowlist: production code in internal/shedtransient may import only the stdlib and the packages whose classifications it translates,
 // so shedengine stays stdlib-only and no leaf package ever imports shedengine.
 
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shedtransientAllowedImports are the only non-stdlib import paths production code in this package may use.
@@ -22,5 +21,6 @@ var shedtransientAllowedImports = []string{
 
 // TestImportAllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in shedtransientAllowedImports.
 func TestImportAllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedtransient", shedtransientAllowedImports...)
 }

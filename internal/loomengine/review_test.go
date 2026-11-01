@@ -1,5 +1,3 @@
-//go:build tier0
-
 // review_test.go — untagged Tier-1 unit tests for ResolveReview and LoomReviewsDir.
 // ResolveReview's tests mirror discussion_test.go's shape: pure Go over an in-memory Config and a
 // temp-dir modelspec registry, no live hub, reed, or network involved.
@@ -22,10 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResolveReview verifies ResolveReview returns the expected model/effort/version triples, the keys each segment's models came from, and the timeout.
 func TestResolveReview(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := Config{
 		ReviewerModel:    burlerengine.ModelSpecList{"opus[effort=high]", "sonnet[medium]"},
 		FixerModel:       burlerengine.ModelSpecList{"opus[effort=low]"},
@@ -123,6 +123,7 @@ func TestResolveReview(t *testing.T) {
 
 // TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order: a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
 func TestResolveJudge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// segmentModels is the seed and judge model of one segment, in discussion, plan, code order.
 	type segmentModels struct{ seed, judge string }
@@ -232,6 +233,7 @@ func TestResolveJudge(t *testing.T) {
 
 // TestResolveReviewAndJudge_MalformedSpec verifies an ungrammatical review, fix or judge model-spec returns an error naming its role, rather than being silently carried into a producer's spawn site, and that a bad later review entry or a bad fix entry also names its entry index and the way forward.
 func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -378,6 +380,7 @@ func TestResolveReviewAndJudge_MalformedSpec(t *testing.T) {
 
 // TestLoomReviewsDir verifies LoomReviewsDir's returned path is AnchorPath-anchored, sits under the durable _lym tree rather than the ephemeral one, and equals the anchor joined with its Rel form, whose exact value is pinned too.
 func TestLoomReviewsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := &lymcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),
 		WorktreeName: "repo",

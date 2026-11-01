@@ -1,10 +1,10 @@
-//go:build tier0
-
 package reedengine
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // guidsOf returns the strands' guids in table order.
@@ -21,6 +21,7 @@ func guidsOf(strands []Strand) []string {
 // last slot, every other strand keeps its relative order,
 // and an unknown guid or an out-of-range index leaves the table alone.
 func TestMoveStrandTo(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := []Strand{{GUID: "a"}, {GUID: "b"}, {GUID: "c"}, {GUID: "new"}}
 	tests := []struct {
 		name string

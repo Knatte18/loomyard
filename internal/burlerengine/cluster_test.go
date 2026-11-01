@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cluster_test.go table-drives auditClusterRound over the full violation taxonomy (fork-count
 // mismatch, Agent-call-in-fork, write-in-fork, git-mutation-in-fork, named spawns) plus the
 // warning-only ReportReturned==false case, and separately matrixes firstMutatingGitCommand against a set
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cleanFork returns a ForkReport that violates none of auditClusterRound's rules —
@@ -25,6 +24,7 @@ func cleanFork(path string) shuttleengine.ForkReport {
 }
 
 func TestAuditClusterRound(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		audit        *shuttleengine.ForkAudit
@@ -250,6 +250,7 @@ func TestAuditClusterRound(t *testing.T) {
 // Every listed mutating subcommand matches, tolerant of a leading path, a chain prefix, a later line and global options.
 // Read-only subcommands whose arguments name a mutating verb, help requests and the list forms of git tag and git branch never match.
 func TestFirstMutatingGitCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -409,6 +410,7 @@ func TestFirstMutatingGitCommand(t *testing.T) {
 // TestFirstMutatingGitCommandScopesToForkRepositories pins that a mutating git call inside a repository the fork created earlier passes, whether reached by -C, by cd or through a worktree added from it.
 // A call that may reach any other repository is returned.
 func TestFirstMutatingGitCommandScopesToForkRepositories(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string

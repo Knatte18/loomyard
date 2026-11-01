@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pane_test.go pins the pane loop's redraw, uncut drawing, binary check, back-off and resize behavior against fake size and wait seams.
 
 package statuspane
@@ -12,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // paneStep is one scripted poll: the frame it yields and the terminal size the loop then reads.
@@ -32,6 +32,7 @@ func rendered(lines ...string) string {
 func frameOf(lines ...string) Frame { return Frame{Lines: lines} }
 
 func TestPane_Run(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const cols, rows = 80, 24

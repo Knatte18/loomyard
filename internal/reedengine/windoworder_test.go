@@ -1,5 +1,3 @@
-//go:build tier0
-
 // windoworder_test.go pins the window order's fallback placements and the shell window check, driven through OpenWindow and AttachArgv against the scripted multiplexer fake.
 // The placements a real tmux decides are pinned by windoworder_integration_test.go.
 
@@ -12,11 +10,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWindowOrder pins the fallback placements of an own window, over listings that parseSessionWindows reads.
 // The relaunch and shell placements are pinned by TestWindowOrder_RealTmux alone.
 func TestWindowOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -79,6 +79,7 @@ func TestWindowOrder(t *testing.T) {
 // TestEnsureShellWindow drives the shell window check through its callers, OpenWindow and AttachArgv.
 // It captures the process-global logger, so it does not run in parallel.
 func TestEnsureShellWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The fake derives its session pane listing from list-panes, placing every pane in window @0.
 	const (
 		selvageInSession = "%1"

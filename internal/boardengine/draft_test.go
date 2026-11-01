@@ -1,5 +1,3 @@
-//go:build tier0
-
 // draft_test.go — the draft status every new task takes at the write critical section, and the writes that release it.
 
 package boardengine_test
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDraftMigration(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	statusOf := func(t *testing.T, w *boardengine.Board, slug string) *string {
@@ -83,6 +83,7 @@ func TestDraftMigration(t *testing.T) {
 }
 
 func TestDraftStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	empty := ""

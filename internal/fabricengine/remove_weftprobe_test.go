@@ -1,5 +1,3 @@
-//go:build tier0
-
 // remove_weftprobe_test.go pins refuseDirtyWeftWorktree's three answers.
 // It is untagged Tier 1 for the absent-worktree case only — the case that needs no git spawn — since
 // that is the one an empty if-branch used to conflate with "clean".
@@ -9,6 +7,8 @@ package fabricengine
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal asserts an absent weft worktree passes the gate:
@@ -16,6 +16,7 @@ import (
 //
 //testtiming:keep an absent weft worktree passing the dirty-weft gate; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseDirtyWeftWorktree_AbsentIsNotARefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	absent := filepath.Join(t.TempDir(), "no-such-weft")

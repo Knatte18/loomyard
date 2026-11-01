@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_llm_test.go proves creel's delivery into real Claude sessions, which the fake provider of the tmux tier cannot reach: a strand added by hand with its typed lines, and sessions started by shuttle's own launch with creel's hook delivery.
 
 package creelcli
@@ -20,11 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSmokeCreelClaudeStrand adds a strand running claude to a hub and drives creel into it.
 // The adapter reads the booted session idle, a posted message's carried line and an inject are typed at idle, and the agent's pane shows both.
 func TestSmokeCreelClaudeStrand(t *testing.T) {
+	tiergate.Require(t, 3)
 	claudePath := llmkit.Claude(t, "LYM_REED_CLAUDE")
 	// The strand name in the environment is process-global state, set by newSmokeHub.
 	smoke := newSmokeHub(t)
@@ -399,6 +399,7 @@ func (c *claudeScenario) requireHeadShownOnce(first string, tokens []string) {
 // The test process posts as EXTERNAL.
 // It needs a `lym` built from this tree on PATH, since the sessions' hooks run `lym creel hook-read` and `lym creel hook-wait`.
 func TestSmokeCreelHookDelivery(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 	if _, err := exec.LookPath("lym"); err != nil {
 		t.Skip("lym is not on PATH, and the sessions' hooks run it")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // treesitterlinkfindings_test.go pins the pure half of the tree-sitter link guard, which treesitterlink_test.go holds, over an in-memory import graph.
 
 package main
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTreeSitterLinkFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	deps := map[string][]string{

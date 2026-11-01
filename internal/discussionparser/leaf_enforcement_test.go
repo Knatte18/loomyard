@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the Discussionparser Sole-Parser Invariant's stdlib-only half:
 // production code in internal/discussionparser imports the standard library and nothing else --
 // never internal/lymcwd, never any feature package.
@@ -13,11 +11,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports is empty: no non-stdlib import is permitted.
 var allowedImports = []string{}
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/discussionparser", allowedImports...)
 }

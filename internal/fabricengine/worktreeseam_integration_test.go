@@ -1,5 +1,3 @@
-//go:build tier1
-
 // worktreeseam_integration_test.go proves where fabric fires its worktree seam and that a seam failure never fails a verb.
 // It installs the process-wide seam, so it runs without t.Parallel; the recording fake reports only the events under the hub a subtest asks about.
 //
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // The two kinds of worktree event.
@@ -141,6 +140,7 @@ func requireWarning(t *testing.T, label, warning, worktree string) {
 // TestWorktreeSeam_Events covers when fabric fires its worktree seam, what the events hold and that a failing seam is a warning and never a failed verb.
 // It runs without t.Parallel because it installs the process-wide seam and captures the logger.
 func TestWorktreeSeam_Events(t *testing.T) {
+	tiergate.Require(t, 1)
 	logs := logcapture.Capture(t)
 
 	t.Run("With no seam installed a pull that fast-forwards warp carries no warning", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // anchor_test.go covers the sequence of `lym fabric anchor` over a fake anchorDeps: the print path, every refusal, the order of the move's steps and the restart or the re-run each failure calls for.
 
 package fabriccli
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // anchorFake is an in-memory hub for changeAnchor: it answers every seam from its fields, logs the actions in order and models the engine's move record.
@@ -259,6 +258,7 @@ func runAnchorFake(t *testing.T, f *anchorFake, req anchorRequest) (anchorResult
 }
 
 func TestChangeAnchor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Without --set it prints the anchor of the named or the acting worktree and changes nothing", func(t *testing.T) {
@@ -784,6 +784,7 @@ func TestChangeAnchor(t *testing.T) {
 
 // TestStartDobbiesThroughBeamStart pins that the prime is started under the argument `root` and any other worktree under its name, that a failed start does not stop the others, and that the joined error names each failed argument with the verb's output.
 func TestStartDobbiesThroughBeamStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

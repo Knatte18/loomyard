@@ -1,5 +1,3 @@
-//go:build tier0
-
 // csharpseed_test.go covers CardCSharpSeeds: the files and type names a C# plan's card targets seed.
 
 package planparser_test
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCardCSharpSeeds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "csharp"}

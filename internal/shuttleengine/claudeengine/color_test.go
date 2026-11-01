@@ -1,5 +1,3 @@
-//go:build tier0
-
 // color_test.go pins ColorSequence's exact choreography: `/color <name>` typed and submitted for each palette color, and no inputs for a color outside it.
 
 package claudeengine
@@ -10,11 +8,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestColorSequence_TypesTheColorCommandForEveryPaletteColor covers every palette color plus an unknown one.
 // The expected steps carry no Escape, since the command may be typed while a turn runs and Escape there interrupts it.
 func TestColorSequence_TypesTheColorCommandForEveryPaletteColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type row struct {

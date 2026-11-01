@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pool_integration_test.go pins the one behavior that needs a second process: a holder that dies without releasing frees its slot.
 
 package gateslot
@@ -11,9 +9,12 @@ import (
 	"os/exec"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAcquire_HolderProcessDeathFreesSlot(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()

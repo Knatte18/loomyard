@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the burlercli cobra seam through RunCLI: the PersistentPreRunE group-command guard, run's required --profile flag, decodeProfile's strict YAML decode, and resultEnvelope's success-envelope shape (including its forkCount nil guard).
 // Engine.Run itself is NOT exercised here — it needs a live reed/claude session;
 // that coverage lives in the smoke test and the sandbox suite.
@@ -18,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_GroupGuard_OutsideGitRepo asserts the PersistentPreRunE guard: bare "lym burler" works
 // outside a git repository, mirroring shuttlecli's guard rationale (neither the bare listing nor
 // the unknown-subcommand path should require layout/config resolution).
 func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
@@ -38,6 +38,7 @@ func TestRunCLI_GroupGuard_OutsideGitRepo(t *testing.T) {
 //
 //testtiming:keep pins every Profile field mapping and the strict-decode rejections, which the run-verb tests covering its blocks only reach through one failing profile
 func TestDecodeProfile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -246,6 +247,7 @@ fixer-report-path: fixer-report.md
 // It reports a skipped fix.
 // It lands the told mode/stateDir/stencilsDir parameters under their own keys.
 func TestResultEnvelope_ForkCountNilGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a review that stopped short", func(t *testing.T) {
 		env := resultEnvelope(burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}, burlerengine.FixResult{}, "hub", "", "/hub/stencils")
 		if got := env["outcome"]; got != "died" {
@@ -356,6 +358,7 @@ func equalStrings(got, want []string) bool {
 // refusal plus a missing --profile emitted two error envelopes — and the second one named a flag
 // while the real failure was the refusal above it.
 func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
+	tiergate.Require(t, 0)
 	var out bytes.Buffer
 	// --target-dir naming a path that does not exist makes wireStandalone refuse in the pre-run;
 	// --profile is deliberately omitted so the flag check would fire too if it ran.
@@ -401,6 +404,7 @@ func TestRunVerb_AbortedPreRunEmitsOneEnvelopeNotTwo(t *testing.T) {
 // tree and a trace sink into the developer's own state home -- exactly why
 // internal/burlercli/cli_integration_test.go sets both and carries //go:build integration.
 func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -432,6 +436,7 @@ func TestRunVerb_RelativeProfileResolvesAgainstSeamCwd(t *testing.T) {
 // TestValidateReviewVerb_AgreesWithTheReviewGate runs validate-review and burlerengine.ReviewGate over the same review files, from a temp directory outside any git repository, and asserts the verb's exit code and envelope, that the gate passes exactly when the verb succeeds, and that the gate's findings contain the verb's error text.
 // It is the only test of the verb's ok and error behavior.
 func TestValidateReviewVerb_AgreesWithTheReviewGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

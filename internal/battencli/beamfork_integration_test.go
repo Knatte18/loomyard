@@ -1,5 +1,3 @@
-//go:build tier1
-
 // beamfork_integration_test.go drives the Worktree-Create row over a hubforge hub with a beam and a board of its members: where each task's pair forks from, and the start guard's dirt check.
 
 package battencli
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedBeamBoard seeds h's board with a beam project b holding tasks m, armed, late and crashed and the beam project inner, a grouping project g holding task grouped, and a task left, whose local branch the caller leaves behind.
@@ -70,6 +69,7 @@ func seedBeamBoard(t *testing.T, h *hubforge.Hub) {
 // A beam project forks from its parent beam unmarked, or is refused naming its parent's create when that beam's pair is absent here.
 // A member whose beam holds once its pair is made, or while the member resumes over a complete pair, loses the pair and is refused naming the two steps that progress.
 func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)

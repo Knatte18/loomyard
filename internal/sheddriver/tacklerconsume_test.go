@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tacklerconsume_test.go — tier 0 tests for consuming a tackler's resume verdict, over a real status file in a temp dir.
 
 package sheddriver
@@ -13,11 +11,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestConsumeTacklerAttempt covers the consume path over a temp status file and attempt directory with the real shedengine.Relaunch.
 // Refusal rows assert the message, which names the attempt directory, and the applied mark as it was before the call; success rows assert the mark and where the run stands.
 func TestConsumeTacklerAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseStatus := shedengine.Status{

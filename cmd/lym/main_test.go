@@ -1,5 +1,3 @@
-//go:build tier0
-
 // main_test.go — tests for the module dispatcher (main.go).
 //
 // Drives run() directly: module routing from an uninitialized repo, that the root hook mints nothing under test, and that it keeps the init-time log level when no -v is given.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // These tests cover module routing, not board behaviour (that lives in internal/boardcli).
@@ -28,6 +27,7 @@ import (
 // TestRunDispatchesToUninitializedRepoModules asserts modules that need a lym tree fail with exit 1 when dispatched from a temp cwd that has no _lym/ directory.
 // Each row chdirs, which is process-global state, so neither the test nor its rows run in parallel.
 func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -56,6 +56,7 @@ func TestRunDispatchesToUninitializedRepoModules(t *testing.T) {
 //
 //testtiming:keep pins that the root hook mints no trace id and opens no durable sink under testing.Testing(), which the tree walk never reads
 func TestRootHookSuppressedUnderTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("LYM_TRACE_ID", "")
 	before := os.Getenv("LYM_TRACE_ID")
 
@@ -92,6 +93,7 @@ func TestRootHookSuppressedUnderTest(t *testing.T) {
 // SetVerbosity(2) stands in for LYM_LOG_LEVEL=debug, which the logger reads only at package init.
 // It mutates the process-global logger level and output, so it does not run in parallel.
 func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.Capture(t)
 	logger.SetVerbosity(2)
 
@@ -108,6 +110,7 @@ func TestRootHook_NoVerboseFlagKeepsTheLevelSetAtInit(t *testing.T) {
 
 // TestPauseSlugOverride covers the pause slug the root hook hands the network gate: a set flag's value, empty included, and nil for an unset or undeclared flag.
 func TestPauseSlugOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -145,6 +148,7 @@ func TestPauseSlugOverride(t *testing.T) {
 
 // TestDetachedChild covers the gate behaviour the root hook reads off the hidden flags: a set pause-slug or deferrable flag defers, a set deferrable flag also holds the hub scope, and a set parent-locked flag is read beside a pause slug.
 func TestDetachedChild(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

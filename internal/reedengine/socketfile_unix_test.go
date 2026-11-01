@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // socketfile_unix_test.go holds the socket file tests; psmux on Windows keeps no socket file.
 
@@ -10,11 +10,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 //testtiming:keep pins the post-kill socket removal waiting out the grace period: a stale socket file is removed and one a live listener still answers on stays with no error; its covering tests run this code without asserting it
 func TestRemoveSocketFileOnceGone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -59,6 +61,7 @@ func TestRemoveSocketFileOnceGone(t *testing.T) {
 }
 
 func TestRemoveStaleSocket(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

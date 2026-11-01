@@ -1,5 +1,3 @@
-//go:build tier2
-
 // unlessname_integration_test.go drives `lym reed add --unless-name` on a real hub and tmux server, proving a matching strand, live or dormant, makes the add a no-op that disturbs neither the strand list nor the pane geometry, and that no matching strand leaves the add as today.
 
 package reedcli
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // unlessRun runs one reed verb in worktree and returns its exit code and decoded envelope.
@@ -63,6 +62,7 @@ func unlessPanes(t *testing.T, tmux, socket, session string) string {
 // and so does a dormant orch whose pane is gone.
 // The steps run serially in a fixed order and each later step relies on the earlier step's session; the scenario calls t.Parallel but no step does, because every step shares the one hub, session and strand table.
 func TestUnlessName(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	skipWithoutMultiplexer(t, h)

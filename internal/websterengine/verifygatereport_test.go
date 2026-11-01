@@ -1,5 +1,3 @@
-//go:build tier0
-
 package websterengine
 
 import (
@@ -11,6 +9,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const testModulePath = "example.com/mod"
@@ -31,6 +31,7 @@ func fakeChangedPaths(byCommit map[string][]string) func(string) ([]string, erro
 //
 //testtiming:keep pins which commits count as touching a failing package, the card order of the hint and the no-hint cases; the covering run-level verify-gate test checks one hint
 func TestCardHint(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -90,6 +91,7 @@ func TestCardHint(t *testing.T) {
 
 //testtiming:keep pins the fixed verify-gate.yaml name, a second write replacing the first and every report field surviving the YAML round trip; the run-level test reads back only the fields its failure sets
 func TestVerifyGateReport_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	reportsDir := t.TempDir()
 	path := VerifyGateReportPath(reportsDir)
 	if filepath.Base(path) != "verify-gate.yaml" {
@@ -134,6 +136,7 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 }
 
 func TestRenderVerifyGateFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := VerifyGateReport{
 		Attempt: 2,
 		Cap:     3,

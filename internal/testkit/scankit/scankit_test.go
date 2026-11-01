@@ -1,5 +1,3 @@
-//go:build tier0
-
 package scankit
 
 import (
@@ -9,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeTree(t *testing.T, files map[string]string) string {
@@ -37,12 +37,14 @@ func rels(t *testing.T, opts Options) []string {
 }
 
 func TestRoot_HasGoMod(t *testing.T) {
+	tiergate.Require(t, 0)
 	if _, err := os.Stat(filepath.Join(Root(t), "go.mod")); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func TestWalk_Filters(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := writeTree(t, map[string]string{
 		"a.go":              "package a",
 		"a_test.go":         "package a",
@@ -77,6 +79,7 @@ func TestWalk_Filters(t *testing.T) {
 }
 
 func TestWalk_FileContents(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := writeTree(t, map[string]string{"a.go": "package a\n\nfunc F() {}\n"})
 	Walk(t, Options{Base: base}, func(f *File) {
 		if string(f.Data) != "package a\n\nfunc F() {}\n" {
@@ -92,6 +95,7 @@ func TestWalk_FileContents(t *testing.T) {
 }
 
 func TestAllowlist_Matching(t *testing.T) {
+	tiergate.Require(t, 0)
 	a := NewAllowlist([]Entry{
 		{Key: "x/exact.go", Why: "r"},
 		{Key: "dir/", Why: "r"},
@@ -109,6 +113,7 @@ func TestAllowlist_Matching(t *testing.T) {
 }
 
 func TestAllowlist_Stale(t *testing.T) {
+	tiergate.Require(t, 0)
 	a := NewAllowlist([]Entry{{Key: "used"}, {Key: "unused/"}, {Key: "also-unused"}})
 	a.Allowed("used")
 	want := []string{"also-unused", "unused/"}
@@ -123,6 +128,7 @@ func TestAllowlist_Stale(t *testing.T) {
 }
 
 func TestFloorError(t *testing.T) {
+	tiergate.Require(t, 0)
 	if err := floorError(1, 1, "scan"); err != nil {
 		t.Fatalf("at floor: %v", err)
 	}
@@ -133,6 +139,7 @@ func TestFloorError(t *testing.T) {
 }
 
 func TestImportViolations(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := writeTree(t, map[string]string{
 		"a.go": "package p\n\nimport (\n\t\"fmt\"\n\t\"github.com/x/ok\"\n)\n",
 		"b.go": "package p\n\nimport \"github.com/x/bad\"\n",
@@ -162,6 +169,7 @@ func TestImportViolations(t *testing.T) {
 }
 
 func TestImportViolations_Clean(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := writeTree(t, map[string]string{"a.go": "package p\n\nimport (\n\t\"os\"\n\t\"github.com/x/ok\"\n)\n"})
 	got, err := importViolations(dir, []string{"github.com/x/ok"})
 	if err != nil || len(got.violations) != 0 || len(got.unused) != 0 || got.parsed != 1 {
@@ -170,6 +178,7 @@ func TestImportViolations_Clean(t *testing.T) {
 }
 
 func TestImportViolations_Errors(t *testing.T) {
+	tiergate.Require(t, 0)
 	if _, err := importViolations(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
 		t.Error("missing dir: want error")
 	}
@@ -180,5 +189,6 @@ func TestImportViolations_Errors(t *testing.T) {
 }
 
 func TestAssertImportAllowlist_ThisPackage(t *testing.T) {
+	tiergate.Require(t, 0)
 	AssertImportAllowlist(t, "internal/testkit/scankit")
 }

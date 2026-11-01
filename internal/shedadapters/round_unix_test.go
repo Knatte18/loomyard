@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // round_unix_test.go holds the round-path tests that rest on directory mode bits, which Windows does not enforce.
 
@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResolveRound_NonNotExistStatErrorIsReturned arranges a stat failure that is not fs.ErrNotExist (a permission failure from an unsearchable run dir), asserting that it surfaces as an error rather than being read as absence -- which would otherwise truncate the scan or re-seed an already-judged segment.
 // Skipped when running as root, which bypasses directory permission checks.
 func TestResolveRound_NonNotExistStatErrorIsReturned(t *testing.T) {
+	tiergate.Require(t, 0)
 	if os.Geteuid() == 0 {
 		t.Skip("running as root bypasses directory permission checks")
 	}

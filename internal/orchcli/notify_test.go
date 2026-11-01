@@ -1,5 +1,3 @@
-//go:build tier0
-
 // notify_test.go proves notifyPrime over fake creel clients: which identity posts the notice, when it falls back to the program, and what a refusal returns.
 
 package orchcli
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakePoster records each post as "<identity> <receiver>" and answers the error it is given.
@@ -27,6 +26,7 @@ func (f fakePoster) Post(receiver, body string) (int64, error) {
 }
 
 func TestNotifyPrime_SignsAndPosts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const line = "[batten notice] a-slug: blocked"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finding_test.go pins the eight Kind constants' exact string values and Finding.String's
 // substring contract.
 
@@ -8,9 +6,12 @@ package shedcheck
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestKindConstants(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		kind Kind
@@ -35,6 +36,7 @@ func TestKindConstants(t *testing.T) {
 }
 
 func TestFinding_String(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		finding Finding

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_hubreader_integration_test.go covers a hub-wide reader polling a pair Add is still building.
 // The origin read it makes through every listed worktree leaves no real _lym that the wiring then refuses.
 // ReadOrigin itself creates no .weft directory and seeds no exclude.
@@ -17,9 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAdd_HubReaderBeforeWiringLeavesNoLym(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "half-built"
@@ -110,6 +110,7 @@ func lstatExists(t *testing.T, path string) bool {
 }
 
 func TestReadOrigin_CreatesNoWeftDirectoryAndSeedsNoExclude(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "no-weft-dir"

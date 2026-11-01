@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gogit_test.go covers goGit's open/cache behaviour and readGoGit's concurrent-safety and reindex counting from inside package gitrepo, so
 // it can reach Repo's unexported fields and methods (goGitMu, goGitRepo,
 // goGitOK, goGit, reindexCount) directly — the package's only other
@@ -35,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo/internal/gitoracle"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // forceGoGitFinalizersOnCleanup forces the garbage collector to run,
@@ -69,6 +68,7 @@ const commonDirProbeRef = "refs/gitrepo-test/common-dir-probe"
 // the PARENT's HEAD;
 // goGit must instead fail outright.
 func TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	parent := t.TempDir()
 	gitkit.MustRun(t, parent, "git", "init", "-b", "main")
 	gitkit.CommitFile(t, parent, "a.txt", "hi", "init")
@@ -95,6 +95,7 @@ func TestGoGit_NonRepoPath_ErrorsWithoutRetargetingParent(t *testing.T) {
 // posture is that the checkout need not exist yet, so a Repo constructed before fabricengine
 // creates the worktree at that path must still succeed once the checkout exists.
 func TestGoGit_FailedOpen_NotCached(t *testing.T) {
+	tiergate.Require(t, 1)
 	dir := t.TempDir()
 	repo := New(dir) // no checkout at dir yet
 
@@ -121,6 +122,7 @@ func TestGoGit_FailedOpen_NotCached(t *testing.T) {
 // The first three steps run serially in that order and share the Repo's open cache: the concurrent step runs first so it races the first open.
 // The top-level test calls t.Parallel; no step does.
 func TestGoGit_StandaloneRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newStandaloneRepo(t)
@@ -404,6 +406,7 @@ func runLinkedWorktreeParityChecks(t *testing.T, dir string, fx *linkedParityFix
 // The steps run serially in that order and share the fixture's worktree.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestLinkedWorktree_Parity(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fx := newLinkedParityFixture(t)

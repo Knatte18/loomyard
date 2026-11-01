@@ -1,5 +1,3 @@
-//go:build tier1
-
 // launchers_containment_integration_test.go drives the real `add` verb end-to-end against a symlink
 // planted at the per-slug launcher directory (<hub>/_launchers/<anchor>/<slug>) and at the _launchers
 // container itself, both pointing OUTSIDE the hub — the create-side twin of the delete-side M3 the R2
@@ -24,6 +22,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink asserts that a launcher directory (or the
@@ -31,6 +30,7 @@ import (
 // writing launcher scripts to the symlink's out-of-hub target — the confirmed round-7 create-side
 // containment defect.
 func TestAdd_DoesNotWriteOutsideHubThroughLauncherSymlink(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

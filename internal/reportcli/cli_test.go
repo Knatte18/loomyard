@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the flag refusals and defaults of both report verbs, which come before any cwd resolution or read, the prime-only refusal decision, and the sleep and its note of the timing verb, journal-read or standing in from the hub's pauses.
 
 package reportcli
@@ -17,9 +15,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reportengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReportVerbs_RefuseBadFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -55,6 +55,7 @@ func TestReportVerbs_RefuseBadFlags(t *testing.T) {
 }
 
 func TestParseTimingOptions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Date(2026, 10, 15, 23, 30, 0, 0, time.UTC)
@@ -85,6 +86,7 @@ func TestParseTimingOptions(t *testing.T) {
 }
 
 func TestTimingSleepNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	slept := time.Date(2026, 10, 15, 3, 0, 0, 0, time.UTC)
@@ -179,6 +181,7 @@ func TestTimingSleepNote(t *testing.T) {
 }
 
 func TestRefuseNonPrime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

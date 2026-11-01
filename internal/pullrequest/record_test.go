@@ -1,5 +1,3 @@
-//go:build tier0
-
 // record_test.go covers the run's pull-request record file and the review verdict read from a pull request's reviews.
 
 package pullrequest
@@ -12,9 +10,12 @@ import (
 	"testing"
 
 	"github.com/google/go-github/v75/github"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRecord_RoundTripAndUpdate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "pull-request.json")
@@ -74,6 +75,7 @@ func TestRecord_RoundTripAndUpdate(t *testing.T) {
 }
 
 func TestStandingReviews(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	review := func(login, state, commit string) *github.PullRequestReview {
 		return &github.PullRequestReview{User: &github.User{Login: &login}, State: &state, CommitID: &commit}

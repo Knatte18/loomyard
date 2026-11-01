@@ -96,7 +96,7 @@ Each card lives in its own file, and the file's content is:
    - `list_json_test.go`
    ```
 
-   A new test file is named as a `**Create:**` file target, and the card's Intent states its `//go:build` line, such as `//go:build tier0`, on a line that names no other test file; `test-tier-unstated` reads that statement.
+   A new test file is named as a `**Create:**` file target, and the card's Intent states its tier, such as `tier0`, the tier its test functions name in their opening `tiergate.Require` call, on a line that names no other test file; `test-tier-unstated` reads that statement.
    A card that touches a struct a `//lym:seam` test marks lists that test, by its member glyph under `Edit` when it changes it and under `Uses` when it stays as is; `seam-test-unlisted` refuses the card otherwise.
    A card that changes a package's non-test Go code covers the package's `doc.go`: under `Edit` when it changes what the doc says, under `Extends` when it only adds to it, under `Uses` when it stays as is; `doc-go-unlisted` refuses the card otherwise.
    An `Edit` bullet may carry the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, which marks a signature change and states the new head, parsed like a `Create` declaration head.
@@ -337,7 +337,7 @@ The tiers below match this repo's own test-tier discipline:
   The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
   The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
   It runs only the tiers the `card` key lists, so a card that breaks a higher-tier test passes it too, and a passing call closes with a line naming the declared tiers it did not run, so its pass is never read as green for them.
-  Untagged tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
+  Tier0 tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
   Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
 - **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
   Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
@@ -345,9 +345,10 @@ The tiers below match this repo's own test-tier discipline:
   the `webster` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
   The Concurrency section's post-merge backstop assumes the same gate.
 - **Tier 3 (rare, explicit only, never automatic).**
-  Tests that drive a real LLM, gated by the `tier3` build tag — expensive in both wall-clock and tokens.
-  Never swept into an automatic per-card or per-plan gate under any circumstance; a tier that compiles them (`go vet -tags tier3`) never runs them.
-  The `tier2` tag is a separate, token-free tmux tier that a gate's vet steps compile (`go vet -tags tier2`); a gate key runs it when its tier list names it.
+  Tests that drive a real LLM, opening with `tiergate.Require(t, 3)` — expensive in both wall-clock and tokens.
+  Never swept into an automatic per-card or per-plan gate under any circumstance; every test binary compiles them, and no gate runs them.
+  `tier2` is a separate, token-free tmux tier; a gate key runs it when its tier list names it.
+  A card's `Verify:` line selects no tier, so it runs the `tier0` tests it names and skips every other.
   A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
 
 The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
@@ -628,7 +629,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     The check collects the Intent lines that name the file, by its worktree-relative path or by its base name as a token of its own, never the tail of a longer path, and the tier tags those lines name as whole words, each tier key of the hub's `gate.yaml` being a tag; the tags are collected as a set of distinct tags, so the same tag stated on several naming lines counts as one.
     A line that also names another test file carries that file's tags into the file's collection, so each file's statement goes on a line that names no other test file.
     The file passes when the lines name exactly one tag; or several, each pair of consecutive ones joined by `||` on the same line, the form of a helper several tiers share; or the word `untagged` and no tag, a support-only file.
-    One blocking finding per file, attributed to the card and naming the file and the tags its naming lines hold; its way forward is "add an Intent line naming the file and its `//go:build` line, such as `//go:build tier0`, or the word `untagged` when the file holds support only (TestMain, helpers) and carries no build line, on a line that names no other test file; where the lines name several tags, join them with || only for a helper several tiers share, else keep one; drop untagged or the tag when both appear".
+    One blocking finding per file, attributed to the card and naming the file and the tags its naming lines hold; its way forward is "add an Intent line naming the file and its tier, such as `tier0`, the tier every test function of the file names in its opening tiergate.Require call, or the word `untagged` when the file holds support only (TestMain, helpers), on a line that names no other test file; where the lines name several tiers, keep one; drop untagged or the tier when both appear".
     `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, from the hub's `gate.yaml` tier keys; an absent `gate.yaml` reports nothing, a done card is not read, and the rework gate reads the fresh generation's cards.
     Bound: a test file created as a member handle rather than a file target is not seen; whether the stated tier fits stays with `cmd/lym/tiertags_test.go` and review.
     Dispatch, `--require-approved` and webster's own `validate` verb do not run it.

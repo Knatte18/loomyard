@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_verdict_test.go covers the Bouncer's verdict vocabulary: the strict parse, the legacy aliases read only at Call entry, the harvest rule that refuses a legacy word, and the three verdicts' outcome mapping.
 
 package shedadapters
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestParseVerdict_Vocabulary covers the strict parse, which accepts only the three current words,
 // and the recorded parse, which also aliases the two legacy words and flags them as legacy.
 func TestParseVerdict_Vocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		word string
@@ -69,6 +69,7 @@ func TestParseVerdict_Vocabulary(t *testing.T) {
 
 //testtiming:keep pins the function-level split on a legacy word: the harvest refuses it while the recorded read aliases it
 func TestHarvestedVerdict_RefusesLegacyWords(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	writeVerdictAndLedger(t, dir, 1, 1)
 	if err := os.WriteFile(verdictPath(dir, 1), []byte(bouncerVerdictContent("APPROVED")), 0o644); err != nil {
@@ -85,6 +86,7 @@ func TestHarvestedVerdict_RefusesLegacyWords(t *testing.T) {
 
 //testtiming:keep pins how a legacy verdict word on disk at Call entry is read: APPROVED clears and re-seeds, BLOCKING replays as a Stuck over the ledger
 func TestBouncer_Verdict_LegacyWordAtEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		word string
@@ -127,6 +129,7 @@ func TestBouncer_Verdict_LegacyWordAtEntry(t *testing.T) {
 }
 
 func TestBouncer_Verdict_JudgeWritingLegacyWordIsRejudged(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// attached is whether a live judge is attached to rather than a fresh one spawned.
@@ -179,6 +182,7 @@ func TestBouncer_Verdict_JudgeWritingLegacyWordIsRejudged(t *testing.T) {
 
 //testtiming:keep pins that a CIRCLING verdict returns Awaiting naming the round and cause, and that a fresh Bouncer over the same run dir replays it without spawning
 func TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	shuttle := judgeFakeShuttle(2, bouncerVerdictContent("CIRCLING"), openGatingLedgerContent(2), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{
@@ -211,6 +215,7 @@ func TestBouncer_Verdict_CirclingReturnsAwaitingAndReplaysWithoutSpawning(t *tes
 
 //testtiming:keep pins that a CIRCLING verdict with a live judge attaches to it, never respawns, and keeps the judge's own next-round focus file
 func TestBouncer_Verdict_CirclingWithLiveJudgeAttachesAndHarvests(t *testing.T) {
+	tiergate.Require(t, 0)
 	attach := &shedfake.Shuttle{
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},

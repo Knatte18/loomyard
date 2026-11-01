@@ -1,5 +1,3 @@
-//go:build tier0
-
 // create_test.go covers createFindings' inversion of the resolve verdict for Create groups.
 
 package planglyph
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -32,6 +31,7 @@ func createPlan(target string) *planparser.Plan {
 // A glyph target is answered by a real resolve of a fixture repository.
 // A plan: handle target is answered by an index keyed by the handle the card itself spells: the handle is the shape the plan format prescribes for creating something genuinely new, so leaving it out left the inversion — and its misspelled-unit protection — inert in exactly the case it exists for; an index with no entry for the handle leaves createFindings running cleanly with no finding, rather than inventing a verdict it has no answer for.
 func TestCreateFindings_ResolvedTargets(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -169,6 +169,7 @@ func TestCreateFindings_ResolvedTargets(t *testing.T) {
 // A candidate set partitioned by build constraints is the same blocking finding, and the detail
 // names each candidate's build constraint beside its file.
 func TestCreateFindings_AmbiguousIsAlreadyExists(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("unconstrained duplicates", func(t *testing.T) {
 		assertAmbiguousCreateIsAlreadyExists(t, map[string]string{
 			"sub/a.go": "package sub\n\nfunc Dup() {}\n",
@@ -240,6 +241,7 @@ func assertAmbiguousCreateIsAlreadyExists(t *testing.T, files map[string]string,
 // ref — so without a default arm here such a result had no reader at all and passed the inversion
 // silently, which under the inversion reads as "the target does not exist yet, carry on".
 func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("pre-resolution rejection is blocking glyph-rejected", func(t *testing.T) {
 		index := map[string]quarry.ResolveResult{
 			"plan:sub#Bar": {Target: "sub#Bar", Error: "a glyph needs a \"#\"", Reason: "no_separator"},
@@ -272,6 +274,7 @@ func TestCreateFindings_UnreadableStatusFailsClosed(t *testing.T) {
 // reads an absent index entry as "not a glyph target" and would skip the Create inversion entirely,
 // which under the inversion means "does not exist yet, carry on".
 func TestMatchHandleResults(t *testing.T) {
+	tiergate.Require(t, 0)
 	expected := map[string]string{"plan:sub#New": "sub#New"}
 
 	byHandle, err := matchHandleResults(expected, []quarry.ResolveResult{{Target: "sub#New", Status: quarry.StatusNotFound}})

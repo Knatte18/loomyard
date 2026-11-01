@@ -1,5 +1,3 @@
-//go:build tier0
-
 // main_test.go checks tokencount's flag set: the retired history and projects flags and a foreign hub without a records repository are refused, and the hub flag resolves against the current directory.
 
 package main
@@ -9,9 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolveHub(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	wd := filepath.Join(string(filepath.Separator), "hubs", "main", "prime")
 	parent := filepath.Dir(wd)
@@ -50,6 +51,7 @@ func TestResolveHub(t *testing.T) {
 }
 
 func TestRunRefuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

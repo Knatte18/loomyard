@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overview_test.go pins a beam's window: the cells of a run over built polls, DobbyRunCells reading runs from disk, the orch lines and which orchs a window shows.
 
 package battencli
@@ -28,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // overviewNow is the instant minute offsets in the overview tests count back from.
@@ -55,6 +54,7 @@ func foundStatus(state shedengine.State, producer string, history ...shedengine.
 }
 
 func TestOverviewRunCells(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -207,6 +207,7 @@ func TestOverviewRunCells(t *testing.T) {
 }
 
 func TestOverviewLabeledOrchLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -323,6 +324,7 @@ func viewRuns(slugs ...string) []dobbyengine.ViewRun {
 }
 
 func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -443,6 +445,7 @@ func TestDobbyRunCells_ReadsTheRunsFromDisk(t *testing.T) {
 }
 
 func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -505,6 +508,7 @@ func TestDobbyRunCells_ResolvesTheChildPairAgainInEachRunShedSpell(t *testing.T)
 }
 
 func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prime := locationkit.Location(t.TempDir(), "prime", ".")
@@ -597,6 +601,7 @@ func TestOverviewSource_DrawsTheOrchLine(t *testing.T) {
 }
 
 func TestOrchsAtOrBelow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	parents := map[string]string{"a": "", "a-child": "a", "a-grandchild": "a-child", "b": "", "loop-x": "loop-y", "loop-y": "loop-x"}
@@ -639,6 +644,7 @@ func TestOrchsAtOrBelow(t *testing.T) {
 
 // TestLoadOverviewThresholds does not call t.Parallel: logcapture redirects the process-global logger.
 func TestLoadOverviewThresholds(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// config is the orch.yaml content; empty writes none.

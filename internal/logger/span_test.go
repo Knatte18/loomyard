@@ -1,5 +1,3 @@
-//go:build tier0
-
 // span_test.go covers Span's explicit-parent dotted-path construction, sibling independence (no global to leak between spans), End's record levels, and the durable sink's visibility of span= records versus open/close records.
 // Every sink-touching case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, per sink.go's SetDurableSinkDir doc.
 // No test in this file calls t.Parallel: each mutates process-global logger state (verbosity, the output writer, the durable sink).
@@ -10,12 +8,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSpan_PathsAreExplicitAndIndependentOfSiblings pins that a span's path comes from its explicit parent chain: nesting yields a dotted path, and neither an ended nor a never-ended sibling shows up in another span's path.
 //
 //testtiming:keep pins the dotted span path and sibling independence on stderr, which TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords asserts only for the durable sink
 func TestSpan_PathsAreExplicitAndIndependentOfSiblings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		logFrom     func() *Span
@@ -74,6 +75,7 @@ func TestSpan_PathsAreExplicitAndIndependentOfSiblings(t *testing.T) {
 
 // TestSpan_EndWithErrorReachesBothSinksAtWarn pins that End(err) records the error text at Warn on stderr and in the durable sink.
 func TestSpan_EndWithErrorReachesBothSinksAtWarn(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	buf := withCapturedOutput(t)
@@ -100,6 +102,7 @@ func TestSpan_EndWithErrorReachesBothSinksAtWarn(t *testing.T) {
 //
 //testtiming:keep pins that open and close records stay out of the durable sink, which its covering tests do not assert
 func TestSpan_DurableSinkCarriesInfoSpanPathButNoOpenCloseRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	withCapturedOutput(t)

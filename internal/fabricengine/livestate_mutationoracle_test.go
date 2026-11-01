@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mutationoracle.go is the truthfulness oracle: AssertRecordMatchesDiff cross-checks a call's
 // fabricengine.Mutations record against the unfiltered manifest diff of the same call, in both
 // directions -- omission (every diff change is accounted for by some record entry) and commission

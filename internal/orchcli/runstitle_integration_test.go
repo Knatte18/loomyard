@@ -1,5 +1,3 @@
-//go:build tier1
-
 // runstitle_integration_test.go proves the pre-run wiring names the runs strand's window after the worktree the verb runs in: the prime reads `beam: prime` and a beam reads `beam: <slug>`.
 
 package orchcli
@@ -12,9 +10,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunsWindowTitle_WiredFromTheWorktreeTheVerbRunsIn(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "b"

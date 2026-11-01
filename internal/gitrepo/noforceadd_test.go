@@ -1,5 +1,3 @@
-//go:build tier0
-
 // noforceadd_test.go machine-checks PATTERN-gitrepo-client-boundary: internal/gitrepo's
 // own non-test source may never reintroduce a `git add -f` branch or the deleted hasPathspecMagic
 // helper that used to decide when to take it.
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // noForceAddBannedTokens are the raw substrings gitrepo's own non-test .go
@@ -37,6 +36,7 @@ const noForceAddMinScannedFiles = 5
 // `git add -f` (or the hasPathspecMagic helper that used to gate it) ever reappearing.
 // See PATTERN-gitrepo-client-boundary.
 func TestNoForceAdd_GitrepoSourceHasNoForceAddBranch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var failures []string

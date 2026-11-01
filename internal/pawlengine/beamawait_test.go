@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamawait_test.go covers the Beam-Await row over a fake beam: the accept path, every refusal path, the entry's markers and notices, the owner check and the wait.
 
 package pawlengine_test
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cancelAfter makes the n-th sleep end the scenario.
@@ -30,6 +29,7 @@ func cancelAfter(w *world, n int) {
 // TestBeamAwait asserts the row's behavior over each state a run can enter it in and each answer to a land request:
 // what it writes in order, which notices it posts, which files stand afterwards, and how long it waits.
 func TestBeamAwait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -357,6 +357,7 @@ func TestBeamAwait(t *testing.T) {
 
 // TestBeamAwait_WatchEvent asserts a change event wakes the row ahead of its timer, waits out the rest of the one-second floor and returns the timer to a second.
 func TestBeamAwait_WatchEvent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
 	w.watch = make(chan struct{}, 1)
@@ -376,6 +377,7 @@ func TestBeamAwait_WatchEvent(t *testing.T) {
 
 // TestBeamAwait_CancelledContext asserts a context cancelled before the call is an error and writes nothing.
 func TestBeamAwait_CancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
 	producer, err := pawlengine.NewBeamAwait(pawlengine.NameBeamAwait, w.deps())
@@ -395,6 +397,7 @@ func TestBeamAwait_CancelledContext(t *testing.T) {
 
 // TestNextAwaitWait asserts the timer doubles while idle, stops at a minute, and returns to a second on an event.
 func TestNextAwaitWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

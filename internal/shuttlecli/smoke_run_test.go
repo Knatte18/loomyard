@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_run_test.go is shuttlecli's live-integration smoke suite entry
 // point: the shared helpers (the orphaned-conhost
 // teardown guard) used across this file, smoke_guardrail_test.go, and
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // smokePwshPath is the PowerShell 7 binary the smoke helpers shell out to
@@ -231,6 +230,7 @@ func reedStatusStrand(t *testing.T, guid string) (map[string]any, bool) {
 // directory are cleaned up afterward — the same happy path the sandbox suite's S1 scenario
 // exercises manually.
 func TestSmokeShuttleRunWritesOutputAndCleans(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces the Treadle Runner-Seam Invariant:
 // production code in internal/treadleengine imports ONLY the standard library, internal/editdirective, internal/lock, internal/logger, internal/parentdirective, internal/segmentcolor, internal/state, internal/stencil, internal/stencilstore, internal/shuttleengine, and gopkg.in/yaml.v3;
 // it never imports internal/burlerengine, never internal/lymcwd as a direct import, and never any internal/*cli package.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in
@@ -33,5 +32,6 @@ var allowedImports = []string{
 // TestRunnerSeamInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib
 // or an entry in allowedImports.
 func TestRunnerSeamInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/treadleengine", allowedImports...)
 }

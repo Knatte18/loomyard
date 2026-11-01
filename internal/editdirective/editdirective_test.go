@@ -1,5 +1,3 @@
-//go:build tier0
-
 // Every test here is in tier 0: it reads a seeded temporary stencils directory and spawns nothing.
 
 package editdirective
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDirective_RendersTheRuleWithoutBannerOrMarkers covers the seeded stencil: the rule's anchor phrase is present, with no marker and no leading comment.
 func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 
@@ -36,6 +36,7 @@ func TestDirective_RendersTheRuleWithoutBannerOrMarkers(t *testing.T) {
 
 // TestDirective_MissingStencilNamesIt covers a stencil removed from the directory: the error names it.
 func TestDirective_MissingStencilNamesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 	stencilkit.Remove(t, dir, directiveStencil)

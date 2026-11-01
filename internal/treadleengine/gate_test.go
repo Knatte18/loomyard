@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_test.go tables converged across all three GateMode values and their verdict/gatePassed
 // combinations, exercises execGateCommand against real trivial commands (go's own toolchain — the
 // one binary guaranteed present in this repo's test environment) for the pass, fail, timeout, and
@@ -16,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func boolPtr(b bool) *bool {
@@ -24,6 +24,7 @@ func boolPtr(b bool) *bool {
 
 // TestConverged tables every GateMode against every verdict/gatePassed combination.
 func TestConverged(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		mode       GateMode
@@ -54,6 +55,7 @@ func TestConverged(t *testing.T) {
 // TestExecGateCommand table-drives execGateCommand over a zero-exit command (success), a non-zero exit (failure, not an error), a command that cannot run (an error) and a timed-out command (a failing gate carrying a timeout note, not an infrastructure error).
 // "go version" reliably finishes well inside 30s but a 1-nanosecond timeout guarantees the deadline fires before the process can even be scheduled, without a platform-specific long-running command.
 func TestExecGateCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -89,6 +91,7 @@ func TestExecGateCommand(t *testing.T) {
 
 // TestWriteGateOutput proves the written file's format.
 func TestWriteGateOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		exitZero   bool

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawn_test.go covers launchStrandLocked's reap-before-allocate ordering (TestLaunchStrandLocked_*,
 // invoking it directly through the e.tmux.execHook fake) and loadOrInitStateLocked's fresh-worktree
 // bootstrap. Both are pure/hermetic, no live tmux required. The composed live behavior against a real
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget pins the reap-before-allocate
@@ -31,6 +30,7 @@ import (
 // appends a fresh strand before calling launchStrandLocked. The alive Selvage — not any strand
 // binding — is what authorizes the untracked reap here (see reconcile.go's policy.authorizesReap() disjunct).
 func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	const selvagePaneID = "%selvage"
@@ -97,6 +97,7 @@ func TestLaunchStrandLocked_ReapsUntrackedPanesBeforeChoosingASplitTarget(t *tes
 //
 //testtiming:keep pins launchStrandLocked issuing no kill-pane when reconcile reaps nothing and creating the window only after the pane listing; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	const selvagePaneID = "%selvage"
@@ -138,6 +139,7 @@ func TestLaunchStrandLocked_SkipsTheRedundantReEnumerationWhenNothingIsReaped(t 
 // A binding clear is made in memory and never saved, so repeated loads of one file clear again: the first logs at Warn and the repeats at Debug.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestLoadOrInitStateLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	type wantLog struct {
 		level, text string
 		count       int
@@ -241,6 +243,7 @@ func TestLoadOrInitStateLocked(t *testing.T) {
 //
 //testtiming:keep pins the dash-escape rule for send-keys -l: a dash-leading text gets one leading space and every other text, an already spaced one included, passes verbatim; its covering tests run this code without asserting it
 func TestSendKeysLiteralArg(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		text string
 		want string
@@ -267,6 +270,7 @@ func TestSendKeysLiteralArg(t *testing.T) {
 //
 //testtiming:keep pins the genuinely-new-pane guard: a fresh pane id passes while an empty, pre-existing alive or pre-existing dead pane id errors; its covering tests run this code without asserting it
 func TestValidateSplitCreatedNewPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	preSplitLive := []LivePane{{ID: "%0"}, {ID: "%1", Dead: true}}
 
 	tests := []struct {
@@ -308,6 +312,7 @@ func TestValidateSplitCreatedNewPane(t *testing.T) {
 // guard adopts rather than clears and the only thing that can clear a binding here is the repair
 // under test.
 func TestStatus_NeverReportsAStrandLiveOnAPaneAnotherOwnerClaims(t *testing.T) {
+	tiergate.Require(t, 0)
 	const selvagePane = "%1"
 	const firstStrandPane = "%2"
 	const liveAnswer = "$0|4321|1787000000"
@@ -436,6 +441,7 @@ func breakSaveState(t *testing.T, e *Engine) {
 //
 //testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const exe = "/opt/lym/bin/lym"
 	tests := []struct {
@@ -545,6 +551,7 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 //
 //testtiming:keep pins the degrade path: when the launch script cannot be written the send-keys payload is the full composed line and the warning names the strand guid; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	e.executablePath = func() (string, error) { return "/opt/lym/bin/lym", nil }
 	fake := launchFake(t, e, nil)
@@ -576,6 +583,7 @@ func TestLaunchStrandLocked_WriteFailureSendsTheFullLine(t *testing.T) {
 // a launch whose literal send-keys fails deletes the script it already wrote,
 // and a SaveState failure right after the launch deletes the never-persisted strand's script, for add and for replace alike.
 func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	spec := AddSpec{Role: "worker", NameOverride: "n", Cmd: "claude"}
 	tests := []struct {
@@ -646,6 +654,7 @@ func TestLaunchScriptDoesNotSurviveAFailedLaunch(t *testing.T) {
 //
 //testtiming:keep pins the new-window argv ending with -c and the told cwd with no trailing shell command, which would make tmux exec a non-login shell, and the two title commands running in order between the window creation and the send-keys; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_SplitWindowAndPaneTitleCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		strand    Strand

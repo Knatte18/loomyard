@@ -1,5 +1,3 @@
-//go:build tier0
-
 // drift_test.go covers DetectDrift with hand-built deltas: the gates decide before any git call, and the repair revalidates through quarry reading plain fixture files, so these tests stay in the untagged tier — the half driving a delta from a real git repository lives in delta_integration_test.go.
 
 package planglyph
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -22,6 +21,7 @@ import (
 // A reported rename's old glyph is typically in the delta's Deleted, since quarry could not pair it, and must not come back as a deleted-symbol finding beside its repair.
 // When both tiers name the same old glyph, the exact tier's destination wins.
 func TestDetectDrift_RenameAutoRepairsAndAmends(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	exactOldToNew := []quarry.RenamedPair{{From: quarry.Symbol{ID: "sub#Old"}, To: quarry.Symbol{ID: "sub#New"}}}
@@ -82,6 +82,7 @@ func TestDetectDrift_RenameAutoRepairsAndAmends(t *testing.T) {
 // The pair's New side is a plan: handle, not a bare glyph: the plan format REQUIRES that of a symbol Rename pair (rename-to-not-handle), so a bare-glyph fixture would test a shape no real plan can carry.
 // An evidence-tier candidate is informational with every signal field in its detail, leaves the plan bytes identical and appends no amendment; quarry leaves its endpoints in Deleted, so the deleted-symbol sweep must not report a blocking finding beside the informational candidate that contradicts it, or the batch dies before any reviewer sees the evidence.
 func TestDetectDrift_HandBuiltDelta(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type wantFinding struct {
@@ -289,6 +290,7 @@ func TestDetectDrift_HandBuiltDelta(t *testing.T) {
 // No finding comes when the batch's own cards declare its removal or its implementer reported the rename, and a finding names quarry's rename candidates.
 // Card 1 is the recorded batch's own card, out of the pending view.
 func TestRemovedTargets(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const pendingNamesGone = "**Edit:**\n- `sub#Gone`\n\n**Intent:** two\n\n**ImpactSummary:** none\n"
 	const pendingUsesGone = "**Uses:**\n- `sub#Gone`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** three\n\n**ImpactSummary:** none\n"
@@ -349,6 +351,7 @@ func TestRemovedTargets(t *testing.T) {
 // symbol that is not there, with nothing reported.
 // A reported rename into a glyph that does not resolve takes the same path, so its later card goes to review rather than passing silently.
 func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -390,6 +393,7 @@ func TestDetectDrift_RepairIntoAnUnresolvableGlyphIsReported(t *testing.T) {
 // TestEnsurePostRepairCoverage covers the per-key answer coverage guard: a target the post-repair batch actually requested, but which the resolve answer does not cover, must fail closed with ErrQuarryUnavailable naming the missing target — exactly as doneCheckVerdicts' own per-key guard does (donecheck.go) — rather than let the miss pass silently through DetectDrift's introduced-glyph filter.
 // A result set covering every requested target returns nil even when the results ALSO carry an answer for a glyph outside the requested batch: the introduced-glyph-absent-from-batch case stays a silent pass, since the guard's scope is answer coverage of the requested targets only.
 func TestEnsurePostRepairCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("unanswered target errors", func(t *testing.T) {

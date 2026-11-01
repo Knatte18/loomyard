@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_test.go covers AuditForks end to end against a fake ~/.claude/projects layout built under
 // t.TempDir(): the parent-transcript spawn tally, one ForkReport per fork transcript with every
 // field asserted, the missing-subagents-dir zero-fork finding, the missing-parent-transcript error,
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // copyFixture copies the named testdata fixture file to dest, creating dest's
@@ -38,6 +37,7 @@ func copyFixture(t *testing.T, name, dest string) {
 // fork transcripts under subagents/ — and asserts every ForkAudit/ForkReport field the audit
 // populates.
 func TestAuditForks_FullLayout(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -142,6 +142,7 @@ func assertWriteEvents(t *testing.T, label string, got []shuttleengine.WriteEven
 // their write calls in order, resolved against the tool_result naming the call's id, while the
 // existing path lists keep their meaning.
 func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -177,6 +178,7 @@ func TestAuditForks_WriteEventsCarryTimeAndResult(t *testing.T) {
 // an error — the parent transcript's own SpawnCalls/NamedSpawns are still populated from what it
 // attempted.
 func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -203,6 +205,7 @@ func TestAuditForks_MissingSubagentsDirYieldsZeroForks(t *testing.T) {
 // unlike the missing-subagents-dir case, there is no way to know what the session spawned without
 // it.
 func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -217,6 +220,7 @@ func TestAuditForks_MissingParentTranscriptErrors(t *testing.T) {
 //
 //testtiming:keep pins the literal encoding of a backslash-and-space path, which its covering test computes through its own reimplementation of the encoding
 func TestClaudeProjectDirFor_EncodesNonAlnumBytes(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 

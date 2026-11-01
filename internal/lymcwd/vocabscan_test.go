@@ -1,5 +1,3 @@
-//go:build tier0
-
 // vocabscan_test.go runs fabricVocabularyFailures over t.TempDir() fixtures,
 // so the extended bare weft/warp scan is proven to fail and pass where it should independently of the real tree.
 
@@ -10,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeVocabFixture writes content at rel under a fresh temp root and returns the root.
@@ -27,6 +27,7 @@ func writeVocabFixture(t *testing.T, rel, content string) string {
 }
 
 func TestFabricVocabularyFailures_Fixtures(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		rel      string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // sink_callsite_integration_test.go exercises the durable sink's cwd-anchored fallback THROUGH its real call site — logger.Info arming the sink via ensureDurableSink/armDurableSinkLocked with no directory override — against a real git repository on disk.
 // sink_test.go's TestIsLymWorktree_GatesTheCwdAnchoredFallback pins the isLymWorktree helper directly, but nothing drove the actual wiring point R6-6's fix lives in: crucible round fable-high-r7 recorded that as a real coverage gap (D1) and this file closes it.
 // It lives behind the integration tag because the fallback path runs lymcwd.Resolve, which spawns git — banned from untagged files by the Test Tier Purity Invariant — and it is an EXTERNAL test package because gitkit (needed for the hermetic git environment) transitively imports logger.
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -56,6 +55,7 @@ func armFallbackSinkFrom(t *testing.T, repo string) {
 // TestDurableSink_CwdFallbackFollowsLymOwnership drives R6-6's fix at its call site in one git repository, added to between its steps.
 // The scenario's top-level test does not call t.Parallel, because its steps chdir and set environment variables, which t.Chdir and t.Setenv refuse under t.Parallel; the step after the first relies on the repository the first step left behind.
 func TestDurableSink_CwdFallbackFollowsLymOwnership(t *testing.T) {
+	tiergate.Require(t, 1)
 	repo := initPlainGitRepo(t, t.TempDir())
 
 	// A plain git repository lym does not own (no _lym at its root) gets NO .lym tree from an Info record — before the fix, every non-zero-exit refusal wrote <repo>/.lym/logs/trace-*.log into the operator's own checkout.

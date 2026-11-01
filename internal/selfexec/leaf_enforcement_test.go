@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the Selfexec Leaf Invariant.
 // Production code in internal/selfexec imports only the standard library and internal/logger.
 
@@ -9,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports admits internal/logger, which the helper uses to log its stat, exec and replace outcomes.
 var allowedImports = []string{"github.com/Knatte18/loomyard/internal/logger"}
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/selfexec", allowedImports...)
 }

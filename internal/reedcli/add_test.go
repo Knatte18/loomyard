@@ -1,5 +1,3 @@
-//go:build tier0
-
 // add_test.go pins `lym reed add`'s --anchor vocabulary refusal, which runs before the engine is called.
 
 package reedcli
@@ -10,11 +8,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAddCmd_RefusesAnAnchorOutsideTheVocabulary drives addCmd directly with a nil engine,
 // so a refusal that reached the engine would panic and the nil engine proves nothing was added.
 func TestAddCmd_RefusesAnAnchorOutsideTheVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // replies_integration_test.go drives `lym report replies` through RunCLIIn over a hubforge hub: the prime-only refusal and the counts of a fake creel journal.
 
 package reportcli
@@ -14,11 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRepliesVerb replaces the process-global creelLog seam, so it does not run in parallel.
 // It is a test of its own because TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun, which drives the other verbs over the same kind of hub, runs in parallel.
 func TestRepliesVerb(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})
 	primeName, err := fabricengine.PrimeName(h.Location)
 	if err != nil {

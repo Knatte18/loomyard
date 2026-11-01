@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sandbox_coverage_test.go enforces the "Sandbox Suite Coverage" invariant: every registered lym module must either be exercised by a scenario in one of the tools/sandbox/*SUITE.md suite files (declared via an explicit **Covers:** tag) or be named on this test's exclusion allowlist with a documented reason.
 // This is the sandbox-suite analogue of registration_test.go's "exists => registered" guard.
 
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // coversLinePattern matches a "**Covers:** <module>[, <module>...]" line in any
@@ -70,6 +69,7 @@ var excludedModules = []scankit.Entry{
 //testtiming:keep pins that every registered module is covered by the sandbox suite or excluded with a reason, a guard no covering test asserts
 //lym:guard
 func TestSandboxCoverage_AllModulesCoveredOrExcluded(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Build the live cobra root and collect every registered module name, skipping cobra's completion subtree —
 	// mirrors clitree_test.go's walk skip so the module set here never drifts from what that walk already uses.
 	root := newRoot()

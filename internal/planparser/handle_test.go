@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handle_test.go covers splitHandleDeclaration and handleUnit, the two pure string helpers card 9 adds, plus the referencedHandles predicate card 10 adds beside them.
 
 package planparser
@@ -8,9 +6,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSplitHandleDeclaration(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -67,6 +68,7 @@ func TestSplitHandleDeclaration(t *testing.T) {
 
 //testtiming:keep pins handleUnit's no-# and empty-unit results, which the validate tests reach only as findings
 func TestHandleUnit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -113,6 +115,7 @@ func TestHandleUnit(t *testing.T) {
 //
 //testtiming:keep pins referencedHandles map contents, which TestValidate_HandleConsistency reaches only as findings
 func TestHandleIndexes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &Plan{
@@ -138,6 +141,7 @@ func TestHandleIndexes(t *testing.T) {
 // TestCheckHandleMalformed_FileUnitRule asserts a handle whose unit half names a ".go" file is refused up front with a handle-malformed finding naming the package-directory fix: such a handle canonicalizes to a member spelling quarry's Resolve can never answer, so the plan would validate clean and then wedge at the creating card's own done-check.
 // The rule binds a handle whose unit half is actually read -- a Create declaration's -- and not one claimed only as a Rename pair's to-side, whose unit canonicalization takes from the resolved old side; it is gated off for every language but go.
 func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fileUnitDeclared := Card{
@@ -222,6 +226,7 @@ func TestCheckHandleMalformed_FileUnitRule(t *testing.T) {
 //
 //testtiming:keep pins HandleBody's prefix strip and IsHandleRef's agreement with it, which TestCardTargetDirs does not assert
 func TestHandleBody(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -256,6 +261,7 @@ func TestHandleBody(t *testing.T) {
 }
 
 func TestNewHandle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -281,6 +287,7 @@ func TestNewHandle(t *testing.T) {
 // TestHandleMember asserts HandleMember returns the text after a handle's #, and HandleIdentifier the final identifier of a qualified member, refusing an empty or absent member.
 // The identifier cases are planglyph's draftHandleIdentifier table, ported as the assertion base.
 func TestHandleMember(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

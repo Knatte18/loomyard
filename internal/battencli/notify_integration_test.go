@@ -1,5 +1,3 @@
-//go:build tier1
-
 // notify_integration_test.go proves the wired Notify seam over a real hub, whose prime NotifyPrime resolves through git.
 
 package battencli
@@ -12,9 +10,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWire_NotifyWritesNothingWithoutAnOrchStrand(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

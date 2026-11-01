@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — unit tests for boardengine.LoadConfig.
 //
 // Covers: scalar keys with template defaults, ignored path: keys, label maps and lists, label refusals, the not-initialized error path, Outputs and Vocabulary.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoadConfig_ScalarKeysAndTemplateDefaults asserts LoadConfig reads the scalar keys and resolves absent types and labels keys to the template defaults.
@@ -24,6 +23,7 @@ import (
 // the board data dir is geometry owned by fabricengine.BoltDir, with no relative-path resolution and no env override.
 // It sets an environment variable, so it runs serially.
 func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("TEST_BOARD_PATH", t.TempDir())
 	tests := []struct {
 		name    string
@@ -68,6 +68,7 @@ func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 
 // TestLoadConfig_NotInitialized tests that an absent _lym/ and an absent board.yaml under a present _lym/config/ both return the board-specific not-initialized error, naming the file and the way forward.
 func TestLoadConfig_NotInitialized(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		createDir bool
@@ -121,6 +122,7 @@ func writeBoardConfig(t *testing.T, content string) string {
 
 // TestLoadConfig_LabelMaps asserts both label maps resolve in file order with their descriptions.
 func TestLoadConfig_LabelMaps(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := writeBoardConfig(t, `readme: Home.md
 design_prefix: proposal-
 types:
@@ -147,6 +149,7 @@ labels:
 
 // TestLoadConfig_LabelLists asserts the read-only list shape loads with empty descriptions.
 func TestLoadConfig_LabelLists(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := writeBoardConfig(t, `readme: Home.md
 design_prefix: proposal-
 types: [bug, idea]
@@ -170,6 +173,7 @@ labels: [urgent, later]
 // TestLoadConfig_LabelsRefused asserts a scalar key and a non-scalar description are refused naming board.yaml and the key,
 // and that type labels that would share a handle letter, with each other or with tasks, or have none are refused naming board.yaml and the label.
 func TestLoadConfig_LabelsRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name, content, key string
 	}{
@@ -220,6 +224,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 //
 //testtiming:keep pins the IsType and Known answers for a type, a plain label, an unknown label and the empty vocabulary, which its covering test never asserts
 func TestVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	v := boardengine.Config{Types: []boardengine.Label{{Name: "bug"}}, Labels: []boardengine.Label{{Name: "undecided"}}}.Vocabulary()
 	tests := []struct {
 		label         string
@@ -248,6 +253,7 @@ func TestVocabulary(t *testing.T) {
 //
 //testtiming:keep pins the readme name, design prefix and type order that Outputs carries, which its covering test does not assert
 func TestOutputs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

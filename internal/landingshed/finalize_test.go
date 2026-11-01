@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_test.go covers Finalize against a faked resolver and a faked parent-pair opener closure returning a scripted merge outcome.
 // This tier lives in the package itself too, for the same reason as its sibling: the resolver seam and the parentMerger seam it substitutes are both unexported.
 
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedtransient"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordingParentMerger is the in-package fake standing in for the unexported parentMerger seam. It
@@ -121,6 +120,7 @@ func requireFinalizeReason(t *testing.T, ptr shedengine.OutputPointer) string {
 // --- NewFinalize construction ---
 
 func TestNewFinalize_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	nilFabric := func() (*fabricengine.Fabric, error) { return nil, nil }
 	cases := []struct {
 		name     string
@@ -151,6 +151,7 @@ func TestNewFinalize_Refusals(t *testing.T) {
 // A failed push also carries the adopter-first repair note only when origin's parent holds the work and a parent commit is listed: a reset for the squash alone, a rebase dropping it when another commit is listed.
 // No case makes a GitHub call.
 func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
+	tiergate.Require(t, 0)
 	failedPush := func(record fabricengine.FailedPush, cause error) *fabricengine.PushFailedError {
 		return &fabricengine.PushFailedError{Record: record, Err: cause}
 	}
@@ -262,6 +263,7 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 //
 //testtiming:keep pins the composed MergeOptions.Message, its engine credit line and the Squash value for both merge shapes, which its covering tests do not assert
 func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		squash bool
@@ -323,6 +325,7 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 
 // TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit asserts a missing or malformed final-summary artifact, or an unreadable set of engines the task ran under, makes Call return an error with no merge attempted and no status commit performed -- proving the top-of-Call reads run before either.
 func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		damage func(t *testing.T, deps *Deps)
@@ -382,6 +385,7 @@ func (r *orderedResolver) Resolve(ctx context.Context, source, tip string) (merg
 // It also pins that the parent run records are committed after each merge-in and before the parent-side merge, on the first pass and on the retry alike,
 // and that the parent pair's head is recorded as the landing commit after the board seam and before the push.
 func TestFinalize_MergeInRequiredRetry(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		secondTry   mergeCallResult
@@ -458,6 +462,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 
 // TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge landing at the first call records the parent pair's head after the board seam and before the push.
 func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var order []string
@@ -475,6 +480,7 @@ func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 
 // TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read or landing record is only logged: the landing pushes and is Done.
 func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		headErr   error
@@ -500,6 +506,7 @@ func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 
 // TestFinalize_StuckReasons pins, for each way a landing stops Stuck, the reason it surfaces, that the board seam is never called, and that no stuck-reason file is written.
 func TestFinalize_StuckReasons(t *testing.T) {
+	tiergate.Require(t, 0)
 	numberedPaths := func(n int) []string {
 		paths := make([]string, n)
 		for i := range paths {
@@ -727,6 +734,7 @@ func TestFinalize_StuckReasons(t *testing.T) {
 // TestFinalize_ReconcileProceedsOrErrors pins the two ways the run-scope reconcile leaves Finalize going:
 // an active run lands as usual, and a reconcile error is returned from Call with nothing merged.
 func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		report       fabricengine.OriginReport
@@ -760,6 +768,7 @@ func TestFinalize_ReconcileProceedsOrErrors(t *testing.T) {
 
 // TestFinalize_ConfigChangeNotice pins the one notice Finalize queues about the task's config changes: at Done only, one line carrying what the operator needs to re-apply them, a read error reported instead of stopping, and neither a failing nor an absent Notify changing the verdict.
 func TestFinalize_ConfigChangeNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	changed := fabricengine.ConfigChanges{
 		Files: []string{"loom.yaml", "shuttle.yaml"}, Base: "base111", Tip: "tip222", ParentTip: "parent333",
 		Contents: map[string]fabricengine.ConfigFileContents{
@@ -878,6 +887,7 @@ func TestFinalize_ConfigChangeNotice(t *testing.T) {
 }
 
 func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	deps := newTestDeps(t)
 	res := &recordingResolver{}
 	fz := &Finalize{deps: deps, resolver: res}
@@ -896,6 +906,7 @@ func TestFinalize_CancellationAtEntry_SurfacesAsError(t *testing.T) {
 
 // TestFinalize_TransportPushFailure_ReturnsClassifiedError pins that a parent push failing on transport is an error the Shed classifier marks, while a plain push error keeps its Stuck verdict.
 func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	deps := newTestDeps(t)
 	res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 	merger := &recordingParentMerger{
@@ -917,6 +928,7 @@ func TestFinalize_TransportPushFailure_ReturnsClassifiedError(t *testing.T) {
 // The parent lock is held before the run-scope reconcile and every read of the parent, and a parent behind its upstream is fast-forwarded under the lock.
 // Each refusal of the parent pair is a Stuck with its way forward before any merge.
 func TestFinalize_LockFirstAndFastForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	// lockHeld reports whether the run holds the parent lock in deps' store.
 	lockHeld := func(deps Deps) bool {
 		rec, found, _ := deps.Lock.Store.Read("main")

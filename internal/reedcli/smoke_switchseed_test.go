@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_switchseed_test.go pins noise class 3's suppression directly: TestSmokeSwitchDeclinesStencilSeedPass arranges both stencilstore Warn emitters cmd/lym's root PersistentPreRunE can reach (the dev-refusal warn and the port-back drift warn) and asserts that `lym reed switch`'s stderr is empty.
 // The verb runs with a socket path nothing listens on, so it fails fast without touching a tmux server;
 // the assertion runs the built binary as a plain subprocess and reads its own stderr stream directly.
@@ -19,11 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSmokeSwitchDeclinesStencilSeedPass is the regression pin: a dev-stamped real binary runs `lym reed switch` against a hub carrying both a stale-but-untouched board stencil (the dev-refusal warn's precondition) and a drifted contracts/stencils worktree copy (the port-back drift warn's precondition), and stderr must come back empty.
 // Assert emptiness only -- never a line count and never a particular message: either emitter alone is enough to make stderr non-empty pre-fix, and post-fix stderr is silent because the pass does not run at all for an opted-out command.
 func TestSmokeSwitchDeclinesStencilSeedPass(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	// The dev channel stamp makes stencilstore.ModeFor return ModeDev, which warns instead of refreshing an untouched stencil.
 	lymExe := lymbin.BuildWithLDFlags(t, "-X github.com/Knatte18/loomyard/internal/buildinfo.Channel=dev")

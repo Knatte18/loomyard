@@ -1,13 +1,14 @@
-//go:build tier0
-
 // floor_test.go pins RaiseIntFloor over every value shape a stored key can hold.
 
 package yamlengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestRaiseIntFloor pins which stored values are raised and which come back byte-identical, the reported line, and that comments and sibling keys survive a rewrite.
 func TestRaiseIntFloor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

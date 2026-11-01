@@ -1,5 +1,3 @@
-//go:build tier1
-
 // weftgit_unborn_warp_test.go — integration coverage for the O4 fix: a warp
 // repo with zero commits (a fresh `git init` -> `lym init` -> `lym config`
 // first-run path, before the operator's first warp commit) must not fail
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newUnbornWarpRepo creates a minimal, isolated git repo at t.TempDir() on
@@ -44,6 +43,7 @@ func newUnbornWarpRepo(t *testing.T) string {
 // It then makes warp's first commit and calls CommitWeft again, asserting normal trailer/record
 // behavior resumes — the unborn state is a one-time, self-healing condition, not a permanent mode.
 func TestCommitWeft_UnbornWarpHEAD_CommitsWithoutTrailerOrRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := newUnbornWarpRepo(t)

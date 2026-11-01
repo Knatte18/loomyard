@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go contains white-box unit tests for the selfreport CLI.
 //
 // Tests live in package selfreportcli (same package as the production code) so the local stdin seam can be replaced without exporting it.
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/selfreportengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // requestCapture describes one HTTP request received by a test's issue
@@ -136,6 +135,7 @@ func labelsFromBody(body map[string]any) []string {
 
 // TestRunCreate_Success drives the successful create flow through each flag combination: exit 0, ok:true, the url and number of the server's typed response, and a request whose method, path, title, labels and body field match what the flags asked for.
 func TestRunCreate_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/123"
 	const markdownBody = "# Bug Report\n\nThis is a *markdown* body.\nSecond paragraph.\n"
 	withNumber := `{"html_url":"` + issueURL + `","number":123}`
@@ -222,6 +222,7 @@ func TestRunCreate_Success(t *testing.T) {
 
 // TestRunCreate_Failure verifies that each way the create call can fail yields ok:false with exit 1 and an error message naming the cause: a client factory that cannot resolve a token, a non-2xx response (the message text surfaces) and a connection refused (a non-empty message distinct from an API rejection).
 func TestRunCreate_Failure(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		install func(t *testing.T)
@@ -258,6 +259,7 @@ func TestRunCreate_Failure(t *testing.T) {
 
 // TestRunCLI_RefusedBeforeTransport verifies the cobra-level surface of the selfreport group: a bare invocation lists create, an unknown subcommand gets the shared envelope, and a wrong positional count gets cobra's "accepts 1 arg(s)" message; none of them reaches the transport.
 func TestRunCLI_RefusedBeforeTransport(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		args       []string

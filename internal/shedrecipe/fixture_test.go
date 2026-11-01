@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixture_test.go implements the package-internal test scaffolding every later test file in this package reuses: newTestEnv, the filled-Env builder, and the fake WebsterRunner it fills that Env with alongside the shedfake seams.
 
 package shedrecipe

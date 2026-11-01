@@ -1,5 +1,3 @@
-//go:build tier0
-
 // discussionwrite_test.go exercises NewDiscussionWrite's own outcome mapping against a fake inner
 // shedengine.ShedProducer: commit fires exactly once, and only, when the inner producer reports
 // Done with a nil error, and every other outcome (Stuck, a non-nil error, or a commit failure)
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeInnerProducer is a caller-settable shedengine.ShedProducer stand-in for the wrapped
@@ -47,6 +46,7 @@ func (c *commitRecorder) Commit() error {
 }
 
 func TestDiscussionWrite_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("DoneWithOutputInvokesCommitOnce", func(t *testing.T) {
 		inner := &fakeInnerProducer{outcome: shedengine.Done, pointer: shedengine.OutputPointer{Path: "decision-record.md"}}
 		commit := &commitRecorder{}
@@ -174,6 +174,7 @@ func TestDiscussionWrite_Call(t *testing.T) {
 // pointer, since the nil-commit-seam guard sits downstream of the pointer.Path == "" check and must
 // still fire on either shape.
 func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name    string
 		outcome shedengine.Outcome
@@ -203,6 +204,7 @@ func TestDiscussionWrite_NilCommitSeamIsANamedError(t *testing.T) {
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestDiscussionWrite_Call never asserts
 func TestDiscussionWrite_PassesStuckReasonThrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name string
 		path string

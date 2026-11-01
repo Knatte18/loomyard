@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tackler_test.go — tier 0 tests for the tackler's record readers and writers, over temp directories.
 
 package sheddriver
@@ -12,10 +10,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTacklerRecords pins the worktree snapshot comparison (the tamper cases), attempt, envelope and marker round-trips, attempt listing in order from disk, the applied mark, and the verdict reader's refusals.
 func TestTacklerRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("snapshot equality", func(t *testing.T) {

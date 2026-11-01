@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validateanchor_test.go covers ValidateAnchorRel, the single validator both sides of the .lym-anchor marker run values through.
 // It spawns nothing — the function is pure string/path math — so this file stays untagged, in Tier 1.
 
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidateAnchorRel(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		raw     string

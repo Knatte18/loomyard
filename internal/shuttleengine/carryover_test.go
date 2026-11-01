@@ -1,5 +1,3 @@
-//go:build tier0
-
 // carryover_test.go covers the carry-over of operator instructions into a re-spawned run: the sent-texts record a verified send keeps, and the predecessor a run start reads instructions from.
 
 package shuttleengine
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // instructionEngine is a fakeEngine whose session signals read each "PROMPT:<text>" line as a turn start carrying <text> as its instruction.
@@ -59,6 +58,7 @@ func seedPredecessor(t *testing.T, fx *fixture, rs RunState, events string) {
 // TestStart_CarriesOverOperatorInstructions pins which earlier run of a role a start carries instructions over from, and what it carries.
 // The predecessor's prompt turn start is no operator instruction, and neither is a text its sends typed.
 func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	earlier := time.Date(2026, 10, 28, 8, 0, 0, 0, time.UTC).Format(time.RFC3339)
 	later := time.Date(2026, 10, 28, 9, 0, 0, 0, time.UTC).Format(time.RFC3339)
@@ -203,6 +203,7 @@ func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
 // TestStart_CarryOverSurvivesAStartRetry pins that a start whose first launch died carries the instructions into the prompt of the launch that succeeds, sends one notice after that success, and logs the carry-over once.
 // It captures the process-global logger, so it runs serially.
 func TestStart_CarryOverSurvivesAStartRetry(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	logger.SetVerbosity(2)
 	live := reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}
@@ -248,6 +249,7 @@ func TestStart_CarryOverSurvivesAStartRetry(t *testing.T) {
 
 // TestRun_Send_RecordsTheSentText pins that a verified send into a run with a directory appends its text to the run's sent-texts file.
 func TestRun_Send_RecordsTheSentText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}
 	clock := newFakeClock(time.Date(2026, 10, 28, 8, 0, 0, 0, time.UTC))
@@ -270,6 +272,7 @@ func TestRun_Send_RecordsTheSentText(t *testing.T) {
 // TestRun_Send_SucceedsWhenTheSentTextCannotBeRecorded pins that a run directory the sent-texts file cannot be written in does not fail the send, and that the failure is logged once.
 // It captures the process-global logger, so it runs serially.
 func TestRun_Send_SucceedsWhenTheSentTextCannotBeRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	logger.SetVerbosity(2)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ updated instructions"}}

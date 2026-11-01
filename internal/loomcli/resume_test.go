@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resume_test.go pins `lym loom resume` outcome by outcome over fakes for the driver directory, the merge probe and the driver sender, with real status, run-lock and park-marker files in a temp directory.
 // It also pins that the verb takes the bootstrap lock before reading anything.
 
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeDriverDirectory answers DriverRow with a canned row.
@@ -147,6 +146,7 @@ const pendingAcceptDecision = "---\nround: 1\ndecision: accept\ncause: circling\
 // TestResumeVerb reaches every outcome of `lym loom resume` and asserts for each the envelope, the exit code, that nothing was spawned, added or removed,
 // that a resume line was typed only when a parked driver was woken, and that no message names `lym loom start` as the retry of resume.
 func TestResumeVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	liveDriver := fakeDriverDirectory{found: true, row: reedengine.DirectoryRow{Name: driverStrandDisplayName, GUID: "g-drv", Live: true}}
@@ -341,6 +341,7 @@ func TestResumeVerb(t *testing.T) {
 
 // TestResumeVerb_FailedDeliveryNamesResume asserts a resume line that cannot be delivered is refused naming `lym loom status` and a re-run of `lym loom resume`, and leaves the marker.
 func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	sender := &fakeDriverSender{repeatErr: notReady()}
@@ -374,6 +375,7 @@ func TestResumeVerb_FailedDeliveryNamesResume(t *testing.T) {
 // the status file is written while the lock is held,
 // and the verb must report that state, not the absence it would have found reading first.
 func TestResumeVerb_BlocksOnTheBootstrapLockThenReadsState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c, _, _ := newResumeVerbReceiver(t, &fakeDriverSender{}, fakeDriverDirectory{})

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // wiring_publish_integration_test.go drives wireLanding over a real hub and pair, so the landing deps carry what wire loaded from the hub.
 
 package loomcli
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWireLanding_TellsLanguageSkills asserts wireLanding hands the hub's language skills, as wire loaded them, to the landing deps over a real hub and pair.
 func TestWireLanding_TellsLanguageSkills(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "languagelanding"
 	hubforge.AddPair(t, hub, slug)
@@ -50,6 +50,7 @@ func TestWireLanding_TellsLanguageSkills(t *testing.T) {
 
 // TestWireLanding_FillsSamplerSessionSeams asserts wireLanding fills the Sampler-Session row's session, liveness, registration and record watch for a sampler seed, and leaves them nil for a darn seed, over a real hub and pair.
 func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
+	tiergate.Require(t, 1)
 	tests := []struct {
 		name    string
 		recipe  string

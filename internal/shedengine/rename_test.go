@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedengine
 
 import (
@@ -10,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRenameProducers pins the rename of every retired row name the status file carries, and the cases that leave the file untouched.
 func TestRenameProducers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	renames := map[string]string{"Old": "New"}
 	request := func(shed *Shed) RenameRequest {

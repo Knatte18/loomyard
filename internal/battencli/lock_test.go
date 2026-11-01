@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lock_test.go runs the lock verbs through the command tree against a temporary parent lock store.
 
 package battencli
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runLockVerb runs args through the batten command tree and returns the exit code and the printed envelope.
@@ -30,6 +29,7 @@ func runLockVerb(args ...string) (int, string) {
 // Release frees one branch or, with --all, every branch and names them, and the refusals name their way forward.
 // It replaces openLockStore, which is process-global, so it runs serially.
 func TestLockVerbs(t *testing.T) {
+	tiergate.Require(t, 0)
 	store := &parentlock.Store{Dir: t.TempDir()}
 	original := openLockStore
 	openLockStore = func(context.Context) (*parentlock.Store, error) { return store, nil }

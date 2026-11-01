@@ -1,5 +1,3 @@
-//go:build tier1
-
 // warpforward_integration_test.go is the Tier-2 real-git coverage for the
 // warp-only Fabric methods added in warpforward.go: CurrentBranch, IsAncestor,
 // and ResetHard. Each test drives a real paired
@@ -23,11 +21,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFabricWarp_IsAncestorOrdersWarpCommits proves IsAncestor reaches the warp checkout's history:
 // an older warp commit is an ancestor of a later one, and not the other way round.
 func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -54,6 +54,7 @@ func TestFabricWarp_IsAncestorOrdersWarpCommits(t *testing.T) {
 //
 //testtiming:keep ResetHard discarding a later commit and landing HEAD at the older sha on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -89,6 +90,7 @@ func TestFabricWarp_ResetHardDiscardsCommitsOnCleanWorktree(t *testing.T) {
 //
 //testtiming:keep ResetHard refusing a dirty tracked checkout and leaving the commit and the change on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -132,6 +134,7 @@ func TestFabricWarp_ResetHardRefusesDirtyWarpCheckout(t *testing.T) {
 // when warp's HEAD is already detached, matching gitrepo.Repo.CurrentBranch's documented
 // detached-HEAD rejection.
 func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -150,6 +153,7 @@ func TestFabricWarp_CurrentBranchErrorsOnDetachedHead(t *testing.T) {
 // TestStencilSource_BuildAncestryFollowsTheRevision pins StencilSource's source shapes, the ancestry its Build reports and the ordering its Older reports.
 // The ancestry is memoized, so a second call returns the first answer.
 func TestStencilSource_BuildAncestryFollowsTheRevision(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

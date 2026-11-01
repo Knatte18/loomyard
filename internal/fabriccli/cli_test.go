@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_test.go covers the fabric CLI's clone and reconcile-backfill verbs against local bare remotes, and holds the helpers the package's other integration files share: the cwd-fallback subprocess entry point, runFabric and gitOutputCLI.
 
 package fabriccli_test
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -102,6 +101,7 @@ func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 // that the card-16 CLI orchestration actually ran, not just fabricengine.CloneHub's own git-level
 // clone.
 func TestRunCLI_CloneEndToEnd(t *testing.T) {
+	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	warpBare := makeCLICloneWarpBare(t, fixtures, "clonecli-warp")
 	weftBare := makeCLICloneWeftBare(t, fixtures, "clonecli-weft")
@@ -249,6 +249,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 // TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk clones a weft whose board already holds a full base file and whose prime holds a full loom.yaml at a former template value, with no marker anywhere.
 // The clone writes no marker of its own, so the walk it runs strips both once and commits the board marker in its own board commit.
 func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -318,6 +319,7 @@ func TestRunCLI_CloneOfAnUnmigratedWeftLeavesTheMarkerToTheWalk(t *testing.T) {
 // with --into the hub lands under that directory and not under the seam cwd RunCLIIn was given, and without it the hub lands at the resolved seam cwd, --into's default.
 // With no --subpath the anchor is the default root anchor ".".
 func TestRunCLI_CloneDestination(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -376,6 +378,7 @@ func TestRunCLI_CloneDestination(t *testing.T) {
 // TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged drives a one-positional clone against a bare weft carrying no recorded binding, and requires the envelope's error to equal the engine's own refusal text exactly.
 // The refusal's wording is owned by fabricengine's TestCloneHub_UnboundWeftNamesTwoArgForm.
 func TestRunCLI_CloneEngineRefusalReachesEnvelopeUnchanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	weftBare := filepath.ToSlash(makeCLICloneWeftBare(t, fixtures, "clonecli-unbound-weft"))
 
@@ -429,6 +432,7 @@ func gitOutputCLI(t *testing.T, dir string, args ...string) string {
 // of its normal run), then asserts reconcile exits 0, reports "recorded", and leaves the record
 // tracked on the board worktree, with "pairs" still present and unchanged in shape.
 func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
+	tiergate.Require(t, 1)
 	fixtures := t.TempDir()
 	warpBare := makeCLICloneWarpBare(t, fixtures, "reconcilecli-warp")
 	weftBare := makeCLICloneWeftBare(t, fixtures, "reconcilecli-weft")
@@ -482,6 +486,7 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 // it still carries "pairs", the error names the first failure, and each side's detail names its own failure.
 // The exit-code assertion is the point of this test.
 func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// unreachableRemote points the board's origin at a path that does not exist, so every fetch and push fails.

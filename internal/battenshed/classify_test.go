@@ -1,5 +1,3 @@
-//go:build tier0
-
 // classify_test.go tests ParseStateChange and ClassifyRecords over hand-built batten records.
 
 package battenshed
@@ -10,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // minuteText returns the RFC 3339 text of minute n of a fixed hour.
@@ -43,6 +42,7 @@ func wantWake(kind, producer string, n int) Wake {
 }
 
 func TestClassifyRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	rules := NoticeRules{
 		VerifyRows:  []string{"Parent-Align", "Publish"},

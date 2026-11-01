@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_stale_registration_test.go proves Reconcile repairs a weft
 // worktree that was deleted by hand (plain rm, not `git worktree remove`),
 // the drift shape that leaves a stale git worktree registration still
@@ -35,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -42,6 +41,7 @@ import (
 // plain os.RemoveAll (leaving the stale registration behind) and asserts one Reconcile run
 // recreates it from the surviving branch with no per-pair error.
 func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-reg-recreate"
@@ -95,6 +95,7 @@ func TestReconcile_RecreatesHandDeletedWeftWorktree(t *testing.T) {
 // weft repo's gitdir — and asserts reconcile reports the missing weft repo by name with a remedy,
 // instead of the raw chdir errors each corrective branch used to fail with.
 func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -194,6 +195,7 @@ func findCleanupEntry(t *testing.T, entries []fabricengine.CleanupBranchEntry, b
 // slug's launcher directory behind forever, since no other verb
 // ever revisits a pruned slug (Remove would have, but the pair is already gone).
 func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "prune-launchers-r6"
@@ -238,6 +240,7 @@ func TestPrune_ApplyRemovesLaunchers(t *testing.T) {
 // Prune must report it exactly once so dry-run and --apply agree,
 // and must not claim Removed=true when there is no weft directory to delete.
 func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("DoubleCountAvoided", func(t *testing.T) {
 		t.Parallel()
 
@@ -321,6 +324,7 @@ func TestPrune_StaleRegistrationReportedOnce(t *testing.T) {
 // refusal to delete a checked-out branch.
 // Before the fix, main-weft was deleted here.
 func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -353,6 +357,7 @@ func TestCleanup_PrimaryBranchSurvivesForceWhenNotCheckedOut(t *testing.T) {
 // fabric-managed, whatever its origin;
 // fabric must never delete it, even under apply+force.
 func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -386,6 +391,7 @@ func TestCleanup_NonSuffixedBranchNeverDeleted(t *testing.T) {
 // refusal stopped.
 // The checked-out protection must report the branch Protected in every mode instead.
 func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "cleanup-detached-r5"
@@ -434,6 +440,7 @@ func TestCleanup_DetachedWarpHeadProtectsCheckedOutWeftBranch(t *testing.T) {
 //
 //testtiming:keep a real directory where the _lym junction belongs reporting "warp _lym is not a junction"; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_RealDirNotAJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "pairinsync-realdir"
@@ -476,6 +483,7 @@ func TestHealthy_RealDirNotAJunction(t *testing.T) {
 // warp junctions pointing at directories that vanished with it, so the pair stayed unhealthy — with
 // a raw EvalSymlinks error as its reported reason — until a SECOND reconcile ran.
 func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -532,6 +540,7 @@ func TestReconcile_RecreatedWeftIsWiredInTheSamePass(t *testing.T) {
 // the dry run and the apply, and --apply alone (no --force) actually deletes it — an orphan weft
 // branch is deletable under --apply alone, with no fold-back gate standing between it and deletion.
 func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -599,6 +608,7 @@ func TestCleanup_DryRunMatchesApplyVerdict(t *testing.T) {
 // branch beside a genuine orphan, so both a protected and an unprotected verdict are in the
 // comparison — and then confirms the apply pass with force=true deletes exactly the orphan.
 func TestCleanup_ForceIsReservedAndChangesNoVerdict(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -672,6 +682,7 @@ func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug st
 // It also proves a local-only pair that has none is skipped and a failed restore stays a Detail note.
 // Without the report a pair whose directory was deleted read already_healthy until it was removed and re-added.
 func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

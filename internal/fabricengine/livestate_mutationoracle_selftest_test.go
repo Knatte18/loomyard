@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mutationoracle_test.go proves AssertRecordMatchesDiff against hand-built Mutations and Change
 // values -- no hub, no git, no verb -- covering each rule mutationoracle.go's own doc comments state:
 // the omission and commission directions, segment-wise containment (including the sibling-prefix
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -94,6 +93,7 @@ func removedChange(path string, kind Kind) Change {
 // TestAssertRecordMatchesDiff drives AssertRecordMatchesDiff against hand-built Mutations/Change
 // values through failureRecorder, one case per rule the oracle carries.
 func TestAssertRecordMatchesDiff(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

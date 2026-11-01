@@ -1,5 +1,3 @@
-//go:build tier0
-
 // startup_test.go table-tests Startup's classification of pane-capture fixtures (trust screen,
 // ready via the input marker, ready via the shortcuts footer, and a still-booting capture) and
 // checks the fixed shape of InterruptSequence and ComposeSend.
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // realBypassGateCapture is the Bypass Permissions acceptance modal exactly as claude 2.1.263
@@ -32,6 +31,7 @@ const realBypassGateCapture = `  WARNING: Claude Code running in Bypass Permissi
   Enter to confirm · Esc to cancel`
 
 func TestStartup_Classification(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -220,6 +220,7 @@ func TestStartup_Classification(t *testing.T) {
 }
 
 func TestInterruptSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	got := c.InterruptSequence()
 	want := []shuttleengine.PaneInput{{Key: "Escape"}}
@@ -248,6 +249,7 @@ const realTrustGateCapture = ` Accessing workspace:
  Enter to confirm · Esc to cancel`
 
 func TestTrustDismissSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -371,6 +373,7 @@ func TestTrustDismissSequence(t *testing.T) {
 }
 
 func TestComposeSend(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,6 +34,7 @@ import (
 //
 //testtiming:keep pins the go and empty driver values selecting the detached-spawn arm and the llm value the strand launch; its covering test runs the llm arm without asserting the switch
 func TestMustUseLLMDriverArm(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		driver string
@@ -123,6 +123,7 @@ func newTestLLMArmReceiver(t *testing.T, starter driverStarter, probe driverPane
 //
 //testtiming:keep pins the llm arm composing the started spec and addressing the run by slug, removing a dead corpse before the start, and propagating a starter or corpse-removal error without reaching the starter; the covering tests drive the arm through the whole bootstrap without asserting the spec
 func TestStartLLMDriverArm(t *testing.T) {
+	tiergate.Require(t, 0)
 	// With no corpse to remove (driverStrandNone) the started spec carries the composed prompt, report
 	// path and the driver strand's own name; the literal "self" never reaches the prompt, because the
 	// arm resolves it to the worktree slug for both the prompt and the report path.
@@ -345,6 +346,7 @@ func noopLockHeld() (bool, error) { return false, nil }
 // returns false and releases the bootstrap lock: a leaked lock wedges every later start in the
 // worktree and is invisible until the second invocation, so each site is checked individually.
 func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	deadStrand := func() ([]reedengine.StrandStatus, error) {
 		return []reedengine.StrandStatus{{GUID: "g-dead", Name: driverStrandDisplayName, Live: false}}, nil
 	}
@@ -473,6 +475,7 @@ func TestRunDriverSpawnAndWait_LLMArm_ReleasesLockOnFailure(t *testing.T) {
 
 // TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced pins that a live driver strand marked retiring is removed by guid before a fresh driver starts, rather than adopted.
 func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testing.T) {
+	tiergate.Require(t, 0)
 	var order []string
 	retiring := func() ([]reedengine.StrandStatus, error) {
 		return []reedengine.StrandStatus{{GUID: "g-retiring", Name: driverStrandDisplayName, PaneID: "%0", Live: true, Retiring: true}}, nil
@@ -505,6 +508,7 @@ func TestRunDriverSpawnAndWait_LiveRetiringDriverIsRemovedThenReplaced(t *testin
 //
 //testtiming:keep pins the llm arm never consulting the go arm's run-lock handshake, the deliberate asymmetry between the arms that a later unifying refactor would break; the covering test counts no handshake calls
 func TestRunDriverSpawnAndWait_LLMArm_NeverConsultsTheRunLockHandshake(t *testing.T) {
+	tiergate.Require(t, 0)
 	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-run", runDir: "/run/dir"}}
 	probe := &fakeDriverPaneProbeFull{strandsFn: noStrands}
 	c, bootstrapLockPath := newTestSpawnAndWaitReceiver(t, starter, probe)
@@ -564,6 +568,7 @@ func voucherOnDisk(t *testing.T, c *loomCLI) (handoffVoucher, bool) {
 }
 
 func TestRunDriverSpawnAndWait_SpawnVouchesForTheResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		tierTwoOn   bool
@@ -609,6 +614,7 @@ func TestRunDriverSpawnAndWait_SpawnVouchesForTheResume(t *testing.T) {
 
 //testtiming:keep pins a live parked driver being resumed with one line, its marker removed, no handoff voucher written and no refusal recorded, without spawning; the covering tests assert the refusal and spawn paths
 func TestRunDriverSpawnAndWait_LiveParkedDriverIsResumedNotSpawned(t *testing.T) {
+	tiergate.Require(t, 0)
 	starter := &fakeDriverStarter{}
 	sender := &fakeDriverSender{}
 	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
@@ -651,6 +657,7 @@ func writeTestRunState(t *testing.T, c *loomCLI, st shedengine.State) {
 // TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker asserts a live driver strand without a park marker, and without the retiring mark, or a held driver lock with no strand at all, is neither removed, replaced nor sent to:
 // over a run with no status or a running run the call is a no-op that succeeds, and over a run handed back to the driver it refuses retryably until the driver parks.
 func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	notParked := []string{"not parked yet", "lym loom start"}
 	tests := []struct {
 		name string
@@ -756,6 +763,7 @@ func TestRunDriverSpawnAndWait_LiveDriverWithoutParkMarker(t *testing.T) {
 
 // TestRunDriverSpawnAndWait_GoArm pins the go arm: with nothing alive it spawns the Go driver through the spawn seam once and succeeds when the driver takes its driver lock, and a spawn that fails refuses and releases the bootstrap lock.
 func TestRunDriverSpawnAndWait_GoArm(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		spawnErr error
@@ -809,6 +817,7 @@ func TestRunDriverSpawnAndWait_GoArm(t *testing.T) {
 
 //testtiming:keep pins a dead driver strand with a stale park marker removing the marker and spawning a fresh driver with no resume line sent; the covering tests neither park a marker nor assert its removal
 func TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns(t *testing.T) {
+	tiergate.Require(t, 0)
 	starter := &fakeDriverStarter{handle: stubDriverHandle{guid: "g-new", runDir: "/run/dir"}}
 	sender := &fakeDriverSender{}
 	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(false)}, sender)
@@ -836,6 +845,7 @@ func TestRunDriverSpawnAndWait_DeadDriverWithStaleMarkerRemovesItAndSpawns(t *te
 }
 
 func TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	starter := &fakeDriverStarter{}
 	sender := &fakeDriverSender{repeatErr: notReady()}
 	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)
@@ -860,6 +870,7 @@ func TestRunDriverSpawnAndWait_ResumeNeverReadyRefusesAndKeepsMarker(t *testing.
 }
 
 func TestRunDriverSpawnAndWait_ResumeOnABusyPaneRefusesAsDriverBusyAndKeepsMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	starter := &fakeDriverStarter{}
 	sender := &fakeDriverSender{repeatErr: fmt.Errorf("the input box holds a draft: %w", shuttleengine.ErrSessionBusy)}
 	c, lockPath, marker := newResumeBranchReceiver(t, starter, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, sender)

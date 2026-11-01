@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_test.go covers the strict cwd anchor gate (checkCwdAnchorGate) and its path comparator (samePath) as pure path-math tables — no git spawning, no fixture trees.
 // It also pins ResolveWithAnchor and ResolveWorktree as permanently ungated at each of the gate's own rejection triples, so a later "consistency" change cannot quietly gate either bypass and break clone/gitkit.
 // Every test here is parallel: none touches process-global state.
@@ -12,6 +10,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckCwdAnchorGate covers the (cwd, anchorRel, worktreePath) triple space: exact match resolves, a subdirectory errors, a parent errors, and a sibling errors.
@@ -21,6 +21,7 @@ import (
 //
 //testtiming:keep pins the gate's accept and reject verdicts per triple as pure path math, which the resolution scenario covering its blocks only reaches through a real checkout
 func TestCheckCwdAnchorGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	worktreePath := filepath.Join("home", "user", "repo")
@@ -101,6 +102,7 @@ func TestCheckCwdAnchorGate(t *testing.T) {
 //
 //testtiming:keep pins samePath's normalization rows directly, which the gate test covering its blocks only reaches through exact-match triples
 func TestSamePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	repo := filepath.Join("home", "user", "repo")

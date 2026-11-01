@@ -1,5 +1,3 @@
-//go:build tier1
-
 // scopes_integration_test.go drives `lym gate test` over a hubforge hub with a task pair, whose fabric origin record names the prime's branch as its parent, to reach the computed, --base and --card scope forms.
 // It is Tier 2: it builds a real hub and spawns git, `go list` and the stand-in tier command.
 
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // scopesConfig returns the gate.yaml of the scopes hub: tier0 over ./..., tier1 covering it, and the given scoper.
@@ -51,6 +50,7 @@ func scopesConfigWith(t *testing.T, scoper string, mutate func(cfg map[string]an
 }
 
 func TestGateTest_Scopes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})

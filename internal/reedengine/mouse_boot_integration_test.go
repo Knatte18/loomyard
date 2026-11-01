@@ -1,5 +1,3 @@
-//go:build tier2
-
 // mouse_boot_integration_test.go proves the mouse boot-option contract
 // against a real, running instance of the configured multiplexer binary:
 // a fresh Up() boot pins "-g mouse" to the resolved Config.Mouse value in
@@ -18,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -90,6 +89,7 @@ func readMouseOption(t *testing.T, e *Engine) string {
 // on a separate fresh hub, "on", asserting the live server reports the matching value after Up() in
 // both directions.
 func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	t.Run("off", func(t *testing.T) {
 		e := newIntegrationEngine(t, "off")
@@ -119,6 +119,7 @@ func TestMouseBootIntegration_PinsOptionAtBoot(t *testing.T) {
 // set-option, so the live value must stay "off" — proving there is no live toggle without a server
 // restart.
 func TestMouseBootIntegration_NoLiveToggleWithoutRestart(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e1 := newIntegrationEngine(t, "off")
 	if _, err := e1.Up(); err != nil {

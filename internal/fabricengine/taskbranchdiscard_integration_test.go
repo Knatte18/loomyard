@@ -1,5 +1,3 @@
-//go:build tier1
-
 // taskbranchdiscard_integration_test.go covers Topology.DiscardTaskBranch and the deletion half it runs under archive tags, over hubforge hubs.
 // Every hub has an empty branch_prefix, so a pair's task branch is the bare slug, and h.CodeBare is the warp origin.
 //
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // discardHub returns a hub holding slug's pair, pushed, with one unpushed commit on the task branch and the pair's worktrees removed by hand, so both branches survive.
@@ -53,6 +52,7 @@ func archiveTagsOnOrigin(t *testing.T, h *hubforge.Hub, slug string) []string {
 
 // TestDiscardTaskBranch pins which tips DiscardTaskBranch archives, that every branch is gone afterwards, that a missing branch is a zero result, and that a refused archive push deletes nothing.
 func TestDiscardTaskBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -147,6 +147,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 
 // TestDeleteArchivedTaskBranch pins the gates of the deletion half: a local tag that does not hold the tip refuses the local delete, the remote gate refuses the local-only archived-tip kind, and a stale lease fails and keeps the origin tip.
 func TestDeleteArchivedTaskBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("LocalTagNotHoldingTheTipRefusesTheLocalDelete", func(t *testing.T) {

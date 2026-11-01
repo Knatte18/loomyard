@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedrecipe
 
 import (
@@ -11,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reworkTestEnv returns newTestEnv(t) with every Rework seam filled.
@@ -48,6 +47,7 @@ func gateCapableEntries() map[string]Constructor {
 }
 
 func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
+	tiergate.Require(t, 0)
 	spec, err := resolveGateSpec("Row", Config{}, newTestEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
@@ -58,6 +58,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 }
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, name := range []string{"discussion", "plan", "parts", "description"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
@@ -185,6 +186,7 @@ func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 }
 
 func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	env := reworkTestEnv(t)
@@ -194,6 +196,7 @@ func TestResolveGateSpec_PlanGatesRequirePlanIndex(t *testing.T) {
 }
 
 func TestResolveGateSpec_ListOrderAndPassOnCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := Config{"gates": []any{
 		map[string]any{"name": "plan", "attempts": 2},
 		map[string]any{"name": "discussion", "attempts": 1, "pass_on_cap": true},
@@ -211,6 +214,7 @@ func TestResolveGateSpec_ListOrderAndPassOnCap(t *testing.T) {
 }
 
 func TestResolveGateSpec_ZeroAttemptsEntryStillResolves(t *testing.T) {
+	tiergate.Require(t, 0)
 	spec, err := resolveGateSpec("Row", gatesCfg("plan", 0), newTestEnv(t))
 	if err != nil {
 		t.Fatalf("resolveGateSpec() error = %v; want nil", err)
@@ -227,6 +231,7 @@ func TestResolveGateSpec_ZeroAttemptsEntryStillResolves(t *testing.T) {
 }
 
 func TestResolveGateSpec_Rejections(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		cfg  Config
@@ -288,6 +293,7 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 }
 
 func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, entry := range gateCapableEntries() {
 		for _, key := range []string{"gate", "gate_attempts"} {
 			t.Run(name+"/"+key, func(t *testing.T) {
@@ -310,6 +316,7 @@ func TestGateCapableEntries_RejectLeftoverOldKeys(t *testing.T) {
 }
 
 func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := reworkTestEnv(t)
 	env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
 	for _, name := range []string{"discussion", "plan", "description"} {
@@ -325,6 +332,7 @@ func TestResolveGateSpec_OtherNamesCarryNoFinal(t *testing.T) {
 
 // The retired rework-plan and parent-review names are unknown names like any other.
 func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
@@ -336,6 +344,7 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 }
 
 func TestResolveGateSpec_VerifyRequiresAbsoluteEnvRoots(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, field := range []string{"VerifyCommand", "WorktreeRoot", "VerifyDir"} {
 		t.Run(field, func(t *testing.T) {
 			env := newTestEnv(t)

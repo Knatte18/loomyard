@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hub_integration_test.go drives the front task over a real hub's board: filing, the draft a failed filing leaves, removing and the owner read of settling.
 
 package fronttask_test
@@ -15,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHubDeps_FilesAndRemovesOnTheHubBoard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -80,6 +80,7 @@ func TestHubDeps_FilesAndRemovesOnTheHubBoard(t *testing.T) {
 }
 
 func TestHubSettleDeps_OwnedHereReadsTheOwnerOnTheHubBoard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 

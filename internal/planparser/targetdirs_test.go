@@ -1,5 +1,3 @@
-//go:build tier0
-
 package planparser_test
 
 import (
@@ -7,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCardTargetDirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}
@@ -122,6 +122,7 @@ func TestCardTargetDirs(t *testing.T) {
 }
 
 func TestRefCovers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -168,6 +169,7 @@ func TestRefCovers(t *testing.T) {
 }
 
 func TestRefMember(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	goPlan := &planparser.Plan{Language: "go"}
@@ -200,6 +202,7 @@ func TestRefMember(t *testing.T) {
 }
 
 func TestGoPackageCounterpart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	goPlan := &planparser.Plan{Language: "go"}
@@ -232,6 +235,7 @@ func TestGoPackageCounterpart(t *testing.T) {
 }
 
 func TestRefFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}

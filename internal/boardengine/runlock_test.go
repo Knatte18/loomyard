@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runlock_test.go — the run-status form and the lock on a run-held entry's scope (runlock.go), driven through the Board facade.
 
 package boardengine_test
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func strPtr(s string) *string { return &s }
@@ -23,6 +22,7 @@ func strPtr(s string) *string { return &s }
 // TestRunLock pins the run-status form and which writes a run-held entry refuses.
 // A refused row leaves board.json byte-identical.
 func TestRunLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// lockedBase is the held entry; rows override fields of it.
@@ -345,6 +345,7 @@ func TestRunLock(t *testing.T) {
 
 // TestRunLock_BeamKindAndBeamChange pins the refusal of a kind or beam change on a beam project whose run holds nothing, which no board write reaches since the write's own check refuses it first.
 func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	status := "running · Beam-Await"
@@ -370,6 +371,7 @@ func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
 
 // TestRunHolds pins which entries a run status holds: all of them, bar a beam project at a hold-free producer.
 func TestRunHolds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	task := func(kind string, beam bool, status *string) boardengine.Task {

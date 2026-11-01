@@ -1,5 +1,3 @@
-//go:build tier0
-
 // attach_asking_test.go covers how Attach treats a run that halted at a turn end:
 // a legacy record an older binary left at outcome asking is attached when its strand is live,
 // and a held run, whose record stays running, is attached without a second notice for a turn end the parent already saw.
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const askingEventsOld = "ASK:old\n"
@@ -26,6 +25,7 @@ func offsetOf(events string) *int64 {
 
 //testtiming:keep pins the unit-level verdicts for a legacy asking record, with and without a recorded offset, and the unchanged verdicts for a dead pane and an untracked strand, which the end-to-end attach test never reaches
 func TestDispositionCandidate_AskingReentry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	live := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}
 	dead := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: false}}
@@ -58,6 +58,7 @@ func TestDispositionCandidate_AskingReentry(t *testing.T) {
 // TestAttach_LegacyAskingAndHeldRuns drives Attach over a run.json with a recording notifier.
 // It asserts the run's final outcome and which held turn ends reach the parent.
 func TestAttach_LegacyAskingAndHeldRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const strandName = "lym:slug:driver"
 	shell := []BackgroundTask{{Kind: BackgroundShell, ID: "sh-1", Label: "sleep 9999"}}

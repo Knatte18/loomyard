@@ -1,5 +1,3 @@
-//go:build tier0
-
 // window_test.go covers OpenWindow against the scripted multiplexer fake: each outcome of the op and the command line it composes.
 
 package reedengine
@@ -11,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOpenWindow drives every outcome of OpenWindow.
 func TestOpenWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const name = "batten:slug"
 	sh := shell.ForGOOS()

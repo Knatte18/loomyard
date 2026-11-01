@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go pins beam.yaml's load: the template defaults, a worktree layer's override and the refusal of a negative value.
 
 package dobbyengine
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeBeamLayer writes document as beam.yaml under baseDir's _lym/config.
@@ -26,6 +25,7 @@ func writeBeamLayer(t *testing.T, baseDir, document string) {
 }
 
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

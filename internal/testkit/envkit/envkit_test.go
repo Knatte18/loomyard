@@ -1,5 +1,3 @@
-//go:build tier0
-
 package envkit
 
 import (
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //lym:seam internal/battenshed#InnerRunDeps
@@ -50,6 +49,7 @@ import (
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestFullEnv_FillsEverySeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	if got := NilSeams(FullEnv(t)); len(got) != 0 {
 		t.Errorf("NilSeams(FullEnv) = %v; want none", got)
 	}
@@ -119,6 +119,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestNilSeams_ReportsExactPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := FullEnv(t)
 	env.Shuttle = nil
 	env.CommitPlan = nil
@@ -161,6 +162,7 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestNilSeams_SkipsNilLegalPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := FullEnv(t)
 	env.Now = nil
 	env.PrimeLock.Sleep = nil
@@ -172,6 +174,7 @@ func TestNilSeams_SkipsNilLegalPaths(t *testing.T) {
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/shedrecipe#Env
 func TestFullEnv_PathFieldsAbsoluteUnderOneRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := FullEnv(t)
 	root := filepath.Dir(env.Cwd)
 
@@ -446,6 +449,7 @@ func structNamesIn(dir string) (map[string]bool, error) {
 //lym:seam internal/shedrecipe#Env
 //lym:guard
 func TestSeamMarkers_ReflectiveTestsAreMarked(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("RealTree_EveryReflectiveTestIsMarked", func(t *testing.T) {

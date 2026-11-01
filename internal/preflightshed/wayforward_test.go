@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wayforward_test.go covers wayForward's per-check mapping over in-memory Reports.
 // The rows reached from a real hub (a dirty task worktree, a `_lym` checkout off its paired branch) belong to the integration suite;
 // this file stays offline.
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name    string
 		failure preflight.Failure

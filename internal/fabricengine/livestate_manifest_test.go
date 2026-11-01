@@ -1,5 +1,3 @@
-//go:build tier1
-
 // livestate_manifest_test.go captures a whole-hub filesystem manifest before and after a verb runs, and diffs two
 // manifests against a set of permitted removal roots so a cell can assert that a verb touched nothing
 // outside what it declared it would.

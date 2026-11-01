@@ -1,5 +1,3 @@
-//go:build tier0
-
 // boardguard_test.go enforces the Fabric Git Invariant's board carve-out: internal/boardengine's
 // non-test production code never imports internal/gitrepo or internal/gitexec directly,
 // and never shells out to `git` itself.
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // boardGuardBannedImports are the import paths internal/boardengine's production
@@ -53,6 +52,7 @@ const boardGuardMinScannedFiles = 5
 //
 //lym:guard
 func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
+	tiergate.Require(t, 0)
 	const dir = "internal/boardengine"
 
 	var scanned int
@@ -132,6 +132,7 @@ func lineHasBannedGitSpawn(line string) (token string, bad bool) {
 //
 //testtiming:keep proves the TestBoardGuard_NoRawGitImportOrShellOut guard fires on crafted offending snippets and stays quiet on compliant ones
 func TestBoardGuard_ShellOutDetection(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string

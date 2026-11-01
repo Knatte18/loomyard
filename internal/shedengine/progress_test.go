@@ -1,10 +1,10 @@
-//go:build tier0
-
 package shedengine
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func segmentedRouting() Routing {
@@ -23,6 +23,7 @@ func segmentedRouting() Routing {
 }
 
 func TestProgressAt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	straight := Routing{Entry: "a", Producers: []ProducerDef{{Name: "a", OnDone: "b"}, {Name: "b", OnDone: "c"}, {Name: "c"}}}
 	tests := []struct {
@@ -54,6 +55,7 @@ func TestProgressAt(t *testing.T) {
 
 //testtiming:keep pins that an OnDone cycle terminates the step count, which its covering tests do not
 func TestProgressAt_CyclicOnDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := Routing{Entry: "a", Producers: []ProducerDef{{Name: "a", OnDone: "b"}, {Name: "b", OnDone: "a"}}}
 	if got := r.ProgressAt("b"); got.Steps != 2 || got.Step != 2 {
 		t.Errorf("got %+v", got)
@@ -61,6 +63,7 @@ func TestProgressAt_CyclicOnDone(t *testing.T) {
 }
 
 func TestBounces_CountAndBudgetInheritance(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := segmentedRouting()
 	hist := []HistoryEntry{{Producer: "bouncer", Outcome: Stuck}, {Producer: "burler", Outcome: Stuck}}
 	count, budget, in := r.Bounces("bouncer", hist)
@@ -101,6 +104,7 @@ func TestBounces_CountAndBudgetInheritance(t *testing.T) {
 }
 
 func TestBounces_BurlerReportsMainLineRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := segmentedRouting()
 	hist := []HistoryEntry{
 		{Producer: "bouncer", Outcome: Stuck},

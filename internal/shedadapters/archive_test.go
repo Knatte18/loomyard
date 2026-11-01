@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -7,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func fixedClock(instant time.Time) func() time.Time {
@@ -17,6 +17,7 @@ var archiveTestInstant = time.Date(2026, 8, 16, 15, 13, 26, 0, time.UTC)
 
 //testtiming:keep pins the stamped archive name, the numeric collision suffix and that an absent entry in the list is skipped, none of which the callers' tests assert
 func TestArchiveStaleOutputs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// Each step creates its files, then archives its listed names; a listed name that was
 	// never created is an absent entry.
@@ -92,6 +93,7 @@ func TestArchiveStaleOutputs(t *testing.T) {
 
 //testtiming:keep pins that the run dir moves whole to a stamped sibling and is recreated empty, the numeric collision suffix, and that an absent run dir is an error
 func TestArchiveRunDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if segment, ok := ArchivedRunDirSegment("run"); segment != "" || ok {
 		t.Errorf("ArchivedRunDirSegment(run) = %q, %v; want empty, false", segment, ok)

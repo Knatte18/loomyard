@@ -1,5 +1,3 @@
-//go:build tier0
-
 // renumber_test.go pins what loomcli owns of the card verbs: the lease held around every apply step, the begun bound, and the wording of each refusal.
 // The renumber itself is pinned by internal/planparser's tests.
 
@@ -21,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -198,6 +197,7 @@ func interruptInsert(t *testing.T, d renumberDeps) renumberDeps {
 }
 
 func TestRenumberVerbs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -286,6 +286,7 @@ func TestRenumberVerbs(t *testing.T) {
 }
 
 func TestRenumberVerbs_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	doneBatch := map[int]*websterengine.BatchState{1: {Cards: []string{"01-alpha", "02-beta"}, Terminal: true, Status: websterengine.DigestStatusDone}}

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reset_integration_test.go drives PlanReset over a scratch git repository under t.TempDir():
 // each refusal after the lock and state checks, the octopus merge-base of diverging starts, and the own-path set.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's scratch-repo initialiser.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // resetFixture is a scratch repo on branch "task" with two commits: first, then head.
@@ -85,6 +84,7 @@ func (fx *resetFixture) wantPlanSHA(t *testing.T, to ResetTarget, batch int, wan
 
 // TestPlanReset runs every PlanReset case over one scratch repository, one step per case.
 func TestPlanReset(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	fx := newResetFixture(t)
 

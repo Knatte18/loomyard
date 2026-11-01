@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tacklerprompt_test.go — tier 0 tests for the tackler's prompt and launch spec composers.
 
 package sheddriver
@@ -15,10 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTacklerPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the literal none for an absent report, the recipe line under its heading, and no unfilled marker; it refuses an empty recipe or goto rows naming the marker.
 func TestTacklerPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	in := TacklerPromptInput{
@@ -128,6 +128,7 @@ func TestTacklerPrompt(t *testing.T) {
 //
 //testtiming:keep pins every field of the tackler launch spec: the verdict as its single output file, the resolved model, effort, version and timeout, the role, the empty skill list and parent, and the zero-valued fields
 func TestTacklerSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const prompt = "settle the stop"

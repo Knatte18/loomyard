@@ -1,5 +1,3 @@
-//go:build tier1
-
 // overview_integration_test.go drives "lym batten overview" through RunCLIIn over a hubforge hub: its refusals, which both end before any pane starts.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
@@ -13,9 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOverviewCmd_RefusesOutsideThePrime(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})

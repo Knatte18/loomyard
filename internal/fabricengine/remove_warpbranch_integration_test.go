@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_warpbranch_integration_test.go covers Remove's local warp-branch deletion: a pair's task
 // branch goes when the destructive gate proves its work is pushed or landed on the parent recorded in
 // the pair's origin record, and is kept with a reason otherwise.
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // warpBranchCommit commits a new file in the pair's warp worktree.
@@ -29,6 +28,7 @@ func warpBranchCommit(t *testing.T, l *lymcwd.Location, slug, name string) {
 }
 
 func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "wb-pushed"
@@ -54,6 +54,7 @@ func TestRemove_PushedWarpBranchIsDeleted(t *testing.T) {
 }
 
 func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "wb-landed"
@@ -82,6 +83,7 @@ func TestRemove_SquashLandedWarpBranchIsDeleted(t *testing.T) {
 }
 
 func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, force := range []bool{false, true} {
@@ -119,6 +121,7 @@ func TestRemove_UnlandedWarpBranchIsKept(t *testing.T) {
 }
 
 func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "wb-noweft"
@@ -149,6 +152,7 @@ func TestRemove_MissingWeftWorktreeRecreatesNothing(t *testing.T) {
 }
 
 func TestRemove_AddSucceedsAfterWarpBranchDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "wb-readd"

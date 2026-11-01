@@ -1,5 +1,3 @@
-//go:build tier0
-
 // flags_test.go pins the per-strand mail flags the store keeps in its flag directory.
 
 package creelengine_test
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newFlaggedEnv is newEnv over a store told a flag directory, reconciled once as the daemon does at start.
@@ -64,6 +63,7 @@ func (e *env) flags(t *testing.T) []string {
 }
 
 func TestStore_MailFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	alphaFlag, betaFlag := agentname.FileName(alpha), agentname.FileName(beta)
 	tests := []struct {

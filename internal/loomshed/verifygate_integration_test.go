@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verifygate_integration_test.go exercises NewVerifyGate against a real scratch repo and real shell processes, so it carries the integration tag.
 
 package loomshed
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/patternlint"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -36,6 +35,7 @@ func verifyLogs(t *testing.T, verifyDir string) []string {
 // The steps run in order and each sets the told verify command; the last step dirties the worktree, so it must stay last.
 // The scenario calls no t.Parallel in its steps because they share the repo, and the top level calls it because nothing else touches that fixture.
 func TestVerifyGate_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	worktree, verifyDir := t.TempDir(), t.TempDir()
@@ -198,6 +198,7 @@ func (f roundGateFixture) diffGate(command, mergeBase func() (string, error), tr
 // The steps run in order against the commits the steps before left, and the last one dirties the worktree.
 // The told command runs the built `lym`, so the test puts a copy of the built binary first on `PATH`; it is not parallel because `t.Setenv` sets that process-global state.
 func TestVerifyGate_RoundScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	lymbin.PutFirstOnPath(t)
 
 	f := roundGateFixture{worktree: t.TempDir(), verifyDir: t.TempDir(), command: roundCall()}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package fabricengine
 
 import (
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // mkdirAll creates dir and fails the test on error.
@@ -33,6 +32,7 @@ func assertNoHubContainers(t *testing.T, hub string) {
 //
 //testtiming:keep the workspace file path for a root and a nested anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestHubWorkspacePathAndFolders(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "wts/some-task"} {
@@ -53,6 +53,7 @@ func TestHubWorkspacePathAndFolders(t *testing.T) {
 
 // TestWriteHubWorkspace covers first write, identical rewrite and changed rewrite at both anchors, and that no container directory is created.
 func TestWriteHubWorkspace(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "wts/some-task"} {
@@ -111,6 +112,7 @@ func TestWriteHubWorkspace(t *testing.T) {
 
 // TestWriteHubWorkspace_ReadErrorFailsWithReadCause plants a directory at the workspace file path and asserts the write fails with the read cause.
 func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	l := locationkit.Location(t.TempDir(), "prime", ".")
@@ -126,6 +128,7 @@ func TestWriteHubWorkspace_ReadErrorFailsWithReadCause(t *testing.T) {
 
 // TestWriteHubWorkspace_RefusesEscapingSymlink plants a symlink out of the hub at the workspace file path and asserts the write fails with nothing landing at the symlink's target.
 func TestWriteHubWorkspace_RefusesEscapingSymlink(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	l := locationkit.Location(t.TempDir(), "prime", ".")

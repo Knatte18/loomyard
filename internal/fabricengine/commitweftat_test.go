@@ -1,5 +1,3 @@
-//go:build tier1
-
 // commitweftat_test.go — integration coverage for commitWeftAt, the package-level, warp-untethered commit primitive:
 // a real commit on a dirty worktree, a no-op on a clean one, a seed-failure abort before staging, and the SkipGit early return.
 // Package fabricengine (internal), reusing index_integration_test.go's newPlainWarpRepo(t) as a generic plain-git-repo fixture.
@@ -14,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gitStatusPorcelain returns `git status --porcelain`'s raw output for dir —
@@ -43,6 +43,7 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 //
 //testtiming:keep commitWeftAt committing an untracked file with the message passed through verbatim and no Warp-SHA trailer; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := newPlainWarpRepo(t)
@@ -76,6 +77,7 @@ func TestCommitWeftAt_CommitsDirtyWorktree(t *testing.T) {
 //
 //testtiming:keep commitWeftAt reporting committed=false with a nil error twice on a clean worktree; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := newPlainWarpRepo(t)
@@ -102,6 +104,7 @@ func TestCommitWeftAt_NoopOnCleanWorktree(t *testing.T) {
 //
 //testtiming:keep commitWeftAt failing before staging when the exclude seed fails; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_SeedFailureFailsBeforeStaging(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := newPlainWarpRepo(t)
@@ -144,6 +147,7 @@ func TestCommitWeftAt_SeedFailureFailsBeforeStaging(t *testing.T) {
 //
 //testtiming:keep opts.SkipGit short-circuiting commitWeftAt to ("", false, nil) before git spawns, leaving a dirty file untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeftAt_SkipGitReturnsImmediately(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := newPlainWarpRepo(t)

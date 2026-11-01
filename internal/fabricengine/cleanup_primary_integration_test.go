@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanup_primary_integration_test.go pins the carve-out that keeps `lym fabric cleanup` from
 // deleting the repo's primary weft branch.
 // Branch-space liveness alone protected "main-weft" only while the prime warp worktree sat on the
@@ -18,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real Bolt checkout worktree on the
 // warp's default branch, moves the prime pair onto another branch, and asserts cleanup reports the
 // primary weft branch protected and leaves it on disk even under --apply --force.
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -67,6 +67,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 // whose board worktree is not a readable git checkout gets no orphan sweep at all, since Cleanup's
 // deletions are irreversible.
 func TestCleanup_RefusesWhenPrimaryWeftBranchIsUndeterminable(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

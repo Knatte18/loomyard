@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_rollback_adopt_test.go proves Add's rollback never deletes a
 // pre-existing (adopted) weft branch: when Add merely adopted an existing
 // <slug>-weft branch and then failed at a later step, the rollback must tear
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // mustRecordsRepoRoot resolves fabricengine.RecordsRepoRoot(l), failing the test on
@@ -75,6 +74,7 @@ func plantLauncherBlocker(tb testing.TB, l *lymcwd.Location, slug string) string
 // the branch — still pointing at the unique commit — untouched, alongside the usual zero warp-side
 // residue.
 func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "adopt-rollback-keep"
@@ -132,6 +132,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 // a local branch Add created from origin is deleted,
 // and a pre-existing local branch Add fast-forwarded stays at origin's tip, not rewound.
 func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -197,6 +198,7 @@ func TestAddRollback_LiveWeftFromOrigin(t *testing.T) {
 
 // TestAddRollback_WarpBranchDeletedUnderEmptyPrefix pins that under the DEFAULT empty branch_prefix the rollback deletes the bare-slug warp branch this Add created, together with the worktree pair.
 func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "empty-prefix-rollback"
@@ -228,6 +230,7 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 
 // TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a live pair's warp branch from origin, and asserts the rollback deletes the local copy and leaves origin's branch untouched.
 func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "adopted-warp-rollback"
@@ -260,6 +263,7 @@ func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 //
 //testtiming:keep a successful Add leaving the new worktree's junctions wired at once, with _lym and _extra resolving to their weft directories; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_WiresJunctionsEagerly(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "eager-wire-add"
@@ -307,6 +311,7 @@ func TestAdd_WiresJunctionsEagerly(t *testing.T) {
 // failure lands AFTER wiring (step 10b) rather than before it (step 9) — otherwise the junctions
 // would never have been wired and this test would prove nothing.
 func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "adopt-rollback-unwire"
@@ -381,6 +386,7 @@ func TestAddRollback_UnwiresJunctionsOnPostWiringFailure(t *testing.T) {
 // operation reported only "(git exit %d)". A live round watched two simultaneous `lym fabric add`
 // calls for one slug report "failed (git exit 255)" with git's actual reason discarded.
 func TestAdd_GitFailureCarriesGitsOwnReason(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

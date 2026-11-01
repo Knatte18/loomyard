@@ -1,5 +1,3 @@
-//go:build tier0
-
 // legacy_test.go — unit tests for the legacy migration and done-mark fold (legacy.go).
 
 package boardengine
@@ -8,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func legacyRec(id int, slug, status string) legacyRecord {
@@ -26,6 +26,7 @@ func entryBySlug(t *testing.T, entries []Task, slug string) Task {
 }
 
 func TestMigrateLegacyKindAndLabels(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tasks := []legacyRecord{
 		{ID: 0, Slug: "plain", Type: "loom", Brief: "b", Body: "x", Isolated: true, ShortName: "pl", DependsOn: []string{"other"}},
@@ -76,6 +77,7 @@ func TestMigrateLegacyKindAndLabels(t *testing.T) {
 
 //testtiming:keep pins the colliding note id reassignment, the legacy_done seed and the duplicate-slug remedy message, which its covering tests do not assert
 func TestMigrateLegacyIDsDoneSeedAndDuplicateSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -144,6 +146,7 @@ func TestMigrateLegacyIDsDoneSeedAndDuplicateSlug(t *testing.T) {
 }
 
 func TestFoldLegacyDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	taskA := func() Task { return Task{ID: 0, Slug: "a", Kind: KindTask, Labels: []string{"enhancement"}} }
 	tests := []struct {
@@ -253,6 +256,7 @@ func TestFoldLegacyDone(t *testing.T) {
 }
 
 func TestDecodeLegacyLenient(t *testing.T) {
+	tiergate.Require(t, 0)
 	records, err := decodeLegacy([]byte(`[{"id":1,"slug":"a","unknown":true,"type":"loom"}]`))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

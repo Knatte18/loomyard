@@ -1,5 +1,3 @@
-//go:build tier0
-
 // partcheck_test.go covers the parts gate, the part check with its gate and Accept, and the join's Go half, over the real plan index.
 
 package loomshed
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // splitRecord is a decision record holding the decisions D1 to D3 and a PATTERN changes section no part overview carries.
@@ -133,6 +132,7 @@ func wiringUsing(uses ...string) plankit.Card {
 }
 
 func TestNewPartsGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recordPath := filepath.Join(t.TempDir(), "decision-record.md")
@@ -174,6 +174,7 @@ func TestNewPartsGate(t *testing.T) {
 }
 
 func TestValidatePart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	index := planglyph.NewIndex(fabricengine.NewReferenceRule())
@@ -326,6 +327,7 @@ func TestValidatePart(t *testing.T) {
 }
 
 func TestJoinParts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	index := planglyph.NewIndex(fabricengine.NewReferenceRule())

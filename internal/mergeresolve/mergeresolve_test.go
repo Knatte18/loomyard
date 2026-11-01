@@ -1,5 +1,3 @@
-//go:build tier0
-
 package mergeresolve
 
 import (
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeMergeSurface implements MergeSurface, recording call order and returning caller-configured
@@ -151,6 +150,7 @@ const conflictedContent = "<<<<<<< HEAD\nmine\n=======\ntheirs\n>>>>>>> feature\
 const resolvedContent = "resolved content, no markers\n"
 
 func TestResolve_MergesTheToldTip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
@@ -175,6 +175,7 @@ func TestResolve_MergesTheToldTip(t *testing.T) {
 }
 
 func TestResolve_CleanMergeNoSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: nil}}
@@ -200,6 +201,7 @@ func TestResolve_CleanMergeNoSession(t *testing.T) {
 }
 
 func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -242,6 +244,7 @@ func TestResolve_ConflictThenCleanScan_StagesThenConcludes(t *testing.T) {
 }
 
 func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -281,6 +284,7 @@ func TestResolve_ConflictStillUnresolvedAfterSession_RetriesThenAborts(t *testin
 }
 
 func TestResolve_MergeInProgressAtEntry_AbortsBeforeNewAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeMergeSurface{
@@ -312,6 +316,7 @@ func (unrecognizedMergeError) Error() string { return "unrecognized merge failur
 
 // TestResolve_MergeInError_StuckWithReasonNoAbort asserts every error MergeIn returns -- a foreign merge state, an unmergeable state, and one its disposition table does not name -- ends stuck with the error surfaced, without aborting a merge the run does not own.
 func TestResolve_MergeInError_StuckWithReasonNoAbort(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -350,6 +355,7 @@ func TestResolve_MergeInError_StuckWithReasonNoAbort(t *testing.T) {
 
 // Not parallel: logcapture.Capture replaces the process-global logger.
 func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		outcome shuttleengine.Outcome
@@ -398,6 +404,7 @@ func TestResolve_ShuttleOutcomes_MapToStuckNoConclude(t *testing.T) {
 // TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure pins the placement guarantee: the Warn line lands before abortAndStuck's own MergeAbort call, so a subsequent MergeAbort failure does not erase the diagnostic.
 // Not parallel: logcapture.Capture replaces the process-global logger.
 func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := []string{"a.txt"}
 	abortErr := errors.New("abort failed")
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{Conflicts: paths}, abortErr: abortErr}
@@ -426,6 +433,7 @@ func TestResolve_ShuttleOutcomes_WarnSurvivesAbortFailure(t *testing.T) {
 }
 
 func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeMergeSurface{}
@@ -451,6 +459,7 @@ func TestResolve_ContextCancellation_SurfacedAsError(t *testing.T) {
 }
 
 func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeMergeSurface{mergeInResult: fabricengine.MergeResult{AlreadyUpToDate: true}}
@@ -476,6 +485,7 @@ func TestResolve_AlreadyUpToDate_ResolvedNoSessionNoConclude(t *testing.T) {
 }
 
 func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -510,6 +520,7 @@ func TestResolve_RetryUsesDistinctReportPath(t *testing.T) {
 }
 
 func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -542,6 +553,7 @@ func TestResolve_ScratchDirAbsent_FirstSpecBuildCreatesIt(t *testing.T) {
 }
 
 func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -580,6 +592,7 @@ func TestResolve_SessionEditsTrackedFile_StagesTrackedBeforeConclude(t *testing.
 }
 
 func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -625,6 +638,7 @@ func TestResolve_SessionLeavesUntrackedFile_AbortsStuckNamingItWithoutStaging(t 
 }
 
 func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paths := []string{"a.txt"}
@@ -669,6 +683,7 @@ func TestResolve_StaleReportFromEarlierCall_IsClearedAtEntry(t *testing.T) {
 
 // TestBuildConflictSpec_SkillsAndParentDirective covers the conflict session's skill list and its parent directive, with and without a parent.
 func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

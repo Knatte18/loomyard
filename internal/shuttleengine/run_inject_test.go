@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_inject_test.go covers Runner.Inject: the happy path plays every input in order through the
 // reed seam, a dead strand's pane refuses delivery, an unknown guid refuses before ever touching
 // reed, and empty inputs is a rejected no-op.
@@ -9,9 +7,12 @@ package shuttleengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunner_Inject_HappyPath_PlaysEveryInputInOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 
@@ -40,6 +41,7 @@ func TestRunner_Inject_HappyPath_PlaysEveryInputInOrder(t *testing.T) {
 }
 
 func TestRunner_Inject_DeadStrand_Refuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Unlike Send/Interrupt's requireReadyAgentPane, Inject deliberately does
 	// NOT require the pane to show an input-ready TUI — only that the strand
 	// is live at all (requireLiveStrand). A dead pane must still refuse.
@@ -55,6 +57,7 @@ func TestRunner_Inject_DeadStrand_Refuses(t *testing.T) {
 }
 
 func TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	// No run seeded at all: FindRun must fail before Status/SendKey/SendText
 	// are ever called.
@@ -69,6 +72,7 @@ func TestRunner_Inject_UnknownGUID_RefusesBeforeTouchingReed(t *testing.T) {
 }
 
 func TestRunner_Inject_RefusesAnyInterruptKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		inputs []PaneInput
@@ -102,6 +106,7 @@ func TestRunner_Inject_RefusesAnyInterruptKey(t *testing.T) {
 }
 
 func TestRunner_Inject_EmptyInputs_IsARejectedNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &fakeEngine{}, withStrand("strand-1")).Runner
 

@@ -1,5 +1,3 @@
-//go:build tier2
-
 // tmuxkit_integration_linux_test.go holds the tmuxkit integration tests that find processes through /proc, which only Linux has.
 
 package tmuxkit
@@ -17,10 +15,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly pins the sweep's reach: the server under its directory goes, with a pane child that ignores the hangup `kill-server` sends, and a server elsewhere stays.
 func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmux := requireTmux(t)
 	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
@@ -89,6 +89,7 @@ func TestSweep_KillsServersAndPaneTreesUnderItsDirectoryOnly(t *testing.T) {
 }
 
 func TestAfterRun_LeftoverProcesses(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {

@@ -1,8 +1,6 @@
-//go:build tier0
-
 // argsarity_test.go pins every fabric verb's declared positional-argument arity. It is a pure
 // cobra-tree inspection with no git spawn and no hub fixture, per the Test Tier Purity Invariant —
-// the end-to-end per-verb assertions that need a real hub live in the integration-tagged
+// the end-to-end per-verb assertions that need a real hub live in the tier1
 // cli_test.go instead.
 
 package fabriccli_test
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommand_EveryVerbRejectsExtraPositionalArgs proves each fabric verb declares an Args validator
@@ -27,6 +26,7 @@ import (
 // these verbs need a real hub to reach their RunE at all, and the defect was the absence of the
 // declaration itself.
 func TestCommand_EveryVerbRejectsExtraPositionalArgs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// tooMany is one more argument than each verb legitimately takes, so a verb with a correct

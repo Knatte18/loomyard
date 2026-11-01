@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sleep_test.go pins sleep detection and the awake-time measure over sleeps and pauses.
 
 package pauserecord
@@ -7,9 +5,12 @@ package pauserecord
 import (
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSleepWatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type reading struct {
@@ -62,6 +63,7 @@ func TestSleepWatch(t *testing.T) {
 }
 
 func TestAwakeSince(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	at := func(minutes int) time.Time { return epoch.Add(time.Duration(minutes) * time.Minute) }
 	sleep := []Interval{{at(30), at(50)}}

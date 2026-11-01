@@ -1,11 +1,11 @@
-//go:build tier0
-
 package main
 
 import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func blockSet(names ...string) map[string]struct{} {
@@ -21,6 +21,7 @@ func passRun(name string, elapsed float64, blocks ...string) testRun {
 }
 
 func TestClassify(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	skipped := passRun("Skipped", 0, "b1")
@@ -91,6 +92,7 @@ func TestClassify(t *testing.T) {
 }
 
 func TestRunAloneArgs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {
@@ -120,6 +122,7 @@ func TestRunAloneArgs(t *testing.T) {
 }
 
 func TestParseProfile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	profile := "mode: set\n" +
@@ -141,6 +144,7 @@ func TestParseProfile(t *testing.T) {
 }
 
 func TestRenderPackage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {

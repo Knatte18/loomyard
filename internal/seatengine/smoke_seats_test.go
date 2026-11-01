@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_seats_test.go is seatengine's opt-in live smoke: one chair and one advisor run against a real claude in real tmux panes.
 // The chair asks the advisor one question in creel mail and writes the answer into its output.
 // The test is the caller that wires the real substrate (reedengine, claudeengine and shuttleengine.Runner) in an external package, since seatengine itself never imports claudeengine (PATTERN-shuttle-provider-seam).
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -58,6 +57,7 @@ func copyTestdataStencil(t *testing.T, stencilsDir, name, file string) {
 }
 
 func TestSmokeSeatsChairAsksAdvisor(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

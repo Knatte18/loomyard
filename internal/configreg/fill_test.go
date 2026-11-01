@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fill_test.go — tests that configengine fills a present config file's missing keys from each real module template.
 
 package configreg_test
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -137,6 +136,7 @@ func moduleTemplate(t *testing.T, module string) string {
 // TestFill loads each module's real template with part of it missing and checks the load fills the gap at the template default, leaves the file untouched and logs one fill line naming the module and key-path; an empty but present file loads as the template.
 // It serializes its rows because they swap the process-global logger output.
 func TestFill(t *testing.T) {
+	tiergate.Require(t, 0)
 	type fillRow struct {
 		name, module string
 		// keyPath is the dotted key-path dropped from the template; empty drops its first top-level key.

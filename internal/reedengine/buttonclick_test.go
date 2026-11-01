@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buttonclick_test.go covers buttonclick.go's click of a status-bar button and the confirmed line it composes.
 // The click is driven through TmuxCmd's execHook seam with a stub process runner, so nothing is spawned.
 
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // buttonRunCall is one call of the stub process runner.
@@ -25,6 +24,7 @@ type buttonRunCall struct {
 // TestRunButtonVia drives one click through each path of runButtonVia and asserts what runs, what is prompted and what the clicking client is shown.
 // It reads the logger's output through logcapture, which is process-global, so it does not call t.Parallel.
 func TestRunButtonVia(t *testing.T) {
+	tiergate.Require(t, 0)
 	posix := shell.Posix()
 	const exe = "/opt/lym/bin/lym"
 	const strandName = "tst:a-task:agent"

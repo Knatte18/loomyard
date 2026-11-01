@@ -1,5 +1,3 @@
-//go:build tier0
-
 // help_test.go pins the documented payload schema visible via --help for every board leaf command.
 // Each test drives RunCLI with --help and asserts that the Long output contains the documented
 // field names and does NOT contain any removed token (id_or_slug, phase, group) that would signal a
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runHelp invokes RunCLI for a leaf command (identified by one or more path
@@ -33,6 +32,7 @@ func runHelp(t *testing.T, args ...string) string {
 //
 //testtiming:keep pins every leaf command's documented field names, removed tokens, the slug-limit sentence and the sibling-warning sentence in --help, which its covering test does not assert
 func TestHelpSchema_LeafCommands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// removedTokens are field names that were present in the old schema and must
 	// not appear in any --help output after the batch-1 rename.

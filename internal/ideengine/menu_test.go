@@ -1,5 +1,3 @@
-//go:build tier1
-
 // menu_test.go covers worktree discovery (excludes main, requires _lym/), board-facade titles, numeric selection, the zero-worktree path, and the missing-board hard error.
 
 package ideengine
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func mustRunMenu(t *testing.T, dir string, args ...string) {
@@ -102,6 +101,7 @@ func writeBoard(t *testing.T, container, tasksJSON string) {
 // Each step adds the child worktrees it needs and removes them on cleanup; the board config written after the first step stays for the rest.
 // Serial by design: it sets BOARD_SKIP_GIT in the process environment and swaps the package-level CodeLauncher.
 func TestMenuScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 
 	container, mainWorktreePath := newTestGitRepoWithWorktrees(t)

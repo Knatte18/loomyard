@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_parentlock_test.go covers the inner-run's parent lock duties over a fake clock and fake seams:
 // keeping or releasing the lock of the child's run on every probe check, with the idle watch carried from pass to pass in the memory record.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -174,6 +173,7 @@ func awaitingAt(row string) shedengine.Status {
 // It asserts the record is kept when the owner changed meanwhile, beside a busy agent and on a failed agent read.
 // It asserts the record is kept while KeepsLock answers true or fails, and released once the bound passes again after it answers false.
 func TestInnerRun_ParentLockReleasesAStalledLoopsRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	waiting := []parentlock.AgentState{{Name: "writer", Waiting: true}}
 	busyBeside := []parentlock.AgentState{{Name: "writer", Waiting: true}, {Name: "fixer", Busy: true}}

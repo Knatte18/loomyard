@@ -1,5 +1,3 @@
-//go:build tier1
-
 // loop_integration_test.go holds the helper roles the loop tests start this test binary as: a waiter, a detached loop and a step child.
 
 package shedverbs

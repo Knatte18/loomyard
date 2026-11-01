@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stencilstore_test.go covers BodyHash (and so NormalizeLF), ParseStamp, ApplyStamp, and Classify against hermetic in-memory content -- no t.TempDir() is needed for these, since none of them touch disk.
 
 package stencilstore
@@ -7,10 +5,13 @@ package stencilstore
 import (
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins that CRLF and a changed banner hash like their LF and old-banner twins while a changed body does not, which no covering test asserts
 func TestBodyHash(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -51,6 +52,7 @@ func TestBodyHash(t *testing.T) {
 
 //testtiming:keep pins that a stamp is replaced in place or prepended with the body hash unchanged, where the restamp test reaches only the replacing case
 func TestApplyStamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -87,6 +89,7 @@ func TestApplyStamp(t *testing.T) {
 }
 
 func TestParseStamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -124,6 +127,7 @@ func TestParseStamp(t *testing.T) {
 
 //testtiming:keep pins the state each on-disk shape classifies to, which the reconcile tests observe only through the file outcome
 func TestClassify(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	shipped := []byte("shipped body\n")
@@ -185,6 +189,7 @@ func TestClassify(t *testing.T) {
 // performs the derivation, so a future change to the family rule fails here and not only in the
 // specs package.
 func TestRelPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -209,6 +214,7 @@ func TestRelPath(t *testing.T) {
 
 // TestApplyWriter_RoundTripsThroughParseWriter covers setting, rewriting and removing the writer keys in a stamp line, on a one-line and a multi-line banner, and the body never changing.
 func TestApplyWriter_RoundTripsThroughParseWriter(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hash := fakeHash('a')

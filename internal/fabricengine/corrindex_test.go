@@ -1,5 +1,3 @@
-//go:build tier0
-
 // corrindex_test.go — unit tests for the git-free correspondence-index component.
 // Every test here uses an explicit t.TempDir() file path and never spawns git, per the
 // correspondence index layering decision.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCorrIndex_RecordReloadRoundTrip asserts that entries recorded through one corrIndex handle
@@ -21,6 +20,7 @@ import (
 //
 //testtiming:keep entries surviving a reload into a fresh handle and exact() missing a never-recorded warp SHA; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "corr.json")
 
 	ix, err := loadCorrIndex(path)
@@ -57,6 +57,7 @@ func TestCorrIndex_RecordReloadRoundTrip(t *testing.T) {
 //
 //testtiming:keep recording a known warp SHA again overwriting its weft SHA instead of appending; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
 	if err != nil {
@@ -89,6 +90,7 @@ func TestCorrIndex_RecordUpsertOverwritesWeftSHA(t *testing.T) {
 //
 //testtiming:keep the binary-search nearest-older lookup over an empty, below-range, exact, between and above-range index, and the last-recorded entry winning a shared seq; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
 	if err != nil {
@@ -156,6 +158,7 @@ func TestCorrIndex_NearestAtOrBefore(t *testing.T) {
 //
 //testtiming:keep record() upserting against the freshly read on-disk base so a write landed after the handle loaded survives; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "corr.json")
 
 	ix, err := loadCorrIndex(path)
@@ -190,6 +193,7 @@ func TestCorrIndex_RecordDoesNotClobberConcurrentExternalWrite(t *testing.T) {
 //
 //testtiming:keep the index file parsing as complete JSON after every record() call; coverage of its blocks by other tests does not show an assertion of this
 func TestCorrIndex_PersistenceIsAtomic(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "corr.json")
 	ix, err := loadCorrIndex(path)
 	if err != nil {

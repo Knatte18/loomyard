@@ -1,5 +1,3 @@
-//go:build tier1
-
 // warpbinding_clone_integration_test.go proves CloneHub's warp-binding conflict rule and the pre-hub
 // probe's three-way failure taxonomy (absent, found, hard error) end to end against real local
 // bare-repo fixtures.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedWeftBinding commits a .lym-warp file containing warpURL plus a trailing newline onto
@@ -62,6 +61,7 @@ func noProbeResidueInParent(t *testing.T, cloneParent string, derivedNames ...st
 // no recorded binding, run with ForceBootstrap, writes the record at the board root with the supplied
 // URL and tracks it on the board worktree.
 func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -103,6 +103,7 @@ func TestCloneHub_BootstrapWritesBinding(t *testing.T) {
 // carries a record produces the same geometry as the two-argument form, deriving the hub name and
 // warp from the recorded binding alone.
 func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -150,6 +151,7 @@ func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
 // byte-identical to the recorded binding succeeds and leaves the record's bytes unchanged, both on
 // disk and as committed.
 func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -192,6 +194,7 @@ func TestCloneHub_MatchingBindingIsNoOp(t *testing.T) {
 // TestCloneHub_NormalizedBindingMatch asserts that a supplied URL differing from the record only by a
 // trailing .git is still treated as matching: the clone succeeds and the record is unchanged.
 func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -233,6 +236,7 @@ func TestCloneHub_NormalizedBindingMatch(t *testing.T) {
 // — the property the pre-hub probe buys — leaves no hub directory or probe residue behind for either
 // URL's derived name.
 func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -270,6 +274,7 @@ func TestCloneHub_ConflictLeavesNoHub(t *testing.T) {
 //
 //testtiming:keep a one-argument clone against an unbound weft failing with the unbound condition and the two-argument remedy named and no hub created; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -304,6 +309,7 @@ func TestCloneHub_UnboundWeftNamesTwoArgForm(t *testing.T) {
 // two-argument form bootstraps successfully and writes the record, preserving today's orphan-create
 // path through ensureBoardWorktree.
 func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("OneArgumentReportsUnbound", func(t *testing.T) {
@@ -352,6 +358,7 @@ func TestCloneHub_EmptyWeftRemoteTaxonomy(t *testing.T) {
 // exist fails in both argument forms with an error carrying the "probe weft " prefix, never reports
 // "unbound", and never bootstraps.
 func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -411,6 +418,7 @@ func TestCloneHub_UnreachableWeftIsHardError(t *testing.T) {
 // error), while a weft whose HEAD object is unreadable is a hard error — the property that justifies
 // the ls-tree discriminator existing at all.
 func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("MissingRecordReportsUnbound", func(t *testing.T) {
@@ -468,6 +476,7 @@ func TestCloneHub_AbsenceDiscriminatorDistinguishesMissingFromBroken(t *testing.
 
 // TestCloneHub_BackfillsBindingOnPreBindingHub asserts that a weft carrying .lym-anchor but no .lym-warp — a hub cloned before this change — writes the record and reports WarpBindingRecorded == true given an explicit warp URL, with no ForceBootstrap: the anchor alone satisfies the old-order guard.
 func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -502,6 +511,7 @@ func TestCloneHub_BackfillsBindingOnPreBindingHub(t *testing.T) {
 //
 //testtiming:keep the pre-change argument order being refused with no hub created and the rejected repo untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -549,6 +559,7 @@ func TestCloneHub_OldOrderInvocationIsRefused(t *testing.T) {
 // This setup overlaps TestCloneHub_BackfillsBindingOnPreBindingHub, but is kept as its own test so a
 // guard regression names itself rather than hiding behind the backfill assertion.
 func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -589,6 +600,7 @@ func TestCloneHub_AnchorBearingWeftPassesGuard(t *testing.T) {
 // TestCloneHub_OldOrderInvocationIsRefused rejects succeeds when ForceBootstrap is set, and writes the
 // record — together the two tests establish that the flag is the only way through the guard.
 func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -623,6 +635,7 @@ func TestCloneHub_ForceBootstrapOverridesGuard(t *testing.T) {
 // with only the weft URL and Reset true must tear the hub down, re-create it, and still derive the
 // warp from the recorded binding.
 func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("TwoArgument", func(t *testing.T) {
@@ -710,6 +723,7 @@ func TestCloneHub_ResetInBothArgumentForms(t *testing.T) {
 // precedes the hub-exists check (the hub name is unknowable until the binding is read), and that
 // asymmetry is deliberate — a future reader should not "fix" it into matching the two-argument order.
 func TestCloneHub_HubExistsCheckPrecedesProbeInTwoArgForm(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()

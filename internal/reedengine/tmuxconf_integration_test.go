@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // tmuxconf_integration_test.go proves against a real tmux server what an operator tmux config named by `tmux_conf` can and cannot change on a server reed starts.
 // It is linux-only because the status bar's session row is expanded for a client attached through the pty harness.
@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -71,6 +72,7 @@ func bootConcurrently(t *testing.T, engines ...*Engine) []error {
 
 // TestBoot_TmuxConf boots reed with an operator file named by tmux_conf, each time into a server reed starts itself.
 func TestBoot_TmuxConf(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	t.Run("FileOptionsStandOnTheServer", func(t *testing.T) {
 		conf := writeTmuxConf(t, "set -g @operator_marker yes", "set -g prefix C-a", "set -g escape-time 7")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wire_test.go proves no seam wire (wire.go) builds is evaluated at wiring time: building the
 // wiring for a slug whose worktree does not exist must succeed, and none of the four seams that
 // resolve the managed task worktree's own Location -- the status-path resolver, the spawn
@@ -33,11 +31,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWire_BuildsLazilyForANonexistentTaskWorktree asserts wire returns no error even though the managed task worktree named by slug does not exist anywhere on disk -- the mechanical proof that wire itself resolves nothing about that worktree -- and that all lazy seams are each present as an injected closure after wire returns, not already-evaluated values: the status-path resolver (Env.InnerRun.ResolveStatus), the spawn directory (Env.InnerRun.Spawn), both teardown halves (Env.Teardown.Shutdown, Env.Teardown.Remove) and the rest listed below, plus the durable status file's commit seam (shedPaths.CommitStatus).
 // Covering every seam separately is deliberate: eager evaluation is exactly the failure laziness exists to avoid, and a check on only one seam would let the others regress silently.
 func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := &battenCLI{}
@@ -83,6 +83,7 @@ func TestWire_BuildsLazilyForANonexistentTaskWorktree(t *testing.T) {
 
 // TestDriverAliveFrom covers driverAliveFrom's answers without tmux: an absent task worktree is false without reading status, an absent reed session is false with no error, any other status error is returned, and only a live driver strand, under its full name, its role or the legacy loom-driver literal, is true.
 func TestDriverAliveFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	status := func(res reedengine.StatusResult, err error) func() (reedengine.StatusResult, error) {
 		return func() (reedengine.StatusResult, error) { return res, err }
@@ -128,6 +129,7 @@ func TestDriverAliveFrom(t *testing.T) {
 // a directory error is returned,
 // and a driver row is live, retiring or dead by its flags, under its full name, its role or the legacy loom-driver literal.
 func TestDriverStrandFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")
@@ -172,6 +174,7 @@ func TestDriverStrandFrom(t *testing.T) {
 // A marker whose strand row is live reports alive with its deadline, and one whose row is dead or missing reports not alive.
 // A marker or directory read error is returned.
 func TestArbiterInFlightFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")
@@ -230,6 +233,7 @@ func TestArbiterInFlightFrom(t *testing.T) {
 // TestSyncWatchedMarker covers syncWatchedMarker over a temp directory.
 // Watched writes the given content byte for byte, identical content leaves the file's modification time, and unwatched removes the marker, an absent one included.
 func TestSyncWatchedMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	marker := filepath.Join(t.TempDir(), "batten-watched")
@@ -268,6 +272,7 @@ func TestSyncWatchedMarker(t *testing.T) {
 // Every dead arbiter row, plain or numbered, is stopped by its guid.
 // Live arbiter rows and driver rows are left alone, and the first stop error is returned.
 func TestStopDeadArbiterStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")
@@ -314,6 +319,7 @@ func TestStopDeadArbiterStrands(t *testing.T) {
 // TestRunLockHeld covers runLockHeld's answers over a real lock file: a path whose directory does not exist yet is free,
 // and a held lock reads as held and reads as free again once released.
 func TestRunLockHeld(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	lockPath := filepath.Join(t.TempDir(), "absent-dir", "run.lock")
@@ -343,6 +349,7 @@ func TestRunLockHeld(t *testing.T) {
 
 // TestChildDriverFrom asserts the child driver Seed-Child writes: a recorded child_driver wins over resolveKind, a seed recording none and no seed at all each take resolveKind's value, and a resolveKind error is returned.
 func TestChildDriverFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	kind := func(value string) func() (string, error) {
@@ -386,6 +393,7 @@ func TestChildDriverFrom(t *testing.T) {
 // TestWire_ChildDriverDelegatesToChildDriverOf asserts the wired SeedChild.ChildDriver closure returns the child_driver param the prime seed records, the same value childDriverOf reads over that seed.
 // That keeps refuseAdoptedSeed's comparison and the value Seed-Child writes from drifting.
 func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		params map[string]string
@@ -430,6 +438,7 @@ func TestWire_ChildDriverDelegatesToChildDriverOf(t *testing.T) {
 // location here has no worktree, so a tapestry recipe reaches the absent-pair refusal instead, which
 // is an os.Stat, never the resolver, so this file stays Tier 1.
 func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &battenCLI{}
 	location := &lymcwd.Location{
 		RepoName:     "example",
@@ -469,6 +478,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 
 // TestBoardRecipe asserts the recipe Seed-Child seeds: pawl for a project entry, the entry's own recipe field otherwise, and that boardengine's project recipe is the shedrun one.
 func TestBoardRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if boardengine.ProjectRecipe != shedrun.RecipePawl {
@@ -499,6 +509,7 @@ func TestBoardRecipe(t *testing.T) {
 //
 //testtiming:keep pins the child seed's driver and params, which the end-to-end four-row run covering it never reads back
 func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
+	tiergate.Require(t, 0)
 	params := map[string]string{"parent": "main"}
 
 	got := childSeedFor(shedrun.RecipeTapestry, shedrun.DriverLLM, params)
@@ -510,6 +521,7 @@ func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 // TestChildSpawnError asserts a child bootstrap's exit status is turned into a diagnosis: a non-zero exit carries the child's own output, a silent child passes the run error through, a nil run error stays nil, and over-long output is truncated with an explicit marker, on a valid UTF-8 boundary even when a multi-byte rune straddles it -- a naive byte slice at maxChildOutputInError can land mid-rune and embed an invalid tail.
 // Only the start refusal of kind shedrun.StartNotParkedKind reaches InnerRun as battenshed.ErrChildNotParked, and only one of kind shedrun.StartDriverBusyKind as battenshed.ErrChildDriverBusy, wherever it sits in the output.
 func TestChildSpawnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	runErr := errors.New("exit status 1")
@@ -673,6 +685,7 @@ func TestChildSpawnError(t *testing.T) {
 //
 //testtiming:keep pins the absent-pair answer and the refusal's wording, which the covering tests never assert
 func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
@@ -707,6 +720,7 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 
 // TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lym fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
 func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
+	tiergate.Require(t, 0)
 	const taskBranch = "lym-some-slug"
 	leftover := &fabricengine.ErrBranchExists{Branch: taskBranch}
 	dirty := &fabricengine.ErrSourceDirty{Paths: []string{"a.go", "dir/b.go"}}
@@ -760,6 +774,7 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 
 // TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive and a still-running push of the pair each name the resume, and that every other teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
+	tiergate.Require(t, 0)
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
 
 	got := teardownRefusal(dirty, "some-slug")
@@ -817,6 +832,7 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 //
 //testtiming:keep pins that no removal verdict names the retired fabric prune remedy, which the integration steps never assert
 func TestFinishRemoval(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "half-torn"
@@ -868,6 +884,7 @@ func TestFinishRemoval(t *testing.T) {
 
 // TestOwnerVerdictOf asserts a run-scope report maps onto the owner verdict: an owned-elsewhere entry of the slug names its owner, an active entry and a report without the slug read as owned here, and an unreachable report reads as unreachable.
 func TestOwnerVerdictOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

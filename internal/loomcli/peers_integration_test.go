@@ -1,5 +1,3 @@
-//go:build tier1
-
 // peers_integration_test.go drives the real hubPeersDeps closures over a hub forged by hubforge, with pairs added through hubforge.AddPair.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubPeersDeps_OverRealHub asserts the behaviors of the real closures.
@@ -33,6 +32,7 @@ import (
 // A board task with no pair directory lists the pair as unreadable.
 // A peer whose origin record is gone lists its branch as unreadable and is kept.
 func TestHubPeersDeps_OverRealHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

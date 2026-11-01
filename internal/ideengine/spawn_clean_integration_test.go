@@ -1,5 +1,3 @@
-//go:build tier1
-
 // spawn_clean_integration_test.go holds the .vscode/ config Spawn checks that run against task pairs and the prime of one hubforge hub:
 // a clean tree through info/exclude, the overwrite of an untracked tasks.json and the tracked-tasks.json skip.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.

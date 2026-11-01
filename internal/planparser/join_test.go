@@ -1,5 +1,3 @@
-//go:build tier0
-
 // join_test.go covers JoinParts: the joined plan's numbering, rewrites and overview, the export forms ExportMet admits, and each refusal leaving the plan directory unchanged.
 
 package planparser_test
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // partCard returns a one-group part card with an impact summary, so it passes the format checks on its own.
@@ -36,6 +35,7 @@ func writePart(t *testing.T, root, name string, plan plankit.Plan) string {
 }
 
 func TestJoinParts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

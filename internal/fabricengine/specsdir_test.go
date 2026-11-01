@@ -1,5 +1,3 @@
-//go:build tier0
-
 // specsdir_test.go covers SpecsDir's derivation from BoardDir and lymdirs.LymDirName, and its
 // sibling relationship to StencilsDir.
 
@@ -9,10 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep SpecsDir deriving the Bolt checkout's _lym/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
 func TestSpecsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := "/h"
 	got := SpecsDir(hub)
 	want := filepath.Join(hub, BoltDirName, "_lym", "specs")

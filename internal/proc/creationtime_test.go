@@ -1,5 +1,3 @@
-//go:build tier0
-
 // creationtime_test.go covers CreationTime, defined with the same signature on both platforms, so this file carries no platform constraint.
 
 package proc
@@ -9,10 +7,13 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCreationTime pins CreationTime's per-platform answer: on Windows the calling process's creation time is found and a pid no process holds reads false, elsewhere nothing is found.
 func TestCreationTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	created, ok := CreationTime(os.Getpid())

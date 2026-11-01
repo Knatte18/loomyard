@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tmuxisolation_test.go enforces the Tmux Test Isolation Invariant: every test package runs its tests through tmuxkit.Main, under every tag set and on every platform that compile any of its test files.
 // "Starts tmux" has no static shape, and a package's `t.TempDir` trees belong in the process run directory, so the rule covers every test package at the cost of one run directory per test binary.
 // Modelled on hermeticenv_test.go; see `PATTERN-test-isolation`.
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedNoTmuxMain is the Tmux Test Isolation Invariant allowlist, keyed by package directory with a trailing "/".
@@ -257,10 +256,10 @@ func tmuxIsolationFailures(t *testing.T, opts scankit.Options, allow *scankit.Al
 //
 //lym:guard
 func TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedNoTmuxMain)
-	failures, tagged, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)
+	failures, _, scanned := tmuxIsolationFailures(t, scankit.Options{}, allow)
 	scankit.RequireFloor(t, scanned, 1, "tmux isolation scan")
-	scankit.RequireFloor(t, tagged, 1, "tmux isolation scan tagged packages")
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
 		t.Errorf("`PATTERN-test-isolation` violated:\n%s\nadd a TestMain calling os.Exit(tmuxkit.Main(m)) that compiles under every tag set the package's tests compile under", strings.Join(failures, "\n"))
@@ -269,6 +268,7 @@ func TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain(t *testing.T) {
 
 //testtiming:keep proves the platform suffix parsing the TestTmuxIsolation_EveryTestPackageRunsThroughTmuxkitMain guard relies on to decide which test files compile
 func TestFileNamePlatform(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name, goos, goarch string
 	}{
@@ -288,6 +288,7 @@ func TestFileNamePlatform(t *testing.T) {
 }
 
 func TestTmuxIsolation_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	const withMain = "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tmuxkit\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(tmuxkit.Main(m)) }\n"
 	const bareMain = "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(m.Run()) }\n"
 	const taggedTest = "//go:build tier1\n\npackage p\n"

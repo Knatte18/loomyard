@@ -1,5 +1,3 @@
-//go:build tier0
-
 // activity_test.go is a table test over composeActivity's three mechanical rules.
 
 package shedengine
@@ -7,9 +5,12 @@ package shedengine
 import (
 	"context"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestComposeActivity(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		currentProducer string
@@ -137,6 +138,7 @@ func stuckProducer() *funcProducer {
 }
 
 func TestStep_RoutedStuckReadsAsBounce(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{
 		{Name: "A", Producer: fixedOutcomeProducer(Done, ""), OnDone: "B"},
@@ -171,6 +173,7 @@ func TestStep_RoutedStuckReadsAsBounce(t *testing.T) {
 }
 
 func TestStep_SelfBounceReadsBouncedToItself(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: stuckProducer(), OnStuck: "A", MaxBounces: 1}}
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -188,6 +191,7 @@ func TestStep_SelfBounceReadsBouncedToItself(t *testing.T) {
 // budget-exhausted halt of a self-bouncing row: both read "stuck", and the step-3b resume write
 // after either keeps that text.
 func TestStep_HaltsReadStuckAndResumeKeepsIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		def   ProducerDef

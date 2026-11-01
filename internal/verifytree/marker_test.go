@@ -1,5 +1,3 @@
-//go:build tier0
-
 // marker_test.go covers ReadMarker without spawning anything.
 
 package verifytree
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // withAlive replaces the liveness seam for one test.
@@ -20,6 +20,7 @@ func withAlive(t *testing.T, alive bool) {
 }
 
 func TestReadMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "running.yaml")
 
 	t.Run("absent", func(t *testing.T) {

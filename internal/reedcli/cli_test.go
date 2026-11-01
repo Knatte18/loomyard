@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the reedcli cobra seam through RunCLI: watchdog's and switch's flag refusals and the not-a-git-repo error surface.
 // No live tmux session is required by any test in this file;
 // the real up/add/status/down round-trip lives in smoke_test.go behind //go:build tmux || llm.
@@ -14,12 +12,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_Watchdog_RefusesBadHubPath verifies that watchdog refuses both an absent and a relative --hub-path on the envelope, before it ever blocks.
 // The non-git row also verifies that "watchdog" takes the PersistentPreRunE's early return: invoked from a directory that is not a git repository, it must not fail with lymcwd.Resolve's not-a-git-repository error — the verb must run with no git repository present at all.
 // Its own RunE then reports the missing --hub-path flag on the envelope instead, which is the observable proof that PersistentPreRunE returned nil (skipping c.eng population) rather than aborting into the git-repo error.
 func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -57,6 +57,7 @@ func TestRunCLI_Watchdog_RefusesBadHubPath(t *testing.T) {
 // TestRunCLI_NotAGitRepo verifies that a real verb invoked from a non-git directory surfaces the
 // ErrNotAGitRepo error.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	var out bytes.Buffer
@@ -75,6 +76,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 // It also verifies that button with every flag and a socket that does not exist exits 0 with no output.
 // It runs from a directory that is not a git repository, so a refusal naming the flag, not lymcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		args    []string

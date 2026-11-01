@@ -1,5 +1,3 @@
-//go:build tier0
-
 // inflight_test.go covers which live reed sessions count as another pair's when a pair is removed.
 
 package pairteardown
@@ -7,9 +5,12 @@ package pairteardown
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSessionsOfOtherPairs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

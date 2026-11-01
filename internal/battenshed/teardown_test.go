@@ -1,5 +1,3 @@
-//go:build tier0
-
 // teardown_test.go covers NewWorktreeTeardown over fake seams: the strict Shutdown-before-Remove
 // ordering, which half a stuck reason names, the abandoned-session log path, and prime-lock
 // dispositions.
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // teardownCallRecorder records the order Shutdown and Remove were called in.
@@ -37,6 +36,7 @@ func (r *teardownCallRecorder) deps(shutdownErr error, abandonedSession string, 
 }
 
 func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
@@ -63,6 +63,7 @@ func TestWorktreeTeardown_ShutdownFailureNeverCallsRemove(t *testing.T) {
 
 //testtiming:keep pins the removal half and the shutdown-already-succeeded statement in the stuck reason, which the lock-disposition test never asserts
 func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
@@ -88,6 +89,7 @@ func TestWorktreeTeardown_RemoveFailureNamesRemovalHalf(t *testing.T) {
 }
 
 func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("contention", func(t *testing.T) {
 		scratchDir := t.TempDir()
 		var released bool
@@ -141,6 +143,7 @@ func TestWorktreeTeardown_PrimeLockDispositions(t *testing.T) {
 // TestWorktreeCreate_CancelledDuringAcquireError (create_test.go): the Acquire-error hard-error
 // path must consult cancelErr before returning, per F1 (crucible round sonnet-xhigh-r3).
 func TestWorktreeTeardown_CancelledDuringAcquireError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	acquireErr := errors.New("flock: device error")
@@ -165,6 +168,7 @@ func TestWorktreeTeardown_CancelledDuringAcquireError(t *testing.T) {
 }
 
 func TestWorktreeTeardown_CancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
@@ -188,6 +192,7 @@ func TestWorktreeTeardown_CancelledContext(t *testing.T) {
 //
 //testtiming:keep pins the record's write, its clearing of a stale record and its write from the Done path, which the covering teardown tests never read
 func TestRecordAbandonedSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	path := AbandonedSessionFile(scratchDir)
 
@@ -229,6 +234,7 @@ func TestRecordAbandonedSession(t *testing.T) {
 
 // TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree asserts the row runs Shutdown strictly before Remove and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
 func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, contendedPolls := range []int{0, 2} {
@@ -257,6 +263,7 @@ func TestWorktreeTeardown_TearsDownInOrderOnceTheLockIsFree(t *testing.T) {
 }
 
 func TestWorktreeTeardown_LockStillHeldPastBoundIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	var sleeps int
@@ -275,6 +282,7 @@ func TestWorktreeTeardown_LockStillHeldPastBoundIsStuck(t *testing.T) {
 }
 
 func TestWorktreeTeardown_CancelledDuringLockWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	var sleeps int

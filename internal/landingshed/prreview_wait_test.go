@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prreview_wait_test.go covers the wait of the PR-Review row: what each state of the pull request and the task worktree ends it with, how it gates and pushes the agent's commits, and how it spaces its wakes and its GitHub polls on an injected clock.
 
 package landingshed
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -126,6 +125,7 @@ func once(fn func()) func() {
 }
 
 func TestPRReview_Wait(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The wait captures the process-global logger, so this test and its subtests stay serial.
 	const continueClose = "Close 7 " + continueComment
 	const editSeven = "Edit 7|Change title|" + wantPRBody

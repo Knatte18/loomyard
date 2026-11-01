@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ownwindow_test.go pins the own-window group placement: the pure plan that chooses between a shared window and a window of its own, and the join of a pane into a group's shared window.
 // It also pins the rule deciding which window a viewer leaves for a new agent window.
 
@@ -13,10 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPlanOwnWindowPlacement pins the placement and the group record planOwnWindowPlacement returns for each arrival in a group.
 func TestPlanOwnWindowPlacement(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	group := func(name string, size int) render.Display {
 		return render.Display{Anchor: render.AnchorOwnWindow, Window: name, WindowSize: size}
@@ -73,6 +73,7 @@ func TestPlanOwnWindowPlacement(t *testing.T) {
 // TestNewAgentWindowSelected pins whether a new agent window takes the viewer: a Focus strand always does, a KeepViewer strand never does, and any other does exactly when the session's follow state reads on.
 // It captures the process-global logger output, so it does not run in parallel.
 func TestNewAgentWindowSelected(t *testing.T) {
+	tiergate.Require(t, 0)
 	own := render.Display{Anchor: render.AnchorOwnWindow}
 	focus := render.Display{Anchor: render.AnchorOwnWindow, Focus: true}
 	keep := render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}
@@ -120,6 +121,7 @@ func TestNewAgentWindowSelected(t *testing.T) {
 
 // TestJoinGroupWindowLocked_RefusesASilentlyReusedPane pins that a split answering the group window's own pane is refused as in window 0, runs no layout, and that a genuine join splits the group window's first pane detached in the told direction.
 func TestJoinGroupWindowLocked_RefusesASilentlyReusedPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	windows := []windowPane{{WindowID: "@4", Own: true, Group: "pair", PaneID: "%5"}, {WindowID: "@0", PaneID: "%1"}}
 

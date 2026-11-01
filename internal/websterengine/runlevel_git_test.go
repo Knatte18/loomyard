@@ -1,5 +1,3 @@
-//go:build tier1
-
 // runlevel_git_test.go exercises Run's plan-level verify gate over a real scratch git repository and real shell commands:
 // the gate asks git for the tree's dirty paths and for the commits since the first failure, and runs the `final` gate call through the built `lym` in a subprocess.
 // Every other Run behavior is tested over a fakeGit in runlevel_test.go.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -114,6 +113,7 @@ func verifyGateOf(t *testing.T, fx *runFixture) shuttleengine.GateEntry {
 // Each step starts by restarting the repository from its base commit, so no step relies on another's state.
 // It is not parallel: each step's restart puts the built `lym` first on `PATH`, which is process-global state.
 func TestRun_VerifyGate(t *testing.T) {
+	tiergate.Require(t, 1)
 	s := newGateScenario(t)
 
 	// A fake Merriam whose first done arrival fails verify and whose second passes ends done with one re-prompt,

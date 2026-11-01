@@ -1,5 +1,3 @@
-//go:build tier0
-
 // proctree_test.go table-tests the pure /proc process-tree helpers in proctree.go: parseStat's stat-line parsing (including the space-and-paren comm edge case), descendantClosure's fixed-point walk (including a missing-parent, a reparent-to-init, and a cycle), and matchSocketCmdlines' argv matcher (including both near-miss shapes).
 // These are the TDD surface for the batch: the OS-suffixed seams that call them (proctree_linux.go,
 // proctree_windows.go) are compile-checked only, never run on this host.
@@ -13,9 +11,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestClockTicksFromAuxv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -38,6 +39,7 @@ func TestClockTicksFromAuxv(t *testing.T) {
 }
 
 func TestProcessAge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// statWithStart builds a stat line whose field 22 is start, after a comm holding a space and a paren.
 	statWithStart := func(start string) string {
@@ -93,6 +95,7 @@ func TestProcessAge(t *testing.T) {
 }
 
 func TestParseStat(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		stat        string
@@ -154,6 +157,7 @@ func TestParseStat(t *testing.T) {
 
 //testtiming:keep pins the fixed-point walk over a straight chain, a parent missing from the map, a pid re-parented to init and a self or cyclic entry; its covering tests run this code without asserting it
 func TestDescendantClosure(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		pidToPPID  map[int]int
@@ -228,6 +232,7 @@ func TestDescendantClosure(t *testing.T) {
 }
 
 func TestMatchSocketCmdlines(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		procs  []ProcCmdline
@@ -283,6 +288,7 @@ func TestMatchSocketCmdlines(t *testing.T) {
 // config resolves tmux to tmux.exe, so Down leaked every server (round fable-r1, fabric-cutover
 // campaign).
 func TestTmuxProcessName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		binary string

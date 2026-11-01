@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_commitstatus_test.go covers Shed.CommitStatus, the injected persist-time seam: that it is
 // called on every write path a run performs, that a nil seam is a silent no-op, that a seam error
 // propagates out of Run after the status-file write has already landed, that the closure receives
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitStatusCall records one CommitStatus invocation's arguments, in call order.
@@ -42,6 +41,7 @@ func recordingCommitStatus(calls *[]commitStatusCall) func(producer, state strin
 // persists each run is known to perform, not merely asserted non-zero, so a call dropped on any
 // one path would still be caught even though the other five still fire.
 func TestRun_CommitStatusCalledOnEveryWritePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	var calls []commitStatusCall
 	shed.CommitStatus = recordingCommitStatus(&calls)
@@ -137,6 +137,7 @@ func TestRun_CommitStatusCalledOnEveryWritePath(t *testing.T) {
 // only value every product wired before this task's other batches leaves it at -- changes nothing
 // about a run: it completes exactly as TestRun_HappyPath does.
 func TestRun_CommitStatusNilIsSilentNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	// shed.CommitStatus is left at its zero value: nil.
 
@@ -167,6 +168,7 @@ func TestRun_CommitStatusNilIsSilentNoOp(t *testing.T) {
 // already made before the closure ran -- the write and the seam failure are two separate
 // outcomes, and the first must survive the second.
 func TestRun_CommitStatusErrorHaltsRunWithWriteAlreadyDurable(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	wantErr := errors.New("commitstatus: push failed")
 	shed.CommitStatus = func(producer, state string) error {
@@ -198,6 +200,7 @@ func TestRun_CommitStatusErrorHaltsRunWithWriteAlreadyDurable(t *testing.T) {
 // error, leaving an operator reading about a push while the producer failure they could act on went
 // unmentioned.
 func TestRun_PersistFailureOnAFailedTerminalSurfacesBothErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	persistErr := errors.New("commitstatus: push failed")
 
 	tests := []struct {
@@ -246,6 +249,7 @@ func TestRun_PersistFailureOnAFailedTerminalSurfacesBothErrors(t *testing.T) {
 // same producer and state strings that were just written to the file, checked across the running,
 // blocked, and done transitions.
 func TestRun_CommitStatusReceivesTransitionProducerAndState(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	var calls []commitStatusCall
 	shed.CommitStatus = recordingCommitStatus(&calls)
@@ -284,6 +288,7 @@ func TestRun_CommitStatusReceivesTransitionProducerAndState(t *testing.T) {
 // against itself -- the exact failure this test is written to catch, so it runs Run on a
 // goroutine and bounds the wait rather than risking an unbounded test-suite hang.
 func TestRun_CommitStatusRunsOutsideTheStateWriteLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.CommitStatus = func(producer, state string) error {
 		l, err := lock.AcquireReadLock(statusLockPath)

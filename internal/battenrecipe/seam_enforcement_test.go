@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/battenrecipe takes every absolute path it operates on from its caller and
 // has no direct production import of internal/lymcwd.
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // battenrecipeAllowedImports are the only non-stdlib import paths production code in this
@@ -34,6 +33,7 @@ const battenrecipeDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/ly
 
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately asserts that no production import path is battenrecipeDeniedLymcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/battenrecipe", battenrecipeAllowedImports...)
 
 	var deniedFound []string

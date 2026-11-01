@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushanchored_integration_test.go covers PushAnchored and PushPairAnchored against real hubforge pairs, the push lock both take, and PushAnchored against a hub's weft sibling:
 // SkipGit and SkipPush each short-circuit to an empty result and push nothing;
 // a weft carrying an unpushed commit is genuinely pushed and the mutation record carries exactly one KindBranchPushed entry.
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cloneBareForTest clones bareRepo into a fresh subdirectory of t.TempDir(), configuring a commit
@@ -49,6 +48,7 @@ func cloneBareForTest(t *testing.T, bareRepo, branch string) string {
 // TestPushAnchored_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-circuit
 // to an empty result and a nil error, leaving the weft bare remote unadvanced.
 func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -91,6 +91,7 @@ func TestPushAnchored_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
 //
 //testtiming:keep a successful weft push advancing the bare remote and recording exactly one KindBranchPushed entry; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -157,6 +158,7 @@ func TestPushAnchored_PushesAndRecordsBranchPush(t *testing.T) {
 //
 //testtiming:keep a diverged weft remote returning gitrepo.ErrPushRejected through its failed-push error; coverage of its blocks by other tests does not show an assertion of this
 func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -199,6 +201,7 @@ func TestPushAnchored_DivergedWeftRemote_ReturnsErrPushRejected(t *testing.T) {
 // same sentinel property: a push error that is NOT a remote-divergence rejection — here, the weft
 // sibling's origin remote removed entirely — must not satisfy errors.Is(err, gitrepo.ErrPushRejected).
 func TestPushAnchored_OtherPushErrorKind_DoesNotMatchErrPushRejected(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -285,6 +288,7 @@ func countBranchPushed(res fabricengine.PushResult, detailPrefix string) int {
 // both sides pushed and recorded, a remote that declines once retried to success on both entries, a rejection whose fetch then keeps failing never pushed again, a remote that keeps declining reported as a bare rejection, an unborn code side skipped while the records side still pushes, a diverged code side reported while the records side still pushes, and both sides failing reported together.
 // Two subtests then run on hubs of their own: the prime pushes its records side only and reports the skipped code push, and a prime that cannot be resolved fails the call with nothing pushed.
 func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newPushPair(t)
@@ -515,6 +519,7 @@ func TestPushPairAnchored_PushesBothSidesRetriesAndReportsEachSide(t *testing.T)
 // SkipPush and SkipGit return at once;
 // and an unbounded wait returns only once the lock is released and then pushes.
 func TestPushLock_BoundedWaitGivesUpAndUnboundedWaitBlocks(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

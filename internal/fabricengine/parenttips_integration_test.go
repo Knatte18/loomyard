@@ -1,5 +1,3 @@
-//go:build tier1
-
 // parenttips_integration_test.go proves the code-side reads a parent merge needs — ReadParentTips, ChangedPaths and HoldsWork — and FastForwardPair's fast-forward-only move and refusals.
 // Package fabricengine_test; it reuses pull_integration_test.go's buildReconcileFixture and rewriteWarpRemoteHistory.
 
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pushFromSecondClone commits one new file on main in a fresh clone of bareDir, pushes it and returns the new upstream tip.
@@ -33,6 +32,7 @@ func pushFromSecondClone(t *testing.T, fixturesDir, bareDir, name string) string
 
 // TestReadParentTips covers every relation, and that an upstream push is seen only when the read fetches.
 func TestReadParentTips(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	type env struct {
@@ -130,6 +130,7 @@ func TestReadParentTips(t *testing.T) {
 
 // TestLocalOnlyCommits covers a branch level with origin, one with two local commits listed newest first, and one with no tracking ref.
 func TestLocalOnlyCommits(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -180,6 +181,7 @@ func TestLocalOnlyCommits(t *testing.T) {
 
 // TestReadParentTips_MissingBranchIsAnError covers a missing local branch, which the error names.
 func TestReadParentTips_MissingBranchIsAnError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, _, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -194,6 +196,7 @@ func TestReadParentTips_MissingBranchIsAnError(t *testing.T) {
 
 // TestChangedPaths_NamesExactlyTheCommittedFiles asserts the sorted paths between two commits.
 func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -220,6 +223,7 @@ func TestChangedPaths_NamesExactlyTheCommittedFiles(t *testing.T) {
 
 // TestChangedPathsBothSides_NamesRenamesAndRawPaths asserts a rename is named by both paths, a non-ASCII path arrives raw, an empty range names nothing and an unknown ref is an error naming it.
 func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -255,6 +259,7 @@ func TestChangedPathsBothSides_NamesRenamesAndRawPaths(t *testing.T) {
 
 // TestLineChange_CountsLinesAndListsPaths asserts a change of three added and two deleted lines, a pure rename and a binary file read as six lines, every path with the rename at both, and the added lines' text, and that an unknown ref is an error naming it.
 func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -293,6 +298,7 @@ func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
 
 // TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
 func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -323,6 +329,7 @@ func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 
 // TestHeadHoldsCommitsNotIn asserts HEAD level with a ref reads false, a commit past the ref reads true, the HEAD tip as the ref reads false, and an unknown ref is an error naming it.
 func TestHeadHoldsCommitsNotIn(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -351,6 +358,7 @@ func TestHeadHoldsCommitsNotIn(t *testing.T) {
 
 // TestHoldsWork covers a source the base lacks, one the base holds after a squash, and a conflicting one.
 func TestHoldsWork(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
@@ -384,6 +392,7 @@ func TestHoldsWork(t *testing.T) {
 // TestFastForwardPair_MovesBehindPairToUpstream asserts the code side lands on the upstream tip, and that a weft whose upstream also moved is advanced and recorded.
 // A weft whose upstream carries another anchor marker stays where it is while the code side still moves.
 func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -459,6 +468,7 @@ func TestFastForwardPair_MovesBehindPairToUpstream(t *testing.T) {
 
 // TestFastForwardPair_WeftWithoutUpstreamStillMovesCodeSide asserts a weft with no upstream is skipped, not an error.
 func TestFastForwardPair_WeftWithoutUpstreamStillMovesCodeSide(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixturesDir := t.TempDir()
@@ -488,6 +498,7 @@ func TestFastForwardPair_WeftWithoutUpstreamStillMovesCodeSide(t *testing.T) {
 
 // TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError covers each refusal: nil error, no movement, an empty record.
 func TestFastForwardPair_RefusalsLeavePairUnmovedWithNilError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

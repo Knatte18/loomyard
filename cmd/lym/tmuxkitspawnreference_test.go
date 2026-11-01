@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tmuxkitspawnreference_test.go pins the tmuxkit-spawn definition tmuxkitspawn_test.go holds.
 // This file names no tmuxkit export, so it never trips the scan that uses the definition.
 
@@ -7,8 +5,11 @@ package main
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 //testtiming:keep pins the tmuxkit-spawn definition the TestTierPurity_UntaggedTestsSpawnNothing guard uses: every export but Main spawns, file-name mentions do not
 func TestTmuxkitSpawnReference(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The sample references are assembled at run time so this file's own source carries none.
 	pkg := "tmux" + "kit."
 	tests := []struct {

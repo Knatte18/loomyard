@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shape_test.go carries the package's one row table and the shape-and-identity assertions over New's built list: the real Publish/Finalize swap, told-field threading, a missing-Landing-closure construction failure, and the routing-graph guard.
 // It does not assert the recipe's own structure or parsing -- recipe_test.go owns that.
 
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -119,6 +118,7 @@ func testEnv(t *testing.T) (shedrecipe.Env, shedbuild.ShedPaths) {
 }
 
 func TestNew_ToldShedFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -143,6 +143,7 @@ func TestNew_ToldShedFields(t *testing.T) {
 // Finalize are each backed by the real landingshed producer type, not the stub type, and both keep
 // their escalate-on-stuck setting.
 func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -183,6 +184,7 @@ func TestNew_MergeInAndFinalizeAreRealProducers(t *testing.T) {
 // missing a required closure makes New return an error rather than a list that panics at call
 // time: New surfaces landingshed.NewParentAlign's own construction failure instead of discarding it.
 func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	env.Landing.MergeBase = nil
 
@@ -199,6 +201,7 @@ func TestNew_MissingLandingClosureReturnsError(t *testing.T) {
 }
 
 func TestNew_PassesShedValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -239,6 +242,7 @@ func TestNew_PassesShedValidation(t *testing.T) {
 // identical routing graph, and the difference is a verdict returned inside Call, which
 // shedcheck.Check never inspects. A comment claiming unqualified perch coverage would be false.
 func TestNew_RoutingGraphIsClean(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {

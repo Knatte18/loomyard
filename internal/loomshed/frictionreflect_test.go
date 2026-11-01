@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFrictionReflect_CallReturnsDoneForEveryStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		status string
@@ -47,6 +47,7 @@ func TestFrictionReflect_CallReturnsDoneForEveryStatus(t *testing.T) {
 }
 
 func TestNewFrictionReflect_NilClosureRejected(t *testing.T) {
+	tiergate.Require(t, 0)
 	p, err := NewFrictionReflect("Friction-Reflect", nil)
 	if err == nil {
 		t.Fatal("NewFrictionReflect(nil) error = nil; want non-nil")
@@ -57,6 +58,7 @@ func TestNewFrictionReflect_NilClosureRejected(t *testing.T) {
 }
 
 func TestFrictionReflect_CancelledContextSkipsClosure(t *testing.T) {
+	tiergate.Require(t, 0)
 	calls := 0
 	p, err := NewFrictionReflect("Friction-Reflect", func() string {
 		calls++

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package dotgit
 
 import (
@@ -7,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func mkdirs(t *testing.T, paths ...string) {
@@ -43,6 +43,7 @@ func linkedWorktree(t *testing.T, dir, gitdirLine, adminDir, commondirLine strin
 }
 
 func TestRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -184,6 +185,7 @@ func TestRead(t *testing.T) {
 }
 
 func TestFindRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

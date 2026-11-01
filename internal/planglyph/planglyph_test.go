@@ -1,5 +1,3 @@
-//go:build tier0
-
 // planglyph_test.go covers ValidateFormat/Validate's composition over planparser's own checks,
 // resolvePass's language: none short-circuit, and collectGlyphTargets' deduplication.
 
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // minimalPlan returns a *planparser.Plan carrying just enough to exercise ValidateFormat/Validate
@@ -33,6 +32,7 @@ func minimalPlan(t *testing.T, dir string) *planparser.Plan {
 // planparser.ValidateFormat finding unchanged apart from the SeverityBlocking stamp, with a nil
 // error under language: none.
 func TestValidateFormat_ConvertsFindingsUnchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := minimalPlan(t, dir)
 	plan.Format = 4 // deliberately wrong, to force a format-unrecognized finding.
@@ -59,6 +59,7 @@ func TestValidateFormat_ConvertsFindingsUnchanged(t *testing.T) {
 // TestValidate_AddsPlanUnapproved asserts Validate returns everything ValidateFormat does plus the
 // plan-unapproved finding.
 func TestValidate_AddsPlanUnapproved(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := minimalPlan(t, dir)
 
@@ -90,6 +91,7 @@ func TestValidate_AddsPlanUnapproved(t *testing.T) {
 // panic, no findings, and a nil error, when plan.Language is "none" even against a directory that
 // is not a quarry repository at all — proving no quarry call is made.
 func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
+	tiergate.Require(t, 0)
 	plan := minimalPlan(t, t.TempDir())
 	nonRepo := t.TempDir() + "/does-not-exist"
 
@@ -106,6 +108,7 @@ func TestResolvePass_LanguageNoneOpensNoRepository(t *testing.T) {
 // ErrQuarryUnavailable together with the pure findings it had already collected, when the
 // worktree root does not name a quarry repository at all.
 func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Format: 4, Language: "go", Approved: false} // format 4 forces a pure finding too.
 	nonRepo := filepath.Join(t.TempDir(), "does-not-exist")
@@ -125,6 +128,7 @@ func TestValidate_QuarryUnavailableReturnsPureFindingsAlongsideTheError(t *testi
 //
 //testtiming:keep pins the rewrote return value, which TestCanonicalizeHandles_Rewrites ignores
 func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a plan carrying no handle rewrites nothing", func(t *testing.T) {
 		_, plan := writePlanFixture(t, map[int]string{
 			1: "**Edit:**\n- `sub/other.go`\n\n**Intent:** one\n\n**ImpactSummary:** none\n",
@@ -229,6 +233,7 @@ func TestCanonicalizeHandles_ReportsWhetherItRewrote(t *testing.T) {
 // for a read-only _lym/plan and sent the operator at the wrong subsystem. Both callers' non-quarry
 // branch already fails the gate with an accurate, plan-named message.
 func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	planDir := filepath.Join(t.TempDir(), "never-created")
 	plan := &planparser.Plan{
@@ -269,6 +274,7 @@ func TestValidate_UnparseablePlanDirectoryIsAnInfrastructureError(t *testing.T) 
 // collapses into one target, and that non-glyph-shaped refs (a path, a bare symbol, a plan:
 // handle) are excluded.
 func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
+	tiergate.Require(t, 0)
 	plan := &planparser.Plan{
 		Cards: []planparser.Card{
 			{Number: 1, Slug: "one", Targets: []string{"sub#Foo", "sub/a.go", "plan:sub#Bar"}},
@@ -289,6 +295,7 @@ func TestCollectGlyphTargets_DeduplicatesAcrossCards(t *testing.T) {
 // Against pre-fix source this reported blocking glyph-not-found (twice, per F1b) and wedged every
 // plan carrying a file rename, including the plan spec's own worked example.
 func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
 	_, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub/a.go` -> `sub/b.go`\n\n**Intent:** rename the file\n",
@@ -305,6 +312,7 @@ func TestResolvePass_FileRenameNewSideIsNotAFinding(t *testing.T) {
 
 // TestValidateRework asserts ValidateRework returns ValidateFormat's findings, followed by a blocking rework-first-card finding only when first_card differs from the told number.
 func TestValidateRework(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := minimalPlan(t, dir)
 	plan.Format = 4 // forces a format-unrecognized finding so the prefix is non-empty.
@@ -378,6 +386,7 @@ func hasCheck(findings []Finding, check string) bool {
 
 // TestResolvePass_ForthcomingCreateTargetExcludedFromStatus asserts a pending card's Uses of a Create target declared by a completed card is excluded from the status check only when that card is forthcoming.
 func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	card1 := "**Create:**\n- `sub#Gadget`\n\n**Intent:** add the gadget\n"
 	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Gadget`\n\n**Intent:** use the gadget\n"
 
@@ -391,6 +400,7 @@ func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 
 // TestValidateFormat_PartScope asserts the plan-gate form leaves out of the status policy a file self glyph the part scope's Paths hold, and reports it as glyph-not-found without the scope.
 func TestValidateFormat_PartScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
@@ -418,6 +428,7 @@ func TestValidateFormat_PartScope(t *testing.T) {
 
 // TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a forthcoming card is excluded from the status check the same way.
 func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	card1 := "**Rename:**\n- `sub#Thing` -> `sub#Widget`\n\n**Intent:** rename the type\n"
 	card2 := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub#Widget`\n\n**Intent:** use the renamed type\n"
 
@@ -431,6 +442,7 @@ func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 
 // TestResolvePass_ForthcomingCardIsNotResolved asserts a forthcoming card's own Create target that already exists draws no create-already-exists, since the card is not resolved.
 func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
+	tiergate.Require(t, 0)
 	card1 := "**Create:**\n- `sub#Foo`\n\n**Intent:** already landed\n"
 	card2 := "**Edit:**\n- `sub#Thing`\n\n**Intent:** unrelated\n"
 
@@ -441,6 +453,7 @@ func TestResolvePass_ForthcomingCardIsNotResolved(t *testing.T) {
 
 // TestValidateDispatch_DeleteTargetGone asserts a pending card's already-absent Delete target is the informational delete-target-gone only once a card is completed, and that a Uses or Edit of the same target keeps its blocking finding.
 func TestValidateDispatch_DeleteTargetGone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const done = "**Edit:**\n- `sub#Foo`\n\n**Intent:** already landed\n"

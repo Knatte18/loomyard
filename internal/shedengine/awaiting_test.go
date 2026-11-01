@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedengine
 
 import (
@@ -7,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // awaitingProducer returns a producer that reports Awaiting with reason.
@@ -19,6 +19,7 @@ func awaitingProducer(reason string) *funcProducer {
 }
 
 func TestRun_AwaitingHaltsWithReason(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	a := awaitingProducer("waiting on PR review")
 	b := fixedOutcomeProducer(Done, "")
@@ -64,6 +65,7 @@ func TestRun_AwaitingHaltsWithReason(t *testing.T) {
 }
 
 func TestStep_AwaitingThenStepRecallsSameProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	a := awaitingProducer("hand-off")
 	shed.Producers = []ProducerDef{{Name: "A", Producer: a}}
@@ -86,6 +88,7 @@ func TestStep_AwaitingThenStepRecallsSameProducer(t *testing.T) {
 }
 
 func TestRun_AwaitingDoesNotSpendBounceBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.MaxBounces = 1
 
@@ -128,6 +131,7 @@ func TestRun_AwaitingDoesNotSpendBounceBudget(t *testing.T) {
 }
 
 func TestStep_AwaitingStatusPassesReadGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	seed := commonSeed("A")
 	seed.State = StateAwaiting
@@ -171,6 +175,7 @@ func statusJSON(t *testing.T, st Status) string {
 }
 
 func TestStep_AwaitingPersistsAndReturnsParentNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: noticeProducer("  settle the\r\ncircling call \n")}}
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -206,6 +211,7 @@ func TestStep_AwaitingPersistsAndReturnsParentNotice(t *testing.T) {
 }
 
 func TestStep_AwaitingWithoutNoticeOmitsField(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: awaitingProducer("hand-off")}}
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -223,6 +229,7 @@ func TestStep_AwaitingWithoutNoticeOmitsField(t *testing.T) {
 }
 
 func TestStep_NonAwaitingOutcomesLeaveNoticeAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, outcome := range []Outcome{Done, Stuck} {
 		shed, statusPath, _, statusLockPath := newTestShed(t)
 		shed.Producers = []ProducerDef{{Name: "A", Producer: &funcProducer{

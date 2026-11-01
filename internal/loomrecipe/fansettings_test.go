@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fansettings_test.go pins that the shipped recipes name fan and auto-accept settings consistently within each review segment, and that each row names the setting its perch's wiring has always read.
 
 package loomrecipe
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // settingText returns the string value of row's Config key, "" when the key is absent.
@@ -91,6 +90,7 @@ func fanSettingMismatches(r shedbuild.Recipe) []string {
 //
 //testtiming:keep pins the exact references of the shipped recipes, which a recipe edit pointing a row at another key must fail, and self-checks each rule of fanSettingMismatches over hand-authored segments
 func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	loom, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)

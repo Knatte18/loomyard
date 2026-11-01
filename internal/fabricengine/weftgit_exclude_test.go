@@ -1,5 +1,3 @@
-//go:build tier1
-
 // weftgit_exclude_test.go proves fabric's own lock artifacts (.weft/ from
 // Fabric.Commit's write lock, .gitrepo-push.lock from PushCoalesced) never
 // surface as untracked dirt in the weft worktree: ensureWeftLockDir seeds
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newFabricPair returns a *fabricengine.Fabric obtained through fabricengine's ordinary exported
@@ -61,6 +60,7 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 // .weft lock dir) and drops a push lock file, then asserts neither artifact appears in `git status
 // --porcelain` — the exact check Remove's no-force weft dirty gate runs.
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, weftPath := newFabricPair(t)
@@ -117,6 +117,7 @@ func nonEmptyExcludeLines(content string) []string {
 // machine-local patterns, and re-seeding via a second commit leaves the file
 // byte-identical.
 func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, weftPath := newFabricPair(t)
@@ -197,6 +198,7 @@ func mustWriteFile(t *testing.T, path, content string) {
 // durable per-module state file is written under _lym and committed alongside the .lym artifacts at
 // every depth, proving the property is exact and does not over-match real state.
 func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "backend", "wts/some-task"} {
@@ -253,6 +255,7 @@ func TestCommitWeft_MachineLocalArtifactsNeverEnterWeftTreeAtAnyDepth(t *testing
 // This test has a verified pre-fix failure: on the pre-card-41 code it fails with a
 // "gitrepo: git add:" error instead of landing a clean no-op.
 func TestCommit_EntryMatchingOnlyAnIgnoredFile_DegradesToCleanNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, weftPath := newFabricPair(t)

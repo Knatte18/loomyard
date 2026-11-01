@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_attachprobe_test.go is the live-substrate regression guard for the two ways a producer's
 // attach probe has failed a crashed run for real.
 //
@@ -49,6 +47,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shellLaunchEngine is a shuttleengine.Engine that launches a plain shell script instead of a provider session.
@@ -149,6 +148,7 @@ func (r probingHalfRunner) probe(outputPath string) (burlerengine.LiveHalf, erro
 // It then calls BurlerReviewProducer.Call against the same run directory and asserts it resumed that run rather than starting a second reviewer.
 // It also asserts the live run's own artifact was left where it wrote it and that the accepted review was recorded.
 func TestSmokeBurlerReview_AttachesToALiveReviewerInsteadOfRespawning(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -287,6 +287,7 @@ func newLeadSeatProducer(t *testing.T, reedGeom reedengine.Geometry, runner *shu
 // Everything Attach reads is genuine: a real run.json written by a real Start, real output files, and reed's own real state file.
 // ZERO provider subprocesses are spawned.
 func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)
@@ -379,6 +380,7 @@ func TestSmokeLeadSeat_HarvestsAFinishedRunWithReedStateGone(t *testing.T) {
 //
 // The stub Engine and the real Runner, reed session and tmux panes are the ones this file's other tests use.
 func TestSmokeLeadSeat_RerunRemovesTheSupersededStrand(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)

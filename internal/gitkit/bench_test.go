@@ -1,5 +1,3 @@
-//go:build tier1
-
 // bench_test.go holds the permanent probes behind the numbers in
 // docs/benchmarks/fixture-copy.md. Run them with:
 //
@@ -20,8 +18,11 @@ package gitkit
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // BenchmarkCopyRepo measures the serial cost of CopyRepo.
 func BenchmarkCopyRepo(b *testing.B) {
+	tiergate.Require(b, 1)
 	for b.Loop() {
 		CopyRepo(b)
 	}

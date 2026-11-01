@@ -1,5 +1,3 @@
-//go:build tier1
-
 // rules_integration_test.go proves `lym orch rules` over a real hub: the draft becomes the orch rules entry of heddle.json in the Bolt checkout, aimed at the orch-prompt target, and an empty draft removes it.
 
 package orchcli
@@ -15,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOrchIntegration_RulesStoreInHeddle(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	anchor := h.Location.AnchorPath()

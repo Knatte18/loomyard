@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stopper_test.go pins RemoveRecoveryStrands against the recording StrandStopper double (no git, no reed).
 
 package websterengine_test
@@ -9,11 +7,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestRemoveRecoveryStrands pins which recorded strands are stopped, in batch-number order, and that the first stop failure is reported with its guid.
 func TestRemoveRecoveryStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	st := &websterengine.State{

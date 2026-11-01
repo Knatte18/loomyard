@@ -1,5 +1,3 @@
-//go:build tier0
-
 // anchorread_test.go pins the marker semantics of a worktree's recorded anchor in Tier 0.
 // The own marker wins over the board marker, the stale pre-rename marker hard-errors only when no own marker answers,
 // and an absent or empty marker is a fallback.
@@ -15,10 +13,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 func TestReadRecordedAnchor_UnreadableOwnMarkerIsErrorNamingFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const worktreeName = "feat"
@@ -43,6 +43,7 @@ func TestReadRecordedAnchor_UnreadableOwnMarkerIsErrorNamingFile(t *testing.T) {
 }
 
 func TestReadRecordedAnchor_MarkerSemantics(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const worktreeName = "feat"

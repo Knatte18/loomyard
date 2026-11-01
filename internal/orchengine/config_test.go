@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies orch.yaml's template resolves through LoadConfig, a present file overrides it, an invalid file errors, and each accessor floors a non-positive value.
 
 package orchengine_test
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedLymConfig creates <tmpDir>/_lym/config/<module>.yaml with content.
@@ -32,6 +31,7 @@ func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 }
 
 func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg, err := orchengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "orch")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -66,6 +66,7 @@ func TestLoadConfig_TemplateResolvesWithNoFile(t *testing.T) {
 }
 
 func TestLoadConfig_PresentFileOverrides(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	seedLymConfig(t, tmpDir, "orch", "model: opus\neffort: high\npermission_mode: bypass\ncycle_mode: clear\nsoft_threshold_tokens: 70000\nsoft_idle_s: 7\nthreshold_tokens: 90000\nidle_grace_s: 5\nhandoff_timeout_s: 60\npoll_interval_ms: 1500\n")
 
@@ -133,6 +134,7 @@ func TestLoadConfig_PresentFileOverrides(t *testing.T) {
 }
 
 func TestLoadConfig_InvalidFileErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	seedLymConfig(t, tmpDir, "orch", "model: [unterminated\n")
 
@@ -142,6 +144,7 @@ func TestLoadConfig_InvalidFileErrors(t *testing.T) {
 }
 
 func TestLoadConfig_CycleMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -180,6 +183,7 @@ func TestLoadConfig_CycleMode(t *testing.T) {
 }
 
 func TestLoadConfig_PermissionMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, content := range []string{"model: opus\n", "permission_mode: \"\"\n", "permission_mode: bypass\n"} {
 		tmpDir := t.TempDir()
 		seedLymConfig(t, tmpDir, "orch", content)
@@ -206,6 +210,7 @@ func TestLoadConfig_PermissionMode(t *testing.T) {
 }
 
 func TestConfig_AccessorsFloorNonPositive(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, v := range []int{0, -1} {
 		cfg := orchengine.Config{ThresholdTokens: v, SoftThresholdTokens: v, SoftIdleS: v, IdleGraceS: v, HandoffTimeoutS: v, PollIntervalMS: v}
 		if got := cfg.Threshold(); got != 200000 {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shipped_test.go drives the shipped layer's decoding checks.
 
 package heddleengine
@@ -8,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recoverPanic returns the message decodeShipped panicked with on data, or "" when it did not panic.
@@ -22,6 +22,7 @@ func recoverPanic(data string) (message string) {
 }
 
 func TestDecodeShipped(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

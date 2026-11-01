@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership and its Shuttle Provider-Seam Invariant: production code in internal/orchengine takes every absolute path it operates on from its caller, resolves no geometry, and never reaches provider specifics.
 //
 // The allowlist is a membership list rather than a bare denylist, mirroring internal/battenshed:
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // orchengineAllowedImports are the only non-stdlib import paths production code in this package may use.
@@ -42,6 +41,7 @@ const (
 // TestSeamInvariants_AllowlistOnly verifies that every non-test .go file in this package imports only stdlib or an entry in orchengineAllowedImports,
 // and it separately names the two denied imports so a violation reports the rule it breaks.
 func TestSeamInvariants_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/orchengine", orchengineAllowedImports...)
 
 	var lymcwdFound, claudeFound []string

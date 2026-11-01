@@ -1,5 +1,3 @@
-//go:build tier0
-
 // registry_test.go table-drives Registry.Resolve: bracket-over-default precedence, whole-entry lookups, unknown-alias/escape-form behaviour, input immutability, and the zero-value Registry's fail-clean shape.
 
 package modelspec
@@ -8,9 +6,12 @@ import (
 	"maps"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRegistry_Resolve(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -116,6 +117,7 @@ func TestRegistry_Resolve(t *testing.T) {
 }
 
 func TestRegistry_Resolve_UnknownAlias(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var zeroValueRegistry Registry // nil map, zero value
 	tests := []struct {

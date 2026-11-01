@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedfake
 
 import (
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func gateOf(result shuttleengine.GateResult, err error, calls *int) shuttleengine.GateSpec {
@@ -28,6 +27,7 @@ func gateOf(result shuttleengine.GateResult, err error, calls *int) shuttleengin
 }
 
 func TestShuttle_RunGated(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("gate closure failed")
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 	tests := []struct {
@@ -73,6 +73,7 @@ func TestShuttle_RunGated(t *testing.T) {
 }
 
 func TestShuttle_AttachGated(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("gate closure failed")
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 	tests := []struct {
@@ -120,6 +121,7 @@ func TestShuttle_AttachGated(t *testing.T) {
 }
 
 func TestShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := &Shuttle{Result: shuttleengine.Result{SessionID: "scripted"}}
 	f.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 		return shuttleengine.Result{SessionID: spec.Prompt}, nil
@@ -136,6 +138,7 @@ func TestShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
 }
 
 func TestSeatRunner_LastEntryRepeatsAndFnsOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	first, last := errors.New("first"), errors.New("last")
 	table := seatengine.Table{RolePrefix: "multi"}
 	f := &SeatRunner{
@@ -245,6 +248,7 @@ func TestSeatRunner_LastEntryRepeatsAndFnsOverride(t *testing.T) {
 }
 
 func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("second call fails")
 	f := &MergeShuttle{
 		Results: []shuttleengine.Result{{SessionID: "one"}},
@@ -271,6 +275,7 @@ func TestMergeShuttle_ScriptsByCallOrder(t *testing.T) {
 }
 
 func TestMergeShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := &MergeShuttle{Results: []shuttleengine.Result{{SessionID: "scripted"}}}
 	f.RunFn = func(spec shuttleengine.Spec) (shuttleengine.Result, error) {
 		return shuttleengine.Result{SessionID: spec.Prompt}, nil
@@ -282,6 +287,7 @@ func TestMergeShuttle_RunFnReplacesScriptedAnswer(t *testing.T) {
 }
 
 func TestWebsterSeams_FieldsNonNil(t *testing.T) {
+	tiergate.Require(t, 0)
 	deps := WebsterSeams()
 	if deps.Starter == nil || deps.Stopper == nil || deps.Engines == nil || deps.RefMatcher == nil {
 		t.Errorf("WebsterSeams() = %+v; want Starter, Stopper, Engines and RefMatcher non-nil", deps)
@@ -298,6 +304,7 @@ func (s stubProducer) Call(context.Context) (shedengine.Outcome, shedengine.Outp
 }
 
 func TestCallOK_AndRequireOutcome_PassingPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := stubProducer{outcome: shedengine.Done, ptr: shedengine.OutputPointer{Path: "out.md"}}
 
 	outcome, ptr := CallOK(t, p)
@@ -310,6 +317,7 @@ func TestCallOK_AndRequireOutcome_PassingPath(t *testing.T) {
 }
 
 func TestBurlerHalfRunner_LastEntryRepeats(t *testing.T) {
+	tiergate.Require(t, 0)
 	first, last := errors.New("first"), errors.New("last")
 	f := &BurlerHalfRunner{
 		ReviewResults: []burlerengine.ReviewResult{{Outcome: shuttleengine.OutcomeDone, Digest: "d1"}, {Outcome: shuttleengine.OutcomeTimeout}},

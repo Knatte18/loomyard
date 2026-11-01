@@ -1,5 +1,3 @@
-//go:build tier1
-
 // originreconcilemoves_integration_test.go proves what the origin reconcile moves and what it leaves where it was, on hubforge hubs.
 // The other machine is a second clone of the hub's code or records bare repository.
 //
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // liveWayForward is the line a pair kept live names, which ends in no re-entry.
@@ -127,6 +126,7 @@ func newMovesPair(t *testing.T) *movesPair {
 // TestReconcileOrigin_Moves covers the origin reconcile's moves: what it fast-forwards or replays, and what a dirty path, a live pair, a held lock or a conflict leaves where it was.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Moves(t *testing.T) {
+	tiergate.Require(t, 1)
 	boardkit.InstallReplay(t)
 
 	t.Run("A hub reconcile fast-forwards a weft, Bolt and the prime's code branch and a judge-only one moves nothing", func(t *testing.T) {

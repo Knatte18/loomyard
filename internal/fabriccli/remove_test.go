@@ -1,5 +1,3 @@
-//go:build tier0
-
 // remove_test.go covers the verdict `lym fabric remove` takes from an origin reconcile report, and the remover's choice between the local removal and the ordinary one over fake seams.
 
 package fabriccli
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const goneWayForward = "`lym fabric remove` of the pair removes the pair and clears this record"
@@ -26,6 +25,7 @@ func reportOf(entry fabricengine.EntryOutcome, branches ...fabricengine.BranchOu
 }
 
 func TestRemoveVerdict(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stopped := fabricengine.EntryOutcome{Slug: "s", State: fabricengine.EntryStopped, WayForward: goneWayForward}
@@ -146,6 +146,7 @@ func TestRemoveVerdict(t *testing.T) {
 }
 
 func TestRemover(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	ordinary := pairteardown.Request{Slug: "s", Force: true, Remote: true, QuietWait: pairteardown.RemoveQuietWait, RefuseWhenBusy: true}

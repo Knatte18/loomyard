@@ -1,5 +1,3 @@
-//go:build tier1
-
 // rundir_integration_test.go pins that a test binary running under tmuxkit.Main keeps all its temp files in a run directory of the lym temp root and leaves nothing behind, after a passing and after a failing run.
 // The test re-executes the gitkit test binary as its own helper.
 
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -25,6 +24,7 @@ const (
 )
 
 func TestRunDirectory_HoldsEveryTempFileAndIsGoneAfterTheRun(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	if mode := os.Getenv(helperModeEnv); mode != "" {
 		record := strings.Join([]string{os.Getenv("GIT_CONFIG_GLOBAL"), os.TempDir(), t.TempDir()}, "\n")

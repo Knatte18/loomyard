@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_round_test.go is burlerengine's opt-in live-integration smoke test:
 // TestSmokeBurlerRoundToyFixture drives one full burler round — A-review then
 // B-fix — against a REAL claude in a REAL tmux pane, over a toy chair/table
@@ -45,6 +43,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -247,6 +246,7 @@ func distinctColorsMentioned(text string) []string {
 // burlerengine.Engine) — this test IS the caller the Shuttle Provider-Seam Invariant reserves that
 // wiring for.
 func TestSmokeBurlerRoundToyFixture(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

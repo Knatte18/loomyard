@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_test.go drives shuttle's real start path with Claude's own box and session readings over a fake reed.
 
 package claudeengine
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // virtualClock is a clock whose Sleep advances it without waiting.
@@ -32,6 +31,7 @@ func (cannedLaunchEngine) Prepare(string, shuttleengine.Spec, shuttleengine.Conf
 }
 
 func TestStart_LoneEOLMarkBoxTakesStartupSends(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	capture, err := os.ReadFile(filepath.Join("testdata", "pane-idle-eol-mark.txt"))

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pause_test.go covers the generic pause body: PauseRequested is set on the persisted status,
 // both told absent-file wordings are reported, the bare success envelope carries exactly the one
 // key status_file, and the --before, --after and --clear conditions.
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func pauseTexts() VerbTexts {
@@ -25,6 +24,7 @@ func pauseTexts() VerbTexts {
 // TestPauseCmd_SetsPauseRequested asserts PauseRequested is set true on the persisted status, and
 // the success envelope carries exactly the one key status_file.
 func TestPauseCmd_SetsPauseRequested(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 
@@ -106,6 +106,7 @@ func TestPauseCmd_SetsPauseRequested(t *testing.T) {
 // TestPauseCmd_AbsentFile covers both shipped absent-file wordings: pause reports the told message verbatim when the status file does not exist.
 // With EnsureStatusLockDir over a never-created lock parent, the parent is created and the call proceeds to the told message rather than failing in lock acquisition.
 func TestPauseCmd_AbsentFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name                string
 		message             string
@@ -150,6 +151,7 @@ func TestPauseCmd_AbsentFile(t *testing.T) {
 
 // TestPauseCmd_Conditions drives --before, --after and --clear through pauseCmd, asserting each row's envelope keys and the status file re-read after the verb.
 func TestPauseCmd_Conditions(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		wantContradiction = "shedverbs: pause --clear cannot be combined with --before or --after; way forward: run pause --clear alone, then pause --before or --after"
 		wantUnknown       = "shedverbs: pause target Nope names no producer; way forward: re-run pause with --before or --after naming one of: One, Two"

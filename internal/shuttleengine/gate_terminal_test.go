@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_terminal_test.go covers the MayHold entry and the Terminal gate result, driven through gate_pending_test.go's fixture and fakes — hermetic, untagged, and never sleeping for real.
 
 package shuttleengine
@@ -9,9 +7,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal(t *testing.T) {
+	tiergate.Require(t, 0)
 	var gateCalls, finalCalls int
 	gate := scriptedPending(&gateCalls, GateResult{Pending: true})
 	final := scriptedPending(&finalCalls, GateResult{Pending: true})
@@ -36,6 +37,7 @@ func TestGateTerminal_MayHoldMustPassEntryMayPendAndSetFinal(t *testing.T) {
 }
 
 func TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal(t *testing.T) {
+	tiergate.Require(t, 0)
 	passed := func() (GateResult, error) { return GateResult{Passed: true}, nil }
 	pending := func() (GateResult, error) { return GateResult{Pending: true}, nil }
 	for _, tc := range []struct {
@@ -57,6 +59,7 @@ func TestGateTerminal_NonMayHoldEntryStillCannotPendOrSetFinal(t *testing.T) {
 }
 
 func TestGateTerminal_TerminalFailureFinalizesWithoutReprompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	var calls int
 	gate := scriptedPending(&calls, GateResult{Passed: false, Findings: "the cap round was rejected", Terminal: true})
 	f := newPendingFixture(t, GateSpec{{Name: "parent-review", Gate: gate, Attempts: 3, MayHold: true}}, nil)
@@ -88,6 +91,7 @@ func TestGateTerminal_TerminalFailureFinalizesWithoutReprompt(t *testing.T) {
 
 //testtiming:keep pins that a non-terminal failure of a MayHold entry below its budget still re-prompts once and leaves Reason empty, the contrast to a terminal failure
 func TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts(t *testing.T) {
+	tiergate.Require(t, 0)
 	var calls int
 	gate := scriptedPending(&calls,
 		GateResult{Passed: false, Findings: "fix it"},
@@ -110,6 +114,7 @@ func TestGateTerminal_NonTerminalFailureBelowBudgetStillReprompts(t *testing.T) 
 }
 
 func TestGateTerminal_TerminalOnPassedOrPendingOrPassOnCapIsGateError(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tc := range []struct {
 		name      string
 		result    GateResult

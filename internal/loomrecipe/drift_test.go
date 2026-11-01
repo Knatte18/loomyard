@@ -1,5 +1,3 @@
-//go:build tier0
-
 // drift_test.go covers the entry gate of the Drift rows in loom's and darn's recipes.
 
 package loomrecipe
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDriftRows_EntryGate asserts every Drift row of both recipes is left out under the template's drift.enabled and entered when the setting answers true, and that a row the run already entered is called when the setting is false.
 func TestDriftRows_EntryGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recipes := []struct {

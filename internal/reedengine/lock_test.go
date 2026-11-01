@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lock_test.go verifies withOpLock's per-worktree lock path, that two calls serialize (the second
 // blocks until the first releases), that a released lock can be re-acquired with no stale-lock
 // residue, and Engine's Socket()/SessionName() accessor strings.
@@ -15,10 +13,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the lock file living under the anchor path's .lym, not the worktree root's, for a subpath-anchored fixture, and a second acquisition succeeding after release; its covering tests run this code without asserting it
 func TestWithOpLock_PathIsUnderDotLym(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The anchor path is a real subpath of the worktree root here so
 	// stateDir's AnchorPath anchoring (as opposed to WorktreeRoot) is
 	// actually observable.
@@ -72,6 +72,7 @@ func TestWithOpLock_PathIsUnderDotLym(t *testing.T) {
 
 //testtiming:keep pins a second withOpLock blocking until the first releases and then proceeding; its covering tests run this code without asserting it
 func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	started := make(chan struct{})
@@ -129,6 +130,7 @@ func TestWithOpLock_SerializesConcurrentCalls(t *testing.T) {
 
 //testtiming:keep pins Socket() returning the told socket key and SessionName() the worktree basename; its covering tests run this code without asserting it
 func TestEngine_SocketAndSessionName(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
 	geom := Geometry{
@@ -171,6 +173,7 @@ func TestEngine_SocketAndSessionName(t *testing.T) {
 // Reed cannot make the second op wait (an unlinked inode is unreachable by name), so what it must
 // not do is return success over state it did not actually have exclusive access to.
 func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	ran := false
@@ -196,6 +199,7 @@ func TestWithOpLock_ReportsALockFileRemovedMidOperation(t *testing.T) {
 // never swallows the operation's own error: an operator debugging a removed .lym still needs to know
 // what the operation itself hit.
 func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	opFailure := errors.New("the operation's own failure")
@@ -222,6 +226,7 @@ func TestWithOpLock_ReportsBothFailuresWhenTheOperationAlsoFailed(t *testing.T) 
 //
 //testtiming:keep pins withTryOpLock running fn on a free lock with acquired true, wrapping fn's error with acquired still true, and deferring with (false, nil) and no fn call or tmux call while the lock is held; its covering tests run this code without asserting it
 func TestWithTryOpLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	fnErr := errors.New("fn's own failure")
 	tests := []struct {
 		name         string
@@ -277,6 +282,7 @@ func TestWithTryOpLock(t *testing.T) {
 // TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched pins that a
 // told-geometry pre-flight failure reports (false, err) without ever touching the lock file.
 func TestWithTryOpLock_ToldGeometryValidationFailureLeavesTheLockFileUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := t.TempDir()
 	worktreeRoot := filepath.Join(hub, "worktree")
 	geom := Geometry{

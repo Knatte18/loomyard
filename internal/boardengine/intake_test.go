@@ -1,5 +1,3 @@
-//go:build tier0
-
 // intake_test.go — unit tests for importing and folding GitHub issues (intake.go).
 //
 // Every test runs a Board over a temp dir with a configured vocabulary and SkipGit;
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func newIntakeBoard(t *testing.T) (*boardengine.Board, string) {
@@ -58,6 +57,7 @@ func mustUpsert(t *testing.T, b *boardengine.Board, fields map[string]any) {
 // TestImportIssueNewEntry asserts importing an issue creates a note carrying the issue's title, body link, number and configured labels, drops the labels the vocabulary lacks, and honours an explicit title, brief and label set.
 // The issue's comments follow its body as second-level sections in order, and an issue without comments keeps the body without any.
 func TestImportIssueNewEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const plainBody = "Imported from [issue #7](https://example.test/issues/1).\n\nIssue body."
 	tests := []struct {
@@ -118,6 +118,7 @@ func TestImportIssueNewEntry(t *testing.T) {
 }
 
 func TestImportIssueFold(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, _ := newIntakeBoard(t)
 	mustUpsert(t, b, map[string]any{"slug": "work", "kind": "task", "labels": bugLabels, "body": "Existing."})
 	mustUpsert(t, b, map[string]any{"slug": "old", "kind": "task", "labels": bugLabels, "status": "done"})
@@ -165,6 +166,7 @@ func TestImportIssueFold(t *testing.T) {
 }
 
 func TestImportIssueFoldIntoStaleLabelRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, boardPath := newIntakeBoard(t)
 	mustUpsert(t, b, map[string]any{"slug": "work", "labels": bugLabels})
 	raw := strings.Replace(readBoardJSON(t, boardPath), `"bug"`, `"retired"`, 1)
@@ -181,6 +183,7 @@ func TestImportIssueFoldIntoStaleLabelRefused(t *testing.T) {
 }
 
 func TestImportIssueRecordedIsNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, boardPath := newIntakeBoard(t)
 	if _, err := b.ImportIssue(boardengine.ImportRequest{Issue: testIssue(7, "bug"), Slug: "first"}); err != nil {
 		t.Fatalf("first import: %v", err)
@@ -214,6 +217,7 @@ func TestImportIssueRecordedIsNoOp(t *testing.T) {
 }
 
 func TestImportIssueRefusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, boardPath := newIntakeBoard(t)
 	mustUpsert(t, b, map[string]any{"slug": "taken", "labels": bugLabels})
 	before := readBoardJSON(t, boardPath)

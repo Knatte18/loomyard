@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reroute_test.go covers the reroute edge and the halting Stuck: a reroute's routing and episode effect, the three-reroute cap, the wiring fault and OnReroute validation.
 
 package shedengine
@@ -9,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rerouteOutcome is one scripted call of a reroute test's producer.
@@ -59,6 +59,7 @@ func countOutcome(history []HistoryEntry, outcome Outcome) int {
 }
 
 func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{
 		{Name: "A", Producer: scriptedRerouteProducer([]rerouteOutcome{callReroute}), OnReroute: "B"},
@@ -97,6 +98,7 @@ func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
 }
 
 func TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tc := range []struct {
 		name       string
 		wayForward string
@@ -136,6 +138,7 @@ func TestRun_RerouteCapHaltsOnFourthRerouteAndResumeGrantsThreeMore(t *testing.T
 }
 
 func TestRun_DoneOfRowResetsRerouteCount(t *testing.T) {
+	tiergate.Require(t, 0)
 	script := []rerouteOutcome{callReroute, callReroute, callDone, callReroute}
 	shed, a := rerouteShed(t, script)
 
@@ -150,6 +153,7 @@ func TestRun_DoneOfRowResetsRerouteCount(t *testing.T) {
 }
 
 func TestStep_RerouteWithoutOnRerouteFailsRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: scriptedRerouteProducer([]rerouteOutcome{callReroute})}}
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -169,6 +173,7 @@ func TestStep_RerouteWithoutOnRerouteFailsRun(t *testing.T) {
 }
 
 func TestStep_HaltStuckBlocksAtRowDespiteOnStuckAndSpendsNoBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{
 		Name:       "Gate",
@@ -196,6 +201,7 @@ func TestStep_HaltStuckBlocksAtRowDespiteOnStuckAndSpendsNoBudget(t *testing.T) 
 }
 
 func TestStep_OnRerouteValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tc := range []struct {
 		name      string
 		onReroute string

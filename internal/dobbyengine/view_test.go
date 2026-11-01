@@ -1,5 +1,3 @@
-//go:build tier0
-
 // view_test.go pins BuildView: the runs a dobby drives and the reasons each released task waits.
 
 package dobbyengine
@@ -9,9 +7,12 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBuildView(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	exited := now.Add(-5 * time.Minute)

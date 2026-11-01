@@ -1,5 +1,3 @@
-//go:build tier0
-
 // client_test.go covers Client's calls against one scripted httptest server, so no test reaches real token resolution or the network.
 
 package pullrequest_test
@@ -20,6 +18,7 @@ import (
 	"github.com/google/go-github/v75/github"
 
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pullsPath = "/repos/owner/repo/pulls"
@@ -123,6 +122,7 @@ func (s *scriptedServer) last(t *testing.T) capturedRequest {
 }
 
 func TestClient_Calls(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	server := newScriptedServer(t)
 	gh := github.NewClient(nil).WithAuthToken("test-token")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentalign_test.go drives Parent-Align's Call against a real parentlock.Store in a temporary directory and fake tip reads, resolver and verify seams.
 
 package landingshed
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -205,6 +204,7 @@ func (fx *mergeInFixture) readRecord(t *testing.T) MergeRecord {
 }
 
 func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const stoppedWayForward = `fetch "main" in the prime and reconcile it by hand`
@@ -305,6 +305,7 @@ func TestMergeIn_RunsStatusCommitThenLockThenSyncThenMergeAndVerify(t *testing.T
 }
 
 func TestMergeIn_MergeTip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -409,6 +410,7 @@ func TestMergeIn_MergeTip(t *testing.T) {
 }
 
 func TestMergeIn_MergeRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a fresh merge records the ranges and where they overlap", func(t *testing.T) {
@@ -522,6 +524,7 @@ func recordsEqual(a, b MergeRecord) bool {
 }
 
 func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a failed verify writes the failure record with row Parent-Align and no merge record", func(t *testing.T) {
@@ -648,6 +651,7 @@ func TestMergeIn_PlanVerifyFailureRecord(t *testing.T) {
 // TestMergeIn_VerifyGate pins the clean-tree checks and the plan verify around the merge-in:
 // the verify is asked once at site Parent-Align between three checks, and every stop leaves no merge record.
 func TestMergeIn_VerifyGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a passed or skipped verify lets the record be written", func(t *testing.T) {
@@ -789,6 +793,7 @@ func TestMergeIn_VerifyGate(t *testing.T) {
 }
 
 func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fx := newMergeInFixture(t)
@@ -812,6 +817,7 @@ func TestMergeIn_UnreadableLockRecordHaltsNamingTheReleaseVerb(t *testing.T) {
 }
 
 func TestNewParentAlign_RefusesAMissingSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	whole := func() Deps {

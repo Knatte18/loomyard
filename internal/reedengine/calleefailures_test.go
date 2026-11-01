@@ -1,5 +1,3 @@
-//go:build tier0
-
 // calleefailures_test.go pins that a failure repeating on every tick of the name-repair loop logs once per episode: Warn at the first failure, Debug while it goes on, Info at recovery.
 
 package reedengine
@@ -13,12 +11,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCalleeFailuresLogOncePerEpisode drives each guarded site three times while its tmux call fails and once after it is healed, on one engine.
 // Each site logs its failure message at one level=WARN line and two level=DEBUG lines carrying failed_ticks, and its recovery message at one level=INFO line.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestCalleeFailuresLogOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	const failedCalls = 3
 	healVerb := func(verb, out string) func(e *Engine, f *fakeTmux) {
 		return func(_ *Engine, f *fakeTmux) { f.answer(verb, out, nil) }

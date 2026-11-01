@@ -1,5 +1,3 @@
-//go:build tier0
-
 // segmentcolor_test.go pins segmentColor's resolution of a segment to a palette color.
 
 package reedengine
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSegmentColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

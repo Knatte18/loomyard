@@ -1,5 +1,3 @@
-//go:build tier1
-
 // coalesce_integration_test.go — integration coverage for CoalescePushBothAt
 // against real warp+weft repos with bare origins: the two-sided-advance case
 // (including the no-warp-root-.gitrepo-push.lock assertion), and the
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // addWarpBareRemote creates a bare git repository at <dir>/warp-remote.git,
@@ -61,6 +60,7 @@ func runWithDeadline(t *testing.T, deadline time.Duration, fn func() error) erro
 //
 //testtiming:keep both sides advancing and no push lock being left at the warp root; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -110,6 +110,7 @@ func TestCoalescePushBothAt_AdvancesBothSidesAndLeavesNoWarpRootLock(t *testing.
 // CoalescePushBothAt must return nil (not an error), leave the warp bare's HEAD unadvanced by this
 // call, mutate no warp working-tree file, and return promptly rather than spinning.
 func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -173,6 +174,7 @@ func TestCoalescePushBothAt_DivergedWarpRemote_ReturnsNilWithoutSpinning(t *test
 // weft push ever ran) because gitrepo.New("").CurrentSHA() resolves "" to the process's cwd via
 // filepath.Abs and found no .git there.
 func TestCoalescePushBothAt_EmptyWarpPath_PushesWeftFromUnrelatedCwd(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: os.Chdir changes the process-global cwd.
 	unrelatedCwd := t.TempDir()
 

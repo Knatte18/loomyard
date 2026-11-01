@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func readPaneFixture(t *testing.T, name string) string {
@@ -35,6 +34,7 @@ func plainBox(styled string) string {
 }
 
 func TestIdleSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	rule := "────────────────────────────────"
 	tests := []struct {
 		name    string
@@ -95,6 +95,7 @@ func TestIdleSession(t *testing.T) {
 }
 
 func TestInterruptGuardReadings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rule := "────────────────────────────────"
@@ -138,6 +139,7 @@ func TestInterruptGuardReadings(t *testing.T) {
 }
 
 func TestInputBoxText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rule := "────────────────────────────────"
@@ -187,6 +189,7 @@ func TestInputBoxText(t *testing.T) {
 
 // TestPlainBoxCapture pins the plain capture a styled one answers: escapes removed, trailing ASCII spaces trimmed, and only a placeholder-only box blanked.
 func TestPlainBoxCapture(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	sgr := regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -247,6 +250,7 @@ func TestPlainBoxCapture(t *testing.T) {
 }
 
 func TestStrayInput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rule := "────────────────────────────────"
@@ -283,6 +287,7 @@ func TestStrayInput(t *testing.T) {
 }
 
 func TestPaneTooShort(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		capture string
@@ -305,6 +310,7 @@ func TestPaneTooShort(t *testing.T) {
 }
 
 func TestCompactSessionSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -328,6 +334,7 @@ func TestCompactSessionSequence(t *testing.T) {
 }
 
 func TestReloadPluginsSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := New().ReloadPluginsSequence()
@@ -338,6 +345,7 @@ func TestReloadPluginsSequence(t *testing.T) {
 }
 
 func TestClearInputSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := New().ClearInputSequence()
@@ -380,6 +388,7 @@ func TestClearInputSequence(t *testing.T) {
 }
 
 func TestPastePlaceholder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	long := strings.Repeat("x", PasteCollapseMinChars)
@@ -415,6 +424,7 @@ func TestPastePlaceholder(t *testing.T) {
 }
 
 func TestClearSessionSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := New().ClearSessionSequence()

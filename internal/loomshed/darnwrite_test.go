@@ -1,5 +1,3 @@
-//go:build tier0
-
 // darnwrite_test.go exercises the Darn-Write row's producer at Tier 1: a fake session and in-memory seams recording the order of their calls.
 
 package loomshed
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // darnStopReport is the stop report the fixture's description file holds.
@@ -98,6 +97,7 @@ func (s darnSession) Call(context.Context) (shedengine.Outcome, shedengine.Outpu
 }
 
 func TestDarnWrite_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name       string
@@ -466,6 +466,7 @@ func TestDarnWrite_Call(t *testing.T) {
 }
 
 func TestDarnWrite_CancelledContextRefusesBeforeAnySeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	f := newDarnFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -479,6 +480,7 @@ func TestDarnWrite_CancelledContextRefusesBeforeAnySeam(t *testing.T) {
 }
 
 func TestRenderPriorWork(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name   string

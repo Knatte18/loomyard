@@ -1,5 +1,3 @@
-//go:build tier1
-
 // projectrecord_integration_test.go drives the beam-side decision seams and the project record commit over a hub forged by hubforge.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -56,6 +55,7 @@ func beamHub(t *testing.T) (hub *hubforge.Hub, location func(name string) *lymcw
 }
 
 func TestMemberPairs_ReturnsEveryLocalPairUnderTheBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	_, location := beamHub(t)
 
@@ -74,6 +74,7 @@ func TestMemberPairs_ReturnsEveryLocalPairUnderTheBeam(t *testing.T) {
 }
 
 func TestDecisionReceivers_ReachABeamsMemberPairs(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	_, location := beamHub(t)
 	beam := location(testBeam)
@@ -105,6 +106,7 @@ func TestDecisionReceivers_ReachABeamsMemberPairs(t *testing.T) {
 }
 
 func TestDecisionParent_ABeamsRecordIsItsOwnOrchs(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	_, location := beamHub(t)
 	beam := location(testBeam)
@@ -136,6 +138,7 @@ func TestDecisionParent_ABeamsRecordIsItsOwnOrchs(t *testing.T) {
 
 // TestCommitRunRecord_ProjectRecordCommitsItsDirectory pins that a project record commit stages the project directory, whose record then reads back from HEAD, and not the discussion directory.
 func TestCommitRunRecord_ProjectRecordCommitsItsDirectory(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	_, location := beamHub(t)
 	beam := location(testBeam)

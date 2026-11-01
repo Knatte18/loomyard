@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shell_test.go table-tests both pane-shell implementations: argument quoting across plain, space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/ PrependPathEntry/Chain/Source/EnvRef/Touch/ScriptExt output each impl composes.
 // One test per Shell method; each table holds both dialects' rows, named "<dialect>/<case>".
 // The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it tests.
@@ -8,6 +6,8 @@ package shell
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // Compile-time assertions that both dialects satisfy the Shell interface.
@@ -17,6 +17,7 @@ var (
 )
 
 func TestShell_Quote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -44,6 +45,7 @@ func TestShell_Quote(t *testing.T) {
 }
 
 func TestShell_Invoke(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -64,6 +66,7 @@ func TestShell_Invoke(t *testing.T) {
 }
 
 func TestShell_WithEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -89,6 +92,7 @@ func TestShell_WithEnv(t *testing.T) {
 }
 
 func TestShell_Touch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -114,6 +118,7 @@ func TestShell_Touch(t *testing.T) {
 }
 
 func TestShell_ChangeDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -157,6 +162,7 @@ func TestShell_ChangeDir(t *testing.T) {
 
 // TestShell_ExportEnv pins that each dialect's export stands alone: a bare assignment with no trailing command fragment.
 func TestShell_ExportEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -183,6 +189,7 @@ func TestShell_ExportEnv(t *testing.T) {
 
 // TestShell_PrependPathEntry pins that each dialect references the live PATH and carries the unset-PATH guard.
 func TestShell_PrependPathEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -209,6 +216,7 @@ func TestShell_PrependPathEntry(t *testing.T) {
 
 // TestShell_Chain pins that both dialects join the non-empty parts with "; " on one line, so they agree on every input.
 func TestShell_Chain(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -234,6 +242,7 @@ func TestShell_Chain(t *testing.T) {
 }
 
 func TestShell_Source(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -259,6 +268,7 @@ func TestShell_Source(t *testing.T) {
 }
 
 func TestShell_EnvRef(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -283,6 +293,7 @@ func TestShell_EnvRef(t *testing.T) {
 
 // TestShell_ScriptExtAndDiscardLineKey pins each dialect's sourced-script extension and its discard-line key, which pwsh leaves empty.
 func TestShell_ScriptExtAndDiscardLineKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -307,6 +318,7 @@ func TestShell_ScriptExtAndDiscardLineKey(t *testing.T) {
 }
 
 func TestForGOOS(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// ForGOOS must always return a usable Shell — assert it behaves like one of the
 	// two known impls rather than asserting a specific runtime.GOOS branch, since this
@@ -320,6 +332,7 @@ func TestForGOOS(t *testing.T) {
 
 // TestShell_OrElse pins that both dialects join with "||" and that the result chains as one statement.
 func TestShell_OrElse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for name, sh := range map[string]Shell{"posix": Posix(), "pwsh": Pwsh()} {
 		t.Run(name, func(t *testing.T) {
@@ -336,6 +349,7 @@ func TestShell_OrElse(t *testing.T) {
 
 // TestShell_Exit pins that both dialects end the shell with `exit`.
 func TestShell_Exit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for name, sh := range map[string]Shell{"posix": Posix(), "pwsh": Pwsh()} {
 		t.Run(name, func(t *testing.T) {
@@ -352,6 +366,7 @@ func TestShell_Exit(t *testing.T) {
 
 // TestShell_DiscardOutputAndCommandFlag pins each dialect's output discard and command-line flag.
 func TestShell_DiscardOutputAndCommandFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string

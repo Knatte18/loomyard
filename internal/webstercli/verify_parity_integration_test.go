@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verify_parity_integration_test.go asserts the Gate Self-Check Parity Invariant for the verify gates:
 // `lym webster verify`, loomshed.NewVerifyGate and websterengine.NewVerifyGate must reach the same three-way verdict over one fixture.
 // It is integration-tagged because every side spawns git and a shell, and not parallel because each fixture puts the built `lym` first on `PATH`.
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -51,6 +50,7 @@ func verbVerdict(env envelope.Envelope) verifyParityVerdict {
 }
 
 func TestGateParity_VerifyGate(t *testing.T) {
+	tiergate.Require(t, 1)
 	cases := []struct {
 		name    string
 		command string

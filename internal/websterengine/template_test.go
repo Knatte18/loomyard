@@ -1,8 +1,6 @@
-//go:build tier0
-
 // template_test.go pins the master template's digest-field and outcome-key lists against webster's Go definitions, the marker sets through stencil.Fill/FillOptional round-trips, the composition of the fork and recovery templates, and the rendered prompts' Go-filled values and Go-chosen fragments.
 // Every asset is read at call time via stencilstore.Read from a stencils directory this file seeds itself: newTestStencilsDir seeds a t.TempDir() through `stencilkit`, per the runtime-read-not-embed Shared Decision.
-// Every test here is untagged and spawn-free: no subprocess exec, no git, no fixture trees (beyond
+// Every test here is tier0 and spawn-free: no subprocess exec, no git, no fixture trees (beyond
 // a plain t.TempDir() PATTERN.md fixture and the seeded stencils t.TempDir() itself) — only
 // on-disk bytes read via stencilstore.Read, stencil.Fill/FillOptional, and
 // RenderForkPrompt/RenderRecoveryPrompt/RenderProgress, per the batch's own
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -428,6 +427,7 @@ func (c promptCheck) verify(t *testing.T) {
 //
 //testtiming:keep pins the master template's digest-field and outcome-key bullet lists matching the Digest fields and outcome schema exactly, in order; the composition test checks markers and sections, not these lists
 func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	text := string(mustMasterTemplate(t, newTestStencilsDir(t)))
 
@@ -462,6 +462,7 @@ func TestMasterTemplate_QuotesBulletLists(t *testing.T) {
 //
 //testtiming:keep pins each template refusing a fill missing any single required marker, naming it, and accepting each optional marker absent; the render tests always supply every marker
 func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stencilsDir := newTestStencilsDir(t)
 
@@ -526,6 +527,7 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 // call instead of caching them, and that a missing stencils directory is a hard error naming the
 // stencil rather than a fallback to an embedded default.
 func TestTemplates_Composition(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("fork and recovery share the implementer body", func(t *testing.T) {
@@ -602,6 +604,7 @@ func TestTemplates_Composition(t *testing.T) {
 // leaks back in, the told roots land where they belong, and a missing or empty input fails the
 // render instead of producing a blank path.
 func TestRenderPrompts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	alpha := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}
@@ -942,6 +945,7 @@ func TestRenderPrompts(t *testing.T) {
 // with no directive and no friction stencil read, and a marker-free stencil still composes
 // without error.
 func TestRenderPrompts_FrictionDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	alpha := batcher.Batch{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}
@@ -1009,6 +1013,7 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 
 // TestRenderPrompts_ParentDirective asserts the master, recovery and cold fixer prompts render the parent variant for a told name and the no-parent variant for an empty one, and that the fork prompt carries neither.
 func TestRenderPrompts_ParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	batches := []batcher.Batch{{Cards: []planparser.Card{cardWithSourcePath(1, "alpha", "add the flag")}}}
 	anchorRoot, stencilsDir := testLayout(t)
@@ -1064,6 +1069,7 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 //
 //testtiming:keep pins each list's exact text in slice order and its none forms; the covering prompt and run-exit tests check only that a list is present
 func TestRenderBatchLists(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	batchOf := func(number int, slug, summary string) batcher.Batch {

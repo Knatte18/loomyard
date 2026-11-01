@@ -1,5 +1,3 @@
-//go:build tier1
-
 // rows_integration_test.go runs each row's patterns under `sh` with grep against PreToolUse payloads, pinning which Bash commands each guard denies and which it lets through.
 
 package shellguard
@@ -13,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // payloadDenied encodes the PreToolUse payload carrying the Bash command, and the description field when it is non-empty, and reports whether every pattern of the row matches it under a real grep -Eq run through sh.
@@ -54,6 +54,7 @@ func payloadDenied(t *testing.T, row Row, command, description string) bool {
 
 // TestRows_PatternsDenyAndAllow feeds each row's patterns a PreToolUse payload per Bash command and asserts the row denies it or lets it through.
 func TestRows_PatternsDenyAndAllow(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	rows := map[string]Row{}

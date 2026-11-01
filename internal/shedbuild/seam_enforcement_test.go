@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's told-geometry rule, mirroring
 // internal/shedrecipe/seam_enforcement_test.go's shape exactly: production code in
 // internal/shedbuild takes every absolute path it operates on from its caller and has no direct
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shedbuildAllowedImports are the only non-stdlib import paths production code in this package may
@@ -38,6 +37,7 @@ const shedbuildDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcw
 // imports only stdlib or an entry in shedbuildAllowedImports, and separately asserts that no
 // production import path is shedbuildDeniedLymcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedbuild", shedbuildAllowedImports...)
 
 	var deniedFound []string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // poll_test.go covers PollUntilTerminal's long-poll loop against a fake clock: a terminal mid-wait
 // result short-circuits, a deadline returns the last running digest, and a gather error propagates.
 // This file lives in package websterengine (not websterengine_test) because the clock/ realClock
@@ -12,6 +10,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeClock is a package-local, scriptable clock double for
@@ -30,6 +30,7 @@ func (c *fakeClock) Sleep(d time.Duration) {
 var _ clock = (*fakeClock)(nil)
 
 func TestPollUntilTerminal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	gatherErr := errors.New("gather failed")

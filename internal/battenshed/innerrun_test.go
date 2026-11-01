@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_test.go covers NewInnerRun's full re-entrant disposition table over a fake ReadStatus and a fake clock whose Sleep never blocks.
 // A still-running child is provably one Yield per pass, never a poll loop inside a Call, in unmeasurable real time.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeClock is the Sleep and Now seam of the passes a test drives: Sleep moves the clock by the interval and never blocks.
@@ -194,6 +193,7 @@ type statusResult struct {
 }
 
 func TestInnerRun_VerdictTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}, found: true}
 	tests := []struct {
 		name     string
@@ -324,6 +324,7 @@ func TestInnerRun_VerdictTable(t *testing.T) {
 }
 
 func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	spawnErr := errors.New("spawn failed")
@@ -346,6 +347,7 @@ func TestInnerRun_SpawnFailureIsReturnedError(t *testing.T) {
 }
 
 func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	resolveErr := errors.New("resolve failed")
@@ -362,6 +364,7 @@ func TestInnerRun_ResolveStatusFailureIsReturnedError(t *testing.T) {
 }
 
 func TestInnerRun_CancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, []statusResult{{status: shedengine.Status{State: shedengine.StateDone}, found: true}}, clock)
@@ -381,6 +384,7 @@ func TestInnerRun_CancelledContext(t *testing.T) {
 
 // TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation asserts the three hard-error paths (the status-path resolve, the pre-spawn read and the post-spawn read) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
 func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	readErr := errors.New("decode failed")
@@ -462,6 +466,7 @@ func TestInnerRun_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) 
 // NewInnerRun's nil-seam defaults are exercised implicitly by every production caller; this test
 // pins that a nil Now/Sleep resolve to the real stdlib functions rather than panicking.
 func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	statusPath := filepath.Join(t.TempDir(), "status.json")
 	if err := os.WriteFile(statusPath, []byte("{}"), 0o644); err != nil {
@@ -484,6 +489,7 @@ func TestInnerRun_NilSeamsDefaultToStdlib(t *testing.T) {
 
 // TestNewInnerRun_FloorsPollInterval pins that a told poll interval below one second logs one Warn naming poll_interval_s, and that one second passes through unwarned.
 func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		told     time.Duration
@@ -511,6 +517,7 @@ func TestNewInnerRun_FloorsPollInterval(t *testing.T) {
 // not hold an operator's stop for the whole poll interval.
 // It is deadline-based rather than duration-based, so it stays deterministic under -count=5.
 func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -530,6 +537,7 @@ func TestWaitOrCancel_ReturnsImmediatelyOnACancelledContext(t *testing.T) {
 // TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled asserts the wait is a real wait, not a
 // no-op that would satisfy the cancellation test above vacuously.
 func TestWaitOrCancel_WaitsOutAShortIntervalWhenNotCancelled(t *testing.T) {
+	tiergate.Require(t, 0)
 	start := time.Now()
 	waitOrCancel(context.Background(), 20*time.Millisecond)
 	if elapsed := time.Since(start); elapsed < 20*time.Millisecond {
@@ -547,6 +555,7 @@ func pidMarker(pid int) []byte { return []byte(strconv.Itoa(pid) + "\n") }
 // and the confirmation is recorded only once Spawn succeeds.
 // A halted or done child is never spawned.
 func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
+	tiergate.Require(t, 0)
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	tests := []struct {
 		name   string
@@ -596,6 +605,7 @@ func TestInnerRun_SpawnsUntilASpawnIsConfirmed(t *testing.T) {
 // no strand or a dead one with both locks free spawns;
 // a seam error is a hard error that spawns nothing.
 func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
@@ -651,6 +661,7 @@ func TestInnerRun_AdoptsARunningChildWithADriver(t *testing.T) {
 // bootstrap seeds a running status and then fails, and the resumed Call spawns again rather than
 // watching a driverless child as running.
 func TestInnerRun_FailedSpawnIsRetriedOnTheNextCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	spawnErr := errors.New("bootstrap exited 1")
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}

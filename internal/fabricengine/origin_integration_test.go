@@ -1,5 +1,3 @@
-//go:build tier1
-
 // origin_integration_test.go covers Add's newly-landed provenance step end-to-end: the origin record
 // itself, its commit on the weft branch, its rollback behavior on both the created- and
 // adopted-weft-branch paths, its mutation-record entries (including the exemption the git-state
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gitShow returns the content git show'd at rev:path in dir, failing the test on any git error.
@@ -50,6 +49,7 @@ func gitShow(t *testing.T, dir, rev, path string) string {
 // hub's default branch.
 // The last step checks the prime warp worktree out onto a non-default branch, so it runs last.
 func TestAdd_OriginRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -205,6 +205,7 @@ func TestAdd_OriginRecord(t *testing.T) {
 //
 //testtiming:keep the origin record landing at the anchor-relative path and not at the weft root, with parent_branch main; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
@@ -244,6 +245,7 @@ func TestAdd_RecordsParentBranch_SubpathAnchoredHub(t *testing.T) {
 // created-branch path, and asserts rollback's existing weft-worktree-and-branch removal takes the
 // record with it: nothing survives to be read back.
 func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -277,6 +279,7 @@ func TestAddRollback_CreatedPathLeavesNoOriginRecord(t *testing.T) {
 // no record commit lands on the branch,
 // and the new weft worktree still gets its .weft lock directory.
 func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -325,6 +328,7 @@ func TestAdd_AdoptedWeftKeepsItsOriginRecord(t *testing.T) {
 // TestAdd_AdoptedWeftTakesTheBeamMarkOnly adopts a live pair's weft branch, which carries an unmarked origin record, with AddOptions.Beam:
 // the record gains the beam mark in a record commit and keeps its recorded parent.
 func TestAdd_AdoptedWeftTakesTheBeamMarkOnly(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -366,6 +370,7 @@ func TestAdd_AdoptedWeftTakesTheBeamMarkOnly(t *testing.T) {
 // classifies KindCommitCreated as a git-state kind and exempts it from the commission direction
 // entirely.
 func TestAdd_OriginRecordMutationEntries(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -411,6 +416,7 @@ func TestAdd_OriginRecordMutationEntries(t *testing.T) {
 // carries no KindCommitCreated entry — the guard that the commit is never claimed on a run that
 // deliberately performed none.
 func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -450,6 +456,7 @@ func TestAdd_SkipGitWritesRecordWithoutCommit(t *testing.T) {
 // launcher directory after `add`, and that after the matching `remove` neither it nor the launcher
 // directory survives, with removal succeeding rather than being refused.
 func TestAdd_RunLauncherLifecycle(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

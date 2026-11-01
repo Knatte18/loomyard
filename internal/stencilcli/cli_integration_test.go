@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_integration_test.go drives the stencil module through RunCLIIn against one real fabric hub built by internal/hubforge, exercising list, validate, diff (both modes), sync, and the promote round trip end to end as the serial steps of TestStencilCLI_Scenario.
 // It is Tier 2: it builds a real hub and spawns git, so it needs gitkit.HermeticGitEnv() (see testmain_test.go) and the integration build tag.
 
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runCLI drives RunCLIIn against cwd with args, and parses the printed envelope as JSON when the
@@ -103,6 +102,7 @@ type hubStep struct {
 // A step relies on the hub state the steps before it left: the first sync seeds every board copy, the source-tree refusals run before any step creates contracts/stencils/, and each later step edits a board copy of its own (registry names 0 and 1, 2 and 3, 4, 5) so none disturbs another.
 // The steps share one hub and one worktree, so none calls t.Parallel; the scenario itself does, as it touches no state outside its own hub except the logger output the last step swaps and restores.
 func TestStencilCLI_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

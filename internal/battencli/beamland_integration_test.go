@@ -1,5 +1,3 @@
-//go:build tier1
-
 // beamland_integration_test.go drives a beam's landing prerequisites over a hubforge hub: the start guard and Worktree-Create's skip for beams made the two ways, the unreadable-pair refusal, a sub-beam under an open beam, and the landing refusal over a beam with members.
 
 package battencli
@@ -18,9 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)

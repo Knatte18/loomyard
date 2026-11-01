@@ -1,5 +1,3 @@
-//go:build tier0
-
 // haltnote_test.go pins the halt note's rendered bytes, its tolerant parse and its file-name test.
 
 package haltnote
@@ -8,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const blockedGolden = "loom halted blocked at Plan-Write\n\n" +
@@ -22,6 +22,7 @@ const blockedGolden = "loom halted blocked at Plan-Write\n\n" +
 	"- Plan-Write / blocked / 2026-01-02T03:05:06Z\n"
 
 func TestRenderParse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	blocked := Note{
@@ -120,6 +121,7 @@ func TestRenderParse(t *testing.T) {
 }
 
 func TestIsNoteName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := map[string]bool{
 		"loom-halt.md":         true,

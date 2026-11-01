@@ -1,5 +1,3 @@
-//go:build tier1
-
 // status_integration_test.go runs "lym beam status" through RunCLIIn over a hubforge hub with one local beam.
 
 package beamcli_test
@@ -25,9 +23,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)

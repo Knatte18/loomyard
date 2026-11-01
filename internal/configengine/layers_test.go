@@ -1,5 +1,3 @@
-//go:build tier0
-
 // layers_test.go — tests for the layer stack: the layered loaders, the local-layer rule, the layer reader and the unexpanded stack merge.
 
 package configengine_test
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -159,6 +158,7 @@ func decodeTopLevel(t *testing.T, resolved []byte) map[string]string {
 // TestLoad_LayerStack pins how the two loaders resolve a module across its layers: template fallback, the highest layer winning key by key, whole replacement of lists, scalars and open maps, each geometry, strict and degrading absent bases, empty upper layers, the staging copy never read as the local layer, one expansion against the anchor's environment, and which fills are logged.
 // It serializes its rows because they swap the process-global logger output.
 func TestLoad_LayerStack(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		geo  geometry
@@ -596,6 +596,7 @@ func TestLoad_LayerStack(t *testing.T) {
 
 // TestValidateLocal pins the machine-layer rule, and that the local layer refuses a machine key, besides the local-layer rule: a key the template lacks, a shape mismatch, a category other than none and, for a hub-wide module, an unclassified key are refused naming the key; an open-map entry, a whole-entry alias, a per-name key some template entry holds under any name, the longest covering entry and an empty document pass.
 func TestValidateLocal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hubWide := layerSpec()
 	hubWide.HubWide = true
@@ -720,6 +721,7 @@ func TestValidateLocal(t *testing.T) {
 
 // TestLayers pins the layer reader and the stack merge: the present files in stack order per geometry, absent files skipped, a comment-only machine or local file dropped, a refused machine or local file naming itself, and a Doc merged unexpanded with no template key filled and an Origins entry per top-level key.
 func TestLayers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	all := map[configengine.Layer]string{
 		configengine.LayerDefault:  "name: d\nport: 1\n",
@@ -963,6 +965,7 @@ func mapsEqual(a, b map[string]string) bool {
 
 // TestLayerFile pins which layers apply and where their files live under each geometry, the base layer, and that the local file is never at the staging path.
 func TestLayerFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	spec := layerSpec()
 	hubWide := layerSpec()
@@ -1039,6 +1042,7 @@ func annotationsOf(provenance []byte) map[string]string {
 
 // TestProvenance pins that every unit of the resolved configuration is annotated with the highest layer holding it, the template layer when none does, and that the refusals of the loader apply unchanged.
 func TestProvenance(t *testing.T) {
+	tiergate.Require(t, 0)
 	const base = "name: d\nnested:\n  deep: 2\nlist: [x, y]\nlabels:\n  a: A\nrun: sh\n"
 	tests := []struct {
 		name string

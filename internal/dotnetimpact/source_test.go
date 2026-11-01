@@ -1,5 +1,3 @@
-//go:build tier0
-
 // source_test.go covers the lexer and the per-file source model through parseSource.
 
 package dotnetimpact
@@ -8,9 +6,12 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

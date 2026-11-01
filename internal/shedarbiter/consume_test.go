@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedarbiter
 
 import (
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestConsumeAttempt covers the re-launch consumption over a temp status file and attempt directory with the real shedengine.Relaunch.
 // Rows with a refusal assert its message and the absent applied mark; success rows assert the applied mark and where the run stands.
 func TestConsumeAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const blocked = "Plan-Write"

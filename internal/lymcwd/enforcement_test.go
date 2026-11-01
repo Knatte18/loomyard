@@ -1,5 +1,3 @@
-//go:build tier0
-
 // enforcement_test.go is a repo-wide guard: it walks every package and fails the build if any file outside internal/lymcwd reaches for raw cwd or top-level git geometry, keeps internal/lymcwd the sole geometry owner, and (via TestEnforcement_FabricVocabulary) keeps the fabric-vocabulary leak fabric-weft-visibility-cleanup closed.
 // TestEnforcement_LocationLiterals keeps every Location outside lymcwd built from lymcwd.
 // Every enforcement test walks through scankit.
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricvocab"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stripGoComments blanks every comment in the Go source data, replacing the
@@ -58,6 +57,7 @@ func stripGoComments(data []byte) []byte {
 //
 //testtiming:keep pins that the comment stripper removes a banned token only from comments, which the enforcement scans covering its blocks never assert on literal source
 func TestStripGoComments(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -117,6 +117,7 @@ var enforcementAllowlist = []scankit.Entry{
 //
 //lym:guard
 func TestEnforcement(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("tree-scan", func(t *testing.T) {
 		// Predicate: returns true if the bytes contain a banned token.
 		isBanned := func(data []byte) bool {
@@ -202,6 +203,7 @@ func TestEnforcement(t *testing.T) {
 //
 //lym:guard
 func TestEnforcement_GeometryLiterals(t *testing.T) {
+	tiergate.Require(t, 0)
 	// geometryToken reports whether s is exactly one of the policed geometry path
 	// tokens. Only a token's registered owner directory (below) may use it in
 	// path-construction context.
@@ -514,6 +516,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 //
 //lym:guard
 func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	pattern := regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(BoltDirName) + `($|[^A-Za-z0-9_])`)
 
 	t.Run("matcher", func(t *testing.T) {
@@ -774,6 +777,7 @@ func importsWeftname(f *ast.File) bool {
 //
 //lym:guard
 func TestEnforcement_FabricVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	parseWithComments := func(t *testing.T, src string) *ast.File {
 		t.Helper()
 		fset := token.NewFileSet()
@@ -958,6 +962,7 @@ func isLocationLiteral(n ast.Node) bool {
 //
 //lym:guard
 func TestEnforcement_LocationLiterals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("tree-scan", func(t *testing.T) {
 		var failures []string
 		scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {

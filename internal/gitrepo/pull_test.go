@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pull_test.go covers Repo.Pull against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since a fast-forward pull needs the same bare-remote-plus-clones shape the push rebase-retry tests already build.
 
 package gitrepo_test
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPull drives Pull through one bare remote and two clones.
@@ -17,6 +17,7 @@ import (
 // The steps run serially in that order and share the remote and both clones: the diverged step relies on clone A having pulled everything the fast-forward step pushed.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPull(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()

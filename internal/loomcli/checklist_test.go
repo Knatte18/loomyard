@@ -1,5 +1,3 @@
-//go:build tier0
-
 // checklist_test.go pins the checklist frame renderChecklist draws for a status and a recipe, and the verb's refusal outside a git worktree.
 
 package loomcli
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/statuspane"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // checklistClock is the instant minute offsets in the checklist tests count from.
@@ -161,6 +160,7 @@ func withActivityWait(poll statuspane.StatusPoll, wait string) statuspane.Status
 }
 
 func TestRenderChecklist(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recipe := recipeRows("Plan", "Review", "Build")
@@ -1199,6 +1199,7 @@ func TestRenderChecklist(t *testing.T) {
 }
 
 func TestChecklistCmd_ReportsAResolutionFailureOnTheEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var out bytes.Buffer

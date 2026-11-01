@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cleanup_test.go drives cleanup over a synthetic prime location with stubbed records deps; it spawns no git and no process.
 
 package battencli
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var cleanupNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -142,6 +141,7 @@ func entryExists(path string) bool {
 }
 
 func TestCleanup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -357,6 +357,7 @@ func TestCleanup(t *testing.T) {
 }
 
 func TestCleanup_DryRunListsExactlyWhatApplyRemovesAndChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fixtures := []cleanupFixture{
@@ -408,6 +409,7 @@ func TestCleanup_DryRunListsExactlyWhatApplyRemovesAndChangesNothing(t *testing.
 }
 
 func TestCleanup_HoldsTheStatusLockUntilTheCommitAndLeavesTheSlugRunnable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	location := newCleanupLocation(t)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // text_test.go holds pure tests of the compact listing; nothing here touches disk or spawns a process.
 
 package boardcli_test
@@ -10,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func strPtr(s string) *string { return &s }
@@ -18,6 +17,7 @@ func strPtr(s string) *string { return &s }
 //
 //testtiming:keep pins the column alignment, multi-byte widths, status bracket, label gap and ordering of the compact listing, which its covering test asserts for one listing only
 func TestRenderCompact(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
 	day := 24 * time.Hour

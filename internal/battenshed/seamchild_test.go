@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seamchild_test.go covers NewSeedChild's full verdict table, keeping the two-source split visible
 // -- recipe from the Board's own type, driver from prime's own seed -- and keeping the
 // failed-commit and failed-push arms distinct, since collapsing either pairing is the likeliest
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedChildCalls records what each closure of a SeedChildDeps received, so a test can assert the
@@ -74,6 +73,7 @@ func newSeedChildDeps(boardType string, boardErr error, driver string, driverErr
 
 // TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver asserts the two-source split the row depends on: the seed's recipe comes from the Board's own type, read at Call time rather than captured at wiring time, and defaults when the Board names none, while its driver comes from the injected ChildDriver, never from one collapsed source.
 func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -119,6 +119,7 @@ func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) 
 }
 
 func TestSeedChild_UnreadableBoardIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	boardErr := errors.New("board decode failed")
 	_, deps := newSeedChildDeps("", boardErr, "claude", nil, nil, nil, nil)
@@ -132,6 +133,7 @@ func TestSeedChild_UnreadableBoardIsStuck(t *testing.T) {
 }
 
 func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	writeErr := fmt.Errorf("recipe %q: %w", "bogus", ErrUnknownRecipe)
 	_, deps := newSeedChildDeps("bogus", nil, "claude", nil, writeErr, nil, nil)
@@ -148,6 +150,7 @@ func TestSeedChild_UnknownRecipeNameIsStuck(t *testing.T) {
 // a registered recipe the task worktree cannot bootstrap lands Stuck, naming the Board type, with
 // no commit and no push attempted.
 func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	writeErr := fmt.Errorf("%w: only loom can", ErrUnsupportedChildRecipe)
 	calls, deps := newSeedChildDeps("batten", nil, "go", nil, writeErr, nil, nil)
@@ -169,6 +172,7 @@ func TestSeedChild_UnsupportedChildRecipeIsStuck(t *testing.T) {
 // push attempted. Live-reproduced (batten review sonnet-xhigh-r5, finding F3): before this fix, this
 // exact case surfaced as a hard StateFailed with no stuck_reason.
 func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	writeErr := fmt.Errorf("%w: run \"self\" is already seeded with a different driver", ErrDisagreeingChildSeed)
 	calls, deps := newSeedChildDeps("tapestry", nil, "go", nil, writeErr, nil, nil)
@@ -188,6 +192,7 @@ func TestSeedChild_DisagreeingChildSeedIsStuck(t *testing.T) {
 }
 
 func TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	writeErr := errors.New("resolve seed path failed")
 	_, deps := newSeedChildDeps("batten", nil, "claude", nil, writeErr, nil, nil)
@@ -206,6 +211,7 @@ func TestSeedChild_WriteSeedFailureNotUnknownRecipeIsReturnedError(t *testing.T)
 }
 
 func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	commitErr := errors.New("commit failed")
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, commitErr, nil)
@@ -225,6 +231,7 @@ func TestSeedChild_FailedCommitIsStuck(t *testing.T) {
 // push must not halt the run, since an offline machine must not block on it, and must be kept
 // distinct from the failed-commit arm above rather than collapsed into it.
 func TestSeedChild_FailedPushWarnsAndStillReturnsDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	pushErr := errors.New("push failed: offline")
 	calls, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, pushErr)
@@ -240,6 +247,7 @@ func TestSeedChild_FailedPushWarnsAndStillReturnsDone(t *testing.T) {
 }
 
 func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	driverErr := errors.New("driver read failed")
 	_, deps := newSeedChildDeps("batten", nil, "", driverErr, nil, nil, nil)
@@ -259,6 +267,7 @@ func TestSeedChild_ChildDriverFailureIsReturnedError(t *testing.T) {
 
 // TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation asserts the two hard-error paths (the child-driver read and the seed write) carry the cancelled-context diagnosis rather than the raw underlying error, when ctx is cancelled by the time the failing seam call itself returns.
 func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -315,6 +324,7 @@ func TestSeedChild_CancelledDuringASeamErrorReportsTheCancellation(t *testing.T)
 }
 
 func TestSeedChild_CancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	_, deps := newSeedChildDeps("batten", nil, "claude", nil, nil, nil, nil)
 
@@ -334,6 +344,7 @@ func TestSeedChild_CancelledContext(t *testing.T) {
 // TestSeedChild_RunSettings pins how Seed-Child settles the task worktree's local config layer from the board task's run settings:
 // the settings are prepared for the recipe the board type resolves, the named modules are written and the others removed before the seed, an invalid key or an unreadable board is Stuck with no seed written, a write failure is a hard error, and a Call run again after an interruption leaves the layer equal to the board's current settings.
 func TestSeedChild_RunSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	invalid := fmt.Errorf("%w: run_settings for module %q: key %q is execute-closed", ErrInvalidRunSettings, "darn", "verify")
@@ -504,6 +515,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 
 // TestSeedChild_MarksWatchedOnceTheSeedIsCommitted asserts the batten-watched marker is asked for after the commit, that a failing marker never changes the verdict, and that a failed commit never reaches it.
 func TestSeedChild_MarksWatchedOnceTheSeedIsCommitted(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

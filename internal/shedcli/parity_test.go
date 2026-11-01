@@ -1,5 +1,3 @@
-//go:build tier1
-
 // parity_test.go asserts byte-identical envelopes from the same fixture across the two invocation paths -- "lym <module> <verb> [<run-id>]" and "lym shed <verb> [<run-id>]" -- for every verb/ recipe pair this table supports, plus the lightweight-wiring proof.
 //
 // Every case here is tier 2: RunCLIIn reaches each module's PersistentPreRunE and therefore lymcwd.Resolve, which spawns git through internal/gitexec, and the Test Tier Purity Invariant bans gitexec.Run outside tier-tagged files -- loom's own run additionally calls c.reed.Up() and fabricengine.Open. internal/loomcli/parity_test.go is the precedent for the comparison shape but not for the tier -- its own header states no test there calls RunCLIIn, so it stays tier 1.
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // lymcwdResolveWorktreeForTest resolves cwd -- a pair's code worktree root -- into a *lymcwd.Location via lymcwd.ResolveWorktree, which applies no cwd gate: the caller here holds a worktree root, not an acting cwd, exactly as internal/battencli's own taskWorktreeLocation does.
@@ -382,6 +381,7 @@ func parityLightweightWiringStatusSucceedsWhenRunRefuses(t *testing.T, h *hubfor
 // TestParity_Scenario drives every module-versus-shed parity case over one hub; each step addresses its own pair or slug, so a step relies on no earlier step's state and the fixed order only lets a failing step stop the run.
 // The scenario calls t.Parallel as a whole: its steps share the hub fixture and the process-global durable sink dir the busy step sets, so no step does.
 func TestParity_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	steps := []struct {

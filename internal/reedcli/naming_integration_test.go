@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 // naming_integration_test.go drives the reed verbs on a real hub to prove a strand's full name and parent reach its process, survive a server kill and `resume`, address the right strand on `remove`, and that `lym reed list` shows strands of the prime and of a task worktree in one listing from the prime and flags a hand-retitled pane as drift.
 
@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runVerb runs one reed verb in worktree and returns the decoded envelope; it fails the test on a non-zero exit.
@@ -86,6 +87,7 @@ func listRows(t *testing.T, worktree string) map[string]map[string]any {
 // The steps run serially in a fixed order: the prime strand step adds the prime's worker strand, the listing step reuses it and adds a task strand, and the task naming step kills the hub's tmux server and resumes only its own worktree.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestStrandNamingAndList(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	skipWithoutMultiplexer(t, h)

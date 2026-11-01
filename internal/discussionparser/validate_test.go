@@ -1,5 +1,3 @@
-//go:build tier0
-
 package discussionparser
 
 import (
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/pattern"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allSectionsContent returns a decision record body carrying every heading in
@@ -47,6 +46,7 @@ func patternChangesSection(lines ...string) string {
 
 // TestValidate_PatternChanges asserts each defect of the `## PATTERN changes` section yields exactly one pattern-change-malformed finding at the decision record's path, naming the line.
 func TestValidate_PatternChanges(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -91,6 +91,7 @@ func TestValidate_PatternChanges(t *testing.T) {
 // TestValidate_PatternChangeOverCap asserts an `adds` or `changes` bullet whose rule text runs past the PATTERN entry text cap in runes yields one pattern-change-over-cap finding with its way forward.
 // A text at the cap yields none whatever the entry's name length and a trailing "(test)" or background link.
 func TestValidate_PatternChangeOverCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// textFor returns a rule text of filler runes extra runes longer than the cap.
@@ -151,6 +152,7 @@ func TestValidate_PatternChangeOverCap(t *testing.T) {
 
 // TestPatternEntryTextCap_EqualsThePatternCap asserts the package's cap and rule-text cut are the PATTERN format checker's, so the discussion check and the plan gate refuse the same texts.
 func TestPatternEntryTextCap_EqualsThePatternCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if patternEntryTextCap != pattern.MaxEntryTextChars {
 		t.Errorf("patternEntryTextCap = %d; want pattern.MaxEntryTextChars = %d", patternEntryTextCap, pattern.MaxEntryTextChars)
@@ -170,6 +172,7 @@ func TestPatternEntryTextCap_EqualsThePatternCap(t *testing.T) {
 
 // TestDeclaredPatternChanges asserts the rendered bullets of a clean section, nil for a missing path, file or section, and an ErrPatternChangesInvalid refusal naming the validate verb for a malformed one.
 func TestDeclaredPatternChanges(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	write := func(t *testing.T, content string) string {
@@ -245,6 +248,7 @@ func sectionsWithout(skip ...string) string {
 //
 //testtiming:keep pins that a record with every required heading yields no finding across whitespace, order, extra-heading and support-directory variants, which its covering test does not assert
 func TestValidate_CleanRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reversed := slices.Clone(requiredDiscussionSections)
@@ -307,6 +311,7 @@ func TestValidate_CleanRecords(t *testing.T) {
 //
 //testtiming:keep pins the section-missing finding per absent heading with its path and detail, which its covering test does not assert
 func TestValidate_MissingHeadings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fenced := requiredDiscussionSections[0]
@@ -405,6 +410,7 @@ func TestValidate_MissingHeadings(t *testing.T) {
 }
 
 func TestValidate_DecisionRecordAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	decisionPath := filepath.Join(dir, "decision-record.md")
@@ -429,6 +435,7 @@ func TestValidate_DecisionRecordAbsent(t *testing.T) {
 }
 
 func TestValidate_SupportLogAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	supportPath := filepath.Join(dir, "support-log.md")
@@ -457,6 +464,7 @@ func TestValidate_SupportLogAbsent(t *testing.T) {
 }
 
 func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	decisionPath := filepath.Join(dir, "decision-record.md")
@@ -482,6 +490,7 @@ func TestValidate_DecisionRecordPathIsDirectory(t *testing.T) {
 //
 //testtiming:keep pins the R6-28 regression that a line over 64 KB does not hide the headings below it, which its covering test does not assert
 func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	required := []string{"## First", "## Second"}
@@ -494,6 +503,7 @@ func TestMissingSections_ASingleHugeLineDoesNotHideEveryHeadingBelowIt(t *testin
 }
 
 func TestCheckDecisionIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// record returns a decision record with the given Decisions and Acceptance criteria bodies; a nil acceptance leaves the section out.
@@ -601,6 +611,7 @@ func TestCheckDecisionIDs(t *testing.T) {
 }
 
 func TestDecisionIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -630,6 +641,7 @@ func TestDecisionIDs(t *testing.T) {
 }
 
 func TestCitations(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const bulletSuffix = " — added after Discussion (parent, 2026-03-04)"

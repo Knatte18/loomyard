@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gatefindings_test.go asserts that this package's mechanical gates surface the determined findings
 // they used to discard.
 // The rule matters most exactly where it is cheapest to skip: NewDiscussionGate and NewPlanGate no longer bounce to a respawned writer on a failed attempt, and a gated writer row's exhausted gate halts the run for a human.
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,6 +34,7 @@ import (
 // to, over the same fixture shape (a decision record missing every required heading, with the
 // support log present, so Validate reports heading findings rather than a file-missing one).
 func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	decisionRecord := filepath.Join(dir, "decision-record.md")
 	supportLog := filepath.Join(dir, "support-log.md")
@@ -84,6 +84,7 @@ func TestDiscussionGate_FailureSurfacesItsFindings(t *testing.T) {
 // line -- plumbing, not mode behaviour -- so the fixture carries no approval dimension at all: the
 // gate always runs planglyph.ValidateFormat, never the require_approved-aware planglyph.Validate.
 func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath, planDir := setupPlanDir(t)
 	plankit.Write(t, planDir, plankit.Plan{
 		Approved: true,
@@ -133,6 +134,7 @@ func TestPlanGate_FailureSurfacesItsFindings(t *testing.T) {
 //
 //testtiming:keep pins that each batcher-backed row logs its name and the batcher error text on a stuck verdict, which its covering tests never read
 func TestBatcherRows_StuckSurfacesTheBatcherError(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		new  func(anchorPath string) shedengine.ShedProducer

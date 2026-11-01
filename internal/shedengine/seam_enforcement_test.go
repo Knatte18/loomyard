@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces the Shed Producer-Seam Invariant: production code in
 // internal/shedengine imports ONLY the standard library, internal/state, and internal/lock — never
 // internal/loomengine, never any adapter package, never internal/lymcwd, and never internal/logger.
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shedengineAllowedImports are the only non-stdlib import paths production code in this package
@@ -29,5 +28,6 @@ var shedengineAllowedImports = []string{
 // TestProducerSeamInvariant_AllowlistOnly verifies that every non-test .go file in this package
 // imports only stdlib or an entry in shedengineAllowedImports.
 func TestProducerSeamInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedengine", shedengineAllowedImports...)
 }

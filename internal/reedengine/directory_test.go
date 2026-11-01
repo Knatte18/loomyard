@@ -1,5 +1,3 @@
-//go:build tier0
-
 // directory_test.go pins the name directory on a fake tmux: which strands map to which rows, that a retiring strand's row carries the flag, and that a cold session reports every row dormant.
 
 package reedengine
@@ -7,9 +5,12 @@ package reedengine
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDirectory_MapsEachStrandToItsRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	strands := []Strand{

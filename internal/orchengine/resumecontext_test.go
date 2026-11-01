@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -9,9 +7,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	tests := []struct {
@@ -83,6 +83,7 @@ func TestResumeContext_RendersPointerPerPhaseAndWritesMark(t *testing.T) {
 }
 
 func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string

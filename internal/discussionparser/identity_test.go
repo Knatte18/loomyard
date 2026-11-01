@@ -1,13 +1,14 @@
-//go:build tier0
-
 package discussionparser
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIdentityText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	base := recordWithOpenRisks("\nrisk text.\n\n")
 

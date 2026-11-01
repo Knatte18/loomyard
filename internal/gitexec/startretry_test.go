@@ -1,5 +1,3 @@
-//go:build tier1
-
 // startretry_test.go covers the exec core's retry of a git the host could not start for EAGAIN.
 
 package gitexec_test
@@ -15,12 +13,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_StartRefusedForEAGAIN pins the start retry: a start refused for EAGAIN is tried again up to four times in all, while a git that ran and exited nonzero, and any other start failure, is started once.
 // A refusal is noted in proc's spawn-refusal record.
 // It replaces the package's start seam, which is process-global state, so neither the test nor its rows run in parallel.
 func TestRun_StartRefusedForEAGAIN(t *testing.T) {
+	tiergate.Require(t, 1)
 	refused := &os.PathError{Op: "fork/exec", Path: "/usr/bin/git", Err: syscall.EAGAIN}
 	missing := &os.PathError{Op: "fork/exec", Path: "/usr/bin/git", Err: syscall.ENOENT}
 	dir := t.TempDir()

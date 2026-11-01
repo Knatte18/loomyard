@@ -1,5 +1,3 @@
-//go:build tier0
-
 // githubclient_test.go is the hermetic, table-driven test suite for the whole package: the token resolution chain (token.go), the on-disk cache (cache.go/cache_windows.go), and the authenticating RoundTripper (transport.go).
 // Every case redirects the cache to a t.TempDir() via t.Setenv and reaches the `gh auth token` shell-out only through its injected seam, so the suite runs correctly on a machine with no `gh` installed and no GitHub credentials, and never touches the operator's real credential file.
 // This file carries no build tag -- it is untagged Tier 1, spawning no process and needing no git fixture, so `go test -race -count=1 ./internal/githubclient/...` runs every case here on any platform.
@@ -27,6 +25,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setCacheDir redirects the token cache to dir by setting every environment
@@ -117,6 +116,7 @@ func newScriptedServer(t *testing.T, statuses []int, captured *[]capturedRequest
 
 // TestResolveToken_Chain covers the full resolution order end to end: env vars always win over the cache, GH_TOKEN before GITHUB_TOKEN, a fresh cache entry is used when both env vars are empty, a stale one is not, and an unresolvable token surfaces as ErrTokenUnresolvable alongside an empty token, without blocking or prompting.
 func TestResolveToken_Chain(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		ghTokenEnv     string
@@ -221,6 +221,7 @@ func TestResolveToken_Chain(t *testing.T) {
 //
 //testtiming:keep pins that the cache redirection resolves under the temp dir rather than a real user path, which no other test asserts directly
 func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	setCacheDir(t, dir)
 
@@ -250,6 +251,7 @@ func isUnder(base, candidate string) bool {
 // exact two-field schema: each is a cache miss, never a fatal error, so a foreign or worn-out file
 // never blocks resolution.
 func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
+	tiergate.Require(t, 0)
 	freshTimestamp := time.Now().UTC().Format(time.RFC3339)
 
 	tests := []struct {
@@ -293,6 +295,7 @@ func TestReadCachedToken_MalformedFileIsMiss(t *testing.T) {
 // command: writeCachedToken must not panic or error out loud,
 // and a subsequent resolveToken must still succeed via the (faked) gh CLI fallback.
 func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	blockingFile := filepath.Join(root, "blocks-mkdir")
 	if err := os.WriteFile(blockingFile, []byte("not a directory"), 0o600); err != nil {
@@ -324,6 +327,7 @@ func TestWriteCachedToken_UnwritableDirDegradesToInProcessResolution(t *testing.
 //
 //testtiming:keep pins that concurrent writers never leave a torn cache file, which the sequential cache tests do not exercise
 func TestCache_ConcurrentWriters(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	setCacheDir(t, dir)
 
@@ -368,6 +372,7 @@ func TestCache_ConcurrentWriters(t *testing.T) {
 
 // TestAuthRT_401Handling covers the transport's 401 contract: a 401 on a cache-sourced token invalidates it, resolves a fresh one exactly once and replays with it -- never in a loop -- with the request body rewound byte-identical (the req.GetBody rewind a drained replay would silently skip); a second consecutive 401 goes back to the caller unchanged; and an environment-sourced token is never replayed, since replaying it reproduces the identical value, so the 401 surfaces as an error naming the rejected variable and wrapping ErrTokenRejected.
 func TestAuthRT_401Handling(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		ghTokenEnv string
@@ -474,6 +479,7 @@ func TestAuthRT_401Handling(t *testing.T) {
 // return once ghAuthTokenTimeout elapses.
 // This is a test that would hang forever on a regression that dropped the context deadline.
 func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	setCacheDir(t, dir)
 	t.Setenv("GH_TOKEN", "")
@@ -513,6 +519,7 @@ func TestRunGHAuthTokenSeam_HonoursGhAuthTokenTimeout(t *testing.T) {
 // TestAuthRT_WaitsWhileAPauseCoversTheProcess pins that a request waits at entry while a live pause covers the process, writes one gate line, and goes out once the pause is resumed.
 // It is not parallel: the pause network gate is process-wide state.
 func TestAuthRT_WaitsWhileAPauseCoversTheProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	setCacheDir(t, t.TempDir())
 	t.Setenv("GH_TOKEN", "env-token")
 	t.Setenv("GITHUB_TOKEN", "")
@@ -609,6 +616,7 @@ const pauseHoldDuration = 150 * time.Millisecond
 // and a cancellation ends a held call unless the caller's own deadline had already passed.
 // It is not parallel: the pause network gate is process-wide state.
 func TestAuthRT_HeldCallGetsItsFullDeadlineAfterRelease(t *testing.T) {
+	tiergate.Require(t, 0)
 	setCacheDir(t, t.TempDir())
 	t.Setenv("GH_TOKEN", "test-token")
 	t.Setenv("GITHUB_TOKEN", "")

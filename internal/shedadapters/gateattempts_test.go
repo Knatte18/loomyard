@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGateFailedReason_NamesAttemptsAndFindingsPath pins that both the attempt count and the findings path are interpolated.
@@ -17,6 +16,7 @@ import (
 //
 //testtiming:keep pins that the attempt count and the findings path are both interpolated into the gate-failed reason
 func TestGateFailedReason_NamesAttemptsAndFindingsPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	long := strings.Repeat("x", gateFindingsReasonLimit+50)
 	tests := []struct {
@@ -120,6 +120,7 @@ func TestGateFailedReason_NamesAttemptsAndFindingsPath(t *testing.T) {
 // TestClearGateFindings pins that an existing file is removed, that an absent file or an empty path is no error,
 // and that a removal failure leaves the target in place without panicking.
 func TestClearGateFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

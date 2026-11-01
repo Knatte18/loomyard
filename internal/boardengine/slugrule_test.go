@@ -1,5 +1,3 @@
-//go:build tier0
-
 // slugrule_test.go — the pair slug rule the board applies to the task and project slugs a write makes, through Config.ValidateSlug.
 
 package boardengine_test
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // withRecordsSuffix returns base with the records suffix appended, a slug the pair slug rule refuses.
@@ -32,6 +31,7 @@ func refusingSlugRule(slug string) error {
 // TestSlugRule pins that a write making a task or project slug is refused when the seam refuses it, naming the entry, the rule's reason and a slug the rule admits,
 // and that a write leaving an entry's slug and kind as they were is never judged.
 func TestSlugRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stored := withRecordsSuffix("old")
 

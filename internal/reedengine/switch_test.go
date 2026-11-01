@@ -1,5 +1,3 @@
-//go:build tier0
-
 // switch_test.go pins SwitchClient's session ordering and the exact tmux commands it issues, through TmuxCmd's execHook seam.
 
 package reedengine
@@ -10,9 +8,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNextSessionID(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -52,6 +53,7 @@ func TestNextSessionID(t *testing.T) {
 }
 
 func TestSwitchClientVia_IssuesOnlyTheThreeCommands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// The listing is filtered to the sessions that count as reed's everywhere but Windows, spelled out here rather than built through listSessionsArgv.
 	wantList := []string{"list-sessions", "-f", "#{||:#{!=:#{@lym_tmux_conf_claimed},sourced},#{@lym_reed_session}}", "-F", "#{session_id} #{session_name}"}

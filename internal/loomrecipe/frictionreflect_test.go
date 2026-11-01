@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomrecipe
 
 import (
@@ -12,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // funcProducer is a shedengine.ShedProducer fake that counts its calls, runs an optional hook, and
@@ -57,6 +56,7 @@ func readStatus(t *testing.T, paths shedbuild.ShedPaths) shedengine.Status {
 }
 
 func TestFrictionReflect_DonePersistsOnlyAfterReflection(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	var observed shedengine.Status
 	reflectCalls := 0
@@ -93,6 +93,7 @@ func TestFrictionReflect_DonePersistsOnlyAfterReflection(t *testing.T) {
 }
 
 func TestFrictionReflect_PauseDuringFinalizeHaltsAtTheRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	reflectCalls := 0
 	env.ReflectFriction = func() string {
@@ -147,6 +148,7 @@ func TestFrictionReflect_PauseDuringFinalizeHaltsAtTheRow(t *testing.T) {
 }
 
 func TestFrictionReflect_ResumeAtTheRowCallsOnlyTheRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	reflectCalls := 0
 	env.ReflectFriction = func() string {
@@ -173,6 +175,7 @@ func TestFrictionReflect_ResumeAtTheRowCallsOnlyTheRow(t *testing.T) {
 }
 
 func TestFrictionReflect_PreChangeDoneAtFinalizeShortCircuits(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	reflectCalls := 0
 	env.ReflectFriction = func() string {

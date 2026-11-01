@@ -1,5 +1,3 @@
-//go:build tier2
-
 // revive_integration_test.go proves against a real tmux that a restarted server's sessions are revived in the told spawn order:
 // three worktrees on one private socket, a server kill, and the order the new server numbers their sessions in.
 
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -115,6 +114,7 @@ func killServerAndWait(t *testing.T, e *Engine) {
 
 // TestRevive_RestartedServerKeepsSpawnOrder pins the revival against a real server restart.
 func TestRevive_RestartedServerKeepsSpawnOrder(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	names := []string{"wt-a", "wt-b", "wt-c"}
 

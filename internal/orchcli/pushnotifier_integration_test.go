@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushnotifier_integration_test.go proves the failed-push notice route over a real hub, with creel's daemon run in process on a fake delivery.
 
 package orchcli
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // startCreelDaemon runs creel's daemon in process for the hub, listening on a fake delivery that holds receiver as a live strand.
@@ -69,6 +68,7 @@ func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 //
 // It runs without t.Parallel: the push notifier and the strand environment variable are process-global.
 func TestInstallPushNotifier(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("InstalledFromTheBoardWorktreeAFailureMailsTheOrchAsFabric", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

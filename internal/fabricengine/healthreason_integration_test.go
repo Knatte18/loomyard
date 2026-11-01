@@ -1,5 +1,3 @@
-//go:build tier1
-
 // healthreason_integration_test.go is card 5's regression guard for HealthReason: one case per
 // HealthCause, asserting Healthy returns the typed cause and its fabric-worded Detail — the
 // equivalence loomengine/preflight.go now switches on instead of substring-matching a reason string.
@@ -18,11 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHealthy_ReasonCauses exercises all five HealthCause values against a real paired fixture, one
 // subtest per cause, and asserts both Cause and Detail — never one "junction-ish" catch-all case.
 func TestHealthy_ReasonCauses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("BranchMismatch", func(t *testing.T) {
 		t.Parallel()
 
@@ -180,6 +180,7 @@ func TestHealthy_ReasonCauses(t *testing.T) {
 // error — an ABORTED preflight rather than a classified verdict — even though the pair is correctly
 // wired and correctly paired.
 func TestHealthy_UnbornWeftBranchIsAVerdictNotAnAbort(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

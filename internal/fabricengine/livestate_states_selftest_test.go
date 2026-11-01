@@ -1,5 +1,3 @@
-//go:build tier1
-
 // states_test.go proves every hostile state in States establishes exactly what its own doc comment
 // claims, by applying each state directly against a real hub and asserting on the resulting condition —
 // never by driving a verb, which would confound the state's own establishment with the verb's
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // structuralStateNames is the set of states this suite also proves against a manifest diff: applying
@@ -311,6 +310,7 @@ func assertStateEstablished(t *testing.T, h *hubforge.Hub, stateName string, tar
 // TestStates proves every state in States establishes what it claims, at both anchors, on its own
 // freshly built hub.
 func TestStates(t *testing.T) {
+	tiergate.Require(t, 1)
 	for _, state := range States {
 		state := state
 

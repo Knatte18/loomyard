@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_failures_test.go covers how the inner-run passes log a seam that keeps failing, and the attempts they repeat:
 // one Warn per episode across passes with Debug lines while it lasts and one Info at recovery, and Info only for the first attempt of a retried goto, resume or spawn.
 // The tests capture the process-global logger, so they do not run in parallel.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // failFirstCalls returns a seam body that fails on its first n calls and succeeds after.
@@ -78,6 +77,7 @@ func failureLockSeams() *ChildParentLock {
 // TestInnerRun_ReadFailuresLogOncePerEpisode asserts each polled seam whose failure repeats on every check warns once, logs Debug while it keeps failing and logs one Info when it reads again.
 // It also asserts the demoted lines: a parent lock release logs Info, and a retried goto or resume logs Info on its first attempt and Debug after each refusal.
 func TestInnerRun_ReadFailuresLogOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	blocked := parked(shedengine.StateBlocked)
 	awaitingNoticed := parked(shedengine.StateAwaiting)
 	awaitingNoticed.ParentNotice = "pull request ready"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spec_test.go — tier 0 unit tests for DarnTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and seeded stencils;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newSpecInputs returns inputs over a seeded stencils directory, with every required field set and every optional one empty.
@@ -66,6 +65,7 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 
 // TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where the optional prior-work token renders (none), and for a spawn that carries prior work, a parent and a friction directory.
 func TestDarnSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cfg := Config{Writer: "opus[effort=high]", WriterTimeoutMin: 45}
@@ -179,6 +179,7 @@ func TestDarnSpec(t *testing.T) {
 // TestDarnSpec_Refusals covers the refusal of each empty required field by name, an unusable writer spec, and a stencil missing from the stencils directory.
 // A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
 func TestDarnSpec_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

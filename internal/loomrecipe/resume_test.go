@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomrecipe
 
 import (
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // liveSeatLead is a non-nil seatengine.Handle the fake seat runner hands back as a live lead; the producer never calls it.
@@ -57,6 +56,7 @@ func resetCurrentProducer(t *testing.T, statusPath, statusLockPath, currentProdu
 // wantSequenceOrder doc comment for why) -- resuming past Webster, not reaching Done, is this
 // test's own point.
 func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
@@ -121,6 +121,7 @@ func TestResume_DoesNotRestartAtRowOne(t *testing.T) {
 // at the end: substituting a fresh &countingProducer{} at the second site would leave the count at
 // 1 and quietly invert what the test measures.
 func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	counting := &countingProducer{}
 
@@ -164,6 +165,7 @@ func TestResume_CrashRecoveryRecallsUnconditionally(t *testing.T) {
 // halted producer, that the flag is cleared in the same persist, and that a subsequent run resumes
 // rather than re-pausing on the flag it is resuming from.
 func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	resetCurrentProducer(t, paths.StatusPath, paths.StatusLockPath, loomshed.NameWebster, true)
 
@@ -234,6 +236,7 @@ func TestResume_PauseStopsAtBoundaryAndClearsFlag(t *testing.T) {
 // This test asserts only that routing continues at the declared target after one Stuck -- the
 // budget-exhaustion property belongs to TestBounceRouting_BudgetExhaustionBlocks below.
 func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)
 
@@ -269,6 +272,7 @@ func TestBounceRouting_StuckContinuesAtDeclaredTarget(t *testing.T) {
 // genuinely Stuck via a malformed on-disk batcher config, and asserts the run ends shedengine.RunBlocked
 // rather than bouncing anywhere.
 func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	writeBatcherConfig(t, env.AnchorPath, "active: [not valid yaml\n")
 
@@ -314,6 +318,7 @@ func TestBounceRouting_EmptyTargetBlocksInstead(t *testing.T) {
 // The Bouncer is what this test binds its assertion to, never the Burler.
 // Every Discussion-Burler-Review and Discussion-Burler-Fix hand-back is budget-exempt, so Discussion-Bouncer's own budget is the segment's one budget on judged rounds and the Burler rows' is never spent.
 func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 	blockBouncerJudge(env)
 	discussionBouncerMaxBounces := env.Segments["Discussion-Review"].MaxBounces
@@ -368,6 +373,7 @@ func TestBounceRouting_BudgetExhaustionBlocks(t *testing.T) {
 // is what proves the respawn resolves to a genuine Done rather than reporting Done straight off the
 // pre-existing files without ever calling Run again.
 func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 
 	seats := env.Seats.(*shedfake.SeatRunner)
@@ -416,6 +422,7 @@ func TestResume_DiscussionWriteRespawnsRatherThanReportDoneOffFileExistence(t *t
 // current_producer is planted directly at Discussion-Write, since this test's whole point is what
 // that row does when re-entered with a live match, not how the run got there.
 func TestResume_LiveMatchingRunAttachesInsteadOfRespawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, env, paths := buildSequenceFixture(t)
 
 	// The live answer is scoped to the discussion prefix: a table of any other prefix is not live, so later rows still run and write their outputs.

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // progress_test.go runs shedengine.Routing.ProgressAt over loom's real recipe: every row maps to a
 // step, a review segment's three rows share one step, Friction-Reflect is the last step, and a
 // Burler current producer reports its segment's step.
@@ -11,10 +9,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRouting_ProgressAt asserts, over loom's real recipe, that every row maps to a step, the three rows of each review segment map to the same step and a Burler row reports its segment's step name, Friction-Reflect is the last main-line step, and the rows after Webster follow the recipe's tail order and reroute edges.
 func TestRouting_ProgressAt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	routing, err := Routing(shedrun.RecipeTapestry, map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Code-Review": 5})
 	if err != nil {

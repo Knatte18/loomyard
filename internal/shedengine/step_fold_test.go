@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_fold_test.go covers the fold of consecutive identical budget-exempt Stucks through a real Shed.Step: the fold lands inside the step's single persist, recomposes activity.last, and is ended by any interleaved entry.
 
 package shedengine
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const foldedBounceWording = "Wait → bounced to Wait"
@@ -26,6 +25,7 @@ func mustStep(t *testing.T, shed *Shed) StepResult {
 }
 
 func TestStep_ExemptStuckFoldsIntoOneEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, 10, []bool{true})
 
 	first := mustStep(t, shed)
@@ -62,6 +62,7 @@ func TestStep_ExemptStuckFoldsIntoOneEntry(t *testing.T) {
 }
 
 func TestStep_FoldRecomposesActivityLast(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, 10, []bool{true})
 	mustStep(t, shed)
 
@@ -80,6 +81,7 @@ func TestStep_FoldRecomposesActivityLast(t *testing.T) {
 }
 
 func TestStep_FoldingStepCommitsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, _ := scriptedStuckShed(t, 10, []bool{true})
 	mustStep(t, shed)
 	var calls []commitStatusCall
@@ -93,6 +95,7 @@ func TestStep_FoldingStepCommitsOnce(t *testing.T) {
 }
 
 func TestStep_NoVerdictWriteCarriesActivityLastAfterFold(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, 10, []bool{true})
 	mustStep(t, shed)
 	mustStep(t, shed)
@@ -121,6 +124,7 @@ func TestStep_NoVerdictWriteCarriesActivityLastAfterFold(t *testing.T) {
 }
 
 func TestStep_CountedAndExemptStucksDoNotFold(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name   string
 		exempt []bool
@@ -144,6 +148,7 @@ func TestStep_CountedAndExemptStucksDoNotFold(t *testing.T) {
 
 // TestStep_RepeatedBlockingHaltFolds proves a re-step of a row with no OnStuck that blocks again the same way keeps one history entry, its repeat counted, rather than appending a second.
 func TestStep_RepeatedBlockingHaltFolds(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{
 		Name:     "Webster",
@@ -167,6 +172,7 @@ func TestStep_RepeatedBlockingHaltFolds(t *testing.T) {
 }
 
 func TestStep_AwaitingEndsAFold(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	script := []Outcome{Stuck, Stuck, Awaiting, Stuck}
 	i := 0

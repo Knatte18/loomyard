@@ -1,5 +1,3 @@
-//go:build tier1
-
 // calibrate_integration_test.go checks that the gitrepo-backed plan history and base tree give the calibration the same row as the in-memory ones.
 
 package main
@@ -19,11 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // The test changes the working directory, which run reads the base trees from, so it never runs in parallel.
 func TestCalibrateGitBackedMatchesInMemory(t *testing.T) {
+	tiergate.Require(t, 1)
 	configDir := t.TempDir()
 	seedProfile(t, configDir)
 

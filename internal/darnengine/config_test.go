@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — tier 0 unit tests for darnengine.LoadConfig, darnengine.TreeScopedTargets and darnengine.MigrateConfig.
 //
 // Seeds a bare t.TempDir() with just a _lym/config/darn.yaml file (no real hub, no SeedConfig, no git spawn).
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedDarnConfig creates <baseDir>/_lym/config/darn.yaml with the given contents.
@@ -48,6 +47,7 @@ func withTreeScope(trees string) string {
 
 // TestLoadConfig covers the template's defaults, the tree_scope key's loading and refusals, a retired key, a writer that fails the model-spec grammar, and a base directory with no darn.yaml.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -221,6 +221,7 @@ func writeLocalDarnConfig(t *testing.T, anchor, contents string) string {
 
 // TestTreeScopedTargets covers tree scope being off with no tree, a path lying in a tree by equality or prefix and never by a shared name prefix, a path under nested trees touching each, the touched trees' targets deduplicated in tree-path order, a diff with a production path, and a scoped diff with no target answering no targets.
 func TestTreeScopedTargets(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	trees := map[string]string{"docs": "", "tools": "./tools/...", "scripts": "./tools/...", "cmd/x": "./cmd/x"}
@@ -259,6 +260,7 @@ func TestTreeScopedTargets(t *testing.T) {
 
 // TestMigrateConfig covers the three states of a hub file's tree_scope_verify: held empty empties tree_scope and prunes the key, held set prunes the key and keeps tree_scope, absent changes nothing; a second pass over each changes nothing, and a malformed document is an invalid-config error.
 func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const treesText = "\n  tools: ./tools/..."

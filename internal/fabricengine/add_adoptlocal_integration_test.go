@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_adoptlocal_integration_test.go covers Add with AddOptions.AdoptLocal over a hubforge hub: the adoption of an unmarked local branch, the refusals that precede any mutation and the root pair of the default branch.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -16,9 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAdd_AdoptLocal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

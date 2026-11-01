@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prrework_test.go holds the committed-plan fixture the Plan-Review skip seam tests share, and exercises the plan reads over it at Tier 1: temp directories and an in-memory ReadCommitted over a map.
 
 package loomshed
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -118,6 +117,7 @@ func (f *reworkFixture) deps() PRReworkDeps {
 var reworkNewCard = reworkGenCard{"second-card", "Create", "internal/secondcard/new.go"}
 
 func TestNextReworkCardNumber(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := newReworkFixture(t)
 	// The working tree's leftover second card is not committed, so it does not move the number.
 	f.writeGeneration(1, reworkGenCard{"first-card", "Create", "internal/firstcard/new.go"}, reworkNewCard)

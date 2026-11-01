@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — unit tests for fabricengine.LoadConfig.
 //
 // Covers: happy-path with template keys present, branch_prefix/pathspec parsing, environment
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoadConfig covers LoadConfig over a hand-written fabric config:
@@ -26,6 +25,7 @@ import (
 //
 //testtiming:keep LoadConfig parsing both fields and Dirs(), keeping an empty prefix, resolving env references and naming the reconcile verb when uninitialized; coverage of its blocks by other tests does not show an assertion of this
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		env            map[string]string

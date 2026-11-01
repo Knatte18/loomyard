@@ -1,5 +1,3 @@
-//go:build tier0
-
 // locations_test.go covers Locations, the extraction and placement of the `path:line` locations a verify log names.
 
 package failuretrace
@@ -10,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,6 +34,7 @@ func testPlacement(existing ...string) Placement {
 }
 
 func TestLocations(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var manyTail []string

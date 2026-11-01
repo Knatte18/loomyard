@@ -1,11 +1,11 @@
-//go:build tier0
-
 // classify_test.go — Tier-1 (untagged, no git spawn) table test for classifyPaths, the pure
 // warp-vs-weft-vs-never-committed path classifier.
 
 package fabricengine
 
 import "testing"
+
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
 // TestClassifyPaths covers relPath "."
 // and "sub" scoping, the _lymfoo/.lymfoo segment-boundary cases, empty input, all-warp and all-weft
@@ -15,6 +15,7 @@ import "testing"
 //
 //testtiming:keep classifyPaths' routing buckets, including segment-boundary names and the never-committed bucket landing in neither side; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name                string
 		relPath             string
@@ -174,6 +175,7 @@ func TestClassifyPaths(t *testing.T) {
 //
 //testtiming:keep every input path landing in exactly one output slice in input order; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyPaths_PartitionsInputWithNothingLostOrDuplicated(t *testing.T) {
+	tiergate.Require(t, 0)
 	relPath := "."
 	routingNames := []string{"_lym", "_extra"}
 	neverCommittedNames := []string{".lym"}

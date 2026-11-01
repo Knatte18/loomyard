@@ -1,5 +1,3 @@
-//go:build tier0
-
 // findingtext_test.go pins the findings clause and the way forward of the board-model findings and the zero-batch refusal as golden text, and the reason a path cannot be checked.
 // Untagged, with a shuttlefake.Engine: no git, no subprocess spawns, so the cases that need git (a git-ignored path, a tracked path) are covered by the integration tests of the sites.
 
@@ -15,12 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPendingFindingsText pins the findings clause and way forward as golden text: the board-model
 // findings take the reset route, a contract file a fork wrote last takes the delete-and-accept route,
 // one Master wrote last takes the accept route, and a pathless finding takes the reset route.
 func TestPendingFindingsText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -109,6 +109,7 @@ func TestPendingFindingsText(t *testing.T) {
 //
 //testtiming:keep pins the bare-path suffix and its omission when the detail names the path; every pending-findings case carries a note per path
 func TestFindingsClause(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -132,6 +133,7 @@ func TestFindingsClause(t *testing.T) {
 }
 
 func TestUncheckableReason(t *testing.T) {
+	tiergate.Require(t, 0)
 	geom := evidenceGeom(t)
 	outside := filepath.Join(t.TempDir(), "elsewhere", "f.txt")
 	tests := []struct {
@@ -175,6 +177,7 @@ func TestUncheckableReason(t *testing.T) {
 }
 
 func TestWayForwardSteps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -200,6 +203,7 @@ func TestWayForwardSteps(t *testing.T) {
 // TestZeroBatchesErrorText pins the zero-batch refusal as golden text: an empty step names the manual rebaseline and run verbs, and a set step replaces both.
 // The step-keyed text is pinned here because no plan reaches it through Run: a plan with no card fails to load, and the batches an accepted rebaseline records cover every card.
 func TestZeroBatchesErrorText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const lead = "webster: plan /plan produced zero execution batches; nothing to build is a malformed plan, never a vacuous outcome: done; way forward: "

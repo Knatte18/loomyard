@@ -1,5 +1,3 @@
-//go:build tier0
-
 // capabilities_test.go verifies Claude's optional capability answers: instruction files, requirement support, resume-context rendering and creel's hook delivery.
 
 package claudeengine
@@ -10,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestClaude_Capabilities pins the instruction file names and their order, the requirements Claude meets and the resume context bytes.
 func TestClaude_Capabilities(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := New()
@@ -52,6 +52,7 @@ func TestClaude_Capabilities(t *testing.T) {
 
 // TestClaude_HookInput pins what the hook-input parse reads from Claude Code's payload, and the wake output's text and exit code.
 func TestClaude_HookInput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

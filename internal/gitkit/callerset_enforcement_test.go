@@ -1,5 +1,3 @@
-//go:build tier0
-
 // callerset_enforcement_test.go enforces the gitkit Leaf Invariant's CopyRepo pin: internal/lymcwd is the only caller of this package's CopyRepo, since every other package takes a real hub from internal/hubforge instead.
 // This is the guard that catches a later migration leaving a hub-shaped call site on the primitive repo fixture rather than migrating it onto hubforge's real-hub factory.
 
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedCopyRepoCallerDir is the only package directory (relative to the repository root) allowed
@@ -33,6 +32,7 @@ const minCopyRepoScanFiles = 100
 //
 //lym:guard
 func TestCopyRepoCallerSet_LymcwdOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}, Filter: scankit.All}, func(f *scankit.File) {

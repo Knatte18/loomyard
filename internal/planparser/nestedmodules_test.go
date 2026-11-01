@@ -1,5 +1,3 @@
-//go:build tier0
-
 package planparser_test
 
 import (
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNestedModules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()

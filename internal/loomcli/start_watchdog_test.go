@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_watchdog_test.go pins the watchdog seam's call site: that the verb reaches c.spawnWatchdog
 // with the hub path, tmux path, and shell path the receiver carries, driven with a recording stub
 // substituted for the seam so the assertion needs no real process.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath substitutes a recording stub into
@@ -25,6 +24,7 @@ import (
 // receiver carries. suppressWatchdogSpawn is left at its testing.Testing() value so the real seam is
 // never reached -- the stub replaces the call entirely, rather than the suppress flag gating it.
 func TestStartCmd_ReachesSpawnWatchdogWithHubAndTmuxPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := newLoomCLI()
 	// A fictional location and a pure-constructed engine, per this file's own doc comment: both are
 	// value composition (reedengine.New performs no I/O), never a live tmux server.

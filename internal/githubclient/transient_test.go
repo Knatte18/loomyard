@@ -1,5 +1,3 @@
-//go:build tier0
-
 package githubclient
 
 import (
@@ -14,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/google/go-github/v75/github"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func errResponse(status int) *github.ErrorResponse {
@@ -21,6 +21,7 @@ func errResponse(status int) *github.ErrorResponse {
 }
 
 func TestIsTransient(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dial := &url.Error{Op: "Get", URL: "https://api.github.com", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
@@ -68,6 +69,7 @@ func TestIsTransient(t *testing.T) {
 }
 
 func TestStatusCode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

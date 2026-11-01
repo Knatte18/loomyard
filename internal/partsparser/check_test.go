@@ -1,5 +1,3 @@
-//go:build tier0
-
 // check_test.go tests Check, one row per check, and Validate over a temporary anchor.
 
 package partsparser
@@ -10,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var validDecisionIDs = []string{"D1", "D2", "D3"}
@@ -23,6 +23,7 @@ func checkNames(findings []Finding) []string {
 }
 
 func TestCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -87,6 +88,7 @@ func TestCheck(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const record = "## Decisions\n\n### D1 — a\n\nx.\n\n### D2 — b\n\ny.\n\n### D3 — c\n\nz.\n"

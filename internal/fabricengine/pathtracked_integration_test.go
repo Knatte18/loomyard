@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pathtracked_integration_test.go pins PathTracked's index-only answer on a real repo.
 // It is integration-tagged because the query spawns real git.
 
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPathTracked(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)

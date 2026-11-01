@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reconcile_test.go table-tests planReconcile's pure decision logic against saved strand tables and
 // fake list-panes results (including pane_dead=1 rows and the Selvage exemption),
 // exercises reconcileLocked's real-record mutation for the no-dead-panes path, which never
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // ownWindowTestStrand returns a strand anchored own-window and bound to paneID.
@@ -24,6 +23,7 @@ func ownWindowTestStrand(guid, paneID string) Strand {
 }
 
 func TestPlanReconcile(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name                     string
 		strands                  []Strand
@@ -328,6 +328,7 @@ func findStrandPaneID(strands []Strand, guid string) string {
 
 //testtiming:keep pins reconcileLocked mutating the real state record, clearing a gone strand's binding and keeping a present one's, with no tmux call; its covering tests run this code without asserting it
 func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *testing.T) {
+	tiergate.Require(t, 0)
 	// cfg.Tmux points at a nonexistent binary (newTestEngine's fixture): if
 	// reconcileLocked ever shelled out here, this test would fail loudly
 	// rather than silently passing against a stray real server.
@@ -356,6 +357,7 @@ func TestReconcileLocked_NoDeadPanes_ClearsGoneBindingsWithoutTouchingTmux(t *te
 
 // TestReconcileLocked_KeepsABindingFoundInAnotherSession pins that reconcile keeps an own-window strand's binding when the server-wide listing finds its pane in another session, kills nothing, and clears the binding when that lookup fails.
 func TestReconcileLocked_KeepsABindingFoundInAnotherSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		serverList  string
@@ -399,6 +401,7 @@ func TestReconcileLocked_KeepsABindingFoundInAnotherSession(t *testing.T) {
 // never plan.deadPanesToKill/plan.untrackedPanesToKill directly, on both the success path and the
 // partial-kill error path, and no line at all when nothing was killed.
 func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("KillsUntrackedPanes_LogsTheirIDs", func(t *testing.T) {
 		e := newTestEngine(t)
 		installFakeTmux(t, e)
@@ -484,6 +487,7 @@ func TestReconcileLocked_LogsTheUntrackedPanesItReaps(t *testing.T) {
 //
 //testtiming:keep pins the first-writer-wins repair of contradicting bindings: a strand naming Selvage's pane or sharing another strand's pane is cleared in table order, unbound strands never conflict and Selvage's own binding is never cleared; its covering tests run this code without asserting it
 func TestClearConflictingPaneBindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		state        ReedState

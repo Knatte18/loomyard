@@ -1,5 +1,3 @@
-//go:build tier0
-
 // loopwait_test.go drives step's --until-stop waiter through stepCmd.
 // The detached loop is the same stepCmd run in a goroutine with the fake runner of loop_test.go, started by a fake Spawn;
 // a fake Watch emits nothing and a fake Sleep records the waiter's waits.
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitWorld is a loop fixture armed for the waiter: spawning starts the detached half in a goroutine, and waiting records its sleeps.
@@ -202,6 +201,7 @@ func (w *waitWorld) assertNotFailed() {
 }
 
 func TestUntilStop_SecondWaiterAdoptsTheLiveLoop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a second waiter spawns nothing and prints the loop's envelope", func(t *testing.T) {
 		tests := []struct {
 			name       string
@@ -387,6 +387,7 @@ func runSecondWaiter(t *testing.T, spec *Spec) {
 }
 
 func TestUntilStop_EnvelopeCurrency(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// status is the run's status file when the invocation starts; the envelope describes a blocked run at B after one step.
@@ -453,6 +454,7 @@ func assertLoopExited(t *testing.T, w *waitWorld, env map[string]any, code int) 
 }
 
 func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a dead loop found at start is stopped, delivered and retired", func(t *testing.T) {
 		w := deadLoopWorld(t)
 
@@ -783,6 +785,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 }
 
 func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("two loops spawned at once step once and the loser's waiter writes no failed", func(t *testing.T) {
 		release := make(chan struct{})
 		blocked := func(fx *loopFixture, traceID string, req ChildRequest) error {
@@ -897,6 +900,7 @@ func TestUntilStop_LoserWaitsOnWinner(t *testing.T) {
 // TestLoopReadFailuresLogOncePerEpisode asserts a read the loop watchdog or the waiter repeats on every wake warns at its first failure, logs Debug while it keeps failing and logs one Info when it reads again.
 // It captures the process-global logger at Debug, so it does not run in parallel.
 func TestLoopReadFailuresLogOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		failure  string

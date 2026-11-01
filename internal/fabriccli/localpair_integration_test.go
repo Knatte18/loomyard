@@ -1,5 +1,3 @@
-//go:build tier1
-
 // localpair_integration_test.go drives the local-only pair verbs of the fabric CLI over one real hub: `add --local`, the push that skips a local pair's branches, and the local add's refusal over an ordinary pair.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -14,11 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_LocalPairScenario adds a local pair, pushes from it and tries a local add over an ordinary pair's kept branch.
 // Steps run serially in this order over one hub.
 func TestRunCLI_LocalPairScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // refusal_test.go proves RefusedByGate and RefusedBefore pin the correct layer against real errors
 // driven from real verbs against real hubs — one gate refusal per reachable Check member, the two
 // negative properties that make the matching trustworthy rather than merely permissive, and
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // driveContainmentGateRefusal drives a real containment refusal through UnwireJunctions: a junction
@@ -132,6 +131,7 @@ func driveDirtinessGateRefusal(t testing.TB, h *hubforge.Hub, slug string) error
 // TestRefusedByGate proves RefusedByGate matches a real gate refusal for each of the three reachable
 // Check members, one driven scenario per member.
 func TestRefusedByGate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("Containment", func(t *testing.T) {
 		t.Parallel()
 
@@ -178,6 +178,7 @@ func TestRefusedByGate(t *testing.T) {
 // A helper proved only on its positive cases could still pass with an overly loose substring match —
 // these are the cases that would catch that.
 func TestRefusedByGate_Negatives(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("OrdinaryErrorMatchesNoCheck", func(t *testing.T) {
 		t.Parallel()
 
@@ -236,6 +237,7 @@ func TestRefusedByGate_Negatives(t *testing.T) {
 // the mandatory "check failed" exclusion actually earns its keep against a gate refusal sharing the
 // identical reason text.
 func TestRefusedBefore(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("RemovesOwnDirtyMessage", func(t *testing.T) {
 		t.Parallel()
 

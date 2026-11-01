@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_bootstrapwiring_test.go covers bootstrap behaviours that are correct in their own helper
 // and were wrong in production anyway, which is the one shape a Tier 1 test over that helper can
 // never catch: a helper nothing calls.
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // plantFrictionNote writes a friction note named name inside loc's Tier 2 friction directory --
@@ -51,6 +50,7 @@ func plantFrictionNote(t *testing.T, loc *lymcwd.Location, name string) string {
 // Every behavior here is the regression guard for a helper that was correct and unit-tested and still wrong in production, because nothing called it;
 // only a test through the real bootstrap tells the two states apart.
 func TestSmokeStepBootstrapWiring(t *testing.T) {
+	tiergate.Require(t, 2)
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)

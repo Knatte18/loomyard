@@ -1,5 +1,3 @@
-//go:build tier1
-
 // delivery_test.go covers the hub delivery over a hubforge hub with a pair, reed states seeded on disk and the worktree wiring replaced by a stub.
 
 package creelcli
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pairSlug = hubforge.TemplatePairSlug
@@ -246,6 +245,7 @@ func pauseRecordPath(t *testing.T, path string) string {
 }
 
 func TestHubDelivery(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	newHub := func(t *testing.T) (*hubforge.Hub, string, string) {
@@ -630,6 +630,7 @@ func TestHubDelivery(t *testing.T) {
 // An unusable recorded anchor, which fails the resolve for another reason than not being a git repository, still fails the call.
 // It is not parallel: logcapture.CaptureVerbose swaps the process-global logger, and its rows assert on the captured lines.
 func TestHubDelivery_SkipsAWorktreeThatNoLongerResolves(t *testing.T) {
+	tiergate.Require(t, 1)
 	newHub := func(t *testing.T) (*hubforge.Hub, string, string) {
 		hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
 		return hub, hub.PrimeWorktree(), hub.PairCodeWorktree(pairSlug)

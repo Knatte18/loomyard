@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prreview_session_test.go covers the PR-Review row's interactive session over a fake session runner: what it starts it under, when it reuses, resumes, stops and restarts it, and the fake and helpers the other PR-Review tests share.
 
 package landingshed
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakePRSessions is a prSessions that records every start and stop and tracks which strands are live.
@@ -102,6 +101,7 @@ func assertSessionCounts(t *testing.T, deps Deps, starts, stops int) {
 }
 
 func TestPRReview_Session(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	githubOrigin := Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}
@@ -345,6 +345,7 @@ func TestPRReview_Session(t *testing.T) {
 }
 
 func TestPRReview_NoStopsTheRecordedSessionBeforeDroppingTheRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	record := &pullrequest.Record{Number: 7, StrandGUID: "g-live", SessionID: "sess-old"}

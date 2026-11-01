@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd.
@@ -70,6 +68,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // hubLocation returns a *lymcwd.Location standing in for a real hub's prime.
@@ -114,6 +113,7 @@ func stateDirFor(t *testing.T, target string) string {
 //
 //testtiming:keep pins the mode, stateDir, stencilsDir and reed-seam values per mode, which the stencils-dir and runner tests covering its blocks do not assert
 func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Hub", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
@@ -222,6 +222,7 @@ func TestWire_SelectsModeAndWiresItsFields(t *testing.T) {
 // explaining why, and that the refusal happens before any config is loaded (an empty hub, no module
 // config on disk anywhere, still refuses on the flag alone).
 func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -242,6 +243,7 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 // The told directory must exist on disk, since wiring stats it at the boundary.
 // The standalone subtests set the process environment and so are not t.Parallel.
 func TestWire_StencilsDirFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsoluteHonouredInHubMode", func(t *testing.T) {
 		t.Parallel()
 		hub := t.TempDir()
@@ -312,6 +314,7 @@ func TestWire_StencilsDirFlag(t *testing.T) {
 // instruction render, after the run lock and substrate boot. The boundary stat goes through the
 // same cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := t.TempDir()
 	loc := hubLocation(t, hub, "code", ".")
@@ -344,8 +347,9 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // directory with the tmux key pointed at a path that is never created, so sessionSubstrateLocked's own
 // session probe fails at process lookup and nothing is ever spawned. A fresh CLI receiver then wires
 // again -- picking up the seeded config -- and drives the same entry point. This is what keeps this
-// untagged test inside the Test Tier Purity Invariant.
+// tier0 test inside the Test Tier Purity Invariant.
 func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *testing.T) {
+	tiergate.Require(t, 0)
 	target := t.TempDir()
 	setStandaloneStateRoot(t)
 
@@ -412,6 +416,7 @@ func TestWireStandalone_RunnerReachesPublicEntryPointWithoutToldPathError(t *tes
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which the mode test covering its blocks never reads back
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	sentinelDir := t.TempDir()
 	logger.SetDurableSinkDir(sentinelDir)
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -454,6 +459,7 @@ func seedGitRepositoryRoot(t *testing.T, dir string) string {
 // internal/cliwire/cliwire_test.go's TestRepositoryRootOf and TestModule_ResolveStandaloneTarget in
 // batch 1; this is burler's own end-to-end composition regression left behind.
 func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
 	subDir := filepath.Join(repoRoot, "src")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -479,6 +485,7 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 // internal/cliwire's own tests assert only their local fixtures, and every wiring_test.go case that
 // used to touch the nested-geometry and target-resolution messages is deleted above.
 func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	if wireModule.Name != "burler" {
 		t.Errorf("wireModule.Name = %q; want %q", wireModule.Name, "burler")
 	}
@@ -632,6 +639,7 @@ func (h halfHandle) Stop() error { return nil }
 //
 //testtiming:keep the round-driving rows pin the run verb's flag mapping, the fixer's gating on the review and the envelope, which no other test reaches
 func TestRunCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -865,10 +873,11 @@ fixer-report-path: reviews/fixer-report.md
 //
 // The scanned file set widened to include internal/standalonegeom's production files, reached by a relative glob from this package's directory, when the spawn moved into internal/reedengine: that package is also standalone's own engine, so the never-touches-the-hub-watchdog property is no longer structurally obvious from this package's own files alone.
 // This is the guard _mill/discussion.md's watchdog-seam-lives-in-reedengine decision asks for in place of leaving the boundary unpinned.
-// This test spawns nothing and stays untagged.
+// This test spawns nothing and stays tier0.
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	matches, err := filepath.Glob("*.go")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEndedAfter against a shuttlefake.Engine (newest stop event, no stop event, missing events file, a ParseEvents error, the load-turn offset).
 // Tier 1: no git, only local fakes.
 
@@ -14,12 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStrandLive pins StrandLive's live, not-live, absent and probe-error results.
 //
 //testtiming:keep pins StrandLive's own live/not-live/absent results and wrapped probe error, which the recover-batch tests only observe as a classification
 func TestStrandLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("guid present and live", func(t *testing.T) {
@@ -72,6 +72,7 @@ func TestStrandLive(t *testing.T) {
 
 // TestTurnEnded pins TurnEndedAfter over an engine without the SessionSignalParser capability: the newest ParseEvents event decides, and the offset skips the load turns.
 func TestTurnEnded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergescenario_integration_test.go drives the "lym fabric merge", "merge-in", "merge-stage" and "status" verbs end-to-end against one real hubforge pair, through fabriccli.RunCLIIn, as an ordered scenario.
 // It is the CLI-boundary counterpart to internal/fabricengine's own merge integration tests, which cover the same matrix at the Go-API layer:
 // it asserts the JSON envelope shape at the CLI boundary — exit codes, the sorted "conflicts" array, "partial" staying false on a conflict envelope, the fixed error text a pinned typed error surfaces through — and the optional "warnings" key that reports a mid-run parent merge while webster state sits under the anchor.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -184,6 +183,7 @@ func assertNoWarnings(t *testing.T, env envelope.Envelope) {
 // none, then a state file alone, then a finished outcome, then a malformed outcome; the state only accumulates.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_MergeScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

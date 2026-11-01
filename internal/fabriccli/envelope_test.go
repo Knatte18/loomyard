@@ -1,5 +1,3 @@
-//go:build tier0
-
 // envelope_test.go covers okWithRecord/errWithRecord/errConflictsWithRecord's shape directly against an io.Writer buffer: the fixed mutations/partial key pair on both the success and the failure path, the never-null "mutations" array, and each helper's own reserved-key override set.
 // It is a pure-data test with no git spawn and no hub fixture, per the Test Tier Purity Shared Decision — the end-to-end per-verb assertions that need a real hub live in the integration-tagged scenario files instead.
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // populatedMutations builds a non-empty fabricengine.Mutations value the way a verb's own recorder
@@ -28,6 +27,7 @@ func populatedMutations(hubRoot string) fabricengine.Mutations {
 //
 //testtiming:keep pins the exact envelope shape (a "mutations" array that is never null, "partial" false) that its covering integration test only sees through a real hub
 func TestOkWithRecord_SuccessShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		rec    fabricengine.Mutations
@@ -98,6 +98,7 @@ func TestOkWithRecord_SuccessShape(t *testing.T) {
 //
 //testtiming:keep pins the exact failure-envelope shape (a "mutations" array that is never null, "partial" derived from the record, no "refusal" key) that its covering integration test only sees through a real hub
 func TestErrWithRecord_FailureShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		rec         fabricengine.Mutations
@@ -143,6 +144,7 @@ func TestErrWithRecord_FailureShape(t *testing.T) {
 //
 //testtiming:keep pins the conflict envelope's literal "partial": false and never-null "conflicts" array against a non-empty record, which its covering integration test only sees through a real hub
 func TestErrConflictsWithRecord_ConflictEnvelopeShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		rec       fabricengine.Mutations

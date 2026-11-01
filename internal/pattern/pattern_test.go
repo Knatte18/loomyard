@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pattern_test.go exercises Directive's active check and its three directive variants.
 // Every test here uses only os.Stat (via the package's statFile seam),
 // os.MkdirAll/os.WriteFile inside a t.TempDir() (via newTestStencilsDir, seeding a hermetic stencils
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writePatternFile creates root/PATTERN.md with the given content, failing the test on any error.
@@ -44,6 +43,7 @@ func newTestStencilsDir(t *testing.T) string {
 // Against a stencils directory that carries none of the pattern stencils, each role fails loud with a non-nil error naming its missing stencil.
 // The role subtests run serially so the parent can compare their texts.
 func TestDirective_PerRole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	overview := "# PATTERN\n\n- PATTERN-one: a rule\nnot a bullet {{.x}} <!-- stray -->\n"
 	root := t.TempDir()
@@ -145,6 +145,7 @@ const declaredBullet = "- `PATTERN-cwd-resolution` — changes: resolve the cwd 
 // a stray directory without PATTERN.md, nothing at all, an empty or whitespace-only file (neither carries an overview to inline), PATTERN.md as a directory (not a readable index), a subdirectory of a root that holds the overview (Directive reads <root>/PATTERN.md and nothing else, so callers pass the worktree root, never an anchor path), an empty root, and an unknown or zero Role even when PATTERN is active.
 // An eager-read refactor that would break the engines' inactive-PATTERN fixtures fails here first, locally.
 func TestDirective_RendersNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	missingStencilsDir := filepath.Join(t.TempDir(), "does-not-exist")
 
@@ -270,6 +271,7 @@ func TestDirective_RendersNothing(t *testing.T) {
 // it depends on the OS and on whether the test process runs elevated (as root in a container POSIX permission bits are not enforced), and Windows has no equivalent lever at all.
 // The seams are process-global, so this test stays serial.
 func TestDirective_FilesystemFailuresAreErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	permissionDenied := func(op, name string) error {
 		return &os.PathError{Op: op, Path: name, Err: errors.New("permission denied")}
 	}
@@ -312,6 +314,7 @@ func TestDirective_FilesystemFailuresAreErrors(t *testing.T) {
 // The return-value assertion alone would be insufficient: an inactive PATTERN returns the same ("", nil) pair, so only the absence of the stat distinguishes the guard from a cwd-dependent lookalike.
 // The stat seam is process-global, so this test stays serial.
 func TestDirective_EmptyRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	statAttempted := false
 	original := statFile
 	statFile = func(name string) (os.FileInfo, error) {

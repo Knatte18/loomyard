@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resume_test.go drives the resume sequence, the revive sequence and the status read over the fakes pause_test.go declares.
 
 package tenderengine
@@ -21,9 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	pausedP1 := &shuttleengine.PausedError{Slug: "p1", Err: shuttleengine.ErrPaused}
 	// addLiveP1 adds a live entry of scope p1 owning sessions, the pause that lands after the lift's lock.
 	addLiveP1 := func(t *testing.T, e *env, sessions ...pauserecord.Session) {
@@ -410,6 +410,7 @@ func TestResume(t *testing.T) {
 }
 
 func TestRevive(t *testing.T) {
+	tiergate.Require(t, 0)
 	stalled := shuttleengine.SessionState{Name: shuttleengine.SessionIdleStalled, Cause: shuttleengine.SessionCauseAPIError}
 	strands := func(notes []SessionNote) []string {
 		names := []string{}
@@ -684,6 +685,7 @@ func TestRevive(t *testing.T) {
 }
 
 func TestStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := newPair("p1", "a")
 	e := newEnv(t, p)
 	base := e.clock.Now()

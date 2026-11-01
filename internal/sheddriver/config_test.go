@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go pins the shed config module: its load, the override checks and the two pure resolvers.
 
 package sheddriver
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeLayer writes document to path, creating its directory.
@@ -35,6 +34,7 @@ func intPointer(value int) *int {
 
 // TestLoadConfig verifies LoadConfig reads the template defaults when no layer holds shed.yaml, reads a base value and a local override, and refuses an invalid value naming the module.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	templateDefaults := Config{DriverKind: "go", Tackler: "haiku", TacklerTimeoutMin: 10, TacklerMaxSpawns: 4, Arbiter: "opus[high]", ArbiterTimeoutMin: 30, ArbiterMaxSpawns: 3}
 
@@ -88,6 +88,7 @@ func TestLoadConfig(t *testing.T) {
 
 // TestCheckOverride verifies CheckOverride accepts the inherit values and the valid ones, names the module it was told in each refusal, and that CheckLocalOverride marks a refusal ErrInvalid and lets a null through.
 func TestCheckOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -142,6 +143,7 @@ func TestCheckOverride(t *testing.T) {
 
 // TestResolveTackler verifies ResolveDriverKind and ResolveTackler take each key from the override, else shed.yaml, else the default, and that an unresolvable spec is refused naming the tackler key.
 func TestResolveTackler(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
@@ -239,6 +241,7 @@ func TestResolveTackler(t *testing.T) {
 
 // TestResolveArbiter verifies ResolveArbiter takes each key from the override, else shed.yaml, else the default, lets a set 0 spawn budget turn the arbiter off, and refuses an unresolvable spec naming the arbiter key.
 func TestResolveArbiter(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // end_test.go tests the end sequence over a scripted process table and a fake clock, so no row spawns a process or waits.
 
 package runproc
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // world is a scripted process table with a fake clock and a recorder of the signals sent to it.
@@ -132,6 +131,7 @@ func (w *world) ender(goos string, ancestors []int) ender {
 }
 
 func TestEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	setStart := func(pid int, startTime string) func(w *world) {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // lymcwd_test.go covers Location resolution against a real git checkout: Resolve's record-wins + strict cwd-equals-anchor gate, the marker-absent "." fallback, ResolveWorktree's gate-free counterpart used by internal callers that resolve geometry from a worktree root rather than an acting cwd, the stale-marker refusal, and the ErrNotAGitRepo path for directories outside a git repo.
 
 package lymcwd_test
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -65,6 +64,7 @@ func requireAnchorRel(t *testing.T, cwd, want string) {
 //
 // Steps: no marker recorded; a root (".") anchor; a subpath ("backend") anchor; a stale pre-rename marker; symlinked, linked, pruned and nested-repository starts; two worktrees with different own markers.
 func TestResolve_AnchorScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fix := gitkit.CopyRepo(t)
@@ -331,6 +331,7 @@ func TestResolve_AnchorScenario(t *testing.T) {
 
 // TestResolve_NotAGitRepo verifies that Resolve in a non-git temp directory returns ErrNotAGitRepo.
 func TestResolve_NotAGitRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	nonGitDir := t.TempDir()

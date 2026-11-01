@@ -1,5 +1,3 @@
-//go:build tier1
-
 // testmain_integration_test.go wires this package's integration test binary into the hermetic git
 // test environment: gitkit.HermeticGitEnv() runs once before any test, since parity_test.go builds a
 // real hub through internal/hubforge's fabric-fixture entry point and therefore spawns git (Test

@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // attachgeometry_integration_test.go proves the attach handover works against a real tmux, real pty, and real attaching client.
 // It also holds the pty harness the other tmux-tier suites attach through.
@@ -24,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // attachGeometryPTY is a running child process attached to a real pty of a fixed initial size, with
@@ -149,6 +150,7 @@ func waitForClientAttached(t *testing.T, e *Engine, timeout time.Duration) {
 // lands a working attach: attach is the operator's escape hatch, and this pins
 // that a pre-flight with no client size known is a working attach, not a broken one.
 func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := setupAttachGeometryFixture(t)
 
@@ -182,6 +184,7 @@ func TestAttachGeometry_DegradedPathStillAttaches(t *testing.T) {
 // a client attached to a session that is killed while the server lives on exits 0, and a client attached to a session whose server is killed exits non-zero.
 // A second session is created up front, so killing the first leaves the server running under tmux's exit-empty.
 func TestAttachGeometry_ClientExitStatusOnSessionEndAndServerShutdown(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := setupAttachGeometryFixture(t)
 	const otherSession = "attach-exit-status-other"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -11,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newCompactEnv builds a watchEnv in compact mode whose soft threshold sits above the hard cap, so only the hard cap and a request fire.
@@ -70,6 +69,7 @@ func (e *watchEnv) assertCompactCalls(n int) {
 }
 
 func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	var stateAtCompact State
 	e.injectHandoff()
@@ -96,6 +96,7 @@ func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
 }
 
 func TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -118,6 +119,7 @@ func TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote(t *testing.T) {
 }
 
 func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.injectHandoff()
 	if err := os.WriteFile(stencilstore.Path(e.stDir, compactStencilName), []byte("one\ntwo\n"), 0o644); err != nil {
@@ -133,6 +135,7 @@ func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {
 }
 
 func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, c := range []struct {
@@ -185,6 +188,7 @@ func TestCompact_CompletesOnBoundaryAfterEntryAndIdle(t *testing.T) {
 
 // TestCompact_BoundaryWithdrawsAStillQueuedCompact pins that a boundary found while the /compact inject has no outcome withdraws it, and that a typed one is left alone.
 func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	withdrawCall := "withdraw:" + fakeOrchStrandName
@@ -418,6 +422,7 @@ func TestCompact_BoundaryWithdrawsAStillQueuedCompact(t *testing.T) {
 }
 
 func TestCompact_CompletionRemovesOnlyASatisfiedCompactRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -471,6 +476,7 @@ func TestCompact_CompletionRemovesOnlyASatisfiedCompactRequest(t *testing.T) {
 }
 
 func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newCompactEnv(t)
@@ -501,6 +507,7 @@ func TestCompact_CycleReloadsPluginsThenPointerNamingTheNote(t *testing.T) {
 // TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped pins that the pointer the session-start hook delivered during a compact cycle is not typed, although the hook stamped its mark before the provider wrote the compaction boundary,
 // and that a mark older than the compaction baseline from before the cycle does not count as that delivery.
 func TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -556,6 +563,7 @@ func TestCompact_HookDeliveredPointerIsSkippedAndAStaleMarkIsTyped(t *testing.T)
 }
 
 func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, c := range []struct {
@@ -608,6 +616,7 @@ func TestCompact_TimeoutReturnsToIdleAndHoldsAutomaticTriggers(t *testing.T) {
 }
 
 func TestCompact_TimeoutHoldsSoftTrigger(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.cfg.SoftThresholdTokens = 500
 	e.cfg.ThresholdTokens = 5000
@@ -642,6 +651,7 @@ func TestCompact_TimeoutHoldsSoftTrigger(t *testing.T) {
 }
 
 func TestCompact_TimeoutDoesNotHoldRequestedCycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.reachCompacting()
 	e.clock.advance(100 * time.Second)
@@ -668,6 +678,7 @@ func TestCompact_TimeoutDoesNotHoldRequestedCycle(t *testing.T) {
 // TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary pins that a restart in compacting reads the saved compact's outcome and sends nothing again.
 // The compact is sent once more only when its id was never saved and creel journaled none.
 func TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -698,6 +709,7 @@ func TestCompact_RestartRetypesOnlyOnIdleWithNoBoundary(t *testing.T) {
 }
 
 func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -727,6 +739,7 @@ func TestCompact_RestartWithBoundaryReadTypesNothing(t *testing.T) {
 }
 
 func TestCompact_DeferTurnEndChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.s.usage["DEFER"] = 10
 	e.s.events = []shuttleengine.Event{stop("DEFER")}
@@ -740,6 +753,7 @@ func TestCompact_DeferTurnEndChangesNothing(t *testing.T) {
 }
 
 func TestCompact_DeferTurnEndWhileCompactingChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.reachCompacting()
 	e.s.events = append(e.s.events, stop("DEFER"))
@@ -753,6 +767,7 @@ func TestCompact_DeferTurnEndWhileCompactingChangesNothing(t *testing.T) {
 }
 
 func TestCycleRequest_ModeFollowsRequestNotConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("clear request in compact config clears", func(t *testing.T) {
 		e := newCompactEnv(t)
 		e.s.usage["a"] = 10
@@ -798,6 +813,7 @@ func TestCycleRequest_ModeFollowsRequestNotConfig(t *testing.T) {
 }
 
 func TestCompact_SoftCycleHonoursDefer(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.cfg.SoftThresholdTokens, e.cfg.ThresholdTokens = 500, 5000
 	e.w = e.newWatcher()
@@ -818,6 +834,7 @@ func TestCompact_SoftCycleHonoursDefer(t *testing.T) {
 }
 
 func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("note never written, timed from the note request's read", func(t *testing.T) {
 		e := newCompactEnv(t)
 		e.s.usage["a"] = 10
@@ -871,6 +888,7 @@ func TestCycleRequest_AbandonedWithinTimeoutOfRequest(t *testing.T) {
 }
 
 func TestCycleRequest_StaleMarkerRemovedAtFirstTick(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, write := range map[string]func(*watchEnv){
 		"old request": func(e *watchEnv) {
 			if err := RequestCycle(e.paths, CycleClear, e.clock.now.Add(-101*time.Second)); err != nil {
@@ -906,6 +924,7 @@ func TestCycleRequest_StaleMarkerRemovedAtFirstTick(t *testing.T) {
 // A requested start whose marker changed during the creel hold stays idle with the hold released and nothing posted.
 // A hard start enters its phase and leaves a newer marker pending, and a start bound to another strand saves nothing and leaves the marker pending.
 func TestCycleRequest_MarkerChangedDuringStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1042,6 +1061,7 @@ func assertIdleWithHoldReleased(t *testing.T, e *watchEnv) {
 }
 
 func TestCycleRequest_RestartedWatcherMeasuresFromTheRecordedReadTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCompactEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}

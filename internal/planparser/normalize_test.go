@@ -1,5 +1,3 @@
-//go:build tier0
-
 // normalize_test.go covers normalizeCardPath's three-case root:/// resolution rule directly: the
 // "//" worktree-root escape, a set root's join, the degenerate "root: ."
 // case,
@@ -17,9 +15,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNormalizeCardPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -121,6 +122,7 @@ func TestNormalizeCardPath(t *testing.T) {
 //
 //testtiming:keep pins normalizeCard's whole-card root join, nil-versus-empty preservation and classifier gate, which its covering tests do not assert
 func TestNormalizeCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -218,6 +220,7 @@ func pipeline(card *Card, root, cardKey string, surface map[string]map[string][]
 // A glyph-shaped ref, copied verbatim from a quarry answer, is never root:-joined or touched, including a bare-filename surface glyph such as "focus.go#" under a non-"." root:, which names the repository-root file.
 // A plain path and its own file self glyph land on the identical canonical string.
 func TestCanonicalizeCard_Target(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -252,6 +255,7 @@ func TestCanonicalizeCard_Target(t *testing.T) {
 
 // TestCanonicalizeCard_SurfaceRefs covers the pre-canonicalization surface lexeme canonicalizeCard records under the owning card's own key and the canonical string, so RewriteRefs can restore the exact byte-form a card's file carried: a rule-4 repository-root filename is recorded under its new canonical string; two cards spelling one canonical string differently each keep their own entry; and one card spelling one canonical ref two ways across two fields keeps one deduplicated lexeme (R6-13: recording only the last left RewriteRefs rewriting one bullet and leaving the other stale).
 func TestCanonicalizeCard_SurfaceRefs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const canonical = "internal/boardcli/list.go#"

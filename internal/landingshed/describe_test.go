@@ -1,5 +1,3 @@
-//go:build tier0
-
 // describe_test.go — tier0 unit tests for DescribeTable.
 // The stencil is a fixture written into a t.TempDir() stencils dir, so no shipped default is read;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
@@ -99,6 +98,7 @@ func requireDescribeLead(t *testing.T, table seatengine.Table, wantOutput string
 }
 
 func TestDescribeSpec_ComposesSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	in := newDescribeInputs(t)
 	parentName := "ab:cd:webster"
 	cfg := Config{Describe: "claude:sonnet[effort=high]", DescribeTimeoutMin: 7}
@@ -129,6 +129,7 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 }
 
 func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -167,6 +168,7 @@ func TestDescribeSpec_SkillsAndParentDirective(t *testing.T) {
 
 // TestDescribeSpec_RunRecordsOldestFirstLiveLast asserts the prompt lists each run record that exists, prior generations oldest first and the live one last, and `(none)` when none exists.
 func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -233,6 +235,7 @@ func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
 }
 
 func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	fields := map[string]func(*DescribeInputs){
 		"StencilsDir":        func(in *DescribeInputs) { in.StencilsDir = "" },
 		"DecisionRecordPath": func(in *DescribeInputs) { in.DecisionRecordPath = "" },
@@ -264,6 +267,7 @@ func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {
 }
 
 func TestDescribeSpec_UnparsableModelSpecIsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	in := newDescribeInputs(t)
 	_, err := DescribeTable(in, Config{Describe: "", DescribeTimeoutMin: 1}, modelspec.Registry{})
 	if err == nil || !strings.Contains(err.Error(), "describe model-spec") {
@@ -272,6 +276,7 @@ func TestDescribeSpec_UnparsableModelSpecIsError(t *testing.T) {
 }
 
 func TestNewDescriptionGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	write := func(name, content string) string {
 		p := filepath.Join(dir, name)

@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 package tmuxkit
 
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func requireTmux(t *testing.T) string {
@@ -29,6 +30,7 @@ func hasServer(tmux, key string) bool {
 }
 
 func TestSocket_KillsServerAtCleanup(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmux := requireTmux(t)
 
 	tests := []struct {
@@ -69,6 +71,7 @@ func TestSocket_KillsServerAtCleanup(t *testing.T) {
 }
 
 func TestSocket_LandsUnderMainDirectory(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmux := requireTmux(t)
 	tmpdir := os.Getenv("TMUX_TMPDIR")
 	if tmpdir == "" {
@@ -93,6 +96,7 @@ func TestSocket_LandsUnderMainDirectory(t *testing.T) {
 // TestSocket_StartsHermeticNonLoginServer pins the pre-started server: it ignores the operator's ~/.tmux.conf, starts non-login panes, outlives its last session, carries the kit's marker and inherits none of the variables a pane may not.
 // It sets HOME and the variables through t.Setenv, which are process-global state, so it does not call t.Parallel.
 func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmux := requireTmux(t)
 
 	home := t.TempDir()
@@ -145,6 +149,7 @@ func TestSocket_StartsHermeticNonLoginServer(t *testing.T) {
 }
 
 func TestPackageServer_OneKeyPerBinary(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmux := requireTmux(t)
 

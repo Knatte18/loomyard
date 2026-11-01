@@ -1,5 +1,3 @@
-//go:build tier0
-
 // porcelain_test.go covers parsePorcelainZ over literal `git status --porcelain -z` output, without spawning git.
 
 package verifytree
@@ -7,10 +5,13 @@ package verifytree
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins every porcelain record shape (renames, copies, special characters) over literal input, which the git-backed scenario covering its blocks reaches with one rename and one special name
 func TestParsePorcelainZ(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		out  string

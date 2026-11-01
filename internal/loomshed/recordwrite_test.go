@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recordwrite_test.go covers the Record-Write producer over a temp directory and fake seams: the files it writes from the board entry body, what it leaves alone on a resume, and its stops.
 
 package loomshed
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordWriteFixture is a Record-Write producer over a temp discussion directory, with a counting commit seam.
@@ -54,6 +53,7 @@ func mustRead(t *testing.T, path string) string {
 }
 
 func TestRecordWrite_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("FreshDirectoryGetsBothFilesAndOneCommit", func(t *testing.T) {

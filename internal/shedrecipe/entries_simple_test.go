@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_simple_test.go is table-driven over the value-only entries simpleEntryCases lists: a happy-path table and an under-filled-Env table, plus the entry-specific subtests entries_simple.go's own doc comments call out.
 
 package shedrecipe
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // nilFabricOpener is a landingshed pair-opener closure fake. It returns a typed-nil
@@ -231,6 +230,7 @@ func simpleEntryCases() []simpleEntryCase {
 }
 
 func TestSimpleEntries_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range simpleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			producer, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, tt.buildEnv(t))
@@ -290,6 +290,7 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 }
 
 func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range simpleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			for _, field := range tt.validatedFields {
@@ -323,6 +324,7 @@ func TestSimpleEntries_UnderfilledEnv(t *testing.T) {
 // shared under-filled-Env table: each nil in turn fails naming that field, and a WebsterDeps with
 // Batcher nil (newTestEnv's own default) still constructs successfully.
 func TestWebsterEntry_SeamFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	seamFields := []string{"WebsterDeps.Starter", "WebsterDeps.Stopper", "WebsterDeps.Engines", "WebsterDeps.RefMatcher"}
 	for _, field := range seamFields {
 		t.Run("Nil"+strings.ReplaceAll(field, ".", "_"), func(t *testing.T) {
@@ -355,6 +357,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 // TestWebsterEntry_GateKeys covers the "gates" key websterEntry resolves through resolveGateSpec:
 // an absent "gates" constructs (the shipped row's own ungated shape), and a named validator is rejected by resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
 func TestWebsterEntry_GateKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsentGateConstructs", func(t *testing.T) {
 		producer, err := websterEntry(RowIdentity{Name: "Webster"}, Config{}, newTestEnv(t))
 		if err != nil {
@@ -380,6 +383,7 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 // rejection of a zero Deps wrapped with this package's own error-text prefix, not passed through
 // raw.
 func TestFinalizeEntry_LandingRejected(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	_, err := finalizeEntry(RowIdentity{Name: "row-name"}, Config{}, env)
 	if err == nil {
@@ -391,6 +395,7 @@ func TestFinalizeEntry_LandingRejected(t *testing.T) {
 }
 
 func TestFrictionReflectEntry_NilClosureRejected(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	env.ReflectFriction = nil
 	producer, err := frictionReflectEntry(RowIdentity{Name: "Friction-Reflect"}, Config{}, env)

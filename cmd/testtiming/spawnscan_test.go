@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -7,6 +5,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -109,6 +109,9 @@ func TestPlain(t *testing.T) { t.Helper() }
 
 	fixtureTier2Tests = "//go:build tier2\n\npackage p\n\nimport \"testing\"\n\nfunc TestTier2Tier(t *testing.T) { t.Helper() }\n"
 
+	// A file whose test opens with a tier2 Require, the form every real test file uses.
+	fixtureRequireTier2Tests = "package p\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\nfunc TestRequireTier2(t *testing.T) {\n\ttiergate.Require(t, 2)\n}\n"
+
 	// A tier0 file counts as untagged: its tests are judged whatever they reference.
 	fixtureTier0Tests = "//go:build tier0\n\npackage p\n\nimport \"os\"\nimport \"testing\"\n\nfunc TestTier0Tier(t *testing.T) { _, _ = os.Executable() }\n"
 
@@ -128,6 +131,7 @@ func writeFixture(t *testing.T, dir, name, body string) {
 }
 
 func TestScanSpawns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -139,6 +143,7 @@ func TestScanSpawns(t *testing.T) {
 	writeFixture(t, pkgDir, "tier2linux_test.go", fixtureTier2LinuxTests)
 	writeFixture(t, pkgDir, "tier2_test.go", fixtureTier2Tests)
 	writeFixture(t, pkgDir, "tier0_test.go", fixtureTier0Tests)
+	writeFixture(t, pkgDir, "requiretier2_test.go", fixtureRequireTier2Tests)
 	writeFixture(t, filepath.Join(kitRoot, "gitonlykit"), "gitonlykit.go", fixtureGitOnlyKit)
 	writeFixture(t, filepath.Join(kitRoot, "gokit"), "gokit.go", fixtureGoKit)
 	writeFixture(t, filepath.Join(kitRoot, "quietkit"), "quietkit.go", fixtureQuietKit)
@@ -175,6 +180,7 @@ func TestScanSpawns(t *testing.T) {
 		"TestTier2LinuxTier":     outOfProcess,
 		"TestTier2Tier":          outOfProcess,
 		"TestTier0Tier":          {},
+		"TestRequireTier2":       outOfProcess,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("scanSpawns =\n%+v\nwant\n%+v", got, want)

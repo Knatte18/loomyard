@@ -1,5 +1,3 @@
-//go:build tier0
-
 // layer_test.go — unit tests for derived fields (layer.go).
 //
 // ComputeLayers depth assignment and RenderOrder.
@@ -12,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestComputeLayers(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		tasks     []boardengine.Task
@@ -152,6 +152,7 @@ func TestComputeLayers(t *testing.T) {
 //
 //testtiming:keep pins the bucket order, the task-before-note order and the ID sort within a bucket, which the render goldens do not assert
 func TestRenderOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		tasks []boardengine.Task

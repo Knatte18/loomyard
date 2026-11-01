@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hubissues_test.go covers Repo's calls against httptest servers, so no test reaches real token resolution or the network.
 
 package hubissues_test
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/hubissues"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -94,6 +93,7 @@ func newIssueServer(t *testing.T, status int, respBody string, log *captureLog) 
 }
 
 func TestOpen_RefusesNonGitHubURL(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const local = "/srv/git/hub-repo.git"
 
@@ -106,6 +106,7 @@ func TestOpen_RefusesNonGitHubURL(t *testing.T) {
 
 // TestListOpenIssues_PaginatesAndExcludesPullRequests follows the Link header across two pages, drops the pull request, and asserts the repository's own path and the open filter.
 func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var mu sync.Mutex
 	var paths []string
@@ -154,6 +155,7 @@ func TestListOpenIssues_PaginatesAndExcludesPullRequests(t *testing.T) {
 // TestListOpenIssues_PausedPageGetsItsOwnDeadline holds the second page under a hub pause and checks the held page still completes inside its own deadline.
 // It sets environment variables and installs the process-wide pause gate, so it does not run in parallel.
 func TestListOpenIssues_PausedPageGetsItsOwnDeadline(t *testing.T) {
+	tiergate.Require(t, 0)
 	const perRequest = 400 * time.Millisecond
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())
@@ -219,6 +221,7 @@ func TestListOpenIssues_PausedPageGetsItsOwnDeadline(t *testing.T) {
 // TestListIssueComments_PaginatesOldestFirst follows the Link header across two pages, asserts the comments path with the created-ascending sort, and carries bodies and creation times over in order;
 // a rejected response surfaces its message.
 func TestListIssueComments_PaginatesOldestFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("TwoPagesInOrder", func(t *testing.T) {
 		t.Parallel()
@@ -285,6 +288,7 @@ func TestListIssueComments_PaginatesOldestFirst(t *testing.T) {
 
 // TestGetIssue_ReportsPullRequestAndClosedState checks that GetIssue returns a pull request and a closed issue without excluding either.
 func TestGetIssue_ReportsPullRequestAndClosedState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	log := &captureLog{}
 	server := newIssueServer(t, http.StatusOK,
@@ -306,6 +310,7 @@ func TestGetIssue_ReportsPullRequestAndClosedState(t *testing.T) {
 
 // TestCommentAndClose_SendsCommentThenClose drives both state reasons and checks the order and payloads of the two requests.
 func TestCommentAndClose_SendsCommentThenClose(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		completed bool
@@ -343,6 +348,7 @@ func TestCommentAndClose_SendsCommentThenClose(t *testing.T) {
 
 // TestCommentAndClose_FailedCommentSkipsClose checks that a rejected comment never reaches the close.
 func TestCommentAndClose_FailedCommentSkipsClose(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	log := &captureLog{}
 	server := newIssueServer(t, http.StatusForbidden, `{"message":"Forbidden thing"}`, log)
@@ -359,6 +365,7 @@ func TestCommentAndClose_FailedCommentSkipsClose(t *testing.T) {
 
 // TestCommentAndClose_FailedCloseNamesPostedComment checks that a close failing after a posted comment says so.
 func TestCommentAndClose_FailedCloseNamesPostedComment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var count atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -395,6 +402,7 @@ func (f failingTransport) RoundTrip(*http.Request) (*http.Response, error) { ret
 
 // TestCalls_TokenNotResolvable checks that every call surfaces an unresolvable token as such.
 func TestCalls_TokenNotResolvable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	client := github.NewClient(&http.Client{Transport: failingTransport{err: githubclient.ErrTokenUnresolvable}})
 	repo := hubissues.New(client, repoOwner, repoName)

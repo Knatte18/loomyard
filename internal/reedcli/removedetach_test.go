@@ -1,5 +1,3 @@
-//go:build tier0
-
 // removedetach_test.go pins `reed remove --detach`'s retiring mark and the status verb's `retiring` key through a fake engine seam.
 // It spawns nothing and drives no tmux.
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeStrandOps records the calls the down, remove and status verbs make, in order.
@@ -65,6 +64,7 @@ func newFakeCLI(t *testing.T, f *fakeStrandOps) (*reedCLI, *[]string) {
 }
 
 func TestRemoveDetach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -129,6 +129,7 @@ func TestRemoveDetach(t *testing.T) {
 
 // TestRemove_UnknownGUID swaps the package-level pidAlive in its --wait-pid row, so it does not call t.Parallel.
 func TestRemove_UnknownGUID(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -167,6 +168,7 @@ func TestRemove_UnknownGUID(t *testing.T) {
 }
 
 func TestStatus_ReportsRetiringPerStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	c, _ := newFakeCLI(t, &fakeStrandOps{status: reedengine.StatusResult{
 		Session: "s",

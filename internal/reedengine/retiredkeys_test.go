@@ -1,5 +1,3 @@
-//go:build tier0
-
 // retiredkeys_test.go pins that a reed.json still carrying the retired display keys fixedRows, shrinkWhenWaitingOnChild and size, the retired strand key contentRows and the retired anchors below-parent and top, keeps loading with all ignored.
 // It decodes exactly like one without them, and a rewrite of it writes own-window.
 
@@ -10,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const retiredKeysState = `{
@@ -47,6 +47,7 @@ func loadStateFromJSON(t *testing.T, doc string) (string, *ReedState) {
 
 //testtiming:keep pins a reed.json still carrying the retired anchors, display keys, the size object and the strand's contentRows loading as own-window with them ignored, and a rewrite writing own-window; its covering tests run this code without asserting it
 func TestLoadState_RetiredDisplayKeysIgnoredAndLayoutUnchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	oldDir, old := loadStateFromJSON(t, retiredKeysState)
 	_, current := loadStateFromJSON(t, currentKeysState)
 

@@ -1,6 +1,4 @@
-//go:build tier0
-
-// tiertags_test.go enforces the tier-tag half of `PATTERN-test-speed`: every test file holding a test function carries exactly one `tierN` build tag, and no test file names a retired tier spelling.
+// tiertags_test.go enforces the tier half of `PATTERN-test-speed`: every test function opens with `tiergate.Require` naming its tier, the test functions of one file name one tier, and no test file carries a tier build tag or a retired tier spelling.
 // The scan parses each file, so a function inside a string literal is no function of the file.
 
 package main
@@ -18,14 +16,15 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// tierTagNames are the build tags that name a test tier, one per tier.
+// tierTagNames are the build tags that named a test tier before the run-time selector; no test file carries one now.
 var tierTagNames = []string{"tier0", "tier1", "tier2", "tier3"}
 
-// retiredTierSpellings are the tags that named tiers before the `tierN` tags, each paired with the tier tag that replaced it.
-// No tier command sets them, so a constraint naming one selects its file for no tier.
+// retiredTierSpellings are the tags that named tiers before the `tierN` tags, each paired with the tier it named.
 var retiredTierSpellings = map[string]string{"integration": "tier1", "tmux": "tier2", "llm": "tier3"}
 
 // holdsTestFunction reports whether the name is a `Test`, `Benchmark`, `Fuzz` or `Example` function that go test runs, which `TestMain` is not.
@@ -44,104 +43,99 @@ func holdsTestFunction(name string) bool {
 	return false
 }
 
-// admittedTiers returns the tier tags the constraint can be true under when only that one tier tag is set, a platform term set either way.
-func admittedTiers(expr constraint.Expr) []string {
-	if expr == nil {
-		return nil
-	}
-	var admitted []string
-	for _, tier := range tierTagNames {
-		for _, platformTerms := range []bool{false, true} {
-			compiles := expr.Eval(func(tag string) bool {
-				switch {
-				case tag == tier:
-					return true
-				case slices.Contains(tierTagNames, tag):
-					return false
-				}
-				return platformTerms
-			})
-			if compiles {
-				admitted = append(admitted, tier)
-				break
-			}
+// testFunctions returns the file's top-level functions that go test runs.
+func testFunctions(file *ast.File) []*ast.FuncDecl {
+	var tests []*ast.FuncDecl
+	for _, decl := range file.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && holdsTestFunction(fn.Name.Name) {
+			tests = append(tests, fn)
 		}
 	}
-	return admitted
+	return tests
 }
 
-// firstRetiredTierSpelling returns the first retired tier spelling the constraint names, left to right, or "" when it names none.
+// firstTierTerm returns the first tier tag or retired tier spelling the constraint names, left to right and whatever its polarity, or "" when it names none.
 // It walks the expression tree because Eval short-circuits, which would skip an operand to the right of a false term.
-func firstRetiredTierSpelling(expr constraint.Expr) string {
+func firstTierTerm(expr constraint.Expr) string {
 	switch e := expr.(type) {
 	case *constraint.TagExpr:
-		if _, retired := retiredTierSpellings[e.Tag]; retired {
+		if _, retired := retiredTierSpellings[e.Tag]; retired || slices.Contains(tierTagNames, e.Tag) {
 			return e.Tag
 		}
 	case *constraint.NotExpr:
-		return firstRetiredTierSpelling(e.X)
+		return firstTierTerm(e.X)
 	case *constraint.AndExpr:
-		if found := firstRetiredTierSpelling(e.X); found != "" {
+		if found := firstTierTerm(e.X); found != "" {
 			return found
 		}
-		return firstRetiredTierSpelling(e.Y)
+		return firstTierTerm(e.Y)
 	case *constraint.OrExpr:
-		if found := firstRetiredTierSpelling(e.X); found != "" {
+		if found := firstTierTerm(e.X); found != "" {
 			return found
 		}
-		return firstRetiredTierSpelling(e.Y)
+		return firstTierTerm(e.Y)
 	}
 	return ""
 }
 
-// tierTagFailure returns the failure line for a test file whose tags break the one-tier-tag rule, or "" when the file passes.
-func tierTagFailure(rel string, data []byte) string {
+// tierFailure returns the failure line for a test file that breaks the tier rule, or "" when the file passes.
+func tierFailure(rel string, data []byte) string {
 	file, err := parser.ParseFile(token.NewFileSet(), rel, data, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return fmt.Sprintf("%s: does not parse: %v", rel, err)
 	}
-	expr := buildConstraint(file)
-	tiers := admittedTiers(expr)
-	holdsTest := false
-	for _, decl := range file.Decls {
-		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Recv == nil && holdsTestFunction(fn.Name.Name) {
-			holdsTest = true
-			break
+	if term := firstTierTerm(buildConstraint(file)); term != "" {
+		if tier, retired := retiredTierSpellings[term]; retired {
+			return fmt.Sprintf("%s: its constraint names the retired tier tag `%s`; drop the term and open each test function with tiergate.Require for %s", rel, term, tier)
 		}
+		return fmt.Sprintf("%s: its constraint names the tier tag `%s`, which splits the package's test binary by tier; drop the term and open each test function with tiergate.Require", rel, term)
 	}
-	retired := firstRetiredTierSpelling(expr)
-	switch {
-	case retired != "":
-		return fmt.Sprintf("%s: its constraint names the retired tier tag `%s`, which no tier command sets; use `%s`", rel, retired, retiredTierSpellings[retired])
-	case holdsTest && len(tiers) == 0:
-		return fmt.Sprintf("%s: holds a test function but its constraint names no tier tag; give it one `tierN` tag", rel)
-	case holdsTest && len(tiers) > 1:
-		return fmt.Sprintf("%s: holds a test function but its constraint admits %s; give it the one `tierN` tag of the tier that runs it", rel, strings.Join(tiers, " and "))
+	tiers := map[int]bool{}
+	for _, fn := range testFunctions(file) {
+		if strings.HasPrefix(fn.Name.Name, "Example") {
+			return fmt.Sprintf("%s: %s is an Example function, which cannot select its tier; write it as a Test function", rel, fn.Name.Name)
+		}
+		tier, ok := impactset.RequiredTier(file, fn)
+		if !ok {
+			return fmt.Sprintf("%s: %s does not open with tiergate.Require(t, N) naming its tier", rel, fn.Name.Name)
+		}
+		tiers[tier] = true
+	}
+	if len(tiers) > 1 {
+		var named []string
+		for tier := range tiers {
+			named = append(named, fmt.Sprintf("tier%d", tier))
+		}
+		sort.Strings(named)
+		return fmt.Sprintf("%s: its test functions name %s; keep one tier per file and move the others to a file of their own", rel, strings.Join(named, " and "))
 	}
 	return ""
 }
 
-// TestTierTags_OneTagPerTestFile fails for a test file that holds a test function without exactly one tier tag, and for a test file naming a retired tier spelling.
+// TestTierTags_OneTierPerTestFile fails for a test function that does not open with tiergate.Require, for a test file whose functions name two tiers, and for a test file whose constraint names a tier tag or a retired tier spelling.
 //
 //lym:guard
-func TestTierTags_OneTagPerTestFile(t *testing.T) {
+func TestTierTags_OneTierPerTestFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
-		if failure := tierTagFailure(f.Rel, f.Data); failure != "" {
+		if failure := tierFailure(f.Rel, f.Data); failure != "" {
 			failures = append(failures, failure)
 		}
 	})
-	scankit.RequireFloor(t, scanned, 1000, "tier tag guard")
+	scankit.RequireFloor(t, scanned, 1000, "tier guard")
 	sort.Strings(failures)
 	if len(failures) > 0 {
 		t.Errorf("`PATTERN-test-speed` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 
-func TestTierTagFailure_FixtureSources(t *testing.T) {
+func TestTierFailure_FixtureSources(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
-	const testFunc = "package p\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"
-	const guardFunc = "package p\n\nimport \"testing\"\n\n//lym:guard\nfunc TestX(t *testing.T) {}\n"
+	const header = "package p\n\nimport (\n\t\"testing\"\n\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\n"
+	const tier0Func = header + "func TestX(t *testing.T) {\n\ttiergate.Require(t, 0)\n}\n"
+	const tier1Func = header + "func TestY(t *testing.T) {\n\ttiergate.Require(t, 1)\n}\n"
 	const mainOnly = "package p\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) { os.Exit(m.Run()) }\n\nfunc helper() {}\n"
 	const literalOnly = "package p\n\nconst src = \"func TestX(t *testing.T) {}\"\n"
 
@@ -150,26 +144,26 @@ func TestTierTagFailure_FixtureSources(t *testing.T) {
 		source   string
 		wantFail bool
 	}{
-		{"UntaggedTestFunction", testFunc, true},
-		{"Tier0TestFunction", "//go:build tier0\n\n" + testFunc, false},
-		{"TwoTierTestFunction", "//go:build tier2 || tier3\n\n" + testFunc, true},
-		{"OldSpellingOnlyTestFunction", "//go:build tmux && !windows\n\n" + testFunc, true},
-		{"IntegrationOnlyTestFunction", "//go:build integration\n\n" + testFunc, true},
-		{"RetiredSpellingRightOfTierTerm", "//go:build tier1 && integration\n\n" + testFunc, true},
-		{"GuardWithIntegrationTerm", "//go:build tier0 || integration\n\n" + guardFunc, true},
-		{"NegatedRetiredSpellingWithoutTest", "//go:build !tmux\n\n" + mainOnly, true},
-		{"UntaggedMainAndHelpers", mainOnly, false},
-		{"NegatedTierCompanion", "//go:build !tier1\n\n" + mainOnly, false},
-		{"Tier2WithPlatformTerm", "//go:build tier2 && !windows\n\n" + testFunc, false},
-		{"Tier0WithPlatformTerm", "//go:build tier0 && windows\n\n" + testFunc, false},
+		{"RequiredTestFunction", tier0Func, false},
+		{"TestFunctionWithoutRequire", "package p\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n", true},
+		{"RequireNotFirst", header + "func TestX(t *testing.T) {\n\tt.Parallel()\n\ttiergate.Require(t, 0)\n}\n", true},
+		{"BenchmarkWithRequire", header + "func BenchmarkX(b *testing.B) {\n\ttiergate.Require(b, 0)\n}\n", false},
+		{"ExampleFunction", "package p\n\nfunc ExampleX() {}\n", true},
+		{"TwoTiersInOneFile", tier0Func + "\nfunc TestY(t *testing.T) {\n\ttiergate.Require(t, 1)\n}\n", true},
+		{"TierTag", "//go:build tier1\n\n" + tier1Func, true},
+		{"TierTagBesidePlatformTerm", "//go:build tier2 && !windows\n\n" + tier1Func, true},
+		{"NegatedTierTagOnSupport", "//go:build !tier1\n\n" + mainOnly, true},
+		{"RetiredSpelling", "//go:build integration\n\n" + tier1Func, true},
+		{"PlatformTermOnly", "//go:build !windows\n\n" + tier1Func, false},
+		{"MainAndHelpers", mainOnly, false},
 		{"FunctionInsideStringLiteral", literalOnly, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := tierTagFailure("p/a_test.go", []byte(tt.source))
+			got := tierFailure("p/a_test.go", []byte(tt.source))
 			if (got != "") != tt.wantFail {
-				t.Errorf("tierTagFailure(%q) = %q; want failure %v", tt.name, got, tt.wantFail)
+				t.Errorf("tierFailure(%q) = %q; want failure %v", tt.name, got, tt.wantFail)
 			}
 		})
 	}

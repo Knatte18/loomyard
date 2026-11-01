@@ -1,5 +1,3 @@
-//go:build tier1
-
 // warpbinding_reconcile_integration_test.go proves Topology.Reconcile's once-per-hub warp-URL
 // binding backfill (reconcile.go's reconcileWarpBinding): the recorded/present/diverged/skipped/
 // deferred outcome taxonomy, that the check runs exactly once per Reconcile call regardless of how
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // clonedHubFixture bundles the pieces newClonedHubFixture builds: the resolved clone geometry, the
@@ -134,6 +133,7 @@ func writeAndCommitBinding(t *testing.T, boardDir, url string) {
 // and no pair result carries a binding-related detail — the binding is a repo-wide fact, never
 // reported per-pair.
 func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -167,6 +167,7 @@ func TestReconcile_BacksFillsBindingOnce(t *testing.T) {
 // the backfill still writes the record exactly once and reports it exactly once at the repo-wide
 // level, leaving the per-pair results untouched.
 func TestReconcile_BacksFillsOnceOnMultiWorktreeHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -196,6 +197,7 @@ func TestReconcile_BacksFillsOnceOnMultiWorktreeHub(t *testing.T) {
 // TestReconcile_NormalizedRecordReportsPresent asserts that a record differing from the warp origin
 // only by a trailing ".git" normalizes equal and reports "present", not "diverged".
 func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -220,6 +222,7 @@ func TestReconcile_NormalizedRecordReportsPresent(t *testing.T) {
 // overwritten, reports "diverged" with both URLs named in the detail, and Reconcile still returns a
 // nil error.
 func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -256,6 +259,7 @@ func TestReconcile_DivergentRecordIsLeftUntouched(t *testing.T) {
 // (still "diverged") but collapse to the same string under warpURLTransportIdentity, which lowercases
 // unconditionally — the same shape a real scheme-vs-scp-form transport swap produces.
 func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -284,6 +288,7 @@ func TestReconcile_TransportOnlyDifferenceIsAdvisory(t *testing.T) {
 // worktree, the outcome is "deferred", no binding file is written, and the unrelated file is neither
 // committed nor pushed: it remains untracked and the board's HEAD is unchanged.
 func TestReconcile_DirtyBoardDefersWrite(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -320,6 +325,7 @@ func TestReconcile_DirtyBoardDefersWrite(t *testing.T) {
 // TestReconcile_NoWarpOriginIsSkipped asserts that after removing the warp side's origin remote, the
 // outcome is "skipped" with an empty detail and Reconcile still returns a nil error.
 func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -346,6 +352,7 @@ func TestReconcile_NoWarpOriginIsSkipped(t *testing.T) {
 // retry (a backfill whose push failed, then succeeding on the next pass) is covered at the CLI seam by
 // TestRunCLI_ReconcileBacksFillsWarpBinding and TestRunCLI_ReconcileBackfillFailureIsNonFatal instead.
 func TestReconcile_UnpushedRetryPushesOnPresent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -375,6 +382,7 @@ func TestReconcile_UnpushedRetryPushesOnPresent(t *testing.T) {
 // This requires no production change; it exists so a future unwire edit cannot quietly delete the
 // record.
 func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)
@@ -406,6 +414,7 @@ func TestUnwire_LeavesWarpBindingInPlace(t *testing.T) {
 // the board root permanently, and every subsequent reconcile on a hub predating the binding reported
 // "deferred" forever.
 func TestReconcile_BoardLockArtifactDoesNotDeferBackfill(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := newClonedHubFixture(t)

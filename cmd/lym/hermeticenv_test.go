@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hermeticenv_test.go enforces the Hermetic Git Test Environment Invariant: every test package
 // whose tests spawn git — directly or via the fixture helpers now living in gitkit and hubforge —
 // must run under gitkit.HermeticGitEnv(), wired via a TestMain, or be named on an allowlist with a
@@ -18,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedNonHermetic is the Hermetic Git Test Environment Invariant allowlist, with
@@ -92,6 +91,7 @@ type pkgHermeticStatus struct {
 //
 //lym:guard
 func TestHermeticGitEnv_GitSpawningPackagesHaveTestMain(t *testing.T) {
+	tiergate.Require(t, 0)
 	var fileEntries, dirEntries []scankit.Entry
 	for _, e := range allowedNonHermetic {
 		if strings.HasSuffix(e.Key, "_test.go") {

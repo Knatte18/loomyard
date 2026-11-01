@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mouse_test.go exercises mouseOption's validate/normalize contract: valid on/off inputs (in every
 // case/whitespace variant) resolve to the canonical lowercase form,
 // and every other input — including the empty string — errors rather than silently defaulting.
@@ -8,7 +6,10 @@ package reedengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestMouseOption(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		raw     string

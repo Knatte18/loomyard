@@ -1,5 +1,3 @@
-//go:build tier0
-
 // judge_test.go tables runCircling and runMilestone against a same-package
 // fakeJudgeShuttle: the happy path (spec construction — Role, Model/Effort passthrough, OutputFiles
 // — plus a valid scripted verdict file) and every fail-safe branch (Run error, non-done outcome,
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func newTestStencilsDir(t *testing.T) string {
@@ -58,6 +57,7 @@ func (f *fakeJudgeShuttle) Run(spec shuttleengine.Spec) (shuttleengine.Result, e
 // TestSpawnedRoles_SkillAndParentDirective tables every spawned prompt (circling and milestone judge, targeting)
 // against a told parent name and the no-parent variant, asserting the directive and the role's skill on the spec.
 func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	const parentName = "mill:parent"
 	const noParentLine = "No parent is recorded for this run."
 	dir := t.TempDir()
@@ -113,6 +113,7 @@ func TestSpawnedRoles_SkillAndParentDirective(t *testing.T) {
 }
 
 func TestRunCircling(t *testing.T) {
+	tiergate.Require(t, 0)
 	verdictContent := `---
 verdict: CIRCLING
 rationale: the same nil-check finding recurs in rounds 2 and 4
@@ -279,6 +280,7 @@ rationale: the same nil-check finding recurs in rounds 2 and 4
 }
 
 func TestRunMilestone(t *testing.T) {
+	tiergate.Require(t, 0)
 	verdictContent := `---
 verdict: STOP
 rationale: the same two findings oscillate every round

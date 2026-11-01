@@ -1,5 +1,3 @@
-//go:build tier0
-
 // jsonhelp_test.go asserts the --json help schema at multiple levels of the lym command tree.
 // Each row drives the run() seam with --json and validates that the captured output is valid JSON matching the {name, short, commands, flags} schema.
 // It also confirms that hidden and meta flags are absent from the flags array.
@@ -15,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // helpJSON mirrors the cmdJSON schema produced by clihelp.renderCmdJSON.
@@ -71,6 +71,7 @@ func commandNames(cmds []helpJSONCmd) map[string]bool {
 // TestJSONHelp_Schema asserts "--json" help exits 0 and produces valid JSON with the expected schema fields at the root, a verb module, a module with one verb and a leaf verb, with or without --help.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestJSONHelp_Schema(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -171,6 +172,7 @@ func TestJSONHelp_Schema(t *testing.T) {
 // The read-only classifier's rule that a trailing `--json` is a help form does not hold for it, so a new entry is a reviewed change against that rule.
 // The pinned verbs are the generic shed `status` verb under each recipe mount, which only reads.
 func TestOwnJSONFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := newRoot()

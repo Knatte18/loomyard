@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_test.go covers the gate attempt loop end to end, driven over the package's existing
 // fakeReed/fakeEngine fakes, newFixture, and the fakeClock/multiStepClock
 // seams — hermetic, untagged: it spawns no external process, builds no real fixture hub, and never
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // appendEventsLine appends line (with a trailing newline) to path, standing in for the agent's next
@@ -66,6 +65,7 @@ func repromptCaptureSequence(findingsPath string, n int) []string {
 //
 //testtiming:keep pins that a gate passing on the first Done sends nothing and charges no attempt, that it reports one gate span the closure's length without writing it through the memoised verdict, that a zero GateSpec leaves Result.Gate nil, and that both clean the run dir
 func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		gated bool
@@ -148,6 +148,7 @@ func TestGate_FirstDoneSettlesWithoutReprompt(t *testing.T) {
 //
 //testtiming:keep pins that the re-prompt is a single line naming the findings file, that an entry's own renderer replaces the default line, and that the findings file holds the failed attempt's findings
 func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
+	tiergate.Require(t, 0)
 	customReprompt := func(findingsPath string) string { return "custom line: open " + findingsPath }
 	tests := []struct {
 		name string
@@ -240,6 +241,7 @@ func TestGate_FailsOnceThenPassesOnNextTurn(t *testing.T) {
 // fault from a gate closure, whether it is the only entry or a later one after an earlier entry
 // passed, fails the run as an ordinary error, sends no re-prompt, and charges no attempt or failure.
 func TestGate_ClosureError(t *testing.T) {
+	tiergate.Require(t, 0)
 	wantErr := errors.New("gate infrastructure fault")
 	fault := func() (GateResult, error) { return GateResult{}, wantErr }
 	pass := func() (GateResult, error) { return GateResult{Passed: true}, nil }
@@ -308,6 +310,7 @@ func TestGate_ClosureError(t *testing.T) {
 //
 //testtiming:keep pins that every exit with no live session finalizes through its own branch with the gate run once, a failed verdict, and no re-prompt or attempt charged
 func TestGate_NoLiveSessionDonePaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	liveness := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, StartupTimeoutS: 0}
 	tests := []struct {
 		name          string
@@ -394,6 +397,7 @@ func TestGate_NoLiveSessionDonePaths(t *testing.T) {
 //
 //testtiming:keep pins that evaluateGate memoizes within an attempt, returning the same pointer without re-running the closure
 func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
+	tiergate.Require(t, 0)
 	callCount := 0
 	gate := func() (GateResult, error) {
 		callCount++
@@ -423,6 +427,7 @@ func TestGate_EvaluateOncePerAttempt_Memoized(t *testing.T) {
 //
 //testtiming:keep pins that a failed re-prompt send ends the loop without a retry and charges no attempt or rework span, and that an invalid rendered line sends nothing
 func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		sendTextErr   error
@@ -490,6 +495,7 @@ func TestGate_SendFailsMidLoop_EndsLoopWithAttemptsSoFar(t *testing.T) {
 //
 //testtiming:keep pins that a deadline expiring or a session lost after one re-prompt runs the gate once more through its own Done, with Attempts still honest at one and the rework span closed at the run's end
 func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
+	tiergate.Require(t, 0)
 	live := liveStrandStatus(true)[0]
 	notTracked := reedengine.StatusResult{Strands: nil}
 	tests := []struct {
@@ -588,6 +594,7 @@ func TestGate_DeadlineExpiresBetweenAttempts(t *testing.T) {
 //
 //testtiming:keep pins that AttachGated and AttachIfLiveGated gate a resumed run exactly as a fresh one is gated and starts its gate spans afresh, that plain Attach leaves Result.Gate nil, and that the recorded fork authorization, not the attaching spec, chooses the gate closure and the fork audit
 func TestAttach_GateThreading(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		gated bool
@@ -686,6 +693,7 @@ func TestAttach_GateThreading(t *testing.T) {
 // TestGate_WaitMarkAroundEntry pins that a gate entry is marked on screen and on disk while its closure runs and unmarked on every path out,
 // and that a failing SetWaitMark changes neither the verdict nor the error the closure produced.
 func TestGate_WaitMarkAroundEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -852,6 +860,7 @@ func resumeOldestLive(t *testing.T, path string, at time.Time) {
 // TestGate_HoldsItsBoundaryWhileCovered pins that a gated Wait evaluates no gate closure and types nothing while a pause covers the run's own session, by that session's slug, and does both after the resume.
 // The re-prompt of a failing gate spends one attempt, a closure's pending send is sent per arrival, and an expiry probe still finalizes a covered run whose writer is off the boundary.
 func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const pendingLine = "carry on"
@@ -1049,6 +1058,7 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 // No gate send is typed until a turn end follows that turn start, the engine reports the turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read the turn in flight;
 // all but the turn end restore the boundary and evaluate the gate.
 func TestGate_WaitsForIdleWriter(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		interrupted bool
@@ -1107,6 +1117,7 @@ func TestGate_WaitsForIdleWriter(t *testing.T) {
 
 // TestGate_UnsentRepromptRetries covers a re-prompt that cannot be delivered: busy or unlanded, it spends no attempt and is re-sent on a later tick, a writer turn that starts meanwhile cancels it, its idle wait and submit window end by the run deadline, and a re-prompt that stays undelivered is retried until the run deadline.
 func TestGate_UnsentRepromptRetries(t *testing.T) {
+	tiergate.Require(t, 0)
 	const never = 24 * time.Hour
 	tests := []struct {
 		name string

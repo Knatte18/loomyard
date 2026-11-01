@@ -1,5 +1,3 @@
-//go:build tier0
-
 // destroy_test.go covers the gate's hermetic logic: everything destroy.go's pipeline and ownership
 // resolvers do that needs no git, per the discussion's Hermetic tier split. isRegisteredLinkedWorktreeIn,
 // isAnyWorktreeOf, primaryWeftBranch, and every dirtiness probe all spawn git and belong to batch 7's
@@ -22,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGate_CheckOrdering proves the pipeline stops at the first failing check, by submitting a
@@ -29,6 +28,7 @@ import (
 //
 //testtiming:keep the gate stopping at the first failing check, containment before ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_CheckOrdering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("ContainmentBeforeOwnership", func(t *testing.T) {
 		container := t.TempDir()
 		// target is outside container (fails containment) AND declares an ownership kind that would
@@ -70,6 +70,7 @@ func TestGate_CheckOrdering(t *testing.T) {
 //
 //testtiming:keep containment refusing "..", a sibling via "..", the container itself, "." and an outside absolute path through the gate; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Containment(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		buildTarget func(container string) string
@@ -216,6 +217,7 @@ func TestGate_Containment(t *testing.T) {
 // TestGate_SlugValidation proves a derived-slug request is refused before anything is touched, and
 // reported as a containment refusal.
 func TestGate_SlugValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		slug string
@@ -254,6 +256,7 @@ func TestGate_SlugValidation(t *testing.T) {
 //
 //testtiming:keep force satisfying dirtiness and nothing else, neither containment nor ownership; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_Force(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SatisfiesDirtiness", func(t *testing.T) {
 		container := t.TempDir()
 		target := filepath.Join(container, "child")
@@ -312,6 +315,7 @@ func TestGate_Force(t *testing.T) {
 //
 //testtiming:keep dirtinessNA("") being a refusal and not a pass; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_DirtinessNAEmptyReason(t *testing.T) {
+	tiergate.Require(t, 0)
 	container := t.TempDir()
 	target := filepath.Join(container, "child")
 	if err := os.Mkdir(target, 0o755); err != nil {
@@ -337,6 +341,7 @@ func TestGate_DirtinessNAEmptyReason(t *testing.T) {
 // loud failure" held only for targets that were there, which is exactly the case a new call site's
 // first test is least likely to cover.
 func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PathZeroOwnershipWithAbsentTarget", func(t *testing.T) {
 		container := t.TempDir()
 		req := pathRequest{
@@ -624,6 +629,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 //
 //testtiming:keep an absent target being a no-op success for every ownership kind before any check runs; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_AbsentTargetIsNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	container := t.TempDir()
 	absent := filepath.Join(container, "does-not-exist")
 
@@ -677,6 +683,7 @@ func TestGate_AbsentTargetIsNoOp(t *testing.T) {
 // TestGate_TokenRoundTrip proves createExclusiveDir refuses an already-existing path, and that the
 // token it returns authorises removal of exactly that path and no other.
 func TestGate_TokenRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	container := t.TempDir()
 	target := filepath.Join(container, "fresh")
 
@@ -711,6 +718,7 @@ func TestGate_TokenRoundTrip(t *testing.T) {
 
 // TestGate_LinkKinds covers ownedWiredJunction and ownedDriftedWiredJunction directly.
 func TestGate_LinkKinds(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 
 	t.Run("WiredJunctionRefusesRealDirectory", func(t *testing.T) {
@@ -818,6 +826,7 @@ func TestGate_LinkKinds(t *testing.T) {
 //
 //testtiming:keep surfaceRefusal matching a *destructiveRefusal always and an operational failure never; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_BestEffortPolicy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("OperationalFailureIsDiscarded", func(t *testing.T) {
 		operational := fmt.Errorf("git exited nonzero")
 		if got := surfaceRefusal(operational); got != nil {
@@ -852,6 +861,7 @@ func TestGate_BestEffortPolicy(t *testing.T) {
 //
 //testtiming:keep the mutation record gaining an entry only when an effect was observed, over removePath, removeLink and createExclusiveDir; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("RemovePath_AbsentTargetRecordsNothing", func(t *testing.T) {
 		container := t.TempDir()
 		absent := filepath.Join(container, "does-not-exist")
@@ -1080,6 +1090,7 @@ func TestGate_RecordOnlyOnObservedEffect(t *testing.T) {
 //
 //testtiming:keep the pair-warp ownership kind being declared rather than unset and refusing a non-linked target on ownership before dirtiness; coverage of its blocks by other tests does not show an assertion of this
 func TestGate_PairWarpRequestShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	container := t.TempDir()
 	target := filepath.Join(container, "task")
 	if err := os.Mkdir(target, 0o755); err != nil {
@@ -1105,6 +1116,7 @@ func TestGate_PairWarpRequestShape(t *testing.T) {
 // TestDirtyPathsOutside proves the porcelain reader returns only paths outside the own set,
 // including a first line whose leading status space was trimmed, a rename and a quoted path.
 func TestDirtyPathsOutside(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		porcelain string
@@ -1129,6 +1141,7 @@ func TestDirtyPathsOutside(t *testing.T) {
 }
 
 func TestInWorktreeStaging(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

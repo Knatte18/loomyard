@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_records_integration_test.go covers Remove's pre-archive record commit and its read-only refusal probe.
 // An uncommitted run record inside the record pathspec is committed and reaches the pushed archive tag;
 // dirt outside the pathspec still refuses without force, before any mutation, and proceeds with force;
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeFile creates the parent directories of path and writes content to it.
@@ -47,6 +46,7 @@ func showAtTag(t *testing.T, repoRoot, tag, rel string) string {
 
 // TestRemove_CommitsPendingRecordsIntoArchiveTag leaves an untracked stop report under the pair's drive-reports directory and asserts a no-force Remove commits it, with the Warp-SHA trailer, and that the pushed archive tag contains it.
 func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "records-commit"
@@ -85,6 +85,7 @@ func TestRemove_CommitsPendingRecordsIntoArchiveTag(t *testing.T) {
 
 // TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation puts a stray file outside the record pathspec in the sibling worktree and asserts a no-force Remove refuses with no tag, no commit and an unchanged sibling tip, while force proceeds.
 func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "records-stray"
@@ -136,6 +137,7 @@ func TestRemove_OutOfPathspecSiblingDirtRefusesBeforeAnyMutation(t *testing.T) {
 // TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit points the record commit at a sibling location that is a plain directory holding no record path, with the task worktree and branch both absent.
 // It asserts the commit is skipped without error: with nothing to commit, resolving the Warp-SHA trailer must not run git there.
 func TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "records-plain-sibling"
@@ -156,6 +158,7 @@ func TestCommitPendingRecords_NothingPresentCommitsNothingWithoutGit(t *testing.
 
 // TestRemoveRefusal_ProbeLeavesPairUntouched asks RemoveRefusal for each refusal kind and asserts it names the refusal, returns nil for a clean pair, and leaves the pair, both branches and the weft origin untouched.
 func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "records-probe"

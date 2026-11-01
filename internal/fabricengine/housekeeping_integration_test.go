@@ -1,5 +1,3 @@
-//go:build tier1
-
 // housekeeping_integration_test.go covers the hub stores' gc housekeeping end to end: Add and Remove write gc.auto=0 and maintenance.auto=false into both stores, Remove runs a foreground gc, and a gc failure is a warning that never fails the Remove.
 
 package fabricengine_test
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // hubStorePaths returns h's code store and records store working directories, the two places the housekeeping keys live.
@@ -101,6 +100,7 @@ func writeUnreachableObject(t *testing.T, dir, content string) string {
 // It is not parallel: it lowers fabricengine's gc threshold and captures the logger's output at Info, all process-global state.
 // hubforge's clones may or may not carry the keys, so each subtest unsets them in both stores right before the step whose write it checks.
 func TestStoreHousekeeping(t *testing.T) {
+	tiergate.Require(t, 1)
 	logs := logcapture.CaptureVerbose(t)
 
 	const slug = "gc-pair"

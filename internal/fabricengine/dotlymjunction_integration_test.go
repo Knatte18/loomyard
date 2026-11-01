@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dotlymjunction_integration_test.go covers the .lym junction lifecycle this batch introduces: wiring
 // creates a real warp↔weft junction and seeds both sides' git-exclude, unwiring reverses only the
 // warp-side wiring, and a pre-existing real warp-side .lym is adopted into the weft target rather
@@ -37,6 +35,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // resetDotLymJunction removes the prime pair's already-wired .lym junction so a test can exercise seedLymJunction's creation or adoption path against a genuinely unwired starting point, rather than observing WireJunctions's idempotent no-op branch against a hub hubforge.NewHub already wired.
@@ -55,6 +54,7 @@ func resetDotLymJunction(t *testing.T, l *lymcwd.Location, slug string) string {
 //
 //testtiming:keep wiring creating the .lym junction to the weft, seeding the warp and weft excludes and the warp "/.scratch" line, and unwiring removing them but the scratch line; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLymJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -142,6 +142,7 @@ func TestDotLymJunction_LifecycleWiresSeedsBothExcludesAndUnwires(t *testing.T) 
 //
 //testtiming:keep the weft exclude being seeded before the first write so .lym never shows as untracked dirt; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLymJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -173,6 +174,7 @@ func TestDotLymJunction_WeftExcludeSeededBeforeFirstWrite(t *testing.T) {
 //
 //testtiming:keep a pre-existing real .lym directory being moved into the weft target and replaced by a junction with a no-op second wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestDotLymJunction_AdoptsPreExistingRealDotLym(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -226,6 +228,7 @@ func TestDotLymJunction_AdoptsPreExistingRealDotLym(t *testing.T) {
 // present in the weft-side target aborts adoption with an error naming the colliding path and leaves
 // both sides untouched — the warp directory remains a real directory.
 func TestDotLymJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -299,6 +302,7 @@ func TestDotLymJunction_AdoptionCollisionAbortsAndLeavesBothSidesUntouched(t *te
 // indiscriminately would pass this test while silently destroying the refusal that keeps fabric from
 // choosing a winner between two files.
 func TestDotLymJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -372,6 +376,7 @@ func TestDotLymJunction_AdoptionMergesADirectoryPresentOnBothSides(t *testing.T)
 // never generalise beyond .lym, since that guard's whole purpose is never touching what might be the
 // user's hand-authored content.
 func TestDotLymJunction_AdoptionDoesNotOverreachIntoLymOrPattern(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	cases := []struct {

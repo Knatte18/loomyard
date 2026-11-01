@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_paste_test.go pins, against a REAL claude in a REAL tmux pane, the facts the paste path rests on:
 // an Enter right after reed's bracketed paste submits it, a slash command pasted that way starts no turn, and a long paste collapses into a placeholder from claudeengine.PasteCollapseMinChars characters.
 // It is the operator's check when Claude Code changes, and the plan's verify compiles it and never runs it.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pasteObservationWindow is how long the test waits for a pasted text's effect before reading it as absent.
@@ -75,6 +74,7 @@ func waitFor(condition func() bool) bool {
 // Both observations must equal Claude.PasteSubmits(), so a Claude Code release that turns the post-paste Enter into a newline fails here and names the constant to flip.
 // A text of claudeengine.PasteCollapseMinChars characters pasted with submit false shows a placeholder that OwnPastePlaceholder accepts for it, and one character shorter shows the text itself.
 func TestSmokePasteSubmitAndCollapse(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

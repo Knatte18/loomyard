@@ -1,5 +1,3 @@
-//go:build tier0
-
 // report_test.go covers `lym gate report`: the grouping and totals of run records, the filters, the date refusal and the tolerant record reader.
 
 package gatecli
@@ -15,9 +13,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGateReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	at := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)

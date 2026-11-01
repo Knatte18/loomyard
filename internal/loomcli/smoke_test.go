@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_test.go is the tagged smoke suite for the session bootstrap: the one thing nothing else in this package can catch, because it needs a real tmux server, a real detached driver process, and real advisory-lock interaction, not a hermetic fixture.
 // It follows internal/reedcli's own smoke suite conventions (see its smoke_test.go/smoke_lifecycle_test.go) -- a real wired hub via hubforge.NewHub, a real tmux binary resolved from PATH or an override env var, skipping outright when the multiplexer is absent -- adapted for loom's own shape: every verb here goes through the REAL BUILT cmd/lym binary as a genuine subprocess, never RunCLI in-process, because "lym loom start" spawns its detached driver via os.Executable(), which resolves to whatever binary is currently running -- an in-process RunCLI call would resolve that to the test binary itself, not a binary "loom drive" knows how to dispatch.
 //
@@ -41,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -332,6 +331,7 @@ func countStrands(t *testing.T, eng *reedengine.Engine, accept func(strandName s
 // the verb advancing the machine from an existing seed, then the same verb failing on a poisoned status file.
 // The second step builds on the status file the first leaves behind.
 func TestSmokeRunStandalone(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
@@ -476,6 +476,7 @@ func recordsPathspecStatus(t *testing.T, dir, relPath string) string {
 // two concurrent first bootstraps, the strand, driver and status file they leave, a second bootstrap, a crash-healed origin record, then the two rigged died-driver bootstraps.
 // The steps that rig a died driver kill any surviving driver first and clear the driver log, so each asserts on its own driver's log.
 func TestSmokeBootstrapLifecycle(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)

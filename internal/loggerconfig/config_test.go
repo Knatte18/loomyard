@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies logger.yaml's template, Load's degrading-absence and validation paths, and ConfigPath, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays spawn-free.
 
 package loggerconfig_test
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func seedConfig(t *testing.T, anchor, content string) {
@@ -28,6 +27,7 @@ func seedConfig(t *testing.T, anchor, content string) {
 }
 
 func TestLoad_ResolvesBounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const day = 24 * time.Hour
 	tests := []struct {
@@ -113,6 +113,7 @@ func TestLoad_ResolvesBounds(t *testing.T) {
 
 // TestLoad_InvalidValueErrorsNamingKey includes a day count too large for a time.Duration, which must error instead of overflowing MaxAge into a negative duration that would sweep every non-live trace.
 func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct{ key, value string }{
 		{"trace_retention_count", "0"},
@@ -156,6 +157,7 @@ func TestLoad_InvalidValueErrorsNamingKey(t *testing.T) {
 
 //testtiming:keep pins the exact config file path, which no covering test asserts
 func TestConfigPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	anchor := t.TempDir()
 	want := filepath.Join(anchor, "_lym", "config", "logger.yaml")

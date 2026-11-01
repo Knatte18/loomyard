@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedarbiter
 
 import (
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeShuttle is a scripted sheddriver.AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real arbiter would write its verdict.
@@ -255,6 +254,7 @@ const (
 // TestCall_SpawnPath covers the call for a stop no attempt has arbitrated yet, including the eligibility list.
 // Each eligible stop spawns exactly one run whose spec, attempt record, prompt and marker carry the expected values; every refused stop spawns nothing and writes no attempt directory.
 func TestCall_SpawnPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -491,6 +491,7 @@ func TestCall_SpawnPath(t *testing.T) {
 
 // TestCall_Rerun covers the call for a stop an attempt already arbitrated: it spawns nothing and returns or awaits that attempt's verdict.
 func TestCall_Rerun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -634,6 +635,7 @@ func TestCall_Rerun(t *testing.T) {
 
 // TestVerdictGate covers the gate the arbiter's started and attached runs carry: it fails a verdict file that does not read, such as a verbs item whose ": " makes it a map, and passes an absent file and one written in block scalars.
 func TestVerdictGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const title = `--title "D6 refined: card 9's scope"`
@@ -702,6 +704,7 @@ func TestVerdictGate(t *testing.T) {
 
 // TestCall_VerdictOutcomes covers how a spawned arbiter's end becomes the settled envelope.
 func TestCall_VerdictOutcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

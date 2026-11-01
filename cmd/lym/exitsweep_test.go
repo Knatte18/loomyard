@@ -1,5 +1,3 @@
-//go:build tier0
-
 // exitsweep_test.go covers notifyExitAndSweep's arm-gated sweep and exitSweepBounds' bounds choice.
 // Every case uses t.TempDir() fixtures and a redirected sink, so nothing arms a cwd-anchored sink.
 // The logger's sink directory and output are process-global state, so no test here runs in parallel.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const exitSweepDeadPID = 999999999
@@ -74,6 +73,7 @@ const invalidLoggerYAML = "trace_retention_count: 0\ntrace_retention_days: 14\n"
 
 // TestNotifyExitAndSweep asserts the sweep runs only for a process whose sink armed: a non-zero exit arms it, a zero exit arms it only after an Info record, and a quiet zero exit leaves aged traces alone.
 func TestNotifyExitAndSweep(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		code       int
@@ -119,6 +119,7 @@ func TestNotifyExitAndSweep(t *testing.T) {
 
 // TestExitSweepBounds asserts which retention bounds the sweep uses and how many Warn records an unusable logger.yaml produces: a redirected sink ignores the config, a valid config wins, an invalid one warns once and defaults, and an anchor without _lym defaults silently.
 func TestExitSweepBounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	defaults := logger.DefaultRetentionBounds()
 	tests := []struct {
 		name string

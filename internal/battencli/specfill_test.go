@@ -1,5 +1,3 @@
-//go:build tier0
-
 // specfill_test.go pins the run-identity fields batten's arming fills onto its Spec: RunID, StepsDir
 // and Routing. It calls specFor and loadRouting on a hand-populated receiver, so it spawns nothing.
 
@@ -15,10 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSpecFor_FillsRunIdentityForSlug verifies that a spec armed for a slug carries that slug as RunID, a StepsDir and ScratchDir under its .lym tree, batten's own routing and its own missing-status way forward, an empty FrictionDir since batten carries no agent friction directory, and, for the step verb, a non-nil BuildShed.
 func TestSpecFor_FillsRunIdentityForSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const wayForward = `way forward: "lym batten run task-a" creates the lifecycle's status file`

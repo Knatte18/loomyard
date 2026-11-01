@@ -1,5 +1,3 @@
-//go:build tier0
-
 // color_test.go covers the beam and worktree colour pickers, the sibling scan over the hub's settings files, and the luminance text colour.
 
 package vscode
@@ -13,9 +11,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPaletteStartsWithThePrimeGreen(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if palette[0] != PrimeColor || PrimeColor != "#1b5e20" {
 		t.Errorf("palette[0] = %s, PrimeColor = %s; want both #1b5e20", palette[0], PrimeColor)
@@ -23,6 +23,7 @@ func TestPaletteStartsWithThePrimeGreen(t *testing.T) {
 }
 
 func TestWorkspaceColorIsNoPaletteColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if slices.Contains(palette, WorkspaceColor) {
 		t.Errorf("palette %v holds WorkspaceColor %s; want it outside the palette, so no worktree picks it", palette, WorkspaceColor)
@@ -30,6 +31,7 @@ func TestWorkspaceColorIsNoPaletteColor(t *testing.T) {
 }
 
 func TestPickBeamColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -52,6 +54,7 @@ func TestPickBeamColor(t *testing.T) {
 }
 
 func TestPickWorktreeColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -102,6 +105,7 @@ func barSettings(t *testing.T, title, activity string) string {
 }
 
 func TestSiblingWorktreeColorsTakesSameProjectActivityColors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := t.TempDir()
 	const anchor = "sub"
@@ -125,6 +129,7 @@ func TestSiblingWorktreeColorsTakesSameProjectActivityColors(t *testing.T) {
 }
 
 func TestActivityBarColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := t.TempDir()
 	writeSettingsFile(t, hub, "w", ".", barSettings(t, PrimeColor, "#7D2D6B"))
@@ -137,6 +142,7 @@ func TestActivityBarColor(t *testing.T) {
 }
 
 func TestForeground(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		background string

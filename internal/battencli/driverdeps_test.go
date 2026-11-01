@@ -1,5 +1,3 @@
-//go:build tier0
-
 // driverdeps_test.go covers the seams batten fills the shed driver with: which are wired, which are left to remove their rule-table rows, and the paths and lock they name.
 
 package battencli
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBattenDriverDeps asserts a batten run's driver is armed with exactly the seams its rule table needs and no more.
@@ -28,6 +27,7 @@ import (
 //
 //testtiming:keep pins the wiring of the seams and paths without running a driver; the run tests step through the seams only along the paths they take
 func TestBattenDriverDeps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := newFakeReceiver(t, nil)
@@ -194,6 +194,7 @@ func TestBattenDriverDeps(t *testing.T) {
 
 // TestBattenConsumeAttempt asserts the consume hook refuses an attempt that is no positive number, naming the hand-back to the run's parent, before it reads any attempt directory.
 func TestBattenConsumeAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := &battenCLI{slug: "a-slug"}
@@ -214,6 +215,7 @@ func TestBattenConsumeAttempt(t *testing.T) {
 
 // TestBattenHandBackNotice asserts the hand-back router posts the row-stop line for a failed Land or Worktree-Teardown stop, nothing for a paused stop or a Land stop that honoured a pause, and the hand-back's own line for a stop at Run-Shed.
 func TestBattenHandBackNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

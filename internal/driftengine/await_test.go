@@ -1,5 +1,3 @@
-//go:build tier0
-
 // await_test.go — tier 0 tests for the Drift-Await producer over the fake Deps the baseline tests use.
 
 package driftengine
@@ -11,10 +9,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDriftAwait covers each Done and Stuck way out of the row, the wait on a held capture lock, awaited_at written on a passed capture, a deferral and the commit of the durable directory on every pass.
 func TestDriftAwait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const awaited = "2026-01-01T00:00:00Z"

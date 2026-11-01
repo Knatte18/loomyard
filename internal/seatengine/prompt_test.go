@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prompt_test.go covers the seat value maps, the include-filled prompts and the shuttle specs a table composes.
 
 package seatengine
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // promptGeometry returns a geometry whose stencils directory holds the shipped seat blocks and the test seat stencils.
@@ -42,6 +41,7 @@ func promptTable() Table {
 }
 
 func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	geom := promptGeometry(t)
 	table := promptTable()
@@ -281,6 +281,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 }
 
 func TestComposePrompt_RefusesAMarkerAbsentFromTheValueMap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	geom := promptGeometry(t)
 	writeStencil(t, geom.StencilsDir, "seat-test-undeclared", "Needs {{.undeclared_marker}}.\n{{template \"seat-directive-advisor\"}}\n")

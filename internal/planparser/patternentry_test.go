@@ -1,5 +1,3 @@
-//go:build tier0
-
 // patternentry_test.go covers the readers of a card's PATTERN entries: its fenced entry lines and the entry IDs its text names.
 
 package planparser
@@ -7,9 +5,12 @@ package planparser
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCardPatternEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -68,6 +69,7 @@ func TestCardPatternEntries(t *testing.T) {
 }
 
 func TestCardNamesPatternEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

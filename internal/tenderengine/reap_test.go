@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reap_test.go drives Reap over fake end seams and a scripted owner record, worktree list and process listing.
 
 package tenderengine
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reapResult is what a fake end seam answers for one owner or pid.
@@ -22,6 +21,7 @@ type reapResult struct {
 }
 
 func TestReap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	record := func(pid int, role string) runproc.Record {
 		return runproc.Record{PID: pid, Role: role, StartTime: fmt.Sprintf("s%d", pid)}

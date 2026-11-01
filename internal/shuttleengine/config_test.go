@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies shuttle.yaml's template parses, defaults resolve through LoadConfig, and
 // environment overrides + the template-fallback path behave the way reedengine's config tests
 // establish the pattern.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedLymConfig creates <tmpDir>/_lym/config/<module>.yaml with content, the
@@ -42,6 +41,7 @@ func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 //
 //testtiming:keep pins every shipped template default, which the BackgroundShellWaitMin table does not assert
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -139,6 +139,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 
 // TestLoadConfig_KeepWarmMaxReruns pins that a local layer sets the break-even, 0 turns the long wait off, and a negative value is refused with its way forward.
 func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -183,6 +184,7 @@ func TestLoadConfig_KeepWarmMaxReruns(t *testing.T) {
 
 // TestLoadConfig_RetiredClaudeKeys pins that the Claude keys moved to claude.yaml still load from an unreconciled layer and are dropped.
 func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -250,6 +252,7 @@ func TestLoadConfig_RetiredClaudeKeys(t *testing.T) {
 
 // TestMigrateConfig_RenamesDenyPython pins the claude_deny_python to deny_python rename, which keeps the value and comment.
 func TestMigrateConfig_RenamesDenyPython(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -303,6 +306,7 @@ func TestMigrateConfig_RenamesDenyPython(t *testing.T) {
 }
 
 func TestLoadConfig_EngineKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const templateLine = "engine: claude"
@@ -355,6 +359,7 @@ func TestLoadConfig_EngineKey(t *testing.T) {
 }
 
 func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		value   string
@@ -392,6 +397,7 @@ func TestLoadConfig_BackgroundShellWaitMin(t *testing.T) {
 }
 
 func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -452,6 +458,7 @@ func TestLoadConfig_SubmitSettleKeys(t *testing.T) {
 }
 
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	// Seed under a non-"shuttle" module name with a config whose
 	// poll_interval_ms differs from the template default, so a hardcoded
@@ -498,6 +505,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 }
 
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded template.
 

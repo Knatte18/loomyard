@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -7,10 +5,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins that the entry and cancel errors name the producer and engine, wrap the context error and read differently
 func TestEntryErrAndCancelErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cancelled, cancel := context.WithCancel(context.Background())
 	cancel()

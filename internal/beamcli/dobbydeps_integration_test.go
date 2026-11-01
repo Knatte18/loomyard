@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dobbydeps_integration_test.go pins the seams hubDobbyDeps fills, those that differ between a beam's dobby and the prime's and those it fills for both, over a hubforge hub.
 
 package beamcli
@@ -28,9 +26,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -136,6 +136,7 @@ func landingHub(t *testing.T) (*hubforge.Hub, dobbyengine.Deps) {
 }
 
 func TestHubDobbyDeps_LandsOnlyAFlaggedBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, deps := landingHub(t)
@@ -173,6 +174,7 @@ func TestHubDobbyDeps_LandsOnlyAFlaggedBeam(t *testing.T) {
 }
 
 func TestHubLandDeps_MarkReadyCommitsAnUncommittedFlaggedRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, _ := landingHub(t)
@@ -205,6 +207,7 @@ func TestHubLandDeps_MarkReadyCommitsAnUncommittedFlaggedRecord(t *testing.T) {
 }
 
 func TestHubDobbyDeps_ClearNotifyOnLandClearsTheHubBoardEntry(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, deps := landingHub(t)

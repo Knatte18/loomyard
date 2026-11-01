@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lockedcheck_test.go covers Shed.LockedCheck: a refusal under the run lock stops Run and Step before any producer call or status write.
 
 package shedengine
@@ -12,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLockedCheck_RefusesUnderTheRunLock covers Run and Step alike: a check error is returned matching both ErrLockedCheckRefused and the check's own error, no producer is called, the status bytes are unchanged, the check sees the run lock held, and a nil check drives the producer.
 func TestLockedCheck_RefusesUnderTheRunLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	errCheck := errors.New("a cancel is ending this run; way forward: wait for it to finish")
 

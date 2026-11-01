@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_tmux_test.go proves creel's delivery on a real tmux pane that runs a shell script standing in for a provider.
 // The script draws a ready marker and an input box line, echoes each line it reads and redraws idle, and a fake shuttle engine reads those frames.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -77,6 +76,7 @@ func (e *scriptProviderEngine) ReloadPluginsSequence() []shuttleengine.PaneInput
 // The strand carries the provider tag `script` and no `CreelHooks` mark, so it is a pane-mail strand.
 // A post is acknowledged and its carried line is typed into the pane, a privileged inject is typed and reported injected, and the log shows the events.
 func TestSmokeCreelFakeProviderPane(t *testing.T) {
+	tiergate.Require(t, 2)
 	// The strand name in the environment is process-global state, set by newSmokeHub.
 	smoke := newSmokeHub(t)
 	scriptPath := filepath.Join(t.TempDir(), "fake-provider.sh")

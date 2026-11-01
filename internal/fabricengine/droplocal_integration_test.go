@@ -1,5 +1,3 @@
-//go:build tier1
-
 // droplocal_integration_test.go proves DropLocal on a hubforge hub: a pair's local-only tips are tagged and its branches moved to origin's tips, or a dirty path refuses with nothing moved.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDropLocal covers a records branch and a code branch ahead of origin tagged and moved to origin's tips with the mutations recorded, and a dirty tracked path refusing with nothing tagged or moved.
 func TestDropLocal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("Branches ahead of origin are tagged and moved to origin's tips", func(t *testing.T) {

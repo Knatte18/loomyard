@@ -1,5 +1,3 @@
-//go:build tier0
-
 // payload_test.go couples each board payload command's `{…}` Use token to the payloadKeys its parser validates against.
 // It inspects the built cobra tree only and runs no command.
 
@@ -12,10 +10,13 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPayloadUse_MatchesDeclaredKeys asserts that every payload command's Use token spells exactly the keys its parser declares, markers and nested objects included.
 func TestPayloadUse_MatchesDeclaredKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // deliver_test.go pins delivery into panes through the fake seam: reminders, injects, the probe and sweep intervals, the removed-holder sweep and the chase clock.
 
 package creelengine_test
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // isProbeWait, isSweepWait and isChaseWait tell the waits of the delivery workers (1 to 8 seconds), the sweep (up to its 50-second ceiling) and the chasers (one to eight minutes) apart on the shared fake clock.
@@ -216,6 +215,7 @@ func seconds(n ...int) []time.Duration {
 }
 
 func TestScheduler_Reminders(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// awaitReminded waits until the journal holds count reminded records to receiver; the real-time deadline only bounds a failing test.
 	awaitReminded := func(t *testing.T, e *env, receiver string, count int) {
@@ -693,6 +693,7 @@ func TestScheduler_Reminders(t *testing.T) {
 
 // TestScheduler_Injects captures the process-global logger, so neither it nor its rows run in parallel.
 func TestScheduler_Injects(t *testing.T) {
+	tiergate.Require(t, 0)
 	inject := func(t *testing.T, e *env, sender creelengine.Sender, to, text string, ttl time.Duration, interrupt bool) int64 {
 		t.Helper()
 		result, err := e.store.Inject(sender, to, text, ttl, interrupt)
@@ -1395,6 +1396,7 @@ func TestScheduler_Injects(t *testing.T) {
 }
 
 func TestSweep_RemovedHolders(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	without := func(e *env, removed ...string) {
 		var kept []creelengine.Strand
@@ -1680,6 +1682,7 @@ func TestSweep_RemovedHolders(t *testing.T) {
 // A strand's waiter is answered once per claimable set, and only while no turn is in progress, whatever the input box holds.
 // The bell follows a set no waiter reaches, once per set, after the grace of 5 seconds or after a ring unanswered for 30.
 func TestScheduler_HookWake(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// bigBody is sized so two of its lines pass the claim's byte budget and each claim takes one message.
 	bigBody := strings.Repeat("x", 5000)
@@ -2591,6 +2594,7 @@ func (e *env) postMarked(t *testing.T, sender creelengine.Sender, receiver, text
 }
 
 func TestScheduler_Chases(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const creel = "ly:CREEL"
 	// seeded is a marked message from beta to alpha that alpha read, as journal lines a store folds at open.
@@ -3013,6 +3017,7 @@ func TestScheduler_Chases(t *testing.T) {
 // TestStore_ClaimLog pins the daemon log line of each hook delivery attempt and each bell send: its level, path, ids, echo ids, outcome and reason.
 // It is not parallel because it redirects the process-global logger.
 func TestStore_ClaimLog(t *testing.T) {
+	tiergate.Require(t, 0)
 	logs := logcapture.Capture(t)
 	logger.SetVerbosity(2)
 	bigBody := strings.Repeat("x", 5000)

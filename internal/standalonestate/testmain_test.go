@@ -1,5 +1,5 @@
 // testmain_test.go runs the test binary under tmux isolation through tmuxkit.Main.
-// It carries no build tag, so it compiles into every tag set.
+// It serves every tier's tests, since the package's one test binary holds them all.
 
 package standalonestate
 

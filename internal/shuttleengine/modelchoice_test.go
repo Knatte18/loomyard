@@ -1,5 +1,3 @@
-//go:build tier0
-
 // modelchoice_test.go verifies NewModelChoice maps a resolved model spec onto the neutral choice.
 
 package shuttleengine
@@ -8,10 +6,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNewModelChoice pins which Resolved fields and params reach ModelChoice and that an absent or unrelated param leaves nothing behind.
 func TestNewModelChoice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

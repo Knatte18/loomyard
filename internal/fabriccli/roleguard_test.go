@@ -1,5 +1,3 @@
-//go:build tier0
-
 // roleguard_test.go pins the sandboxed-role guard of the fabric command tree: which subcommands a task-session role may run, and which strand names the guard lets through.
 // It drives the built command tree against an empty directory, so a passing verb stops at its own worktree-resolution error and spawns nothing.
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +62,7 @@ func runUnderParent(t *testing.T, args ...string) (code int, out string) {
 
 // TestSandboxedRoleGuard sets the strand name with t.Setenv, so it names that process-global variable in place of t.Parallel.
 func TestSandboxedRoleGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		webster  = "ly:slug:webster"
 		recovery = "ly:slug:recovery"

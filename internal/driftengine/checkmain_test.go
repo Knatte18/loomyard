@@ -1,5 +1,3 @@
-//go:build tier0
-
 // checkmain_test.go — tier 0 tests for CheckMainCapture's admitted rows and each refusal's way forward.
 
 package driftengine
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckMainCapture covers each admitted row and state, a blocked status at another row, a moved HEAD, and a dirty tree at Drift-Baseline and at a Drift-Await halt.
 func TestCheckMainCapture(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	status := func(row string, state shedengine.State, reason string) shedengine.Status {

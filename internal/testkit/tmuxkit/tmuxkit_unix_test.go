@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // tmuxkit_unix_test.go holds the socket tests; tmux keeps its unix sockets under TMUX_TMPDIR, which Windows does not use.
 
@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestListSockets_OwnDirectoryOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
 		t.Fatal(err)
@@ -57,6 +59,7 @@ func TestListSockets_OwnDirectoryOnly(t *testing.T) {
 }
 
 func TestRemoveDeadSocket(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir, err := lymtemp.MkdirTemp(dirPrefix)
 	if err != nil {
@@ -96,6 +99,7 @@ func TestRemoveDeadSocket(t *testing.T) {
 
 // TestCheckSockets pins which sockets under a package's directory the end-of-package check names, and that afterRun reads them before its sweep removes them.
 func TestCheckSockets(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	newDir := func(t *testing.T) string {
 		t.Helper()

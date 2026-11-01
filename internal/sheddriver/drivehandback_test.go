@@ -1,5 +1,3 @@
-//go:build tier0
-
 // drivehandback_test.go — tier 0 tests for the shed driver's hand-back: the parent messages, the stop report and the park, over fake seams in a temp worktree.
 
 package sheddriver
@@ -12,10 +10,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDriveNotices pins what a hand-back tells its parent under each notify rule: the notice verbatim, the question line, the friction-failed done line and the run-id line, each ending in the tail.
 func TestDriveNotices(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const tail = " Answer briefly, then continue your task."
@@ -64,6 +65,7 @@ func TestDriveNotices(t *testing.T) {
 // TestDriveHandBack covers handBackRun over fake notify, orch-lookup and park seams in a temp worktree:
 // what the stop report holds, how a declined send, a failed send and a missing orch strand read, that the park runs after the report is written and its error is the hand-back's, and that a friction-failed done reports without parking.
 func TestDriveHandBack(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseHandBack := driveHandBack{

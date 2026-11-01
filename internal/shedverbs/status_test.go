@@ -1,5 +1,3 @@
-//go:build tier0
-
 // status_test.go covers the generic status body's both told absent-file dispositions,
 // StatusExtras merging and its un-re-prefixed error, the told decode prefix, the told lock-dir
 // boolean's effect over an as-yet-uncreated parent directory, and the --watch tail's rendering,
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -29,6 +28,7 @@ func statusTexts() VerbTexts {
 
 // TestStatusCmd_LastStepCarriesBuildIdentity checks last_step carries the identity keys, with binary_changed false since a test binary is unstamped.
 func TestStatusCmd_LastStepCarriesBuildIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	stepsDir := filepath.Join(t.TempDir(), "steps")
 	spec := seededStatusSpec(t, Hooks{})
 	spec.StepsDir = stepsDir
@@ -53,6 +53,7 @@ func TestStatusCmd_LastStepCarriesBuildIdentity(t *testing.T) {
 // error envelope. The status-lock path's parent already exists, matching the state both shipped
 // consumers are in whenever this disposition actually fires.
 func TestStatusCmd_AbsentFile_Refuse(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -83,6 +84,7 @@ func TestStatusCmd_AbsentFile_Refuse(t *testing.T) {
 // TestStatusCmd_AbsentFile_FoundFalse covers the non-refusing disposition: the success envelope
 // carries exactly the keys found, status_path and trace_dir, no core key and no extras key.
 func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -124,6 +126,7 @@ func TestStatusCmd_AbsentFile_FoundFalse(t *testing.T) {
 
 // TestStatusCmd_OwnJSONFlagRunsUnderGlobalJSONHelp mounts status under a root carrying clihelp's global --json, which never runs a command, and checks that status --json still runs: its local flag shadows the global one.
 func TestStatusCmd_OwnJSONFlagRunsUnderGlobalJSONHelp(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	spec := &Spec{
 		StatusPath:      paths.StatusPath,
@@ -146,6 +149,7 @@ func TestStatusCmd_OwnJSONFlagRunsUnderGlobalJSONHelp(t *testing.T) {
 
 // TestStatusCmd_StatusExtrasMerging covers a StatusExtras hook merging onto the four-key core.
 func TestStatusCmd_StatusExtrasMerging(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -180,6 +184,7 @@ func TestStatusCmd_StatusExtrasMerging(t *testing.T) {
 // TestStatusCmd_StatusExtrasErrorVerbatim covers a StatusExtras error reaching the error envelope
 // verbatim, with no re-prefixing.
 func TestStatusCmd_StatusExtrasErrorVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -209,6 +214,7 @@ func TestStatusCmd_StatusExtrasErrorVerbatim(t *testing.T) {
 
 // TestStatusCmd_DecodeErrorPrefixIsTold asserts the decode-error prefix is the told one.
 func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -236,6 +242,7 @@ func TestStatusCmd_DecodeErrorPrefixIsTold(t *testing.T) {
 
 // TestStatusCmd_AbsentLockDirReadsWithoutCreatingIt covers a status-lock path whose parent directory does not yet exist: the read reaches the told absent-file disposition and leaves the parent absent, even with EnsureStatusLockDir set, since status is a read.
 func TestStatusCmd_AbsentLockDirReadsWithoutCreatingIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	// The status lock's parent directory does not exist yet: nest it one level below the
 	// already-created temp dir so this test actually exercises a missing parent, rather than the
@@ -266,6 +273,7 @@ func TestStatusCmd_AbsentLockDirReadsWithoutCreatingIt(t *testing.T) {
 //
 //testtiming:keep pins the told label and the optional last and wait tails of the status line, which its covering test does not
 func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -294,6 +302,7 @@ func TestRenderStatusLine_LabelAndOptionalTails(t *testing.T) {
 //
 //testtiming:keep pins that the unavailable line is byte-stable across polls and starts with the told label, which its covering test does not
 func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {
+	tiergate.Require(t, 0)
 	a := UnavailableLine("loom")
 	b := UnavailableLine("loom")
 	if a != b {
@@ -306,6 +315,7 @@ func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {
 
 // TestPrintStatusLinesOnChange_LineSequences drives PrintStatusLinesOnChange through a finite polls count with an injected sleep and no wall-clock wait, covering the dedupe rule: only changes print, a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
 func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		polls []string
@@ -366,6 +376,7 @@ func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
 // absent status file returns the told disposition immediately instead of entering the tail (which
 // would otherwise hang the test on an infinite poll loop).
 func TestStatusCmd_WatchAgainstAbsentFile_ReturnsDispositionImmediately(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	if err := os.MkdirAll(filepath.Dir(paths.StatusLockPath), 0o755); err != nil {
 		t.Fatalf("mkdir status lock parent: %v", err)
@@ -390,6 +401,7 @@ func TestStatusCmd_WatchAgainstAbsentFile_ReturnsDispositionImmediately(t *testi
 // TestEnsureStatusLockDir_ErrorReusesToldPrefix asserts ensureStatusLockDir's own error text
 // reuses the told DecodeErrPrefix, reproducing loomcli's existing wording for loom's spec.
 func TestEnsureStatusLockDir_ErrorReusesToldPrefix(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	// A regular file where a directory must go forces MkdirAll to fail.
 	blocker := filepath.Join(dir, "blocker")
@@ -434,6 +446,7 @@ func seededStatusSpec(t *testing.T, hooks Hooks) *Spec {
 // TestStatusCmd_FoundEnvelope_GenericCore asserts the found envelope carries pause_reason, history_length,
 // interrupt_policy and trace_dir from the generic core, with an empty policy for a nil hook.
 func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		hook       func(row string) string
@@ -548,6 +561,7 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 // and a progress matching ProgressAt for the current producer, and null progress when Routing is
 // unarmed.
 func TestStatusCmd_FoundEnvelope_RunIDAndProgress(t *testing.T) {
+	tiergate.Require(t, 0)
 	routing := shedengine.Routing{
 		Entry: "Only",
 		Producers: []shedengine.ProducerDef{
@@ -587,6 +601,7 @@ func TestStatusCmd_FoundEnvelope_RunIDAndProgress(t *testing.T) {
 // TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly asserts the decode-failure and StatusExtras-error
 // envelopes carry trace_dir and no found key.
 func TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	decode := seededStatusSpec(t, Hooks{})
 	if err := os.WriteFile(decode.StatusPath, []byte("{not json"), 0o644); err != nil {
 		t.Fatalf("corrupt status file: %v", err)
@@ -618,6 +633,7 @@ func TestStatusCmd_ErrorEnvelopesCarryTraceDirOnly(t *testing.T) {
 // TestStatusCmd_TraceDirMatchesOverride asserts trace_dir echoes the sink override without
 // arming the sink. It never runs in parallel: the sink override is package-level state.
 func TestStatusCmd_TraceDirMatchesOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	logger.SetDurableSinkDir(dir)
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -639,6 +655,7 @@ func TestStatusCmd_TraceDirMatchesOverride(t *testing.T) {
 // TestRenderStatusLine_ProducerReasonReachesWait pins that a no-OnStuck Stuck's own Reason
 // travels from the producer through the persisted status into the rendered status line's wait tail.
 func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	const reason = "pull request created; awaiting review: https://github.com/Knatte18/loomyard/pull/280"
 	paths := newTestPaths(t)
 	shed := newFakeShed(paths, []shedengine.ProducerDef{{Name: "Publish", Producer: &funcProducer{
@@ -664,6 +681,7 @@ func TestRenderStatusLine_ProducerReasonReachesWait(t *testing.T) {
 // TestStatusCmd_WaitingNote_RunningOnly asserts the envelope carries waiting only for a running state with a non-empty note,
 // and that the hook never runs against a settled run.
 func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	calls := 0
 	gotProducer := ""
 	note := "the parent's review"
@@ -722,6 +740,7 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 
 // TestStatusCmd_WaitingErrorVerbatim covers a Waiting error reaching the error envelope verbatim.
 func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	wantErr := errors.New("waiting exploded")
 	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return "", wantErr }})
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
@@ -733,6 +752,7 @@ func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
 // TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note while it is non-empty, so the line changes when the wait starts or ends,
 // and survives a hook error.
 func TestStatusWatchLine_AppendsWaitingNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	note := "the parent's review"
 	var hookErr error
 	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return note, hookErr }})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landingdeps_verify_test.go covers the verify fields landingDeps tells landingshed:
 // the gate-call closures render from the hub's gate.yaml at call time, and VerifyDir is the shared verify directory.
 // It only writes files under t.TempDir(), so it stays Tier 1.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -38,6 +37,7 @@ func gateConfigWithTwoTiers() string {
 }
 
 func TestLandingDeps_VerifyCommandReadsPlanAtCallTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}

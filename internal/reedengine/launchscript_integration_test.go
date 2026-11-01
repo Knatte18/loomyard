@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 // launchscript_integration_test.go proves against a real tmux that sourcing a strand's launch script runs the same statements in the pane shell's own scope that typing them did.
 // The unit tests around panebin.go and spawn.go pin strings and files;
@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // readOrEmpty returns path's content, or "" when it cannot be read yet.
@@ -29,6 +30,7 @@ func readOrEmpty(path string) string {
 
 // TestLaunchScript_SourcedScriptRunsInThePaneShellScope adds a strand whose command writes a marker file, then checks the script's content, the command's effect, and that LYM_BIN and PATH still carry the prelude's values in the pane shell after the command returned.
 func TestLaunchScript_SourcedScriptRunsInThePaneShellScope(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newColdScratchEngine(t)
 

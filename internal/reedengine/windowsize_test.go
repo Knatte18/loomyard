@@ -1,5 +1,3 @@
-//go:build tier0
-
 // windowsize_test.go covers windowsize.go's geometry pins and the window-resized unpin.
 // Every case is driven through TmuxCmd's execHook seam (no live server, no external process spawn, no sleep), the shape generation_test.go and strand_test.go already use.
 
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // resizedUnpinCount is how many window-resized unpins one pinGeometryOptionsLocked run issues: two wherever set-hook exists, none on Windows.
@@ -60,6 +59,7 @@ func wantResizedUnpins(target string) [][]string {
 //
 //testtiming:keep pins the set-option calls issued to pin the geometry: the three global status formats, status 3 and the position on the session, the prime mark on the prime's session alone, window-size and no pane-border pin, no failure stopping the calls after it, and the window-resized unpin in both scopes on every watchdog value; its covering tests run this code without asserting it
 func TestPinGeometryOptionsLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AllOptionsIssued", func(t *testing.T) {
 		e := newTestEngine(t)
 		fake := installFakeTmux(t, e)

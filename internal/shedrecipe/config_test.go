@@ -1,13 +1,14 @@
-//go:build tier0
-
 package shedrecipe
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestConfigString(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		cfg      Config
@@ -42,6 +43,7 @@ func TestConfigString(t *testing.T) {
 }
 
 func TestConfigStringSlice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PresentStringSlice", func(t *testing.T) {
 		got, err := configStringSlice(Config{"k": []string{"a", "b"}}, "k", true)
 		if err != nil {
@@ -105,6 +107,7 @@ func TestConfigStringSlice(t *testing.T) {
 }
 
 func TestConfigBool(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		cfg      Config
@@ -137,6 +140,7 @@ func TestConfigBool(t *testing.T) {
 }
 
 func TestConfigInt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PresentInt", func(t *testing.T) {
 		got, err := configInt(Config{"k": 5}, "k", true)
 		if err != nil {
@@ -190,6 +194,7 @@ func TestConfigInt(t *testing.T) {
 }
 
 func TestConfigStringMap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PresentCorrectType", func(t *testing.T) {
 		got, err := configStringMap(Config{"k": map[string]any{"a": "1"}}, "k", true)
 		if err != nil {
@@ -236,6 +241,7 @@ func TestConfigStringMap(t *testing.T) {
 }
 
 func TestConfigMap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PresentCorrectType", func(t *testing.T) {
 		got, err := configMap(Config{"k": map[string]any{"a": "1"}}, "k", true)
 		if err != nil {
@@ -273,6 +279,7 @@ func TestConfigMap(t *testing.T) {
 
 //testtiming:keep pins the sorted-first key named in the refusal and the acceptance of empty and nil configs, which its covering test does not
 func TestConfigRejectUnknown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("OneUnrecognizedKey", func(t *testing.T) {
 		err := configRejectUnknown(Config{"bad": 1, "good": 1}, "good")
 		if err == nil {
@@ -313,6 +320,7 @@ func TestConfigRejectUnknown(t *testing.T) {
 }
 
 func TestConfigMapList(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsentIsNotPresent", func(t *testing.T) {
 		got, present, err := configMapList(Config{}, "k")
 		if err != nil || present || got != nil {

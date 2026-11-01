@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergein_integration_test.go covers MergeIn's scenario matrix against a real hubforge pair: both
 // sides clean, a warp-side conflict (the only side MergeIn can now conflict on), the already-up-to-date
 // fast paths, worktree-resolved conflicts via MergeContinue, MergeAbort, and the never-squashes
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newMergePairFixture builds a real hubforge pair anchored at anchor and the *fabricengine.Fabric
@@ -111,6 +110,7 @@ func setupCleanNonFastForward(t *testing.T, dir, branch, branchFile, currentFile
 // it neither side commits anything, and the Committed assertion below passes for the wrong reason —
 // which is exactly how this test used to false-green while MergeIn hardcoded Committed true.
 func TestMergeIn_BothSidesClean(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
@@ -154,6 +154,7 @@ func TestMergeIn_BothSidesClean(t *testing.T) {
 // weft side at all, so a weft-side conflict is not a shape it can produce any more — see the
 // merge-drops-weft task.
 func TestMergeIn_WarpConflicts(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
@@ -190,6 +191,7 @@ func TestMergeIn_WarpConflicts(t *testing.T) {
 // was a second, independent place the quoted form could fail. That arm is deleted along with the
 // weft's ability to conflict at all — see the merge-drops-weft task.
 func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -223,6 +225,7 @@ func TestMergeIn_NonASCIIConflictPaths_ReportedRawNotQuotedNotUnmergeable(t *tes
 // either and Committed is false — the pair advanced without any merge commit existing. AlreadyUpToDate
 // is likewise false: one side did move.
 func TestMergeIn_OneSideAlreadyUpToDate_OtherMerges(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -284,6 +287,7 @@ func hubRelForTest(t *testing.T, f *fabricengine.Fabric, target string) string {
 // TestMergeIn_BothSidesAlreadyUpToDate covers the degenerate no-op: AlreadyUpToDate true, an empty
 // mutation record, and no merge-state record written.
 func TestMergeIn_BothSidesAlreadyUpToDate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -310,6 +314,7 @@ func TestMergeIn_BothSidesAlreadyUpToDate(t *testing.T) {
 // git add) and running MergeContinue: both sides conclude, correspondence is recorded, and the
 // record is deleted.
 func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -351,6 +356,7 @@ func TestMergeContinue_ResolvedConflictsConclude(t *testing.T) {
 // TestMergeContinue_UnresolvedConflictsRefuse covers MergeContinue's refusal while conflict markers
 // remain: a *MergeGuardError whose sole reason is the fixed "unresolved conflicts remain".
 func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -376,6 +382,7 @@ func TestMergeContinue_UnresolvedConflictsRefuse(t *testing.T) {
 // their exact pre-merge SHAs, worktrees are clean, the record is deleted, and MergeInProgress
 // reports false.
 func TestMergeAbort_AfterConflict(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -417,6 +424,7 @@ func TestMergeAbort_AfterConflict(t *testing.T) {
 // TestMergeIn_NeverSquashes covers that a clean, non-fast-forward MergeIn lands a real merge commit
 // on warp: two parents.
 func TestMergeIn_NeverSquashes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -449,6 +457,7 @@ func TestMergeIn_NeverSquashes(t *testing.T) {
 // A tip behind the local branch merges only that tip, and a told tip that conflicts parks a merge-in of the named source recording the told SHA.
 // A SHA naming no commit is the source-not-found guard refusal with nothing merged.
 func TestMergeInAt_MergesTheGivenTipNotTheLocalOne(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("TipBehindLocalBranch", func(t *testing.T) {

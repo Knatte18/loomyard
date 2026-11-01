@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_migrates_markers_integration_test.go covers Reconcile's per-pair judging of the weft anchor markers:
 // a weft with no committed marker gets the one its content implies, and the hub-wide marker on the board is retired once every weft carries its own.
 // The same migration is shown for a weft branch Add adopts.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // migrationShape is the hub every scenario starts from: the "." anchor and one pair.
@@ -70,6 +69,7 @@ func reconcileWithoutPairErrors(t *testing.T, h *hubforge.Hub) fabricengine.Reco
 
 // TestReconcile_MigratesMarkerlessWefts covers the migration of markerless wefts, the census behind the Bolt marker's retirement, and the same migration on Add's adopt path.
 func TestReconcile_MigratesMarkerlessWefts(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	pair := hubforge.TemplatePairSlug
 

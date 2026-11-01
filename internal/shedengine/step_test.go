@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_test.go covers (*Shed).Step's routing arms (one test per arm stepLocked's switch takes),
 // its shared preamble (preflight's parent-dir creation and validate-before-lock ordering), and its
 // per-call lock window (the ErrShedBusy refusal and the release-between-calls property that makes
@@ -19,9 +17,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStep_DoneWithNonEmptyOnDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := fixedOutcomeProducer(Done, "out.md")
@@ -62,6 +62,7 @@ func TestStep_DoneWithNonEmptyOnDone(t *testing.T) {
 }
 
 func TestStep_DoneWithEmptyOnDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := fixedOutcomeProducer(Done, "")
@@ -86,6 +87,7 @@ func TestStep_DoneWithEmptyOnDone(t *testing.T) {
 }
 
 func TestStep_StuckWithinBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	a := fixedOutcomeProducer(Stuck, "")
@@ -108,6 +110,7 @@ func TestStep_StuckWithinBudget(t *testing.T) {
 }
 
 func TestStep_StuckWithNoOnStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := fixedOutcomeProducer(Stuck, "")
@@ -128,6 +131,7 @@ func TestStep_StuckWithNoOnStuck(t *testing.T) {
 }
 
 func TestStep_StuckAtBudgetBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	a := fixedOutcomeProducer(Stuck, "")
@@ -168,6 +172,7 @@ func TestStep_StuckAtBudgetBoundary(t *testing.T) {
 }
 
 func TestStep_PauseRequested(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name       string
 		by         string
@@ -237,6 +242,7 @@ func TestStep_PauseRequested(t *testing.T) {
 }
 
 func TestStep_CancelledContextWithProducerError(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -270,6 +276,7 @@ func TestStep_CancelledContextWithProducerError(t *testing.T) {
 }
 
 func TestStep_ProducerHardErrorHealthyContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	wantMsg := "disk full"
@@ -297,6 +304,7 @@ func TestStep_ProducerHardErrorHealthyContext(t *testing.T) {
 }
 
 func TestStep_UnrecognisedOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
@@ -317,6 +325,7 @@ func TestStep_UnrecognisedOutcome(t *testing.T) {
 }
 
 func TestStep_AlreadyDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := fixedOutcomeProducer(Done, "")
@@ -345,6 +354,7 @@ func TestStep_AlreadyDone(t *testing.T) {
 }
 
 func TestStep_ResumeFromHaltedStates(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		state     State
@@ -400,6 +410,7 @@ func TestStep_ResumeFromHaltedStates(t *testing.T) {
 }
 
 func TestStep_EmptyOutcomeWithError(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	producer := &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
@@ -419,6 +430,7 @@ func TestStep_EmptyOutcomeWithError(t *testing.T) {
 }
 
 func TestStep_ErrShedBusy(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, lockPath, _ := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
 
@@ -463,6 +475,7 @@ func TestStep_ErrShedBusy(t *testing.T) {
 }
 
 func TestStep_MissingStatusFileNamesSeeding(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
 
@@ -481,6 +494,7 @@ func TestStep_MissingStatusFileNamesSeeding(t *testing.T) {
 }
 
 func TestStep_LockReleasedBetweenCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	shed.Producers = []ProducerDef{
@@ -498,6 +512,7 @@ func TestStep_LockReleasedBetweenCalls(t *testing.T) {
 }
 
 func TestStep_PreamblePreparesLockDirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
 	seedStatus(t, statusPath, statusLockPath, commonSeed("A"))
@@ -510,6 +525,7 @@ func TestStep_PreamblePreparesLockDirs(t *testing.T) {
 }
 
 func TestStep_ValidateFailsBeforeTouchingLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, lockPath, _ := newTestShed(t)
 	// An empty Producers list is invalid, per validate's own rule.
 	shed.Producers = nil
@@ -524,6 +540,7 @@ func TestStep_ValidateFailsBeforeTouchingLock(t *testing.T) {
 }
 
 func TestStep_StuckReasonPersistence(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name   string
 		reason string
@@ -560,6 +577,7 @@ func TestStep_StuckReasonPersistence(t *testing.T) {
 }
 
 func TestStep_StuckReasonIgnoredWhenBouncing(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", OnStuck: "A", Producer: &funcProducer{
 		fn: func(context.Context) (Outcome, OutputPointer, error) {
@@ -581,6 +599,7 @@ func TestStep_StuckReasonIgnoredWhenBouncing(t *testing.T) {
 }
 
 func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", OnStuck: "A", MaxBounces: 1, Producer: &funcProducer{
 		fn: func(context.Context) (Outcome, OutputPointer, error) {
@@ -606,6 +625,7 @@ func TestStep_BudgetArmIgnoresProducerReason(t *testing.T) {
 
 // TestStep_ToldRunIDNamesGotoWithRunID pins that the missing-producer refusal addresses the told run-id in its goto way forward.
 func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
+	tiergate.Require(t, 0)
 	const want = "lym shed goto some-slug --to"
 
 	shed, _, _ := gotoShed(t)
@@ -621,6 +641,7 @@ func TestStep_ToldRunIDNamesGotoWithRunID(t *testing.T) {
 
 // TestStep_ToldMissingStatusWayForward pins that a told clause replaces the generic seed advice.
 func TestStep_ToldMissingStatusWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, _, _ := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}
 	shed.MissingStatusWayForward = "way forward: told clause"
@@ -635,6 +656,7 @@ func TestStep_ToldMissingStatusWayForward(t *testing.T) {
 }
 
 func TestStep_PauseBeforeCondition(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		current        string
@@ -694,6 +716,7 @@ func TestStep_PauseBeforeCondition(t *testing.T) {
 }
 
 func TestStep_PauseAfterCondition(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		outcome       Outcome
@@ -761,6 +784,7 @@ func TestStep_PauseAfterCondition(t *testing.T) {
 }
 
 func TestStep_StampsTheToldMachine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

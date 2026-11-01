@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pausehold_test.go pins that `lym loom start` refuses a covered run before it seeds anything, and holds the fixture that covers a receiver's run for the resume test too.
 
 package loomcli
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // coverRun makes c's worktree a task worktree of its hub and records a live hub-wide pause entry, returning the record's path.
@@ -54,6 +53,7 @@ func coverRunBy(t *testing.T, c *loomCLI, scope, caller string) string {
 // TestStartCmd_RefusesWhileAPauseCoversTheRun drives startCmd over a receiver whose hub holds a live pause entry:
 // the refusal names `lym tender resume` and nothing is seeded, and once the entry is lifted the same call no longer refuses on the pause.
 func TestStartCmd_RefusesWhileAPauseCoversTheRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c, _ := newTestSpawnAndWaitReceiver(t, &fakeDriverStarter{}, &fakeDriverPaneProbeFull{strandsFn: noStrands})

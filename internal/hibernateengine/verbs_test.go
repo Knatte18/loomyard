@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verbs_test.go drives submit, cancel and status over fakeWorld.
 
 package hibernateengine
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func refOf(entry pauserecord.Entry) *tenderengine.EntryRef {
@@ -84,6 +83,7 @@ func running(producer string) RunStatus {
 }
 
 func TestSubmit(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		run  func(t *testing.T)
@@ -263,6 +263,7 @@ func TestSubmit(t *testing.T) {
 }
 
 func TestCancel(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		run  func(t *testing.T)
@@ -399,6 +400,7 @@ func TestCancel(t *testing.T) {
 }
 
 func TestStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		run  func(t *testing.T)

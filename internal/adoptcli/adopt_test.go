@@ -1,5 +1,3 @@
-//go:build tier0
-
 // adopt_test.go drives the takeover sequence over fake deps: the refusals before anything runs, the reconcile stops and warnings, the per-entry stops and their two ways forward, the pair add, the holds before the owner write, the owner write, the pause lift, the beam steps and the adopt check start.
 
 package adoptcli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -271,6 +270,7 @@ func slugOf(t *testing.T, got outcome, slug string) slugOutcome {
 }
 
 func TestAdopt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	running := shedengine.Status{State: shedengine.StateRunning}

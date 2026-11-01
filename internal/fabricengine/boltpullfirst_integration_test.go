@@ -1,5 +1,3 @@
-//go:build tier1
-
 // boltpullfirst_integration_test.go proves Bolt.PullThenCommitWritten and the gated seed-commit drop under it.
 // The hub is a hubforge hub whose records upstream a second clone moves.
 //
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const boltTestLabel = "(0123456789ab production /bin/lym)"
@@ -116,6 +115,7 @@ func entriesOfKind(rec *fabricengine.Mutations, kind fabricengine.Kind) []fabric
 }
 
 func TestBolt_PullThenCommitWritten(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -515,6 +515,7 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 }
 
 func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -629,6 +630,7 @@ func TestBolt_PushRecorded_DropsSeedCommitsOnRebaseConflict(t *testing.T) {
 }
 
 func TestBoardDropRequest_RefusesForeignBoard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f := newBoltFixture(t)

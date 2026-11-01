@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushretry_integration_test.go pins, against a real bare remote that refuses every pushed ref with a remote "cannot lock ref", what the fake push in pushretry_test.go cannot reach:
 // the retry exhausts before the rebase-retry or the ErrPushRejected mapping is consulted,
 // and a tag pushed by its full ref is retried on the short name git prints for it.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // hookLogPlaceholder stands for the hook log's path in procReceiveRefuseScript until a test substitutes it.
@@ -87,6 +86,7 @@ func hookRuns(t *testing.T, hookLog string) int {
 }
 
 func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -136,6 +136,7 @@ func TestPlainPushPrimitives_ExhaustedRetryWrapsSentinelAndNeverRebases(t *testi
 }
 
 func TestPushWithRetry_RetriesARealRefusalOfATagPushedByItsFullRef(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	clonePath, hookLog := newRefusingRemoteClone(t, "refs/tags")

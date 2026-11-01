@@ -1,5 +1,3 @@
-//go:build tier0
-
 // retention_test.go exercises Sweep's trace grouping, activity ranking, age bound, count bound, grammar-scoping, and delete-failure tolerance over a t.TempDir() — pure filesystem logic, no git/exec spawns, per the Test Tier Purity Invariant.
 
 package logger
@@ -14,6 +12,8 @@ import (
 	"sort"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const deadTestPID = 999999999
@@ -64,6 +64,7 @@ var testBounds = RetentionBounds{Count: 3, MaxAge: 14 * 24 * time.Hour}
 
 // TestDefaultRetentionBounds pins the compiled-in defaults.
 func TestDefaultRetentionBounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	got := DefaultRetentionBounds()
 	want := RetentionBounds{Count: 200, MaxAge: 14 * 24 * time.Hour}
@@ -74,6 +75,7 @@ func TestDefaultRetentionBounds(t *testing.T) {
 
 // TestSweep_AgeBound verifies groups with no recent activity are deleted.
 func TestSweep_AgeBound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
@@ -91,6 +93,7 @@ func TestSweep_AgeBound(t *testing.T) {
 
 // TestSweepDir_DryRunListsWhatApplyRemoves verifies a dry run lists the aged group's files and removes nothing, and an apply lists the same paths and removes exactly them.
 func TestSweepDir_DryRunListsWhatApplyRemoves(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
@@ -129,6 +132,7 @@ func TestSweepDir_DryRunListsWhatApplyRemoves(t *testing.T) {
 // TestSweep_CountBoundKeepsNewestGroupsWhole verifies the newest Count groups by activity survive with every file,
 // and every file of each older group is deleted.
 func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	base := time.Now().Add(-time.Minute)
@@ -159,6 +163,7 @@ func TestSweep_CountBoundKeepsNewestGroupsWhole(t *testing.T) {
 
 // TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget verifies a group holding a live-pid file keeps all its files past the age bound and does not consume count budget.
 func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
@@ -185,6 +190,7 @@ func TestSweep_LiveGroupKeptRegardlessOfAgeAndBudget(t *testing.T) {
 
 // TestSweep_LongRunningStepSurvivesByMtime verifies a group whose filename timestamp is the oldest but whose mtime is the newest survives a count-bound sweep that deletes groups with later filename timestamps and older mtimes.
 func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
@@ -216,6 +222,7 @@ func TestSweep_LongRunningStepSurvivesByMtime(t *testing.T) {
 // TestSweep_AgeBoundOverridesCountBudgetButNotLiveness verifies a non-live group past MaxAge is deleted though Count would keep it,
 // and a live group past MaxAge is kept.
 func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	old := time.Now().Add(-20 * 24 * time.Hour)
@@ -235,6 +242,7 @@ func TestSweep_AgeBoundOverridesCountBudgetButNotLiveness(t *testing.T) {
 // TestSweep_StatFailureFallsBackToFilenameTimestamp verifies a file whose stat fails ranks by its filename timestamp,
 // and the sweep still returns nil and processes the rest.
 func TestSweep_StatFailureFallsBackToFilenameTimestamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	now := time.Now()
@@ -262,6 +270,7 @@ func TestSweep_StatFailureFallsBackToFilenameTimestamp(t *testing.T) {
 
 // TestSweep_GrammarScope verifies non-matching files and subdirectories are never deleted.
 func TestSweep_GrammarScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -291,6 +300,7 @@ func TestSweep_GrammarScope(t *testing.T) {
 
 // TestSweep_DeleteFailureTolerance verifies delete failures are silently tolerated.
 func TestSweep_DeleteFailureTolerance(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if os.Getuid() == 0 {
 		t.Skip("running as root: directory permissions do not block unlink, cannot simulate a delete failure this way")
@@ -313,6 +323,7 @@ func TestSweep_DeleteFailureTolerance(t *testing.T) {
 
 // TestSweep_EmptyOrAbsentDirectory verifies empty or absent directories return nil.
 func TestSweep_EmptyOrAbsentDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("Empty", func(t *testing.T) {
 		t.Parallel()

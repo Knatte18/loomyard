@@ -1,5 +1,3 @@
-//go:build tier0
-
 // profile_test.go drives the per-profile cost and quality report over an in-memory history of webster records and review files: the per-batch attribution, the marked runs, the findings rule and the printed tables.
 // Tier-1 (no git, no spawn).
 
@@ -15,10 +13,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 func TestBuildProfileReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	firstFork := time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC)

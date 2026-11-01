@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hold_test.go pins the shared wait at entry and the process network gate.
 // TestNetwork is not parallel: the gate is process-wide state.
 
@@ -15,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setLive replaces the record's live entries with entries.
@@ -46,6 +46,7 @@ func resumeLive(t *testing.T, path string) {
 }
 
 func TestWaitUncovered(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := Entry{Scope: ScopeHub, PausedAt: epoch}
 	slugEntry := Entry{Scope: "a", PausedAt: epoch}
@@ -171,6 +172,7 @@ func TestWaitUncovered(t *testing.T) {
 }
 
 func TestNetwork(t *testing.T) {
+	tiergate.Require(t, 0)
 	alive := func(int, string) bool { return true }
 	dead := func(int, string) bool { return false }
 

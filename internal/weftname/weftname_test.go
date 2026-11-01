@@ -1,5 +1,3 @@
-//go:build tier0
-
 // weftname_test.go exercises SiblingPath and BareSiblingPath over a range of container/base
 // combinations,
 // and locks in the relationship between them that gitkit's fixture builders rely on, so the two
@@ -11,6 +9,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -18,6 +17,7 @@ import (
 // Every row also asserts the relationship gitkit's fixture builders depend on: a weft sibling's bare-remote fixture name is SiblingPath's own result with "-bare" appended, never an independently-derived literal.
 // That is the drift BareSiblingPath exists to prevent between production geometry and the on-disk shape test fixtures must reproduce for the same input.
 func TestSiblingPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

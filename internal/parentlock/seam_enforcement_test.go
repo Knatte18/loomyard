@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production code takes every absolute path from its caller and has no direct production import of internal/lymcwd.
 // The allowlist is a membership list rather than a bare denylist, modelled on internal/loomshed's own.
 
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // parentlockAllowedImports are the only non-stdlib import paths production code in this package may use.
@@ -21,5 +20,6 @@ var parentlockAllowedImports = []string{
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in parentlockAllowedImports.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/parentlock", parentlockAllowedImports...)
 }

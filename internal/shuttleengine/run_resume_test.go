@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_resume_test.go covers Runner.start's resume preflight.
 // A spec with a ResumeSessionID runs the engine's SessionResumer check against the runner's pane cwd before Prepare,
 // a refusal leaves no run directory or strand, a warning reaches Run.ResumeWarning, and an engine without the capability refuses.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func newResumeTestEngine() *resumeFakeEngine {
@@ -25,6 +24,7 @@ func resumeSpec() Spec {
 
 //testtiming:keep pins that the resume check runs against the runner's pane cwd and before Prepare, which the warning test does not observe
 func TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
@@ -49,6 +49,7 @@ func TestRunnerStart_Resume_ChecksSessionAgainstPaneCwdBeforePrepare(t *testing.
 }
 
 func TestRunnerStart_Resume_RefusalLeavesNoRunDirOrStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	engine.Err = errors.New("session is gone")
@@ -71,6 +72,7 @@ func TestRunnerStart_Resume_RefusalLeavesNoRunDirOrStrand(t *testing.T) {
 }
 
 func TestRunnerStart_Resume_WarningReachesRunAndRunStarts(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	engine.Warning = "registry unreadable"
@@ -87,6 +89,7 @@ func TestRunnerStart_Resume_WarningReachesRunAndRunStarts(t *testing.T) {
 }
 
 func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
 	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
@@ -102,6 +105,7 @@ func TestRunnerStart_Resume_EngineWithoutCapabilityRefuses(t *testing.T) {
 
 //testtiming:keep pins that a spec with no ResumeSessionID never calls the resume check and carries no resume warning
 func TestRunnerStart_NoResumeSessionID_NeverCallsCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := newResumeTestEngine()
 	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner

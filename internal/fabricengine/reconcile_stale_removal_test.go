@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_stale_removal_test.go covers batch 2's declarative convergence:
 // Reconcile now converges every warp worktree to the repo-wide `pathspec`
 // (fabricengine.BoardDir(Hub)'s fabric.yaml) in both directions — wiring a
@@ -34,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // findReconcilePair returns the ReconcilePairResult for weftPath, failing the
@@ -55,6 +54,7 @@ func findReconcilePair(t *testing.T, pairs []fabricengine.ReconcilePairResult, w
 
 // TestReconcile_AddsMissingRemovesStaleNoOpsCorrect exercises all three per-junction convergence outcomes in a single pair: a missing desired junction (_extra) is added, a stale on-disk junction absent from the repo-wide pathspec (_other) is removed, and an already-correct junction (_lym) is left untouched.
 func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-add-remove-noop"
@@ -133,6 +133,7 @@ func TestReconcile_AddsMissingRemovesStaleNoOpsCorrect(t *testing.T) {
 // match the repo-wide pathspec produces a true no-op: ReconcileActionAlreadyHealthy with an empty
 // Detail, not a spurious ReconcileActionStaleRemoved from an empty stale set.
 func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: the logger capture below replaces process-global logger output.
 	const slug = "stale-removal-correct-noop"
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -191,6 +192,7 @@ func TestReconcile_CorrectJunctionsAreNoOp(t *testing.T) {
 // repo-wide pathspec is widened, without either pair's own fabric.yaml (which does not exist) ever
 // being consulted.
 func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -244,6 +246,7 @@ func TestReconcile_ConvergesAllWorktreesToRepoWidePathspec(t *testing.T) {
 // fabricengine.ConfigTemplate()'s real empty default, so this is the genuine post-change production
 // shape, not a hand-widened one like the other cases in this file.
 func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-empty-default"
@@ -285,6 +288,7 @@ func TestReconcile_EmptyDefaultPathspecRemovesOptionalJunctionKeepsStructural(t 
 // when the repo-wide fabric.yaml cannot be loaded, Reconcile strips no junction and records the
 // abort rather than treating the load failure as an empty (blanket-sweep) pathspec.
 func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-failclosed"
@@ -334,6 +338,7 @@ func TestReconcile_StaleRemovalFailsClosedOnUnparseableRepoWideConfig(t *testing
 // fabricengine.HubReservedNames() holds end-to-end through Reconcile: a hub-structural name present
 // on disk (here _portals) is never swept even though it is absent from the repo-wide pathspec.
 func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-reserved"
@@ -378,6 +383,7 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 // Topology.Checkout succeeds rather than hard-failing/rolling back on a name-set load error, and
 // Topology.Remove still tears down junctions.
 func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
@@ -446,6 +452,7 @@ func TestRepoWideMigratedSites_ResolveFromBoardDirWithNoPerPairConfig(t *testing
 // sweep deleted it out of the user's working tree; ownership is decided by the resolved target
 // instead, and a link pointing inside the warp worktree is never fabric's.
 func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-user-symlink"
@@ -496,6 +503,7 @@ func TestReconcile_PreservesUserSymlinkAtAnchor(t *testing.T) {
 //
 //testtiming:keep Unwire leaving a hand-authored symlink at the anchor in place; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "unwire-user-symlink"
@@ -546,6 +554,7 @@ func TestUnwire_PreservesUserSymlinkAtAnchor(t *testing.T) {
 // scanOnDiskJunctionNames still claims it (it resolves into the weft worktree), but ownedWiredJunction
 // compares the link's raw one-hop target against the nominal weft target and refuses on the mismatch.
 func TestReconcile_RefusedStaleRemovalReportsNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "stale-removal-refused"

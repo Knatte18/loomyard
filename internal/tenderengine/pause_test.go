@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pause_test.go drives the pause sequence over fake pairs, a fake clock whose Sleep advances it, and a temp record.
 // It also holds the fakes resume_test.go shares.
 
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakePair is a Pair whose sessions answer scripted busy readings.
@@ -439,6 +438,7 @@ func recorded(slug, strand string) pauserecord.Session {
 }
 
 func TestPause(t *testing.T) {
+	tiergate.Require(t, 0)
 	orchStrand, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
@@ -916,6 +916,7 @@ func TestPause(t *testing.T) {
 }
 
 func TestPause_RacingResumeLeavesADecodableRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := newPair("p1", "a")
 	p.busy["g-a"] = []bool{true}
 	e := newEnv(t, p)

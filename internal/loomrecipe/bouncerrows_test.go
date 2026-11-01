@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomrecipe
 
 import (
@@ -9,6 +7,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rolePrefixViolations returns one message per role-prefix violation in recipe:
@@ -65,6 +64,7 @@ func rolePrefixViolations(recipe shedbuild.Recipe) []string {
 // Every Bouncer row sets carry_over to the segment the row itself belongs to, since a Bouncer learns the segment it files its carry-over entry under from that key alone.
 // Every review segment's rows share one role_prefix that no other segment uses, which the role-prefix subtests check on the shipped recipes and on recipes mutated to break each rule.
 func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("RolePrefixes", func(t *testing.T) {
 		parse := func(t *testing.T, source []byte) shedbuild.Recipe {
 			t.Helper()
@@ -139,6 +139,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 }
 
 func TestIsFinalizeRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		row  string
 		want bool
@@ -157,6 +158,7 @@ func TestIsFinalizeRow(t *testing.T) {
 }
 
 func TestBouncerRunSubdir(t *testing.T) {
+	tiergate.Require(t, 0)
 	bouncers := map[string]string{
 		loomshed.NameDiscussionBouncer: "discussion",
 		loomshed.NamePlanBouncer:       "plan",

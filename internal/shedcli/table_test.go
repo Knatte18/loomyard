@@ -1,5 +1,3 @@
-//go:build tier0
-
 // table_test.go covers table.go's recipes map and its two accessors. It stays in tier 0: it
 // calls lookup and names alone, neither of which resolves cwd or spawns git.
 
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // tableScanMinFiles is the plausible floor for how many production .go files internal/shedcli holds.
@@ -32,6 +31,7 @@ var allGenericVerbs = []string{"run", "step", "status", "pause", "goto"}
 //
 //testtiming:keep pins the table's key set against both literal and the shedrun vocabulary, which its covering test does not
 func TestRecipes_KeySet(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -61,6 +61,7 @@ func TestRecipes_KeySet(t *testing.T) {
 //
 //testtiming:keep pins each recipe entry's verbs, bootstrap verb and seed-location rule, which its covering test does not
 func TestRecipes_Entries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		recipe            string
@@ -115,6 +116,7 @@ func TestRecipes_Entries(t *testing.T) {
 // Register-shaped function exists, mirroring internal/shedrecipe's own registry shape and
 // internal/shedverbs' own seam test style.
 func TestTable_NoInitNoRegisterSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	var initFound []string
 	var registerFound []string
 

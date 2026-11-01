@@ -1,5 +1,3 @@
-//go:build tier0
-
 package state_test
 
 import (
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // sample is a small struct type used to instantiate the generics in tests.
@@ -24,6 +23,7 @@ type sample struct {
 //
 //testtiming:keep pins the two-space indentation and the data-plus-lock-only directory layout, which no covering test asserts
 func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -87,6 +87,7 @@ func TestWriteJSON_RoundTripOverwriteAndLayout(t *testing.T) {
 //
 //testtiming:keep named by internal/loomcli's smoke test as the lenient read's decode-failure pin
 func TestCorruptFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -178,6 +179,7 @@ type keepRecord struct {
 // TestWriteJSON_KeepsUnknownKeys seeds a file, writes a keepRecord over it through UpdateJSON or WriteJSON, and compares the written file to its exact expected text.
 // A key the record's type does not declare survives with its exact digits after the known keys, wherever a declared struct holds it and the element it sits in is unchanged, and no key survives inside an opaque field or an element that was updated, removed or moved.
 func TestWriteJSON_KeepsUnknownKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	updateWith := func(mutate func(record *keepRecord)) func(path, lockPath string) error {

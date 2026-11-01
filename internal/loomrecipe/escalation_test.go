@@ -1,5 +1,3 @@
-//go:build tier0
-
 // escalation_test.go drives a real Discussion-Review segment, and a darn run's Code-Review perch, through a spent review budget:
 // the soft-cap rule continues a design-wrong round one round at a time, the Bouncer escalates at the hard cap instead of blocking, and an accept settles the segment.
 
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // budgetEscalationBudget is the small review budget the escalation tests run with; they run under a hard cap one above it.
@@ -82,6 +81,7 @@ func (p *haltingProducer) Call(context.Context) (shedengine.Outcome, shedengine.
 // TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe drives a darn run's Code-Review perch past a budget of 1 under a hard cap of 2, with code_auto_accept off:
 // the soft-cap rule continues round 1 automatically, the Bouncer escalates at the hard cap to the parent with a rendered brief instead of blocking, and an accept settles the perch onto Describe and files the open finding under Code-Review.
 func TestEscalation_DarnPerchRuleContinuesThenHardCapAcceptReachesDescribe(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	// A round's review path must sit under the anchor.
 	env.RunRoot = filepath.Join(env.AnchorPath, "reviews")
@@ -180,6 +180,7 @@ func countStuck(history []shedengine.HistoryEntry, producer string) (total, exem
 // the soft-cap rule continues the spent budget with one automatic continue, the next round halts awaiting at the hard cap with a parent notice rather than blocked,
 // and an accept settles the segment.
 func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, runDir, burler, readStatus := newEscalationShed(t)
 
 	result, err := shed.Run(context.Background())
@@ -247,6 +248,7 @@ func TestEscalation_RuleContinuesOneRoundThenHardCapThenAccept(t *testing.T) {
 // With the fix half passing, the Code-Review segment runs one review and one fix and Code-Bouncer settles Done with an automatic accept on disk, and the run reaches Describe.
 // With the fix half's gate failing in round 1 no round is left to judge, so the run halts blocked, with no circling decision and no Code-Bouncer Done.
 func TestEscalation_PerchBudgetOneWithAutoAccept(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		fixResults   []burlerengine.FixResult

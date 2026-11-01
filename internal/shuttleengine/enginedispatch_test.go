@@ -1,5 +1,3 @@
-//go:build tier0
-
 // enginedispatch_test.go covers how a Runner picks each run's engine from its EngineSet:
 // Start and Open resolve the spec's engine and record it, and every later operation resolves the engine the run's record names.
 // dispatchEngine records every seam method a call consults, so a call that reaches the wrong engine shows in that engine's own record.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // dispatchEngine is a fakeEngine that records every seam method consulted, per instance.
@@ -295,6 +294,7 @@ func requireConsulted(t *testing.T, used, other *dispatchEngine, method string) 
 
 // TestRunner_EngineSetDispatch pins which engine of the set each operation consults.
 func TestRunner_EngineSetDispatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Start_prepares_through_the_named_engine_and_records_its_name", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubscratch_integration_test.go pins card 2's ordering guarantee at CloneHub's own boundary: the
 // board worktree's weft-common-gitdir excludes carry a `.lym/` entry the instant CloneHub returns,
 // and the board's stage-all commit path never picks up anything planted inside the hub scratch tree
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning asserts that at the instant
@@ -33,6 +32,7 @@ import (
 // directory is empty, so this checks the exclude entry itself — the load-bearing assertion for
 // card 2's ordering.
 func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -65,6 +65,7 @@ func TestCloneHub_SeedsBoardArtifactExcludesBeforeReturning(t *testing.T) {
 // a real directory; a file planted inside it must be absent from the tree of the board's own
 // stage-all commit.
 func TestCloneHub_BoardStageAllCommitNeverStagesHubScratch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()

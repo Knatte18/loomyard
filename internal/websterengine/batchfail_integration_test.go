@@ -1,5 +1,3 @@
-//go:build tier1
-
 // batchfail_integration_test.go exercises failBatch's suspect-blob recording over a real scratch git repository.
 
 package websterengine
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // suspectRepo returns a scratch git repo holding the tracked file internal/x.go, committed as "orig" and then modified in the worktree to "forged".
@@ -43,6 +42,7 @@ func suspectRepo(t *testing.T) string {
 }
 
 func TestFailBatch_RecordsSuspectBlobs(t *testing.T) {
+	tiergate.Require(t, 1)
 	repo := suspectRepo(t)
 	want, err := gitexec.Run([]string{"hash-object", "--", "internal/x.go"}, repo)
 	if err != nil {

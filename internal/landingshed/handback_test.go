@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handback_test.go pins which blocked stops HandsBack hands to the orch.
 
 package landingshed
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHandsBack(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

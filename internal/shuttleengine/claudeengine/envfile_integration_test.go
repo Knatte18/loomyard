@@ -1,5 +1,3 @@
-//go:build tier1
-
 // envfile_integration_test.go runs the env file content under `bash` in Claude Code's prelude shape.
 // It pins that the content closes the shell's default stdin without touching a stdin a command supplies itself,
 // and that it re-prepends LYM_BIN's directory to PATH.
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeExecutable writes an executable file at path with the given script content.
@@ -35,6 +34,7 @@ func writeExecutable(t *testing.T, path, content string) {
 // TestEnvFile_DefaultStdinIsDevNull runs each command as `bash -c '<env file content>eval <command>'` with the shell's stdin an open pipe nothing ever writes to or closes.
 // It pins the default stdin and the PATH re-prepend: an operator rc that left a decoy `lym` first on PATH is overridden by LYM_BIN's directory.
 func TestEnvFile_DefaultStdinIsDevNull(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	root := t.TempDir()

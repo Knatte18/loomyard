@@ -1,5 +1,3 @@
-//go:build tier0
-
 // discussionpath_test.go tests the AnchorPath-anchored DiscussionDir/
 // DiscussionDecisionRecord/DiscussionSupportLog accessors on a hand-built lymcwd.Location — pure
 // path arithmetic, no spawning, untagged (Tier 1).
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDiscussionPaths pins the discussion directory, the decision record, the support log and the advisor notes at the anchor, and that DiscussionDirRel is the relative form DiscussionDir composes from.
@@ -20,6 +19,7 @@ import (
 //
 //testtiming:keep pins the exact discussion directory, decision record, support log and relevant list paths at an anchored and an unanchored location, which the covering spec tests only pass through unasserted
 func TestDiscussionPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string

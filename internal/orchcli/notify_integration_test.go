@@ -1,5 +1,3 @@
-//go:build tier1
-
 // notify_integration_test.go proves PrimeOrchStrand over a real hub: from a task worktree it names the prime's orch strand, and answers not recorded when the prime records none.
 // It also proves the destination of a run's notice up a beam chain: a live beam orch, a stopped one, a pair forked from the prime and a destination with no strand recorded.
 
@@ -16,9 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNotifyPrime_QueuesInThePrimeOnly(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -70,6 +70,7 @@ func TestNotifyPrime_QueuesInThePrimeOnly(t *testing.T) {
 }
 
 func TestParentOrchStrand(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

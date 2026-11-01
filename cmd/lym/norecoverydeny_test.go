@@ -1,5 +1,3 @@
-//go:build tier0
-
 // norecoverydeny_test.go enforces `PATTERN-refusal-way-forward`: no refusal, stencil, spec or skill names a command the agents' settings deny as a way forward.
 // The scan reads files only, so it stays in the untagged tier.
 // The scanned surface is `contracts/specs/`, `contracts/stencils/`, `plugins/ly/skills/` and the string literals of the non-test Go files under the webster, shed and loom modules.
@@ -22,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // operatorDeniedForms are the denied commands the operator's permission set owns and no lym table declares, each as its token sequence.
@@ -140,6 +139,7 @@ func scanDeniedRecoveryGoFile(t *testing.T, root, path string) []deniedRecoveryH
 //testtiming:keep pins that no refusal, stencil or spec names a denied recovery command, the guard itself of PATTERN-refusal-way-forward
 //lym:guard
 func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := scankit.Root(t)
 	var hits []deniedRecoveryHit
 	scanned := 0
@@ -209,6 +209,7 @@ func TestNoDeniedRecovery_ScannedSurfaceHasNone(t *testing.T) {
 //
 //testtiming:keep proves the TestNoDeniedRecovery_ScannedSurfaceHasNone scan fires on each planted denied shape and stays quiet on compliant ones
 func TestNoDeniedRecovery_ScanSelfCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		text string

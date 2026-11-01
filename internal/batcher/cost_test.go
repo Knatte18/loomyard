@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cost_test.go verifies the cost-model batchifier's hard limits, tie rule and optimality against a brute-force search over every contiguous split.
 // Tier-1 (pure logic, no git, no spawn).
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // costWeights make a one-card edit of a 20-line file at position 1 peak at 10 orientation + 1 fork message + 1 card message + 20 lines = 32.
@@ -55,6 +54,7 @@ func renameGroup(oldRef, newRef string) planparser.TargetGroup {
 
 // TestCostBatchifier_Limits asserts the grouping and per-batch peak the cost batchifier returns for each hard limit and the tie rule.
 func TestCostBatchifier_Limits(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const unlimited = 1e9
@@ -307,6 +307,7 @@ func TestCostBatchifier_Limits(t *testing.T) {
 
 // TestCostBatchifier_OptimalAndFeasible checks, over a seeded input set, that the split keeps card order, respects every hard limit, reports each batch's PeakContext with a breakdown whose components sum to it, and has the fewest batches of any feasible contiguous split, ties going to the smallest largest peak.
 func TestCostBatchifier_OptimalAndFeasible(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}

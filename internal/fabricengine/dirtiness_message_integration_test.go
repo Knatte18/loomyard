@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dirtiness_message_integration_test.go pins the composed shape of worktreeDirty's error against
 // real git, rather than its wording.
 //
@@ -24,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWorktreeDirty_ErrorNamesGitCommandOnce reproduces a real non-zero git exit and asserts the
@@ -32,6 +31,7 @@ import (
 //
 //testtiming:keep worktreeDirty's error rendering git's command once rather than twice; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreeDirty_ErrorNamesGitCommandOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// A fresh temp dir is not a git repository, so `git status --porcelain` exits non-zero with a

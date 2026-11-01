@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pausedsend_test.go covers the refusal of a send into a session a pause covers: which slug judges the target, when coverage is read, and what a refused send leaves untyped.
 
 package shuttleengine
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // swallowingReed is a fakeReed whose pane reads busy until idleAt and idle after, then shows the last text that landed.
@@ -50,6 +49,7 @@ func (r *swallowingReed) CapturePane(string) (string, error) {
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestSend_RefusesACoveredTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	start := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name string

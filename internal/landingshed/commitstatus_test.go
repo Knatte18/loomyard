@@ -1,5 +1,3 @@
-//go:build tier0
-
 // commitstatus_test.go covers Deps.CommitStatus, the injected loop-owner seam Finalize commits the product's own orchestration status file through before it merges.
 // Parent-Align's cases live in parentalign_test.go.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // orderRecordingResolver is a resolver fake that appends "merge" to a shared event slice, so a test
@@ -50,6 +49,7 @@ func commitStatusRecorder(events *[]string, err error) func() error {
 
 // TestFinalize_CommitStatus pins the seam's ordering and disposition in Finalize: it runs before the merge-in, a failure is an error that never merges, and an unwired seam is not an error.
 func TestFinalize_CommitStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	sentinel := errors.New("git index locked")
 	cases := []struct {
 		name       string

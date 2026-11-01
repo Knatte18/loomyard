@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_test.go drives the bring-up's beamUp over a fake strandOps, session starter and watcher spawn, asserting the recorded calls and the saved state without a spawn.
 
 package orchcli
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeStarter records the specs it is asked to start and answers a fixed guid and warning, and the resumed session id or else sessionID.
@@ -277,6 +276,7 @@ const (
 )
 
 func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	otherBuild := statuspane.BuildIdentity{Path: "/older/lym", Size: 9, ModTime: 9}
@@ -382,6 +382,7 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 }
 
 func TestRunsWindowTitleOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -403,6 +404,7 @@ func TestRunsWindowTitleOf(t *testing.T) {
 }
 
 func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	h := newStartHarness(t)
@@ -577,6 +579,7 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 }
 
 func TestStart_LiveStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -708,6 +711,7 @@ func TestStart_LiveStrand(t *testing.T) {
 
 // TestStart_NeverAttaches is not parallel: it sets the process-global TMUX with t.Setenv.
 func TestStart_NeverAttaches(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("TMUX", "/tmp/tmux-1000/default,1234,0")
 
 	h := newStartHarness(t)
@@ -718,6 +722,7 @@ func TestStart_NeverAttaches(t *testing.T) {
 }
 
 func TestStart_DeadStrandRemovedBeforeStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -773,6 +778,7 @@ type starterFunc func(shuttleengine.Spec) (startedSession, error)
 func (f starterFunc) StartSession(spec shuttleengine.Spec) (startedSession, error) { return f(spec) }
 
 func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	h := newStartHarness(t)
@@ -796,6 +802,7 @@ func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 const recordedTestSessionID = "11111111-2222-3333-4444-555555555555"
 
 func TestPrimePaths_JoinsPrimeRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -806,6 +813,7 @@ func TestPrimePaths_JoinsPrimeRoot(t *testing.T) {
 }
 
 func TestStart_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -965,6 +973,7 @@ func envList(t *testing.T, env map[string]any, key string) []any {
 }
 
 func TestStart_ReconcilesTheHubFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const stopSentinel = "SENTINEL-way-forward-of-the-stopped-branch"
@@ -1198,6 +1207,7 @@ func TestStart_ReconcilesTheHubFirst(t *testing.T) {
 }
 
 func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -1240,6 +1250,7 @@ func TestStart_StarterErrorFailsAndSavesNoState(t *testing.T) {
 }
 
 func TestStart_ResumesTheRecordedSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	corpse := []reedengine.StrandStatus{{GUID: "corpse", Name: "orch", Live: false}}

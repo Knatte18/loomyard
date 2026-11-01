@@ -1,5 +1,3 @@
-//go:build tier1
-
 // smoke_prebootstrap_integration_test.go drives the built lym binary and the production seed primitives against real hub pairs in the states before a run bootstraps, and when the reed config is bad.
 // None of these behaviors reaches a tmux server: the refusals come before reed comes up, and the seed commit is plain git.
 
@@ -25,11 +23,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoomPreBootstrapPair walks one never-bootstrapped pair through the pre-bootstrap states in this order, each step building on the one before:
 // no seed, a seed commit, then a second pair added to and removed from the same hub.
 func TestLoomPreBootstrapPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	exe := lymbin.Build(t)
@@ -136,6 +136,7 @@ func TestLoomPreBootstrapPair(t *testing.T) {
 // TestLoomStatusAndPauseOnNeverBootstrappedPair asserts the status and pause verbs on a seeded pair with no status file name the remedy.
 // A seed must be present so the verbs reach the lock-parent-directory bug this guards: the run-id arm refuses a seedless run before either verb's own absent-status-file check runs.
 func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	exe := lymbin.Build(t)
@@ -181,6 +182,7 @@ func TestLoomStatusAndPauseOnNeverBootstrappedPair(t *testing.T) {
 // Resume after the fix removes the key, commits it and writes the stamp, then refuses at reed Up before any server starts: the pair's reed config is bad.
 // The half past the reed config load, which needs a good reed config and a tmux server, is TestLoomResumeReconcilesThenRefusesWithoutLiveDriver.
 func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	exe := lymbin.Build(t)
@@ -243,6 +245,7 @@ func TestLoomResumeReconcilesTheHubConfigBeforeArming(t *testing.T) {
 // TestLoomFailedReedUpRefuses asserts a bad reed config refuses the verbs that bring reed up, before any watchdog or driver is spawned.
 // Each driver's seed gets its own pair, because a run's seed cannot be rewritten to the other driver.
 func TestLoomFailedReedUpRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	exe := lymbin.Build(t)

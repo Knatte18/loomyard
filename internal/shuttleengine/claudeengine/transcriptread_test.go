@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writtenSessions returns a setup that writes a session named main.jsonl with the given lines and fork transcripts into a temporary projects root, and locates it.
@@ -60,6 +59,7 @@ func usageOf(t *testing.T, entry shuttleengine.TranscriptEntry) shuttleengine.Me
 }
 
 func TestReadSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -365,6 +365,7 @@ func TestReadSession(t *testing.T) {
 // TestLocateSessions is not parallel at the top because one step sets the process-global HOME;
 // its table rows run in parallel on temporary roots.
 func TestLocateSessions(t *testing.T) {
+	tiergate.Require(t, 0)
 	const worktree = "/hub/task"
 
 	home := t.TempDir()

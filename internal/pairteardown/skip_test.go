@@ -1,5 +1,3 @@
-//go:build tier0
-
 // skip_test.go pins which run lock holders pass the pre-end wait and the wording of the refusal for those that do not.
 
 package pairteardown
@@ -10,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunLockHolderPasses pins the pure rule of the pre-end run-lock wait and, on each refusing row, the refusal's wording.
 func TestRunLockHolderPasses(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const holder = 4242

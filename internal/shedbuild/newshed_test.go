@@ -1,5 +1,3 @@
-//go:build tier0
-
 // newshed_test.go covers NewShed's field-complete assembly of a *shedengine.Shed from a ShedPaths
 // value, and the single-prefix rule card 1's own doc comment states: NewShed adds no prefix of its
 // own on top of whatever Parse or Build already returned.
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNewShed_FieldCompleteAssembly asserts NewShed returns a *shedengine.Shed whose Producers length matches the parsed recipe's own row count, whose StatusPath, LockPath, StatusLockPath, MaxBounces, CommitStatus, RunID, MissingStatusWayForward, RerouteCapWayForward and BudgetWayForward fields are copied verbatim from the passed ShedPaths, and whose Transient classifier is wired.
 func TestNewShed_FieldCompleteAssembly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const recipeYAML = `
@@ -133,6 +133,7 @@ producers:
 // shipped envelopes (loomrecipe.New and battenrecipe.New each add exactly one prefix of their
 // own on top of NewShed's return value).
 func TestNewShed_EmptyProducersErrorsWithoutDoublePrefix(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const recipeYAML = `

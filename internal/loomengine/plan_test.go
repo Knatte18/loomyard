@@ -1,5 +1,3 @@
-//go:build tier0
-
 // plan_test.go — untagged Tier-1 unit tests for PlanTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // planTableLayout returns a location under a temp hub, anchored under anchorRel, whose anchor directory exists.
@@ -54,6 +53,7 @@ const templatePlanFan = "twill-plan"
 //
 //testtiming:keep pins every lead field and the anchor-rooted plan paths, which TestProducerSpecs_SkillsAndParentDirective does not assert
 func TestPlanTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg := discussionTableRegistry(t)
 	wantOverview := func(layout *lymcwd.Location) string {

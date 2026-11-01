@@ -1,5 +1,3 @@
-//go:build tier0
-
 // multillm_fixture_test.go proves the recipe path end to end against fakes:
 // the fixture recipe is parsed and built through shedbuild, its one MultiLLM row is called, and the seat table the fake seat runner records is checked.
 // It lives in the external test package because shedbuild imports shedrecipe.
@@ -22,9 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestMultiLLMFixtureRecipe_BuildsAndRunsAgainstFakeSeats(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	data, err := os.ReadFile(filepath.Join("testdata", "multillm-recipe.yaml"))

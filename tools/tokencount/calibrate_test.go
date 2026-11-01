@@ -1,5 +1,3 @@
-//go:build tier0
-
 // calibrate_test.go drives the calibration over an in-memory plan history and base tree and a fixture batcher.yaml: the row arithmetic, the skip reasons and the fit summary.
 // Tier-1 (no git, no spawn).
 
@@ -15,11 +13,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestCalibrate asserts the per-fork peak rows with their positions and growth ratios, the skip reasons of runs, forks and cards, the start rows of runs left out for their plan or base, and the printed fit lines.
 func TestCalibrate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	configDir := t.TempDir()
@@ -366,6 +366,7 @@ func TestCalibrate(t *testing.T) {
 
 // TestCalibrateStartFit asserts the start rows' positions restart in each webster session, and the least-squares fit of the start coefficients over the measured start minus the run's computed base: exact on starts laid on a line above the base, not fitted from a single position, marked unusable when the growth comes out negative, and leaving a run without a readable base listed with its reason and outside the fit.
 func TestCalibrateStartFit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	configDir := t.TempDir()
@@ -492,6 +493,7 @@ func TestCalibrateStartFit(t *testing.T) {
 }
 
 func TestCalibrateFailsOnAnUnusableProfile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	configDir := t.TempDir()

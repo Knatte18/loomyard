@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -9,12 +7,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDriverSpec pins driverSpec's whole output shape, each field as its own named assertion.
 //
 //testtiming:keep pins every field of the driver launch spec: prompt, the empty skill list, the report as its single output file, the resolved model, effort and version, the name override, role, display anchor and the zero-valued fields; it names Spec.Skills, so the skills-in-one-turn task owns it, and its covering test runs the spec without asserting the fields
 func TestDriverSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	prompt := "drive the run"
 	reportPath := "/hub/wt/.lym/shed/wt/drive-report-20260920-120000-cafe.md"
 	settings := shuttleengine.ModelChoice{

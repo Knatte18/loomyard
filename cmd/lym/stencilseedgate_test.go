@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stencilseedgate_test.go pins two things about the stencil-seed skip gate this batch adds:
 // skipStencilSeed's predicate against synthetic *cobra.Command values,
 // and that "lym reed switch", "lym reed follow", "lym reed button" and every creel command actually carry the annotation the predicate reads. It deliberately does NOT pin any ordering
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/reedcli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reedSubcommand returns the subcommand of reedcli.Command() named name, failing t when it is absent.
@@ -35,6 +34,7 @@ func reedSubcommand(t *testing.T, name string) *cobra.Command {
 
 // TestSkipStencilSeed_HonoursTheAnnotation drives skipStencilSeed directly against synthetic *cobra.Command values, and against the real "lym reed switch", "lym reed follow" and "lym reed button" commands and every creel command, which must carry the annotation or the gate is worthless.
 func TestSkipStencilSeed_HonoursTheAnnotation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

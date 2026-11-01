@@ -1,5 +1,3 @@
-//go:build tier0
-
 // destroy_toctou_test.go guards the act-time containment binding that closed R3's containment TOCTOU:
 // removeContainedPath must refuse to carry a removal through a symlink escaping its container, must
 // still remove a legitimate nested entry and a final-component link (a junction), and must treat an
@@ -20,6 +18,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemoveContainedPath_RefusesEscapingIntermediate asserts that a removal whose target is reachable
@@ -27,6 +27,7 @@ import (
 //
 //testtiming:keep a removal reachable only through an escaping symlink being refused with the outside file preserved; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := t.TempDir()
 	container := filepath.Join(base, "container")
 	outside := filepath.Join(base, "outside")
@@ -67,6 +68,7 @@ func TestRemoveContainedPath_RefusesEscapingIntermediate(t *testing.T) {
 //
 //testtiming:keep a real nested entry being removed and recorded as a directory or single entry; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
 	if err := os.MkdirAll(filepath.Join(container, "sub"), 0o755); err != nil {
@@ -103,6 +105,7 @@ func TestRemoveContainedPath_RemovesLegitimateNested(t *testing.T) {
 //
 //testtiming:keep a final-component junction being removed as a link while its escaping target stays untouched; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_RemovesFinalLinkNotTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
 	outside := filepath.Join(base, "outside")
@@ -141,6 +144,7 @@ func TestRemoveContainedPath_RemovesFinalLinkNotTarget(t *testing.T) {
 //
 //testtiming:keep an already-absent target being an idempotent no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := t.TempDir()
 	container := filepath.Join(base, "c")
 	if err := os.MkdirAll(container, 0o755); err != nil {
@@ -164,6 +168,7 @@ func TestRemoveContainedPath_AbsentIsNoOp(t *testing.T) {
 //
 //testtiming:keep createExclusiveDir refusing a symlink planted at the leaf as EEXIST so the gate never mints a token for a directory it did not create; coverage of its blocks by other tests does not show an assertion of this
 func TestCreateExclusiveDir_RefusesLeafSymlink(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := t.TempDir()
 	container := filepath.Join(base, "container")
 	outside := filepath.Join(base, "outside")

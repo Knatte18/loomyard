@@ -1,5 +1,3 @@
-//go:build tier0
-
 // conformance_test.go holds the checks every registry entry must pass, ranged over Names() so a new entry cannot skip them silently.
 
 package shedrecipe
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // minimalEntry builds the Env and Config an entry needs to construct successfully.
@@ -114,6 +113,7 @@ func minimalEntries() map[string]minimalEntry {
 }
 
 func TestEveryEntry_RejectsUnknownConfigKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	minimal := minimalEntries()
 	for _, name := range Names() {
 		t.Run(name, func(t *testing.T) {

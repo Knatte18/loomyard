@@ -1,5 +1,3 @@
-//go:build tier1
-
 // manifest_test.go proves CaptureManifest, DiffManifest, and AssertNoUnpermittedChange against real
 // hubs from NewHub: the round-trip properties a permit diff must hold, both directions of the ".git"
 // allowlist, the two portability guarantees the package's own doc comments promise, and the one walk
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // firstWiredJunction returns the absolute path of one of h's wired junction links, along with its
@@ -53,6 +52,7 @@ func changeAt(changes []Change, path string) *Change {
 }
 
 func TestManifestRoundTrip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("UnchangedHubDiffsEmpty", func(t *testing.T) {
 		t.Parallel()
 
@@ -157,6 +157,7 @@ func TestManifestRoundTrip(t *testing.T) {
 }
 
 func TestManifestGitAllowlist(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("OrdinaryGitStatusAndCommitProduceEmptyDiff", func(t *testing.T) {
 		t.Parallel()
 
@@ -208,6 +209,7 @@ func TestManifestGitAllowlist(t *testing.T) {
 }
 
 func TestManifestPortability(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("KeysAreToSlashNormalised", func(t *testing.T) {
 		t.Parallel()
 
@@ -252,6 +254,7 @@ func TestManifestPortability(t *testing.T) {
 //
 //testtiming:keep a path reachable only through a wired junction being recorded once under the weft sibling's path; coverage of its blocks by other tests does not show an assertion of this
 func TestManifestWiredJunctionWalk(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

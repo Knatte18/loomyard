@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_commit_test.go covers BouncerConfig.Commit and BouncerConfig.Approve -- the two seams
 // that let a segment whose round producer runs no git of its own still have its reviewed artifacts
 // approved and committed by the loop owner. Every case below builds on the harvest vehicle:
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seamLog is a call log both the Approve and Commit closures append a marker to; one shared log,
@@ -48,6 +47,7 @@ func (l *seamLog) commit(err error) func() error {
 //
 //testtiming:keep pins that each non-nil seam runs exactly once, Approve strictly before Commit, and that a nil seam is not an error
 func TestBouncer_ConvergedSettle_CallsApproveThenCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -104,6 +104,7 @@ func evidenceLedgerContent(t *testing.T, round int, entries ...evidenceEntry) st
 // The entry holds the round's open MEDIUM-or-worse and unlabelled findings sorted by key, each with the ledger rounds its key was open in and an "unlabelled" label where the ledger has none, and anchor-relative slash-separated paths.
 // A round with no such finding calls the seam with an empty list.
 func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -178,6 +179,7 @@ func TestBouncer_ConvergedSettle_CallsCarryOverBeforeApproveAndCommit(t *testing
 // TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle pins that a failed carry-over returns an error naming its cause with a way forward, never Stuck, and runs neither Approve nor Commit.
 // The failure is either the seam's own error or a run directory outside the anchor, which fails before the seam is called.
 func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	sentinel := errors.New("record malformed")
 	tests := []struct {
@@ -236,6 +238,7 @@ func TestBouncer_ConvergedSettle_CarryOverFailureBlocksTheSettle(t *testing.T) {
 //
 //testtiming:keep pins that a CONTINUE verdict calls neither the Approve nor the Commit seam
 func TestBouncer_BlockingNeverCallsApproveOrCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var log seamLog
 	cfg := newBouncerFixture(t).Config
@@ -267,6 +270,7 @@ func TestBouncer_BlockingNeverCallsApproveOrCommit(t *testing.T) {
 // non-Stuck assertion below is what catches that regression here rather than leaving it for a
 // reader to notice.
 func TestBouncer_FailingSeamIsAnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -332,6 +336,7 @@ func TestBouncer_FailingSeamIsAnError(t *testing.T) {
 //
 //testtiming:keep pins that an already-cancelled context still commits an approved verdict, which no Call-driven test can reach
 func TestBouncer_Commit_CancelledContextStillCommits(t *testing.T) {
+	tiergate.Require(t, 0)
 	var log seamLog
 	cfg := newBouncerFixture(t).Config
 	cfg.Shuttle = &shedfake.Shuttle{}

@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // bindings_integration_test.go drives the Alt-key and status-bar bindings against a real tmux server and an attached client.
 // The terminal's own byte sequences are written into the client's pty (ESC [1;3A..D, SGR mouse clicks at the bar's cells), so the whole key path is exercised.
@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -193,6 +194,7 @@ func (f *bindingsFixture) click(t *testing.T, row int, label string) {
 }
 
 func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBindingsFixture(t)
 	if _, err := f.e.AddStrand(AddSpec{NameOverride: "agent", Cmd: "sleep 300", Display: render.Display{Anchor: render.AnchorOwnWindow}}); err != nil {
@@ -246,6 +248,7 @@ func TestBindings_AltUpDownStepWindowsInIndexOrderPastHiddenOnes(t *testing.T) {
 }
 
 func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBindingsFixture(t)
 	session := f.e.SessionName()
@@ -358,6 +361,7 @@ func TestBindings_StatusBarClicksSelectAndZoomByRangeType(t *testing.T) {
 }
 
 func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBindingsFixture(t)
 	socketPath := strings.TrimSpace(mustTmuxOutput(t, f.e, "display-message", "-p", "#{socket_path}"))
@@ -395,6 +399,7 @@ func TestBindings_AltLeftRightRunTheSwitchCommandWithTheToldPaths(t *testing.T) 
 // TestBindings_ButtonClickRunsTheVerbInTheRunDirectory clicks a rendered button and asserts what the pinned line runs: in which directory, with which arguments and environment, and that a failing verb leaves the pane out of view mode.
 // The executable is swapped for a script that records its working directory, whether the strand name variables are set and its arguments, then exits 3.
 func TestBindings_ButtonClickRunsTheVerbInTheRunDirectory(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBindingsFixture(t)
 	beamDir := t.TempDir()

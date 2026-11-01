@@ -1,5 +1,3 @@
-//go:build tier0
-
 // green_test.go pins the green end of the adopt check over fake seams and a temp subject directory: the lifts, the pair, the first passes, the resumed children, the fix task's removal and the try count.
 
 package adoptcli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // greenHoldTime is the pause time every hold entry of a green fixture carries.
@@ -185,6 +184,7 @@ func mentions(lines []string, wants ...string) bool {
 }
 
 func TestGreenEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("lifts the standing holds of its subject and leaves the holds appended meanwhile and another subject's", func(t *testing.T) {

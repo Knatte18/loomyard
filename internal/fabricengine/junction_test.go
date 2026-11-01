@@ -1,5 +1,3 @@
-//go:build tier0
-
 // junction_test.go unit-tests unseedJunctionRecords directly against synthetic WarpJunction slices — no build tag, since it touches only plain directories and fslink, never git.
 // It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second entry is batch 5's job), so the abort-and-accumulate contract this card gives unseedLymJunction cannot be driven through the exported (l, slug) surface with more than one junction;
 // this file drives the extracted loop directly instead.
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wireTestJunction creates a real link at link pointing to target (creating
@@ -35,6 +34,7 @@ func wireTestJunction(t *testing.T, link, target string) {
 //
 //testtiming:keep WorktreePath joining the hub path and slug; coverage of its blocks by other tests does not show an assertion of this
 func TestWorktreePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	l := &lymcwd.Location{HubPath: filepath.Join("home", "user", "project-LYMHUB")}
@@ -53,6 +53,7 @@ func TestWorktreePath(t *testing.T) {
 // This is only exercisable against a synthetic multi-record slice — see the file doc comment for
 // why.
 func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -100,6 +101,7 @@ func TestUnseedJunctionRecords_AccumulatesBeforeAbort(t *testing.T) {
 //
 //testtiming:keep every healthy junction being removed with each removed name reported, and an empty slice being a (nil, nil) no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -147,6 +149,7 @@ func TestUnseedJunctionRecords_RemovesEveryHealthyJunction(t *testing.T) {
 //
 //testtiming:keep the git-exclude pattern being slash-anchored at the repo root and carrying the anchor subpath, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 func TestExcludePatternFor_AnchorsToRepoRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hubscratch_test.go covers fabricengine.HubScratchDir and fabricengine.HubLogsDir's own
 // idempotency against it.
 // It is an external test package because clone_test.go's own header comment documents the same
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubScratchAndLogsDir covers the hub scratch geometry:
@@ -32,6 +31,7 @@ import (
 //
 //testtiming:keep HubScratchDir being board-anchored, a sibling of the stencils _lym tree, ignoring AnchorRel, and HubLogsDir and LogArchiveDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
 func TestHubScratchAndLogsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := filepath.Join(string(filepath.Separator), "synthetic", "repo-LYMHUB")
@@ -81,6 +81,7 @@ func TestHubScratchAndLogsDir(t *testing.T) {
 //
 //testtiming:keep the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
 func TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym(t *testing.T) {
+	tiergate.Require(t, 0)
 	hubPath := t.TempDir()
 	if err := os.MkdirAll(fabricengine.HubScratchDir(hubPath), 0o755); err != nil {
 		t.Fatalf("mkdir HubScratchDir(%s): %v", hubPath, err)

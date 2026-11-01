@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mutation_test.go covers the mutation-record vocabulary declared in mutation.go: append ordering,
 // the hub-relative Target conversion, ref recording, copy/isolation semantics, JSON marshalling, and
 // the nil-safety and value-receiver contracts the doc comments promise.
@@ -15,12 +13,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMutations_Append_HubRelativeConversion covers Append's hub-relative Target conversion: a
 // target below the hub root, the hub root itself, a target outside the hub root, and an empty
 // hubRoot.
 func TestMutations_Append_HubRelativeConversion(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hubRoot := filepath.Join(string(filepath.Separator), "hub", "root")
@@ -79,6 +79,7 @@ func TestMutations_Append_HubRelativeConversion(t *testing.T) {
 //
 //testtiming:keep AppendRef recording its ref verbatim with a hubRoot set; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_AppendRef(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hubRoot := filepath.Join(string(filepath.Separator), "hub", "root")
@@ -100,6 +101,7 @@ func TestMutations_AppendRef(t *testing.T) {
 //
 //testtiming:keep Entries() and Snapshot() returning copies, an empty record returning a non-nil slice, and value-receiver callability; coverage of its blocks by other tests does not show an assertion of this
 func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	empty := NewMutations("")
@@ -145,6 +147,7 @@ func TestMutations_EntriesAndSnapshotAreCopies(t *testing.T) {
 // TestMutations_MarshalJSON covers the empty, zero-value, empty-Detail, and non-empty-Detail
 // marshalling cases, asserting the exact JSON byte string.
 func TestMutations_MarshalJSON(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -221,6 +224,7 @@ func TestMutations_MarshalJSON(t *testing.T) {
 //
 //testtiming:keep an embedded MutationRecord marshalling under the "mutations" key; coverage of its blocks by other tests does not show an assertion of this
 func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type result struct {
@@ -251,6 +255,7 @@ func TestMutationRecord_EmbedsAndMarshalsUnderMutationsKey(t *testing.T) {
 // TestMutations_Extend covers that Extend appends other's entries verbatim in order, that it is a
 // no-op on an empty source, and that it is safe on a nil receiver.
 func TestMutations_Extend(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	m := NewMutations("")
@@ -334,6 +339,7 @@ func armTraceSink(t *testing.T) func() []string {
 // recorder on the earliest failure paths.
 // It does not call t.Parallel because the trace sink is package-level state.
 func TestMutations_TraceLogging(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("append logs one record", func(t *testing.T) {
 		read := armTraceSink(t)
 
@@ -400,6 +406,7 @@ func TestMutations_TraceLogging(t *testing.T) {
 // TestRefDetail covers refDetail's exact grammar: create without remote, push with remote, and a
 // relative repo made absolute.
 func TestRefDetail(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	abs := filepath.Join(string(filepath.Separator), "hub", "warp")

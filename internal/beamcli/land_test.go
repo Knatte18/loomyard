@@ -1,5 +1,3 @@
-//go:build tier0
-
 // land_test.go drives the land and ready sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, and the ready record written once.
 
 package beamcli
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // landNow is the time the fake hub's clock reads.
@@ -99,6 +98,7 @@ func (w *landWorld) deps() landDeps {
 }
 
 func TestLand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -283,6 +283,7 @@ func TestLand(t *testing.T) {
 }
 
 func TestMarkReady(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

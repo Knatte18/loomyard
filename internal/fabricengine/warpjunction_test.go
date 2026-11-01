@@ -1,5 +1,3 @@
-//go:build tier0
-
 // warpjunction_test.go covers the warp-side junction primitives relocated from internal/lymcwd in
 // this batch — CodeLymLink, WarpLymLinkHere, WarpJunctions and WarpJunctionsHere, plus the
 // WarpJunction record shape — over synthetic *lymcwd.Location literals rather than real fixtures,
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -24,6 +23,7 @@ import (
 //
 //testtiming:keep CodeLymLink and WarpLymLinkHere mirroring AnchorRel and pairing with the weft sibling; coverage of its blocks by other tests does not show an assertion of this
 func TestCodeLymLinkMethods(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name                string
 		hub                 string
@@ -105,6 +105,7 @@ func TestCodeLymLinkMethods(t *testing.T) {
 //
 //testtiming:keep WarpJunctions returning one record per name in input order with the Link and Target composed from the worktree, weft sibling and anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctions(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		hub     string
@@ -219,6 +220,7 @@ func TestWarpJunctions(t *testing.T) {
 //
 //testtiming:keep the slug-free junction accessor returning the expected Name, Link and Target at a root and nested anchor and agreeing with WarpJunctions; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpJunctionsHere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("at root", func(t *testing.T) {
 		loc := &lymcwd.Location{HubPath: "/h", WorktreeName: "feat", AnchorRel: "."}
 

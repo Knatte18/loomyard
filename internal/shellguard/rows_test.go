@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rows_test.go pins the package's import set and the refusal of forbidden characters in a row's steer and notice.
 
 package shellguard
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports is the closed set of non-stdlib imports the package admits.
@@ -19,6 +18,7 @@ var allowedImports = []string{
 
 // TestLeafInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in allowedImports.
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	scankit.AssertImportAllowlist(t, "internal/shellguard", allowedImports...)
 }
@@ -26,6 +26,7 @@ func TestLeafInvariant_AllowlistOnly(t *testing.T) {
 // TestCheckTexts plants each forbidden character in a row's steer and notice and asserts checkTexts refuses it naming the row;
 // it also asserts the shipped rows, rendered over a sample refuse list, pass checkTexts and state the gate rule and the edit rule in one notice each, that the refuse-raw steer carries the full gate rule while its notice names only the refusal and the tier and card scopes, that the python and shell-edit steers carry the full edit rule, and that the raw-go steer names the done: false retry of lym gate card-verify.
 func TestCheckTexts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("ShippedRows", func(t *testing.T) {
 		t.Parallel()
@@ -101,6 +102,7 @@ func TestCheckTexts(t *testing.T) {
 
 // TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks asserts the raw go row's steer and notice offer each package-scoped compile check only while no refuse-raw prefix refuses it.
 func TestRows_RawGoSteerNamesOnlyUnrefusedCompileChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // drivewiring_test.go — untagged Tier-1 tests for the Park seam loom hands the shed driver, over a fake commit in a temp dir.
 
 package loomcli
@@ -17,10 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoomPark covers loom's Park seam: a clean commit writes the park marker and returns nil, a failing commit still writes the marker and returns nil, and a marker path whose directory cannot be created returns an error naming it.
 func TestLoomPark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -74,6 +74,7 @@ func TestLoomPark(t *testing.T) {
 
 // TestLoomArbiterSeam_JudgesFirst covers the arbiter seam loom hands the driver: its arbiter-first marking is set, the Webster row is marked with any reason, a landing row is marked only for an escalate reason, and no other stop is.
 func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -106,6 +107,7 @@ func TestLoomArbiterSeam_JudgesFirst(t *testing.T) {
 
 // TestGoDriverSeams_LabelShed covers the Go driver's goto and step seams: each records the shed label, the goto on the entry it appends and the step as the pending label before the loop is spawned.
 func TestGoDriverSeams_LabelShed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	root := t.TempDir()
 	statusPath := filepath.Join(root, "status.json")

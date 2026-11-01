@@ -1,5 +1,3 @@
-//go:build tier1
-
 // destroyremote_integration_test.go pins the remote-branch gate against a real hub, since each case needs a real git spawn: the unset-declaration and naming-predicate refusals are hermetic and covered in destroy_test.go instead, per the Test Tier Purity Invariant.
 //
 // The first two cases drive checkRemoteBranchRequest through CheckRemoteBranchRequestForTest (export_test.go) and pin refusals the real call sites cannot reach.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused proves the repo's primary weft branch is
@@ -26,6 +25,7 @@ import (
 //
 //testtiming:keep the remote-branch gate refusing the primary weft branch on ownership, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -54,6 +54,7 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 //
 //testtiming:keep the remote-branch gate refusing a checked-out weft branch on ownership rather than dirtiness, a refusal the real call sites cannot reach; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remoteslug"
@@ -95,6 +96,7 @@ func archivedDeleteFixture(t *testing.T, slug string) (*hubforge.Hub, string, st
 //
 //testtiming:keep the pair's own checked-out weft branch being deleted from origin under a valid tag and a tip lease with one recorded entry; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "archdel"
@@ -115,6 +117,7 @@ func TestDeleteArchivedWeftBranch_CheckedOutBranchDeleted(t *testing.T) {
 
 // TestDeleteArchivedWeftBranch_PrimaryRefused proves the primary weft branch is refused on ownership.
 func TestDeleteArchivedWeftBranch_PrimaryRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, weftRoot, _, _ := archivedDeleteFixture(t, "archprimary")
@@ -133,6 +136,7 @@ func TestDeleteArchivedWeftBranch_PrimaryRefused(t *testing.T) {
 
 // TestDeleteArchivedWeftBranch_EmptyArchiveTagRefused proves an empty archive tag is refused on dirtiness.
 func TestDeleteArchivedWeftBranch_EmptyArchiveTagRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "archnotag"
@@ -149,6 +153,7 @@ func TestDeleteArchivedWeftBranch_EmptyArchiveTagRefused(t *testing.T) {
 
 // TestDeleteArchivedWeftBranch_EmptyLeaseRefused proves a valid tag with no lease SHA is refused on dirtiness.
 func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "archnolease"
@@ -167,6 +172,7 @@ func TestDeleteArchivedWeftBranch_EmptyLeaseRefused(t *testing.T) {
 //
 //testtiming:keep a lease behind an advanced origin failing without a gate refusal, recording nothing and leaving the advanced tip; coverage of its blocks by other tests does not show an assertion of this
 func TestDeleteArchivedWeftBranch_StaleLeaseFailsAndKeepsTip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "archstale"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // anomaly_test.go is the TDD driver for DetectCrashResume and ClassifyHalt: table tests over
 // hand-built observations and hand-built states and reasons. It is untagged (Tier 1): no spawn,
 // no git, no filesystem I/O -- the classifier is pure.
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDetectCrashResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		entry EntryObservation
@@ -114,6 +114,7 @@ func TestDetectCrashResume(t *testing.T) {
 }
 
 func TestClassifyHalt(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		state       shedengine.State

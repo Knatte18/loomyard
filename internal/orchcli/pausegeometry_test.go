@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pausegeometry_test.go pins that the orch module wires its shuttle runner with no pause geometry.
 
 package orchcli
@@ -11,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCLI_OrchRunnerReadsNoPause pins that no production file of the package tells a runner a pause geometry,
 // so the runner the orch command wires reads every target uncovered and `lym beam start` types its start lines under a pause entry.
 // The wired runner is built inside the command's pre-run and is unreachable from a test, so the pin is a scan for the call that would give it a geometry.
 func TestCLI_OrchRunnerReadsNoPause(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	files, err := filepath.Glob("*.go")

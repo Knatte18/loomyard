@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verbs.go builds the tranche-1 verb table: the nine gate-reaching verbs, each with its own Arrange
 // fixture, its Run call, and its Expect function deriving a per-state Expectation; plus the seventeen
 // hostile-input cases and the omission table recording every verb/state pair deliberately excluded

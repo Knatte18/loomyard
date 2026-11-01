@@ -1,5 +1,3 @@
-//go:build tier0
-
 // nearestlive_test.go covers the walk behind NearestLiveOrch over told reads, so no filesystem is touched.
 
 package hubgeom
@@ -7,9 +5,12 @@ package hubgeom
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNearestLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	errLive := errors.New("probe failed")

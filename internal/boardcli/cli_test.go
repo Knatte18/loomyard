@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_test.go — tests for the board CLI (cli.go).
 //
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success, 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
@@ -22,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // defaultHubBoardConfig is the hub board.yaml every step starts from.
@@ -96,6 +95,7 @@ func (f *cliFixture) reset(t *testing.T) string {
 // the fixed order only lets a failing step stop the run.
 // It calls no t.Parallel, and neither does a step, because t.Setenv, t.Chdir and the os.Stdin swap of pipeStdin are process-global state.
 func TestCLI(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	fixture := &cliFixture{cwd: seedCwd(t)}
 

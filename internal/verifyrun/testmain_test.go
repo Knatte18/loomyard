@@ -1,5 +1,5 @@
 // testmain_test.go runs the test binary under tmux isolation through tmuxkit.Main, or as the helper process a test re-executes it as.
-// It carries no build tag, so it compiles into every tag set.
+// It serves every tier's tests, since the package's one test binary holds them all.
 
 package verifyrun
 

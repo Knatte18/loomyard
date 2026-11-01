@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runprofile_test.go table-drives Load, Lookup, Settings and Default against hub files under t.TempDir.
 
 package runprofile_test
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // boardWithProfiles returns a board dir whose profiles.yaml holds contents.
@@ -32,6 +31,7 @@ func boardWithProfiles(t *testing.T, contents string) string {
 
 // TestLoad pins what Load reads: the hub file as it stands, never filled from the template, the template when no file is present, and a refusal naming the entry for a wrong shape or a default that names no fitting profile.
 func TestLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -95,6 +95,7 @@ func TestLoad(t *testing.T) {
 // TestTemplateLadder pins the template's ladder: each profile's review rounds and hard caps per perch for loom, and the Code perch's for darn, every hard cap its rounds plus one.
 // It also pins that each profile's sampler block carries its darn block's loom values, with sampler.code_review on from light up, and that sampler has no default profile.
 func TestTemplateLadder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	profiles, err := runprofile.Load(configengine.Dirs{})
 	if err != nil {
@@ -177,6 +178,7 @@ func TestTemplateLadder(t *testing.T) {
 
 // TestTemplateDocsProfile pins the template's darn-only docs profile: a Sonnet medium writer, one Code round with its hard cap, and no loom block.
 func TestTemplateDocsProfile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	profiles, err := runprofile.Load(configengine.Dirs{})
 	if err != nil {
@@ -200,6 +202,7 @@ func TestTemplateDocsProfile(t *testing.T) {
 
 // TestSettings pins the lookups of a loaded file: a profile's block for a recipe, a refusal naming the way forward for an unknown profile or a missing recipe block, and a recipe's default.
 func TestSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	profiles, err := runprofile.Load(configengine.Dirs{Board: boardWithProfiles(t, "defaults: {darn: docs}\ndocs:\n  darn:\n    darn: {writer: opus}\n")})
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // requires_test.go covers Spec.Requires: the refusals at Start and at attach, and the runs that pass the check.
 
 package shuttleengine
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // supportingEngine is a fakeEngine plus the RequirementSupporter capability over a scripted requirement set.
@@ -74,6 +73,7 @@ func (r *requiresRig) startRecord(forkSubagents bool) (runDir string) {
 func (r *requiresRig) outputFile() string { return filepath.Join(r.fx.Worktree, "out.md") }
 
 func TestRunner_Requires(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	startWayForward := "way forward: give the role a model alias of an engine that meets them, or for a role that takes no alias set engine: in shuttle.yaml to one that does, then re-run the verb"

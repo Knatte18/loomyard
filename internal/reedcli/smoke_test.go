@@ -1,5 +1,3 @@
-//go:build tier2 || tier3
-
 // smoke_test.go is the shared smoke-test harness: the helpers (binary discovery, live-tmux process/pane probes, transcript watching, fixture wiring) common to the smoke test files in this package.
 // Those files drive the composed live-tmux behaviors through RunCLIIn against a real server:
 // the basic up -> add -> status -> down round-trip, crash recovery, every successive add opening a window of its own, add-after-remove-last, down's synchronous server teardown, cross-worktree scope, the interactive attach handover, and native claude --resume codeword recall.

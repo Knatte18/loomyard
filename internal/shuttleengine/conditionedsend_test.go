@@ -1,5 +1,3 @@
-//go:build tier0
-
 // conditionedsend_test.go covers Runner.SendConditioned through a fake pane and a session-signal fake engine, with a fake clock so no row waits.
 
 package shuttleengine
@@ -11,6 +9,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // framedReed is a tuiReed whose capture is the fixed frame while one is set.
@@ -35,6 +35,7 @@ var _ ReedOps = (*framedReed)(nil)
 // a send that does not land leaves its text in the box;
 // and a pending-send record is not consulted.
 func TestRunner_SendConditioned(t *testing.T) {
+	tiergate.Require(t, 0)
 	const line = "run the suite"
 	want := SendCondition{State: SessionIdleStalled, Cause: SessionCauseAPIError}
 	cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gofmt_test.go enforces that every Go file in the module is gofmt-formatted, whatever its build tags.
 // It compares each source with go/format.Source of itself, so no gofmt binary is needed.
 
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gofmtScanFloor is the fewest Go files the walk may see; fewer means the walk is broken, not that the module shrank.
@@ -50,6 +49,7 @@ func gofmtFinding(file string, src []byte) (string, bool) {
 //
 //lym:guard
 func TestGofmt_ModuleFilesAreFormatted(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {

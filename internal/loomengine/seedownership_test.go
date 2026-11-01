@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seedownership_test.go covers VerifySeedOwnership, F-B7's (round fable5-high-r3) guard: a status
 // file recording a different task's slug — the state a worktree inherits when forked from a task
 // worktree — must refuse loudly instead of letting the driver resume the inherited run.
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeSeedFixture writes a shedengine.Status carrying a loom Status product with slug, returning
@@ -45,6 +44,7 @@ func writeSeedFixture(t *testing.T, slug string) (string, string) {
 }
 
 func TestVerifySeedOwnership(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("MatchingSlugPasses", func(t *testing.T) {
 		statusPath, lockPath := writeSeedFixture(t, "own-task")
 		if err := VerifySeedOwnership(statusPath, lockPath, "own-task"); err != nil {

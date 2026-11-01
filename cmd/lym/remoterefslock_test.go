@@ -1,5 +1,3 @@
-//go:build tier0
-
 // remoterefslock_test.go enforces `PATTERN-remote-refs-lock` for internal/fabricengine: a fetch there that writes remote-tracking refs goes through gitrepo, which takes the repository's remote-refs lock.
 // The scan finds every git argument list holding "fetch" and fails on one that neither carries "--refmap=", which writes no tracking ref, nor sits in a function the allowlist names.
 
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // remoteRefsLockFetchAllowlist names the files, or as "<file>:<function>" the functions, of internal/fabricengine whose unlocked fetch is deliberate.
@@ -27,6 +26,7 @@ const remoteRefsLockMinScannedFiles = 20
 //
 //lym:guard
 func TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo(t *testing.T) {
+	tiergate.Require(t, 0)
 	allowlist := scankit.NewAllowlist(remoteRefsLockFetchAllowlist)
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/fabricengine"}, Shallow: true}, func(f *scankit.File) {

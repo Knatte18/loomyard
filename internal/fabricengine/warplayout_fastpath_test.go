@@ -1,5 +1,3 @@
-//go:build tier0
-
 // warplayout_fastpath_test.go pins warpLayoutFor's spawn-free hub-sibling branch in Tier 0.
 // Every Location field must be carried over from the caller's layout or derived from the sibling path,
 // and the anchor must come from the sibling's own marker rather than the caller's.
@@ -13,11 +11,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 //testtiming:keep the fast-path warp layout carrying every field; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLayoutFor_FastPathCarriesEveryField(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := &lymcwd.Location{

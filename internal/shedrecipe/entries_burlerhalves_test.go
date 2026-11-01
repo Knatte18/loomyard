@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_burlerhalves_test.go covers burlerReviewEntry and burlerFixEntry: the happy paths, the profile-to-Profile mapping (including the target relative-path exception), strict unknown-key rejection, the run-directory group shared with entries_bouncer_test.go's Bouncer coverage, every construction failure, and the "gates" Config key the fix entry resolves into RunOpts.Gate.
 
 package shedrecipe
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
 	"gopkg.in/yaml.v3"
 )
@@ -104,6 +103,7 @@ func captureFix(t *testing.T, name string, cfg Config, env Env) (burlerengine.Pr
 }
 
 func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	cfg := Config{
 		"run_subdir": "review-segment",
@@ -156,6 +156,7 @@ func TestBurlerReviewEntry_ProfileMapping(t *testing.T) {
 // resolving a seeded stencil's content into Profile.Rubric, stripping a leading stamp banner from it, the rubric/rubric_stencil mutual-exclusivity rule, an unseeded stencil name,
 // and the empty-Env.StencilsDir construction error being scoped to the rubric_stencil path only.
 func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
+	tiergate.Require(t, 0)
 	stencilCfg := Config{
 		"run_subdir": "review-segment",
 		"profile":    map[string]any{"rubric_stencil": "round-rubric"},
@@ -290,6 +291,7 @@ func TestBurlerReviewEntry_RubricStencil(t *testing.T) {
 // a row omitting timeout_s takes env.ReviewTimeout and a row setting it overrides the Env value;
 // both absent with an empty Env leaves the zero values.
 func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
+	tiergate.Require(t, 0)
 	halves := []struct {
 		name    string
 		entry   string
@@ -376,6 +378,7 @@ func TestBurlerHalfEntries_EnvFallback(t *testing.T) {
 // round 1's profile carries the list's first entry, the round's usage record carries both names, and a setting's list naming a fan beside the recipe's own is a construction error.
 // It also covers the row's segment's review key reaching the reviewer's model key.
 func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
+	tiergate.Require(t, 0)
 	type recordedFans struct {
 		Fan          string `yaml:"fan"`
 		FixFan       string `yaml:"fix_fan"`
@@ -463,6 +466,7 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 }
 
 func TestBurlerHalfEntries_RelativePathException(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	cfg := Config{
 		"run_subdir": "review-segment",
@@ -498,6 +502,7 @@ func TestBurlerHalfEntries_RelativePathException(t *testing.T) {
 // TestBurlerHalfEntries_StrictUnknownKeys covers unknown-key rejection at every level of both entries.
 // The fix entry refuses the review-only keys: the fasit, the rubric, the cluster fan, tool use and the row-level gates it alone takes are not shared.
 func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		entry string
@@ -584,6 +589,7 @@ func TestBurlerHalfEntries_StrictUnknownKeys(t *testing.T) {
 // A role_prefix reaches the profile, an absent one leaves it empty, and a value that is no role is refused naming the key and the value.
 // language-skills true reaches the profile, and a non-boolean value is refused naming the key.
 func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	entries := []struct {
 		name    string
 		cfg     func() Config
@@ -655,6 +661,7 @@ func TestBurlerHalfEntries_ColorSegment(t *testing.T) {
 }
 
 func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	halves := []struct {
 		name  string
 		build func(name string, cfg Config, env Env) error
@@ -745,6 +752,7 @@ func TestBurlerHalfEntries_RunDirectory(t *testing.T) {
 // TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent proves a BurlerFix row built under an Env carrying a NotifyParent posts the accepted review's decision-class finding through it and routes the finding out of the fixer's work.
 // It proves a row with decisions_escalated set posts nothing and still routes the finding out of the fixer's work.
 func TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		extra     Config
@@ -792,6 +800,7 @@ func TestBurlerFixEntry_RoutesDecisionFindingsThroughEnvNotifyParent(t *testing.
 // TestBurlerFixEntry_GateConfig covers the "gates" Config key burlerFixEntry resolves through resolveRowGateSpec into RunOpts.Gate:
 // a "gates" list is accepted at row level and selects the matching validators, "gates" is rejected inside the profile: sub-map -- the guard against the two allowlists being confused -- and an unrecognised name fails loud.
 func TestBurlerFixEntry_GateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("RowLevelGatesAccepted", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalFixConfig()
@@ -961,6 +970,7 @@ func TestBurlerFixEntry_GateConfig(t *testing.T) {
 }
 
 func TestBurlerHalfEntries_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	halves := []struct {
 		name  string
 		entry string
@@ -1044,6 +1054,7 @@ func TestBurlerHalfEntries_ConstructionFailures(t *testing.T) {
 // The two maps carry identical key sets, so without it a recipe author with a typo in one of them is told which key and never which map.
 // The two error strings are byte-identical.
 func TestBurlerHalfEntries_FileSetErrorsNameTheirOwnMap(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		profile map[string]any

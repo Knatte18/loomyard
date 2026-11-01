@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reset_test.go covers the reset verb through its cobra.Command over one hubforge hub, each step on its own task pair.
 // Each success path checks the branch, the files and the mutation record; each refusal checks its way forward and that nothing moved.
 // FABRIC_SKIP_GIT=1 is set for the whole scenario, so the closing fabric sync commits nothing and needs no records sibling beyond the pair's own.
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -157,6 +156,7 @@ func (fx *resetFixture) wantRefusal(t *testing.T, args []string, parts ...string
 // TestResetCmd runs every reset case as a step over one hub, each step adding its own pair so no step relies on another's state.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestResetCmd(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 

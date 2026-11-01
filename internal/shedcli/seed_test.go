@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seed_test.go covers seed.go's two testable workers: writeSeed and parseSeedParams. Both perform
 // no lymcwd.Resolve and no cwd read of their own (writeSeed's own doc comment), so this file drives
 // them directly against a hand-built *lymcwd.Location, with no real git repository behind it, and
@@ -17,11 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWriteSeed_SucceedsWithNoSeedPresent covers the pre-run exemption first: "lym shed seed <run-id> --recipe <name>" succeeds with no seed present and no recipe armed -- writeSeed itself never calls Arm at all, structurally, and this is the case resolvePersistentPreRun would otherwise refuse three different ways (no seed to read, an unresolvable recipe, and a verb gate with nothing to gate).
 // The seed reads back carrying the recipe and the driver: the default when none is passed, the typed llm driver otherwise.
 func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -64,6 +64,7 @@ func TestWriteSeed_SucceedsWithNoSeedPresent(t *testing.T) {
 //
 //testtiming:keep pins the driver default and pass-through per bootstrap-verb capability, which its covering tests do not
 func TestResolveSeedDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name             string
 		flagVal          string
@@ -87,6 +88,7 @@ func TestResolveSeedDriver(t *testing.T) {
 // TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames asserts an unresolvable --recipe value
 // refuses via this package's own lookup, naming the available recipes.
 func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, recipe := range []string{"bogus-recipe", "loom"} {
 		t.Run(recipe, func(t *testing.T) {
 			loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
@@ -112,6 +114,7 @@ func TestWriteSeed_UnknownRecipeRefusesWithTheAvailableNames(t *testing.T) {
 // so the assertion cannot degenerate into "is it spelled batten". The real batten rule (prime only)
 // needs a git worktree listing and is proven at the integration tier.
 func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	original := recipes
 	t.Cleanup(func() { recipes = original })
 
@@ -145,6 +148,7 @@ func TestWriteSeed_RecipeLocationRuleGatesTheWrite(t *testing.T) {
 // and one with a non-empty verb accepts it, so this assertion cannot silently degenerate into "is
 // it spelled loom".
 func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
+	tiergate.Require(t, 0)
 	original := recipes
 	t.Cleanup(func() { recipes = original })
 
@@ -195,6 +199,7 @@ func TestWriteSeed_LLMDriverGatedOnBootstrapVerbCapability(t *testing.T) {
 
 // TestParseSeedParams asserts a well-formed set of "key=value" entries parses into the expected map, including a value containing its own "=" (split only on the first), and that an entry with no "=" or an empty key refuses.
 func TestParseSeedParams(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -222,6 +227,7 @@ func TestParseSeedParams(t *testing.T) {
 
 // TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne asserts calling writeSeed twice with the identical seed is a no-op the second time, and that it refuses once an existing seed disagrees with the incoming one.
 func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	params := map[string]string{"slug": "some-slug"}
@@ -241,6 +247,7 @@ func TestWriteSeed_IdempotentAgainstAnIdenticalSeedAndRefusesADisagreeingOne(t *
 // other side before writing anything, the same refusal every other shed verb over a batten seed
 // already applies, so a stray seed can never land in a checkout no run is driven from.
 func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := t.TempDir()
 	siblingName := filepath.Base(fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: hub, WorktreeName: "pair", AnchorRel: "."}))
 	tests := []struct {

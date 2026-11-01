@@ -1,12 +1,13 @@
-//go:build tier0
-
 // testfile_test.go table-tests the per-language test-file matchers, their union and the plan's effective language.
 
 package planparser
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestIsTestFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string

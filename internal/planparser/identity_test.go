@@ -1,5 +1,3 @@
-//go:build tier0
-
 // identity_test.go tests IdentityText: the overview's identity ignores the approval line and nothing else.
 
 package planparser
@@ -7,9 +5,12 @@ package planparser
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIdentityText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := "---\nformat: 5\napproved: false\nroot: internal/foo\n---\n\n# Plan: rich\n\nFraming paragraph.\n\n" +

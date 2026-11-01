@@ -1,5 +1,3 @@
-//go:build tier0
-
 package stencilstore
 
 import (
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stampedBody returns body stamped with its own hash, the shape of an untouched board copy.
@@ -19,6 +18,7 @@ func stampedBody(body string) []byte {
 
 // TestClassifyPortBackDrift pins each of the four classes' message and remedy.
 func TestClassifyPortBackDrift(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const embedded = "embedded body\n"
@@ -141,6 +141,7 @@ func TestClassifyPortBackDrift(t *testing.T) {
 // The line is a Warn unless every differing stencil is in the behind class, when it is an Info.
 // It captures the logger's output, which is process-global state, so it stays serial.
 func TestWarnPortBackDrift_EmitsOneLineListingTheDriftedStencils(t *testing.T) {
+	tiergate.Require(t, 0)
 	baseDir := t.TempDir()
 	sourceDir := t.TempDir()
 	registry := newFakeRegistry(map[string][]byte{

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // trace_test.go covers trace.go's mint/adopt/export precedence: LYM_TRACE_ID adoption, minted-value shape, empty/whitespace-only treated as unset, the lazy TraceID() path, and the env-propagation contract MintOrAdoptAndExport promises spawned children.
 // No test in this file calls t.Parallel: each resets package-level trace state and sets LYM_TRACE_ID in the process environment.
 
@@ -10,6 +8,8 @@ import (
 	"regexp"
 	"sync"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var traceIDHexPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
@@ -32,6 +32,7 @@ func resetTraceState(t *testing.T) {
 // validating only one of the two would leave the other laundering a malformed value into every spawned child.
 // A valid value is adopted verbatim; an unset, empty or whitespace-only variable mints, as does a rejected value, and TraceID's lazy path mints with no prior MintOrAdoptAndExport call.
 func TestTraceID_AdoptsOnlyMintedAlphabetValuesElseMints(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		value     string

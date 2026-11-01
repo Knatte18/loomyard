@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedengine
 
 import (
@@ -7,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestMarkTransient(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("a marked error unwraps and keeps its text", func(t *testing.T) {
 		t.Parallel()
@@ -52,6 +53,7 @@ func failingProducer() *funcProducer {
 }
 
 func TestStep_TransientClassification(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -89,6 +91,7 @@ func TestStep_TransientClassification(t *testing.T) {
 }
 
 func TestStep_ResumeClearsTransient(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	fail := true
 	shed.Producers = []ProducerDef{{Name: "A", Producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
@@ -121,6 +124,7 @@ func TestStep_ResumeClearsTransient(t *testing.T) {
 }
 
 func TestStep_VerdictsNeverClassify(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		producer *funcProducer

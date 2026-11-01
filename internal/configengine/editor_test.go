@@ -1,14 +1,15 @@
-//go:build tier0
-
 package configengine
 
 import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolveEditor(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		env      map[string]string

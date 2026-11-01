@@ -1,11 +1,12 @@
-//go:build tier0
-
 package shedrun
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestRunIDVocabulary pins which run-ids are valid and which one is reserved.
 func TestRunIDVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string

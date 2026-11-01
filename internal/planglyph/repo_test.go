@@ -1,5 +1,3 @@
-//go:build tier0
-
 // repo_test.go covers the four exported query wrappers (TOC, Glyphs, Resolve, Expand), which run openRepo and resolveTargets, and declares writeFixtureRepo, the small on-disk Go fixture builder every test file in this package shares.
 
 package planglyph
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -23,6 +22,7 @@ func writeFixtureRepo(t *testing.T, files map[string]string) string {
 // TestTOC_Success asserts TOC delegates to the underlying quarry.Repo.TOC and returns its answer
 // unchanged.
 func TestTOC_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 
 	answer, err := TOC(root, "sub")
@@ -37,6 +37,7 @@ func TestTOC_Success(t *testing.T) {
 // TestTOC_QuarryUnavailable asserts TOC's error satisfies errors.Is(err, ErrQuarryUnavailable)
 // when the repository itself cannot be opened.
 func TestTOC_QuarryUnavailable(t *testing.T) {
+	tiergate.Require(t, 0)
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 
 	_, err := TOC(missing, "sub")
@@ -48,6 +49,7 @@ func TestTOC_QuarryUnavailable(t *testing.T) {
 // TestGlyphs_Success asserts Glyphs delegates to the underlying quarry.Repo.Glyphs and returns its
 // answer unchanged.
 func TestGlyphs_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 
 	answer, err := Glyphs(root, "sub")
@@ -62,6 +64,7 @@ func TestGlyphs_Success(t *testing.T) {
 // TestResolve_Success asserts Resolve delegates to the underlying quarry.Repo.Resolve and returns
 // its result slice unchanged.
 func TestResolve_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 
 	results, err := Resolve(root, []string{"sub#Foo"})
@@ -76,6 +79,7 @@ func TestResolve_Success(t *testing.T) {
 // TestExpand_Success asserts Expand delegates to the underlying quarry.Repo.Expand and returns its
 // answer unchanged.
 func TestExpand_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\ntype T struct{}\n"})
 
 	answer, err := Expand(root, "sub#T")
@@ -91,6 +95,7 @@ func TestExpand_Success(t *testing.T) {
 // Resolve answer covering fewer (or more) targets than asked is ErrQuarryUnavailable, never a
 // silent exemption of the uncovered targets from the resolve-backed validation pass.
 func TestEnsureResolveCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	targets := []string{"sub#A", "sub#B"}
 
 	if err := ensureResolveCoverage(targets, make([]quarry.ResolveResult, 2)); err != nil {

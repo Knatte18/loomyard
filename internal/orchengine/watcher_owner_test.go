@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watcher_owner_test.go drives the watcher's owner check over a scripted owner read and a recording strand stop.
 
 package orchengine
@@ -8,9 +6,12 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWatcher_StopsTheOrchOfABeamOwnedElsewhere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

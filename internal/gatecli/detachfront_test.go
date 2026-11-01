@@ -1,5 +1,3 @@
-//go:build tier0
-
 // detachfront_test.go covers the join decision of a capped `lym gate test` call's front, which needs no process and no hub.
 
 package gatecli
@@ -17,9 +15,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestJoinable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Unix(1_700_000_000, 0)
@@ -162,6 +162,7 @@ func mutateBuild(records []gateslot.RunRecord, mutate func(*gateslot.RunRecord))
 }
 
 func TestLongWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const key = "finalize"
@@ -268,6 +269,7 @@ func relabeled(records []gateslot.RunRecord, key string, keepIDs bool) []gateslo
 }
 
 func TestChooseCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -334,6 +336,7 @@ type failingWriter struct{}
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("closed pipe") }
 
 func TestFrontReplay_DeliveredMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -365,6 +368,7 @@ func TestFrontReplay_DeliveredMark(t *testing.T) {
 }
 
 func TestFrontReplay_NamesALongStdoutOnStderrInsteadOfPrintingIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	run := detachRun{dir: t.TempDir()}
@@ -390,6 +394,7 @@ func TestFrontReplay_NamesALongStdoutOnStderrInsteadOfPrintingIt(t *testing.T) {
 }
 
 func TestFrontPruneOldRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	keyDir := t.TempDir()

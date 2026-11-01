@@ -1,5 +1,3 @@
-//go:build tier0
-
 // interruptpolicy_meta_test.go pins loomshed.InterruptPolicies against the production authority --
 // the rows New actually assembles -- rather than against a standalone literal that could drift
 // silently.
@@ -14,12 +12,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn and sampler recipes.
 // Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
 // and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	rowNames := map[string]bool{}
 	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler} {
@@ -49,6 +49,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 //
 //testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	for rowName, engineName := range rowEngines() {
 		policy, ok := loomshed.InterruptPolicies[rowName]
 		if !ok {

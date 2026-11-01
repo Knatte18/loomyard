@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_drivingsurface_test.go pins the live-substrate properties behind a run's driving surface.
 // On the start side, an llm-seeded start keeps exactly one status strand.
 // On the step side, "lym loom step" and "lym shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // verbSmokeTimeout bounds one step or `start --no-attach` invocation.
@@ -77,6 +76,7 @@ func statusStrandPane(t *testing.T, eng *reedengine.Engine) string {
 // A run's seed cannot be rewritten to the other driver, so each driver gets its own pair, and the steps of one pair share its reed session.
 // The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 

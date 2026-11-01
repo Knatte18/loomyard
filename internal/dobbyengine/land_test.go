@@ -1,5 +1,3 @@
-//go:build tier0
-
 // land_test.go pins a beam's dobby's landing step: one per episode over a fake landing reading, a land request asked for or a notice when it cannot be, kept across a restart and retried after a failed post.
 
 package dobbyengine
@@ -10,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // landStep is one scripted answer of the fake CanLand seam.
@@ -45,6 +45,7 @@ func newLandHarness(t *testing.T, script ...landStep) *landHarness {
 }
 
 func TestLandBeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	passing := landStep{reading: LandReading{Passes: true}}
 	blocked := landStep{}

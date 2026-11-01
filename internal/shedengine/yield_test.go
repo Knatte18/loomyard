@@ -1,5 +1,3 @@
-//go:build tier0
-
 // yield_test.go pins the Yield outcome: a step and a run over a yielding producer leave the run as it was.
 
 package shedengine
@@ -9,11 +7,14 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStep_YieldPersistsNothing pins that a producer returning Yield leaves the status file's bytes and modification time unchanged, appends no history and calls no CommitStatus.
 // Step reports Yield with the run still running at the same row, and Run ends on RunYielded after the producer's one call.
 func TestStep_YieldPersistsNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

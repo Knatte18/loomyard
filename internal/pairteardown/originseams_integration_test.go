@@ -1,5 +1,3 @@
-//go:build tier1
-
 // originseams_integration_test.go pins HubSeamOptions' reads of the pause record and the parent lock store on a real git repository, which the untagged tests cannot create.
 
 package pairteardown
@@ -17,10 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubSeamOptions pins the options a call site holding only the prime builds: the pause record read at each call, the prime branch's parent lock read from the store, and the beam an unspawned member of a beam project reads as its parent.
 func TestHubSeamOptions(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := t.TempDir()
 	primeRoot := filepath.Join(hub, "prime")
 	if err := os.MkdirAll(primeRoot, 0o755); err != nil {

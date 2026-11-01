@@ -1,5 +1,3 @@
-//go:build tier0
-
 // citation_enforcement_test.go is the permanent guard behind the class of bug this task closes: a stencil body naming a loomyard-internal path an agent working in some other repository cannot open.
 // It scans each stencil's agent-facing body -- the bytes StripLeadingComment produces, the same stripping Fill and FillOptional apply before a template is ever executed, so a banner-only reference (this package's own doc comments about where a file lives on the loomyard side) is never flagged: an agent never sees the banner, so it is not a citation an agent could act on.
 //
@@ -26,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // citationPrefixes are the four repository-relative prefixes a bare cross-repository citation
@@ -102,6 +101,7 @@ func citationIsBare(token string) bool {
 // It also fails when a citationAllowlist entry matches no bare citation in its named stencil's stripped body:
 // without that check the allowlist would silently accumulate dead rows that would re-permit a reintroduced bare citation carrying the same token.
 func TestStencils_NoBareCrossRepoCitations(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	violations, allow := scanBareCitations(t)
@@ -158,6 +158,7 @@ func namesConstraintsFile(body string) bool {
 //
 //testtiming:keep pins the ban on a stencil naming the retired CONSTRAINTS.md, a guard that fires which the repository-relative citation rule cannot see
 func TestStencils_NameNoConstraintsFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if !namesConstraintsFile("Read `CONSTRAINTS.md` at the repo root if present.") {

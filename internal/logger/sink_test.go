@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sink_test.go covers the durable sink's naming, lazy-open header composition, both open triggers, and the size-cap truncation marker.
 // Every case calls SetDurableSinkDir(t.TempDir()) at its own start, never sharing one call across cases, so no lymcwd.Resolve ever runs (Test Tier Purity) and every case starts from a fully reset sink regardless of what an earlier case in this file (or logger_test.go/span_test.go) already triggered.
 // No test in this file calls t.Parallel: each rewrites the process-global durable sink state that SetDurableSinkDir resets.
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var sinkTestFilePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-(\d+)\.log$`)
@@ -65,6 +64,7 @@ func readSoleSinkFile(t *testing.T, dir string) string {
 //
 //testtiming:keep pins the trace file name grammar, the header first line and the worktree root in the header, which TestEnsureDurableSink_ConcurrentRedirectIsRaceFree does not assert
 func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
+	tiergate.Require(t, 0)
 	suppliedRoot := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")
 	tests := []struct {
 		name         string
@@ -151,6 +151,7 @@ func TestEnsureDurableSink_CreatesOneNamedFileWithHeader(t *testing.T) {
 //
 //testtiming:keep a guard that an adopted path-traversal trace ID cannot place the file above the logs directory, which no covering test asserts
 func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	grandparent := t.TempDir()
 	parent := filepath.Join(grandparent, "state", ".lym")
 	dir := filepath.Join(parent, "logs")
@@ -191,6 +192,7 @@ func TestEnsureDurableSink_AdoptedTraceIDCannotEscapeTheLogsDirectory(t *testing
 //
 //testtiming:keep pins that a redirect after arming resets sinkPath, reports not armed and leaves the opened file in place, which TestEnsureDurableSink_ConcurrentRedirectIsRaceFree does not assert
 func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	firstDir := t.TempDir()
 	SetDurableSinkDir(firstDir)
 	t.Cleanup(func() { SetDurableSinkDir("") })
@@ -222,6 +224,7 @@ func TestSetDurableSinkDirWithWorktreeRoot_AfterArmDoesNotMoveAlreadyOpenedFile(
 //
 //testtiming:keep a regression guard that a redirect racing the first open leaves the sink in one of the two directories, which its covering tests do not assert
 func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	firstDir := t.TempDir()
 	secondDir := t.TempDir()
 	t.Cleanup(func() { SetDurableSinkDir("") })
@@ -254,6 +257,7 @@ func TestEnsureDurableSink_ConcurrentRedirectIsRaceFree(t *testing.T) {
 
 //testtiming:keep pins that Arm and the implicit first record compose identical static header fields, which no covering test compares
 func TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	Arm()
@@ -280,6 +284,7 @@ func TestArm_ExplicitVsImplicitProduceIdenticalStaticHeaderFields(t *testing.T) 
 
 // TestSinkArmTriggers pins what arms the durable sink: an Info-or-above record and a non-zero NotifyExit open it with the header as first line, while no record and NotifyExit(0) leave the directory empty and the sink unarmed.
 func TestSinkArmTriggers(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		trigger   func()
@@ -330,6 +335,7 @@ func countMarkerLines(data []byte) int {
 
 //testtiming:keep pins that writes past the size cap are dropped behind a single truncation marker, which TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker does not assert on the dropped payload
 func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 
@@ -371,6 +377,7 @@ func TestWriteDurable_SizeCapStopsWritesAfterSingleTruncationMarker(t *testing.T
 //
 //testtiming:keep a regression guard that a record written after the logs directory is renamed and recreated lands in the recreated directory, which no covering test asserts
 func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	parent := t.TempDir()
 	dir := filepath.Join(parent, "logs")
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -418,6 +425,7 @@ func TestWriteDurable_SurvivesLogsDirRenameMidProcess(t *testing.T) {
 //
 //testtiming:keep pins isLymWorktree for a plain checkout and an anchored worktree without git, which its covering integration test reaches only through the real call site
 func TestIsLymWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a plain checkout is not a lym worktree", func(t *testing.T) {
@@ -449,6 +457,7 @@ func TestIsLymWorktree_GatesTheCwdAnchoredFallback(t *testing.T) {
 }
 
 func TestTraceFileAndDir_EmptyWithoutSink(t *testing.T) {
+	tiergate.Require(t, 0)
 	SetDurableSinkDir("")
 	t.Cleanup(func() { SetDurableSinkDir("") })
 
@@ -461,6 +470,7 @@ func TestTraceFileAndDir_EmptyWithoutSink(t *testing.T) {
 }
 
 func TestTraceFile_ArmsOnceAndReturnsStablePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	t.Cleanup(func() { SetDurableSinkDir("") })
@@ -484,6 +494,7 @@ func TestTraceFile_ArmsOnceAndReturnsStablePath(t *testing.T) {
 }
 
 func TestTraceDir_MatchesOverrideAndCreatesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := filepath.Join(t.TempDir(), "not-yet")
 	SetDurableSinkDir(dir)
 	t.Cleanup(func() { SetDurableSinkDir("") })
@@ -501,6 +512,7 @@ func TestTraceDir_MatchesOverrideAndCreatesNothing(t *testing.T) {
 //
 //testtiming:keep pins that arming leaves an aged dead-pid trace file in place, which no covering test asserts
 func TestEnsureDurableSink_ArmingDoesNotSweep(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	t.Cleanup(func() { SetDurableSinkDir("") })

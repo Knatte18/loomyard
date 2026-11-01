@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remote_integration_test.go covers RemoteURL against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll) and push_test.go's newBareRemote/newRepoWithRemote helpers for a repo carrying a configured origin remote.
 
 package gitrepo_test
@@ -7,10 +5,13 @@ package gitrepo_test
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemoteURL covers RemoteURL against a repository whose only remote is origin: the configured origin's URL comes back exactly as git reports it, and a requested remote the repository does not have — here a misspelled one — returns an empty string alongside an error naming the requested remote, rather than silently resolving to a different configured remote.
 func TestRemoteURL(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()

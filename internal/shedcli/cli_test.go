@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers armFromSeed's seed-driven arming: the run-id positional defaulting to "self", the pinned refusal precedence (run-id listing, unknown recipe, verb gate, the recipe's own refusal), and run's positional-argument arity.
 // It stays in tier 0 throughout: armFromSeed performs no lymcwd.Resolve of its own (cli.go's own doc comment), so every case here drives it directly against a hand-built *lymcwd.Location, with no real git repository behind it -- matching the repo's own convention that a real lymcwd.Resolve spawn belongs only in an integration-tagged file (internal/lymcwd/lymcwd_test.go is the precedent).
 package shedcli
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -36,6 +35,7 @@ func fixtureLocation(t *testing.T) *lymcwd.Location {
 // shedrun.SelfRunID: seeding only "self" and calling with nil args succeeds, while calling with an
 // explicit different run-id -- which has no seed -- refuses.
 func TestArmFromSeed_RunIDDefaultsToSelf(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := fixtureLocation(t)
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatalf("WriteSeed(self) = %v; want nil", err)
@@ -137,6 +137,7 @@ func (l *loopRun) assertLoop(t *testing.T, envelope map[string]any) {
 // every other arming refusal on step is a bootstrap error with a trace file and a way forward, and on any other verb it stays kind-less.
 // Rows replace an entry of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
+	tiergate.Require(t, 0)
 	const reseedWayForward = `way forward: remove the run's seed.json and seed the run again with "lym shed seed <run-id> --recipe <recipe>"`
 	// The durable sink is package-level state, which is why the test stays serial.
 	logger.SetDurableSinkDir(t.TempDir())
@@ -311,6 +312,7 @@ func TestArmFromSeed_RefusalEnvelopeKinds(t *testing.T) {
 // The rows pin stages 2 through 4 against the identical location and verb shape, so a regression reordering any of them shows up as the wrong row's assertion failing rather than a passing test for the wrong reason.
 // Rows shrink or replace entries of the package-global recipes table, so neither the rows nor this test run in parallel.
 func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		setup func(t *testing.T, loc *lymcwd.Location)
@@ -411,6 +413,7 @@ func TestArmFromSeed_RefusalPrecedence(t *testing.T) {
 //
 //testtiming:keep pins that the goto admission sentence sits on goto's help alone, which its covering test does not
 func TestShedVerbTexts_GotoAdmissionRuleOnlyOnGoto(t *testing.T) {
+	tiergate.Require(t, 0)
 	const rule = "goto moves a halted run only back"
 	if !strings.Contains(shedVerbTexts.Goto.Long, rule) {
 		t.Errorf("goto Long does not state the admission rule %q", rule)
@@ -440,6 +443,7 @@ func findRunCommand(t *testing.T, parent *cobra.Command) *cobra.Command {
 // argument is a legal parse (this batch's own no-slug default-to-"self"/omitted-slug behaviour lives
 // past Args, in Arm/ArmAt, not at this layer), and two are refused as an arity error on both sides.
 func TestParity_PositionalArgs(t *testing.T) {
+	tiergate.Require(t, 0)
 	battenRun := findRunCommand(t, battencli.Command())
 	shedRun := findRunCommand(t, Command())
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // boltreplay_test.go pins that the Bolt replay, ended-set and owner-read code names no board file and no board-named declaration.
 //
 // Package fabricengine; shares the single TestMain in testmain_test.go.
@@ -16,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // boardNameFindings parses src, named filename, and returns one finding per board file name among its string literals.
@@ -114,6 +114,7 @@ func functionKey(function *ast.FuncDecl) string {
 }
 
 func TestBoltReplay_NamesNoBoardFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("The matcher finds each board file name and board-named declaration and nothing else", func(t *testing.T) {

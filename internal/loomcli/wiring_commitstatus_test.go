@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_commitstatus_test.go pins loom's side of the per-transition status seam -- its board status write and both ShedPaths fill sites -- and the status pathspec.
 // The seam's three dispositions -- commit-hard-errors, spawn-warns, skip-while-mid-merge -- live in internal/statuscommit and are pinned there.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures, spawning no git
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/partsparser"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -33,6 +32,7 @@ func selfStatusRel(location *lymcwd.Location) string {
 //
 //testtiming:keep pins the seam with no board-status writer calling commit then spawn once each, in that order, and spawning nothing for a no-op commit; the board-status test always installs a writer
 func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -74,6 +74,7 @@ func TestNewCommitStatusSeam_OrdinaryPath(t *testing.T) {
 // TestNewCommitStatusSeam_BoardStatus asserts the seam writes "<state> · <producer>" to the board only when it changed,
 // writes nothing for a finished run, retries a failed write on the next transition, and still commits when the board write fails.
 func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var written []string
@@ -135,6 +136,7 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 //
 //testtiming:keep pins the status commit pathspec naming the status file always and the reviews, loom durable and drive-reports directories only once they hold a file; the covering integration test commits one fixed layout
 func TestStatusCommitPathspec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	writeFile := func(t *testing.T, path, content string) {
@@ -306,6 +308,7 @@ func reworkRoundSetup(writeFile func(t *testing.T, path, content string), record
 // TestPlanCommitPathspec asserts the plan commit always names the plan directory, and adds webster's durable directory only when it holds a file or Plan-Write's rotation archived a run record under the plan:
 // the moved-from deletions and the archive then land in one commit, while an empty or absent directory would make the pathspec match nothing and fail.
 func TestPlanCommitPathspec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	writeFile := func(t *testing.T, path string) {
@@ -406,6 +409,7 @@ func TestPlanCommitPathspec(t *testing.T) {
 
 // TestRemoveSettledAmendment asserts the amendment record is removed only when the live settle's recorded round start is after the record's latest write.
 func TestRemoveSettledAmendment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

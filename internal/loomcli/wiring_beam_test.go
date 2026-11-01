@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_beam_test.go covers the wiring a pawl run adds to wire: the BeamDescribe and Pawl seams, the nine-row routing, and the landing deps a pawl run's Finalize is built with.
 // wire resolves no cwd and spawns no process over a hand-built hub.
 
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -50,6 +49,7 @@ import (
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestWire_BeamRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its rows with no reroute edge", func(t *testing.T) {

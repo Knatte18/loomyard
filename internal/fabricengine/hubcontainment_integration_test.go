@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubcontainment_integration_test.go gives the Hub Containment Invariant teeth: no hub-level
 // container is ever junctioned into a worktree, so <worktree>/<anchorRel>/<Bolt directory> must not exist
 // after any verb. One case per verb that used to wire the deleted Bolt checkout junction — clone, add, and
@@ -20,12 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubContainment_CloneWiresNoBoardJunction drives fabricengine.CloneHub and asserts the resolved
 // prime worktree carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
 // .git/info/exclude — the clone-time call this batch deleted used to wire both.
 func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -69,6 +69,7 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 // pair's anchored directory carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
 // .git/info/exclude — the add-time call this batch deleted used to wire both.
 func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -99,6 +100,7 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 // .git/info/exclude — reconcile is the verb that used to re-wire the link unconditionally on every
 // pass, regardless of junction health.
 func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 

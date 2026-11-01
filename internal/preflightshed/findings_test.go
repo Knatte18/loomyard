@@ -1,5 +1,3 @@
-//go:build tier0
-
 // findings_test.go asserts that the general Preflight producer surfaces the determined failures it
 // used to discard.
 // This row carries no OnStuck in any producer list that names it -- nothing in a list produces the
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFormatFailures covers the rendering the Stuck log line carries: every determined failure, each as "check: reason", so no violation is silently dropped from the one account a human gets.
@@ -19,6 +18,7 @@ import (
 //
 //testtiming:keep pins the exact "check: reason" rendering and its separators, which the broken-precondition test covering its blocks only reaches through one failure
 func TestFormatFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

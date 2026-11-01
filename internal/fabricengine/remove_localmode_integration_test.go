@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_localmode_integration_test.go covers RemoveLocal, the removal mode that runs no origin step and waits on no other writer, and SnapshotUncommitted with SnapshotTagged.
 // TestRemoveLocal swaps package-global hooks, so it is not parallel.
 //
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newLocalModePair returns a hub with one added pair named slug.
@@ -80,6 +79,7 @@ func requirePairIntact(t *testing.T, h *hubforge.Hub, slug string) {
 }
 
 func TestRemoveLocal(t *testing.T) {
+	tiergate.Require(t, 1)
 	const slug = "localmode"
 	const statusRel = "_lym/shed/" + slug + "/status.json"
 	const reportRel = "_lym/shed/" + slug + "/drive-reports/stop.md"
@@ -255,6 +255,7 @@ func TestRemoveLocal(t *testing.T) {
 }
 
 func TestSnapshotUncommitted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "snapshot"

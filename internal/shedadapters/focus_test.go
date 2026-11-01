@@ -1,5 +1,3 @@
-//go:build tier0
-
 // focus_test.go covers readRoundFocus against the focus file the Bouncer actually writes: the
 // YAML-frontmatter round-<N>-focus.md shape renderFocus produces and parseFocus accepts.
 // TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething is the two-sided regression guard -- it
@@ -11,6 +9,8 @@ package shedadapters
 import (
 	"os"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertFocus compares got against the wanted ExcludeLenses contents and DirectivePath, treating a nil slice and an empty slice as equal -- readRoundFocus's choice between the two in any given branch is an implementation detail, not part of its contract.
@@ -71,6 +71,7 @@ func writeFocusFileRaw(t *testing.T, runDir string, round int, content string) s
 //
 //testtiming:keep pins the focus reader against the file the writer produces: the directive path only when the file says something, the exclude lenses, and the target round's filename
 func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -148,6 +149,7 @@ func TestReadRoundFocus_DirectivePathOnlyWhenTheFileSaysSomething(t *testing.T) 
 // TestReadRoundFocus_DegradesToTheZeroDirective covers every fail-safe branch: the reader must never
 // return an error, because a missing or broken targeting hint must not retract a round.
 func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsentFile", func(t *testing.T) {
 		got := readRoundFocus("bouncer", t.TempDir(), 1)
 		assertFocus(t, got, []string{}, "")
@@ -199,6 +201,7 @@ func TestReadRoundFocus_DegradesToTheZeroDirective(t *testing.T) {
 // every other shape this fail-safe reader already degrades to the zero directive over -- never
 // trusted as if it agreed with the round it was read for.
 func TestReadRoundFocus_FrontmatterRoundMustMatchItsOwnFilename(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	// Lands at round-3-focus.md (per focusPath(dir, 3)) but its own frontmatter claims round: 1 --
 	// the exact shape a judge writing {{.round}} where the stencil should have said {{.next_round}}

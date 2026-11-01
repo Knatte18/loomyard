@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cardpackages_test.go covers CardPackages: the Go packages a set of cards' targets live in, grouped per module.
 
 package planparser_test
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCardPackages(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	worktree := t.TempDir()

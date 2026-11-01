@@ -1,5 +1,3 @@
-//go:build tier0
-
 // attachprobe_test.go covers the live-agent probe the Bouncer runs before it archives or spawns -- the seam that stops a resumed run from starting a second agent over one that is still alive.
 // The Bouncer probes through its Shuttle; the Burler rows' probes are covered beside their producers in burlerreview_test.go and burlerfix_test.go.
 //
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stampedSiblingCount reports how many entries in dir share base's stem but not its exact name --
@@ -77,6 +76,7 @@ func (h probedHandle) Stop() error {
 
 //testtiming:keep pins that the judge pass attaches to a live judge without archiving its declared outputs out from under it
 func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	attach := &shedfake.Shuttle{
 		AttachFound:  true,
 		AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, SessionID: "live-judge"},
@@ -114,6 +114,7 @@ func TestBouncer_JudgeCall_AttachesToLiveJudgeInsteadOfRespawning(t *testing.T) 
 }
 
 func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	attach := &shedfake.Shuttle{AttachErr: errors.New("reed state unreadable")}
 	b, cfg := newBouncerFixture(t, withShuttle(attach)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
@@ -138,6 +139,7 @@ func TestBouncer_JudgeCall_AttachErrorDegradesWithoutSpawning(t *testing.T) {
 
 //testtiming:keep pins that a live judge behind an already-written verdict is attached to before the clear or replay branch acts, and its own output is neither archived nor overwritten
 func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// approved lays out an already-approved generation, which the clear branch would archive;
@@ -199,6 +201,7 @@ func TestBouncer_EntryProbe_AttachedJudgeSettlesInsteadOfClearingOrReplaying(t *
 }
 
 func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
+	tiergate.Require(t, 0)
 	logBuf := logcapture.Capture(t)
 	attach := &shedfake.Shuttle{AttachErr: errors.New("reed state unreadable")}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(attach)).Build()
@@ -226,6 +229,7 @@ func TestBouncer_EntryProbe_AttachErrorNeitherClearsNorSettles(t *testing.T) {
 //
 //testtiming:keep pins the OutputFiles set the judge's entry probe names, which no other test reads off the recorded attach spec
 func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		rolePrefix string
@@ -261,6 +265,7 @@ func TestBouncer_EntryProbe_SpecNamesTheJudgesOwnOutputFiles(t *testing.T) {
 // --- Bouncer, seed pass ---
 
 func TestBouncer_SeedCall_ProbesForALiveSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		attachFound bool

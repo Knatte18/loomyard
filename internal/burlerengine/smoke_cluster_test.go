@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_cluster_test.go is burlerengine's opt-in live-integration smoke test for fork-based cluster review:
 // TestSmokeBurlerClusterCleanFan and TestSmokeBurlerClusterRogueFork each drive one full cluster round with a REAL claude handler spawning REAL fork subagents in a REAL tmux pane.
 // The round runs over a lenses.Config built directly in Go (no lenses.yaml seeding needed).
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // clusterSmokeTimeout is the generous, explicit per-run timeout both cluster
@@ -154,6 +153,7 @@ func newClusterSmokeEngine(t *testing.T) (*burlerengine.Engine, *hubforge.Hub) {
 // ParseReview's strict frontmatter contract — so a nil error here already proves a well-formed
 // consolidated structure).
 func TestSmokeBurlerClusterCleanFan(t *testing.T) {
+	tiergate.Require(t, 3)
 	engine, h := newClusterSmokeEngine(t)
 	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 
@@ -238,6 +238,7 @@ func TestSmokeBurlerClusterCleanFan(t *testing.T) {
 //     distinguish "the hook denied it" from "the hook never ran and the
 //     model just narrated a call it made freely".
 func TestSmokeBurlerClusterRogueFork(t *testing.T) {
+	tiergate.Require(t, 3)
 	engine, h := newClusterSmokeEngine(t)
 	targetPath := writeClusterSmokeFixture(t, h.PrimeWorktree())
 

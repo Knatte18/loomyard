@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -11,10 +9,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the exact seeded status and product payload, which TestCancellation_RealProducersReturnErrorNotStuck never asserts
 func TestSeed_WritesExpectedStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -82,6 +82,7 @@ func checkSeedWritesExpectedStatus(t *testing.T, lockRel string) {
 
 //testtiming:keep pins that a second Seed leaves the first file untouched and returns ErrSeedExists, which its covering tests do not assert
 func TestSeed_RefusesExistingFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")
@@ -121,6 +122,7 @@ func TestSeed_RefusesExistingFile(t *testing.T) {
 // returned `{"error":"unmarshal state: invalid character...","ok":false}` and never spawned a
 // driver.
 func TestSeed_RefusesUndecodableFileAsExists(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -162,6 +164,7 @@ func TestSeed_RefusesUndecodableFileAsExists(t *testing.T) {
 // status path whose parent directory cannot be created -- must not match the sentinel, so a
 // re-entrant caller that treats ErrSeedExists as success does not also swallow an unrelated error.
 func TestSeed_OtherFailureDoesNotMatchErrSeedExists(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 
 	// Create a regular file where a directory component of statusPath must be, so

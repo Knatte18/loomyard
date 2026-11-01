@@ -1,5 +1,3 @@
-//go:build tier0
-
 // websterretiredsteps_test.go pins that no webster way forward names `git reset --keep`, or a `lym webster reset` followed by `lym webster run --fresh`.
 // `reset --to start` archives the run record and performs the keep form itself, so a plain `lym webster run` follows every reset.
 // The scan reads files only, so it stays in the untagged tier, and reuses the token matcher of norecoverydeny_test.go.
@@ -20,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var (
@@ -90,6 +89,7 @@ func scanRetiredStepsGoFile(t *testing.T, root, path string) []deniedRecoveryHit
 //testtiming:keep pins that no webster refusal, stencil or spec names git reset --keep or a reset followed by run --fresh, the retirement of both routes
 //lym:guard
 func TestWebsterRetiredSteps_ScannedSurfaceHasNone(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := scankit.Root(t)
 	var hits []deniedRecoveryHit
 	scanned := 0
@@ -159,6 +159,7 @@ func TestWebsterRetiredSteps_ScannedSurfaceHasNone(t *testing.T) {
 //
 //testtiming:keep proves the TestWebsterRetiredSteps_ScannedSurfaceHasNone scan fires on each planted retired shape and stays quiet on a lone run --fresh
 func TestWebsterRetiredSteps_ScanSelfCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		text string

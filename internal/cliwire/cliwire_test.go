@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cliwire_test.go pins the shared wiring prologue's behaviour at tier 0: every case is in tier 0, spawns no process, and resolves no cwd.
 //
 // The ResolveStandalone tests stay serial: each redirects XDG_STATE_HOME and LOCALAPPDATA, and the logger's durable sink, which are process-global state.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // websterFixture stands in for webstercli's own wireModule descriptor, including webster's plan
@@ -102,6 +101,7 @@ func setStandaloneStateRoot(t *testing.T) {
 // TestModule_ResolveStandaloneTarget covers target resolution's five cases, table-driven over both
 // fixtures where the refusal message differs.
 func TestModule_ResolveStandaloneTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, fixture := range []Module{websterFixture, burlerFixture} {
@@ -187,6 +187,7 @@ func TestModule_ResolveStandaloneTarget(t *testing.T) {
 //
 //testtiming:keep pins the nearest-wins and .git-file lift rules, which the target-resolution cases never reach
 func TestRepositoryRootOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("SubdirectoryLiftsToRoot", func(t *testing.T) {
@@ -266,6 +267,7 @@ func TestRepositoryRootOf(t *testing.T) {
 // TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment pins that RepositoryRootOf takes its ceilings from GIT_CEILING_DIRECTORIES.
 // It is serial because t.Setenv changes process-global state.
 func TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment(t *testing.T) {
+	tiergate.Require(t, 0)
 	ceiling := seedGitRepositoryRoot(t, standalonestate.Normalize(t.TempDir()))
 	plain := filepath.Join(ceiling, "plain", "src")
 	if err := os.MkdirAll(plain, 0o755); err != nil {
@@ -280,6 +282,7 @@ func TestRepositoryRootOf_ReadsGitCeilingDirectoriesFromTheEnvironment(t *testin
 // TestModule_RefuseNestedStandaloneGeometry covers the nested-geometry refusal over both fixtures, asserting both wordings verbatim -- this is what pins the per-CLI noun phrases as descriptor data.
 // It also carries R6-15's regression: the target has already been through standalonestate.Normalize with every symlink resolved, while the derived state directory had not, so a state home that reaches INSIDE the target only through a symlink used to read as disjoint -- and lym then wrote its state tree, run locks and trace logs into the operator's own checkout, which is precisely what this guard exists to prevent.
 func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, fixture := range []Module{websterFixture, burlerFixture} {
@@ -344,6 +347,7 @@ func TestModule_RefuseNestedStandaloneGeometry(t *testing.T) {
 //
 //testtiming:keep pins the default-versus-override spellings and the overridden flag, which the plan-rule refusals never reach
 func TestSamePlanDirAndResolvePlanDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("DotSpellingIsTheDefault", func(t *testing.T) {
@@ -420,6 +424,7 @@ func TestSamePlanDirAndResolvePlanDir(t *testing.T) {
 // same refusal naming the DEFAULT location even when --plan-dir moved the plan off it, and a nil
 // Plan field (the burlerFixture case) means the prologue performs no plan check at all.
 func TestResolveStandalone_PlanRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("MissingEmptyAndNoMarkdownAllProduceTheSameRefusal", func(t *testing.T) {
 		tests := []struct {
 			name string
@@ -505,6 +510,7 @@ func TestResolveStandalone_PlanRules(t *testing.T) {
 // and on a prologue that fails at the nested-geometry refusal, the sentinel sink set before the call
 // is still the one that receives the record -- proving the redirect sits after the guard.
 func TestResolveStandalone_SinkRedirectOrdering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SuccessRedirectsToStandaloneLogsDir", func(t *testing.T) {
 		setStandaloneStateRoot(t)
 		target := t.TempDir()
@@ -592,6 +598,7 @@ func requireSpecsSeeded(t *testing.T, res Standalone) {
 
 // TestResolveStandalone_Stencils covers the stencils and specs resolve-and-seed steps: the derived default is seeded on disk, an explicitly-told stencils directory is returned as given and gains no entries, a told stencils directory never suppresses the specs seed (which has no override flag of its own and inherits the stencils skip only if that inheritance is a bug), a told directory that is absent or a file is refused, and a seed failure on the derived default is a hard error naming both the module and the directory.
 func TestResolveStandalone_Stencils(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("DerivedDefaultIsSeeded", func(t *testing.T) {
 		setStandaloneStateRoot(t)
 		t.Cleanup(func() { logger.SetDurableSinkDir("") })

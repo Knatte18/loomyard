@@ -1,5 +1,3 @@
-//go:build tier1
-
 // endpairprocesses_integration_test.go pins endPairProcesses over a hub fixture: a pair reads the pause and ends what is registered with no network call, and the prime ends nothing and reads no pair.
 
 package reedcli
@@ -14,11 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestEndPairProcesses installs a pause gate over the hub's record holding a live hub entry, whose Sleep fails the test, so any network call would be held and fail it.
 // It installs a process-global gate, so it is not parallel.
 func TestEndPairProcesses(t *testing.T) {
+	tiergate.Require(t, 1)
 	gate := func(t *testing.T, recordPath string) {
 		t.Helper()
 		now := time.Now()

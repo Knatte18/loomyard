@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 type fakeClock struct{ now time.Time }
@@ -433,6 +432,7 @@ func (e *watchEnv) assertNoCalls() {
 }
 
 func TestWatcher_BelowThresholdNoInjection(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 500
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -446,6 +446,7 @@ func TestWatcher_BelowThresholdNoInjection(t *testing.T) {
 }
 
 func TestWatcher_AboveThresholdInjectsHandoffPersistedFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	var stateAtSend State
 	e.s.onSend = func() { stateAtSend = e.state() }
@@ -466,6 +467,7 @@ func TestWatcher_AboveThresholdInjectsHandoffPersistedFirst(t *testing.T) {
 }
 
 func TestWatcher_AskEventBlocksInjection(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a"), ask("q")}
@@ -476,6 +478,7 @@ func TestWatcher_AskEventBlocksInjection(t *testing.T) {
 }
 
 func TestWatcher_NewerEventRestartsIdleGrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -494,6 +497,7 @@ func TestWatcher_NewerEventRestartsIdleGrace(t *testing.T) {
 }
 
 func TestWatcher_UnknownUsageNeverTriggers(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.events = []shuttleengine.Event{stop("unreadable")}
 	e.tick()
@@ -506,6 +510,7 @@ func TestWatcher_UnknownUsageNeverTriggers(t *testing.T) {
 }
 
 func TestWatcher_ManualRequestBelowThresholdCyclesWithoutGrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -523,6 +528,7 @@ func TestWatcher_ManualRequestBelowThresholdCyclesWithoutGrace(t *testing.T) {
 }
 
 func TestWatcher_HandoffTurnEndWithoutFileNoClear(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.injectHandoff()
 	e.s.events = append(e.s.events, stop("handoff"))
@@ -534,6 +540,7 @@ func TestWatcher_HandoffTurnEndWithoutFileNoClear(t *testing.T) {
 
 // TestWatcher_HandoffTimeoutCountsFromTheRequestRead drives a note phase whose request the orch reads at a scripted delay after its post, or never.
 func TestWatcher_HandoffTimeoutCountsFromTheRequestRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -588,6 +595,7 @@ func TestWatcher_HandoffTimeoutCountsFromTheRequestRead(t *testing.T) {
 }
 
 func TestWatcher_HandoffTimeoutHoldsWhileTheReadLookupFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	e := newWatchEnv(t)
 	e.c.unreadPosts = true
@@ -609,6 +617,7 @@ func TestWatcher_HandoffTimeoutHoldsWhileTheReadLookupFails(t *testing.T) {
 }
 
 func TestWatcher_HandoffTimeoutDiscountsAHubPauseAfterTheRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	e := newWatchEnv(t)
 	e.injectHandoff()
@@ -630,6 +639,7 @@ func TestWatcher_HandoffTimeoutDiscountsAHubPauseAfterTheRead(t *testing.T) {
 }
 
 func TestWatcher_AskDuringHandoffAborts(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.injectHandoff()
 	e.s.events = append(e.s.events, ask("which?"))
@@ -641,6 +651,7 @@ func TestWatcher_AskDuringHandoffAborts(t *testing.T) {
 }
 
 func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -686,6 +697,7 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 }
 
 func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -733,6 +745,7 @@ func TestWatcher_ConfirmedClearRemovesOnlyASatisfiedClearRequest(t *testing.T) {
 // TestWatcher_ClearingTimeoutNeverTypesWhileBusy pins that a clear creel has not typed is waited for however long that lasts.
 // Its stall reason shows in State.Stuck, and it is queued again only after creel expired it.
 func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -768,6 +781,7 @@ func TestWatcher_ClearingTimeoutNeverTypesWhileBusy(t *testing.T) {
 }
 
 func TestWatcher_ResumeTurnNeverEndingReturnsIdleUnknown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -802,6 +816,7 @@ func TestWatcher_ResumeTurnNeverEndingReturnsIdleUnknown(t *testing.T) {
 }
 
 func TestWatcher_ResumeTurnEndTakesFirstPostCycleReading(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.reachResuming()
 	e.s.usage["resumed"] = 300
@@ -816,6 +831,7 @@ func TestWatcher_ResumeTurnEndTakesFirstPostCycleReading(t *testing.T) {
 }
 
 func TestWatcher_PreClearTurnEndNeverReadNorCyclesAgain(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.s.usage["pre"] = 5000
@@ -847,6 +863,7 @@ func TestWatcher_PreClearTurnEndNeverReadNorCyclesAgain(t *testing.T) {
 }
 
 func TestWatcher_AbortedHandoffNoRetryUntilLaterTurnEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.injectHandoff()
 	e.s.events = append(e.s.events, stop("handoff")) // no file was written
@@ -875,6 +892,7 @@ func TestWatcher_AbortedHandoffNoRetryUntilLaterTurnEnd(t *testing.T) {
 }
 
 func TestWatcher_EveryAbortReturnPersistsCursor(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		abort func(e *watchEnv)
@@ -910,6 +928,7 @@ func TestWatcher_EveryAbortReturnPersistsCursor(t *testing.T) {
 }
 
 func TestWatcher_RestartInIdleAfterResumeTimeoutStartsNoCycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.reachResuming()
 	e.s.usage["pre"] = 5000
@@ -929,6 +948,7 @@ func TestWatcher_RestartInIdleAfterResumeTimeoutStartsNoCycle(t *testing.T) {
 // TestWatcher_RestartLandedInjectionNoDuplicateSend pins that a restart in any non-idle phase, over a pending step whose id is saved, takes the hold again before anything else.
 // The restarted watcher reads the step's outcome and posts or injects nothing again.
 func TestWatcher_RestartLandedInjectionNoDuplicateSend(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -998,6 +1018,7 @@ func TestWatcher_RestartLandedInjectionNoDuplicateSend(t *testing.T) {
 // TestWatcher_RestartUnlandedInjectionResendsOnce pins that a restart over a pending step with no saved id adopts the step when creel journaled it.
 // It sends the step once when creel journaled nothing.
 func TestWatcher_RestartUnlandedInjectionResendsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1061,6 +1082,7 @@ func TestWatcher_RestartUnlandedInjectionResendsOnce(t *testing.T) {
 }
 
 func TestWatcher_RestartInClearingClearsOnceAndCountsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.w = e.newWatcher()
@@ -1082,6 +1104,7 @@ func breakStencil(t *testing.T, dir, name string) {
 }
 
 func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	if err := os.WriteFile(stencilstore.Path(e.stDir, handoffStencilName), []byte("{{.nope}}"), 0o644); err != nil {
 		t.Fatal(err)
@@ -1106,6 +1129,7 @@ func TestWatcher_FailingHandoffRenderChangesNothing(t *testing.T) {
 // TestWatcher_NoteRequestRendersTemplateFileBeforeTyping pins that the note template file is rendered before the request is posted,
 // and that the request body names the note, the template and the answers the orch gives.
 func TestWatcher_NoteRequestRendersTemplateFileBeforeTyping(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("hard request", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()
@@ -1191,6 +1215,7 @@ func (e *watchEnv) assertReload(prefix, note string, afterClear bool) {
 }
 
 func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -1234,6 +1259,7 @@ func TestWatcher_ClearCycleReloadsSkillsThenPointer(t *testing.T) {
 // TestWatcher_SkillSkipCauses does not call t.Parallel: it asserts on the logger output,
 // which is process-global.
 func TestWatcher_SkillSkipCauses(t *testing.T) {
+	tiergate.Require(t, 0)
 	verified := func(unknown, missing []string) shuttleengine.SkillLoadReport {
 		return shuttleengine.SkillLoadReport{Verified: true, Unknown: unknown, Missing: missing}
 	}
@@ -1346,6 +1372,7 @@ func TestWatcher_SkillSkipCauses(t *testing.T) {
 // TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep pins that a restart at each reload step, with the step pending and no id saved, adopts that step's own journal entry.
 // It never adopts an earlier or later step's.
 func TestWatcher_ReloadRestartRetypesOnlyTheUnconfirmedStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	steps := []int{ReloadStepColor, ReloadStepPlugins, ReloadStepSkills, ReloadStepRetry, ReloadStepPointer}
@@ -1397,6 +1424,7 @@ func (e *watchEnv) reloadStepOf(st State) int {
 }
 
 func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	e := newWatchEnv(t)
 	e.withSkills()
@@ -1434,6 +1462,7 @@ func TestWatcher_ReloadRestartAroundTheRetryStep(t *testing.T) {
 }
 
 func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -1465,6 +1494,7 @@ func TestWatcher_ReloadReadsAnUnreadableStepAsThePointer(t *testing.T) {
 }
 
 func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1533,6 +1563,7 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 }
 
 func TestWatcher_ClearCycleTypesThePointerWhenTheMarkPredatesTheBaseline(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -1558,6 +1589,7 @@ func TestWatcher_ClearCycleTypesThePointerWhenTheMarkPredatesTheBaseline(t *test
 }
 
 func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -1602,6 +1634,7 @@ func TestWatcher_AutoCompactionReloadsPluginsThenPointer(t *testing.T) {
 }
 
 func TestWatcher_AutoCompactionBoundaryAtOrBeforeBaselineTriggersNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.withSkills()
 	e.setState(func(st *State) { st.CompactionBaseline = e.clock.now })
@@ -1622,6 +1655,7 @@ func freshBoundary(at time.Time) shuttleengine.CompactionBoundary {
 }
 
 func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -1641,6 +1675,7 @@ func TestWatcher_AutoCompactionReloadGoesIdleWhenTheIndexSourceFails(t *testing.
 }
 
 func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -1722,6 +1757,7 @@ func TestWatcher_AutoCompactionReloadsOnlyAFreshBoundary(t *testing.T) {
 }
 
 func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.injectHandoff()
 	e.finishNote()
@@ -1737,6 +1773,7 @@ func TestWatcher_ClearRendersRoleFileBeforeResume(t *testing.T) {
 }
 
 func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -1771,6 +1808,7 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 }
 
 func TestWatcher_HandoffSendErrorResendsSamePathOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.c.failNext("post", errBoom)
 	e.s.usage["a"] = 2000
@@ -1796,6 +1834,7 @@ func TestWatcher_HandoffSendErrorResendsSamePathOnce(t *testing.T) {
 }
 
 func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.reachClearing()
 	e.tick() // clear typed, color queued
@@ -1816,6 +1855,7 @@ func TestWatcher_ResumeSendErrorResendsOnce(t *testing.T) {
 // it withdraws, releases the old hold and clears the noticed mark of an entry whose resume line it withdrew,
 // and a reset whose withdraw fails saves no reset and runs again on the next tick.
 func TestWatcher_PhaseForDifferentStrandIsReset(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1924,6 +1964,7 @@ func (e *watchEnv) noticedResumedEntry() {
 }
 
 func TestWatcher_StrandGoneIsDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.alive = false
 	done, err := e.w.Tick()
@@ -1936,6 +1977,7 @@ func TestWatcher_StrandGoneIsDone(t *testing.T) {
 }
 
 func TestWatcher_StrandReboundMidTickIsNotOverwritten(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.alive = false
 	e.s.onAlive = func() {
@@ -1973,6 +2015,7 @@ func TestWatcher_StrandReboundMidTickIsNotOverwritten(t *testing.T) {
 }
 
 func TestWatcher_RecordsTheSessionIDItReads(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		recorded  string
@@ -2048,6 +2091,7 @@ func (e *watchEnv) injectSoft(ev shuttleengine.Event) {
 }
 
 func TestWatcher_SoftTriggerFiresOnStopAndWaitingAfterSoftIdle(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, ev := range map[string]shuttleengine.Event{"stop": stop("a"), "waiting": waiting("a")} {
 		t.Run(name, func(t *testing.T) {
 			e := newSoftEnv(t)
@@ -2060,6 +2104,7 @@ func TestWatcher_SoftTriggerFiresOnStopAndWaitingAfterSoftIdle(t *testing.T) {
 }
 
 func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	e.reply("defer")
@@ -2088,6 +2133,7 @@ func TestWatcher_SoftDeferWithoutFileReturnsIdleAndBlocksNextAttempt(t *testing.
 // TestWatcher_SoftDeferTurnEndAloneNeverRequalifies pins that a deferral needs a fresh turn end after it:
 // the deferral itself never starts another soft cycle, however long the session stays quiet.
 func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	e.reply("defer")
@@ -2104,6 +2150,7 @@ func TestWatcher_SoftDeferTurnEndAloneNeverRequalifies(t *testing.T) {
 }
 
 func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	e.reply("defer, but first a note")
@@ -2114,6 +2161,7 @@ func TestWatcher_SoftDeferAmongOtherTextDoesNotDefer(t *testing.T) {
 }
 
 func TestWatcher_SoftDeferWithHandoffWrittenProceedsToClearing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	e.writeHandoff()
@@ -2125,6 +2173,7 @@ func TestWatcher_SoftDeferWithHandoffWrittenProceedsToClearing(t *testing.T) {
 }
 
 func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("hard", func(t *testing.T) {
 		e := newWatchEnv(t)
 		e.injectHandoff()
@@ -2163,6 +2212,7 @@ func TestWatcher_DeferIgnoredInHardAndRequestedCycles(t *testing.T) {
 }
 
 func TestWatcher_HardTriggerFiresOnWaitingAfterIdleGrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{waiting("a")}
@@ -2179,6 +2229,7 @@ func TestWatcher_HardTriggerFiresOnWaitingAfterIdleGrace(t *testing.T) {
 }
 
 func TestWatcher_HardTriggerKeepsIdleGraceWhenLongerThanSoftIdle(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.cfg.IdleGraceS = 30
 	e.w = e.newWatcher()
@@ -2196,6 +2247,7 @@ func TestWatcher_HardTriggerKeepsIdleGraceWhenLongerThanSoftIdle(t *testing.T) {
 }
 
 func TestWatcher_SoftThresholdAtOrAboveHardNeverFires(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, soft := range []int{1000, 1500} {
 		e := newWatchEnv(t)
 		e.cfg.SoftThresholdTokens = soft
@@ -2210,6 +2262,7 @@ func TestWatcher_SoftThresholdAtOrAboveHardNeverFires(t *testing.T) {
 }
 
 func TestWatcher_RequestedTriggerRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -2225,6 +2278,7 @@ func TestWatcher_RequestedTriggerRecorded(t *testing.T) {
 }
 
 func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.injectSoft(stop("a"))
 	first := e.s.calls[0]
@@ -2240,6 +2294,7 @@ func TestWatcher_RestartInSoftHandoffResendsSoftStencil(t *testing.T) {
 // TestWatcher_StaleReadingIsRereadBeforeFiring replays the 2026-10-04 incident:
 // the transcript is compacted without a turn end, so the reading saved at the last turn end is stale.
 func TestWatcher_StaleReadingIsRereadBeforeFiring(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.cfg.ThresholdTokens, e.cfg.SoftThresholdTokens = 400000, 300000
 	e.w = e.newWatcher()
@@ -2259,6 +2314,7 @@ func TestWatcher_StaleReadingIsRereadBeforeFiring(t *testing.T) {
 }
 
 func TestWatcher_HardTriggerRereadBelowCapDoesNotFire(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newSoftEnv(t)
 	e.s.usage["a"] = 2000
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -2279,6 +2335,7 @@ func TestWatcher_HardTriggerRereadBelowCapDoesNotFire(t *testing.T) {
 }
 
 func TestWatcher_RequestedCycleFiresOnSmallReadingWithoutReread(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newWatchEnv(t)
 	e.s.usage["a"] = 10
 	e.s.events = []shuttleengine.Event{stop("a")}
@@ -2309,6 +2366,7 @@ func (e *watchEnv) colorInjects() int {
 }
 
 func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("queued once per launch and recorded", func(t *testing.T) {
@@ -2396,6 +2454,7 @@ func TestWatcher_StartTypesTheColorOnTheFirstIdleTickOnly(t *testing.T) {
 }
 
 func TestWatcher_ReloadTypesTheColorFirstAndAFailingColorNeverWedgesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -2442,6 +2501,7 @@ func TestWatcher_ReloadTypesTheColorFirstAndAFailingColorNeverWedgesIt(t *testin
 }
 
 func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	e := newWatchEnv(t)
@@ -2471,6 +2531,7 @@ func TestWatcher_RestartMidColorStepTypesItOnceWhenIdle(t *testing.T) {
 
 // TestWatcher_NoteReplyGate pins the note gate: it passes at a tick where the newest event read since the phase began is a turn end and the requested note exists and is not empty, whatever the orch replied.
 func TestWatcher_NoteReplyGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// eventWithoutTurnEnd is an event of a kind that ends no turn, such as a turn start.
@@ -2536,6 +2597,7 @@ func TestWatcher_NoteReplyGate(t *testing.T) {
 }
 
 func TestWatcher_StepOutcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("an expired step inject is queued again and its stall shows until the step advances", func(t *testing.T) {
@@ -2645,6 +2707,7 @@ func TestWatcher_StepOutcomes(t *testing.T) {
 }
 
 func TestWatcher_CycleHold(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a cycle spanning a hub pause keeps renewing its hold", func(t *testing.T) {
@@ -2706,6 +2769,7 @@ func TestWatcher_CycleHold(t *testing.T) {
 // TestWatcher_CreelFailuresHoldTheCycle does not call t.Parallel: it asserts on the logger output,
 // which is process-global.
 func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a failing call holds the cycle, logs once per change and never counts toward the tick-error cap", func(t *testing.T) {
 		buf := logcapture.Capture(t)
 		e := newWatchEnv(t)
@@ -2890,6 +2954,7 @@ func TestWatcher_CreelFailuresHoldTheCycle(t *testing.T) {
 }
 
 func TestWatcher_TurnEndCountsOnlyAfterSending(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	steps := []int{ReloadStepSkills, ReloadStepRetry, ReloadStepPointer}

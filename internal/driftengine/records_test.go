@@ -1,5 +1,3 @@
-//go:build tier0
-
 // records_test.go — tier 0 tests for the counted-capture predicate and the Drift-Verify run counter.
 
 package driftengine
@@ -7,10 +5,13 @@ package driftengine
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCountedCapture covers a found and an absent capture, each state, and awaited_at set or not.
 func TestCountedCapture(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -43,6 +44,7 @@ func TestCountedCapture(t *testing.T) {
 
 // TestTakeRun covers taking runs up to the budget, the refusal wrapping ErrRunsSpent leaving the count, ResetRuns admitting again, AttemptHead and the agent-session mark.
 func TestTakeRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	p := NewPaths(t.TempDir())
 

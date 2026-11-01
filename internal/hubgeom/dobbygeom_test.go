@@ -1,5 +1,3 @@
-//go:build tier0
-
 // dobbygeom_test.go pins the paths DobbyGeometry tells dobby for the prime and for a beam, over a temp layout with no git.
 
 package hubgeom
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // dobbyHub lays out a hub of the prime "some-repo" and the beams "a-beam" and "other-beam" in a temp directory, with no git.
@@ -62,6 +61,7 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 // It also asserts PawlPaths puts the pawl run's three files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
 // It also asserts the move records that stop a dobby: the prime's alone for the prime and the beam's own and then the prime's for a beam, and that DobbyStart reads a standing record the same way.
 func TestDobbyGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub, prime := dobbyHub(t)

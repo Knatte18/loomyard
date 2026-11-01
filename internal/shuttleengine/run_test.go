@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_test.go covers Runner.Start: the happy path's exact AddSpec wiring (including
 // SessionID/Display passthrough), validation short-circuiting before any reed call, run-dir cleanup
 // on an AddStrand failure, and the opportunistic orphan sweep never blocking Start on its own
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNewRunner_RefusesUnusableToldPaths pins the told-pair guard.
@@ -42,6 +41,7 @@ import (
 // pass, including the anchor-at-worktree-root case (AnchorRel "."), where the two values are
 // legitimately equal and a swap is a no-op.
 func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	worktreeRoot := t.TempDir()
 	anchorPath := filepath.Join(worktreeRoot, "sub", "dir")
 	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
@@ -98,6 +98,7 @@ func TestNewRunner_RefusesUnusableToldPaths(t *testing.T) {
 // paneCwd is checked only for non-empty and absolute. Every public entry point is driven, not just
 // Start, since Interrupt/Send/Inject all resolve their run through the same anchorPath.
 func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchor := t.TempDir()
 	worktree := t.TempDir()
 	subpathOfWorktree := filepath.Join(worktree, "sub", "dir")
@@ -155,6 +156,7 @@ func TestNewDetachedRunner_RefusesUnusableToldPaths(t *testing.T) {
 // firing on the told-path check) rather than by reading the toldErr field directly, since toldErr is
 // unexported implementation, not the contract callers depend on.
 func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchor := t.TempDir()
 	worktree := t.TempDir()
 
@@ -181,6 +183,7 @@ func TestNewDetachedRunner_AcceptsStandaloneShapeAndBothPaneCwdPositions(t *test
 
 // TestRunner_StartGated_CarriesNoDoneWhen pins that a gated run's strand carries no done-when list, because its output files existing does not mean its gate passed.
 func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
@@ -206,6 +209,7 @@ func TestRunner_StartGated_CarriesNoDoneWhen(t *testing.T) {
 //
 //testtiming:keep pins Start's exact AddSpec wiring, its single ready probe, the persisted Started, running Outcome and fork authorization, and RunDir naming the created directory
 func TestRunner_Start_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "launch-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1", CreelHooks: true}}
 	fx := newFixture(t, reed, supportingEngine{fakeEngine: engine, supported: []Requirement{RequirementForks}}, withConfig(fastConfig))
@@ -416,6 +420,7 @@ func (r *pasteLoadReed) PasteSubmit(guid, text string, submit bool) error {
 // and that the run it then returns counts its deadline from the resume, not from the call.
 // A pause landing after that wait, during the idle wait of a start's typed line, holds the line until the resume and types it once.
 func TestRunner_Start_WaitsWhileAPauseCoversItsPair(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const prompt = "do the task"
@@ -561,6 +566,7 @@ func startWaitsItsOwnPause(t *testing.T) {
 
 // TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted pins that a run reconstructed from its record types the deferred prompt line only when no turn started at or past the prompt offset.
 func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const promptLine = "Read the task prompt and carry it out."
@@ -657,6 +663,7 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 // A colored strand gets the engine's color inputs after startup and after the skill load's first turn, which the launch line carries, and before the retry turn and the prompt.
 // No color, a caller that colors itself and an engine without a color command type nothing, and a failing color play still starts the run.
 func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
+	tiergate.Require(t, 0)
 	loaded := func(skills ...string) SkillLoadReport { return SkillLoadReport{Verified: true, Loaded: skills} }
 	tests := []struct {
 		name string
@@ -725,6 +732,7 @@ func TestRunner_Start_TypesTheSegmentColorAfterStartup(t *testing.T) {
 }
 
 func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{}
 	engine := &fakeEngine{}
 	runner := newFixture(t, reed, engine, withConfig(fastConfig)).Runner
@@ -741,6 +749,7 @@ func TestRunner_Start_ValidationFailure_ShortCircuitsBeforeReedCall(t *testing.T
 }
 
 func TestRunner_Start_LedgerWriteFailure_CleansRunDirAndRegistersNoStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
@@ -767,6 +776,7 @@ func TestRunner_Start_LedgerWriteFailure_CleansRunDirAndRegistersNoStrand(t *tes
 }
 
 func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandErr: fmt.Errorf("boom")}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd"}}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
@@ -792,6 +802,7 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 // never captures, so the one record of a leaked live pane existed only on an ephemeral stderr with no
 // trace correlation id on it.
 func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		removeStrandErr error
@@ -871,6 +882,7 @@ func TestRunner_Start_SaveRunStateFailure(t *testing.T) {
 //
 //testtiming:keep scans this package's production sources for bare log and fmt.Println calls, which no behavioral test can pin
 func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
+	tiergate.Require(t, 0)
 	sources, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatalf("glob package sources: %v", err)
@@ -914,6 +926,7 @@ func TestShuttleengine_LiveSubstrateLoggingGoesThroughLogger(t *testing.T) {
 // run's events.jsonl and run.json, after which interrupt/send answer "is not a shuttle strand" for a
 // running agent.
 func TestRunner_Start_SweepSkipsEntirelyWithoutReedState(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// reedJSON is the corrupt reed.json to seed; empty leaves .lym without one — the
@@ -1006,6 +1019,7 @@ func readyAgentEngine() *fakeEngine {
 // than refusing on the first inconclusive frame.
 // A runner row also asserts the Runner's settle and pane running-turn readings on the same fixture.
 func TestRun_Interrupt_PlaysEscape(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	tests := []struct {
 		name        string
@@ -1091,6 +1105,7 @@ func TestRun_Interrupt_PlaysEscape(t *testing.T) {
 // the keys sent, the box left behind and the error.
 // The guarded key itself is pinned by TestRun_Interrupt_PlaysEscape.
 func TestRunner_InterruptRestoring(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boom := errors.New("boom")
 	twoRows := []string{"first line", "second line"}
@@ -1209,6 +1224,7 @@ func TestRunner_InterruptRestoring(t *testing.T) {
 // TestGuardedPickerClose covers the guarded rewind-picker close before an interrupt and before a verified send:
 // one interrupt key closes an open picker and fails the operation, nothing more is sent, and no text is typed.
 func TestGuardedPickerClose(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	const (
 		runInterrupt    = "run-interrupt"
@@ -1333,6 +1349,7 @@ func TestGuardedPickerClose(t *testing.T) {
 }
 
 func TestRun_Send_RejectsNewlines(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{}
 	run := newFixture(t, reed, engine, withConfig(Config{})).newRun(Spec{})
@@ -1346,6 +1363,7 @@ func TestRun_Send_RejectsNewlines(t *testing.T) {
 }
 
 func TestRun_Send_RejectsEmptyOrWhitespace(t *testing.T) {
+	tiergate.Require(t, 0)
 	// An empty or whitespace-only send has nothing to deliver: it would still
 	// play the Escape+submit choreography (a stray empty turn) while making
 	// sendVerified's delivery check vacuous (an empty needle every capture
@@ -1396,6 +1414,7 @@ func repeatCapture(capture string, n int) []string {
 }
 
 func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	// tmux send-keys against a dead or missing pane exits 0 while
 	// delivering nothing (proven live), so Interrupt/Send must refuse
 	// before touching the pane rather than report a silent-no-op success.
@@ -1480,6 +1499,7 @@ func TestRun_InterruptAndSend_RefuseDeadOrUntrackedStrand(t *testing.T) {
 }
 
 func TestRun_InterruptAndSend_RefuseAgentlessShellPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A live pane is not enough: a provider that failed at launch (or was
 	// killed while its shell survived) leaves a live pane whose keys land at
 	// the shell prompt — proven live, a send against a kept "died" run
@@ -1546,6 +1566,7 @@ const recordedScrollSendText = "reply with the numbers 1 to 38 one per line and 
 // copy's position, 9 lines from the bottom where every copy the baseline counted sat 46 lines from
 // it, is the evidence a count cannot carry, because a pane only ever appends at its bottom.
 func TestRun_Send_DeliveryVerification(t *testing.T) {
+	tiergate.Require(t, 0)
 	baselineFrame := liveRecordedPaneFrame(t, "pane-scroll-baseline.txt")
 	tests := []struct {
 		name     string
@@ -1808,6 +1829,7 @@ func (r *enterHookReed) SendKey(guid, key string) error {
 // An extra Enter goes only while the box holds the sent text and the window is open.
 // A send that did not land clears its own text only for an engine with the idle reading and InputBoxClearer.
 func TestRun_Send_ConfirmsSubmission(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const shortText = "run the suite"
 	const longText = "please review the whole change set carefully and report every finding you can substantiate"
@@ -2363,6 +2385,7 @@ func TestRun_Send_ConfirmsSubmission(t *testing.T) {
 
 //testtiming:keep pins the pane scan's count and lines-below at the unit level, including a needle straddling a wrap boundary, which the delivery table reaches only through Send
 func TestScanPaneForNeedle(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		capture        string
@@ -2397,6 +2420,7 @@ func TestScanPaneForNeedle(t *testing.T) {
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestSend_WaitsForIdleSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	const never = 24 * time.Hour
 	tests := []struct {
 		name string
@@ -2745,6 +2769,7 @@ func gatedRunWithNotice(t *testing.T, notice string) (Result, *paneReed, error) 
 //
 // It is not parallel: stubInputSleep replaces a package-level function.
 func TestRun_Send_ConcurrentSendsTypeInSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	const notice = "seat notice one"
 	assertWholeLines := func(t *testing.T, typed []string, wantTexts int) {
 		t.Helper()

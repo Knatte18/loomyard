@@ -1,5 +1,3 @@
-//go:build tier0
-
 // server_test.go verifies ServerName's determinism, socket-safety, and per-hub uniqueness,
 // SessionName's worktree-slug derivation, and validateToldTmuxIdentity's refusal of a told identity
 // tmux could not spend verbatim.
@@ -19,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // socketUnsafeChars matches the characters ServerName must never
@@ -33,6 +32,7 @@ var socketUnsafeChars = regexp.MustCompile(`[:/\\ ]`)
 // determinism, socket-safe characters (a hub at the filesystem root included), a bounded length for a long hub basename,
 // distinct keys for distinct hubs, and the readable prefix plus 8-hex hash shape.
 func TestServerName(t *testing.T) {
+	tiergate.Require(t, 0)
 	steps := []struct {
 		name string
 		run  func(t *testing.T)
@@ -114,6 +114,7 @@ func serverNameBoundedForALongHubBasename(t *testing.T) {
 
 //testtiming:keep pins the readable half of the socket key being cut at a rune boundary: under or at the limit untouched, a straddling rune dropped whole, zero keeps nothing, always valid UTF-8; its covering tests run this code without asserting it
 func TestTruncateAtRuneBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		in       string
@@ -176,6 +177,7 @@ func serverNameHasHubBasenameAndPrefix(t *testing.T) {
 
 //testtiming:keep pins SessionName deriving the session name as the worktree's basename; its covering tests run this code without asserting it
 func TestSessionName_IsWorktreeBasename(t *testing.T) {
+	tiergate.Require(t, 0)
 	worktree := filepath.Join(t.TempDir(), "internal-reed")
 	got := SessionName(worktree)
 	want := "internal-reed"
@@ -197,6 +199,7 @@ func TestSessionName_IsWorktreeBasename(t *testing.T) {
 // Each rewritten character class is asserted individually rather than as one combined case, so a
 // fix that catches only some of them fails here instead of passing.
 func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		sessionName string
@@ -248,6 +251,7 @@ func TestValidateToldTmuxIdentity_SessionName(t *testing.T) {
 // The exact substitution is pinned per row rather than only "it validates", so a sanitizer that
 // mangles a name it should have passed through fails here too.
 func TestSanitizeSessionName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		input string
@@ -298,6 +302,7 @@ func TestSanitizeSessionName(t *testing.T) {
 // Neither of the first two cases below is length-sensitive, so both accept unchanged across the
 // -HUB -> -LYMHUB rename.
 func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		socketKey string
@@ -333,6 +338,7 @@ func TestValidateToldTmuxIdentity_SocketKey(t *testing.T) {
 // Like the SocketKey rows above, the hub-mode teller cannot reach these cases (ReedGeometry always
 // passes the absolute Location.AnchorPath()), which is exactly why they need their own coverage.
 func TestValidateToldAnchorPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		anchorPath string
@@ -369,6 +375,7 @@ func TestValidateToldAnchorPath(t *testing.T) {
 // so the assertion holds regardless of the test process's actual working directory — the row
 // exists to prove the refusal fires on shape alone, not on the target's existence.
 func TestValidateToldWorktreeRootLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	existingDir := filepath.Join(dir, "worktree")
 	if err := os.Mkdir(existingDir, 0o755); err != nil {
@@ -446,6 +453,7 @@ func TestValidateToldWorktreeRootLive(t *testing.T) {
 // call created the file" — which is what it was always trying to measure — and keeps the test from
 // leaving the source tree dirtier than it found it.
 func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	e.geom.AnchorPath = ""
 
@@ -489,6 +497,7 @@ func TestWithOpLock_RefusesAnUnusableAnchorPathBeforeCreatingState(t *testing.T)
 // A worktree root that exists with a different anchor path not created yet (the standalone first-run shape, which fails if a later change re-gates the predicate on AnchorPath),
 // and the hub first-run shape, succeed and create the anchor's .lym directory.
 func TestWithOpLock_ToldGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		try          bool

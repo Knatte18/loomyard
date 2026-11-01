@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // tmuxfloor_test.go pins the tmux floor check: the runner's refusal, the per-path cache, the retry of a probe that could not run, the allow-set-title answer and the server spawn's refusal.
 
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/toolfloor"
 )
 
@@ -37,6 +38,7 @@ func requireFloorError(t *testing.T, what string, err error) {
 // TestTmuxFloor swaps the process-global version probe and its cache, so it and its rows are not parallel.
 // Go starts the package's parallel tests only after its serial ones finish, so none of them sees an injected line.
 func TestTmuxFloor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("RunnerRefusesBeforeRunningTmux", func(t *testing.T) {
 		var cmd TmuxCmd
 		fake := installFakeTmuxOn(t, &cmd)

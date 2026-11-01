@@ -1,5 +1,3 @@
-//go:build tier0
-
 // settle_test.go pins the tolerant decoding of the Go driver's settle-records file.
 
 package shedrun
@@ -9,9 +7,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseSettleRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
 		first  = `{"stop_key":{"current_producer":"Plan-Write","history_length":2,"state":"blocked"},"settler":"go-rule","action":"restep","outcome":"ok","at":"2026-01-02T03:04:05Z"}`

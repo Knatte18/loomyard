@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawn_linux_test.go — the registration of the detached push child in the owner record, driven with a harmless real child that is reaped by the test.
 
 package fabricengine
@@ -15,11 +13,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStartDetachedPush_RegistersTheChild covers the owner record of a started push child: a pair request registers under its teardown slug, a prime request under the hub owner, and a record directory that cannot be written logs a warning and still starts the child.
 // It is not parallel: it captures the process-wide logger.
 func TestStartDetachedPush_RegistersTheChild(t *testing.T) {
+	tiergate.Require(t, 0)
 	truePath, err := exec.LookPath("true")
 	if err != nil {
 		t.Skip("no true binary on PATH")

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // shortnamebinding_clone_integration_test.go proves CloneHub's repo-shortname rule end to end against real local bare-repo fixtures:
 // a fresh bind needs --shortname, the record lands on weft:main beside .lym-warp, a later clone derives it, a disagreeing shortname is refused,
 // and a bound weft without a record either takes a shortname or warns.
@@ -15,10 +13,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCloneHub_FreshBindWithoutShortnameRefuses asserts a fresh weft refuses a clone with no shortname, naming the flag, before any hub directory exists.
 func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -42,6 +42,7 @@ func TestCloneHub_FreshBindWithoutShortnameRefuses(t *testing.T) {
 // TestCloneHub_ShortnameRecordLifecycle walks one repo through its shortname record:
 // recorded at the first clone and committed on weft:main, derived by a second clone, kept by a --reset re-clone, and refused when a different shortname is supplied.
 func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -106,6 +107,7 @@ func TestCloneHub_ShortnameRecordLifecycle(t *testing.T) {
 // TestCloneHub_BoundWeftWithoutRecord asserts a weft bound before shortnames existed takes a supplied shortname and records it,
 // and succeeds with a warning naming `lym fabric shortname` when none is supplied.
 func TestCloneHub_BoundWeftWithoutRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()

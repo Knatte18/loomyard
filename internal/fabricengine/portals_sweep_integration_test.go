@@ -1,5 +1,3 @@
-//go:build tier1
-
 // portals_sweep_integration_test.go proves Reconcile sweeps the retired portal links and the old hub workspace file, keeps and reports everything else.
 // It also proves a regeneration warns while a retired artifact remains.
 // Shares the single TestMain in testmain_test.go.
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // retiredArtifactWarning is the text of the regeneration's retired-artifact warning that tells it from the failed-regeneration one.
@@ -119,6 +118,7 @@ func assertDetailNames(t *testing.T, details []string, want ...string) {
 // TestReconcile_SweepsRetiredHubArtifacts runs each sweep row on a root-anchored and a nested-anchor hub.
 // The top level is not parallel: the warning row captures the logger, so every serial row runs before its parent releases the parallel ones.
 func TestReconcile_SweepsRetiredHubArtifacts(t *testing.T) {
+	tiergate.Require(t, 1)
 	for _, anchor := range []string{".", "backend"} {
 		t.Run("Anchor_"+anchor, func(t *testing.T) {
 			shape := hubforge.Shape{Anchor: anchor}

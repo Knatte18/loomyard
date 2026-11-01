@@ -1,5 +1,3 @@
-//go:build tier1
-
 // clone_emptyweft_integration_test.go pins the empty-weft-remote bootstrap: the documented
 // first-ever-setup path that probeWeftBinding's unborn-HEAD check and ensureBoardWorktree's orphan
 // branch both exist to serve.
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn clones against an empty weft remote and
@@ -31,6 +30,7 @@ import (
 //
 //testtiming:keep a clone against an empty weft remote leaving the suffixed primary branch a real ref so Add works; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -75,6 +75,7 @@ func TestCloneHub_EmptyWeftRemoteLeavesPrimaryBranchBorn(t *testing.T) {
 //
 //testtiming:keep the ordinary clone path pairing the suffixed branch with the cloned HEAD without an extra empty commit; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_NonEmptyWeftRemoteBranchUnchanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()

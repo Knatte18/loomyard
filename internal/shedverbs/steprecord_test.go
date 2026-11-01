@@ -1,5 +1,3 @@
-//go:build tier0
-
 // steprecord_test.go covers the step body's own per-invocation record and status's last_step: the
 // in-flight file exists while a producer runs, the full envelope is recorded before the short one
 // is printed, and last_step tracks the newest record.
@@ -22,11 +20,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStepCmd_InflightRecordExistsWhileProducerRuns has the producer inspect StepsDir from inside
 // Call: the in-flight record must already be there, and no envelope record yet.
 func TestStepCmd_InflightRecordExistsWhileProducerRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 	stepsDir := filepath.Join(t.TempDir(), "steps")
@@ -93,6 +93,7 @@ func afterStepReturning(status string) func(context.Context, shedengine.StepResu
 // Without --full stdout carries the short key set and the record path; with --full stdout equals the
 // record; the record and exit code are the same either way, and status's last_step names the same record.
 func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		wantCode  int
@@ -204,6 +205,7 @@ func TestStepCmd_ShortEnvelopeOnStdoutFullEnvelopeInRecord(t *testing.T) {
 
 // TestStepCmd_NoStepsDirKeepsNoRecords asserts an empty StepsDir writes nothing anywhere.
 func TestStepCmd_NoStepsDirKeepsNoRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 	spec := &Spec{BuildShed: func() (*shedengine.Shed, error) {
@@ -228,6 +230,7 @@ func TestStepCmd_NoStepsDirKeepsNoRecords(t *testing.T) {
 // TestStepCmd_RecordWriteFailureLeavesEnvelopeUnchanged points StepsDir at a path under a regular
 // file, so every record write fails; the envelope and exit code are unaffected.
 func TestStepCmd_RecordWriteFailureLeavesEnvelopeUnchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 	blocker := filepath.Join(t.TempDir(), "file")
@@ -261,6 +264,7 @@ func assertFullEnvelopeOnStdout(t *testing.T, env map[string]any) {
 // TestStatusCmd_LastStep walks last_step through no record, an unfinished record and a finished
 // one, and checks the newest record wins.
 func TestStatusCmd_LastStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	stepsDir := filepath.Join(t.TempDir(), "steps")
 	spec := seededStatusSpec(t, Hooks{})
 	spec.StepsDir = stepsDir
@@ -323,6 +327,7 @@ func TestStatusCmd_LastStep(t *testing.T) {
 //
 //testtiming:keep pins binary_changed for a different identity and a legacy record without identity fields, which its covering tests do not
 func TestLastStepOf_BuildIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := filepath.Join(t.TempDir(), "steps")
 	built := buildvcs.Identity{Revision: "abc", Modified: true}
 	newStepRecorder(dir, "aaaa", built).begin()
@@ -365,6 +370,7 @@ func TestLastStepOf_BuildIdentity(t *testing.T) {
 // TestStepRecords_NothingUnderStatusTree runs a step with the status file under one temp tree and
 // StepsDir under another, and asserts nothing new appears beside the status file.
 func TestStepRecords_NothingUnderStatusTree(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 	statusTree := filepath.Dir(paths.StatusPath)

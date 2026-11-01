@@ -1,5 +1,3 @@
-//go:build tier0
-
 // modelpin_test.go is R2-F3's regression guard: every site in this package's smoke suite that
 // starts a REAL `claude` process must thread the shared smokeClaudeModel constant, so no future edit
 // can silently put a live spawn back on the account-default model.
@@ -20,6 +18,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // modelPinConstantName is the shared constant every real-`claude` spawn site in the smoke suite must thread.
@@ -55,6 +55,7 @@ var spawnSiteOpeners = []struct {
 //
 //testtiming:keep a guard that fires when a real-claude spawn site omits the model pin, which no covering test asserts
 func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
+	tiergate.Require(t, 0)
 	smokeFiles, err := filepath.Glob("smoke_*_test.go")
 	if err != nil {
 		t.Fatalf("glob smoke files: %v", err)
@@ -104,6 +105,7 @@ func TestSmokeSuite_EveryRealClaudeSpawnPinsTheModel(t *testing.T) {
 //
 //testtiming:keep a guard that fires when the model-pin constant is missing or empty, which no covering test asserts
 func TestSmokeSuite_ModelPinConstantIsDeclaredAndNonEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
 	smokeFiles, err := filepath.Glob("smoke_*_test.go")
 	if err != nil {
 		t.Fatalf("glob smoke files: %v", err)

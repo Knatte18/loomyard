@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentlock_test.go covers the seams of Run-Shed's parent lock backstop: the record lookup by run and the landing-in-flight read.
 
 package battencli
@@ -16,12 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // TestChildParentLock asserts Read finds the lock record whose owner is the child's run by slug and pair and Release frees it.
 // It asserts KeepsLock holds the lock for a task pair running Finalize or verifying.
 func TestChildParentLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("ReadFindsTheRecordOfTheChildsRunAndReleaseFreesIt", func(t *testing.T) {

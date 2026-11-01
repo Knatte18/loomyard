@@ -1,5 +1,3 @@
-//go:build tier0
-
 // load_test.go table-drives LoadRegistry against t.TempDir fixtures, using configengine.ConfigFile
 // to build every models.yaml path per the Cwd Resolution Invariant (which applies to test code
 // too).
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeModelsYAML writes contents to the models.yaml path under baseDir.
@@ -29,6 +28,7 @@ func writeModelsYAML(t *testing.T, baseDir, contents string) {
 
 // TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the four built-in aliases, each with its own name as model and no defaults.
 func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -69,6 +69,7 @@ func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
 }
 
 func TestLoadRegistry_FileExtends(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	baseDir := t.TempDir()
 	writeModelsYAML(t, baseDir, `
@@ -100,6 +101,7 @@ zephyr:
 }
 
 func TestLoadRegistry_FileOverridesWholeEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	baseDir := t.TempDir()
 	writeModelsYAML(t, baseDir, `
@@ -193,6 +195,7 @@ func writeLocalModelsYAML(t *testing.T, anchor, contents string) {
 }
 
 func TestLoadRegistry_RejectsInvalidEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

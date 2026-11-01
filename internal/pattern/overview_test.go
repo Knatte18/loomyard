@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overview_test.go runs the format checker against loomyard's own PATTERN.
 
 package pattern
@@ -8,9 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOverview_RealFilePassesCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir, err := os.Getwd()
 	if err != nil {

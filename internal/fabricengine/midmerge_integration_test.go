@@ -1,5 +1,3 @@
-//go:build tier1
-
 // midmerge_integration_test.go covers MidMerge against a real hubforge pair, one row per state: clean, fabric-parked with and without remaining conflicts, each foreign shape on each side, and a pair that cannot be opened at all.
 
 package fabricengine_test
@@ -11,10 +9,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep a clean pair reporting no mid-merge state; coverage of its blocks by other tests does not show an assertion of this
 func TestMidMerge_CleanPair_None(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, _, _, _, _, _ := newMergePairFixture(t, ".")
@@ -33,6 +33,7 @@ func TestMidMerge_CleanPair_None(t *testing.T) {
 }
 
 func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -74,6 +75,7 @@ func TestMidMerge_FabricParkedWithConflicts_Parked(t *testing.T) {
 }
 
 func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, _ := setupResolvedConflictedMergeIn(t)
@@ -89,6 +91,7 @@ func TestMidMerge_FabricParkedResolved_ParkedNoConflicts(t *testing.T) {
 }
 
 func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -149,6 +152,7 @@ func TestMidMerge_ForeignState_EverySideAndShape(t *testing.T) {
 }
 
 func TestMidMerge_UnopenablePair_Errors(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	l := &lymcwd.Location{RepoName: "ghost", HubPath: t.TempDir(), WorktreeName: "ghost", AnchorRel: "."}

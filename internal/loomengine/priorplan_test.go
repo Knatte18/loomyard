@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomengine
 
 import (
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newPriorPlanStencilsDir returns a seeded stencils directory.
@@ -17,6 +16,7 @@ func newPriorPlanStencilsDir(t *testing.T) string {
 }
 
 func TestPriorPlanBlock_RendersHeadingArchiveAndBullets(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := newPriorPlanStencilsDir(t)
 	archive := filepath.Join(t.TempDir(), "archive", "plan-1")
 	files := []string{"00-overview.md", "01-alpha.md"}
@@ -42,6 +42,7 @@ func TestPriorPlanBlock_RendersHeadingArchiveAndBullets(t *testing.T) {
 }
 
 func TestPriorPlanBlock_EmptyInputsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := newPriorPlanStencilsDir(t)
 	tests := []struct {
 		name    string
@@ -63,6 +64,7 @@ func TestPriorPlanBlock_EmptyInputsError(t *testing.T) {
 }
 
 func TestPriorPlanBlock_MissingStencilErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	if _, err := PriorPlanBlock(t.TempDir(), "/x/archive", []string{"a.md"}); err == nil {
 		t.Error("PriorPlanBlock() with no stencil error = nil; want an error")
 	}

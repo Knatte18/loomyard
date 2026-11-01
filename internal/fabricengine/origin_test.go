@@ -1,5 +1,3 @@
-//go:build tier0
-
 // origin_test.go — unit tests for the Origin provenance record type and its three path accessors.
 // Every Location here comes from locationkit.Location, per the Test
 // Tier Purity Invariant: no git spawn, no resolution.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOrigin_JSONRoundTrip asserts that Origin marshals and unmarshals through the parent_branch
@@ -21,6 +20,7 @@ import (
 //
 //testtiming:keep Origin's parent_branch and parent_worktree wire keys round-tripping and a legacy record decoding with an empty ParentWorktree; coverage of its blocks by other tests does not show an assertion of this
 func TestOrigin_JSONRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		want    Origin
@@ -78,6 +78,7 @@ func TestOrigin_JSONRoundTrip(t *testing.T) {
 //
 //testtiming:keep OriginRecordPath and OriginRecordPathFor joining the anchor and OriginRecordRel at a root and a subpath anchor, both ending in the shared suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestOriginRecordPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := filepath.Join("repos", "loomyard-LYMHUB")
 	const worktreeName = "loomyard"
 	const slug = "test-wt"

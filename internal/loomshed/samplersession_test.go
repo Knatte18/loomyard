@@ -1,5 +1,3 @@
-//go:build tier0
-
 // samplersession_test.go covers the Sampler-Session row: how it starts, reuses and resumes its session, how its wait spaces wakes on an injected clock, and what each done flag, pause and failure ends it with.
 
 package loomshed
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeSamplerSessions is a SamplerSessions that records every start with its resume id and every stop, and keeps a live set.
@@ -210,6 +209,7 @@ func (w *samplerWorld) advance(d time.Duration) error {
 
 // TestSamplerSession covers the row's session start, reuse and resume, the done flag's judgement on entry and during the wait, the pause, the dead-strand halt, the failures of its seams, and the cancelled context.
 func TestSamplerSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dirtyCheckout := [][]string{{"main.go"}}
@@ -501,6 +501,7 @@ func TestSamplerSession(t *testing.T) {
 
 // TestSamplerSession_WaitSpacing covers the wait's wakes: they start a second apart and double to a minute while nothing changes, and a Watch delivery cuts a long sleep short and returns the interval to a second.
 func TestSamplerSession_WaitSpacing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("wakes double up to a minute", func(t *testing.T) {
@@ -555,6 +556,7 @@ func TestSamplerSession_WaitSpacing(t *testing.T) {
 
 // TestSamplerSession_UnsetSeam covers the wiring guard: a seam left unset is an error naming it, and Watch alone may stay unset.
 func TestSamplerSession_UnsetSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	w, ctx := newSamplerWorld(t)

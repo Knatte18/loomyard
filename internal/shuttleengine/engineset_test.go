@@ -1,5 +1,3 @@
-//go:build tier0
-
 // engineset_test.go verifies EngineSet's name lookup, its default, its sorted names and its isolation from the map it was built over.
 
 package shuttleengine
@@ -8,6 +6,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // singleEngineSet wraps one engine as the default of a one-engine set, for tests that exercise a consumer of the set.
@@ -27,6 +27,7 @@ func requireEngineSkipEpisode(t *testing.T, log, runDir string) {
 // TestEngineSet_Lookup pins how a name resolves: the empty name to the default, a registered name to its own engine,
 // and an unknown name or an unregistered default to ErrEngineNotRegistered naming the sorted registered names.
 func TestEngineSet_Lookup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	alpha := &fakeEngine{}

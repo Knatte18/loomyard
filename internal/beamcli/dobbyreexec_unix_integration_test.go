@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // dobbyreexec_unix_integration_test.go holds the dobby re-exec test, since selfexec never execs on Windows.
 
@@ -19,9 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDobby_ReexecsOntoAReplacedBinary(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

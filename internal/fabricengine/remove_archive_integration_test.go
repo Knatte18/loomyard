@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_archive_integration_test.go covers Remove's archive step: after every refusal and before any mutation it tags the pair's weft tip under archive/<slug>/ and pushes the tag to the weft origin, so the run records committed on that branch outlive the branch itself.
 // It covers the tag's landing, its reuse when the same-tip tag is already on the origin, the commit-then-archive flow for a weft worktree holding uncommitted records, the fail-closed shape of an unreachable origin, the fact that neither force nor remote=false skips the step, the no-origin skip, and that a rolled-back Add never archives.
 //
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // archiveTagsAt lists the archive/ tags present in the repo at repoRoot.
@@ -33,6 +32,7 @@ func archiveTagsAt(t *testing.T, repoRoot string) []string {
 
 // TestRemove_ArchivesWeftTipBeforeTeardown covers the happy path: the tag on the origin points at the tip carrying the committed _lym file, and the result names it.
 func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-happy"
@@ -60,6 +60,7 @@ func TestRemove_ArchivesWeftTipBeforeTeardown(t *testing.T) {
 
 // TestRemove_ReusesSameTipArchiveTag covers archiveWeftTip's reuse path: an archive tag for the same tip already on the origin, as a teardown that failed after the archive leaves it, is reused rather than pushed again.
 func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-reuse"
@@ -92,6 +93,7 @@ func TestRemove_ReusesSameTipArchiveTag(t *testing.T) {
 
 // TestRemove_PendingRecordsAreCommittedAndArchivedOnce covers the pre-archive record commit: a single no-force Remove of a pair whose weft worktree holds an uncommitted record commits it and archives the post-commit tip, once.
 func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-weft-dirty"
@@ -139,6 +141,7 @@ func TestRemove_PendingRecordsAreCommittedAndArchivedOnce(t *testing.T) {
 
 // TestRemove_UnreachableOriginFailsClosed covers an unreachable origin: Remove errors and leaves both worktrees, the launchers and both branches in place.
 func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-unreachable"
@@ -172,6 +175,7 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 
 // TestRemove_ForceStillArchives covers force: it answers dirtiness only, so the archive still runs.
 func TestRemove_ForceStillArchives(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-force"
@@ -196,6 +200,7 @@ func TestRemove_ForceStillArchives(t *testing.T) {
 
 // TestRemove_RemoteFalseStillPushesArchiveTag covers remote=false: the branch deletion stays local, but the archive tag is still pushed.
 func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-noremote"
@@ -220,6 +225,7 @@ func TestRemove_RemoteFalseStillPushesArchiveTag(t *testing.T) {
 
 // TestRemove_NoOriginSkipsArchiveAndCompletes covers a weft repo with no origin: the removal completes and the result carries the skip reason.
 func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-archive-noorigin"
@@ -244,6 +250,7 @@ func TestRemove_NoOriginSkipsArchiveAndCompletes(t *testing.T) {
 
 // TestAddRollback_LeavesNoArchiveTag covers a rolled-back Add: it removes the weft branch it just created without archiving, so no archive/ tag appears locally or on the origin.
 func TestAddRollback_LeavesNoArchiveTag(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "add-rollback-no-archive"

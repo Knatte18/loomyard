@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's half of the Told-Geometry Invariant: production
 // code in internal/cliwire takes every absolute path it operates on from its caller and has no
 // direct production import of internal/lymcwd.
@@ -25,6 +23,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cliwireAllowedImports are the only non-stdlib import paths production code in this package may
@@ -49,6 +48,7 @@ const cliwireDeniedLymcwdImport = "github.com/Knatte18/loomyard/internal/lymcwd"
 // imports only stdlib or an entry in cliwireAllowedImports, and separately asserts that no
 // production import path is cliwireDeniedLymcwdImport.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/cliwire", cliwireAllowedImports...)
 
 	var deniedFound []string

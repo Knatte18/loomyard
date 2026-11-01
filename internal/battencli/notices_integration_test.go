@@ -1,5 +1,3 @@
-//go:build tier1
-
 // notices_integration_test.go pins where batten's notices about a run go, over a hubforge hub with a beam: the walk's start for a present or absent pair, and whether its destination records an orch strand.
 
 package battencli
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // noticeHub returns a hub with a recorded shortname, a marked beam "b" with a member pair "m" and a pair "p" forked from the prime.
@@ -38,6 +37,7 @@ func recordOrchStrand(t *testing.T, location *lymcwd.Location) {
 }
 
 func TestNoticeSite(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := noticeHub(t)
@@ -81,6 +81,7 @@ func TestNoticeSite(t *testing.T) {
 }
 
 func TestNoticesReachDriversParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := noticeHub(t)

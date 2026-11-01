@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -8,6 +6,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // intentionallyNil maps each shedrecipe.Env field path wire leaves nil to the reason.
@@ -158,6 +157,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestWire_EverySeamFilled(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // green_test.go covers the green record: a tier's fingerprint, what an entry covers, how a call subtracts it from a tier run, how writes merge and prune, and the malformed-file read.
 
 package gatecli
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // greenTier returns a tier whose command takes targets and args.
@@ -31,6 +30,7 @@ func withTier(tier gateslot.Tier, change func(*gateslot.Tier)) gateslot.Tier {
 // TestGreenRecord covers the rows the gate scenario does not reach:
 // the fingerprint's ignored fields, the args an entry covers, the none scoper carrying only a whole entry, the pruning of old trees, and a malformed file reading as empty.
 func TestGreenRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("the fingerprint ignores parallel, timeout and slots and nothing else", func(t *testing.T) {
@@ -264,6 +264,7 @@ func TestGreenRecord(t *testing.T) {
 
 // TestGreenRecord_NewestWholeAncestor covers which entries become a diff base: only a whole pass with empty args, under the tier's current fingerprint and module directory, on an ancestor, and the newest of them.
 func TestGreenRecord_NewestWholeAncestor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fingerprint := tierFingerprint(greenTier(), gateslot.BuildStep{}, nil)

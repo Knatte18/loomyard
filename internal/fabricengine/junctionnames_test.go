@@ -1,5 +1,3 @@
-//go:build tier0
-
 // junctionnames_test.go — unit tests for junctionNames, filterHubReserved, and the hub-structural
 // name constructors BoardDir, HubPath and IsReservedHubName relocated from internal/lymcwd in this
 // batch.
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestJunctionNames_NoFallbackOnLoadFailure asserts the no-fallback rule: a config-load failure at
@@ -25,6 +24,7 @@ import (
 //
 //testtiming:keep a config-load failure surfacing as an error and a nil name slice instead of defaulting to _lym; coverage of its blocks by other tests does not show an assertion of this
 func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	baseDir := t.TempDir() // no _lym/, so LoadConfig cannot find fabric.yaml
 
 	names, err := junctionNames(configengine.Dirs{Board: baseDir})
@@ -39,6 +39,7 @@ func TestJunctionNames_NoFallbackOnLoadFailure(t *testing.T) {
 // TestFilterHubReserved covers filterHubReserved's table of shapes: mixed reserved/non-reserved
 // input, all-reserved input, and no-reserved input.
 func TestFilterHubReserved(t *testing.T) {
+	tiergate.Require(t, 0)
 	reserved := HubReservedNames()
 
 	tests := []struct {
@@ -109,6 +110,7 @@ func TestFilterHubReserved(t *testing.T) {
 //
 //testtiming:keep BoardDir and BoltDir joining the hub with the Bolt directory name; coverage of their blocks by other tests does not show an assertion of this
 func TestBoardDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -155,6 +157,7 @@ func TestBoardDir(t *testing.T) {
 //
 //testtiming:keep HubPath joining parent and name with HubSuffix, pinning the literal -LYMHUB suffix; coverage of its blocks by other tests does not show an assertion of this
 func TestHubPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -193,6 +196,7 @@ func TestHubPath(t *testing.T) {
 //
 //testtiming:keep the reserved hub-entry predicate slug validation gates on, over every geometry-owned name and near-misses; coverage of its blocks by other tests does not show an assertion of this
 func TestIsReservedHubName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	junctionNames := []string{}
@@ -300,6 +304,7 @@ func TestIsReservedHubName(t *testing.T) {
 
 // TestConfigDirs pins the geometry a location tells a layered load: the anchor always, and the board dir only when it exists as a directory.
 func TestConfigDirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

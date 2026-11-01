@@ -1,13 +1,14 @@
-//go:build tier0
-
 package main
 
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSplitSentences(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		in   string
@@ -57,6 +58,7 @@ func TestSplitSentences(t *testing.T) {
 }
 
 func TestSplitClauses(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		in   string

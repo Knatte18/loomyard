@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parse_test.go table-drives Parse against the strict grammar: one table of specs that must be
 // accepted (with the exact Spec they must produce),
 // and one table of specs that must be rejected (with an exact substring every error must contain,
@@ -11,9 +9,12 @@ package modelspec
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParse_Accepts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -112,6 +113,7 @@ func TestParse_Accepts(t *testing.T) {
 }
 
 func TestParse_Rejects(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

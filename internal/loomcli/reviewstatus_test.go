@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -60,6 +59,7 @@ func writeRunningShuttleRun(t *testing.T, loc *lymcwd.Location, strandName strin
 
 // TestLiveRunStrands_SkipsRunWithGoneWaiter asserts a running run whose waiting process is gone is left out of the live strands.
 func TestLiveRunStrands_SkipsRunWithGoneWaiter(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 	writeRunningShuttleRun(t, loc, "live-run", os.Getpid())
@@ -79,6 +79,7 @@ func TestLiveRunStrands_SkipsRunWithGoneWaiter(t *testing.T) {
 // Gate wait records are reported ahead of a live verify marker, and a live verify marker ahead of a live shuttle marker.
 // A dead shuttle marker falls through to the next step.
 func TestShuttleWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	started := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
@@ -203,6 +204,7 @@ func writeWaitingVerifyMarker(t *testing.T, pid int) string {
 
 // TestVerifyWaiting asserts a live verify marker is reported ahead of the next step, and a dead or absent marker falls through to it.
 func TestVerifyWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		marker func(t *testing.T) string
@@ -305,6 +307,7 @@ func TestVerifyWaiting(t *testing.T) {
 
 // TestFormatElapsed pins the elapsed-time formatter at each unit boundary.
 func TestFormatElapsed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -327,6 +330,7 @@ func TestFormatElapsed(t *testing.T) {
 
 // TestParentLockWaiting asserts a live lock wait record renders the waiting note with its elapsed time, and an absent record, a dead writer's record and an unreadable record fall through to next or fail.
 func TestParentLockWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	started := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
 	now := func() time.Time { return started.Add(6 * time.Minute) }
@@ -374,6 +378,7 @@ func TestParentLockWaiting(t *testing.T) {
 // TestAgentActivity_LiveLockWaitReadsAsActivity asserts a live parent lock wait record, a live running verify marker, a held drift capture lock, a held compare marker and a running agent run with a live waiter and a run status running at Sampler-Session, PR-Review or Beam-Await read as activity now, and a dead writer's record, a dead marker, a verify marker held by a pause, a lock file with no holder, a running agent run whose waiter is gone, a status running at Describe, a blocked status at Sampler-Session and an unreadable status file do not.
 // A capture lock path the probe cannot take returns the probe's error.
 func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	writeLockWait := func(wait parentlock.Wait) func(t *testing.T, loc *lymcwd.Location) {
 		return func(t *testing.T, loc *lymcwd.Location) {
@@ -490,6 +495,7 @@ func TestAgentActivity_LiveLockWaitReadsAsActivity(t *testing.T) {
 
 //testtiming:keep pins the status spec carrying no waiting hook when the CLI has no location; its covering tests build the spec without asserting its hooks
 func TestSpecFor_WaitingHookNilWithoutLocation(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &loomCLI{}
 	if got := c.specFor("status").Hooks.Waiting; got != nil {
 		t.Errorf("Waiting set with no location")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // idle_test.go covers the idle rule's reading of agent states against a bound.
 
 package parentlock
@@ -7,6 +5,8 @@ package parentlock
 import (
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 type idleReading struct {
@@ -17,6 +17,7 @@ type idleReading struct {
 }
 
 func TestIdleWatchObserve(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	waiting := []AgentState{{Name: "a", Waiting: true}}
@@ -63,6 +64,7 @@ func TestIdleWatchObserve(t *testing.T) {
 
 // TestIdleWatch_RestoreKeepsTheWait pins that a watch saved and restored keeps its earlier sightings, and that a restore with no readings starts every wait afresh.
 func TestIdleWatch_RestoreKeepsTheWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const bound = 10 * time.Minute

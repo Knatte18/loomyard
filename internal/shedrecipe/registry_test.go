@@ -1,5 +1,3 @@
-//go:build tier0
-
 // registry_test.go covers Lookup and Names.
 
 package shedrecipe
@@ -9,9 +7,12 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLookup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("EveryRegisteredNameResolves", func(t *testing.T) {
 		for _, name := range Names() {
 			c, err := Lookup(name)
@@ -48,6 +49,7 @@ func TestLookup(t *testing.T) {
 
 //testtiming:keep pins the sorted, registry-keyed, non-aliased and exact set of engine names, which its covering test does not
 func TestNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Sorted", func(t *testing.T) {
 		names := Names()
 		if !sort.StringsAreSorted(names) {
@@ -131,6 +133,7 @@ func TestNames(t *testing.T) {
 }
 
 func TestRegistry_DescribeAndDescriptionGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	if _, err := Lookup("Describe"); err != nil {
 		t.Fatalf("Lookup(%q) error = %v; want nil", "Describe", err)
 	}

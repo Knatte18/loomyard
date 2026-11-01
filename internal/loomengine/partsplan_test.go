@@ -1,5 +1,3 @@
-//go:build tier0
-
 // partsplan_test.go — untagged unit tests for PartsPlanTable.
 // Pure Go over an in-memory Config, a written parts file, a temp-dir modelspec registry and a seeded stencils directory;
 // every seat's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // twoPartsFile is a parts file of two parts, alpha then beta.
@@ -103,6 +102,7 @@ func buildPartsPlanTable(t *testing.T, layout *lymcwd.Location, stencilsDir stri
 //
 //testtiming:keep pins every seat field and the timeout resolution, which no producer-level test asserts
 func TestPartsPlanTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("one writer seat per part in file order, and the chair over every part overview", func(t *testing.T) {

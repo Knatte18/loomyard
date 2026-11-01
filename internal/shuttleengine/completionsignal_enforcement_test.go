@@ -1,5 +1,3 @@
-//go:build tier0
-
 // completionsignal_enforcement_test.go is the tripwire for the Completion Signal Invariant that
 // wait.go's own file doc comment states and PATTERN-shuttle-provider-seam records: every code path in this
 // package that finalizes a NEGATIVE answer to "did this run finish" must consult allOutputFilesExist
@@ -39,6 +37,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // completionSignalScannedFiles are the files that own every run-outcome verdict in this package:
@@ -210,6 +209,7 @@ var auditedFileContractCallSites = map[string]int{
 //
 //testtiming:keep scans wait.go and attach.go for the negative-verdict return sites, catching an unguarded new exit, which no other test reads
 func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := scanNegativeVerdictReturns(t)
 	assertAuditedSet(t, "negative-verdict return site", got, auditedNegativeVerdictReturns,
 		"a NEW negative-verdict return must consult allOutputFilesExist over the run's OutputFiles "+
@@ -223,6 +223,7 @@ func TestCompletionSignal_NegativeVerdictReturnSites(t *testing.T) {
 //
 //testtiming:keep scans the allOutputFilesExist call sites, catching a guard deleted from an exit that already has one, which the return-site scan cannot see
 func TestCompletionSignal_FileContractCallSites(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := scanFileContractCallSites(t)
 	assertAuditedSet(t, "allOutputFilesExist call site", got, auditedFileContractCallSites,
 		"a file-contract check disappearing from a function that had one is how a negative verdict "+

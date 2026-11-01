@@ -1,5 +1,3 @@
-//go:build tier0
-
 // add_test.go — unit test proving Add is wired to slug validation.
 // slug_test.go owns the rejection classes.
 // Validation runs before any git operation, so this needs no git fixture and stays untagged Tier-1.
@@ -13,9 +11,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAdd_WiresSlugValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		slug       string

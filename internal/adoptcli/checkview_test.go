@@ -1,5 +1,3 @@
-//go:build tier0
-
 // checkview_test.go pins the adopt check's view in `lym beam status`: what each state shows and which paths its lines name, and which subjects' views the hub's scratch directory yields.
 
 package adoptcli
@@ -13,9 +11,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCheckView(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := filepath.Join("hub", fabricengine.BoltDirName, ".lym", "adopt", "alpha")
@@ -84,6 +84,7 @@ func TestCheckView(t *testing.T) {
 }
 
 func TestReadCheckViews(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("NoScratchDirectoryYieldsNoneAndCreatesNothing", func(t *testing.T) {

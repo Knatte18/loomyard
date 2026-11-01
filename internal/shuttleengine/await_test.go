@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttleengine
 
 import (
@@ -11,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // awaitClock is a fake clock whose Sleep advances the time, records each length and runs onSleep with the 1-based call number.
@@ -30,6 +30,7 @@ func (c *awaitClock) Sleep(d time.Duration) {
 
 // TestAwaitForks pins the capped poll over a run's outstanding forks on a fake clock: when it answers ready, what it answers at the cap, what it returns on a read error or a cancelled context, and that no sleep passes one second or the remaining cap.
 func TestAwaitForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -121,6 +122,7 @@ func (e *forkReaderEngine) OutstandingForks(sessionID, workdir string) ([]Backgr
 // TestRunnerAwaitForks pins the wrapper around the poll: its refusals for an unknown guid and an engine without the OutstandingForkReader capability,
 // and that the reader is handed the run's session id and the pane's cwd.
 func TestRunnerAwaitForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const guid = "strand-1"
@@ -181,6 +183,7 @@ func TestRunnerAwaitForks(t *testing.T) {
 
 // TestAwaitAny pins the capped poll over a fake clock: which path it names, when it answers not ready, what it returns on a stat error or a cancelled context, and that no sleep passes one second or the remaining cap.
 func TestAwaitAny(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cancelled, cancel := context.WithCancel(context.Background())

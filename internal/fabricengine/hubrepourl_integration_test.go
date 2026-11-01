@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubrepourl_integration_test.go proves HubRepoURL's source order over a copied hub:
 // the recorded warp binding first, the warp worktree's origin remote second, and an error when neither exists.
 
@@ -14,10 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubRepoURL_BindingThenOriginThenError walks one hub through the three sources in turn, removing each before the next step.
 func TestHubRepoURL_BindingThenOriginThenError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

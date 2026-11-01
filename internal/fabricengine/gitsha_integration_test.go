@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gitsha_integration_test.go holds the SHA/commit-message-reading fixture helpers export_test.go
 // used to carry: CurrentSHAForTest, CommitWarpForTest, BareBranchSHAForTest, and commitMessageAt, plus their ForTest
 // re-exports. They live here rather than in export_test.go because each spawns git directly via

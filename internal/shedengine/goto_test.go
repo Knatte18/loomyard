@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedengine
 
 import (
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func gotoRequest(shed *Shed, target string) GotoRequest {
@@ -36,6 +35,7 @@ func gotoShed(t *testing.T) (*Shed, *funcProducer, *funcProducer) {
 
 //testtiming:keep pins that goto clears Error, Transient and PauseRequested and records the goto history entry and activity, which its covering tests do not
 func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, _ := gotoShed(t)
 	seed := commonSeed("B")
 	seed.State = StateBlocked
@@ -106,6 +106,7 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 }
 
 func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, _ := gotoShed(t)
 	seed := commonSeed("B")
 	seed.State = StateBlocked
@@ -147,6 +148,7 @@ func TestGoto_RunLockHeldRefusesAndLeavesFile(t *testing.T) {
 
 // TestGoto_RefusalNamesWayForward pins that a refused goto names its way forward and leaves the status file untouched, and that taking the way forward (where one exists) moves the run.
 func TestGoto_RefusalNamesWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -189,6 +191,7 @@ func TestGoto_RefusalNamesWayForward(t *testing.T) {
 
 // TestGoto_MissingStatusFileWayForward pins that goto over a missing status file names seeding the run (a told clause replaces the generic seed advice), after which goto moves the seeded run.
 func TestGoto_MissingStatusFileWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -228,6 +231,7 @@ func TestGoto_MissingStatusFileWayForward(t *testing.T) {
 }
 
 func TestGoto_StepResumesAtTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, a, b := gotoShed(t)
 	// The target's gate is off, yet the goto names the row as entered, so the step calls it without evaluating the gate.
 	shed.Producers[0].EntryGate = func() (bool, string, error) { return false, "gate is off", nil }
@@ -252,6 +256,7 @@ func TestGoto_StepResumesAtTarget(t *testing.T) {
 }
 
 func TestStep_UnknownCurrentProducerNamesGoto(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, a, b := gotoShed(t)
 	seed := commonSeed("Renamed")
 	seed.State = StateBlocked
@@ -307,6 +312,7 @@ func haltOnBudget(t *testing.T, configure func(*Shed)) (shed *Shed, statusPath, 
 // TestStep_BudgetHaltResumeGrantsOneBudget pins the budget halt's reason and way forward, that a resume bounces once more before halting again,
 // and that a goto onto the halted run grants no budget.
 func TestStep_BudgetHaltResumeGrantsOneBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reasonTests := []struct {
@@ -407,6 +413,7 @@ func assertGotoRefused(t *testing.T, shed *Shed, target string) error {
 // TestGoto_Guard pins that a told guard refuses or, when it cannot decide, refuses too, each leaving the file unchanged.
 // An admitting guard lets the goto move the run, and the guard is never asked about a target Shed's own checks refused.
 func TestGoto_Guard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -465,6 +472,7 @@ func TestGoto_Guard(t *testing.T) {
 }
 
 func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed := tailShed(t, "PR-Gate", StateAwaiting, nil)
 
 	err := assertGotoRefused(t, shed, "Finalize")
@@ -497,6 +505,7 @@ func TestGoto_AwaitingRefusesFinalizeAndAdmitsEarlierRow(t *testing.T) {
 }
 
 func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed := tailShed(t, "Describe", StateRunning, nil)
 	err := assertGotoRefused(t, shed, "Webster")
 	for _, want := range []string{"lym shed pause --after Describe", "lym shed step"} {
@@ -525,6 +534,7 @@ func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 // TestGoto_BlockedRunAdmitsOnlyEarlierRows pins which rows a blocked run's goto refuses and admits, relative to the row it is blocked at: forward rows are refused, the row itself, an earlier row and an offshoot's partner are admitted.
 // A row removed from the list falls back to the latest history entry's successor.
 func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -557,6 +567,7 @@ func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
 
 // TestRelaunch pins each refusal Relaunch makes before it writes, that Admit runs only after every check passed, and that a valid goto keeps a human's pause conditions where Goto clears them.
 func TestRelaunch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	errAdmit := errors.New("admit refused")
 	tests := []struct {

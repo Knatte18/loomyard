@@ -1,5 +1,3 @@
-//go:build tier1
-
 // prebuild_integration_test.go pins the harness's one lym build per tagged run.
 // It is Tier 2: the building rows spawn a real go build of a throwaway module, or the test binary as a stand-in go, so it needs the integration build tag.
 
@@ -15,9 +13,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPrebuildLym(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	inherited := gateslot.PrebuiltLymEnv + "=/stale/lym"

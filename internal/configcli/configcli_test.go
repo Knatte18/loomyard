@@ -1,5 +1,3 @@
-//go:build tier0
-
 // configcli_test.go — unit and integration tests for configcli.
 //
 // Unit tests (tier 0): dispatch/editOne/printModule/printAll with fake editor+sync over temp baseDirs seeded via the paths helpers.
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeEditor returns a fake EditorFunc that writes the given valid YAML
@@ -88,6 +87,7 @@ func newHubFixture(t *testing.T) hubFixture {
 
 // TestEditOne pins the single-module edit: a valid edit is synced and reported as a JSON success, an unknown module is refused with the known list before anything runs, an editor failure aborts before the sync, and a failing sync is reported with its own output.
 func TestEditOne(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -180,6 +180,7 @@ func TestEditOne(t *testing.T) {
 // TestRunCLIIn_FromNonGitDirectory pins the verbs that answer before any layout resolves: bare `lym config` prints help naming reconcile, menu and every module; a bad argument, and a verb that needs a repository, each exit 1 with a JSON error envelope naming the way forward.
 // The bare row passes an empty argument list, since a nil one would make cobra read the test binary's own flags.
 func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -261,6 +262,7 @@ func TestRunCLIIn_FromNonGitDirectory(t *testing.T) {
 // TestNoModuleSharesNameWithSubcommand verifies that no configreg module is named like a config subcommand,
 // since a subcommand name always routes as a subcommand.
 func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	subs := map[string]bool{}
 	for _, c := range Command().Commands() {
@@ -275,6 +277,7 @@ func TestNoModuleSharesNameWithSubcommand(t *testing.T) {
 
 // TestConfigLong verifies that the config command's Long help text names every module in configreg.Names(), so it stays in sync with the registry rather than drifting from a hardcoded list, and documents the EDITOR/VISUAL editor fallback and the --set flag.
 func TestConfigLong(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	longText := Command().Long
 	wants := append([]string{"EDITOR", "VISUAL", "code --wait", "nano", "--set", "--layer"}, configreg.Names()...)
@@ -323,6 +326,7 @@ func runMenuWith(t *testing.T, input string, terminal bool, editor configengine.
 
 // TestMenu pins the interactive menu: a valid selection edits and syncs the module, quit exits 0 without either, a non-number and an out-of-range number each exit 1 with an invalid message and without either, and the listing marks each module with the layers that hold a file, or (template) when none does.
 func TestMenu(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -420,6 +424,7 @@ func assertJSONOkContains(t *testing.T, output string, wantFields map[string]any
 
 // TestPrint pins the --print form, which never opens an editor: a seeded module's on-disk YAML is emitted verbatim, a known module with no file is an ok:false envelope, an unknown module is an ok:false envelope naming it, and the aggregate form prints a deterministic header for every registry module with inline YAML for seeded ones and "# (not configured)" for absent ones.
 func TestPrint(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const loomYAML = "discussion_timeout_min: 60\n"
 	aggregateWants := []string{loomYAML[:len(loomYAML)-1]}
@@ -483,6 +488,7 @@ func TestPrint(t *testing.T) {
 
 // TestDispatchSet pins the --set path on a per-worktree module: it never opens the editor, syncs once for a successful write and never for a refused one, keeps an orphan key of a sparse worktree file and omits the "preserved" field, and refuses an unknown key, a --print/--set pair, a missing module and a value without '='.
 func TestDispatchSet(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -619,6 +625,7 @@ func countingEditor(calls *int) configengine.EditorFunc {
 // and the board dir as separate directories: every row reads or writes the board dir file,
 // never a worktree copy, and commits through the hub-commit seam, never through sync.
 func TestDispatchHubWideBoard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const seeded = "readme: Home.md\ndesign_prefix: d-\ntypes:\n  bug: a defect\nlabels:\n  old: kept\n"
@@ -1058,6 +1065,7 @@ func assertDarnSaveWritten(t *testing.T, fx hubFixture, hubFile, saved string) {
 // A JSON object adds a profile or replaces one whole, leaving the others, and an absent hub file starts from the template's profiles.
 // A value that is not an object, or a profile no module takes, is refused with the file left as it was.
 func TestDispatchSetProfiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const seeded = "# operator notes\nlight:\n  loom:\n    loom: {plan_max_bounces: 1}\n"
@@ -1156,6 +1164,7 @@ func TestDispatchSetProfiles(t *testing.T) {
 
 // TestDispatchLayers drives --layer through dispatch over a hub fixture: an unknown layer is refused naming the four, the default layer is written and committed from the prime only, a hub-wide module has no worktree layer, a local override is written uncommitted and refuses a key the local layer closes, a machine override is written uncommitted from the prime through the load check and refused on a module with no machine file, a worktree write under a board is sparse, and --print reads the selected layer.
 func TestDispatchLayers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loomTemplate, _ := configreg.Template("loom")
@@ -1738,6 +1747,7 @@ func TestDispatchLayers(t *testing.T) {
 
 // TestPrintResolved pins that --resolved prints a module's resolved configuration with each unit annotated by the layer it came from, refuses an unknown module and an absent base layer with an error envelope, and is refused beside --print, --set, --layer or without a module.
 func TestPrintResolved(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	loomTemplate, _ := configreg.Template("loom")
 
@@ -1823,6 +1833,7 @@ func TestPrintResolved(t *testing.T) {
 // TestRestoreBoardConfig covers the undo of a part-way board-dir apply:
 // a file changed, a file removed and a file created since the snapshot all return to their snapshotted state.
 func TestRestoreBoardConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	board := t.TempDir()
 	changed := configengine.ConfigFile(board, "changed")

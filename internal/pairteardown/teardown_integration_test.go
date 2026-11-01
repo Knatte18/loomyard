@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 // teardown_integration_test.go drives the composite on real hub pairs with real reed sessions and a stub driver strand, as one ordered scenario over one hub and its tmux server.
 
@@ -33,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -208,6 +209,7 @@ func processGone(pid int) bool {
 // Steps run serially in this order: the step that ends the hub's last session by name comes last, because it asserts that the server's socket file goes with it.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub and its tmux server.
 func TestRun_TeardownScenario(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

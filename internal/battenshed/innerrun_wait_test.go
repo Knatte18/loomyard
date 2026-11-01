@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_wait_test.go covers the inner-run's one check per pass: what ends it, what it ignores, and when it decodes the child's status file.
 // The subtest that captures log output replaces the process-global logger output, so the test does not run in parallel.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitChild is a fake child whose status the test rewrites between passes.
@@ -33,6 +32,7 @@ func (c *waitChild) read(string, string) (shedengine.Status, bool, error) {
 
 // TestInnerRun_WaitEndsOnlyOnAnEvent drives one running child through the events that end a pass and the writes it must notice.
 func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
+	tiergate.Require(t, 0)
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}
 	blocked := shedengine.Status{State: shedengine.StateBlocked, Error: "halted", CurrentProducer: "Plan-Review"}
 
@@ -197,6 +197,7 @@ func TestInnerRun_WaitEndsOnlyOnAnEvent(t *testing.T) {
 
 // TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker asserts the producer keeps the batten-watched marker's answer: asked once at the start of every pass, an error read as not held with one Warn per change of answer across passes, and a nil seam read as not held.
 func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	// passesUntilPause runs one fresh producer per pass until the pause ends the run, and returns the last producer.
 	passesUntilPause := func(t *testing.T, probe time.Duration, markWatched func(context.Context) (bool, error), pauseAt int) *innerRunProducer {
 		t.Helper()
@@ -261,6 +262,7 @@ func TestInnerRun_RecordsWhetherItHoldsTheWatchedMarker(t *testing.T) {
 
 // TestInnerRun_SpawnHoldYields asserts a pass at Run-Shed under a covering pause yields at once with the pause reason and spawns nothing, and that a pause lifted between two Calls lets the second one spawn.
 func TestInnerRun_SpawnHoldYields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	covering := pauserecord.Coverage{Covered: true, Entry: pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: time.Date(2026, 1, 1, 11, 0, 0, 0, time.UTC)}}
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Plan-Review"}

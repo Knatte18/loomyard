@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sessiondown_test.go pins EndBeforeSessionDown, the local-state reading `lym reed down` runs before it kills a pair's session.
 
 package pairteardown
@@ -12,10 +10,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestEndBeforeSessionDown pins which local readings let a session end through, the run-lock wait and owned-process end that follow, and the refusal of a running unpaused run.
 func TestEndBeforeSessionDown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	done := "done"

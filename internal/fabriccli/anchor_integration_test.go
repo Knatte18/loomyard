@@ -1,5 +1,3 @@
-//go:build tier1
-
 // anchor_integration_test.go drives `lym fabric anchor` through RunCLIIn over hubforge hubs:
 // the print and the move of a pair, a child forked before its parent's move, and the integration of a prime's move on a second clone.
 // A hub's prime warp tracks sub/ and is pushed before any second clone is made, so sub is a directory git tracks in every checkout.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newAnchorCLIHub builds a "." hub whose prime warp tracks sub/, with the prime's warp and records branches pushed to the hub's remotes.
@@ -52,6 +51,7 @@ func requireAnchorOK(t *testing.T, cwd string, args ...string) envelope.Envelope
 }
 
 func TestRunCLI_Anchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("The verb prints the anchor and moves a pair to sub", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package machinename
 
 import (
@@ -7,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFromHostname(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -38,11 +38,13 @@ func TestFromHostname(t *testing.T) {
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	scankit.AssertImportAllowlist(t, "internal/machinename")
 }
 
 func TestSoleSource_NoOtherProductionFileReadsTheHostname(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}, Filter: scankit.Prod}, func(f *scankit.File) {
 		if strings.HasPrefix(f.Rel, "internal/machinename/") {

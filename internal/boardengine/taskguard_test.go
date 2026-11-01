@@ -1,5 +1,3 @@
-//go:build tier0
-
 // taskguard_test.go — the refusal of a write that creates or promotes a task from a run agent's session (taskguard.go), driven through the Board facade.
 
 package boardengine_test
@@ -11,11 +9,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTaskCreationGuard pins which writes a run agent's session may make, and that the operator, the hub orch and an orch thread may create a task.
 // A refused row leaves board.json byte-identical.
 func TestTaskCreationGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const runAgent = "ly:some-task:webster"

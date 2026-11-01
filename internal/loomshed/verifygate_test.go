@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -12,11 +10,13 @@ import (
 	"unicode/utf8"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // TestVerifyFailureFindings pins how a failed verify result renders: the exit code, the could-not-start cause or the timeout sentence, then the full log path and either the failing tests the log names with the gate's closing line, or the log tail when it names none.
 func TestVerifyFailureFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

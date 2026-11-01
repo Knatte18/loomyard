@@ -1,5 +1,3 @@
-//go:build tier0
-
 // logfile_test.go pins the per-line append and the size-bound rotation of the dobby's log and output files over temp files.
 
 package dobbyengine
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeFile writes content to path, failing the test on error.
@@ -32,6 +31,7 @@ func readFile(t *testing.T, path string) string {
 }
 
 func TestAppendLog(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	full := strings.Repeat("x", logRotateBytes)
 
@@ -91,6 +91,7 @@ func TestAppendLog(t *testing.T) {
 }
 
 func TestRotateOutBeforeSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	full := strings.Repeat("x", logRotateBytes)
 

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_siblingdirty_integration_test.go pins that an uncommitted run record in a pair's other worktree is committed and archived rather than refused, and that a pair dirty only on the task side is refused without satisfying errors.Is(err, fabricengine.ErrPairSiblingDirty).
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -15,10 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_UntrackedDriveReportIsCommittedAndArchived leaves a new file inside a not-yet-tracked _lym/shed/<slug>/drive-reports/ directory — the uncommitted stop report the done-wait rests on — and asserts a no-force Remove commits it and the archive tag contains it, with no sibling-dirty refusal.
 func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "sibling-dirty"
@@ -51,6 +51,7 @@ func TestRemove_UntrackedDriveReportIsCommittedAndArchived(t *testing.T) {
 
 // TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty dirties only the task-side worktree and asserts its refusal is not the sibling-dirty sentinel.
 func TestRemove_TaskSideDirtyDoesNotSatisfySiblingDirty(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "task-side-dirty"

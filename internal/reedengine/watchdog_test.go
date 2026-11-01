@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watchdog_test.go pins watchdog.go's pure surface: watchdogOption's validate/normalize contract, the wake cadence rule and both embedded templates' watchdog default.
 // Untagged: nothing here spawns a process or sleeps (Test Tier Purity Invariant).
 
@@ -10,10 +8,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNextWakeCadence pins the shared backoff rule: base on a changed cycle, otherwise double the current wait up to the ceiling.
 func TestNextWakeCadence(t *testing.T) {
+	tiergate.Require(t, 0)
 	const base, ceiling = time.Second, 8 * time.Second
 	tests := []struct {
 		name    string
@@ -38,6 +39,7 @@ func TestNextWakeCadence(t *testing.T) {
 
 //testtiming:keep pins the watchdog option validating and normalizing: on and off in any case or padding, and an empty, numeric, true, yes or misspelled value rejected naming the offending value; its covering tests run this code without asserting it
 func TestWatchdogOption(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		raw     string
@@ -85,6 +87,7 @@ func TestWatchdogOption(t *testing.T) {
 //
 //testtiming:keep pins both embedded templates and the shipped accessor declaring the watchdog default line, reading the posix and windows files directly since ConfigTemplate exposes only one; its covering tests run this code without asserting it
 func TestWatchdogTemplateDefault_BothGOOS(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, path := range []string{"template_posix.yaml", "template_windows.yaml"} {
 		t.Run(path, func(t *testing.T) {
 			raw, err := os.ReadFile(path)

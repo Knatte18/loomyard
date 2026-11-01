@@ -1,7 +1,5 @@
-//go:build tier0
-
 // slug_test.go pins the shared worktree-slug validator both Add and Remove route through.
-// It is untagged Tier 1: validateWorktreeSlug is pure string work with no git spawn and no
+// It is a tier0 test: validateWorktreeSlug is pure string work with no git spawn and no
 // filesystem access.
 
 package fabricengine
@@ -10,10 +8,13 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep every slug validation rule over a table of accepted and refused slugs; coverage of its blocks by other tests does not show an assertion of this
 func TestValidateWorktreeSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

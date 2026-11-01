@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixerattempts_test.go — tier0 unit tests for the fixer attempt record.
 
 package landingshed
@@ -10,9 +8,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFixerAttempts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("RoundTripsUnderItsOwnEntry", func(t *testing.T) {

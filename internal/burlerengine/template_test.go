@@ -1,5 +1,3 @@
-//go:build tier0
-
 // template_test.go proves each of the shipped half-prompt assets actually fills through stencil with its own required marker subset, that the two optional directives of the explore step render cleanly empty and placed ahead of its first work instruction, and that the compose functions read a half prompt from disk at call time.
 // The Go-built blocks and the seat stencils' exclusion of the cluster block are pinned from full compose renders in prompt_test.go.
 // The assets are read from the top-level stencils package's exported embedded defaults (stencils.BurlerTemplateReviewer etc.) rather than this package's own now-deleted package-private vars — a cross-package import, not a rename, since the compose functions themselves read their prompts from disk at call time via stencilstore.Read (see prompt.go).
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -85,6 +84,7 @@ func instruction1MarkerValues() map[string]string {
 // pattern_directive and focus_directive are deliberately excluded from the explore step's deletion sweep:
 // they are the optional markers across the assets, so deleting any of them must not error.
 func TestTemplate_FillsWithAllMarkers(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		template        []byte
@@ -168,6 +168,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 // TestTemplate_OptionalDirectives asserts pattern_directive, focus_directive and fork_reading each behave as an optional marker on the explore step: an empty value renders cleanly with no leftover `{{`, no orphan heading and, for pattern_directive, no stray blank-line block where the directive would have sat, and a non-empty value places the block where its row says: the two directives ahead of the first work instruction ("## What to review (the target)"), the fork reading after the tool-use rules at the end of the stencil.
 // The fix step's friction_directive and self_check each render an empty value cleanly too.
 func TestTemplate_OptionalDirectives(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	optional := []string{"pattern_directive", "focus_directive", "fork_reading"}
@@ -247,6 +248,7 @@ func TestTemplate_OptionalDirectives(t *testing.T) {
 //
 //testtiming:keep pins that an edited on-disk review-step body reaches the composed review step file, which the cluster test covering its blocks never edits
 func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 

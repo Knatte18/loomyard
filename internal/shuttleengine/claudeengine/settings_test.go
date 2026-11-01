@@ -1,5 +1,3 @@
-//go:build tier0
-
 // settings_test.go covers buildSettings' JSON composition across the agent-deny/askuser-deny toggle matrix and the interactive/autonomous split, the fork-mode conditional Agent hook and Bash guard, asserts the events path is embedded in its POSIX form, checks the no-single-quote steer invariant, and exercises Prepare end to end against a real temp directory.
 
 package claudeengine
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // parseSettings unmarshals data into the generic shape buildSettings
@@ -45,6 +44,7 @@ func hooksFor(doc map[string]any, event string) []any {
 //
 //testtiming:keep pins promptSuggestionEnabled=false in the interactive, autonomous and fork documents, which its covering tests do not assert
 func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name        string
 		interactive bool
@@ -84,6 +84,7 @@ func stampPrintf(hookEventName, quotedEventsPath string) string {
 //
 //testtiming:keep pins the recording hooks' exact commands and their single-quote escaping, which its covering test does not assert
 func TestBuildSettings_RecordingHooks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -148,6 +149,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 // TestBuildSettings_SessionStartHook pins the SessionStart entries: every source is recorded exactly once.
 // An empty command gives one recording entry with no matcher; otherwise the sources but compaction record in one entry, and the compaction entry runs the recording command ending in `; true` and then the given command verbatim.
 func TestBuildSettings_SessionStartHook(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const quoted = `'/c/run/events.jsonl'`
@@ -202,6 +204,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 // TestHookContext pins the exact JSON the session-start hook and creel's hook output print, with the text escaped:
 // the mail is the additional context and the operator's system message is the echo, the mail after a tool call with no echo, and no output carries a decision or a reason.
 func TestHookContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const mail = `read "role.md"`
 	const echo = "[creel] Delivered while idle:\nread \"role.md\""
@@ -237,6 +240,7 @@ func TestHookContext(t *testing.T) {
 // the PostToolUse mail hook as an entry with no matcher after the activity stamp, testing the flag directory it is told, and the two Stop entries, the merged turn-end command and the idle waiter with asyncRewake and its 86400-second timeout.
 // Told no flag directory, PostToolUse carries the activity stamp alone and Stop the one plain recording.
 func TestBuildSettings_CreelMailHook(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const eventsPath = "/c/run/events.jsonl"
 	quotedEventsPath := shQuote(eventsPath)
@@ -308,6 +312,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 }
 
 func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name             string
 		agentDeny        bool
@@ -441,6 +446,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 
 // TestStandingDenies_RenderEveryShellGuardRow pins that every shell guard row, the refuse-raw row of a non-empty list included, has exactly one standingDeniesFor entry with matcher Bash, its steer and notice and the command shape of its pattern count, in table order after the Claude rows.
 func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw)
@@ -471,6 +477,7 @@ func TestStandingDenies_RenderEveryShellGuardRow(t *testing.T) {
 //
 //testtiming:keep a guard that fires when a steer constant gains a forbidden character, which no covering test asserts
 func TestBuildSettings_NoForbiddenCharsInSteerText(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Each steer constant rides inside a JSON string literal (so a literal
 	// `"` or `\` would corrupt the payload) nested inside a single-quoted
 	// echo argument under git-bash (so a literal `'` would corrupt the
@@ -524,6 +531,7 @@ const (
 //
 //testtiming:keep pins the Agent and Bash PreToolUse entries for every deny, fork and allowance combination, which its covering test does not assert
 func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	denyBoth := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
@@ -649,6 +657,7 @@ func TestBuildSettings_AgentAndBashHooks(t *testing.T) {
 // so a prompt over the old 30000-byte bound launches and prompt.md holds all of it.
 // Only a pointer over maxLaunchPromptBytes, reached by a pathological run-directory path, is rejected, before any run artifact is written.
 func TestPrepare_PromptLaunchLimit(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := shuttleengine.Config{}
 	c := engineWith(t, templateConfig(t))
 
@@ -697,6 +706,7 @@ func TestPrepare_PromptLaunchLimit(t *testing.T) {
 
 // TestPrepare_CreelMailHookFollowsTheBoardDirectory pins that Prepare derives the creel flag directory from the hub's board directory and marks the launch CreelHooks, and that an engine in no hub writes the activity stamp alone on PostToolUse and marks nothing.
 func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boardDir := t.TempDir()
 	flagDir := CreelFlagDir(boardDir)
@@ -766,6 +776,7 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 //
 //testtiming:keep pins the prompt.md, settings.json and bash-env.sh contents and the env-file lead on both lines, which its covering test does not assert
 func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := t.TempDir()
 	spec := shuttleengine.Spec{Prompt: "do the thing", Interactive: false}
 	claude := templateConfig(t)
@@ -918,6 +929,7 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 //
 //testtiming:keep pins the notice sentences against the installed hooks over every combination, which its covering test checks only for the append-system-prompt.txt file
 func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, agentDeny := range []bool{false, true} {
 		for _, askUserDeny := range []bool{false, true} {
 			for _, pythonDeny := range []bool{false, true} {
@@ -963,6 +975,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 //
 //testtiming:keep pins the fork-subagent and Agent-unavailable wording of the notice, which its covering test does not assert
 func TestBuildDenyNotice_SentenceContent(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := shuttleengine.Config{}
 	claude := Config{DenyAgentTool: true, DenyAskUserQuestion: true}
 	forkNotice := buildDenyNotice(false, cfg, claude, true, false, false)
@@ -999,6 +1012,7 @@ func TestBuildDenyNotice_SentenceContent(t *testing.T) {
 
 // TestBuildSettings_MatchesGolden pins the settings document and deny notice byte for byte across every combination of the six deny inputs.
 func TestBuildSettings_MatchesGolden(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	type golden struct {
 		Settings string `json:"settings"`

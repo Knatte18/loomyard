@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validateparts_test.go covers the `validate-parts` verb and `validate-plan --part`, driven against the leaf commands on a hand-populated *loomCLI.
 
 package loomcli
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // splitDecisionRecord is a decision record holding the decisions D1 to D3, which the parts file names.
@@ -107,6 +106,7 @@ func writePartPlan(t *testing.T, anchorPath, part, target string, uses ...string
 }
 
 func TestValidatePartsCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -143,6 +143,7 @@ func TestValidatePartsCmd(t *testing.T) {
 }
 
 func TestValidatePlanCmd_Part(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

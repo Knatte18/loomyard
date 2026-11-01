@@ -1,5 +1,3 @@
-//go:build tier2
-
 // paste_integration_test.go drives PasteSubmit against a real tmux pane running cat:
 // the text and the Enter arrive, a long line pastes whole, no lym-inject buffer outlives the paste, and the operator's own paste buffer stays on top of the default stack.
 
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitForCapture polls guid's pane until pred accepts its screen, and returns that screen.
@@ -35,6 +34,7 @@ func waitForCapture(t *testing.T, e *Engine, guid string, pred func(screen strin
 }
 
 func TestPasteSubmit_DeliversTextAndLeavesTheBufferStackAlone(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newIntegrationEngine(t, "off")
 	if _, err := e.Up(); err != nil {

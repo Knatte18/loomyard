@@ -1,5 +1,3 @@
-//go:build tier0
-
 // weeks_test.go tests the per-week aggregates, the absent counts, the JSON envelope and the markdown rendering over fake sources.
 
 package reportengine
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func floatPtr(f float64) *float64 { return &f }
@@ -38,6 +37,7 @@ func crashNote(name string) map[string]string {
 }
 
 func TestCompute_Weeks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running, awaiting := shedengine.StateRunning, shedengine.StateAwaiting
 	awaitingAtWrite := battenStatusOf(awaiting, "", stateChange(running, awaiting, "Plan-Write", 2))
@@ -294,6 +294,7 @@ func cellFloat(value *float64) string {
 }
 
 func TestRenderMarkdown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running, awaiting := shedengine.StateRunning, shedengine.StateAwaiting
 

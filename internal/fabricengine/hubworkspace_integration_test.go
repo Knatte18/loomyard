@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubworkspace_integration_test.go drives RegenerateHubWorkspace against hubforge hubs:
 // the folder list and its order, the skip exits, the mutation record, the lock, and the failures that write no file.
 // Shares the single TestMain in testmain_test.go.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -160,6 +159,7 @@ func recordedFileWrite(rec *fabricengine.Mutations, hubPath, path string) bool {
 // The top level is not parallel: the lock-ordering and log-capture rows touch process-global state (a test hook and the logger output),
 // so they run before the parallel rows are released and no regeneration runs beside them.
 func TestRegenerateHubWorkspace(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("ListsFolderAddedWhileWaitingForTheLock", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		l := *h.Location

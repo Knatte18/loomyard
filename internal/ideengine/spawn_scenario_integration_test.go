@@ -1,5 +1,3 @@
-//go:build tier1
-
 // spawn_scenario_integration_test.go drives Spawn as scenarios over one hubforge hub per anchor, so a hub is built once per anchor instead of once per check.
 // Serial by design: every step swaps the package-level CodeLauncher, and the driven steps swap the logger output.
 
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // spawnStepRunner returns a runner of named steps over h.
@@ -33,6 +32,7 @@ func spawnStepRunner(t *testing.T, h *hubforge.Hub) func(name string, step func(
 // TestSpawnScenario drives every Spawn check that does not depend on the hub's anchor against one hub at the repo root.
 // Steps run in this order: the prime-touching steps follow the task-pair ones, and the tracked-tasks.json commit on the prime is last, because it leaves the prime's tasks.json tracked.
 func TestSpawnScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	step := spawnStepRunner(t, h)
 
@@ -104,6 +104,7 @@ func TestSpawnScenario(t *testing.T) {
 // TestSpawnAnchoredScenario drives the checks whose result depends on the anchor against one hub anchored in a subdirectory.
 // The steps depend on no earlier step's state.
 func TestSpawnAnchoredScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.NewHub(t, "wts/some-task")
 	step := spawnStepRunner(t, h)
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hookread_test.go pins the exit decision of the hidden hook-read verb, which only a hook-driven CLI run reaches in pieces.
 
 package creelcli
@@ -10,11 +8,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHookWaitExit pins the exit code of hook-wait for the decisions the CLI rows reach only in part:
 // a refused or lost confirmation after the lines were written still wakes the session, and an acknowledgement that was never sent does not.
 func TestHookWaitExit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	failure := errors.New("creel: the daemon refused the confirmation")
 	unsent := &sendError{creelengine.ErrAckUnsent}
@@ -51,6 +51,7 @@ func (e *sendError) Unwrap() error { return e.err }
 // TestHookReadExit pins the exit code and whether the error is printed for the decisions no CLI row reaches:
 // an acknowledgement failing after the block was written, a daemon failure before the write and a failed tool-boundary claim.
 func TestHookReadExit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	failure := errors.New("creel: the daemon failed")
 	tests := []struct {

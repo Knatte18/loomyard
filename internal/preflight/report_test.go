@@ -1,5 +1,3 @@
-//go:build tier0
-
 // report_test.go covers Report's own bookkeeping methods — AddFailure and Has — and the
 // OK == (len(Failures) == 0) invariant, spawning nothing.
 
@@ -7,10 +5,13 @@ package preflight
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestReport_AddFailure covers AddFailure on a Report shaped the way a check's return value is shaped -- OK explicitly set true before any AddFailure call, rather than the bare zero value whose OK defaults to false with an empty Failures slice and so does not itself satisfy the invariant: each recorded failure is appended in order with its check and reason, and the first one flips OK to false, so OK == (len(Failures) == 0) holds before and after.
 //
 //testtiming:keep pins AddFailure's append order, failure fields and OK flip, which the CheckResolved table covering its blocks only reads back through the CheckID set
 func TestReport_AddFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -49,6 +50,7 @@ func TestReport_AddFailure(t *testing.T) {
 }
 
 func TestReport_Has(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		r     Report

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cancellation_test.go carries the one test whose subject is this package's own constructors under
 // an already-cancelled context, plus the reduced fixture it drives from. It stays in
 // internal/loomshed rather than moving to internal/loomrecipe alongside the rest of the sequence
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -36,6 +35,7 @@ func buildCancellationFixture(t *testing.T) cancellationFixture {
 // every real producer this test drives -- the Webster wrapper -- returns a non-nil error rather than shedengine.Stuck when called under an already-cancelled context.
 // A Stuck under a cancelled context is indistinguishable to Shed from a genuine verdict and would silently consume bounce budget for what was actually an operator stop.
 func TestCancellation_RealProducersReturnErrorNotStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := buildCancellationFixture(t)
 
 	ctx, cancel := context.WithCancel(context.Background())

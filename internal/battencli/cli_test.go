@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the battencli cobra seam: each verb's argument-count rejection and the bare-group invocation's git-free guard -- mirroring internal/loomcli/cli_test.go's shape.
 
 package battencli
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +39,7 @@ func battenCommandNamed(parent *cobra.Command, verb string) *cobra.Command {
 // TestCommand_EveryVerbArity asserts each of the four verbs' own Args validator, checked independently per verb rather than by reading one shared value, accepts both zero and one positional and rejects two -- cobra.MaximumNArgs(1), the one arity contract all three surfaces ("lym shed", "lym batten", "lym loom") share -- and that two positionals fail the whole command through cobra's own arity error, regardless of cwd, before PersistentPreRunE ever runs.
 // Accepting zero is what lets "lym batten run" with no argument reach arm's own refuseSelfAddress (arm_seed_test.go) with a named message, rather than stopping at cobra's generic count error.
 func TestCommand_EveryVerbArity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, verb := range []string{"run", "step", "status", "pause", "cancel"} {
@@ -80,6 +80,7 @@ func TestCommand_EveryVerbArity(t *testing.T) {
 // unknown value. The likeliest regression this batch names is lifting both refusals for symmetry;
 // only a case asserting the batten driver flag still refuses catches it.
 func TestArmSeed_DriverFlagMatrix(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		driverFlag      string
@@ -138,6 +139,7 @@ func TestArmSeed_DriverFlagMatrix(t *testing.T) {
 // without needing a git repository, proving the PersistentPreRunE guard for cmd.Name() ==
 // "batten" fires before any cwd resolution.
 func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -152,6 +154,7 @@ func TestRunCLI_GroupGuard_NoGitRepoNeeded(t *testing.T) {
 
 // TestCommand_HelpCarriesNoTeardownGotoExample asserts no help text shows the forward move to Worktree-Teardown as an example.
 func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
+	tiergate.Require(t, 0)
 	var walk func(cmd *cobra.Command)
 	walk = func(cmd *cobra.Command) {
 		if strings.Contains(cmd.Long, "--to Worktree-Teardown") {
@@ -171,6 +174,7 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 // a parent another machine owns starts no dobby and warns naming `lym adopt` for the parent, or `lym adopt root` for the prime;
 // a parent beam whose landing hold stands starts no dobby and warns naming `lym batten status`.
 func TestStartFirstPass(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

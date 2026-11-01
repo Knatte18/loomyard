@@ -1,5 +1,3 @@
-//go:build tier0
-
 // live_test.go covers the orch liveness predicate over hand-built orch state and a fake reed strand list.
 
 package orchroute
@@ -11,9 +9,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLiveFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("reed is down")

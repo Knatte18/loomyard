@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rubric_test.go covers ReadRubric directly: the fill, the strip, the markerless pass-through, and
 // the required-marker error, exercised against a realistically stamped fixture file rather than a
 // bare body.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeStampedRubric writes body into dir at name's stencilstore path, stamped with body's own real
@@ -35,6 +34,7 @@ func writeStampedRubric(t *testing.T, dir, name, body string) {
 //
 //testtiming:keep pins the rubric fill and strip: both markers substituted, the stamp banner removed, a markerless rubric unchanged, and the errors for an empty specs dir or an unreadable rubric
 func TestReadRubric(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -194,6 +194,7 @@ func TestReadRubric(t *testing.T) {
 
 //testtiming:keep pins that an empty stencils dir is an error naming stencils_dir, which needs the cwd changed and so cannot join the parallel table
 func TestReadRubric_EmptyStencilsDirIsAnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	// An empty stencilsDir makes the read cwd-relative, so the fixture lives in the cwd;
 	// without that the read fails and the test would pass without ever reaching the fill.
 	t.Chdir(t.TempDir())

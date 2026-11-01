@@ -1,5 +1,3 @@
-//go:build tier1
-
 // treeanchor_integration_test.go pins the one rule that derives the anchor of a branch recording none:
 // the committed marker, else the shallowest directory holding a wired name, else the caller's fallback.
 //
@@ -14,10 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTreeAnchor covers each answer of the rule over a plain repository holding the listed files.
 func TestTreeAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const fallback = "the-fallback"

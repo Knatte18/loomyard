@@ -1,14 +1,15 @@
-//go:build tier0
-
 package agentname
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the exact formatted string of each name form and its Parse round trip, which Resolve and the rejection cases never assert
 func TestFormatParseRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct{ shortname, slug, role, want string }{
@@ -59,6 +60,7 @@ func TestFormatParseRoundTrip(t *testing.T) {
 }
 
 func TestValidationRejections(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, shortname := range []string{"", "a", "abcdefg", "1ab", "a-b", "a:b", "a.b", "a@b", "AB"} {
@@ -106,6 +108,7 @@ func TestValidationRejections(t *testing.T) {
 }
 
 func TestNumberRole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -139,6 +142,7 @@ func TestNumberRole(t *testing.T) {
 }
 
 func TestResolve(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -179,6 +183,7 @@ func TestResolve(t *testing.T) {
 }
 
 func TestMatches(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -200,6 +205,7 @@ func TestMatches(t *testing.T) {
 }
 
 func TestTaskSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -223,6 +229,7 @@ func TestTaskSlug(t *testing.T) {
 }
 
 func TestCallerLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -250,6 +257,7 @@ func TestCallerLabel(t *testing.T) {
 }
 
 func TestStandaloneShortname(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := StandaloneShortname("a1b2c3d4")
@@ -262,6 +270,7 @@ func TestStandaloneShortname(t *testing.T) {
 }
 
 func TestFileName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct{ full, want string }{

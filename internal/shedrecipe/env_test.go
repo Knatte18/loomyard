@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedrecipe
 
 import (
@@ -8,6 +6,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shedfake.Shuttle serves here as a non-nil seam value and, as a nil *shedfake.Shuttle, a typed-nil interface value.
@@ -17,6 +16,7 @@ import (
 //
 //testtiming:keep pins that each entry-construction guard refuses with an error naming the entry and field, including a typed-nil seam, which its covering tests do not
 func TestRequireHelpers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var nilShuttleInterface shedadapters.Shuttle
 	var typedNilShuttle shedadapters.Shuttle = (*shedfake.Shuttle)(nil)

@@ -1,11 +1,10 @@
-//go:build tier0
-
 package planparser_test
 
 import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func reviewClassCard(groups ...planparser.TargetGroup) planparser.Card {
@@ -17,6 +16,7 @@ func reviewClassGroup(t planparser.CardType, refs ...string) planparser.TargetGr
 }
 
 func TestReviewExempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	prosa := planparser.CardTypeProsa
 	tests := []struct {
 		name string

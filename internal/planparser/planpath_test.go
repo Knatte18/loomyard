@@ -1,5 +1,3 @@
-//go:build tier0
-
 // planpath_test.go tests the told-anchor PlanDir/PlanOverview path constructors — pure filepath.Join
 // arithmetic, no spawning, no fixture tree, untagged (Tier 1). It is the ported successor of
 // internal/loomengine/planpath_test.go (deleted in batch 2).
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPlanPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	anchor := filepath.Join("home", "user", "repo", "sub", "dir")
@@ -35,6 +35,7 @@ func TestPlanPaths(t *testing.T) {
 }
 
 func TestArchiveDirName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		stamp  string

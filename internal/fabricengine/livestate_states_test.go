@@ -1,5 +1,3 @@
-//go:build tier1
-
 // states.go defines the ten named hostile states every cell in the cross-product matrix batches 6-7
 // build can be run against: a dirtiness state modifies or creates content in one of the checkouts a
 // verb under test acts on, and a structural state plants a foreign, stale, or operator-owned entity at

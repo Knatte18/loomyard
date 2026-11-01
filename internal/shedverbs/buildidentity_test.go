@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buildidentity_test.go covers binaryChanged's table: it is true only for two known builds that differ in revision or modified flag.
 
 package shedverbs
@@ -8,10 +6,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the flipped modified flag and the empty-revision rows that never report a change, which its covering test does not
 func TestBinaryChanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name              string
 		running, recorded buildvcs.Identity

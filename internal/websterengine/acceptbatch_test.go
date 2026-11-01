@@ -1,5 +1,3 @@
-//go:build tier0
-
 // acceptbatch_test.go covers AcceptBatchFabricReference: it clears a failed batch's pathless fabric-reference findings only on the HEAD-at-start, clean-tree evidence,
 // records each as a batch audit warning, and refuses every other case without mutating the state.
 // fakeGit only — Test Tier Purity Invariant.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -58,6 +57,7 @@ func acceptBatchFixture(t *testing.T) (*websterengine.State, websterengine.Geome
 }
 
 func TestAcceptBatchFabricReference_ToleratesTheRunsOwnState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st, geom, g := acceptBatchFixture(t)
 	g.dirtyPaths = []string{"_lym/", "_lym/webster/state.json"}
@@ -68,6 +68,7 @@ func TestAcceptBatchFabricReference_ToleratesTheRunsOwnState(t *testing.T) {
 }
 
 func TestAcceptBatchFabricReference_ClearsOnNoCommitCleanTree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st, geom, _ := acceptBatchFixture(t)
 
@@ -91,6 +92,7 @@ func TestAcceptBatchFabricReference_ClearsOnNoCommitCleanTree(t *testing.T) {
 }
 
 func TestAcceptBatchFabricReference_ClearsAfterCommitsDiscarded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st, geom, g := acceptBatchFixture(t)
 	start := g.head
@@ -108,6 +110,7 @@ func TestAcceptBatchFabricReference_ClearsAfterCommitsDiscarded(t *testing.T) {
 }
 
 func TestAcceptBatchFabricReference_ClearsCommittedReadOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st, geom, g := acceptBatchFixture(t)
 	entries := []string{readOnlyEntry("cat ../x-records/a.md | grep needle"), readOnlyEntry("ls ../x-records && wc -l ../x-records/b.md")}
@@ -142,6 +145,7 @@ func committedWith(entries ...string) func(st *websterengine.State, g *fakeGit) 
 }
 
 func TestAcceptBatchFabricReference_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name string

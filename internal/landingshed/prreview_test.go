@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prreview_test.go covers the PR-Review row against a fake pull-request API and a temp record: the mode decision, the push, finding or opening the pull request, the record it keeps and the failures it halts or returns on.
 
 package landingshed
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // scriptedCall is one scripted answer of a fakePullRequestAPI method.
@@ -95,6 +94,7 @@ func (f *fakePullRequestAPI) Merge(_ context.Context, number int, expectedHead s
 }
 
 func TestPRReview_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	githubOrigin := Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}

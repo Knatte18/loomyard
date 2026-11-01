@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entryobservation_test.go holds the status-file helpers the entry-observation and handoff-voucher tests share, and the table of entries that write no crash-resume note.
 
 package loomcli
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeStatusFixture writes st to path/lockPath via the production WriteJSON primitive.
@@ -37,6 +36,7 @@ func productJSON(t *testing.T, p loomengine.Status) []byte {
 }
 
 func TestNoteCrashResumeAtEntry_WritesNoNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

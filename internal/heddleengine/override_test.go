@@ -1,5 +1,3 @@
-//go:build tier0
-
 // override_test.go drives the lym overrides through their file contract: setting, replacing and removing an override of a shipped entry, and the refusals.
 
 package heddleengine
@@ -7,9 +5,12 @@ package heddleengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOverrides(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shipped := shippedStore.Ordered()[0].Slug
 

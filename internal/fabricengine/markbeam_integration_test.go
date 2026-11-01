@@ -1,5 +1,3 @@
-//go:build tier1
-
 // markbeam_integration_test.go covers MarkBeam over a hubforge hub: the mark and its one commit, the idempotent re-run, and the two refusals for a pair with no origin record.
 
 package fabricengine_test
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordsCommitCount returns the number of commits reachable from HEAD in the records worktree at weftPath.
@@ -32,6 +31,7 @@ func recordsCommitCount(t *testing.T, weftPath string) int {
 }
 
 func TestMarkBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

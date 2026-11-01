@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gateattempts_test.go covers HistoryEntry.GateAttempts end to end: a producer's OutputPointer
 // reaches Step's persisted HistoryEntry, and the status file on disk actually shows the count, per
 // the producer-gate contract's "recorded in the row's envelope/history so the status file
@@ -15,6 +13,8 @@ import (
 	"reflect"
 	"strconv"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gatedOutcomeProducer returns a *funcProducer that always reports outcome and an OutputPointer
@@ -32,6 +32,7 @@ func gatedOutcomeProducer(outcome Outcome, outputPath string, gateAttempts *int,
 // an exhausted gate's count, a pass-after-retry count, and a first-try pass shown as a non-nil zero (a distinct verdict from an ungated call), while an ungated producer gains no gate_attempts or gate_spans field.
 // A gated call's spans appear on the returned and the persisted entry.
 func TestStep_GateAttempts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	spans := []GateSpan{{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:00:00.5Z", End: "2026-08-15T09:00:01Z"}}
 	tests := []struct {

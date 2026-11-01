@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/landingshed takes every absolute path it operates on from its caller and has no
 // direct production import of internal/lymcwd. Modelled directly on internal/loomshed's own
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // landingshedAllowedImports are the only non-stdlib import paths production code in this package
@@ -45,5 +44,6 @@ var landingshedAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/landingshed", landingshedAllowedImports...)
 }

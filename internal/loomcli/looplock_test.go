@@ -1,5 +1,3 @@
-//go:build tier0
-
 // looplock_test.go drives the loop's parent lock hooks over a temporary lock store.
 
 package loomcli
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -51,6 +50,7 @@ func lockOwnerOf(t *testing.T, store *parentlock.Store) (parentlock.Owner, bool)
 
 // TestLoopLockExit asserts the exit hook releases the loop's record at every stop, an awaiting one included, and leaves a record of another process alone.
 func TestLoopLockExit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	otherProcess := loopOwner
 	otherProcess.PID, otherProcess.StartTime = 200, "200-start"
@@ -100,6 +100,7 @@ func countLogLines(log, level, text string) int {
 // TestIdleReleaseLogLevels asserts the wake hook logs a repeating list or agent read failure once at Warn, Debug while it lasts and Info at recovery, and logs a release at Info.
 // It is serial: it captures the process-global logger.
 func TestIdleReleaseLogLevels(t *testing.T) {
+	tiergate.Require(t, 0)
 	const bound = 10 * time.Minute
 	waiting := []parentlock.AgentState{{Name: "writer", Waiting: true}}
 	type logLine struct {
@@ -192,6 +193,7 @@ func TestIdleReleaseLogLevels(t *testing.T) {
 
 // TestFinalizeKeepsLock asserts the check holds the lock while the run's status names Finalize running or a verify marker of a live process stands, and on a read that fails, and holds nothing for any other status or no file at all.
 func TestFinalizeKeepsLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -258,6 +260,7 @@ func TestFinalizeKeepsLock(t *testing.T) {
 
 // TestLoopIdleRelease asserts the wake hook releases the loop's record once every agent has waited past the bound with none busy, and keeps it below the bound, beside a busy agent and on a failed read.
 func TestLoopIdleRelease(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const bound = 10 * time.Minute
 	waiting := []parentlock.AgentState{{Name: "writer", Waiting: true}}

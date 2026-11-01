@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushclasses_integration_test.go proves that every push fabric runs classifies a failure, recovers where it safely can, and otherwise writes the failed-push record and its one notice.
 // The other machine is a second clone of the hub's bare repositories, and a refusing origin is a pre-receive hook or an unreachable URL.
 //
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // refusedOriginURL is an origin URL git refuses with `connection refused`, a phrase gitexec.IsTransportFailure matches.
@@ -151,6 +150,7 @@ func (f *recordsFixture) endEntryOnOrigin(slug string) {
 //
 // It runs without t.Parallel: the notifier it installs is process-global.
 func TestPushFailureClasses(t *testing.T) {
+	tiergate.Require(t, 1)
 	opts := fabricengine.SyncOptions{}
 
 	t.Run("ADetachedWeftPushRejectedAsNotFastForwardIsReplayedAndPushed", func(t *testing.T) {

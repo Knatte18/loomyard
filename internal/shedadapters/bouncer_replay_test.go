@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_replay_test.go covers Bouncer.Call's replay mode, focus synthesis over a malformed file,
 // and cancellation.
 // The seed call, the re-bounce, the judge call's happy paths and degradations, harvest, and debris
@@ -21,12 +19,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBouncer_Replay_Blocking also pins that judged(N) does not treat an absent next-round focus file as debris: the CONTINUE verdict replays rather than re-judging.
 //
 //testtiming:keep pins the replay's warning log and that the verdict and ledger are left byte-identical, which the tests that reach a replay do not check
 func TestBouncer_Replay_Blocking(t *testing.T) {
+	tiergate.Require(t, 0)
 	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
@@ -84,6 +84,7 @@ func TestBouncer_Replay_Blocking(t *testing.T) {
 //
 //testtiming:keep pins that an unparseable focus file is archived byte-identical and replaced by a well-formed empty one, on both the replay and the seed path
 func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// replay is whether round 1 is already judged CONTINUE, so the call replays and
@@ -150,6 +151,7 @@ func TestBouncer_FocusSynthesis_OverUnparseableFile(t *testing.T) {
 //
 //testtiming:keep pins that a verdict the judge wrote survives a cancellation during the run, for both an approving and a blocking verdict
 func TestBouncer_Cancellation_ParsedVerdictSurvives(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		verdict     string
@@ -193,6 +195,7 @@ func TestBouncer_Cancellation_ParsedVerdictSurvives(t *testing.T) {
 // the seed run or a degrading judge run returns the context error with no outcome and an empty
 // pointer.
 func TestBouncer_Cancellation_ReturnsErrorAndEmptyPointer(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// alreadyCancelled cancels the context before the call; otherwise the run's DuringRun

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // wiring_carryover_integration_test.go drives writeCarryOver over a real fabric pair,
 // so the entry lands in the decision record and the record is committed alone.
 
@@ -17,11 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWriteCarryOver_Real_CommitsTheRecordAlone asserts writeCarryOver puts the segment's entry into the decision record and commits that record and nothing else.
 // Another dirty file of the discussion directory stays uncommitted, and writing the same entry again commits nothing.
 func TestWriteCarryOver_Real_CommitsTheRecordAlone(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "carryoverrecord"
 	hubforge.AddPair(t, hub, slug)

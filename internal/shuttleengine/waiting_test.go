@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttleengine
 
 import (
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitingEngine is a fakeEngine whose ParseEvents also maps a "WAIT:<message>" line to an
@@ -46,6 +45,7 @@ func (e *waitingEngine) ParseEvents(data []byte) ([]Event, error) {
 //
 //testtiming:keep pins that a waiting turn end is still running and advances the offset, and becomes a held turn end on a later Stop
 func TestPollEventsTick_Waiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	const waitLine = "WAIT:background work\n"
 	tests := []struct {
 		name         string
@@ -126,6 +126,7 @@ func TestPollEventsTick_Waiting(t *testing.T) {
 
 //testtiming:keep pins that a gated waiting turn end is not an arrival: the gate is not evaluated on it and runs exactly once on the next Stop
 func TestPollEventsTick_GatedWaitingWithOutputFilesIsNotAnArrival(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
 	outputFile := filepath.Join(runDir, "out.md")
@@ -208,6 +209,7 @@ var (
 //
 //testtiming:keep pins that a fork or an awaited shell never expires at a waiting turn end, and that a non-awaited shell alone expires the ungated wait at the bound and leaves a gated waiting turn end judged as a plain turn end
 func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
+	tiergate.Require(t, 0)
 	const waitLine = "WAIT:background work\n"
 	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	fork := BackgroundTask{Kind: BackgroundFork, ID: "fork-1"}
@@ -316,6 +318,7 @@ func (c *jumpClock) Sleep(time.Duration) { c.fakeClock.Sleep(c.jump) }
 //
 //testtiming:keep pins the ended-shell record and its Info line on the ungated, deadline and liveness ends
 func TestWait_RecordsEndedShells(t *testing.T) {
+	tiergate.Require(t, 0)
 	const removed = "strand removal ended the background shells it could"
 	const left = "run ended with background shells outstanding"
 	livenessConfig := gateConfig
@@ -470,6 +473,7 @@ func (c *jumpStepClock) Sleep(time.Duration) { c.multiStepClock.Sleep(c.jump) }
 // The run logs the shell once at Warn, holds the waiting turn end once when the shell outlasts the bound, and finishes at the agent's next turn end.
 // It captures the process-global logger, so it does not run in parallel.
 func TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, eventsFileName)
@@ -521,6 +525,7 @@ func TestWait_PayloadShellLogsPastWaitMinOnceAndFinishesAtTheNextTurnEnd(t *test
 // A lone shell crossing the bound expires the ungated wait in that tick and clears the waiting list before the mark is read.
 // It turns off when a new event replaces the waiting turn end, and never shows with a fork or an awaited shell outstanding.
 func TestShellWaitMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const bound = 10 * time.Minute
@@ -615,6 +620,7 @@ func TestShellWaitMark(t *testing.T) {
 
 // TestWait_ClearsAStaleWaitMarkOnEntry pins that Wait clears the strand's pane mark and removes a marker file a crashed step left behind, before it polls.
 func TestWait_ClearsAStaleWaitMarkOnEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	runDir := t.TempDir()

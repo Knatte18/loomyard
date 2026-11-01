@@ -6,14 +6,15 @@ For the recorded numbers themselves, see that file — this one is the "how", no
 
 ## The four tiers
 
-The suite is split into four tiers, and which tier a test belongs to is decided by one rule: **a test earns an opt-in build tag for touching a real substrate, never merely for being slow.**
+The suite is split into four tiers, and which tier a test belongs to is decided by one rule: **a test earns a tier above `tier0` for touching a real substrate, never merely for being slow.**
+A test names its tier in its opening `tiergate.Require(t, N)` call, and one test binary per package holds every tier: `LYM_TEST_TIER`, which each tier in `gate.yaml` sets, chooses at run time which tier's tests run, and an unset variable runs `tier0`.
 "Substrate" means one of a fixed set of categories a hermetic, in-process unit test cannot fake: real `git` subprocess spawning, real filesystem junction/symlink creation, real `tmux` sessions, and real cross-compilation.
-A test that is merely slow — a big table-driven case, a large in-memory fixture — stays untagged in `tier0`.
+A test that is merely slow — a big table-driven case, a large in-memory fixture — stays in `tier0`.
 
 The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lym gate test --tier <n>` runs one over a scope lym computes or `--all`.
 
 - **`tier0` — the default offline loop** (`lym gate test --tier 0`): pure-unit and static-guard tests only.
-  No `git init` / `git worktree add` / fixture-tree copies anywhere in an untagged test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it).
+  No `git init` / `git worktree add` / fixture-tree copies anywhere in a `tier0` test — that is the tier's **premise** (a cheap, expected-to-fail `git rev-parse` on an error path, e.g. via `hubgeometry.Resolve`, is still allowed and does not violate it).
   Machine- enforced by `cmd/lym/tierpurity_test.go` (`TestTierPurity_UntaggedTestsSpawnNothing`).
   Fast again: measured median ~29 s on Windows (Cortex XDR), ~1 s on Linux.
   This is what you run constantly and what must stay fast.
@@ -34,8 +35,8 @@ Two further opt-in tags exist alongside `integration`, each gating a distinct ki
   It needs a logged-in `claude` and costs tokens, wall-clock and RAM.
   No gate ever runs `llm`; the plan verify and the card gates only compile it.
 
-The tags do not nest: `-tags tier1` does not run `tier0`'s tests and does not include `tier2` or `tier3`, and a run that wants several names them all (`-tags tier1,tier2`).
-`cmd/lym/tierpurity_test.go` holds the untagged tier to its premise and `cmd/lym/llmtier_test.go` keeps LLM spawns inside `llm`.
+The tiers do not nest: `LYM_TEST_TIER=1` does not run `tier0`'s tests and does not include `tier2` or `tier3`, and a run that wants several names a range (`LYM_TEST_TIER=1-2`).
+`cmd/lym/tierpurity_test.go` holds `tier0` to its premise and `cmd/lym/llmtier_test.go` keeps LLM spawns inside `tier3`.
 The rules behind the tiers live in `PATTERN-test-speed` in `PATTERN.md`, which this page does not restate.
 
 ## Commands
@@ -85,7 +86,7 @@ go run ./cmd/testtiming -tags tier2
 ```
 
 It shells out to `go test ./... -json -count=1 -tags <tags>` (`tier0` with no tags of its own, `tier1` in full mode), so it needs nothing beyond a working Go toolchain.
-The tiers are disjoint, so a run that wants several names every tag.
+It sets `LYM_TEST_TIER` to the tiers the tags name, so a run that wants several names every tag, and the tiers must form one range.
 A run under a tier above `tier0` builds `lym` once and hands it to every test binary through the `LYM_PREBUILT_LYM` variable, as `lym gate test --tags` does, and a `tier0` run builds nothing and strips an inherited value.
 `lym gate test --tags <tags> <packages>` is where one `lym` build serves every package of the run.
 Exit code mirrors `go test`: `0` on success, `1` if any package fails to build or any test fails (failing rows are marked `FAIL` in the table).

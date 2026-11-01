@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prebuild_test.go covers the prebuilt lym store over plain files: the content-derived name, reuse of a stored binary, refreshing a missing entry, pruning by last use, a destination another run published first and a store that cannot be created.
 
 package gatecli
@@ -9,9 +7,12 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStorePrebuilt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)

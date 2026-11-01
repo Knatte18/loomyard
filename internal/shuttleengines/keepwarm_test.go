@@ -1,5 +1,3 @@
-//go:build tier0
-
 // keepwarm_test.go verifies the keep-warm resolver answers a strand's role cap from claude.yaml and falls back to the await cap when nothing resolves.
 
 package shuttleengines
@@ -11,10 +9,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestKeepWarm pins the resolver's answers: the template's caps and break-even, a role entry for a numbered or prime strand, the fallback for every unresolvable input, and a zero cap from an engine that keeps nothing warm.
 func TestKeepWarm(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fallback := func(a KeepWarmAnswer) bool {

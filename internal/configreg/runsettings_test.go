@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runsettings_test.go — tests for the run-settings migrate-then-validate step.
 
 package configreg
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // renamedCodeMaxBounces is the line loom's Migrate writes for a retired webster_max_bounces of 2, carrying the comment the loom template holds on code_max_bounces.
@@ -21,6 +20,7 @@ const renamedCodeMaxBounces = "code_max_bounces: 2 # bounce budget of the Code-R
 // TestPrepareRunSettings pins PrepareRunSettings over the real registry: the documents it returns and the refusals that name the module and key.
 // It is not parallel: its Warn subtest reads the process-global logger, which a parallel top-level test would also write to.
 func TestPrepareRunSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		settings     map[string]any
@@ -368,6 +368,7 @@ func TestPrepareRunSettings(t *testing.T) {
 
 // TestLayerRunSettings pins how a task's run settings lie over its run profile's: per key, per module, and with each side's refusal naming its source.
 func TestLayerRunSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -455,6 +456,7 @@ func TestLayerRunSettings(t *testing.T) {
 
 // TestProfilesCheckLoad pins the profiles module's load check: the template's starting profiles pass, and a hub file profile with a key no module takes is refused naming the profile.
 func TestProfilesCheckLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string

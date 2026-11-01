@@ -1,5 +1,3 @@
-//go:build tier2
-
 // window_integration_test.go proves OpenWindow against a real tmux.
 // The window opens detached without moving the current window, carries @lym_hidden, reads remain-on-exit off while the strands' window still reads on, closes when its command exits (also when it exits at once), and a second call while it is live starts nothing.
 // One cold session serves every step.
@@ -13,11 +11,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOpenWindow_RealTmux runs its steps in order on one cold session.
 // It overrides the executable path so the window's `lym` is a stub that sleeps for its first argument's seconds.
 func TestOpenWindow_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "lym")

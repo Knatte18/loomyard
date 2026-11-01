@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pawlwiring_test.go covers the words of the pawl run's failed landing re-check.
 
 package loomcli
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPawlRecheckLines(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	member := battencli.BeamLandBlockers{Members: []battencli.BeamLandMember{{Slug: "m", HasPair: true}}}

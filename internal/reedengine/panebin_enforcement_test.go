@@ -1,5 +1,3 @@
-//go:build tier0
-
 // panebin_enforcement_test.go enforces the pane-binary rule's two-sided
 // guarantee: no pane-creation site exists outside the named allowlist, and the one allowlisted
 // chokepoint still composes the prelude rather than silently becoming a plain pass-through.
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // panebinScanMinFiles is the plausible floor for how many non-test .go files
@@ -62,6 +61,7 @@ var windowCreationAllowlist = []scankit.Entry{
 //
 //testtiming:keep pins that no file outside the pane-creation allowlist holds the "split-window" string literal, so every strand pane is created through the prelude chokepoint; its covering tests run this code without asserting it
 func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
+	tiergate.Require(t, 0)
 	scans := []struct {
 		literal   string
 		allowlist []scankit.Entry
@@ -101,6 +101,7 @@ func TestPaneCreationSitesRouteThroughThePreludeChokepoint(t *testing.T) {
 //
 //testtiming:keep pins launchStrandLocked still calling composePaneLaunchLine, so the allowlisted chokepoint cannot become a plain pass-through; its covering tests run this code without asserting it
 func TestLaunchStrandLockedStillComposesThePrelude(t *testing.T) {
+	tiergate.Require(t, 0)
 	var fn *ast.FuncDecl
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{reedengineScanDir}, Shallow: true}, func(f *scankit.File) {
 		if f.Rel != reedengineScanDir+"/spawn.go" {

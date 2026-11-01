@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_gate_test.go drives Finalize's landing gate and its finalize-mode merge fixer over the gate fixture, a fake seat runner, a fake parent merger and fake line-change reads.
 
 package landingshed
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -204,6 +203,7 @@ func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Ou
 // TestFinalize_GateAndFixer pins Finalize's landing gate and its finalize-mode fixer:
 // when the fixer spawns, how its attempts and its Baseline are kept across resumes, and where a spent cap, an over-cap change and an escalate report lead.
 func TestFinalize_GateAndFixer(t *testing.T) {
+	tiergate.Require(t, 0)
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	passing := verifytree.Result{Status: verifytree.StatusPassed}
 	small := fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}

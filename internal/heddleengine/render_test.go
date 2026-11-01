@@ -1,5 +1,3 @@
-//go:build tier0
-
 // render_test.go drives Render, Show and Passages over temporary directories standing in for a worktree's root, its scratch directory and the Bolt checkout.
 
 package heddleengine
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // observeWindow is how long a test watches a blocked render stay blocked.
@@ -165,6 +164,7 @@ func useShippedLayer(t *testing.T, json string) {
 
 // TestShowAndPassagesReadTheShippedLayerFirst is not parallel: it replaces shippedStore, which every render reads.
 func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	useShippedLayer(t, `{"entries": [
   {"slug": "ship-file", "text": "shipped file text", "order": 10, "targets": ["claude-file"]},
   {"slug": "ship-prompt", "text": "shipped prompt", "order": 5, "targets": ["claude-prompt"]}
@@ -219,6 +219,7 @@ func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	claudeStore := Store{Entries: []Entry{

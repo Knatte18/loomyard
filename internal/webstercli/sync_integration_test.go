@@ -1,5 +1,3 @@
-//go:build tier1
-
 // sync_integration_test.go covers fabricSync's composed behavior against real
 // git repositories. Two
 // scenarios: Fabric.Commit's error-branch contract (a commit that lands but
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newPairFixture builds a hub with a code repo and its records sibling and returns the layout and the sibling's path.
@@ -148,6 +147,7 @@ func newPairFixtureAt(t *testing.T, relPath string) (*lymcwd.Location, string) {
 // fabricSync must report (true, err) -- the commit is real, and Fabric.Commit's contract says the
 // caller gets to know that alongside the error.
 func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	t.Setenv("FABRIC_SKIP_PUSH", "")
 	layout, records := newPairFixture(t)
@@ -191,6 +191,7 @@ func TestFabricSync_ReportsCommittedWhenCorrespondenceRecordFails(t *testing.T) 
 // FABRIC_SKIP_PUSH is set because the scratch records repo has no remote;
 // the commit half is what is under test.
 func TestFabricSync_CommitsAtEveryRelPathDepth(t *testing.T) {
+	tiergate.Require(t, 1)
 	tests := []struct {
 		name    string
 		relPath string

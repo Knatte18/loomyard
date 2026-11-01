@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_live_test.go extends the orch smoke suite to what the live-ready task changed: the bypass permission mode with the Agent tool and the idle probe, the soft cycle trigger and the compact cycle.
 // Every test follows TestSmokeOrch_OneFullCycle's shape: it builds cmd/lym and drives it as a subprocess, skips without tmux or `claude`, and stops orch and takes reed down in cleanup.
 // A test's own plain shuttle runs go through an in-process shuttleengine.Runner, since the CLI exposes neither the permission mode nor a run handle.
@@ -29,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -238,6 +237,7 @@ func backgroundShells(path string) int {
 
 // TestSmokeOrch_BypassAgentAndIdle proves the orch session runs in bypass mode with the Agent tool allowed, and that the idle probe passes once a turn ends.
 func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
+	tiergate.Require(t, 3)
 	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 200000000, 100000000, 300), nil)
 	guid, run := f.startOrch(t)
 	waitFor(t, 120, "the start prompt's turn to end", func() bool { return turnEnds(run.EventsPath) > 0 })
@@ -292,6 +292,7 @@ func TestSmokeOrch_BypassAgentAndIdle(t *testing.T) {
 
 // TestSmokeOrch_SoftCycle proves the soft trigger starts a cycle at a turn end below an unreachable hard cap.
 func TestSmokeOrch_SoftCycle(t *testing.T) {
+	tiergate.Require(t, 3)
 	// The start prompt's own turn end already qualifies at this soft threshold, so soft_idle_s is long enough for the background-shell turn below to land first.
 	f := newLiveFixture(t, smokeOrchConfig("clear", "bypass", 1, 100000000, 45), nil)
 	guid, run := f.startOrch(t)
@@ -346,6 +347,7 @@ const (
 
 // TestSmokeOrch_CompactCycle proves the compact cycle keeps the session id and the strand, brings the context reading under the soft threshold, counts one cycle, and leaves a background task able to complete into the session.
 func TestSmokeOrch_CompactCycle(t *testing.T) {
+	tiergate.Require(t, 3)
 	// soft_idle_s is long enough for the filler turn below to end before the soft trigger may fire.
 	f := newLiveFixture(t, smokeOrchConfig("compact", "bypass", compactSoftThreshold, 100000000, 45), nil)
 	guid, run := f.startOrch(t)

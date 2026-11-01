@@ -1,5 +1,3 @@
-//go:build tier0
-
 // roundgate_test.go covers the told gate-key call source the verify gate and the landing producers read at each arrival.
 
 package loomcli
@@ -13,9 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGateCallSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recipekeyed_test.go pins the loomcli wiring branches that read the run's recipe rows and keys, per recipe name:
 // the verify source, the merge fixer's plan directory, the arbiter's recipe description and the landing failure tracer.
 
@@ -17,11 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, darn, pawl and sampler as the recipe's rows and keys give.
 func TestRecipeKeyedWiring(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}

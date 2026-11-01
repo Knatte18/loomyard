@@ -1,14 +1,15 @@
-//go:build tier0
-
 // gatecall_test.go covers IsGateCall, the check that picks a line the runner leaves unslotted and unbounded.
 
 package cardverify
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIsGateCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

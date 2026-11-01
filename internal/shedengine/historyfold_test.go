@@ -1,5 +1,3 @@
-//go:build tier0
-
 // historyfold_test.go covers appendOrFold: consecutive budget-exempt Stucks with the same producer, output, and gate attempts fold into one entry,
 // and every other shape appends.
 
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func exemptStuck(producer, output, at string) HistoryEntry {
@@ -37,6 +36,7 @@ func cloneHistory(h []HistoryEntry) []HistoryEntry {
 }
 
 func TestAppendOrFold_Folds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	withGate := func(e HistoryEntry, n int) HistoryEntry {
 		e.GateAttempts = intPtr(n)
@@ -83,6 +83,7 @@ func TestAppendOrFold_Folds(t *testing.T) {
 }
 
 func TestAppendOrFold_Appends(t *testing.T) {
+	tiergate.Require(t, 0)
 	gated := func(n int) HistoryEntry {
 		e := exemptStuck("Wait", "x", "t1")
 		e.GateAttempts = intPtr(n)
@@ -133,6 +134,7 @@ func TestAppendOrFold_Appends(t *testing.T) {
 
 //testtiming:keep pins that a fold ends at a done or awaiting entry and the next stuck appends fresh, which its covering test does not
 func TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, mid := range []Outcome{Done, Awaiting} {
 		h := []HistoryEntry{exemptStuck("Wait", "x", "t1")}
 		h = appendOrFold(h, exemptStuck("Wait", "x", "t2"))
@@ -152,6 +154,7 @@ func TestAppendOrFold_FoldThenDoneThenStuckAppendsFresh(t *testing.T) {
 
 //testtiming:keep pins that appendOrFold never mutates or aliases its input, which its covering test does not
 func TestAppendOrFold_InputUnchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	gated := exemptStuck("Wait", "x", "t1")
 	gated.GateAttempts = intPtr(1)
 	// The input's span list has spare capacity, so a fold that appended in place would write through it.
@@ -182,6 +185,7 @@ func TestAppendOrFold_InputUnchanged(t *testing.T) {
 
 //testtiming:keep pins that a folded history counts the same stuck episode as the unfolded calls, which its covering tests do not
 func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
+	tiergate.Require(t, 0)
 	calls := []HistoryEntry{
 		{Producer: "Wait", Outcome: Stuck, At: "t0"},
 		exemptStuck("Wait", "x", "t1"),
@@ -218,6 +222,7 @@ func TestEpisodeStuckCount_FoldedEqualsUnfolded(t *testing.T) {
 
 //testtiming:keep pins the repeats and last_at JSON omission and round-trip, which its covering test does not
 func TestHistoryEntry_FoldFieldsOmittedWhenZero(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, err := json.Marshal(HistoryEntry{Producer: "Wait", Outcome: Stuck, At: "2026-01-01T00:00:00Z"})
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)

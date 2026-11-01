@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overlay_test.go covers `lym loom validate-plan --overlay`: that it reports what the flag-less run reports over the overlaid plan, writes no byte under the plan directory, and refuses each unusable input, name and flag combination with its cause and way forward.
 // The verb is driven directly against the leaf command, as validate_test.go does, so every case is tier 1.
 
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -51,6 +50,7 @@ func snapshotPlanDir(t *testing.T, dir string) map[string]string {
 }
 
 func TestValidatePlanCmd_Overlay(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const cardFile = "01-first-card.md"

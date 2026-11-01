@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entrymerge_test.go drives the merge over a two-field record, through the cases the board replay's own tests do not reach.
 
 package entrymerge_test
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/entrymerge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // record has a plain field and a slice field that reads nil and empty alike.
@@ -33,6 +32,7 @@ var recordTable = entrymerge.Table[record]{
 
 // TestTable covers the field changes, add clashes and removal judgment that the board's replay rows leave out.
 func TestTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Changed lists only differing fields and reads nil and empty slices alike", func(t *testing.T) {

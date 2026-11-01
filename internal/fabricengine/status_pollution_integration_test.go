@@ -1,5 +1,3 @@
-//go:build tier1
-
 // status_pollution_integration_test.go pins the anchor scoping of Topology.Status's warp-pollution scan.
 // The scan used a bare "_lym" pathspec at the warp worktree ROOT, so a subpath-anchored hub whose index genuinely tracked <anchor>/_lym/...
 // was reported clean — a false negative in the one verb (`lym fabric pairs`) that advertises the check.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStatus_DetectsWarpPollutionUnderSubpathAnchor tracks a file at <anchor>/_lym/ in the warp
@@ -25,6 +24,7 @@ import (
 //
 //testtiming:keep Status reporting a tracked <anchor>/_lym file under a subpath anchor with a git rm --cached remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestStatus_DetectsWarpPollutionUnderSubpathAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const anchor = "backend"

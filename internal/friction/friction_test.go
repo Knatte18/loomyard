@@ -1,5 +1,3 @@
-//go:build tier0
-
 // friction_test.go covers Directive's four roles and WarnIfMarkerAbsent.
 // Every test here is in tier 0: it uses only t.TempDir (via newTestStencilsDir, seeding a hermetic stencils directory) and spawns nothing.
 
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newTestStencilsDir returns a seeded stencils directory.
@@ -24,6 +23,7 @@ func newTestStencilsDir(t *testing.T) string {
 // Against a seeded stencils directory each role returns its own stencil's text, containing the told note path verbatim -- the assertion that catches a composer wiring the wrong path.
 // Against a stencils directory that carries none of the four friction stencils each role fails loud with a non-nil error naming its missing stencil.
 func TestDirective_PerRole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stencilsDir := newTestStencilsDir(t)
 	emptyStencilsDir := t.TempDir()
@@ -68,6 +68,7 @@ func TestDirective_PerRole(t *testing.T) {
 // TestDirective_NoDirectiveAttemptsNoRead pins the two guards that return no directive text and attempt no stencil read: an empty notePath, and an unknown or zero Role with a non-empty notePath.
 // Each is asserted by pointing stencilsDir at a path that does not exist, so any attempted read would surface as an error.
 func TestDirective_NoDirectiveAttemptsNoRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	missingStencilsDir := t.TempDir() + "/does-not-exist"
 
@@ -97,6 +98,7 @@ func TestDirective_NoDirectiveAttemptsNoRead(t *testing.T) {
 // TestWarnIfMarkerAbsent_DoesNotPanic covers the marker-detection half: absent for template bytes with no "{{.friction_directive}}" literal, present for bytes carrying it, each with a directive and with an empty one.
 // Since WarnIfMarkerAbsent returns nothing, this test only pins that it does not panic on any input.
 func TestWarnIfMarkerAbsent_DoesNotPanic(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, template := range []string{"no marker here", "has {{.friction_directive}} right here"} {
 		for _, directive := range []string{"a directive", ""} {

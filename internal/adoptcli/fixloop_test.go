@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixloop_test.go pins the fix loop of a failed adopt check over fake seams and a temp subject directory: the cases of failedEnd, the fix task's slug and its body.
 
 package adoptcli
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fixFixture is a failedEnd over a temp subject directory, with every seam faked and recording its calls.
@@ -132,6 +131,7 @@ func (f *fixFixture) setTries(count int) {
 func ownFix(status *string) boardengine.Task { return fixTask("adopt-fix-alpha-t1", status) }
 
 func TestFailedEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("below the limit with no fix task it files one released task and counts the try", func(t *testing.T) {
@@ -378,6 +378,7 @@ func TestFailedEnd(t *testing.T) {
 }
 
 func TestFixSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a short subject's prefix is adopt-fix and the subject", func(t *testing.T) {
@@ -431,6 +432,7 @@ func TestFixSlug(t *testing.T) {
 }
 
 func TestFixBody(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	record := failedRecord()
 	record.Tiers[0].Tier = 1

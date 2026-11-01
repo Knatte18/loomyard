@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_pending_test.go covers the pending gate state: a PassOnCap entry that holds the run at a turn boundary,
 // driven through the same fake engine, fake reed and fake clock gate_test.go uses — hermetic, untagged, and never sleeping for real.
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pendingSendText = "A reviewer notice is waiting — read it and end your turn."
@@ -89,6 +88,7 @@ func scriptedPending(calls *int, script ...GateResult) Gate {
 
 //testtiming:keep pins that a pending gate sends its carried text exactly once, charges no attempt, settles done, and records one gate span then one held span for the held entry and a single gate span for an entry listed before it
 func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
+	tiergate.Require(t, 0)
 	var calls, aCalls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true, Send: pendingSendText},
@@ -136,6 +136,7 @@ func TestGatePending_HoldsSendsOnceAndPasses(t *testing.T) {
 // TestGatePending_FailedSendWarnsAndStaysPending asserts a pending send that fails on two evaluations warns once, logs Debug while it stays failing and logs one Info when it is delivered.
 // The failing evaluations leave the entry pending at the boundary, so the next tick evaluates again.
 func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	logger.SetVerbosity(2)
 	var calls int
@@ -187,6 +188,7 @@ func TestGatePending_FailedSendWarnsAndStaysPending(t *testing.T) {
 
 //testtiming:keep pins that mid-turn ticks never re-evaluate the gate, that a deadline finalize reads Final rather than Gate and leaves the entry waiting, and that the entry's spans are one gate span then a held span ending at the run's end, with no gate span for the Final evaluation
 func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T) {
+	tiergate.Require(t, 0)
 	var gateCalls, forkedCalls, finalCalls int
 	gate := scriptedPending(&gateCalls, GateResult{Pending: true, Send: pendingSendText})
 	forked := scriptedPending(&forkedCalls, GateResult{Pending: true, Send: pendingSendText})
@@ -227,6 +229,7 @@ func TestGatePending_MidTurnTicksNeverReevaluate_DeadlineUsesFinal(t *testing.T)
 
 //testtiming:keep pins that a rejection after a pending hold re-prompts exactly once with the findings and counts one attempt
 func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	var calls int
 	gate := scriptedPending(&calls,
 		GateResult{Pending: true},
@@ -268,6 +271,7 @@ func TestGatePending_RejectAfterPendingRepromptsOnce(t *testing.T) {
 
 //testtiming:keep pins that a verdict recorded between idle ticks is read at the first throttled recheck and not masked by the pending state
 func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
+	tiergate.Require(t, 0)
 	var calls int
 	recorded := false
 	gate := func() (GateResult, error) {
@@ -297,6 +301,7 @@ func TestGatePending_VerdictBetweenTicksIsNotMasked(t *testing.T) {
 //
 //testtiming:keep pins a pending gate over a resumed run: the replayed Done evaluates once and sends the carried text, and a bare pending re-evaluates on the throttled cadence rather than every poll tick
 func TestAttachGated_Pending(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// sendText is the text the first evaluation carries; empty means a bare pending.
@@ -388,6 +393,7 @@ func TestAttachGated_Pending(t *testing.T) {
 // It ends the run done within gateRecheckEvery of turning true.
 // Finalize then reads the verdict through the entries' Final closures.
 func TestGatePending_ExpiryProbeEndsMidTurnWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	const deadlineStep = 40
 	tests := []struct {
 		name string

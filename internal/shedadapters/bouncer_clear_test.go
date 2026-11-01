@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_clear_test.go covers Bouncer.Call's clear-and-re-seed step: the trigger (an already-judged, CONVERGED round at Call entry), its archive-naming and collision behaviour, every non-triggering case the trigger's fire set must exclude, the harvest path's immunity, the clear's own failure degradation, and the cross-invocation and post-commit-failure cases the trigger is intended to reach.
 
 package shedadapters
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // layoutApprovedGeneration writes a full, already-settled generation for round into cfg.RunDir: the Burler rows' own review and fixer-report pair (their artifacts) alongside the Bouncer's report, CONVERGED verdict, and ledger -- the complete on-disk state a clear must move as one unit.
@@ -79,6 +78,7 @@ func assertNoArchivedRunDirSibling(t *testing.T, runDir string) {
 //
 //testtiming:keep pins that the whole approved generation moves to one archived sibling, the recreated run dir holds only the seed's focus file, the log line and the collision suffix
 func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
+	tiergate.Require(t, 0)
 	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
@@ -166,6 +166,7 @@ func TestBouncer_Clear_ApprovedRunDirClearsAndReseeds(t *testing.T) {
 
 //testtiming:keep pins that none of the non-triggering states archives the run dir, which the outcome assertions of the tests that reach them do not check
 func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("InSegmentBlockingReplay", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 		b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
@@ -266,6 +267,7 @@ func TestBouncer_Clear_NonTriggeringCasesLeaveRunDirUntouched(t *testing.T) {
 // the two failure causes are mechanically inseparable at this call site. archiveRunDir's own
 // rename-failure contract is unit-tested directly in archive_test.go.
 func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	logBuf := logcapture.Capture(t)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withNestedRunDir(), withShuttle(shuttle)).Build()
@@ -295,6 +297,7 @@ func TestBouncer_Clear_ArchiveFailureDegradesToStuck(t *testing.T) {
 //
 //testtiming:keep pins the commit-failure then re-entry sequence: the failed commit leaves the directory CONVERGED and the next Call clears it instead of retrying the commit
 func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
+	tiergate.Require(t, 0)
 	sentinel := errors.New("commit failed")
 	commitCalls := 0
 	cfg := newBouncerFixture(t, withNestedRunDir()).Config
@@ -350,6 +353,7 @@ func TestBouncer_Clear_AfterCommitFailureSubsequentCallClears(t *testing.T) {
 //
 //testtiming:keep pins the whole seed, judge, approve and re-entry sequence on one Bouncer value across calls, which no single-call test chains
 func TestBouncer_Clear_EndToEndSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Round 1: seed.
 	seedShuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	seedShuttle.DuringRun = func() {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // darntreescope_integration_test.go drives darnTreeScope against a real fabric pair and real git, since its answer depends on the merge base the pair's history leaves and on git's rename detection.
 
 package loomcli
@@ -20,12 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestDarnTreeScope_ClassifiesAtEachCall steps one pair through the diffs a task branch can hold and pins the seam's answer after each, reading the hub-wide darn.yaml afresh at every call.
 // The steps run in order over one pair, so each builds on the history the steps before left.
 func TestDarnTreeScope_ClassifiesAtEachCall(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // escalation_test.go covers the escalation record over a temp run directory.
 
 package shedadapters
@@ -9,10 +7,13 @@ import (
 	"io/fs"
 	"os"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the escalation record's round trip: cause, notice, brief body, an empty brief, and no notice file for an empty notice
 func TestEscalation_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -68,6 +69,7 @@ func TestEscalation_RoundTrip(t *testing.T) {
 
 //testtiming:keep pins that an absent escalation record reads as absent with no error
 func TestEscalation_AbsentRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	cause, notice, exists, err := readEscalation(t.TempDir(), 1)
 	if err != nil {
 		t.Fatalf("readEscalation error = %v; want nil", err)
@@ -78,6 +80,7 @@ func TestEscalation_AbsentRecord(t *testing.T) {
 }
 
 func TestEscalation_MalformedRecordIsAnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := map[string]string{
 		"round mismatch": "---\nround: 9\ncause: circling\n---\nbrief\n",
 		"unknown cause":  "---\nround: 4\ncause: mystery\n---\nbrief\n",
@@ -101,6 +104,7 @@ func TestEscalation_MalformedRecordIsAnError(t *testing.T) {
 }
 
 func TestWriteEscalation_RejectsUnknownCause(t *testing.T) {
+	tiergate.Require(t, 0)
 	if err := writeEscalation(t.TempDir(), 1, EscalationCause("mystery"), "b", "n"); err == nil {
 		t.Error("writeEscalation(unknown cause) = nil; want an error")
 	}

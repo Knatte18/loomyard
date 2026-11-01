@@ -1,5 +1,3 @@
-//go:build tier1
-
 // sourcedirty_integration_test.go covers SourceDirtyPaths and the typed refusal Add returns for a dirty source worktree.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSourceDirtyPaths pins that a clean source lists nothing, a modified tracked file is listed and refuses Add as *ErrSourceDirty, and an untracked file alone neither lists nor refuses.
 func TestSourceDirtyPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	const tracked = "tracked.txt"
 

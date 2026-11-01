@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_test.go covers the generic step body's closed envelope key set, the six-kind closed vocabulary, PreStep's kind threading, PostStep's success-only, before-the-envelope ordering, and AfterStep's every-Step-return placement and friction key.
 
 package shedverbs
@@ -18,10 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the step envelope's closed key set, which its covering tests do not
 func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
+	tiergate.Require(t, 0)
 	res := shedengine.StepResult{
 		Producer: "P",
 		Outcome:  shedengine.Done,
@@ -51,6 +51,7 @@ func TestStepEnvelope_KeySetIsClosed(t *testing.T) {
 
 //testtiming:keep pins each state's field mapping and parent_notice presence in the step envelope, which its covering tests do not
 func TestStepEnvelope_FieldMapping(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -225,6 +226,7 @@ func TestStepEnvelope_FieldMapping(t *testing.T) {
 //
 //testtiming:keep pins the closed six-kind refusal vocabulary, a guard that fires when a kind is added or duplicated
 func TestStepKinds_IsExactlySix(t *testing.T) {
+	tiergate.Require(t, 0)
 	want := []string{KindBusy, KindUnseeded, KindOwnership, KindBootstrap, KindProducer, KindInterrupted}
 	if len(StepKinds) != len(want) {
 		t.Fatalf("StepKinds = %v; want exactly %v", StepKinds, want)
@@ -249,6 +251,7 @@ func TestStepKinds_IsExactlySix(t *testing.T) {
 // TestStepCmd_PreStepErrorReachesKindAndSkipsBuildShed covers a PreStep returning (kind, err):
 // the envelope's kind field carries that exact kind, and BuildShed is never called.
 func TestStepCmd_PreStepErrorReachesKindAndSkipsBuildShed(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 
@@ -282,6 +285,7 @@ func TestStepCmd_PreStepErrorReachesKindAndSkipsBuildShed(t *testing.T) {
 // TestStepCmd_BusyTreatment covers step's own ErrShedBusy mapping onto spec.StepBusyKind, with
 // both the passthrough and told-message forms.
 func TestStepCmd_BusyTreatment(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "Only")
 
@@ -359,6 +363,7 @@ func TestStepCmd_BusyTreatment(t *testing.T) {
 // TestStepCmd_ProducerHardErrorReachesKindProducer covers a Step producer hard error mapping onto
 // KindProducer.
 func TestStepCmd_ProducerHardErrorReachesKindProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")
 
@@ -384,6 +389,7 @@ func TestStepCmd_ProducerHardErrorReachesKindProducer(t *testing.T) {
 // TestStepCmd_InterruptPolicyThreading asserts next_interrupt_policy is empty when
 // InterruptPolicyFor is nil, and threaded through when the hook is filled.
 func TestStepCmd_InterruptPolicyThreading(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		fillPolicy bool
@@ -422,6 +428,7 @@ func TestStepCmd_InterruptPolicyThreading(t *testing.T) {
 // StepResult on the success path before the envelope is written, and never called on either the
 // PreStep-error or the Step-error path.
 func TestStepCmd_PostStepOrderingAndScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SuccessPath_CalledBeforeEnvelope", func(t *testing.T) {
 		paths := newTestPaths(t)
 		seedStatus(t, paths, "Only")
@@ -515,6 +522,7 @@ func TestStepCmd_PostStepOrderingAndScope(t *testing.T) {
 // called after PostStep and before the envelope on success, called with the error on a producer or busy failure, never called when PreStep or BuildShed refuses, and its return is the envelope's friction key;
 // a nil hook leaves it empty.
 func TestStepCmd_AfterStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Success_AfterPostStepBeforeEnvelope", func(t *testing.T) {
 		paths := newTestPaths(t)
 		seedStatus(t, paths, "Only")
@@ -688,6 +696,7 @@ func TestStepCmd_AfterStep(t *testing.T) {
 // TestStepCmd_ErrorEnvelopesCarryLocations covers every error path: each envelope carries the three
 // location keys, scratch_dir and friction_dir echo the Spec, and kind is unchanged.
 func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")
 
@@ -772,6 +781,7 @@ func TestStepCmd_ErrorEnvelopesCarryLocations(t *testing.T) {
 // TestStepCmd_ErrorEnvelopesCarryTransientClass covers a PreStep, a BuildShed and a producer failure each carrying its transient class on the envelope while the kind is unchanged.
 // It also covers the busy refusal reporting an empty class even when the classifier would mark its error.
 func TestStepCmd_ErrorEnvelopesCarryTransientClass(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")
 
@@ -832,6 +842,7 @@ func TestStepCmd_ErrorEnvelopesCarryTransientClass(t *testing.T) {
 // TestStepCmd_SuccessEnvelopeEchoesLocations asserts the success envelope echoes the Spec's two
 // told locations and reports an empty trace_file with no sink armed.
 func TestStepCmd_SuccessEnvelopeEchoesLocations(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 	spec := &Spec{
@@ -858,6 +869,7 @@ func TestStepCmd_SuccessEnvelopeEchoesLocations(t *testing.T) {
 // told run_id, the process trace id, and progress matching ProgressAt(res.Next), and reports a null
 // progress for an unarmed Routing.
 func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
+	tiergate.Require(t, 0)
 	routing := shedengine.Routing{
 		Entry: "A",
 		Producers: []shedengine.ProducerDef{
@@ -944,6 +956,7 @@ func TestStepCmd_SuccessEnvelopeCarriesIdentityAndProgress(t *testing.T) {
 // file holding the step boundary records. It never runs in parallel: the sink override is
 // package-level state.
 func TestStepCmd_TraceFileHoldsBoundaryRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	logger.SetDurableSinkDir(t.TempDir())
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
 

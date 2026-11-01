@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // buttonclick_integration_test.go drives runButtonVia against a real tmux server and an attached client, with the real process runner and a recorder script standing in for the lym binary.
 
@@ -14,11 +14,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunButton_RealTmux runs each kind of spec entry through a real server: a plain one in the run directory, one that exits non-zero, one behind a confirm prompt answered in the client's terminal, and one naming {strand}.
 // It reads the logger's output through logcapture, which is process-global, so it does not call t.Parallel.
 func TestRunButton_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	const strandName = "tst:a-task:agent"
 	runDir := filepath.Join(t.TempDir(), "run dir")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {

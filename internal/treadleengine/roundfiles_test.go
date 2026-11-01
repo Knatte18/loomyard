@@ -1,5 +1,3 @@
-//go:build tier0
-
 // roundfiles_test.go table-drives roundToken/artifactPaths' naming shape: the bare round token for
 // a first attempt, the letter-suffixed token for a retry, and the round-<token>-<kind>.md file
 // names each produces inside a run dir.
@@ -11,9 +9,12 @@ package treadleengine
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRoundToken(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		round   int
@@ -37,6 +38,7 @@ func TestRoundToken(t *testing.T) {
 }
 
 func TestArtifactPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := filepath.Join("run", "dir")
 
 	tests := []struct {

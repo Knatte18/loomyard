@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -7,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wideEnough is a max width at which the width fallback never fires.
@@ -37,6 +37,7 @@ func mustReflowWidth(t *testing.T, src string, maxWidth int) string {
 // TestReflowSource_ReflowsDocComments covers every doc-comment kind that is reflowed.
 // Those are an exported func, a package doc, a file header with a package doc, a grouped const spec, and a hard-wrapped comment that is rejoined before it is split again.
 func TestReflowSource_ReflowsDocComments(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -135,6 +136,7 @@ package pkg
 // TestReflowSource_LeavesUntouched covers every source the tool must return byte-for-byte.
 // Those are out-of-scope declarations and comment shapes, generated files, an already-reflowed comment, and the width fallback when it is disabled or every line already fits.
 func TestReflowSource_LeavesUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -269,6 +271,7 @@ func LoadPortfolio(dir string) (*Portfolio, error) {
 }
 
 func TestWidthFallbackAppliesToOverwideAtomicLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// One long compound-predicate sentence with no semicolon/conjunction boundary to split at: the
@@ -296,6 +299,7 @@ func Foo() {}
 
 //testtiming:keep pins the exact slices wrapLongLine returns for each case, where the width-fallback test only bounds line length
 func TestWrapLongLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {

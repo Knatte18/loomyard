@@ -1,5 +1,3 @@
-//go:build tier1
-
 // addparent_integration_test.go covers Add with AddOptions.Parent over a hubforge hub: the fork from a named pair, the beam mark, the refusals that precede any mutation and the dirt rule.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gitOut returns the trimmed stdout of git args in dir, failing the test on any git error.
@@ -34,6 +33,7 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 }
 
 func TestAdd_FromParentPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	const tracked = "tracked.txt"
 

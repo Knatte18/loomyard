@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hubgeom_test.go is the load-bearing guard against this refactor's one silent failure mode: a
 // swapped anchor/worktree pair compiles cleanly and passes every test built on a fixture where the
 // two happen to coincide. The fixture below deliberately keeps hub, worktree root, and anchor path
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestReedGeometry pins every ReedGeometry field against a fixture whose hub, worktree root and anchor path are distinct directories.
@@ -32,6 +31,7 @@ import (
 //
 //testtiming:keep pins the field-by-field geometry of a prime and of an anchored task worktree, which the integration tests covering its blocks only see through a real hub
 func TestReedGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -153,6 +153,7 @@ func TestReedGeometry(t *testing.T) {
 
 // TestReedGeometry_ButtonContext pins how the button-context teller reads the place from the pair's origin record and the machine's buttons from the desktop machine layer.
 func TestReedGeometry_ButtonContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -249,6 +250,7 @@ func TestReedGeometry_ButtonContext(t *testing.T) {
 //
 //testtiming:keep pins that WorktreeRoot is the anchor path while RepoRoot stays the worktree path, which the origin-record test covering its blocks never reads
 func TestBurlerGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -304,6 +306,7 @@ func TestBurlerGeometry(t *testing.T) {
 //
 //testtiming:keep pins ParentName from a hand-written origin record, which the roots test covering its blocks never builds
 func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)
@@ -321,6 +324,7 @@ func TestBurlerGeometry_ParentNameFromOriginRecord(t *testing.T) {
 // A directory, or a gitdir file pointing straight at a git directory, is the main worktree.
 // A gitdir file pointing into worktrees/ is a linked one, and anything else is an error.
 func TestIsPrimeWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -363,6 +367,7 @@ func TestIsPrimeWorktree(t *testing.T) {
 
 // TestReconcileGeometry verifies a hub with a board-level lym dir yields exactly the board dir and worktree root, and a layout without one yields the zero value and false.
 func TestReconcileGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -402,6 +407,7 @@ func TestReconcileGeometry(t *testing.T) {
 // TestCreelGeometry pins every creel geometry field, that its flag directory is the one a Claude strand's mail hook tests, that one hub gives one socket path, that two hubs of one shortname get different ones,
 // and that a hub with no shortname record is refused naming it.
 func TestCreelGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	newHub := func(t *testing.T, name, shortname string) string {

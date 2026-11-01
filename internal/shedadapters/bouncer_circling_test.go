@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_circling_test.go covers the Bouncer's handling of a CIRCLING round: the Awaiting Reason it writes for the parent and the way it acts on the recorded decision.
 
 package shedadapters
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // circlingSeams counts the Approve and Commit calls a test's Bouncer makes.
@@ -87,6 +86,7 @@ func requireReasonContains(t *testing.T, reason string, wants ...string) {
 
 //testtiming:keep pins the awaiting reason a circling round with no decision writes: both verbs, each with the slug argument or without it
 func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		slug      string
@@ -124,6 +124,7 @@ func TestBouncer_Circling_NoDecisionAwaitsNamingBothVerbs(t *testing.T) {
 //
 //testtiming:keep pins settling a decision recorded on a CIRCLING round that never wrote an escalation record, which the escalation tests never reach
 func TestBouncer_Circling_RecordedDecision(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		decision CirclingDecision
@@ -180,6 +181,7 @@ func TestBouncer_Circling_RecordedDecision(t *testing.T) {
 
 // TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling pins that a pending accept calls the CarryOver seam with CarryOverAccepted while the decision is still unsettled, and that a failing seam leaves it unsettled and unapproved so the re-call retries the write.
 func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
+	tiergate.Require(t, 0)
 	seams := &circlingSeams{}
 	recorder := &carryOverRecorder{err: errors.New("record malformed")}
 	var settledAtCall []bool
@@ -236,6 +238,7 @@ func TestBouncer_Circling_AcceptCallsCarryOverBeforeSettling(t *testing.T) {
 }
 
 func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(t *testing.T) {
+	tiergate.Require(t, 0)
 	seams := &circlingSeams{commitErr: errors.New("commit refused")}
 	b, cfg, _ := circlingBouncer(t, seams.install)
 	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
@@ -259,6 +262,7 @@ func TestBouncer_Circling_AcceptWithFailedCommitResumesByClearingWithoutApprove(
 }
 
 func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
+	tiergate.Require(t, 0)
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
 	if _, _, err := RecordCirclingDecision(cfg.RunDir, CirclingAccept); err != nil {
@@ -279,6 +283,7 @@ func TestBouncer_Circling_SettledAcceptReachedInSettleDegrades(t *testing.T) {
 }
 
 func TestBouncer_Circling_MalformedDecisionReturnsStuckAndRunsNoSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	seams := &circlingSeams{}
 	b, cfg, _ := circlingBouncer(t, seams.install)
 	if err := os.WriteFile(circlingDecisionPath(cfg.RunDir, 2), []byte("not a decision"), 0o644); err != nil {
@@ -293,6 +298,7 @@ func TestBouncer_Circling_MalformedDecisionReturnsStuckAndRunsNoSeam(t *testing.
 }
 
 func TestBouncer_CirclingGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	gating := func(key string) evidenceEntry { return evidenceEntry{key, "open", "design", "MEDIUM"} }
 
 	tests := []struct {

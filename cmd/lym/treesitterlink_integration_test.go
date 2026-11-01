@@ -1,5 +1,3 @@
-//go:build tier1
-
 // treesitterlink_integration_test.go runs `go list` over the module under every test tag and holds the allowed list of the tree-sitter link guard.
 // The chain search and the comparison live in treesitterlink_test.go.
 
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // treeSitterAllowedLinks are the packages whose test binary may link tree-sitter, each with the reason it still does.
@@ -35,6 +34,7 @@ const treeSitterLinkMinTestBinaries = 100
 //
 //lym:guard
 func TestTreeSitterLink_OnlyAllowedTestBinariesLinkIt(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	cmd := exec.Command("go", "list", "-test", "-deps", "-tags", "tier0,tier1,tier2,tier3,integration,tmux,llm",

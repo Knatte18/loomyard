@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — tier 0 unit tests for driftengine.LoadConfig, Config.Step and the drift paths.
 //
 // Seeds a bare t.TempDir() with just a _lym/config/drift.yaml file (no real hub, no git spawn).
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedDriftConfig creates <baseDir>/_lym/config/drift.yaml with the given contents.
@@ -57,6 +56,7 @@ func templateConfig(mutate func(*Config)) Config {
 
 // TestLoadConfig covers the template's defaults, a declared step and its defaults, every refusal, the local layer closing both executable keys, a base directory with no drift.yaml, Step, and the drift paths.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	capture := "capture: {command: \"profile --out {baseline_dir}\", timeout_min: 30}"

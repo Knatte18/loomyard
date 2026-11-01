@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mutation_record_integration_test.go asserts the mutation record at the engine boundary: a Remove refused for a dirty worktree records nothing,
 // and an Add that fails partway and runs rollbackAdd is the mutated-then-errored case.
 // Both are read through res.Mutated().Entries(), exercising the exported surface a CLI or this
@@ -17,11 +15,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing covers the ordering this slice polices: remove.go runs its dirty pre-flight before its archive and every teardown, so a correctly-refusing Remove has mutated nothing and its record is empty.
 // The pre-flight's own error is a bare fmt.Errorf, never a *destructiveRefusal — RefusalOf(err) must report false, asserted as an absence, not a set of contents.
 func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "dirty-warp-remove"
@@ -59,6 +59,7 @@ func TestMutationRecord_RemoveDirtyWarpRefusalRecordsNothing(t *testing.T) {
 // carrying ordering in this vocabulary, so a set-membership assertion would prove only half the
 // contract.
 func TestMutationRecord_AddRollbackOrdersCreationBeforeItsOwnDestruction(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "add-rollback-order"

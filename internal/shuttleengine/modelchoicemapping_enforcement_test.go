@@ -1,5 +1,3 @@
-//go:build tier0
-
 // modelchoicemapping_enforcement_test.go enforces PATTERN-shuttle-provider-seam:
 // only NewModelChoice reads a modelspec.Resolved field outside internal/modelspec,
 // so every resolved model key reaches a spawn as a ModelChoice.
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -189,6 +188,7 @@ func identifierAt(expressions []ast.Expr, i int) (string, bool) {
 //
 //testtiming:keep scans every production file for a modelspec.Resolved field read outside the mapping, which no other test reads
 func TestModelChoiceMappingRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const header = "package x\n\nimport \"github.com/Knatte18/loomyard/internal/modelspec\"\n\n"

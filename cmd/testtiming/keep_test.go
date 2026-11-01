@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -8,9 +6,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestScanKeeps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // selfexec_test.go pins when a Watcher execs onto a changed binary and when it keeps running.
 
 package selfexec
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // statStep is one scripted stat result.
@@ -32,6 +31,7 @@ type execCall struct {
 
 // TestWatcher_Check mutates the process-global logger output, so it does not run in parallel.
 func TestWatcher_Check(t *testing.T) {
+	tiergate.Require(t, 0)
 	execFailure := errors.New("exec failed")
 	tests := []struct {
 		name string

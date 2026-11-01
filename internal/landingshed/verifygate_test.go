@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verifygate_test.go covers verifyGate.clean and verifyGate.check branch by branch against fake verifytree seams,
 // so no test spawns git or a shell.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -149,6 +148,7 @@ type waitMarkCall struct {
 // TestVerifyGate_WaitMark pins the mark around every verify: clear, set `verify <producer>` at the start time, clear again on every way out of the verify,
 // and a failing callback or a nil one leaving the verdict exactly as it is without a mark.
 func TestVerifyGate_WaitMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -210,6 +210,7 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 
 // TestVerifyGate_CheckMapsVerifyResult pins how each verifytree status turns into the gate's verdict, and that the verify seam receives the configured command, the gate's paths and the calling producer's site label.
 func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// failedLog is the run's own log every failed result names, which the reason must quote.
@@ -351,6 +352,7 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 //
 // It stays serial because logcapture swaps the process-global logger.
 func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name    string
 		command string
@@ -390,6 +392,7 @@ func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
 }
 
 func TestVerifyGate_ClosureError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newGateFixture(t, "finalize", "", errors.New("plan unreadable"))
@@ -403,6 +406,7 @@ func TestVerifyGate_ClosureError(t *testing.T) {
 }
 
 func TestVerifyGate_Cancellation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newGateFixture(t, "finalize", "true", nil)
@@ -417,6 +421,7 @@ func TestVerifyGate_Cancellation(t *testing.T) {
 
 // TestVerifyGate_Clean pins the clean-tree check: a clean tree gives no reason, a dirty one names the point and the paths (capped), a status failure is an error naming the producer, and the check runs with no verify command and with a zero-value gate.
 func TestVerifyGate_Clean(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	manyPaths := make([]string, dirtyPathsShown+3)

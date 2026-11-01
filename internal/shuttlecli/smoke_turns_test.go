@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_turns_test.go provokes the hard turn-end cases against a REAL claude in a REAL tmux pane:
 // a long background shell, a background shell finishing mid-turn, a Monitor, a fork, a fork's permission dialog, a message sent mid-turn, a skill load and a compact.
 // One more scenario records every hook line of a session's whole life.
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // turnScenarioTimeout bounds each scenario's run and every wait on it.
@@ -270,6 +269,7 @@ func requireOutstanding(t *testing.T, turnEnd shuttleengine.Event, kind shuttlee
 // TestSmokeTurnsLongBackgroundShell pins that a turn end with a backgrounded shell still running reads waiting on that shell, by the payload,
 // and that the run ends done once the shell finishes and the agent writes its output.
 func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-long-shell.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -285,6 +285,7 @@ func TestSmokeTurnsLongBackgroundShell(t *testing.T) {
 // TestSmokeTurnsShellFinishesMidTurn pins the issue 411 shape:
 // a background shell that finishes while the turn still runs leaves the turn end with nothing outstanding, so it reads done on the tick that reads it.
 func TestSmokeTurnsShellFinishesMidTurn(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-shell-mid-turn.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -305,6 +306,7 @@ func TestSmokeTurnsShellFinishesMidTurn(t *testing.T) {
 
 // TestSmokeTurnsMonitor pins that a running Monitor is listed by the payload as an outstanding shell.
 func TestSmokeTurnsMonitor(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-monitor.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -319,6 +321,7 @@ func TestSmokeTurnsMonitor(t *testing.T) {
 
 // TestSmokeTurnsFork pins that a working fork is listed by the payload as an outstanding fork, so the turn end reads waiting until it returns.
 func TestSmokeTurnsFork(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-fork.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -335,6 +338,7 @@ func TestSmokeTurnsFork(t *testing.T) {
 // TestSmokeTurnsForkPermissionAsk pins that a fork whose Bash command Claude Code prompts on in bypass mode records an ask signal that is not an event, from a permission or input-dialog hook.
 // The command is a computed-path `rm` through the special parameter `$$`, and the dialog is never answered, so the run is torn down by the scenario's cleanup.
 func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-fork-permission-ask.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -354,6 +358,7 @@ func TestSmokeTurnsForkPermissionAsk(t *testing.T) {
 
 // TestSmokeTurnsMessageMidTurn pins that a message sent with Run.Send while the agent works does not end the run: it still ends done.
 func TestSmokeTurnsMessageMidTurn(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-message.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -370,6 +375,7 @@ func TestSmokeTurnsMessageMidTurn(t *testing.T) {
 
 // TestSmokeTurnsSkillLoad pins that the skill-load turn end is not read as the run's own: the run never holds on it and ends done on the prompt's turn.
 func TestSmokeTurnsSkillLoad(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-skill.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -386,6 +392,7 @@ func TestSmokeTurnsSkillLoad(t *testing.T) {
 
 // TestSmokeTurnsCompact pins that compacting the live session while its turn end waits on a background shell does not end the run: it still ends done.
 func TestSmokeTurnsCompact(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-compact.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -405,6 +412,7 @@ func TestSmokeTurnsCompact(t *testing.T) {
 // an interactive run that replies without writing its output file holds, reads asking once the idle notice lands, and reads dead with the session end's reason after /exit.
 // The fold is read directly for the last step, because the run's record stops reading running once its pane is gone.
 func TestSmokeTurnsSessionHooks(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	output := filepath.Join(hub.prime, "turns-hooks.txt")
 	w := startTurnScenario(t, hub, shuttleengine.Spec{
@@ -620,6 +628,7 @@ func (s *paneSampler) finish() []string {
 // the readings are the pane readings with their times and Claude's session registry entry after startup, /exit and the kill.
 // The claudeengine corpus case hook-capture is promoted from that directory by hand.
 func TestSmokeTurnsHookCapture(t *testing.T) {
+	tiergate.Require(t, 3)
 	hub := newTurnHub(t)
 	sampler := startPaneSampler(hub.reed)
 	output := filepath.Join(hub.prime, "turns-hook-capture-never-written.txt")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // holds_test.go pins the holds and fix-tries files of a subject and the pause-record entries that hold a slug.
 
 package adoptcli
@@ -14,9 +12,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHoldStore(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("AppendKeepsOneOfEachSlugAndRemoveDropsOnlyTheNamed", func(t *testing.T) {
@@ -88,6 +88,7 @@ func TestHoldStore(t *testing.T) {
 }
 
 func TestHoldEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	paused := time.Unix(100, 0)

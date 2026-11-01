@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -8,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testClock is the fixed instant every build() call in this file is given, so a report's
@@ -18,6 +18,7 @@ var testClock = time.Date(2026, 9, 23, 9, 15, 0, 0, time.UTC)
 // states that must survive a line break and the two ways a // can appear without being a
 // comment at all.
 func TestCScanner_Classify(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		lines       []string
@@ -88,6 +89,7 @@ func TestCScanner_Classify(t *testing.T) {
 // inside a quoted string reads as a comment, which is the accepted cost of staying
 // string-unaware.
 func TestHashClassify(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		line        string
 		wantCode    bool
@@ -112,6 +114,7 @@ func TestHashClassify(t *testing.T) {
 // TestIsTestPath covers both conventions: Go pins test-ness in the file name, everything
 // else in a directory or file name that says so.
 func TestIsTestPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		rel  string
 		want bool
@@ -137,6 +140,7 @@ func TestIsTestPath(t *testing.T) {
 // TestSplitLines asserts a trailing newline adds no phantom line and CRLF is normalised,
 // since every per-file count is built on this.
 func TestSplitLines(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		in   string
@@ -167,6 +171,7 @@ func TestSplitLines(t *testing.T) {
 // TestClassifyFile asserts the three buckets partition the file: a line is code, comment
 // or blank, never two of them, so Lines always equals their sum.
 func TestClassifyFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	src := "// header\npackage main\n\n/* block\n   continues */\nfunc f() {} // trailing\n"
 	got := classifyFile("internal/x/f.go", []byte(src))
 
@@ -195,6 +200,7 @@ func TestClassifyFile(t *testing.T) {
 // directories are never descended, an exclude pattern removes a file, and a binary file
 // is left out while its text siblings are counted.
 func TestScan_SkipsAndCollects(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	write := func(rel, content string) {
 		t.Helper()
@@ -238,6 +244,7 @@ func TestScan_SkipsAndCollects(t *testing.T) {
 
 // TestScan_SkipsDirectoryLink asserts a link to a directory outside the tree, like the `_lym` junction, is skipped rather than read as a file.
 func TestScan_SkipsDirectoryLink(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	target := t.TempDir()
 	if err := os.WriteFile(filepath.Join(target, "outside.go"), []byte("package outside\n"), 0o644); err != nil {
@@ -262,6 +269,7 @@ func TestScan_SkipsDirectoryLink(t *testing.T) {
 // TestBuild_SplitsSourceFromProse asserts markdown is counted in Total but never in
 // Source, which is what keeps the test share a share of code rather than of prose.
 func TestBuild_SplitsSourceFromProse(t *testing.T) {
+	tiergate.Require(t, 0)
 	files := []FileStats{
 		{Path: "a.go", Ext: ".go", Lines: 10, Code: 8, Comment: 1, Blank: 1},
 		{Path: "a_test.go", Ext: ".go", IsTest: true, Lines: 6, Code: 5, Comment: 0, Blank: 1},
@@ -293,6 +301,7 @@ func TestBuild_SplitsSourceFromProse(t *testing.T) {
 // TestRender_ReportsEverySection asserts the rendered table carries the three questions
 // the command exists to answer, so a section cannot silently go missing.
 func TestRender_ReportsEverySection(t *testing.T) {
+	tiergate.Require(t, 0)
 	report := build("/root", testClock, []FileStats{
 		{Path: "a.go", Ext: ".go", Lines: 10, Code: 8, Comment: 1, Blank: 1},
 		{Path: "r.md", Ext: ".md", Lines: 4, Code: 3, Blank: 1},

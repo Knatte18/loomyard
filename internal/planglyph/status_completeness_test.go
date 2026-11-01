@@ -1,5 +1,3 @@
-//go:build tier0
-
 // status_completeness_test.go guards quarry's status vocabulary against silent widening.
 // quarry.Status.Known() moved the definition of "readable" from lym to quarry, so a status quarry
 // adds later would pass the guard in doneCheckVerdicts and land on the resolved and stillExists
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -46,6 +45,7 @@ var expectedOutcomeByStatus = map[quarry.Status]statusOutcome{
 //
 //testtiming:keep a guard that fires when quarry.Statuses and the expectation table diverge, which no covering test asserts
 func TestStatusCompleteness_TableCoversQuarryStatuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tableStatuses := make(map[quarry.Status]bool, len(expectedOutcomeByStatus))
@@ -91,6 +91,7 @@ func runDoneCheckVerdict(t *testing.T, checkID string, r quarry.ResolveResult) [
 //
 //testtiming:keep pins every quarry status against all four check arms from the guard table, where TestDoneChecks_Verdicts reaches found and not_found only
 func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for status, want := range expectedOutcomeByStatus {
@@ -130,6 +131,7 @@ func TestStatusCompleteness_MatchesDoneCheckVerdicts(t *testing.T) {
 //
 //testtiming:keep pins the two unreadable-status Detail strings on every check arm, which TestCreateFindings_UnreadableStatusFailsClosed does not assert
 func TestStatusCompleteness_UnreadableStatusesFailClosed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {

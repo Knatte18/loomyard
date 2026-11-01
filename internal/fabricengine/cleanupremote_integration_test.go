@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanupremote_integration_test.go covers Cleanup's remote branch deletion under --remote: the
 // opt-in deletion of an orphan weft branch's copy on the remote, its default-off regression guard,
 // the dry-run no-op, the idempotent never-pushed path, the protected-entry carve-out, the non-fatal
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // mustCreateOrphanWeftBranch creates branch in the weft repo at weftRoot, pointed at HEAD, with no
@@ -53,6 +52,7 @@ func mustRemoveOrigin(t *testing.T, repoRoot string) {
 // TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan covers case 1: apply and remote both true delete
 // both the local orphan weft branch and its copy on the remote.
 func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-remote-both-weft"
@@ -90,6 +90,7 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 // TestCleanup_RemoteFalseLeavesRemoteCopyIntact covers case 2: apply true and remote false is the
 // regression guard on the existing default — the feature is opt-in.
 func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-remote-off-weft"
@@ -121,6 +122,7 @@ func TestCleanup_RemoteFalseLeavesRemoteCopyIntact(t *testing.T) {
 // TestCleanup_DryRunWithRemoteDeletesNeither covers case 3: a dry run with remote true performs no
 // deletion on either side.
 func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-dry-remote-weft"
@@ -153,6 +155,7 @@ func TestCleanup_DryRunWithRemoteDeletesNeither(t *testing.T) {
 // pushed deletes locally, reports no remote deletion and no remote error, and records no
 // KindRemoteBranchDeleted entry.
 func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-never-pushed-weft"
@@ -190,6 +193,7 @@ func TestCleanup_NeverPushedOrphanIsIdempotentOnRemote(t *testing.T) {
 // TestCleanup_ProtectedEntryUntouchedOnRemote covers case 5: a protected (here, unmanaged) branch
 // has neither its local nor its remote copy touched with remote true.
 func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-unmanaged-legacy"
@@ -225,6 +229,7 @@ func TestCleanup_ProtectedEntryUntouchedOnRemote(t *testing.T) {
 // TestCleanup_RemoteFailureIsNonFatal covers case 6: a remote deletion failure leaves the verb returning a nil error, the local branch deleted, and RemoteError populated.
 // Induced by making the bare origin refuse ref deletions, so the archive tag push still succeeds ahead of the failing branch deletion and no network is needed.
 func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-remote-fail-weft"
@@ -259,6 +264,7 @@ func TestCleanup_RemoteFailureIsNonFatal(t *testing.T) {
 // RemoteSkippedReason is non-empty exactly once on the result, every entry's RemoteError is empty,
 // and the verb returns a nil error.
 func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -298,6 +304,7 @@ func TestCleanup_NoOriginUnderApplyAndRemoteSkipsOnceReportsOnce(t *testing.T) {
 // TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing covers case 8: the
 // dry-run half of the no-origin pre-check.
 func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-dry-weft"
@@ -331,6 +338,7 @@ func TestCleanup_NoOriginUnderRemoteWithoutApplyIsStillReportedAndDeletesNothing
 // itself — without it, a plain cleanup --apply against a remoteless repo would start reporting a
 // reason, an observable change to a path this task does not otherwise touch.
 func TestCleanup_NoOriginWithRemoteFalseReportsNoReason(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-no-origin-remote-off-weft"

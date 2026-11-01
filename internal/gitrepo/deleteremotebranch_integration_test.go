@@ -1,5 +1,3 @@
-//go:build tier1
-
 // deleteremotebranch_integration_test.go covers Repo.DeleteRemoteBranch and DeleteRemoteBranchLeased against a real bare remote and clones, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) exactly as fetch_integration_test.go does.
 
 package gitrepo_test
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pushFeatureBranch creates branch in the clone with one commit, pushes it to origin, and returns the pushed tip SHA.
@@ -35,6 +34,7 @@ func remoteHeads(t *testing.T, container, bareRemote string) string {
 // The steps run serially in one order and share the remote: each pushes its own branch from clone A, and the unreachable-remote step runs last because it repoints clone A's origin at a missing path.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestDeleteRemoteBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()

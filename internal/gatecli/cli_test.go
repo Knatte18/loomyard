@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the parts of `lym gate test` that spawn nothing: the refusals that precede hub resolution.
 
 package gatecli
@@ -10,9 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGateTest_RefusesBeforeResolvingTheHub(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	missingDir := filepath.Join(t.TempDir(), "absent")

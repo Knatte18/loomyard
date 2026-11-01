@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bench_test.go — offline (tier 0) benchmarks for the core board commands.
 //
 // Benchmarks the pure Render and the Board facade (Board.UpsertTask) across board sizes of
@@ -18,12 +16,14 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // BenchmarkRender measures the pure Render function (tasks → markdown content), no I/O.
 // A quarter of the tasks have a body so proposal-*.md generation is exercised.
 // Render runs once inside every write (boardCriticalSection).
 func BenchmarkRender(b *testing.B) {
+	tiergate.Require(b, 0)
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			tasks := make([]boardengine.Task, n)
@@ -63,6 +63,7 @@ func BenchmarkRender(b *testing.B) {
 // JSON (un)marshalling.
 // The gap to BenchmarkUpsert is the per-command CLI overhead.
 func BenchmarkUpsertFacade(b *testing.B) {
+	tiergate.Require(b, 0)
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
 			dir := seedWiki(b, n)

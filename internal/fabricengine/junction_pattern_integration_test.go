@@ -1,5 +1,3 @@
-//go:build tier1
-
 // junction_pattern_integration_test.go covers the per-junction generalisation
 // this batch makes to seedLymJunction, unseedLymJunction, checkJunctionHealth,
 // and Healthy's inline junction check. From card 15 onward, WarpJunctions
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // resetWarpJunction removes an already-wired warp-side junction named name (if any) so a test can
@@ -74,6 +73,7 @@ func seedRepoWideExtraFabricConfig(t testing.TB, hub string) {
 //
 //testtiming:keep WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -122,6 +122,7 @@ func TestWireJunctions_MaterialisesMissingWeftTarget(t *testing.T) {
 //
 //testtiming:keep a real directory at the warp junction path being refused with the path and the reconcile remedy named; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -175,6 +176,7 @@ func TestWireJunctions_RefusesRealWarpDirectory(t *testing.T) {
 //
 //testtiming:keep unwiring reporting every junction in JunctionsRemoved and clearing every exclude line; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -224,6 +226,7 @@ func TestUnwireJunctions_ReportsAndClearsEveryJunction(t *testing.T) {
 // never wired (or already unwired) is a legitimate no-op: an empty JunctionsRemoved and a nil
 // error, never an error.
 func TestUnwireJunctions_AlreadyUnwiredIsNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -265,6 +268,7 @@ func containsLine(lines []string, name string) bool {
 //
 //testtiming:keep a tracked _lym path in the warp index being reported with an automated restore remedy; coverage of its blocks by other tests does not show an assertion of this
 func TestDetectWarpPollution_LymTrackedAsRestorable(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -324,6 +328,7 @@ func TestDetectWarpPollution_LymTrackedAsRestorable(t *testing.T) {
 // empty Remedy alone is what signals "no automated remedy applies here," so this test guards
 // that the signal survives on its own.
 func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -373,6 +378,7 @@ func TestDetectWarpPollution_ScanErrorIsNonFatal(t *testing.T) {
 //
 //testtiming:keep a tracked _raddle path no longer being reported as pollution; coverage of its blocks by other tests does not show an assertion of this
 func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -408,6 +414,7 @@ func TestDetectWarpPollution_RaddleNoLongerReported(t *testing.T) {
 // TestHealthy_JunctionDriftShapes is card 11's regression guard: each of Healthy's three junction-drift shapes — missing, not-a-link, and points-elsewhere — produces reason wording naming the junction, aligned with checkJunctionHealth's wording (card 10) for the same shape.
 // From card 15 onward, each drift shape is exercised against BOTH junctions (_lym and a second, non-_lym junction), proving Healthy's WarpJunctionsHere() loop — drift.go does not share checkJunctionHealth's code path, so this is not redundant with reconcile.go's or status.go's own coverage — reports the correct wording for the second, non-_lym junction too.
 func TestHealthy_JunctionDriftShapes(t *testing.T) {
+	tiergate.Require(t, 1)
 	shapes := []struct {
 		name       string
 		corrupt    func(t *testing.T, link, target string)
@@ -530,6 +537,7 @@ func TestHealthy_JunctionDriftShapes(t *testing.T) {
 // reconcile.go does not share drift.go's Healthy code path (see checkJunctionHealth), so this is
 // not redundant with TestHealthy_JunctionDriftShapes above.
 func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "reconcile-extra-only-drift"
@@ -590,6 +598,7 @@ func TestReconcile_RepairsOptionalJunctionOnlyDrift(t *testing.T) {
 // status.go computes its verdict inline (see status.go's own doc comment) rather than sharing
 // drift.go's Healthy, so this is not redundant with TestHealthy_JunctionDriftShapes.
 func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "status-extra-unhealthy"
@@ -659,6 +668,7 @@ func TestStatus_ReportsOptionalJunctionUnhealthy(t *testing.T) {
 //
 //testtiming:keep a worktree with _lym wired and the second junction missing gaining only the missing one; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_UpgradesLymOnlyWorktreeToBoth(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -711,6 +721,7 @@ func TestWireJunctions_UpgradesLymOnlyWorktreeToBoth(t *testing.T) {
 // silently untracked a monorepo's own frontend/_lym/ on a subpath-anchored hub; and a hub wired by
 // an earlier binary must converge on the narrower pattern rather than keep both.
 func TestSeedGitExclude_AnchorsPatternAndReplacesLegacyBareName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

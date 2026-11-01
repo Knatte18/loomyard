@@ -1,5 +1,3 @@
-//go:build tier0
-
 // moverecord_test.go covers the move record: its read and removal, and the way forward MoveInProgress names for a standing record.
 //
 // Package fabricengine_test.
@@ -15,9 +13,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestMoveRecord_ReadAndRemove(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	weft := filepath.Join(t.TempDir(), "beam-weft")
 
@@ -47,6 +47,7 @@ func TestMoveRecord_ReadAndRemove(t *testing.T) {
 }
 
 func TestMoveInProgress(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const slug = "beam"
 	staleRecord := fabricengine.MoveRecord{A: "a", B: "b", Kind: fabricengine.MoveKindMove, PID: 4242}

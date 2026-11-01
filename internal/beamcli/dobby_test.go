@@ -1,5 +1,3 @@
-//go:build tier0
-
 // dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed, the machine-named landings seam and the recipe count-to-duration fallback behind the probe interval and quiet window.
 
 package beamcli
@@ -13,9 +11,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRegisterDobby(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -47,6 +47,7 @@ func TestRegisterDobby(t *testing.T) {
 }
 
 func TestPassErrorText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -71,6 +72,7 @@ func TestPassErrorText(t *testing.T) {
 }
 
 func TestMachineLandings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("PassesTheNameToTheRead", func(t *testing.T) {
@@ -114,6 +116,7 @@ func TestMachineLandings(t *testing.T) {
 }
 
 func TestDurationFromCount(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const fallback = 30 * time.Minute

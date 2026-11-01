@@ -1,5 +1,3 @@
-//go:build tier0
-
 package websterengine
 
 import (
@@ -12,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gateTestConfig declares tier0 and tier1 and lists them in the `card` and `batch` keys, tier0 alone in `webster-fix`.
@@ -31,6 +30,7 @@ func gateCard(groups ...planparser.TargetGroup) planparser.Card {
 }
 
 func TestCardGateCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a card's gate is its one gate call, which runs the key's lints itself", func(t *testing.T) {
@@ -63,6 +63,7 @@ func numberedGateCard(number int, groups ...planparser.TargetGroup) planparser.C
 
 //testtiming:keep pins the per-card gate bullet shape re-rooted onto the plan display, one sub-bullet per step; the begin-batch prompt test checks one card's steps
 func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cards := []planparser.Card{gateCard(), {Number: 2, Slug: "docs", SourcePath: "_lym/plan/02-docs.md"}}
@@ -80,6 +81,7 @@ func TestRenderCardGates_OneBulletPerCardWithAStepSubBulletEach(t *testing.T) {
 }
 
 func TestRenderBatchGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a two-card batch renders one call over every card", func(t *testing.T) {
@@ -108,6 +110,7 @@ func TestRenderBatchGate(t *testing.T) {
 // TestRenameBoundary_BatchesCheckAndGateTheirOwnTree runs the shape a rename-after-create plan has end to end:
 // the cost batchifier splits before the rename, each batch's done-checks read a tree that still holds its own cards' targets, and each batch's gate call names only its own cards.
 func TestRenameBoundary_BatchesCheckAndGateTheirOwnTree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}

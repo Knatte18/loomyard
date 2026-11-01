@@ -1,5 +1,3 @@
-//go:build tier0
-
 // state_test.go pins the state record's tolerance: the keys a newer binary wrote survive a rewrite, and a damaged file never wedges the beam.
 
 package dobbyengine
@@ -9,9 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestState_RoundTripKeepsUnknownKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a foreign top-level key and a foreign run key survive an update", func(t *testing.T) {

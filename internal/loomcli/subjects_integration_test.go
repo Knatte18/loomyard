@@ -1,5 +1,3 @@
-//go:build tier1
-
 // subjects_integration_test.go drives codeSubject and taskMergeBase against a real fabric pair and real git, since their identity is the task's diff against the merge base the pair's history leaves.
 
 package loomcli
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCodeSubject_Real pins what a code subject follows: commits of the run records,the run's scratch directory and the harness's own file leave it unchanged, an untracked task file changes it, and a location with no recorded parent branch answers not found.
 func TestCodeSubject_Real(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -117,6 +117,7 @@ func writeMergeRecordNaming(t *testing.T, location *lymcwd.Location, mergedTip s
 
 // TestTaskMergeBase_FollowsTheMergedTip pins the base of the task's diff: the merge base with the parent tip the merge record names while the local parent branch lags it, and the merge base with the local parent branch when the record is absent or undecodable.
 func TestTaskMergeBase_FollowsTheMergedTip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

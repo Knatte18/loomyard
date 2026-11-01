@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_branch_exists_test.go proves Add's branch-already-exists rejection names
 // a way forward. Remove deliberately leaves the warp branch behind (it may
 // carry unmerged work), so the everyday remove-then-re-add cycle hits this
@@ -18,11 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAdd_ExistingBranchErrorNamesRemedy creates the warp branch a slug would claim and calls Add with that slug.
 // It asserts the rejection names all three remedies: checkout onto it, delete the leftover, or adopt it with --adopt-local.
 func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -48,6 +48,7 @@ func TestAdd_ExistingBranchErrorNamesRemedy(t *testing.T) {
 // the leftover-cleanup recovery (F4): a stranded directory is invisible to `lym fabric list`/`prune`,
 // so a bare "already exists" left an operator with no path forward.
 func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

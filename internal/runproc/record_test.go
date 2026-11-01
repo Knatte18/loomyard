@@ -1,5 +1,3 @@
-//go:build tier0
-
 // record_test.go tests the owner record: registering, listing with pruning, owner grouping and the liveness seams.
 
 package runproc
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // deadPID is above the kernel's pid_max (at most 2^22), so no process carries it.
@@ -36,6 +35,7 @@ func dirEntries(t *testing.T, dir string) []string {
 }
 
 func TestRegisterAndList(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 

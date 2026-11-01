@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pushretry_test.go pins the retryable-refusal classifier and the bounded push retry loop, offline against a fake push and a recording sleep.
 
 package gitrepo
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func pushRejection(stderr string) error {
@@ -18,6 +17,7 @@ func pushRejection(stderr string) error {
 }
 
 func TestRetryablePushRefusal_ClassifiesByTheReasonOnThePushedRefsLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const remoteNoise = "remote: some server noise\n"
@@ -60,6 +60,7 @@ func TestRetryablePushRefusal_ClassifiesByTheReasonOnThePushedRefsLine(t *testin
 }
 
 func TestPushWithRetry_RetriesOnlyRetryableRefusalsUpToTheBound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	failed := pushRejection(" ! [remote rejected] feat -> feat (failed)\n")

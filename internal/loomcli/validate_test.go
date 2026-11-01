@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validate_test.go covers validate-discussion and validate-plan's clean, findings, and I/O-fault
 // cases: exit code, exactly-one-JSON-line output, and the decoded envelope's ok value and findings
 // key presence. Both verbs are driven directly against the leaf command built by
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/indexkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed pins loomcli's half of the R6-27
@@ -36,6 +35,7 @@ import (
 //
 //testtiming:keep pins loomcli's half of the fail-closed severity classification: the zero value and an unrecognized severity block, informational passes; the gate parity test compares verdicts over fixtures with recognized severities only
 func TestPlanFindingsHaveBlocking_UnrecognizedSeverityFailsClosed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, tt := range []struct {
@@ -135,6 +135,7 @@ func darnRecordFixture(t *testing.T, dir, record string, versions [][]byte, comm
 
 //testtiming:keep pins validate-discussion's exit code, ok value and findings key and text over a clean record, an absent support log, a missing heading, an unreadable decision record, a malformed relevant list and an unreadable relevant list, and a Record-Write run's empty commit count, dropped added entry and disregard of a malformed relevant list; the parity test compares verdicts alone
 func TestValidateDiscussionCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	var commits int
 	tests := []struct {
 		name         string
@@ -343,6 +344,7 @@ func glyphPlanFixture(t *testing.T, anchorPath, worktreeRoot, createTarget strin
 // still reports a success envelope, carrying the findings under their own key rather than dropping
 // them, per the severity-decides-the-verdict rule this CLI verb shares with Plan-Write's and Plan-Burler-Fix's own gate.
 func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
 	worktreeRoot := plankit.Repo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
 	c := glyphPlanFixture(t, anchorPath, worktreeRoot, "newpkg#Bar")
@@ -369,6 +371,7 @@ func TestValidatePlanCmd_InformationalFindingsSurfaceOnSuccess(t *testing.T) {
 //
 //testtiming:keep pins a quarry-unavailable failure surfacing as an error envelope naming quarry rather than the plan; no other case makes quarry unavailable
 func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Join(t.TempDir(), "does-not-exist")
 	c := glyphPlanFixture(t, anchorPath, worktreeRoot, "sub#Foo")
@@ -384,6 +387,7 @@ func TestValidatePlanCmd_QuarryUnavailableNamesQuarry(t *testing.T) {
 
 // TestValidatePlanCmd_ModeFlagsAreExclusive asserts the mode flags that cannot combine are refused with an error envelope rather than one silently winning.
 func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := planFixture(t, t.TempDir(), t.TempDir(), true)
 
 	for _, tt := range []struct {
@@ -416,6 +420,7 @@ func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
 //
 //testtiming:keep pins the --rework verb printing the rework-first-card finding when first_card differs from the committed plan's next card number
 func TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
 	worktreeRoot := t.TempDir()
 	plankit.WriteTree(t, worktreeRoot, map[string]string{"sub/a.go": "package sub\n\nfunc Foo() {}\n"})
@@ -451,6 +456,7 @@ func TestValidatePlanCmd_ReworkReportsFindingsForFirstCardMismatch(t *testing.T)
 }
 
 func TestValidatePlanCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name             string
 		build            func(anchorPath, worktreeRoot string) *loomCLI
@@ -712,6 +718,7 @@ func descriptionFixture(t *testing.T, dir, content string) *loomCLI {
 
 //testtiming:keep pins validate-description's envelope: the description path on success and the Co-Authored-By finding with a non-zero exit; the parity test compares verdicts alone
 func TestValidateDescriptionCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Clean", func(t *testing.T) {
 		c := descriptionFixture(t, t.TempDir(), "# Title\n\nbody\n")
 

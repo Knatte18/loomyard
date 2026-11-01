@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanhub_integration_test.go drives the fabric CLI's read-only, refusal and record-keeping verbs against one real hub built by hubforge, as ordered scenarios:
 // the clone-time config commit, pairs, status, prune, the shortname record and the refusals that need a resolved cwd but touch no pair state.
 // The anchored scenario covers what only a non-"." anchor can show.
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // perWorktreeModuleNames returns configreg.Modules() filtered to every entry that is not hub-wide
@@ -97,6 +96,7 @@ func boardGit(t *testing.T, h *hubforge.Hub, args ...string) string {
 // Steps run serially in this order: the shortname steps that rewrite the record come after the ones that read it, and the pollution step comes last because it replaces the warp _lym junction with a tracked directory.
 // The scenario calls t.Parallel as a whole; no step does, because they share the one hub.
 func TestRunCLI_CleanHubScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -533,6 +533,7 @@ func TestRunCLI_CleanHubScenario(t *testing.T) {
 // TestRunCLI_AnchoredHubScenario runs the checks only a subpath-anchored hub can show, over one hub anchored at "backend".
 // Steps run serially in this order; the scenario calls t.Parallel as a whole and no step does, because they share the one hub.
 func TestRunCLI_AnchoredHubScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// "backend" is a subpath anchor, so the weft ROOT (h.PrimeRecords()) is not the anchored directory

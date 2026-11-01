@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_debuglog_test.go exercises the composed live behavior of the debug_log opt-in: a real boot with LYM_REED_DEBUG=1 must write a genuine tmux verbose server log into the hub's Bolt checkout logs dir (.lym/logs/), and the boot-time prune must have already trimmed pre-existing logs there down to the newest 2, and repeated crash boots must keep every debug log shape bounded.
 // This is the one live-tmux composed scenario for this batch; debugLogArgs and planLogPrune's own unit tests already cover the pure planning logic in isolation (see internal/reedengine/serverlog_test.go).
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -24,6 +23,7 @@ import (
 // The steps run serially in a fixed order; the second starts from the logs the first left behind, which only tightens its bound.
 // The scenario does not call t.Parallel, because each step sets LYM_REED_DEBUG, which every boot in the process reads.
 func TestSmokeDebugLog(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

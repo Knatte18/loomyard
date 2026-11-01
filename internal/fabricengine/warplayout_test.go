@@ -1,5 +1,3 @@
-//go:build tier1
-
 // warplayout_test.go pins warpLayoutFor's two branches against each other: the hub-sibling
 // fast path and the lymcwd.ResolveWorktree fallback are documented as equivalent, so this
 // asserts they actually produce the same Location for the same worktree rather than one branch
@@ -20,10 +18,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep the fast-path layout equalling the resolved worktree layout; coverage of its blocks by other tests does not show an assertion of this
 func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.SharedHub(t, hubforge.Shape{Anchor: "."})

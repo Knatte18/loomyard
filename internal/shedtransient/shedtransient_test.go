@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedtransient
 
 import (
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-github/v75/github"
 )
 
@@ -26,6 +25,7 @@ func ghError(status int) error {
 // Its last row notes a spawn refusal in proc's process-wide record, so the test and its rows run in order and never in parallel.
 // The died row before it therefore sees no refusal noted.
 func TestClassAndMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	notStarted := fmt.Errorf("outer: %w", fmt.Errorf("inner: %w", shuttleengine.ErrNotStarted))
 	transport := fmt.Errorf("publish: %w", &gitexec.GitError{
 		Args:     []string{"-c", "push.autoSetupRemote=true", "push"},
@@ -84,6 +84,7 @@ func TestClassAndMark(t *testing.T) {
 // TestSpawnRefusedRecently pins the bound of the refusal window: a refusal noted at the edge of it counts, one beyond it does not.
 // It notes a spawn refusal in proc's process-wide record, so it runs in order after TestClassAndMark and never in parallel.
 func TestSpawnRefusedRecently(t *testing.T) {
+	tiergate.Require(t, 0)
 	proc.NoteSpawnAgain(syscall.EAGAIN)
 	noted, ok := proc.LastSpawnAgain()
 	if !ok {

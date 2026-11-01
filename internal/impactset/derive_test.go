@@ -1,5 +1,3 @@
-//go:build tier0
-
 // derive_test.go holds the hand-built package graph the pure core's tests share and covers the changed-path parser.
 
 package impactset
@@ -7,6 +5,8 @@ package impactset
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testGraph is a small module.
@@ -27,6 +27,7 @@ func testGraph() moduleGraph {
 }
 
 func TestParseChangedPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := parseChangedPaths("M\x00a.go\x00D\x00b.go\x00R100\x00old.go\x00new.go\x00A\x00c.go\x00")

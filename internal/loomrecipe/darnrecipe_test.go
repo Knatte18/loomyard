@@ -1,5 +1,3 @@
-//go:build tier0
-
 // darnrecipe_test.go covers New and Routing over the darn recipe: the darn recipe's row order, engines and producer types, its PR-Review and Code-Review routing through Describe, the perch shared with loom's recipe bar its answer key, the verify budget stamped onto both verify-gated rows, the review budget applied to the perch, and the refusal of a budget out of range.
 
 package loomrecipe
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantDarnProducerTable is the darn recipe's rows in order.
@@ -38,6 +37,7 @@ var wantDarnProducerTable = []wantProducerRow{
 
 // TestNewDarn_RowsMatchTheDarnTable pins the darn recipe's rows against wantDarnProducerTable in order.
 func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeDarn, env, paths)
 	if err != nil {
@@ -70,6 +70,7 @@ func TestNewDarn_RowsMatchTheDarnTable(t *testing.T) {
 // TestDarnPerch_SharesLoomsPerchBarTheAnswerKey pins that the darn recipe's Code-Review rows carry loom's segment, run directory, role prefix, rubric and loom.yaml setting keys,
 // and that only their answer key differs: the decision record alone, whose fasit instructions read it as the task's scope with its added entries as amendments.
 func TestDarnPerch_SharesLoomsPerchBarTheAnswerKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	rowsOf := func(source []byte) map[string]shedbuild.Row {
 		t.Helper()
 		recipe, err := shedbuild.Parse(source)
@@ -131,6 +132,7 @@ func setCodeBudget(env *shedrecipe.Env, budget int) {
 
 // TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize with no reroute edge, no Merge-In row, and a review budget of 0 keeping every edge and gating Describe off.
 func TestNewDarn_Routing(t *testing.T) {
+	tiergate.Require(t, 0)
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
 		env, paths := testEnv(t)
@@ -270,6 +272,7 @@ func TestNewDarn_Routing(t *testing.T) {
 }
 
 func TestDarnVerifyBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("stamped onto the verify gates of Darn-Write and Code-Burler-Fix only", func(t *testing.T) {
 		recipe, err := shedbuild.Parse(recipes.DarnRecipe)
 		if err != nil {
@@ -363,6 +366,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 
 // TestDarnRouting pins the projection's rows and its review budget applied as New applies it, the kept edges under a budget of 0, and the refusal of a budget below 0.
 func TestDarnRouting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("rows and the review budget on the perch", func(t *testing.T) {
 		routing, err := Routing(shedrun.RecipeDarn, map[string]int{codeReviewSegment: 2})
 		if err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies language.yaml's Load degrade and content-failure paths and AppendSkills' ordering, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() so the test stays spawn-free.
 
 package languageconfig_test
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -27,6 +26,7 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestLoad_ResolvesSkills(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -110,6 +110,7 @@ func TestLoad_ResolvesSkills(t *testing.T) {
 }
 
 func TestLoad_InvalidFailsNamingKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -210,6 +211,7 @@ func TestLoad_InvalidFailsNamingKey(t *testing.T) {
 }
 
 func TestBulletListValue(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -239,6 +241,7 @@ func boardFile(content string) func(t *testing.T, board, anchor string) {
 }
 
 func TestAppendSkills(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	own := []string{"scribe:prose", "scribe:code-quality"}
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resign_test.go covers RebindResigns: the carrying of a recorded C# re-sign arrow into the plan once its edit is in the tree.
 
 package planglyph
@@ -11,10 +9,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRebindResigns runs RebindResigns over a fixture copy and a plan whose card 1 re-signs a member and whose card 2 names the member by its old glyph.
 func TestRebindResigns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

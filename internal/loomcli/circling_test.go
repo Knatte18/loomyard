@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // circlingFake is a circlingDeps whose status and record outcome the test sets, counting the records made.
@@ -79,6 +78,7 @@ func awaitingAt(row string) shedengine.Status {
 }
 
 func TestCirclingVerb_Records(t *testing.T) {
+	tiergate.Require(t, 0)
 	escalated := func(round int, cause shedadapters.EscalationCause) circlingFake {
 		return circlingFake{status: awaitingAt(loomshed.NamePlanBouncer), found: true, round: round, cause: cause}
 	}
@@ -127,6 +127,7 @@ func blockedAtFinalize() shedengine.Status {
 
 // TestCirclingVerb_AcceptsFinalizeFixReviewHalt pins that accept at a run halted at Finalize records the acceptance for Finalize's current row entry and no Bouncer decision.
 func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := circlingFake{status: blockedAtFinalize(), found: true}
 	var out bytes.Buffer
 
@@ -144,6 +145,7 @@ func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
 }
 
 func TestCirclingVerb_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	const loomRaise = `run "lym config loom --set review_hard_max_bounces=<n>" in the task worktree`
 	const localRaise = `run "lym config loom --layer local --set review_hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`
 	atPlanBouncer := awaitingAt(loomshed.NamePlanBouncer)
@@ -226,6 +228,7 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 
 // TestPerchHardCap pins the hard cap and the raising route perchHardCap resolves per Bouncer row, each from the layer the value comes from.
 func TestPerchHardCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -324,6 +327,7 @@ func TestPerchHardCap(t *testing.T) {
 }
 
 func TestCirclingStatusReader(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("no status file", func(t *testing.T) {
 		dir := t.TempDir()
 		_, found, err := circlingStatusReader(filepath.Join(dir, "status.json"), filepath.Join(dir, "scratch", "status.json.lock"))()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_test.go table-drives webster's own fork-audit policy over the full violation taxonomy CheckFork/CheckParent enforce, the fabricengine.RefScanner matcher (built from a fake lymcwd.Location, never a hardcoded geometry token), and SettleRetry with a recording fake Sleeper.
 // Every case here is a pure fact-in/verdict-out table, per the discussion's TDD-centre framing: no git spawn, no real sleeping, no filesystem I/O.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning git.
@@ -26,6 +25,7 @@ func fakeLayout() *lymcwd.Location {
 // The `lym fabric` rows are the regression guard: the fabric cutover deleted the per-side verbs and renamed every fabric-touching verb under `lym fabric`, so a matcher that knows only the old spellings bans nothing an agent can actually run today.
 // The `lym.exe` rows are the same guard for the Windows spelling — lym's primary platform, where an agent writing the extension out would otherwise slip the whole audit — paired with a `lym.exe board` row proving the extension did not widen the match to every lym invocation.
 func TestRefScannerMatches(t *testing.T) {
+	tiergate.Require(t, 0)
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
 	fabricWorktree := fabricengine.RecordsWorktree(layout)
@@ -73,6 +73,7 @@ var (
 // TestNeverMatches_AlwaysFalse pins NeverMatches's whole contract: it never matches, not even for a
 // command spelling a real *fabricengine.RefScanner would match.
 func TestNeverMatches_AlwaysFalse(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		cmd  string
@@ -104,6 +105,7 @@ func cleanForkReport(path string) shuttleengine.ForkReport {
 //
 //testtiming:keep pins the violation class and path for every write-path and command shape a fork can produce, including the allowed ones; the covering record-batch table reaches a few shapes through whole calls
 func TestCheckFork(t *testing.T) {
+	tiergate.Require(t, 0)
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
 	fabricWorktree := fabricengine.RecordsWorktree(layout)
@@ -311,6 +313,7 @@ func TestCheckFork(t *testing.T) {
 // TestCheckParent covers every violation CheckParent enforces plus the two contract-file writes
 // pinned as explicitly ALLOWED for Master.
 func TestCheckParent(t *testing.T) {
+	tiergate.Require(t, 0)
 	layout := fakeLayout()
 	fabricRef := fabricengine.NewRefScanner(layout)
 	fabricWorktree := fabricengine.RecordsWorktree(layout)
@@ -447,6 +450,7 @@ func (s *recordingSleeper) Sleep(d time.Duration) {
 //
 //testtiming:keep pins the exact fetch and sleep counts for an early hit and an exhausted window, and no retry after a fetch error; the record-batch tests only observe that a tick happened
 func TestSettleRetry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fetchErr := errors.New("boom")
 

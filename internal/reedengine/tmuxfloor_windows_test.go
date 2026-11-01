@@ -1,4 +1,4 @@
-//go:build tier0 && windows
+//go:build windows
 
 // tmuxfloor_windows_test.go pins that the tmux floor check admits on Windows without probing.
 
@@ -6,8 +6,11 @@ package reedengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestCheckTmuxFloor_RunsNoProbeOnWindows swaps the process-global version probe, so it is not parallel.
 func TestCheckTmuxFloor_RunsNoProbeOnWindows(t *testing.T) {
+	tiergate.Require(t, 0)
 	probes := 0
 	setTmuxVersionProbeForTest(t, func(string) (string, error) {
 		probes++

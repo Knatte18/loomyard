@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // buttonrow_test.go covers buttonrow.go's render of the status-bar button row into session options.
 // It is built where `sh` resolves only, and drives the render through the fake tmux with a stub button context.
@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rowFragment is the literal tmux format of one drawn button, written out independently of buttonRangeFormat.
@@ -29,6 +30,7 @@ const buttonRowSpecSlot = 16
 // TestPinButtonRowLocked pins the four options one render sets, for each shape of button context.
 // It reads Warns through logcapture, whose output is process-global, so it does not call t.Parallel.
 func TestPinButtonRowLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	posix := shell.Posix()
 	shPath, err := exec.LookPath("sh")
 	if err != nil {

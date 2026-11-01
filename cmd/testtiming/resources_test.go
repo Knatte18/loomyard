@@ -1,14 +1,15 @@
-//go:build tier0
-
 package main
 
 import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseKernelCounters(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("fork count", func(t *testing.T) {
@@ -56,6 +57,7 @@ func TestParseKernelCounters(t *testing.T) {
 }
 
 func TestCarriesMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const marker = leftoverMarkerEnv + "=internal/x:42"
@@ -78,6 +80,7 @@ func TestCarriesMarker(t *testing.T) {
 }
 
 func TestRenderResources(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []resourceRow{

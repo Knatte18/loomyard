@@ -1,5 +1,3 @@
-//go:build tier0
-
 // task_test.go — unit tests for Task construction (task.go).
 //
 // NewTask defaults and kind validation;
@@ -13,9 +11,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNewTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("creates task with correct defaults when only slug provided", func(t *testing.T) {
 		fields := map[string]any{
 			"slug": "my-task",
@@ -317,6 +317,7 @@ func TestNewTask(t *testing.T) {
 }
 
 func TestShortNameOrSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("falls back to Slug when ShortName is empty", func(t *testing.T) {
 		task := boardengine.Task{Slug: "x"}
 		if got := task.ShortNameOrSlug(); got != "x" {
@@ -333,6 +334,7 @@ func TestShortNameOrSlug(t *testing.T) {
 }
 
 func TestApplyPatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("overlays title onto existing task, other fields unchanged", func(t *testing.T) {
 		existing := boardengine.Task{
 			ID:        1,

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_integration_test.go holds the reconcile scenario that spawns gitexec.RunGit(["init"], …) to seed a real git repo: the dry-run and --apply round trips and the --set-then-reconcile drift check.
 // This file is integration-tagged per the Test Tier Purity Invariant; the spawn-free not-a-git-repo assertion lives in TestRunCLIIn_FromNonGitDirectory.
 
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runReconcileCLI runs `lym config reconcile <args>` from dir and returns the exit code and the decoded envelope.
@@ -50,6 +49,7 @@ func reconcileModule(t *testing.T, result map[string]any, module string) map[str
 // Its steps run in this order in one repository.
 // The scenario runs in one repository so it spawns git once.
 func TestConfigReconcileInGitRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	tmpDir := t.TempDir()
 

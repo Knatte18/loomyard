@@ -1,5 +1,3 @@
-//go:build tier0
-
 // detachrun_test.go covers the refusals of `lym gate run-detached`: a run directory the runner will not run leaves no exit file and names the gate verbs that start a run of their own.
 
 package gatecli
@@ -13,9 +11,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGateRunner_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	validRequest := detachRequest{Verb: verbTest, Cwd: "/work"}
@@ -92,6 +93,7 @@ func writeRequest(t *testing.T, run detachRun, request detachRequest) {
 }
 
 func TestDetachRun_LeaseLapsed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Now()
@@ -126,6 +128,7 @@ func TestDetachRun_LeaseLapsed(t *testing.T) {
 }
 
 func TestDetachRun_Claim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	run := detachRun{dir: t.TempDir()}
@@ -141,6 +144,7 @@ func TestDetachRun_Claim(t *testing.T) {
 }
 
 func TestDetachRun_ReadProcessRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

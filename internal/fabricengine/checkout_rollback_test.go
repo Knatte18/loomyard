@@ -1,5 +1,3 @@
-//go:build tier1
-
 // checkout_rollback_test.go proves Checkout's all-or-nothing contract holds even
 // when junction wiring (step 5) fails AFTER the weft branch was already switched
 // (step 4). Pre-fix, the rollback reverted only the warp, stranding the weft on
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckout_JunctionFailureRollsBackBothSides wires a healthy primary pair, then corrupts the
@@ -29,6 +28,7 @@ import (
 // It asserts Checkout errors AND leaves both the warp and the weft on their original branches —
 // never a half-switched pair.
 func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -87,6 +87,7 @@ func TestCheckout_JunctionFailureRollsBackBothSides(t *testing.T) {
 // very Checkout forked — otherwise every rolled-back fork-checkout strands an orphan weft branch
 // that cleanup later flags, created by fabric's own failed operation.
 func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -140,6 +141,7 @@ func TestCheckout_JunctionFailureDeletesForkedWeftBranch(t *testing.T) {
 // and both sides return to their original branches.
 // The failure is injected after the adoption, either at junction wiring or at the weft switch itself.
 func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const markerRel = "origin-marker.txt"
@@ -219,6 +221,7 @@ func TestCheckout_FailureDeletesWeftBranchAdoptedFromOrigin(t *testing.T) {
 // explanation rather than only an exit code. The everyday cause is a branch already checked out in
 // another worktree, and "git exit 128" alone leaves the operator nothing to act on.
 func TestCheckout_WarpSwitchFailureCarriesGitStderr(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 

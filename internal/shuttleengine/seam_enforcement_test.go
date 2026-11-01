@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces the Shared Decision "provider-seam import rule":
 // only internal/shuttleengines and an engine's own directory import a concrete engine package under internal/shuttleengine/.
 // The interface (Engine) and its value types live in shuttleengine;
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -76,6 +75,7 @@ func startupGateCallers(t *testing.T, base string) ([]string, int) {
 //testtiming:keep scans every production file's imports for a concrete engine package outside its own directory and the registry, and its calls for AcceptStartupGate outside this package, which no other test reads
 //lym:guard
 func TestProviderSeamImportRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const importsClaude = "package x\n\nimport _ \"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine\"\n"

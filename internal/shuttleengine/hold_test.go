@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hold_test.go covers the notice Wait sends a parent for an autonomous run's held turn end:
 // when it is sent, how often, and the shape and bounds of its line.
 
@@ -14,6 +12,8 @@ import (
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // heldRun is what a recording notifier saw over one Wait.
@@ -65,6 +65,7 @@ func apiErrorAfterSleep(appendLine func(string), asleep func(time.Duration)) []f
 }
 
 func TestWait_HeldTurnEndNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const strandName = "lym:slug:driver"
 	tail := MessageTail

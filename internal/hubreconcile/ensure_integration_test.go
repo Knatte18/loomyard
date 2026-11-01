@@ -1,5 +1,3 @@
-//go:build tier1
-
 // ensure_integration_test.go covers Ensure against real hubforge hubs: the stale-build walk, the stamp gate, the mid-merge and incomplete-pair skips, the lock, concurrent callers, a pair registered mid-walk and the single-pair call.
 
 package hubreconcile_test
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const retiredKey = "master_base"
@@ -389,6 +388,7 @@ func pushBoardFromSecondClone(t *testing.T, board string) string {
 
 // It does not call t.Parallel: it swaps the package-global detached board sync.
 func TestEnsure_StaleBuildReconcilesAndCommitsEveryWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	for _, tc := range []struct {
 		name string
 		run  staleRun
@@ -684,6 +684,7 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 }
 
 func TestEnsure_CurrentStampLeavesConfigAlone(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")
@@ -704,6 +705,7 @@ func TestEnsure_CurrentStampLeavesConfigAlone(t *testing.T) {
 }
 
 func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -771,6 +773,7 @@ func TestEnsure_MidMergePairIsLeftAloneAndRetried(t *testing.T) {
 }
 
 func TestEnsure_MergeBeginningBeforeCommitRestoresTheFiles(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")
@@ -825,6 +828,7 @@ func commitTemplate(t *testing.T, recordsRoot, module string) {
 }
 
 func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -1012,6 +1016,7 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 }
 
 func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -1038,6 +1043,7 @@ func TestEnsure_HeldLockTimesOutWithoutStamping(t *testing.T) {
 
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
+	tiergate.Require(t, 1)
 	const wayForwardText = "start verb to retry the reconcile"
 
 	tests := []struct {
@@ -1103,6 +1109,7 @@ func TestEnsureOrWarn_WarnsWithTheWayForward(t *testing.T) {
 }
 
 func TestEnsure_ConcurrentCallsLandOneCommitPerBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")
@@ -1130,6 +1137,7 @@ func TestEnsure_ConcurrentCallsLandOneCommitPerBranch(t *testing.T) {
 }
 
 func TestEnsure_PairRegisteredDuringTheWalkIsReconciledBeforeTheStamp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -1158,6 +1166,7 @@ func TestEnsure_PairRegisteredDuringTheWalkIsReconciledBeforeTheStamp(t *testing
 }
 
 func TestEnsure_PairDirectoryDeletedIsSkippedAsRemoved(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")
@@ -1176,6 +1185,7 @@ func TestEnsure_PairDirectoryDeletedIsSkippedAsRemoved(t *testing.T) {
 }
 
 func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")
@@ -1203,6 +1213,7 @@ func TestEnsure_UnwiredPairIsLeftUnwrittenAndStampIsWritten(t *testing.T) {
 
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *testing.T) {
+	tiergate.Require(t, 1)
 	logs := logcapture.Capture(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -1229,6 +1240,7 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 
 // The detached board sync is package-global, so this test does not call t.Parallel.
 func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
 	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
@@ -1325,6 +1337,7 @@ func (u *unpushedHubWide) moveUpstream(t *testing.T, rel, content string) {
 
 // The logger's output is process-global, so this test does not call t.Parallel.
 func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testing.T) {
+	tiergate.Require(t, 1)
 	boardkit.InstallReplay(t)
 
 	t.Run("an upstream moved on other paths is replayed under the commit and the stamp is written", func(t *testing.T) {
@@ -1367,6 +1380,7 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 }
 
 func TestEnsure_PairCallReconcilesDespiteAFreshStamp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := newStaleHub(t, "pair-a")

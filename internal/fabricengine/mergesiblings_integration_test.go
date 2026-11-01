@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergesiblings_integration_test.go asserts the sibling-verb disposition table card 13 wires: every
 // mutating verb whose write would corrupt or be corrupted by a live merge refuses with the single
 // typed, side-free *ErrMergeInProgress while a fabric merge record exists on the pair, Commit
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newMergeSiblingsFixture builds a real hubforge pair — deliberately NOT the hub's prime, since
@@ -57,6 +56,7 @@ func newMergeSiblingsFixture(t *testing.T) (h *hubforge.Hub, f *fabricengine.Fab
 // read-only verb succeed unaffected, and every guarded verb works again once MergeAbort clears the
 // record.
 func TestMergeSiblings_Dispositions(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, l, slug := newMergeSiblingsFixture(t)
@@ -253,6 +253,7 @@ func TestMergeSiblings_Dispositions(t *testing.T) {
 
 // TestMergeSiblings_CommitRefusesForeignMergeState covers Commit's foreign-git-state disposition: a plain-git conflicted merge in the warp checkout, driven with no MergeIn involved and so no fabric merge record, still refuses — with *ErrForeignMergeState, the same typed error every merge verb gives foreign state, rather than surfacing git's own raw "cannot do a partial commit during a merge" or *ErrMergeInProgress's misdirecting "run \"lym fabric merge --continue\" or \"lym fabric merge --abort\" first" (fabric has no merge of its own in progress here, and both of those verbs would refuse).
 func TestMergeSiblings_CommitRefusesForeignMergeState(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")

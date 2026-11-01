@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentguard_test.go drives the parent lock guard against a real parentlock.Store in a temporary directory and fake tip reads.
 
 package landingshed
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var (
@@ -54,6 +53,7 @@ func newGuardFixture(t *testing.T) (g parentGuard, store *parentlock.Store, mark
 }
 
 func TestParentGuard_EnsureTakesFreeLockAndWaitsBehindAnother(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a free lock is taken at once", func(t *testing.T) {
@@ -121,6 +121,7 @@ func TestParentGuard_EnsureTakesFreeLockAndWaitsBehindAnother(t *testing.T) {
 }
 
 func TestParentGuard_EnsureReasonsAndErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -189,6 +190,7 @@ func TestParentGuard_EnsureReasonsAndErrors(t *testing.T) {
 }
 
 func TestParentGuard_ReleaseFreesOwnRecordAndLeavesAnotherProcessAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	g, store, _ := newGuardFixture(t)
@@ -215,6 +217,7 @@ func TestParentGuard_ReleaseFreesOwnRecordAndLeavesAnotherProcessAlone(t *testin
 // TestParentGuard_PauseReadFailureLogsOncePerEpisode asserts a pause-flag read that fails on every poll logs one Warn, Debug while it repeats and one Info at the next good read, and reads as not paused throughout.
 // It is serial: it captures the process-global logger.
 func TestParentGuard_PauseReadFailureLogsOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 	logger.SetVerbosity(2)
 	g, _, _ := newGuardFixture(t)

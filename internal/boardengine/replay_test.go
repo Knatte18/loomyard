@@ -1,5 +1,3 @@
-//go:build tier0
-
 // replay_test.go — FabricReplay, the by-entry merge of a local board commit onto origin's board.
 //
 // Every row builds origin's board directory, the merge base, the commit's parent and the commit, applies the commit and reads the board directory back.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // replayEntry builds a task entry with the type label bug, the options applied after the defaults.
@@ -159,6 +158,7 @@ type replayRow struct {
 }
 
 func TestFabricReplay(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	runLocked := RunStatus("running", "Implementer")
@@ -625,6 +625,7 @@ func TestFabricReplay(t *testing.T) {
 }
 
 func TestFabricReplay_Ledger(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Claims", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_refusal_remedy_integration_test.go pins that a no-force Remove refusal — a dirty worktree or a failed status probe — leaves the pair and the weft origin untouched: no portal or launcher is torn down, no mutation is recorded, and no archive tag is pushed.
 //
 // Remove runs every refusal before its archive and the archive before every removal (remove.go's header states the order),
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_DirtyRefusalLeavesPairIntact builds a real pair, dirties its warp worktree, and asserts the no-force refusal tears nothing down, records nothing, and pushes no archive tag.
 func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-refusal-intact"
@@ -63,6 +63,7 @@ func TestRemove_DirtyRefusalLeavesPairIntact(t *testing.T) {
 
 // TestRemove_WarpStatusProbeFailurePushesNoTag breaks the warp worktree's gitfile so the status probe fails, and asserts the refusal pushes no archive tag and tears nothing down.
 func TestRemove_WarpStatusProbeFailurePushesNoTag(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-probe-failure"
@@ -135,6 +136,7 @@ func assertNoArchiveTag(t *testing.T, repoRoots ...string) {
 // Both wrappers in this chain — refuseDirtyWeftWorktree's "check weft worktree status in <dir>" and the *gitexec.GitError it wraps — used to repeat the path and the git command ahead of git's own stderr, which is the only part of the message an operator can act on.
 // Each layer now contributes exactly one new fact: what fabric was doing, where it probed, and what git said.
 func TestRemove_StatusFailureNamesPathAndCommandOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

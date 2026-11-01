@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go drives the help module through a small root with the help command mounted the way cmd/lym's newRoot mounts it.
 
 package helpcli
@@ -12,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newFixtureRoot builds a root with one operator group, one role leaf and one internal leaf, and mounts the help command like newRoot does.
@@ -36,6 +35,7 @@ func newFixtureRoot() *cobra.Command {
 
 // TestHelpCommand_Behaviors pins topic help, the index per audience, and the refusals.
 func TestHelpCommand_Behaviors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

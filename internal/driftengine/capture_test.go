@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // capture_test.go — tier 1 tests for RunCapture and RunSideCapture, driven by fake sh commands against a temp gate-slot pool.
 
@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // captureFixture is a CaptureRequest over a temp worktree and a one-slot pool.
@@ -84,6 +85,7 @@ func slotFree(t *testing.T, pool *gateslot.Pool) bool {
 
 // TestRunCapture covers the command's outcome rows, the skip file, the timeout tree kill, the kept backup, the capture lock, the slot wait, Check's refusal and the side capture.
 func TestRunCapture(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	outcomes := []struct {

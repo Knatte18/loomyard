@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handoffvoucher_test.go is the untagged suite for the handoff voucher (crucible round 2,
 // R2-F1): recordHandoffVoucher and consumeHandoffVoucher directly, and observeEntry's consumption of
 // the voucher into EntryObservation.Vouched. Everything runs against t.TempDir() paths via
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // handoffVoucherPaths returns a voucher path and lock path rooted in a fresh temp dir.
@@ -27,6 +26,7 @@ func handoffVoucherPaths(t *testing.T) (string, string) {
 
 //testtiming:keep pins the voucher matching only on an equal history length and state, a grown history, a changed state or an absent voucher not matching, and the voucher being deleted on every read; the observe-entry test covers only the matching, one-shot case
 func TestConsumeHandoffVoucher(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -105,6 +105,7 @@ func TestConsumeHandoffVoucher(t *testing.T) {
 // persisted status yields Vouched true, and -- the one-shot property -- a second identical
 // observation yields false, because the first consumed the voucher.
 func TestObserveEntry_ConsumesHandoffVoucherIntoObservation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()

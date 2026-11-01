@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go pins claude.yaml's load: the template on an absent base, the stack of its layers, and the local-layer rule on its keys.
 
 package claudeengine
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeClaudeLayer writes document to path, creating its directory.
@@ -28,6 +27,7 @@ func writeClaudeLayer(t testing.TB, path, document string) {
 // TestLoadConfig pins claude.yaml's resolution: the template on an absent base, a repo default under a worktree file, the local layer's admitted and refused keys, and the binary marker's environment expansion.
 // It does not run in parallel: every row clears or sets LYM_SHUTTLE_CLAUDE, which is process-global.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	clearMarker := func(t *testing.T) {
 		t.Helper()
 		t.Setenv("LYM_SHUTTLE_CLAUDE", "")

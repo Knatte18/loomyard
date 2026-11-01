@@ -1,13 +1,14 @@
-//go:build tier0
-
 package locationkit
 
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLocation_CarriesToldFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := filepath.Join("home", "user", "repo-LYMHUB")
 	l := Location(hub, "slug", "sub/dir")
 
@@ -20,6 +21,7 @@ func TestLocation_CarriesToldFields(t *testing.T) {
 }
 
 func TestLocation_PathsJoinFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := filepath.Join("home", "user", "repo-LYMHUB")
 	l := Location(hub, "slug", "sub")
 

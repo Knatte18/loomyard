@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergestate_integration_test.go — integration coverage for the on-disk merge-state record and the
 // foreign-merge-state probes: save/load roundtrip, absence, delete idempotence, and
 // foreignMergeStatePresent's true/false split against a real hubforge pair.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newMergeStateFixture builds a fresh hubforge pair and the *Fabric handle over its prime
@@ -56,6 +55,7 @@ func assertNoZeroFields(t *testing.T, label string, v any) {
 //
 //lym:seam internal/fabricengine#MergeStateForTest
 func TestMergeState_Record(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
@@ -172,6 +172,7 @@ func assertMergeStateFileInvisibleToGit(t *testing.T, label, dir string) {
 // staged directly in the warp checkout must report true and leave the foreign state untouched; a
 // clean pair must report false.
 func TestMergeState_ForeignMergeStatePresent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)
@@ -268,6 +269,7 @@ func wantWorktreeResetEntries(t *testing.T, entries []fabricengine.Mutation, wan
 // The steps run serially on one fixture, in this order: the weft step leaves its conflict in place,
 // so it runs last.
 func TestMergeState_ResetMergeSides(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, h := newMergeStateFixture(t)

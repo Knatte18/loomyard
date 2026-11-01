@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shortcut_test.go pins the shortcut file's mount and a shortcut's word routing and dispatch, over a fake root that records the commands it runs.
 
 package shortcutcli
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeRun is what one run of a fake leaf saw.
@@ -114,6 +113,7 @@ func fakeRootFactory(rec *fakeRecorder) func() *cobra.Command {
 const testShortcuts = "attach: [reed, attach]\ns: [[beam, start], [reed, attach]]\n"
 
 func TestShortcut_Run(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	beamStart := func(verbosity int) fakeRun { return fakeRun{Path: "beam start", Verbosity: verbosity} }
@@ -205,6 +205,7 @@ func TestShortcut_Run(t *testing.T) {
 
 // TestMount_File is not parallel: logcapture.Capture swaps the process-global logger output.
 func TestMount_File(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		data []byte

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // lifecycle_integration_test.go is the end-to-end suite over a real hub built by
 // internal/hubforge through its fabric fixture entry point, per the hubforge Fabric-Fixture
 // Invariant. It stays a white-box "package battencli" test, not an external "_test" package,
@@ -55,6 +53,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shortPollBattenRecipe is contracts/recipes/batten-recipe.yaml, byte-for-byte the same rows
@@ -215,6 +214,7 @@ func pathExists(path string) bool {
 // With a fresh stamp the first call is a no-op, so the new pair losing the prime's retired key can only come from the unconditional pair call after the create row.
 // Against an absent stamp, `arm` for run reconciles ahead of armAt's non-prime refusal and its auto-seed.
 func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -300,6 +300,7 @@ func gitShow(t *testing.T, dir, spec string) []byte {
 //
 //testtiming:keep the start-cost step pins the decision record's D2 acceptance criterion, that a Command row costs under 100 ms beyond its status commit and its process, a wall-clock bound no other test asserts
 func TestBattenIntegration_Rows(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -1049,6 +1050,7 @@ func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *h
 // pair's other side: the remedy must name the prefixed branch Add created, and doing
 // what it says must leave nothing that makes the resumed create refuse.
 func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixedHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Not a step of TestBattenIntegration_Rows: seeding a branch prefix into the fabric config changes the hub for every pair created after it.
 	t.Parallel()
 

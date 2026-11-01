@@ -1,5 +1,3 @@
-//go:build tier1
-
 // publish_integration_test.go drives Merge-In against a real pair built by the
 // standard hub fixture (internal/hubforge), with only the conflict-resolution session faked.
 // The byte-identical conflict shape across both sides is covered exhaustively by internal/fabricengine's own
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newMergeInDepsAt builds Merge-In's Deps over the task worktree at taskWorktree: its real pair opener, a fake conflict-resolution session that must never spawn, a require-PR config for main, the real pair's tip, path and head reads, and a temporary lock store.
@@ -66,6 +65,7 @@ func newMergeInDepsAt(t *testing.T, taskWorktree string) landingshed.Deps {
 // TestMergeIn_ConflictSessionLoadsLanguageSkills drives Merge-In over a real pair whose branches conflict on one file, and asserts the one conflict session it spawns loads the told language skills after its own.
 // A second row stages a local parent branch holding a commit its upstream lacks, and asserts the merge brings in the upstream tip and leaves the local parent branch's ref alone.
 func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("a conflict session loads the told language skills", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		taskWorktree := h.PrimeWorktree()

@@ -1,5 +1,3 @@
-//go:build tier2 || tier3
-
 // smoke_procalive_linux.go answers "is this pid still running" on Linux via
 // signal 0 (syscall.Kill with sig=0 checks existence/permission without
 // actually signaling: ESRCH means gone, nil or EPERM means it still

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // settinglookup_test.go — tests for SettingLookup over temp hub fixtures.
 
 package configreg
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeConfigFile writes content at path, creating the config directory above it.
@@ -42,6 +41,7 @@ func withTemplateValue(t *testing.T, template, key, value string) string {
 
 // TestSettingLookup pins SettingLookup's answers and refusals over a hub fixture each row builds for itself.
 func TestSettingLookup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

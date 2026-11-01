@@ -1,5 +1,3 @@
-//go:build tier0
-
 // childdriverkind_test.go pins childDriverKind's resolution of a child run's driver from shed.yaml over temp config layers.
 
 package battencli
@@ -12,10 +10,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestChildDriverKind verifies the driver comes from shed.yaml's driver_kind for a darn, a tapestry and a pawl child alike.
 func TestChildDriverKind(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string

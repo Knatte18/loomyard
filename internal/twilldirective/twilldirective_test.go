@@ -1,5 +1,3 @@
-//go:build tier0
-
 // Every test here reads a seeded temporary stencils directory and spawns nothing.
 
 package twilldirective
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // filledWriterFork returns a WriterFork with every field set.
@@ -51,6 +50,7 @@ func filledValues() Values {
 
 // TestDirective_RendersEveryValueVerbatim covers the seeded stencil: each value lands, a lens's inner newlines collapse to spaces, and the text has no marker, leading banner or trailing newline.
 func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	withWriterFork := filledValues()
@@ -152,6 +152,7 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 
 // TestDirective_MissingValueNamesTheMarker covers a host value or the lens list left empty: Directive errors and the error names that value's marker.
 func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -198,6 +199,7 @@ func TestDirective_MissingValueNamesTheMarker(t *testing.T) {
 
 // TestDirective_MissingStencilNamesIt covers a stencil removed from the directory: Directive's error names it when the host reads it, and a stencil of the part the host does not ask for is never read.
 func TestDirective_MissingStencilNamesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	withWriterFork := filledValues()

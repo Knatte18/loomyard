@@ -1,5 +1,3 @@
-//go:build tier0
-
 // clone_test.go — unit tests for URL-derivation helpers and cloneRepo's error path.
 
 package fabricengine
@@ -8,9 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDeriveWarpName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		url  string
@@ -66,6 +67,7 @@ func TestDeriveWarpName(t *testing.T) {
 //
 //testtiming:keep cloneRepo's error being composed from the attempted URL, destination and exit code rather than git's stderr; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneRepo_InvalidURLFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	dest := filepath.Join(t.TempDir(), "cloned-repo")
 	const url = "/does/not/exist/nonexistent-repo.git"
 

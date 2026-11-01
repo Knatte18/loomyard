@@ -1,5 +1,3 @@
-//go:build tier1
-
 // geometry_integration_test.go drives ReedGeometry and WebsterGeometry against one real hub from hubforge:
 // the prime's reed geometry carries the hub's shortname with no slug or parent, a task worktree carries its slug and the parent its origin record names, or none when the origin names none, and a hub with no .lym-shortname yields an empty shortname and no error.
 
@@ -19,12 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGeometryOverRealHub builds one hub and runs each geometry case as a step over it, in the order below.
 // The steps run serially, and the last removes the hub's shortname record, so it must stay last.
 // The top-level test calls t.Parallel and no step does, because the steps share the one hub fixture.
 func TestGeometryOverRealHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

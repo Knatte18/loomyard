@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamfork_test.go covers beamForkPrecondition over told reads: each refusal that stops a beam member's create, the pass, and a probe error;
 // and the member-hold read after a pair is made, with the refusal it words and the anchor Worktree-Create reads from the seed.
 
@@ -18,11 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBeamForkPrecondition asserts a beam member's create is stopped with a precondition naming the beam's create or adopt when the beam's pair is absent here, and the landing and the cancel of the member when the beam's entry is run-held, and passes otherwise.
 // A failed origin probe is returned as is.
 func TestBeamForkPrecondition(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	held := boardengine.RunStatus("running", "Land")
@@ -132,6 +132,7 @@ func TestBeamForkPrecondition(t *testing.T) {
 
 // TestMemberHoldRefusal asserts the refusal names the member's cancel from the beam's parent worktree, the board move off the beam, and the member's run once the beam's status shows Beam-Await.
 func TestMemberHoldRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	err := memberHoldRefusal("m", "b", "running · Parent-Align")
@@ -154,6 +155,7 @@ func TestMemberHoldRefusal(t *testing.T) {
 
 // TestAnchorFromSeed asserts a seed's anchor param is read back, and a run with no seed or no param reads none.
 func TestAnchorFromSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -188,6 +190,7 @@ func TestAnchorFromSeed(t *testing.T) {
 // TestRefuseHeldMember asserts a member is judged against its beam's hold read through beamHold: a slug outside a beam and a beam that is not held pass untouched, and a failed read is returned.
 // The held case removes a real pair, which the integration tests drive.
 func TestRefuseHeldMember(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	readFailure := errors.New("board unreadable")

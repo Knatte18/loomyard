@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mergevocab_test.go is the explicit side-free vocabulary assertion the enforcement walk (internal/lymcwd's TestEnforcement_FabricVocabulary) cannot provide for the merge surface: internal/fabricengine sits inside that walk's owner set, so a warp/weft leak into MergeResult, MergeOptions, or any named merge error would pass the enforcement walk silently.
 // This file pins the three things the vocabulary decision requires stay side-free on the public merge surface: the two public result/options types, every named merge error's rendered message, and the closed guard-reason set itself.
 //
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pinnedMergeReasons is the single hand-pinned copy of the closed guard-reason set, constant name
@@ -133,6 +132,7 @@ func collectMergeReasonConsts(t *testing.T, fileName string, file *ast.File, got
 // pinned-map equality, and this check turns "declared in mergeerrors.go" from an unenforced
 // convention into a checked one.
 func TestMergeVocabulary_GuardReasonSetMatchesConstBlock(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := mergeReasonConstsFromSource(t)
 
 	for name, decl := range got {
@@ -223,6 +223,7 @@ func assertStructFieldsSideFree(t *testing.T, v any) {
 //lym:seam internal/fabricengine#MergeResult
 //lym:seam internal/fabricengine#MergeOptions
 func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	assertStructFieldsSideFree(t, MergeResult{})
 	assertStructFieldsSideFree(t, MergeOptions{})
 }
@@ -234,6 +235,7 @@ func TestMergeVocabulary_ResultAndOptionsFieldsAreSideFree(t *testing.T) {
 //
 //testtiming:keep every named merge error rendering side-free and ErrMergeInRequired never echoing its Source; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	reasons := make([]string, 0, len(pinnedMergeReasons))
 	for _, reason := range pinnedMergeReasons {
 		reasons = append(reasons, reason)
@@ -267,6 +269,7 @@ func TestMergeVocabulary_ErrorsAreSideFree(t *testing.T) {
 //
 //testtiming:keep every member of the closed guard-reason set being side-free and path-free; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeVocabulary_GuardReasonSetIsClosedAndSideFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, reason := range pinnedMergeReasons {
 		assertSideFree(t, "guard reason "+name, reason)
 		assertNoVocabularyLeak(t, name, reason)

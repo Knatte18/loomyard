@@ -1,5 +1,3 @@
-//go:build tier0
-
 // discussiontable_test.go — untagged Tier-1 unit tests for DiscussionTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the seat prompts are composed through seatengine.Prompts, which starts nothing.
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/twilldirective"
 )
 
@@ -101,6 +100,7 @@ func unboundedAskOperator(prompt string) bool {
 
 // TestDiscussionTable verifies the table DiscussionTable builds: its settings, seats and optional list for zero, one and two advisors in both modes, that it validates against a seeded stencils directory, and that the seats' composed prompts carry the paths, strand names and mode text they must.
 func TestDiscussionTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg := discussionTableRegistry(t)
 
@@ -498,6 +498,7 @@ func TestDiscussionTable(t *testing.T) {
 
 // TestDiscussionTable_Refuses verifies DiscussionTable rejects an empty slug, an unreadable designer directive stencil (the first stencil it reads, when PATTERN.md is active), an unparsable chair model, an advisor entry the registry does not define, and, with discussion_lenses set, a lenses.yaml that does not parse or a fan that is missing, empty or names an undefined lens, naming the key, the index or the fan and the way forward.
 func TestDiscussionTable_Refuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg := discussionTableRegistry(t)
 	tests := []struct {

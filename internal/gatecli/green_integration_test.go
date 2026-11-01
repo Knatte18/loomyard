@@ -1,5 +1,3 @@
-//go:build tier1
-
 // green_integration_test.go covers the one green-record rule that needs a real git repository: a pass is recorded only while the tree it ran on is still HEAD's.
 
 package gatecli
@@ -12,9 +10,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGreenRunRecordPass(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

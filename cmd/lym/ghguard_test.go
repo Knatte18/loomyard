@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ghguard_test.go enforces the GitHub Auth Invariant's shell-out half: no production (non-test)
 // package outside internal/githubclient may shell out to the `gh` CLI.
 // internal/githubclient owns the one bounded, timeout-guarded `gh auth token` shell-out (token.go);
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // ghGuardAllowlist names the single package directory permitted to shell out to
@@ -45,6 +44,7 @@ const ghLookPathLiteral = `LookPath("gh")`
 //
 //lym:guard
 func TestGHGuard_NoShellOutOutsideGithubclient(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(ghGuardAllowlist)
 	var failures []string
 
@@ -128,6 +128,7 @@ const pullRequestImportLine = `"github.com/Knatte18/loomyard/internal/pullreques
 //
 //lym:guard
 func TestPullRequestGuard_OnlyLandingAndTeardown(t *testing.T) {
+	tiergate.Require(t, 0)
 	calls := scankit.NewAllowlist(pullRequestCallAllowlist)
 	edits := scankit.NewAllowlist(issueEditAllowlist)
 	imports := scankit.NewAllowlist(pullRequestImportAllowlist)

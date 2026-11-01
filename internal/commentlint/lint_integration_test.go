@@ -1,5 +1,3 @@
-//go:build tier1
-
 // lint_integration_test.go drives Lint over a real repository.
 
 package commentlint
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -44,6 +43,7 @@ func findingKeys(findings []Finding) []string {
 // TestLint_OverARepository walks one repository through a pure rename, a committed edit and an uncommitted edit.
 // The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLint_OverARepository(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()

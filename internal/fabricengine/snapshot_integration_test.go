@@ -1,5 +1,3 @@
-//go:build tier1
-
 // snapshot_integration_test.go — integration coverage for
 // Fabric.snapshotWarpSHA: newest-tagged-commit-wins, tag isolation, the
 // multi-tag-on-one-commit split, the absent-is-not-an-error miss path, the
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitWeftTagged advances the warp repo by one commit, writes new content
@@ -75,6 +74,7 @@ func commitWeftSnapshotOnlyTrailer(t *testing.T, weftPath, content, tag string) 
 // a tag the earlier steps recorded no commit for.
 // The steps run serially on one fixture.
 func TestSnapshotWarpSHA_Lookup(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -142,6 +142,7 @@ func TestSnapshotWarpSHA_Lookup(t *testing.T) {
 // "does not have any commits yet" tolerance scanWarpSHATrailers already carries and resolve as
 // absent, not an error.
 func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -170,6 +171,7 @@ func TestSnapshotWarpSHA_UnbornWeftHEAD(t *testing.T) {
 //
 //testtiming:keep snapshotWarpSHA scanning only the weft worktree's current branch, so a tag on another branch reads absent; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -277,6 +279,7 @@ func commitWeftTaggedWithDate(t *testing.T, f *fabricengine.Fabric, warpPath, we
 //
 //testtiming:keep a back-dated side commit merged back resolving to the topologically newest baseline, with RebuildIndex agreeing with the incremental index; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -365,6 +368,7 @@ func treeSHA(t *testing.T, repoPath, rev string) string {
 //
 //testtiming:keep a warp SHA recorded by a content commit and a tags-only commit resolving to the newer empty commit with identical trees and an agreeing rebuild; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -440,6 +444,7 @@ func TestWeftSHAForWarpSHA_CorrespondenceOverwrite_EmptyCommitWins(t *testing.T)
 //
 //testtiming:keep a recorded Warp-SHA whose warp commit was rewritten away being returned raw with SHAExists false; coverage of its blocks by other tests does not show an assertion of this
 func TestSnapshotWarpSHA_DanglingWarpSHA_ReturnsRawWithSHAExistsFalse(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)

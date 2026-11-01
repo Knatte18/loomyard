@@ -1,5 +1,3 @@
-//go:build tier1
-
 // configchanges_integration_test.go proves ReadConfigChanges reports a task's changes to the per-worktree config files it is told about, read from the task's weft branch since its fork point.
 //
 // Package fabricengine_test to reuse hubforge.NewHub and the add_rollback_adopt_test.go helper mustRecordsRepoRoot;
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestReadConfigChanges forks a pair from the prime, commits on the pair's weft branch and calls ReadConfigChanges against the prime's branch.
 func TestReadConfigChanges(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	loomRel := configengine.ConfigFileRel("loom")

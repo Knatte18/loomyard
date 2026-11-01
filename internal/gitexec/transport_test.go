@@ -1,5 +1,3 @@
-//go:build tier0
-
 // transport_test.go covers IsTransportFailure on hand-built *GitError values; it spawns no git.
 
 package gitexec_test
@@ -11,9 +9,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIsTransportFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	phrases := []string{

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // resetpairwarp_integration_test.go covers Fabric.ResetPairCode, the gated reset of a task pair's warp checkout: a reset past later commits and own-path dirt that keeps untracked files, moves the remote task branch and records remote_branch_updated then worktree_reset, a refusal on dirt outside the own paths that precedes any fetch, the four ownership refusals, and the remote half's refusals, skips, stale lease and failed checkout rewrite.
 //
 // Every hub is built through hubforge.NewHub with an empty branch_prefix, so the pair's warp branch is the bare slug.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pairFabric adds a task pair for slug to h and opens the fabric handle on the pair's warp worktree.
@@ -57,6 +56,7 @@ func assertResetRefused(t *testing.T, err error, rec *fabricengine.Mutations, wa
 }
 
 func TestResetPairCode_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rpw-reset"
@@ -107,6 +107,7 @@ func TestResetPairCode_DiscardsCommitsAndOwnPathDirtKeepsUntracked(t *testing.T)
 }
 
 func TestResetPairCode_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rpw-foreign"
@@ -153,6 +154,7 @@ func TestResetPairCode_DirtyPathOutsideOwnPathsRefuses(t *testing.T) {
 }
 
 func TestResetPairCode_OwnershipRefusals(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("PrimeCheckout", func(t *testing.T) {
@@ -272,6 +274,7 @@ func (p *remoteHalfPair) pushRemoteOnlyCommit(t *testing.T) string {
 // TestResetPairCode_RemoteHalf covers every outcome of the remote half of ResetPairCode other than the update itself:
 // the refusals, each leaving the remote and the checkout unchanged, and the cases that leave the remote alone.
 func TestResetPairCode_RemoteHalf(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -411,6 +414,7 @@ func TestResetPairCode_RemoteHalf(t *testing.T) {
 // TestResetPairCode_OursMergeThenRerunConverges proves the way forward a remote-only commit's refusal names:
 // after `git merge --strategy ours` takes in the remote tip, a re-run rewinds both the checkout and the remote task branch.
 func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newRemoteHalfPair(t, "rhf-ours")
@@ -437,6 +441,7 @@ func TestResetPairCode_OursMergeThenRerunConverges(t *testing.T) {
 
 // TestUpdateRemoteBranch_StaleLeaseRefuses drives the executor with a lease stale against the origin, the state a remote tip that moves after the fetch produces.
 func TestUpdateRemoteBranch_StaleLeaseRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newRemoteHalfPair(t, "rhf-lease")
@@ -458,6 +463,7 @@ func TestUpdateRemoteBranch_StaleLeaseRefuses(t *testing.T) {
 
 // TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges holds the checkout's index lock so the rewrite fails once the remote has moved.
 func TestResetPairCode_CheckoutFailureAfterRemoteUpdateConverges(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newRemoteHalfPair(t, "rhf-lock")

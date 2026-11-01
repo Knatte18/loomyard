@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rounds_test.go tests the repair split, review rounds and parent decisions of a run over a fake records repository.
 
 package reportengine
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // roundFigures are the repair and review figures of one run.
@@ -35,6 +34,7 @@ func arbiterAt(producer, state string, hour int) loomengine.ArbiterAttempt {
 }
 
 func TestCompute_RepairsAndRounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running, blocked, failed := shedengine.StateRunning, shedengine.StateBlocked, shedengine.StateFailed
 	hourAt := func(hour int) string { return at(hour).Format(time.RFC3339) }
@@ -209,6 +209,7 @@ func TestCompute_RepairsAndRounds(t *testing.T) {
 }
 
 func TestReadSegments_CodeAndRetiredSubdirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
 	w.fullRun("new", "tn", 100, nil, nil, reviewFiles("code", "round-1-review.md", "round-2-review.md"))
@@ -238,6 +239,7 @@ func TestReadSegments_CodeAndRetiredSubdirs(t *testing.T) {
 }
 
 func TestCompute_FullRunCounts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running, awaiting, failed := shedengine.StateRunning, shedengine.StateAwaiting, shedengine.StateFailed
 

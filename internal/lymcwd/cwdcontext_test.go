@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cwdcontext_test.go exercises the context-carried cwd seam: a context seeded via WithCwd hands its
 // value back through CwdFrom, a bare context falls back to Getwd, and WithCwd panics on an empty or
 // relative dir.
@@ -9,11 +7,14 @@ package lymcwd
 import (
 	"context"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWithCwd_RoundTrip verifies that a context seeded via WithCwd returns
 // that exact value from CwdFrom.
 func TestWithCwd_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const want = "/abs/path/to/worktree"
@@ -31,6 +32,7 @@ func TestWithCwd_RoundTrip(t *testing.T) {
 // TestCwdFrom_FallsBackToGetwd verifies that a bare context.Background()
 // makes CwdFrom return the same answer as Getwd.
 func TestCwdFrom_FallsBackToGetwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	want, wantErr := Getwd()
@@ -52,6 +54,7 @@ func TestCwdFrom_FallsBackToGetwd(t *testing.T) {
 
 // TestWithCwd_PanicsOnEmpty verifies that WithCwd panics when dir is empty.
 func TestWithCwd_PanicsOnEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	defer func() {
@@ -65,6 +68,7 @@ func TestWithCwd_PanicsOnEmpty(t *testing.T) {
 // TestWithCwd_PanicsOnRelative verifies that WithCwd panics when dir is not
 // an absolute path.
 func TestWithCwd_PanicsOnRelative(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	defer func() {

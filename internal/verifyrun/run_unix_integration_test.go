@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // run_unix_integration_test.go holds the verify-run tests that rest on POSIX process groups and signals.
 
@@ -15,12 +15,15 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_ExpiryKillsBackgroundedDescendant pins that an expired context terminates a descendant of the verify shell that holds the output pipe, not only the shell:
 // a descendant that exits on SIGTERM is gone when run returns, having run its trap.
 // One that ignores SIGTERM is killed once the wait delay has passed.
 func TestRun_ExpiryKillsBackgroundedDescendant(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const (

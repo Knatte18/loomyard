@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_amendment_test.go covers the Bouncer's new review generation over a changed subject: the archive, the generation record, the amendment allowance and the note that scopes an amendment's review.
 
 package shedadapters
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // amendmentRubricBody is a rubric that renders the amendment note, so a seed prompt shows it.
@@ -197,6 +196,7 @@ func amendmentInputRow(name string, offset time.Duration, wantNamed bool) amendm
 
 //testtiming:keep pins the new generation a changed subject starts: its archive and records, the allowance and hard cap, the note a seed reads, and the paths that degrade or return an error
 func TestBouncer_Amendment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	codeSubject := Subject{Kind: SubjectCode, MergeBase: "merge-base-1", Base: "merge-base-1", Head: "head-1", FullHash: "full-1", PatchID: "patch-1", Patch: []byte("settled diff")}
 

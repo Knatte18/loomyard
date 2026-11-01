@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_test.go drives wire directly against a hand-built *lymcwd.Location over a temporary
 // directory seeded with the one module config load that does not tolerate absence (loomengine's own
 // strict configengine.Load): every other config load this task's wire performs
@@ -41,6 +39,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedLoomConfigWithInteractive overwrites <anchorPath>/_lym/config/loom.yaml with a full literal.
@@ -94,6 +93,7 @@ driver: ""
 
 // TestWire_MissingHubLandingConfigNamesWayForward asserts a hub without the hub-wide landing config fails wire with an error ending in the way forward.
 func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
@@ -115,6 +115,7 @@ func TestWire_MissingHubLandingConfigNamesWayForward(t *testing.T) {
 // The steps read the one wired receiver and run in order.
 // The last step writes a status file into the run directory the wired paths name, which no earlier step reads.
 func TestWire_DefaultConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
@@ -508,6 +509,7 @@ func TestWire_DefaultConfig(t *testing.T) {
 
 // TestWire_DiscussionTableEvaluatesToExpectedShape evaluates c.env.DiscussionTable() for both discussion_interactive values and asserts the table's settings, the lead's seat, and a lead prompt over the wired geometry that names the parent and carries no unrendered marker, then the table's seats and fork authorization under the discussion_advisors and discussion_lenses keys.
 func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -642,6 +644,7 @@ func TestWire_DiscussionTableEvaluatesToExpectedShape(t *testing.T) {
 // standalone format self-checks the writer agents' own stencils run mid-task, so they must not
 // depend on an unrelated module's config health any more than status/pause do.
 func TestVerbUsesLightweightWiring(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		verb string
@@ -683,6 +686,7 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 //
 //testtiming:keep pins the lightweight wiring filling the status, lock and plan-validation paths and the commit-status seam with no config loaded and no engine built; the covering test runs the wiring without asserting its fields
 func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Deliberately NOT hubLocation: this location's anchor has no _lym/config directory at all, so
 	// a path that loaded any module config could not possibly succeed here.
 	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
@@ -771,6 +775,7 @@ func TestWireLightweight_FillsThePathsWithoutLoadingAnyConfig(t *testing.T) {
 //
 //testtiming:keep pins the resolved friction directory filled into c.frictionDir, the webster run deps and its env copy when the friction key is set, and the empty string in all three when it is present but empty; the covering test wires with the default config only
 func TestWire_FrictionDirFillsBurlerAndWebster(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -846,6 +851,7 @@ func seedLoomConfigWithKeys(t *testing.T, anchorPath string, values map[string]s
 // plan_judge, seed and code_seed land in each segment's Bouncer pair.
 // The per-perch budget and hard cap keys land in each segment's MaxBounces and HardMaxBounces, and every segment's entry is pinned whole.
 func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")
@@ -969,6 +975,7 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 
 // TestWire_LanguageSkills asserts wire loads the hub's language.yaml once and tells the list to the Webster deps and the darn writer's table, and that an unusable file halts wire with the module's way forward.
 func TestWire_LanguageSkills(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1080,6 +1087,7 @@ func TestWire_LanguageSkills(t *testing.T) {
 
 // TestLoomRerouteCapWayForward_IsRowNeutral proves the reroute-cap clause serves every row's cap halt: it names the resume verb and the plan amendment route of a Webster plan conflict.
 func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, want := range []string{`lym loom resume`, "--amends-plan", "lym loom goto --to Plan-Burler-Review"} {
@@ -1091,6 +1099,7 @@ func TestLoomRerouteCapWayForward_IsRowNeutral(t *testing.T) {
 
 // TestLoomRerouteCapWayForward proves a loom shed that reroutes Webster past the cap halts blocked at Webster with the told clause, which names the plan amendment route and the resume.
 func TestLoomRerouteCapWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()

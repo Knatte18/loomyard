@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lifecycle_test.go drives the lifecycle ops' planning seams — the parts that decide what would run
 // without needing a live tmux server: planUpLaunches (Up never launches anything) and
 // planResumeLaunches across the three states the discussion calls out (server dead, server-up/
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,6 +41,7 @@ func guids(strands []Strand) []string {
 // so the assertion is only that the error is NOT the watchdog validation error).
 // Each refusal is asserted at three boot entries: Up and Resume, whose boot op lock refuses before any tmux round trip, and ensureServerAndSessionLocked, which every other boot path reaches without it.
 func TestUp_BootValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		configure func(cfg *Config)
@@ -154,6 +154,7 @@ func TestUp_BootValidation(t *testing.T) {
 
 // TestServerSpawnArgv pins the argv of the server-starting invocation: the debug flags first, `-f /dev/null` ahead of `-L` everywhere but Windows, then new-session with the configured shell, and off Windows the three chained session pins last.
 func TestServerSpawnArgv(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	session := []string{
 		"-L", e.Socket(),
@@ -190,6 +191,7 @@ func TestServerSpawnArgv(t *testing.T) {
 
 // TestStatus_ReportsSegmentColor pins that Status carries each strand's resolved segment color, and none for a strand recorded without a segment.
 func TestStatus_ReportsSegmentColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	fake := installFakeTmux(t, e)
 	fake.answer("display-message", "$0|4321|1787000000", nil)
@@ -223,6 +225,7 @@ func TestStatus_ReportsSegmentColor(t *testing.T) {
 // It also pins the pane pid: the listed pid for a live pane, 0 for a dead pane and for one in no listing.
 // A pane the session lacks is looked up once across the server: found in another session, its row names the placement; found nowhere or on a failed lookup, the row names none, and the failure logs one Warn however often it repeats.
 func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
+	tiergate.Require(t, 0)
 	logs := logcapture.Capture(t)
 	e := newTestEngine(t)
 	fake := installFakeTmux(t, e)
@@ -308,6 +311,7 @@ func TestStatus_ReportsOwnWindowStrandsFromTheSessionListing(t *testing.T) {
 // TestServerBootEnv_ExcludesTraceID pins that LYM_TRACE_ID is stripped before the tmux server
 // inherits the boot env (long-lived singleton).
 func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv(logger.TraceIDEnv, "somevalue")
 
 	clean, _ := testScrub.Apply(os.Environ())
@@ -334,6 +338,7 @@ func TestServerBootEnv_ExcludesTraceID(t *testing.T) {
 
 //testtiming:keep pins the pane env dropping exactly LYM_STRAND_NAME and LYM_PARENT and keeping a longer key sharing the prefix; its covering tests run this code without asserting it
 func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := []string{"LYM_STRAND_NAME=ly:task:driver", "LYM_PARENT=ly:orch", "LYM_PARENTAL=keep", "PATH=/bin"}
 
 	got := stripAgentNameEnv(env)
@@ -345,6 +350,7 @@ func TestStripAgentNameEnv_DropsNameAndParentOnly(t *testing.T) {
 }
 
 func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	tables := [][]Strand{
 		nil,
 		{{GUID: "a", Display: render.Display{Anchor: render.AnchorOwnWindow}}},
@@ -361,6 +367,7 @@ func TestPlanUpLaunches_NeverLaunchesAnyStrand(t *testing.T) {
 }
 
 func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		strandCount   int
@@ -418,6 +425,7 @@ func TestNoSessionMessage_StrandCountVariants(t *testing.T) {
 // shapes plus an unrelated file the pruner must never touch, and asserts each prefix is pruned to
 // keep independently.
 func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	now := time.Now()
 
@@ -488,6 +496,7 @@ func TestPruneServerLogsLocked_ServerAndClientPrefixesPrunedIndependently(t *tes
 }
 
 func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
+	tiergate.Require(t, 0)
 	notLive := Strand{GUID: "a", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	stillLive := Strand{GUID: "b", PaneID: "%2", Display: render.Display{Anchor: render.AnchorOwnWindow}}
 	hidden := Strand{GUID: "c", Display: render.Display{Anchor: render.AnchorHidden}}
@@ -606,6 +615,7 @@ func TestPlanResumeLaunches_ThreeLifecycleStates(t *testing.T) {
 
 // TestDown_ListsEveryWindowsPanesOverACorruptState pins that Down, the escape that works over a corrupt reed.json, still lists the session's panes in every window for its reap before killing the session, and deletes the state.
 func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	statePath := filepath.Join(e.stateDir(), reedStateFileName)
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
@@ -635,6 +645,7 @@ func TestDown_ListsEveryWindowsPanesOverACorruptState(t *testing.T) {
 // It also pins that a write failure or an unconfirmed server death never hides the stop or swallows the error, and that a cold boot's touch turns a stop back into an ordinary discover.
 // It is not parallel: logcapture redirects the process-global logger.
 func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
+	tiergate.Require(t, 0)
 	notGone := errors.New("server still holds the socket")
 	tests := []struct {
 		name            string
@@ -731,6 +742,7 @@ func TestDown_WritesTheDiscoverStopOnlyWhenItEndsTheServer(t *testing.T) {
 // TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep pins the revival helper's sequence for a told list of fake revive functions:
 // the predecessors run in list order, the booter's own entry and later entries are never called, a failing predecessor is skipped, and the step runs again once with the skip set.
 func TestWithRevivalFirst_RevivesEarlierWorktreesThenRerunsTheStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	e.geom.WorktreeName = "booter"
 	var revived []string

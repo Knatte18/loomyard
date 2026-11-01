@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tiers_test.go covers the pure planning of a call's tier runs and the rendering of a tier's command.
 
 package gatecli
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -71,6 +70,7 @@ func requestScope(request testRequest) scope {
 }
 
 func TestPlanTierRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tier1Guards := map[int]map[string][]string{1: {"g": {"TestG"}}}
@@ -509,6 +509,7 @@ func TestPlanTierRuns(t *testing.T) {
 }
 
 func TestTrimpathLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -543,6 +544,7 @@ func TestTrimpathLine(t *testing.T) {
 }
 
 func TestFilterArgument(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	refusal := "gate test: the filter of tier3 cannot be quoted for the shell: " + verifyrun.ErrPercentUnderCmd.Error() +
 		"; way forward: fix the tier's filter with \"lym config gate\" from the prime" + roleClause

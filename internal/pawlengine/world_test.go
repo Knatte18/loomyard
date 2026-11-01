@@ -1,5 +1,3 @@
-//go:build tier0
-
 // world_test.go holds the fake beam every pawlengine test drives: told seams that log their calls in order, a fixed clock and a sleep that records its waits.
 
 package pawlengine_test

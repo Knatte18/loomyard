@@ -1,5 +1,3 @@
-//go:build tier0
-
 // teardownlock_test.go covers DetachedPush's exit under a pause, which needs no git and no real hub:
 // the worktree paths it is given do not exist, so a child that goes on past the pause check stops at the gone-worktree check.
 
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDetachedPush_CoveredChildExitsBeforeItsFlags covers a covered child that was not spawned under its pair's parent lock:
@@ -19,6 +18,7 @@ import (
 // A parent-locked child skips the covered check, which the teardown lock file it then writes shows.
 // Serial: HoldHubPauseForTest installs the process's network gate.
 func TestDetachedPush_CoveredChildExitsBeforeItsFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	const slug = "pair"
 
 	tests := []struct {

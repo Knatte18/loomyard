@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ancestors_test.go tests the pruneEmptyAncestors helper.
 
 package fabricengine
@@ -8,12 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPruneEmptyAncestors tests the pruneEmptyAncestors helper with various scenarios: empty
 // ancestors removed to stop, non-empty dirs halting walk, start == stop no-op, and idempotency on
 // already-pruned trees.
 func TestPruneEmptyAncestors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		setup  func(t *testing.T, tempDir string) (start, stop string)
@@ -174,6 +175,7 @@ func TestPruneEmptyAncestors(t *testing.T) {
 //
 //testtiming:keep the containment assertion shared by the launcher teardown helpers refusing ".."-derived paths that once let `lym fabric remove ..` delete a hub; coverage of its blocks by other tests does not show an assertion of this
 func TestRefuseUncontainedPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const container = "/hub/_launchers"
@@ -219,6 +221,7 @@ func TestRefuseUncontainedPath(t *testing.T) {
 //
 //testtiming:keep the empty-ancestor sweep refusing a symlinked intermediate that escapes the hub, with an empty out-of-container victim that survives; coverage of its blocks by other tests does not show an assertion of this
 func TestPruneEmptyAncestors_RefusesEscapingIntermediate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stop := t.TempDir()

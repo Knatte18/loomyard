@@ -7,7 +7,7 @@
 // Socket, KillOnCleanup and PackageServer each first start a hermetic server on the key from the kit's own tmux config, so no server a test uses reads `~/.tmux.conf`, starts login-shell panes or exits when it has no session.
 // The config marks its servers with the user option `@lym_test_server`, which reed's stale-holder probe reads to leave such a server alone.
 // A server reed starts itself reads no `~/.tmux.conf` either and pins the same two shell options per session, so the kit's server differs from reed's own only by the two extra lines, `exit-empty off` and the marker.
-// Main also unsets `LYM_REED_TMUX_CONF`, so every reed.yaml a tagged test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
+// Main also unsets `LYM_REED_TMUX_CONF`, so every reed.yaml a test renders from the template resolves `tmux_conf` to empty and no operator tmux config reaches a server a test starts.
 // Reed starts a server itself only after a test's own `down` or `kill-server` on its key, or when a test registers its key after reed's boot.
 //
 // Main runs in the process run directory of `internal/lymtemp` and points `TMPDIR` at it, so every temp file a test creates lands there.
@@ -15,9 +15,9 @@
 // After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
 // A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
 // A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
-// A socket on a reed capability-probe key is no finding in a package with either tag.
+// A socket on a reed capability-probe key is no finding in a run whose tier selection holds tier2 or tier3.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
-// Before the sweep it also fails the package for a socket it finds: any socket in a test binary built without the `tier2` and `tier3` tags, and in one built with either only a socket whose key no test registered.
+// Before the sweep it also fails the package for a socket it finds: any socket in a run whose tier selection holds neither tier2 nor tier3, and in one holding either only a socket whose key no test registered.
 // Pids, ProcArgv, ProcCwd, ProcExe, ProcPPID, ProcState, ProcComm and IsWatchdog are the read-only `/proc` probes behind that scan, exported for tests that look for processes themselves.
 // BindStaleSocket leaves a socket file that refuses every stream connection, for tests of the code that removes dead sockets.
 //
@@ -103,7 +103,7 @@ func Main(m *testing.M) int {
 // It returns code unless a socket finding or a leftover forces 1, and names each on w.
 // A failed remove is named on w and leaves the code unchanged, since the next start's sweep removes the directory.
 func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func(), remove func() error) int {
-	if findings := checkSockets(dir, tmuxAllowed); len(findings) > 0 {
+	if findings := checkSockets(dir, tmuxAllowed()); len(findings) > 0 {
 		for _, finding := range findings {
 			fmt.Fprintln(w, finding)
 		}
@@ -135,7 +135,7 @@ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func
 
 // checkSockets returns one finding per tmux server socket under dir's per-user socket directory that its package's tests may not leave.
 // With allowed false every socket is a finding; with it true only a socket whose key no test registered is.
-// A finding names the key and the way forward: tag the test file `tier2`, or register the key through Socket, KillOnCleanup or PackageServer.
+// A finding names the key and the way forward: make the test that starts the server a tier2 test, or register the key through Socket, KillOnCleanup or PackageServer.
 func checkSockets(dir string, allowed bool) []string {
 	registryMu.Lock()
 	defer registryMu.Unlock()
@@ -144,10 +144,10 @@ func checkSockets(dir string, allowed bool) []string {
 		key := filepath.Base(sock)
 		switch {
 		case !allowed:
-			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a package without a tier2 or tier3 test tag; tag the test file that starts it `tier2`", key))
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on key %q outlived the run in a run selecting neither tier2 nor tier3; make the test that starts it a tier2 test with tiergate.Require(t, 2)", key))
 		case isReedProbeKey(key):
 		case !registeredKeys[key]:
-			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or tag the file `tier2`", key))
+			findings = append(findings, fmt.Sprintf("tmuxkit: a tmux server on unregistered key %q outlived the run; register the key through Socket, KillOnCleanup or PackageServer, or make the test a tier2 test", key))
 		}
 	}
 	return findings

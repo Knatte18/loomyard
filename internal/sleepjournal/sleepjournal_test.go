@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sleepjournal_test.go pins how journal entries become sleep intervals and which clause Read gives for each way a run can leave no sleep.
 
 package sleepjournal
@@ -13,9 +11,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	base := time.Date(2026, 10, 14, 19, 0, 0, 0, time.UTC)
 	at := func(minutes int) time.Time { return base.Add(time.Duration(minutes) * time.Minute) }

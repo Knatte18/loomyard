@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sections_test.go covers the plan-level body sections extracted from 00-overview.md.
 // The first three are exposed verbatim from the format-4 golden fixture, and each is empty when its heading is absent from the overview.
 // The PATTERN changes section parses into entries.
@@ -13,12 +11,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestParsePlan_PlanLevelSections asserts the three plan-level sections are exposed verbatim from the golden fixture and each defaults to "" when its heading is absent.
 //
 //testtiming:keep pins the three plan-level section bodies verbatim, which the golden fixture zero-findings test does not assert
 func TestParsePlan_PlanLevelSections(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("golden fixture exposes them verbatim", func(t *testing.T) {
@@ -146,6 +146,7 @@ func TestParsePlan_PlanLevelSections(t *testing.T) {
 //
 //testtiming:keep pins how a multi-line verify section chains into one command, which its covering tests do not assert
 func TestParsePlan_VerifySection_ChainsEveryLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

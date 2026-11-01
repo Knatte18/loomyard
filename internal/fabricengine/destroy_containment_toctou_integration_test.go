@@ -1,5 +1,3 @@
-//go:build tier1
-
 // destroy_containment_toctou_integration_test.go drives the real `remove` verb end-to-end against a
 // symlink planted at an intermediate segment of a gate target (the per-slug launcher directory,
 // <hub>/_launchers/<anchor>/<slug>) and pointing OUTSIDE the hub — the shape R3's crucible round
@@ -22,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink builds a real pair, replaces its launcher
@@ -29,6 +28,7 @@ import (
 // symlink points at are preserved — the gated removal must never follow the escaping segment out of
 // the hub.
 func TestRemove_DoesNotDeleteOutsideHubThroughLauncherSymlink(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "toctou-launcher"

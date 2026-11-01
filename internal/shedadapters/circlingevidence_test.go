@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -7,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // evidenceEntry is one labelled ledger entry of a circling-evidence fixture.
@@ -38,6 +38,7 @@ func writeEvidenceLedger(t *testing.T, dir string, round int, entries ...evidenc
 }
 
 func TestCirclingEvidence(t *testing.T) {
+	tiergate.Require(t, 0)
 	gating := func(key, status string) evidenceEntry {
 		return evidenceEntry{key, status, "design", "MEDIUM"}
 	}

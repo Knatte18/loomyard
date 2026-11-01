@@ -1,5 +1,3 @@
-//go:build tier1
-
 // wiring_rework_integration_test.go drives wire()'s real plan seams over a real fabric pair,
 // so the Plan-Review skip seam reads the rework rounds an earlier run left at the records HEAD.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeReworkPlan writes a plan generation whose cards are numbered from first, keyed by slug in index order.
@@ -75,6 +74,7 @@ func commitReworkRound(t *testing.T, c *loomCLI, location *lymcwd.Location, n, f
 
 // TestWire_Real_PlanReviewSkipFollowsGenerationClass asserts Env.SkipPlanReview, over a real fabric pair, answers true after a recorded round whose generation is all-Prosa on .md files and false after one whose generation carries a source card.
 func TestWire_Real_PlanReviewSkipFollowsGenerationClass(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const slug = "reworkskip"
 	hubforge.AddPair(t, hub, slug)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // friction_test.go covers the Tier 2 friction wiring this batch's runCmd/startCmd call sites own:
 // the once-per-task clear-and-create split ensureFrictionDirAfterSeed implements for the shared bootstrap, run's own unconditional ensure, and the reflection call reflectFriction implements (the reflection runs only inside the Friction-Reflect row; a halt's note without a reflection is covered by halt_test.go).
 // Every test here is untagged Tier 1: it spawns no subprocess, drives no real git operation, builds no real hub fixture, and contains no time.Sleep at or above one second.
@@ -26,11 +24,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestEnsureFrictionDirAfterSeed asserts the once-per-task clear-and-create split.
 func TestEnsureFrictionDirAfterSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// seedFrictionDirWithNote returns a friction directory holding one pre-existing note, and the note's path.
@@ -126,6 +126,7 @@ func TestEnsureFrictionDirAfterSeed(t *testing.T) {
 //
 //testtiming:keep pins a malformed deps value reporting failed rather than an error or a filed status, and the reflection lock being released for the next call; the covering tests reflect through other paths
 func TestReflectFriction_DepsValidationFailureReportsFailed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
@@ -166,6 +167,7 @@ func newRelativeFrictionCLI(t *testing.T) *loomCLI {
 //
 //testtiming:keep pins an empty friction directory never reflecting and a set one attempting the reflection, recorded on the receiver; the covering test waits on the lock rather than asserting the skip
 func TestReflectFrictionRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -198,6 +200,7 @@ func TestReflectFrictionRow(t *testing.T) {
 //
 //testtiming:keep pins the row reflecting through the reflection shuttle: one spawn whose prompt names the note, the note archived out of the friction directory and the status reported as reflected; the covering tests reflect over a deps failure that never spawns
 func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -247,6 +250,7 @@ func TestReflectFrictionRow_SpawnsThroughTheReflectionShuttle(t *testing.T) {
 // TestReflectFrictionRow_WaitsOnAHeldReflectionLock asserts the row holds done back while another
 // reflection holds the lock, then completes once it is released.
 func TestReflectFrictionRow_WaitsOnAHeldReflectionLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := newRelativeFrictionCLI(t)
@@ -345,6 +349,7 @@ func TestReflectFrictionRow_WaitsOnAHeldReflectionLock(t *testing.T) {
 // TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting asserts RunDone reports what the row
 // recorded and never reflects itself.
 func TestLoomPostRun_DoneReportsTheRowStatusWithoutReflecting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := newRelativeFrictionCLI(t)

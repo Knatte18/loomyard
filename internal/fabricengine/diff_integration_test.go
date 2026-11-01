@@ -1,5 +1,3 @@
-//go:build tier1
-
 // diff_integration_test.go — integration coverage for the unified
 // Fabric.Diff and Fabric.Status added in diff.go: the exact-correspondence
 // merge, the nearest-older weft-anchor bridge, the no-correspondence case,
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // changeEntryPaths returns the Path of every entry in entries whose Side
@@ -42,6 +41,7 @@ func changeEntryPaths(entries []fabricengine.ChangeEntry, side fabricengine.Chan
 // and diffing since the first must report both sides' changes made in the second round, correctly
 // side-labelled.
 func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -87,6 +87,7 @@ func TestDiff_MergesWarpAndWeftSides(t *testing.T) {
 // weft commit made ahead of that baseline showing up in the weft-side result, rather than the weft
 // side coming back empty (which is what a strictly exact-only anchor would produce).
 func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -133,6 +134,7 @@ func TestDiff_NearestOlderAnchor_ResolvesToNearestOlderSyncedWeftBaseline(t *tes
 // older than the first weft commit — no entry exists at or before it — must not be an error;
 // it must report warp entries, empty weft entries, and NoWeftCorrespondence = true.
 func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -177,6 +179,7 @@ func TestDiff_NoWeftCorrespondence_BeforeFirstSync(t *testing.T) {
 // It also covers Fabric.DirtyPaths: both sides' modified tracked paths come back absolute under their checkouts, and an untracked file does not.
 // Fabric.CodeDirtyPaths returns the code checkout and only its tracked path, relative to it.
 func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)

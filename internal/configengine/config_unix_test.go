@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // config_unix_test.go holds the config loader tests that rest on file mode bits, which Windows does not enforce.
 
@@ -11,12 +11,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lym/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
 //
 //testtiming:keep pins that an _lym/ that cannot be stat'd errors instead of resolving the template, which no covering test reaches
 func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory mode bits")

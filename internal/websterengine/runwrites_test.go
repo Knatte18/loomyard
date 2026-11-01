@@ -1,9 +1,7 @@
-//go:build tier0
-
 // runwrites_test.go covers loadRunWrites: every recorded Master session is audited and its events merged,
 // a session id recorded twice is audited once, an audit error surfaces naming the session,
 // and writtenWorktreePaths turns the events into worktree-relative paths.
-// Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.
+// Tier0, with a shuttlefake.Engine — no git, no subprocess spawns.
 
 package websterengine
 
@@ -16,9 +14,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLoadRunWrites(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("merges every session's events", func(t *testing.T) {

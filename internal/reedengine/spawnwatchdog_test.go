@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawnwatchdog_test.go pins SpawnWatchdog's two no-spawn early returns, spawning no subprocess and
 // driving no live tmux at all — per the Test Tier Purity Invariant an untagged test file spawns
 // nothing. Reaching the end of each case below is the assertion: either call would re-exec
@@ -13,9 +11,12 @@ package reedengine
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSpawnWatchdog_ReturnsWithoutSpawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		hubPath  string
@@ -32,6 +33,7 @@ func TestSpawnWatchdog_ReturnsWithoutSpawning(t *testing.T) {
 }
 
 func TestSpawnWatchdogEnv_DropsLogFileOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

@@ -1,8 +1,8 @@
-//go:build tier0
-
 package shedengine
 
 import "testing"
+
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
 
 func gotoTestProducers() []ProducerDef {
 	return []ProducerDef{
@@ -34,6 +34,7 @@ func historyOf(groups ...[]HistoryEntry) []HistoryEntry {
 // a goto keeps every count, a reroute ends its target segment's episode, a budget-capped entry ends the scan unless a goto directly follows it,
 // and a generation-start entry is counted and ends the scan right after itself.
 func TestEpisodeStuckCount_Boundaries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	ps := gotoTestProducers()
 	gotoTo := func(producer string) []HistoryEntry {

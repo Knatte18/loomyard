@@ -1,5 +1,3 @@
-//go:build tier0
-
 // probe_test.go drives probeCapability's pure decidable core (probe.go) with a fake run closure,
 // covering the healthy path plus each of its two failure modes (version below the pinned floor, a
 // missing required subcommand) without ever shelling out to a real multiplexer binary.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeVersionOutput reports a version comfortably above both
@@ -53,6 +52,7 @@ func commandsWithout(missing string) func(args ...string) (string, error) {
 
 //testtiming:keep pins the capability probe's outcomes with a fake run: healthy, a version below the pin and a missing required subcommand, the last two as *CapabilityError, and a missing optional subcommand passing with one warning; its covering tests run this code without asserting it
 func TestProbeCapability(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		run        func(args ...string) (string, error)
@@ -136,6 +136,7 @@ func TestProbeCapability(t *testing.T) {
 //
 //testtiming:keep pins the probe going through the socket-scoped TmuxCmd as exactly -V then list-commands, never the configured binary directly; its covering tests run this code without asserting it
 func TestProbeCapabilityLocked_GoesThroughTheSocketScopedTmuxCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	fake := installFakeTmux(t, e)

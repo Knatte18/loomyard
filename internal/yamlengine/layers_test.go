@@ -1,5 +1,3 @@
-//go:build tier0
-
 // layers_test.go contains table-driven tests for the layer operations: Merge, Strip, SetSparse, Prune, DropTemplateEqualNames, LeafPaths and AnnotateLeaves.
 
 package yamlengine
@@ -8,10 +6,13 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMerge pins the depth merge of upper over lower: scalars and lists replace whole, a mapping both hold merges, an open map or a whole entry is carried whole, comments and order come from lower, and an empty side yields the other.
 func TestMerge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -49,6 +50,7 @@ func TestMerge(t *testing.T) {
 
 // TestStrip pins which upper units Strip removes: equal ones, with a marker equal only to the same marker text, an open map kept whole when any entry differs, emptied mappings removed with their key, and the all-stripped empty result.
 func TestStrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -94,6 +96,7 @@ const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\n
 
 // TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	openMaps := []string{"labels", "rounds"}
 	perNameMaps := []string{"lists", "names", "profiles"}
@@ -189,6 +192,7 @@ func TestSetSparse(t *testing.T) {
 
 // TestPrune pins that Prune removes only units the template does not know: a retired key, an unknown nested key, a retired mapping unit by unit, an emptied parent with its key; a key under an open map stays, no template key is added, and an untouched file comes back byte for byte.
 func TestPrune(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const template = "name: tmpl\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nnames:\n    a: default a\n"
 	tests := []struct {
@@ -231,6 +235,7 @@ func TestPrune(t *testing.T) {
 
 // TestDropTemplateEqualNames pins that only a per-name entry equal to the template's is removed and reported: the same value in another quoting style counts as equal, a differing name and a name only the file holds stay, an emptied map stays as an empty mapping, and a file with nothing to drop comes back byte for byte.
 func TestDropTemplateEqualNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const template = "name: tmpl\nnames:\n    a: default a\n    b: default b\n"
 	tests := []struct {
@@ -266,6 +271,7 @@ func TestDropTemplateEqualNames(t *testing.T) {
 
 // TestLeafPaths pins the unit paths of a document under both flags: nested keys are descended, a list and an empty mapping are one unit, an open map is one unit, and wholeEntries makes every top-level key one unit.
 func TestLeafPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const doc = "z: 1\nb:\n    d: [x]\n    c: 2\nlabels:\n    k: v\ne: {}\n"
 	tests := []struct {
@@ -296,6 +302,7 @@ func TestLeafPaths(t *testing.T) {
 
 // TestAnnotateLeaves pins that a note lands as the line comment of its unit under both flags, a mapping unit carrying it on its key, a missing or non-unit path ignored and a leading # kept as given.
 func TestAnnotateLeaves(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string

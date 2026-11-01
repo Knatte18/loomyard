@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parse_test.go tests Parse over a full parts file and the errors it names, plus the model reads External and SpotPaths.
 
 package partsparser
@@ -8,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // validParts is a parts file of two parts and two shared spots that Parse reads and Check passes for the decisions D1 to D3.
@@ -65,6 +65,7 @@ func mustParse(t *testing.T, text string) *Parts {
 }
 
 func TestParse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a full file is read into the model", func(t *testing.T) {

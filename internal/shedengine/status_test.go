@@ -1,5 +1,3 @@
-//go:build tier0
-
 // status_test.go covers the JSON round-trip TDD candidate for Status: an in-memory marshal/unmarshal round-trip and State.valid's enum gate.
 
 package shedengine
@@ -12,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // semanticJSONEqual compares two json.RawMessage payloads by semantic equality: unmarshal both
@@ -31,6 +31,7 @@ func semanticJSONEqual(t *testing.T, a, b json.RawMessage) bool {
 }
 
 func TestStatus_JSONRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	want := Status{
 		CurrentProducer: "Plan-Write",
 		State:           StateRunning,
@@ -167,6 +168,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 }
 
 func TestState_Valid(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		s    State
@@ -191,6 +193,7 @@ func TestState_Valid(t *testing.T) {
 
 // TestRecordResumer pins which statuses the waiter's marking touches: halted runs with no label pending, and nothing else.
 func TestRecordResumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string

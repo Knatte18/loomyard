@@ -1,5 +1,3 @@
-//go:build tier0
-
 // destructiveguard_test.go closes slice 12's completeness proof by machine-checking that
 // internal/fabricengine's production source contains no destructive primitive call outside
 // destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to
@@ -56,6 +54,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // destructiveGuardScanPackages are the module-relative package subtrees this guard walks: exactly
@@ -198,6 +197,7 @@ var destructiveGuardReadOnlyResultTypes = []struct {
 //
 //lym:guard
 func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(destructiveGuardAllowlist)
 
 	var scanned int
@@ -244,6 +244,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 //testtiming:keep internal/fabricengine/doc.go names this test as the Mutation Record Invariant's guard
 //lym:guard
 func TestMutationRecord_FabricengineProductionSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	moduleRoot := scankit.Root(t)
 
 	destroyPath := filepath.Join(moduleRoot, "internal", "fabricengine", "destroy.go")

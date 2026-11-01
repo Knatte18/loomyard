@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixcap_test.go — tier0 unit tests for FixCap.Exceeded.
 
 package landingshed
@@ -10,9 +8,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFixCap_Exceeded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	goMatcher := func(p string) bool { return planparser.IsTestFile("go", p) }

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // syncdeferral_test.go covers the board sync's deferrable flag under the process's network gate, against a board path that does not exist.
 
 package boardcli
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSync_DeferrableExitsUnderACoveringPause runs sync against a board path that does not exist, so a sync that reaches the board errors:
@@ -19,6 +18,7 @@ import (
 // and a deferrable sync with nothing covering proceeds to the board and reports the same error.
 // Serial: it installs the process's network gate.
 func TestSync_DeferrableExitsUnderACoveringPause(t *testing.T) {
+	tiergate.Require(t, 0)
 	missingBoard := filepath.Join(t.TempDir(), "no-board")
 
 	tests := []struct {

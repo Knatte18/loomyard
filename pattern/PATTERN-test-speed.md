@@ -6,21 +6,23 @@ Tests stay fast: `tier0` is offline and spawns nothing, no test waits out a prod
 
 The hub declares its tiers in `gate.yaml`, numbered `tier0` through `tier3`, and `lym gate test --tier <n>` runs one.
 
-| Tier | Tag | Needs | Costs |
-|---|---|---|---|
-| `tier0` | `tier0` | nothing: offline, no spawn | seconds, runs on every card gate |
-| `tier1` | `tier1` | git, a built `lym`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs in the keys that list it |
-| `tier2` | `tier2` | a real tmux server, no LLM | slower, runs in the keys that list it and by hand |
-| `tier3` | `tier3` | a real LLM session | billed, compiled by every gate and run by hand only |
+| Tier | Needs | Costs |
+|---|---|---|
+| `tier0` | nothing: offline, no spawn | seconds, runs on every card gate |
+| `tier1` | git, a built `lym`, subprocesses; no tmux server and no LLM, which `tmuxkit.Main` checks at the end of the package | tens of seconds, runs in the keys that list it |
+| `tier2` | a real tmux server, no LLM | slower, runs in the keys that list it and by hand |
+| `tier3` | a real LLM session | billed, compiled by every gate and run by hand only |
 
-- Tags are disjoint: `-tags tier1` compiles no `tier0`, `tier2` or `tier3` test file, so each test runs in exactly one tier, and a key that wants two tiers lists both.
-- A test file holding a `Test`, `Benchmark`, `Fuzz` or `Example` function carries exactly one tier tag, a platform term staying beside it (`tier2 && !windows`); an untagged test file holds support only, such as `TestMain` and helpers.
+- A package builds one test binary that holds every tier's tests, and the tier is chosen at run time: `internal/testkit/tiergate` reads `LYM_TEST_TIER`, one tier (`1`) or a range up to a tier (`0-2`), and an unset variable selects `tier0`.
+- Each tier in `gate.yaml` sets `LYM_TEST_TIER` in its `env`, so each test runs in exactly one tier, and a key that wants two tiers lists both.
+- Every `Test`, `Benchmark` and `Fuzz` function opens with `tiergate.Require(t, N)` for its tier, which skips it when the selection does not hold N; the functions of one test file name one tier, and no test file holds an `Example` function.
+  No test file's build constraint names a tier tag or `integration`, `tmux` or `llm`, so every tier compiles the same files; a platform term stays (`!windows`).
+  A support file holds no test function, such as `TestMain` and helpers, and names no tier.
   Enforced by `cmd/lym/tiertags_test.go`.
-- A file holding a `//lym:guard` test takes its one `tierN` tag like any other test file; `cmd/lym/tiertags_test.go` refuses a constraint naming `integration`, `tmux` or `llm` in any test file.
+- A `//lym:guard` test names its tier like any other test.
 - A test needing two substrates takes the higher tier.
-- Each tag compiles on its own: `go vet -tags tier2 ./...` and `go vet -tags tier3 ./...` each pass.
-- A helper file used by files of two tiers carries the disjunction of their tags (`//go:build tier2 || tier3`), and holds no test; a helper only one tier uses lives in that tier's file, and a file whose helpers another tier's tests use is split.
-- `tier3` files are compiled by `go vet -tags tier3 ./...` and never run by a gate.
+- `tier3` tests, and with them `internal/testkit/llmkit`, compile into every test binary of their package, and no gate runs them.
+- A test that reads `LYM_TEST_TIER` keys the Go test cache on it, so each tier's run of an unchanged binary misses the cache once.
 
 ### Gate keys
 
@@ -42,7 +44,7 @@ A gate key in `gate.yaml` names a site's tiers and its scope, and a Go site runs
 
 ### No gate runs `tier3`
 
-Every gate compiles the `tier3` tier through `go vet -tags tier3`, and no gate runs it.
+Every gate compiles the `tier3` tests, since every test binary holds them, and no gate runs them.
 Running it is the operator's call, because a `tier3` run is billed, nondeterministic and needs a live session.
 
 ### Every gate run takes a slot
@@ -54,27 +56,28 @@ A tagged gate run builds `lym` once and hands it to every package through the `L
 A tagged hub run exports a path named by the binary's content, and `lym gate test` strips the trace id from `go test`'s environment, since Go keys a cached test result on every variable a test reads.
 Bound: a forged value misleads only an ungated raw run, since `lym gate test` sets or strips the variable itself.
 
-## Only `tier3` files reach an LLM
+## Only `tier3` tests reach an LLM
 
-- A test file that imports `internal/testkit/llmkit` is constrained to `tier3`, so `//go:build tier3` and `//go:build tier3 && linux` pass while `//go:build tier2 || tier3`, `tier1` and an untagged file fail.
+- A test file that imports `internal/testkit/llmkit` holds only `tier3` tests, or no test at all; a file whose tests name a lower tier, or no tier, fails.
 - A test file outside `internal/testkit/llmkit` never calls `exec.LookPath` with an LLM binary name, as a string literal or a same-file constant; it calls `llmkit.Claude`.
 - A file under `internal/testkit/llmkit` uses no identifier of `os/exec` but `LookPath`, which the Testkit import check cannot see.
 - Enforced by `cmd/lym/llmtier_test.go`.
 - Bound: the guard sees the static shape only.
-  A `tier2` test that drives `lym` into spawning an LLM without calling `llmkit` is caught by review.
+  A `tier2` test that drives `lym` into spawning an LLM without calling `llmkit`, and a lower-tier test calling an `llmkit` helper of a support file, are caught by review.
 
-## Untagged tests spawn nothing
+## `tier0` tests spawn nothing
 
-- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub`, `hubforge.CopyHub`, `hubforge.SharedHub` or gitkit spawn outside tier-tagged files.
+- No `gitexec.Run` or `RunGit`, `exec.Command` or `CommandContext`, `hubforge.NewHub`, `hubforge.CopyHub`, `hubforge.SharedHub` or gitkit spawn in a file of `tier0` tests.
 - Every `gitkit` export except `gitkit.HermeticGitEnv` counts as a gitkit spawn, defined once in `cmd/lym/gitkitspawn_test.go`.
-- Any `lymbin.` reference, which builds the `lym` binary, is likewise barred outside tier-tagged files.
-- Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred outside tier-tagged files, defined once in `cmd/lym/tmuxkitspawn_test.go`.
-  That covers the `/proc` probes although they spawn nothing, which costs nothing because an untagged test has no process to probe.
-- A file referencing a `tmuxkit` spawn is further constrained to the `tier2` tier: it compiles in neither the untagged nor the `tier1` build on any platform, so `tier2`, `tier3`, `tier2 || tier3` and `tier2 && !windows` pass while `tier1 || tier2` fails.
-  An allowlist entry with a reason admits a tier-2 file that uses only the spawn-free `/proc` probes.
-  The scan evaluates the build line under every assignment of its tags other than `tier2` and `tier3`, so the host's GOOS plays no part.
-- `time.Sleep(...)` of one second or more in an untagged file is flagged unless allowlisted.
+- Any `lymbin.` reference, which builds the `lym` binary, is likewise barred in a file of `tier0` tests.
+- Every `tmuxkit` export except `tmuxkit.Main` counts as a tmux spawn and is barred in a file of `tier0` tests, defined once in `cmd/lym/tmuxkitspawn_test.go`.
+  That covers the `/proc` probes although they spawn nothing, which costs nothing because a `tier0` test has no process to probe.
+- A file of `tier1` tests referencing a `tmuxkit` spawn fails too; its tests are `tier2` or `tier3`.
+  An allowlist entry with a reason admits a `tier1` file that uses only the spawn-free `/proc` probes.
+- `time.Sleep(...)` of one second or more in a file of `tier0` tests is flagged unless allowlisted.
+- A file's tier is the tier its test functions name, read by `impactset.FileTier`; a support file, holding no test function, is not scanned.
 - Enforced by `cmd/lym/tierpurity_test.go`.
+- Bound: one test binary holds every tier, so the compiler no longer keeps a `tier0` test from calling a spawning helper of a support file or of a higher tier's file; the run-time skip and review hold that line.
 
 ## Repository-scanning tests carry `//lym:guard`
 
@@ -111,7 +114,7 @@ Bound: a forged value misleads only an ungated raw run, since `lym gate test` se
 
 ## No test skips by design
 
-A skip in a gate log names a missing prerequisite, so every skip is worth reading.
+A skip in a gate log names a missing prerequisite, so every skip is worth reading, bar the tier selector's own: a tier run skips every test of another tier, with a skip line naming both tiers.
 
 - A test that means something on one OS alone sits in a file only that OS compiles: a `_windows` or `_linux` file name, or a `!windows` term beside its tier tag.
 - A table row or subtest bound to one OS is not generated on another; the loop passes over it before `t.Run`.
@@ -145,7 +148,7 @@ Enforcement is review discipline, not a test.
 The general rules live in `scribe:testing` and `scribe:golang-testing`; this section keeps only what is project-specific or stricter here.
 
 - A test targets behavior and contract at a module's public surface (exported API, CLI verb, file contract), not each helper; an unexported helper is tested through the surface that uses it.
-- A behavior testable with a fake or an in-memory fixture is tested untagged that way, never through a real hub, so integration tests stay the exception.
+- A behavior testable with a fake or an in-memory fixture is tested at tier0 that way, never through a real hub, so integration tests stay the exception.
 - A new test function or file must cover a behavior no existing test covers.
   Otherwise the case becomes a row in an existing table-driven test, or an assertion in an existing test of that behavior.
 - Many items of one kind (refusals, claims, rows, verbs) are covered by one table-driven or contract-level test, not one test each.
@@ -161,6 +164,6 @@ The general rules live in `scribe:testing` and `scribe:golang-testing`; this sec
   A prune finding names the covering test from the report, and only the removable set may be deleted together: deleting a candidate outside it can leave a block uncovered once its partner is gone.
   A candidate that is kept carries `//testtiming:keep <reason>` directly above its `func Test…` line, and the reason names what it pins that its covering tests do not (an error message, an output shape, an ordering); the report lists it under "Kept".
   A test in the "no coverage" list is outside the report's judgment, not exempt from the rules above.
-- The "no coverage" list holds a test that is skipped, failed or covers nothing, a tier-tagged test with a call the static scan cannot resolve, and a test that may run this module's code in another process: it references `internal/testkit/lymbin`, `os.Executable`, `os.Args[0]` or `exec.Command("go", ...)` directly or through a followed call, or it sits in a `tier2` file.
-  Spawning git, using `hubforge` or driving a tmux server through `tmuxkit` does not exclude a test, and an untagged test is always judged.
+- The "no coverage" list holds a test that is skipped, failed or covers nothing, a test above tier0 with a call the static scan cannot resolve, and a test that may run this module's code in another process: it references `internal/testkit/lymbin`, `os.Executable`, `os.Args[0]` or `exec.Command("go", ...)` directly or through a followed call, or it sits in a `tier2` file.
+  Spawning git, using `hubforge` or driving a tmux server through `tmuxkit` does not exclude a test, and a tier0 test is always judged.
 - The scan does not see a hook, alias or helper a test installs so that git runs module code, so the hand check before deleting a candidate also asks whether the candidate makes git run module code.

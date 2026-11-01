@@ -1,5 +1,3 @@
-//go:build tier0
-
 // checkmark_test.go pins the tmux argument lists SetCheckMark issues on the engine's session.
 
 package reedengine
@@ -8,10 +6,13 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSetCheckMark pins the exact set-option calls of a mark with a start, a mark without one, and a clear.
 func TestSetCheckMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

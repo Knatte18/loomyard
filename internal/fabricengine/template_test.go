@@ -1,5 +1,3 @@
-//go:build tier0
-
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
 // Covers: ConfigTemplate returns valid YAML with its three expected keys and resolves to the correct
@@ -12,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -32,6 +31,7 @@ import (
 //
 //testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the three default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := ConfigTemplate()

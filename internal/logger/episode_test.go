@@ -1,5 +1,3 @@
-//go:build tier0
-
 // episode_test.go verifies Episode and EpisodeSet log Warn once per episode, Debug while it repeats and Info at recovery.
 // Its test is not parallel: it captures the process-global logger output and verbosity.
 
@@ -9,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // episodeLineSummaries reduces each captured line to its level, plus failed_ticks and key when present.
@@ -30,6 +30,7 @@ func episodeLineSummaries(output string) []string {
 }
 
 func TestEpisode_WarnsOncePerEpisodeAndInfoOnRecovery(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		run  func(episode *Episode, set *EpisodeSet)
@@ -98,6 +99,7 @@ func TestEpisode_WarnsOncePerEpisodeAndInfoOnRecovery(t *testing.T) {
 // TestEpisodeSet_RestoreContinuesTheEpisode pins that a set restored from saved tick counts continues each open episode at Debug and recovers it at Info, while a key absent from the restore warns on its first failure.
 // It is not parallel: it captures the process-global logger output and verbosity.
 func TestEpisodeSet_RestoreContinuesTheEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := withCapturedOutput(t)
 	SetVerbosity(2)
 	t.Cleanup(func() { SetVerbosity(0) })

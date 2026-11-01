@@ -1,5 +1,3 @@
-//go:build tier0
-
 // write_file_test.go tests WriteFile's verbatim atomic write of raw record bytes using only temp files — no git, no spawning.
 
 package state
@@ -10,11 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWriteFile pins that WriteFile lands the bytes verbatim, replaces an earlier write whole and creates the parent directory.
 // On an unwritable path (the target is a directory) it returns an error and leaves no temp file beside it.
 func TestWriteFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("VerbatimReplaceAndParent", func(t *testing.T) {

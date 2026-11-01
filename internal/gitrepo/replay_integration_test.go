@@ -1,5 +1,3 @@
-//go:build tier1
-
 // replay_integration_test.go covers the primitives a caller needs to replay one commit onto another history: UpstreamSHA, CommitDetail, CherryPick and CherryPickAbort, against real git repositories built under t.TempDir(), reusing the package's newRepo, newBareRemote, writeFile and commitAll fixture helpers.
 
 package gitrepo_test
@@ -15,11 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestUpstreamSHA drives UpstreamSHA through a repository with no upstream, a first push that establishes tracking, and a remote that moves ahead and is fetched.
 // The steps run serially over one clone and one bare remote.
 func TestUpstreamSHA(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -63,6 +63,7 @@ func TestUpstreamSHA(t *testing.T) {
 
 // TestCommitDetail covers a commit's full message, its changed paths against the first parent (added, modified and deleted, sorted), a root commit listing every path, and an invalid SHA.
 func TestCommitDetail(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -115,6 +116,7 @@ func TestCommitDetail(t *testing.T) {
 // TestCherryPick drives CherryPick and CherryPickAbort over one repository: a clean pick lands the commit, a pick whose change the branch already carries succeeds with HEAD unmoved and the working tree untouched, a conflicting pick returns git's error and the abort restores HEAD, a commit empty from the start is refused with the pick in progress, a pick that never started and a pick whose commit step fails return git's error, an already-carried root commit is dropped, an abort with nothing in progress succeeds, and an option-shaped SHA is refused.
 // The steps run serially, each building on the history the one before left.
 func TestCherryPick(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

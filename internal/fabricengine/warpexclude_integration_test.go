@@ -1,5 +1,3 @@
-//go:build tier1
-
 // warpexclude_integration_test.go covers the warp exclude list.
 // Wiring and SeedWarpExclude seed its anchored lines into the shared info/exclude exactly once, never into the weft or the wired junction names, and removing a pair keeps them.
 
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // warpExcludeLines are the anchored exclude lines the template's default warp_exclude list yields.
@@ -48,6 +47,7 @@ func requireWarpExcludeOnce(t *testing.T, dir string) {
 //
 //testtiming:keep the warp exclude lines seeded once into the warp only, outside the wired names and surviving Remove, re-seeded by Reconcile's re-wire and AddLocal, and an unparseable config failing wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("seeded_once_warp_only_and_kept_by_remove", func(t *testing.T) {

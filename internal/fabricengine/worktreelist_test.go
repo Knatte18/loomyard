@@ -1,5 +1,3 @@
-//go:build tier1
-
 // worktreelist_test.go covers the porcelain worktree-list parser, including
 // the bare-repo rejection and Main-on-first-entry behavior.
 
@@ -15,11 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestList covers the porcelain parser: a fresh repo yields exactly the main worktree,
 // and additional worktrees appear after it with Main=false.
 func TestList(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -125,6 +125,7 @@ func TestList(t *testing.T) {
 //
 //testtiming:keep List reporting a deleted-but-unpruned worktree as Prunable and the prime as not; coverage of its blocks by other tests does not show an assertion of this
 func TestList_ParsesPrunable(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -170,6 +171,7 @@ func TestList_ParsesPrunable(t *testing.T) {
 //
 //testtiming:keep List outside any git repository failing with both the local context and git's own explanation; coverage of its blocks by other tests does not show an assertion of this
 func TestList_NotAGitRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	notARepo := t.TempDir()

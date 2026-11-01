@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixer_test.go — tier0 unit tests for FixerTable.
 // The stencils are the shipped defaults seeded into a t.TempDir() stencils dir;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func newFixerInputs(t *testing.T, mode FixerMode) FixerInputs {
@@ -41,6 +40,7 @@ func newFixerInputs(t *testing.T, mode FixerMode) FixerInputs {
 }
 
 func TestFixerTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cfg := Config{Fixer: "claude:opus[effort=high]", FixerTimeoutMin: 9}

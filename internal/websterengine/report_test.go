@@ -1,5 +1,3 @@
-//go:build tier0
-
 // report_test.go covers Report's round-trip through WriteReport->ParseReport for every status, both empty and populated deviation lists, and a renames list carried into the digest.
 // It also covers ParseReport's strict-decode rejections: an unknown key, a missing head_sha, an unrecognized status, a need missing or misplaced, a malformed rename, malformed YAML, an empty file and a missing file.
 // Tier 1: no git, only t.TempDir().
@@ -11,9 +9,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReport_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -98,6 +99,7 @@ func TestReport_RoundTrip(t *testing.T) {
 }
 
 func TestParseReport_Rejects(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

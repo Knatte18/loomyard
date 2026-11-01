@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reopen_window_test.go asserts battenPreRun reopens the terminal window of a resumed run only when no client is attached and --no-reopen is not set.
 
 package battencli
@@ -14,11 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBattenPreRun_ReopensTheWindowWithNoClientAttached runs the pre-run over a fake receiver whose command runner records each command, for every status and client answer that decides whether the Open-Window command runs.
 // --no-reopen skips the command and nothing else, so the resume's reconcile still runs.
 func TestBattenPreRun_ReopensTheWindowWithNoClientAttached(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pastOpenWindowStatus := shedengine.Status{

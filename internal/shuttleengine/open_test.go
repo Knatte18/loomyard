@@ -1,5 +1,3 @@
-//go:build tier0
-
 // open_test.go covers Runner.Open: the strand it adds, the chain its pane runs, and the refusals made before anything is created.
 
 package shuttleengine
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunner_Open pins the strand Open adds and what it refuses before creating one.
 func TestRunner_Open(t *testing.T) {
+	tiergate.Require(t, 0)
 	// One subtest captures the process-global logger, so the test runs serially and no parallel test of the package swaps the logger output during the capture.
 	sh := shell.ForGOOS()
 	launch := Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-9"}

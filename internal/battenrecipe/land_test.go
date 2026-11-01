@@ -1,5 +1,3 @@
-//go:build tier0
-
 // land_test.go pins the past-Land test and the outcome it tells apart.
 
 package battenrecipe_test
@@ -9,9 +7,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLandOutcomeOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	landDone := []shedengine.HistoryEntry{
 		{Producer: battenrecipe.NameRunShed, Outcome: shedengine.Done},

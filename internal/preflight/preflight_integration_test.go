@@ -1,5 +1,3 @@
-//go:build tier1
-
 // preflight_integration_test.go drives Check/CheckResolved/Wired/HubPresent end-to-end against real
 // git fixtures — a paired code+fabric worktree with a wired _lym junction — covering every
 // pass/fail scenario across the tier-1/tier-2 preconditions this package validates, plus the
@@ -28,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setupFixture builds a fully-configured real hub with fabric and junction setup, returning the hub
@@ -100,6 +99,7 @@ func assertCheckSet(t *testing.T, got preflight.Report, want ...preflight.CheckI
 // The steps share one fixture hub, so the test is parallel as a whole and no step is.
 // The last step relies on being last: it writes the anchor marker, so every step after it would see a subpath-anchored hub.
 func TestHealthyHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, _ := setupFixture(t)
@@ -191,6 +191,7 @@ func TestHealthyHub(t *testing.T) {
 // TestCheck_NotAGitRepo asserts that Check() invoked outside any git repository reports a single
 // geometry failure with no error — the report-not-error contract's most easily-regressed row.
 func TestCheck_NotAGitRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -231,6 +232,7 @@ func replaceJunction(t *testing.T, codeLink string, replace func()) {
 // A repo-wide fabric.yaml that fails to load classifies as junction as well (the CauseConfigLoadFailed/CheckJunction equivalence pinned by healthy-typed-reason), not as a distinct CheckID of its own.
 // Independently tripped checks (a dirty code side and a branch-diverged pair) are both collected into one Report rather than the first short-circuiting the rest.
 func TestCheckResolved_Failures(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	type row struct {
@@ -411,6 +413,7 @@ func TestCheckResolved_Failures(t *testing.T) {
 // its fabric-side target) rather than reporting already-healthy; and a fresh CheckResolved afterward
 // reports OK.
 func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, slug := setupFixture(t)
@@ -467,6 +470,7 @@ func TestCheckResolved_MissingOptionalJunctionIsAJunctionFault(t *testing.T) {
 // TestResolveMode pins ResolveMode's standalone and refuse rows (its hub row is a step of TestHealthyHub).
 // PlainRepoSubdirectory and RefuseWiredWorktreeSubdirectory are the pair the design's r4 review exposed: both arrive as lymcwd.ErrCwdOutsideAnchor from lymcwd.Resolve and must diverge -- see each row's own comment below.
 func TestResolveMode(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("NotAGitRepoAtAll", func(t *testing.T) {

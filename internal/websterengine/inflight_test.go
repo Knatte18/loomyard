@@ -1,5 +1,3 @@
-//go:build tier0
-
 // inflight_test.go exercises RunInFlight over t.TempDir() anchors.
 // Tier 1: no git.
 
@@ -10,11 +8,13 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestRunInFlight tables every state.json/outcome.yaml combination RunInFlight distinguishes.
 func TestRunInFlight(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		state   bool

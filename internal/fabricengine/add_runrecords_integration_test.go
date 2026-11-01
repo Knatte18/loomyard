@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_runrecords_integration_test.go proves Add forks a new pair's weft branch without the parent's shed run records:
 // the records never reach the new worktree's disk, the pair's first weft commit records their deletion,
 // and the adopt path, the parent branch and Add's rollback are untouched by the drop.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runRecordFiles are the two run directories' record files every test seeds, each joined under shedrun's own run-records root.
@@ -68,6 +67,7 @@ func trackedUnderRoot(t *testing.T, l *lymcwd.Location, dir, branch string) stri
 // and a failure injected after the drop rolls the pair back completely and leaves the parent weft
 // branch's tip unchanged.
 func TestAdd_RunRecords(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -205,6 +205,7 @@ func TestAdd_RunRecords(t *testing.T) {
 //
 //testtiming:keep the run-records drop at a subpath anchor joining the root under AnchorRel for both the index drop and the first weft commit; coverage of its blocks by other tests does not show an assertion of this
 func TestAdd_DropsParentRunRecords_SubpathAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})

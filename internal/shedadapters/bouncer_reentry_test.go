@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_reentry_test.go covers the Bouncer's settle record and its re-entry over a settled verdict: the records an approved settle writes, and the cases that re-settle, harvest or clear.
 
 package shedadapters
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reentry is a Bouncer over a nested run directory whose Subject, clock, Commit and Bounces seams the test steers through its fields.
@@ -190,6 +189,7 @@ func reentryInputRow(name string, offset time.Duration, wantAmendment bool) amen
 
 //testtiming:keep pins the settle record's writes and the re-entry cases over a settled verdict, whose spawn-free and clearing paths no other test reaches
 func TestBouncer_Reentry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	codeSubject := Subject{Kind: SubjectCode, MergeBase: "base-1", Head: "head-1", FullHash: "full-1", PatchID: "patch-1", Patch: []byte("diff")}
 
@@ -502,6 +502,7 @@ func TestBouncer_Reentry(t *testing.T) {
 }
 
 func TestBouncer_SettleRecordsRoundStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reviewStart := time.Date(2026, 10, 23, 7, 30, 15, 0, time.UTC)
 

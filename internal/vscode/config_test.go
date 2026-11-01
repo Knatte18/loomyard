@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go covers config generation: the settings.json written fresh, lym's own keys set in an existing one, and the tasks.json overwritten.
 
 package vscode
@@ -10,6 +8,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testLook is a look with a light worktree colour, so the two bars take different text colours.
@@ -39,6 +39,7 @@ func assertLook(t *testing.T, settings map[string]any) {
 //
 //testtiming:keep pins the whole settings.json and the attach task's shape, which no covering test asserts
 func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	lymPath := "/opt/lym/bin/lym"
 
@@ -120,6 +121,7 @@ func readTasksFile(t *testing.T, dir string) tasksFile {
 
 // TestWriteConfigFallsBackToBareName pins that an empty lym path degrades to the bare binary name in the generated task.
 func TestWriteConfigFallsBackToBareName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 
@@ -140,6 +142,7 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 //
 //testtiming:keep pins the kept settings keys and the overwritten tasks.json, which the gitignore test does not assert
 func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	vscodePath := filepath.Join(dir, ".vscode")
@@ -190,6 +193,7 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 
 // TestWriteConfigLeavesUndecodableSettingsAlone pins that a settings.json that is not a JSON object keeps its bytes while tasks.json is still written.
 func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, content := range []string{"{not json", "[1, 2]", "null"} {
 		dir := t.TempDir()
@@ -218,6 +222,7 @@ func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 //
 //testtiming:keep pins that no .gitignore is created or modified, which its covering tests do not assert
 func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 

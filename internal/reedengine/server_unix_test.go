@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // server_unix_test.go holds the server checks that rest on directory mode bits, which do not gate traversal on Windows.
 
@@ -9,11 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel provokes a real non-fs.ErrNotExist stat failure — EACCES on the parent directory — and asserts it refuses without matching the sentinel, per the only-proven-gone-carries-the-sentinel contract.
 // Skipped when running as root, since root ignores the permission bit entirely.
 func TestValidateToldWorktreeRootLive_UnreadableParentIsNotTheSentinel(t *testing.T) {
+	tiergate.Require(t, 0)
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores the permission bit")
 	}

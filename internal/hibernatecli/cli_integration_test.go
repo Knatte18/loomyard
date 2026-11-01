@@ -1,4 +1,4 @@
-//go:build tier1 && linux
+//go:build linux
 
 // cli_integration_test.go drives `lym hibernate status`, `cancel`, `request` and `watch` through the cobra commands over a hubforge hub with one pair, and the operator index the root renders.
 // The test calls no t.Parallel: it sets the strand-name variable.
@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pairSlug = hubforge.TemplatePairSlug
@@ -34,6 +35,7 @@ func verb(t *testing.T, cwd string, args ...string) (envelope.Envelope, int) {
 }
 
 func TestHibernateVerbs_WireTheHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
 	prime := h.PrimeWorktree()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // siblings_test.go — the sibling check of a depends_on write (siblings.go), driven through the Board facade.
 
 package boardengine_test
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // siblingEntry returns the upsert fields of a task carrying the type label bug and the given module labels.
@@ -26,6 +25,7 @@ func siblingEntry(slug string, moduleLabels []string, extra map[string]any) map[
 
 // TestWriteSiblings pins which tasks a depends_on write reports as siblings, and that a refused write reports none.
 func TestWriteSiblings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	board := []string{"board"}

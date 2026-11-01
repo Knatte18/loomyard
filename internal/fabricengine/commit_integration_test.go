@@ -1,5 +1,3 @@
-//go:build tier1
-
 // commit_integration_test.go — integration coverage for Fabric.Commit's
 // classify-and-dispatch two-sided commit: warp-first ordering, correspondence
 // recording, CommitResult field population across two-sided/warp-only/
@@ -40,12 +38,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommit_TwoSided_WarpFirstOrdering asserts that a two-sided Fabric.Commit's weft commit
 // carries a Warp-SHA trailer naming the warp commit Fabric.Commit just made — never the prior warp
 // HEAD.
 func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -73,6 +73,7 @@ func TestCommit_TwoSided_WarpFirstOrdering(t *testing.T) {
 // TestCommit_TwoSided_RecordsCorrespondence asserts that a two-sided Fabric.Commit's weft commit is
 // recorded in the correspondence index against the warp SHA it just created.
 func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -98,6 +99,7 @@ func TestCommit_TwoSided_RecordsCorrespondence(t *testing.T) {
 // and weft-only shapes — including, on the warp-only path, the plain-git property (no trailer, no
 // correspondence entry) a bare warp commit must have.
 func TestCommit_ResultFields(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	t.Run("TwoSided", func(t *testing.T) {
 		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
@@ -167,6 +169,7 @@ func TestCommit_ResultFields(t *testing.T) {
 // snapshotTags entry,
 // and absent entirely when snapshotTags is empty.
 func TestCommit_SnapshotTrailers(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	t.Run("Present", func(t *testing.T) {
 		f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
@@ -211,6 +214,7 @@ func TestCommit_SnapshotTrailers(t *testing.T) {
 // TestCommit_MessageHandling asserts the warp commit message is the bare msg,
 // and the weft commit message carries msg plus its Warp-SHA and Snapshot trailers.
 func TestCommit_MessageHandling(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -243,6 +247,7 @@ func TestCommit_MessageHandling(t *testing.T) {
 // TestCommit_InvokesPushRecorder asserts a successful two-sided Fabric.Commit invokes spawnDetachedPushFn exactly once:
 // with both paths in a task pair, with an empty code-side path in the prime, and not at all, nor landing a commit, when the prime cannot be resolved.
 func TestCommit_InvokesPushRecorder(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	t.Run("PrimePushesRecordsSideOnly", func(t *testing.T) {
 		// The plain fixture is a single repo, so its warp worktree is the prime.
@@ -324,6 +329,7 @@ func TestCommit_InvokesPushRecorder(t *testing.T) {
 // either side — an empty files list,
 // or a warp-only input whose content is unchanged — never invokes spawnDetachedPushFn.
 func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	t.Run("EmptyFiles", func(t *testing.T) {
 		f, _, _ := fabricengine.NewCommitFixtureForTest(t)
@@ -370,6 +376,7 @@ func TestCommit_NoOp_DoesNotInvokePushRecorder(t *testing.T) {
 // The old name asserted the opposite of what this batch makes true, so it is renamed rather than
 // merely re-bodied: the name is the clearest single statement of the behaviour this batch reverses.
 func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -407,6 +414,7 @@ func TestCommit_WarpOnly_SnapshotTagsForceEmptyWeftCommit(t *testing.T) {
 // This test must fail before the implementation and pass after;
 // a pass before the implementation means the fixture itself is wrong.
 func TestCommit_UnchangedWeftContent_TagsStillAdvanceSnapshotBaseline(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -477,6 +485,7 @@ func writeFabricAnchor(t *testing.T, warpPath, anchor string) {
 // in the weft checkout must still route to the weft side and land in a real commit — proving the fix beyond the RelPath=="."
 // coverage every other test in this file exercises.
 func TestCommit_NestedRelPath_ClassifiesWeftFileUnderRelPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -539,6 +548,7 @@ func newUnbornWeftRepo(t *testing.T) string {
 // lock (proven here by externally holding it and observing the call block until released), lands an
 // empty weft commit, and snapshotWarpSHA resolves the tag to warp's current HEAD.
 func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -604,6 +614,7 @@ func TestCommit_TagsOnly_LandsEmptyWeftCommit(t *testing.T) {
 // fall-through: a weft-side pathspec entry that weftPathspecFilter drops (it matches nothing in the
 // worktree or index) still lands an empty weft commit when snapshotTags is non-empty.
 func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -643,6 +654,7 @@ func TestCommit_PathspecFilteredToNothing_WithTags_LandsEmptyWeftCommit(t *testi
 // carrying its Warp-SHA and Snapshot trailers like any other — contrast with the unborn-WARP case
 // below, which drops the tags entirely.
 func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
 	weftPath := newUnbornWeftRepo(t)
@@ -683,6 +695,7 @@ func TestCommit_UnbornWeftHEAD_WithTags_LandsAsRootCommit(t *testing.T) {
 // no trailer, no error — because a snapshot's whole content is a warp SHA and there is none to
 // record yet.
 func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	warpPath := newUnbornWarpRepo(t)
 	weftFixture := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -719,6 +732,7 @@ func TestCommit_UnbornWarpHEAD_WithTags_DropsTagsNoErrorNoCommit(t *testing.T) {
 // all" opt-out for the weft side — while the warp commit proceeds regardless, since SkipGit is
 // weft-scoped for Fabric.Commit specifically.
 func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -750,6 +764,7 @@ func TestCommit_SkipGit_WithTags_NoWeftCommitNoError(t *testing.T) {
 // firing when it should not: unchanged content and zero tags must still be a clean no-op, with the
 // weft HEAD left untouched.
 func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -786,6 +801,7 @@ func TestCommit_NoTagsNothingToCommit_RuleDoesNotOverFire(t *testing.T) {
 // and exactly one push-seam invocation — the async-push gate is WarpCommitted || WeftCommitted,
 // and the snapshot trailer must reach the remote for cross-clone sharing.
 func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 	recorder := fabricengine.SwapPushRecorderForTest(t)
@@ -808,6 +824,7 @@ func TestCommit_WarpOnlyTagged_InvokesPushRecorderOnce(t *testing.T) {
 // validate-all-before-appending-any property survives the empty-commit path: an invalid tag on an
 // otherwise-fully-empty call fails before anything is staged or committed, on either side.
 func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)
@@ -848,6 +865,7 @@ func TestCommit_InvalidTag_OtherwiseEmpty_NothingCommitted(t *testing.T) {
 // unlanded-weft outcome the mapping already models — while the warp commit that already landed
 // stands and is still pushed.
 func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitError(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	recorder := fabricengine.SwapPushRecorderForTest(t)
@@ -900,6 +918,7 @@ func TestCommit_DirtyWeftIndex_UnchangedContentWithTags_SurfacesPartialCommitErr
 //
 //testtiming:keep CommitWeft called directly with a pathspec matching nothing and one tag landing the empty commit as its own contract; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -930,6 +949,7 @@ func TestCommitWeft_PathspecMatchesNothing_WithTags_LandsEmptyCommit(t *testing.
 // that nothing landed on either side: the never-committed check runs before any lock is taken or
 // any commit attempted, so a rejected call must leave both warp and weft HEAD unmoved.
 func TestCommit_DotLymPath_HardErrorsAndCommitsNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := fabricengine.NewCommitFixtureForTest(t)
 	fabricengine.SwapPushRecorderForTest(t)

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // create_containment_toctou_integration_test.go guards the act-time containment binding that closed
 // R5's CREATE-side symlink-directed-write escape: containedWorktreeAdd must never let `git worktree
 // add` write a worktree OUTSIDE its container through a symlink standing at the target path, must still
@@ -25,12 +23,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestContainedWorktreeAdd_RefusesSymlinkedTarget plants a symlink at the target path pointing OUTSIDE
 // the container and asserts containedWorktreeAdd never writes a worktree through it: the outside
 // directory stays empty and the call fails at placement rather than following the link.
 func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newPlainWarpRepo(t)
@@ -71,6 +72,7 @@ func TestContainedWorktreeAdd_RefusesSymlinkedTarget(t *testing.T) {
 // at the nominal target as a real directory on the requested branch, and git's admin directory is named
 // after the slug (the target base), never the internal staging token.
 func TestContainedWorktreeAdd_PlacesWorktreeAtTarget(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newPlainWarpRepo(t)
@@ -128,6 +130,7 @@ func TestContainedWorktreeAdd_PlacesWorktreeAtTarget(t *testing.T) {
 // on every attempt and requires at least one attempt where the planter won and the add failed closed, so
 // a run that never triggered the guarded path fails loudly rather than passing vacuously.
 func TestContainedWorktreeAdd_FailsClosedOnStagingLeafSwap(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newPlainWarpRepo(t)

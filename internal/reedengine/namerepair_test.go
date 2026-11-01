@@ -1,5 +1,3 @@
-//go:build tier0
-
 // namerepair_test.go pins the name-repair pass on a fake tmux and a fake SessionNamer: which titles are rewritten, when a session name is renamed, and what is logged.
 
 package reedengine
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeNamer is a SessionNamer answering from fixed fields and recording the drift queries it receives.
@@ -77,6 +76,7 @@ func repairStrand(guid, name, pane, session string) Strand {
 
 //testtiming:keep pins which strands get a title repair: a bound live drifted pane only, never a matching, dead, unbound or vanished one; its covering tests run this code without asserting it
 func TestPlanTitleRepairs(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []Strand{
 		repairStrand("drifted", "tc:s:a", "%1", ""),
 		repairStrand("matching", "tc:s:b", "%2", ""),
@@ -101,6 +101,7 @@ func TestPlanTitleRepairs(t *testing.T) {
 //
 //testtiming:keep pins a drifted pane title being rewritten with exactly one select-pane -T and logged while a matching title is left alone; its covering tests run this code without asserting it
 func TestRepairNames_PaneTitle(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		title      string
@@ -152,6 +153,7 @@ func TestRepairNames_PaneTitle(t *testing.T) {
 // It pins that the failure logs one Warn and one Debug per further run, and the heal one Info.
 // It captures the process-global logger at Debug, so it stays serial.
 func TestRepairNames_SessionName(t *testing.T) {
+	tiergate.Require(t, 0)
 	activeClient := "%1 " + strconv.FormatInt(time.Now().Unix(), 10) + "\n"
 	tests := []struct {
 		name string
@@ -385,6 +387,7 @@ func TestRepairNames_SessionName(t *testing.T) {
 }
 
 func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("NilNamer", func(t *testing.T) {
 		e, fake := newRepairTestEngine(t,
 			[]Strand{repairStrand("g1", "tc:s:worker", "%1", "sess-1")},
@@ -411,6 +414,7 @@ func TestRepairNames_SkipsSessionCheckWithoutNamerOrSessionID(t *testing.T) {
 }
 
 func TestRepairNames_UnanswerableSessionCheckRepairsNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "claude"}})
@@ -426,6 +430,7 @@ func TestRepairNames_UnanswerableSessionCheckRepairsNothing(t *testing.T) {
 
 // TestWatchNames_RepairedAnswerChoosesTheNextWait pins that the waits climb to the ceiling while no pass repairs anything, and return to the base after a pass that repaired a title.
 func TestWatchNames_RepairedAnswerChoosesTheNextWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	e, fake := newRepairTestEngine(t,
 		[]Strand{repairStrand("g1", "tc:s:worker", "%1", "")},
 		[]LivePane{{ID: "%1", Title: "tc:s:worker"}})

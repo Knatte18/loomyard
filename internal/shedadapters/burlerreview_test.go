@@ -1,5 +1,3 @@
-//go:build tier0
-
 // burlerreview_test.go pins BurlerReviewProducer and the pieces both half producers share over shedfake.BurlerHalfRunner:
 // It covers the constructors' validation, the acceptance record, the round scan and hand-ons, the profile each round carries, and the accepted exit and its records.
 // It also covers every failure exit's archive set, cancellation, and probe and resume.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // Compile-time proof that *shedfake.BurlerHalfRunner satisfies BurlerHalfRunner.
@@ -81,6 +80,7 @@ func requireArchived(t *testing.T, dir, base string, want int) {
 
 // TestNewBurlerHalfProducers_Validation proves both constructors refuse a nil runner, an empty name, an empty or relative run directory, and the fix constructor an empty review row.
 func TestNewBurlerHalfProducers_Validation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	runs := filepath.Join(dir, "runs")
@@ -122,6 +122,7 @@ func TestNewBurlerHalfProducers_Validation(t *testing.T) {
 // TestAcceptanceRecord proves the record round-trips a digest.
 // It proves an absent record, one that does not parse, one naming another round and one with no digest all read as absent with a nil error, while an unreadable one is an error.
 func TestAcceptanceRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -179,6 +180,7 @@ func writeRoundFileWith(t *testing.T, path, content string) {
 // a fresh round, the successor of a judged round, and stray names that are never adopted.
 // An unjudged highest complete round or an already accepted review is handed on without spawning, and the orphans (a review with no record, a record with no review) are archived and reviewed again.
 func TestBurlerReviewProducer_Call_RoundScan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -310,6 +312,7 @@ func TestBurlerReviewProducer_Call_RoundScan(t *testing.T) {
 // the round's own review and fixer-report paths, the focus file, and the template priors followed by the earlier complete rounds in order.
 // It also proves the cluster exclusions of an eligible focus file, the round token, the picked models and the opts template.
 func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	runDir := t.TempDir()
 	writeJudgedRound(t, runDir, 1)
@@ -415,6 +418,7 @@ func TestBurlerReviewProducer_Call_ProfileAndOpts(t *testing.T) {
 // Its DuringReview hook reads the record, so each recording row proves the write came first.
 // It proves a failed write spawns nothing and archives the round, a row with no lists writes no flag, and an already accepted round is handed on with the record left unwritten.
 func TestBurlerReviewProducer_Call_RecordsRoundFans(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -508,6 +512,7 @@ func TestBurlerReviewProducer_Call_RecordsRoundFans(t *testing.T) {
 // TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded proves an accepted review hands on as a BudgetExempt Stuck, never Done, with the review as Path.
 // It proves the acceptance record carries the result's digest and the review half's usage, fan and lenses are merged into the round's usage record.
 func TestBurlerReviewProducer_Call_AcceptedReviewIsRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, tt := range []struct {
 		name   string
@@ -590,6 +595,7 @@ func requireAcceptedReviewRecorded(t *testing.T, engine string) {
 // A retried died/timeout attempt gets its stale outputs archived and the token <n>b; two in a row, a runner error, an unrecognized outcome and a failed acceptance write are hard errors with the round's review and acceptance record archived;
 // a reviewer that could not be stopped returns bare, with nothing archived and no retry.
 func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	died := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeDied}
 	timeout := burlerengine.ReviewResult{Outcome: shuttleengine.OutcomeTimeout}
@@ -706,6 +712,7 @@ func TestBurlerReviewProducer_Call_FailureExits(t *testing.T) {
 // TestBurlerReviewProducer_Call_Cancellation proves a context cancelled before the call, during a failing attempt and after an accepted review all return the cancellation error.
 // The second archives the round, and the third keeps the accepted review and its record.
 func TestBurlerReviewProducer_Call_Cancellation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("before the call nothing runs", func(t *testing.T) {
@@ -756,6 +763,7 @@ func TestBurlerReviewProducer_Call_Cancellation(t *testing.T) {
 // A resumed done review is accepted like a spawned one, a resumed death falls through to a fresh attempt, and a half that is not live proceeds to the spawn.
 // A probe error or an unstoppable reviewer returns bare without archiving the stale review on disk, and any other resume error archives the round.
 func TestBurlerReviewProducer_Call_ProbeAndResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	live := burlerengine.LiveHalf{State: burlerengine.HalfLive}
 	resumedStart := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)

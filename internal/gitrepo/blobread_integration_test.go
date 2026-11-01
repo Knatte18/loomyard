@@ -1,5 +1,3 @@
-//go:build tier1
-
 // blobread_integration_test.go covers the history reads — FileAtRevision, FilesInDirAtRevision, PathRevisions, CommitsWithSubject, CommitsNotIn and IsAncestor's real-git reachability — against one real git repository with three commits built under t.TempDir(), reusing gitrepo_test.go's newRepo, writeFile, and commitAll fixture helpers.
 // IsAncestor's argument-validation guard lives in the untagged ancestry_test.go, because a //go:build constraint applies per file, not per function.
 
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitAllAt makes an empty commit in dir whose committer date is committerDate, which gitkit.Git cannot set without a process-global env change.
@@ -35,6 +34,7 @@ func commitAllAt(t *testing.T, dir, message, committerDate string) {
 // Every step only reads, so the steps run serially in one order over the shared repository and depend on nothing an earlier step does.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestHistoryReads(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

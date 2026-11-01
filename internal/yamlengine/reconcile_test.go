@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reconcile_test.go contains table-driven tests for Reconcile and MissingKeys.
 
 package yamlengine
@@ -8,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -24,6 +24,7 @@ func sortedCopy(keys []string) []string {
 
 // TestReconcile pins the merge: added and removed report template-only and file-only key paths, user values, template comments and template key order survive in merged, lists, open maps and per-name map entries are carried whole, a per-name map holds only the names the file changed, a name only the file holds under a per-name map is kept and reported in kept, a template-equal name is left out and reported in dropped, and reconciling the merged output again changes nothing.
 func TestReconcile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -306,6 +307,7 @@ func TestReconcile(t *testing.T) {
 
 // TestMissingKeys pins which template key paths a file lacks: an empty value counts as present, a list is a default rather than a minimum length, and an open map satisfies every leaf under it.
 func TestMissingKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -377,6 +379,7 @@ func TestMissingKeys(t *testing.T) {
 // TestSequenceBasePath covers the split MissingKeys keys its sequence-element rule off, including
 // the shapes that must NOT be read as an element.
 func TestSequenceBasePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // delta_integration_test.go covers Delta, and DetectDrift's gate one, against a real git fixture repository, spawning git through (*quarry.Repo).DeltaGit — the reason this file carries the integration build tag rather than running in the untagged tier.
 
 package planglyph
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -75,6 +74,7 @@ func (f *deltaFixtureRepo) writeAndCommit(path, content, message string) string 
 //
 // The rename step FAILS rather than skips when the answer carries no exact-tier pair, because a silent skip would restore exactly that blind spot.
 func TestRealGitDelta(t *testing.T) {
+	tiergate.Require(t, 1)
 	// The steps share one git repository, and the rename steps read the delta the "rename delta" step produced, so no step runs in parallel.
 	t.Parallel()
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // waitmark_test.go covers ReadWaitMarker over hand-written run directories, with the liveness seam replaced so no process is spawned.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeWaitMarkerFile writes body as the wait marker of the run directory named name under root.
@@ -30,6 +29,7 @@ func writeWaitMarkerFile(t *testing.T, root, name, body string) {
 }
 
 func TestReadWaitMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	livePID := 4242
 	prev := isAlive
 	isAlive = func(pid int) bool { return pid == livePID }
@@ -140,6 +140,7 @@ func TestReadWaitMarker(t *testing.T) {
 }
 
 func TestReadWaitMarker_AbsentRunDirectoryRootReadsAsNone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	_, found, err := ReadWaitMarker(Config{RunDir: filepath.Join(t.TempDir(), "absent")}, t.TempDir())

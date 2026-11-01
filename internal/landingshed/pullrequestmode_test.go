@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, each origin fact that blocks a pull request, and an empty task branch.
 
 package landingshed
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResolvePullRequest stays serial: logcapture redirects the process-global logger.
 func TestResolvePullRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	const warnLine = "the entry's pull_request is off but the parent's beam.yaml pull_request is required"
 	githubOrigin := Origin{URL: "https://github.com/o/r.git", Upstream: true}
 

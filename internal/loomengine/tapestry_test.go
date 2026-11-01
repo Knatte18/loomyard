@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tapestry_test.go — tier0 tests for the tapestry config module: LoadTapestryConfig over a worktree-only layer stack, and the plan values Config.WithTapestry applies.
 
 package loomengine
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedTapestryConfig writes <baseDir>/_lym/config/tapestry.yaml with the given contents.
@@ -73,6 +72,7 @@ func seedLoomAndTapestry(t *testing.T, baseDir string, loomValues, tapestryValue
 // TestLoadTapestryConfig verifies the plan perch's values load from tapestry.yaml and resolve against loom.yaml's run-wide keys, and that Config.WithTapestry applies them:
 // a null plan_max_bounces and a zero plan_hard_max_bounces take loom.yaml's budget and hard cap, an empty model list, judge and seed take the shared ones, and every malformed or out-of-bound value is refused naming the tapestry key.
 func TestLoadTapestryConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("the template loads and WithTapestry applies every plan value", func(t *testing.T) {

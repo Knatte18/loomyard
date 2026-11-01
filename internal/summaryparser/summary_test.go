@@ -1,5 +1,3 @@
-//go:build tier0
-
 // summary_test.go exercises Parse's accept/reject table, Path's join, and CommitMessage's
 // subject/body composition -- the read-side coverage this package owns as summaryparser-leaf's
 // external interface.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeSummaryFile writes raw content to path, creating its parent
@@ -29,6 +28,7 @@ func writeSummaryFile(t *testing.T, path, content string) {
 
 // TestParse asserts a well-formed summary.md parses into its Title and Body, with the heading line excluded from Body and Body's leading newline preserved, and that every malformed or missing file is rejected loud -- wrapping its own sentinel where the failure has one.
 func TestParse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	missing := "\x00missing"
@@ -99,6 +99,7 @@ func TestParse(t *testing.T) {
 
 // TestPath asserts Path joins the told directory with FileName.
 func TestPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	got := summaryparser.Path("/some/told/dir")
 	want := filepath.Join("/some/told/dir", "summary.md")
@@ -111,6 +112,7 @@ func TestPath(t *testing.T) {
 //
 //testtiming:keep pins the CommitMessage trim cases that LandingMessage's test does not
 func TestCommitMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string

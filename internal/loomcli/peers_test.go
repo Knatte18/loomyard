@@ -1,5 +1,3 @@
-//go:build tier0
-
 // peers_test.go — untagged Tier-1 tests for the peers verbs over fake peersDeps.
 
 package loomcli
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recipeRowNumber returns the 1-based position of row in the named embedded recipe.
@@ -105,6 +104,7 @@ func peersFakeDeps(caller string) peersDeps {
 
 // TestPeersVerb verifies the peer set is every run-status task but the caller's own, that a peer with unread parts is kept with the reasons, that the parent's commits appear only from a task pair, and that a hub with no board refuses.
 func TestPeersVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a task pair lists the run-status peers and its parent's commits in order", func(t *testing.T) {
@@ -209,6 +209,7 @@ func TestPeersVerb(t *testing.T) {
 
 // TestPeersShowVerb verifies a peer's decision record and plan are printed, and that each refusal reaches its row with its way forward.
 func TestPeersShowVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

@@ -1,5 +1,3 @@
-//go:build tier3
-
 package reedcli
 
 import (
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -85,6 +84,7 @@ func waitTranscriptStable(t *testing.T, projectDir string, before map[string]boo
 
 // TestSmokeCrashRecovery covers crash recovery with server reboot.
 func TestSmokeCrashRecovery(t *testing.T) {
+	tiergate.Require(t, 3)
 	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -198,6 +198,7 @@ func TestSmokeCrashRecovery(t *testing.T) {
 // Needs a logged-in claude CLI;
 // runs a real subscription session (~1-3 min).
 func TestSmokeClaudeResumeRecallsCodeword(t *testing.T) {
+	tiergate.Require(t, 3)
 	tmuxPath := tmuxBinaryPath(t)
 	claudePath := llmkit.Claude(t, "LYM_REED_CLAUDE")
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cwdmutation_test.go enforces the migrated half of the Cwd Resolution Invariant: an integration
 // test file this task moved onto the cwd-context seam (RunCLIIn / lymcwd.WithCwd) must never
 // reintroduce a process-wide t.Chdir or os.Chdir call, in either spelling. This is the guard slice
@@ -29,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cwdMutationSubjectFiles is this guard's explicitly named per-file subject set (module-relative,
@@ -70,6 +69,7 @@ var cwdMutationAllowlist = []scankit.Entry{
 //
 //lym:guard
 func TestCwdMutation_MigratedFilesStayChdirFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	subjects := scankit.NewAllowlist(cwdMutationSubjectFiles)
 	allow := scankit.NewAllowlist(cwdMutationAllowlist)
 	var scanned int
@@ -120,6 +120,7 @@ func firstCwdMutationToken(content string) (string, bool) {
 //testtiming:keep proves the TestCwdMutation_MigratedFilesStayChdirFree guard fires on a planted violation and stays silent for its allowlisted file
 //lym:guard
 func TestCwdMutationGuard_NotVacuous(t *testing.T) {
+	tiergate.Require(t, 0)
 	planted := "func TestPlanted(t *testing.T) {\n\tt.Chdir(t.TempDir())\n}\n"
 	if tok, found := firstCwdMutationToken(planted); !found || tok != "t.Chdir(" {
 		t.Fatalf("firstCwdMutationToken(planted) = (%q, %v); want (\"t.Chdir(\", true) -- the guard's matcher would be vacuous", tok, found)

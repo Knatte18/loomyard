@@ -1,5 +1,3 @@
-//go:build tier0
-
 // acquire_test.go covers the queue wait and the wait record, with a fake Sleep so no test waits out a poll delay.
 
 package parentlock
@@ -12,9 +10,12 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAcquire_WaitsForHolderWithDoublingPollThenIsGranted(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -50,6 +51,7 @@ func TestAcquire_WaitsForHolderWithDoublingPollThenIsGranted(t *testing.T) {
 }
 
 func TestAcquire_EndsWaitWithTicketRemoved(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cancelled, cancel := context.WithCancel(context.Background())
@@ -89,6 +91,7 @@ func TestAcquire_EndsWaitWithTicketRemoved(t *testing.T) {
 }
 
 func TestWaitRecord_DeadWriterReadsAbsentAndIsReplaced(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := WaitRecordPath(filepath.Join(t.TempDir(), "run"))

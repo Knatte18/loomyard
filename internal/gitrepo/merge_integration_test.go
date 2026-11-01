@@ -1,5 +1,3 @@
-//go:build tier1
-
 // merge_integration_test.go covers the merge primitives in merge.go against real git repositories,
 // reusing gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit) and, for the
 // remote-tracking-ref ResolveSHA case, push_test.go's newBareRemote/cloneFromBare helpers.
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // nonASCIIName is a filename outside core.quotepath's default ASCII set.
@@ -50,6 +49,7 @@ func stagedChanges(t *testing.T, dir string) bool {
 // Every step starts by returning main to that base commit, clearing any merge state and untracked files, and forks branches with names of its own, so the steps run serially in one order but depend on nothing an earlier step leaves behind.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestMergePrimitives(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -491,6 +491,7 @@ func TestMergePrimitives(t *testing.T) {
 
 // TestMergeResolveSHA covers ResolveSHA against a clone of a bare remote: a branch name, an origin/<branch> remote-tracking ref and a full SHA all resolve to the same 40-character SHA, and a ref that resolves nowhere returns an error.
 func TestMergeResolveSHA(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()

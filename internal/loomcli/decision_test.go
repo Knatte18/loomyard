@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const decisionPriorRecord = "# Record\n\n## Decisions\n\n### First\n\nDecision: a.\n"
@@ -301,6 +300,7 @@ func readDecisionRecord(t *testing.T, path string) string {
 
 // TestDecisionVerb_AppendsAndCommits asserts an entry from an unnamed shell or from the run's recorded parent is appended after the prior record byte-identical and committed once, with no status file.
 func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		by          string
@@ -391,6 +391,7 @@ func TestDecisionVerb_AppendsAndCommits(t *testing.T) {
 }
 
 func TestDecisionVerb_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	type refusalCase struct {
 		name string
 		// from, when set, is the content of a --from file the call passes in place of the per-entry flags; setup runs after.
@@ -896,6 +897,7 @@ func TestDecisionVerb_Refusals(t *testing.T) {
 // TestDecisionVerb_NotifiesLiveAgents asserts a committed entry is announced to each live agent of the run but the tackler, the arbiter and the caller,
 // and that a failed listing or post is reported on a success envelope.
 func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// Two entries whose joined inline notice passes the line cap while each one-entry notice fits.
 	oversizedBatch := fmt.Sprintf(`[{"title": "First", "decision": %q, "rationale": "r"}, {"title": "Second", "decision": %q, "rationale": "r"}]`, strings.Repeat("a", 4500), strings.Repeat("b", 4500))
@@ -1051,6 +1053,7 @@ func TestDecisionVerb_NotifiesLiveAgents(t *testing.T) {
 // The batch is committed once with every title in the amendment record.
 // Each live agent gets one notice: a short one naming every heading, and Merriam's carrying every entry's text.
 func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	f := newDecisionFake(t)
 	f.planApproved = true
@@ -1113,6 +1116,7 @@ func TestDecisionVerb_FromFileRecordsBatch(t *testing.T) {
 // TestDecisionNoticeOpening_NamedByParentDirective asserts the rendered parent directive quotes the opening every decision notice starts with.
 // That quote is what makes a spawned role admit the notice as its parent's.
 func TestDecisionNoticeOpening_NamedByParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	directive, err := parentdirective.Directive(stencilkit.Seed(t), "hub:orch", false)
 	if err != nil {
@@ -1136,6 +1140,7 @@ func (p recordingNoticePoster) Post(receiver, body string) (int64, error) {
 }
 
 func TestPostDecisionNotice_SignsByCaller(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -1186,6 +1191,7 @@ func TestPostDecisionNotice_SignsByCaller(t *testing.T) {
 }
 
 func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := newDecisionFake(t)
 	f.commitErr = errors.New("index locked")
 	var out bytes.Buffer
@@ -1231,6 +1237,7 @@ func amendmentBytesAfterCall(t *testing.T, f *decisionFake, titles ...string) []
 // It refuses where there is no plan to amend, and leaves both records as they were on every failed append or commit that did not land.
 // It also asserts the approved-plan reader's answers over a plan directory.
 func TestDecisionVerb_AmendsPlan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const title = "Keep the cache"
 	tests := []struct {
@@ -1513,6 +1520,7 @@ func writeDecisionPlan(t *testing.T, anchor string, approved bool) {
 
 // TestSamplerStrandReader pins which strand the sampler session check admits: the one the Sampler-Session row recorded, while the run stands at that row, running or halted, and not a darn run's.
 func TestSamplerStrandReader(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const sampler = "hub:slug:sampler"

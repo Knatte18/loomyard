@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reponame_test.go covers hubSuffix trimming in buildLocation, pinning the clean-break behaviour:
 // the current -LYMHUB suffix is trimmed from Location.RepoName, the retired -HUB suffix is not, and
 // a hub basename with no suffix at all is left untouched.
@@ -9,6 +7,8 @@ package lymcwd
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBuildLocation_RepoNameSuffixTrimming covers hubSuffix trimming in buildLocation across three hub container basenames: the current suffix, the retired suffix, and no suffix at all.
@@ -16,6 +16,7 @@ import (
 //
 //testtiming:keep pins that only the current hub suffix is trimmed from RepoName and the retired one is not, which the resolution scenario covering its blocks never reads
 func TestBuildLocation_RepoNameSuffixTrimming(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

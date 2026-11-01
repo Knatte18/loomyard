@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — unit tests for the strict and degrading config loaders.
 //
 // Tests cover: the strict Load contract using yamlengine + envsource, missing-key detection,
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // baseState is how much of a base directory's _lym tree newBase creates.
@@ -149,6 +148,7 @@ func checkLoaded(t *testing.T, tc loadCase, resolved []byte, buf *logcapture.Buf
 // TestLoad pins what the strict loader returns for a present file: file values beat template defaults, a missing key loads at its template default with one fill line and the file untouched, a present empty value or emptied list is kept, an extra key is tolerated, env markers resolve, and a declared open map is carried whole.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []loadCase{
 		{
 			name:     "file values round-trip",
@@ -255,6 +255,7 @@ func TestLoad(t *testing.T) {
 // TestLoad_Refusals pins the strict loader's refusals and the text that names the way forward:
 // an absent file points at "lym config reconcile", a refusal reconcile cannot fix never hints at it.
 func TestLoad_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -405,6 +406,7 @@ func TestLoad_Refusals(t *testing.T) {
 
 // TestMarkInvalid pins the mark's contract: the error text is unchanged, the wrapped error stays reachable, and a nil error stays nil.
 func TestMarkInvalid(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cause := errors.New("bad value")
 
@@ -426,6 +428,7 @@ func TestMarkInvalid(t *testing.T) {
 // TestLoadOrTemplate pins the degrading loader: proven absence of _lym/, of the config file or of the base directory resolves the template with env overrides honored, and a present file loads exactly as the strict loader loads it.
 // It serializes its rows because they swap the process-global logger output and set env variables.
 func TestLoadOrTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		loadCase
 		state baseState
@@ -531,6 +534,7 @@ func TestLoadOrTemplate(t *testing.T) {
 
 // TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate pins the fallback tail's own error wrap: with no _lym/ on disk, a template whose required ${env:NAME} marker has no variable returns an error naming "config template:" and the module, and never a config-file path that does not exist.
 func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	baseDir := t.TempDir()
 
@@ -553,6 +557,7 @@ func TestLoadOrTemplate_UnsetRequiredEnv_WrapsAsConfigTemplate(t *testing.T) {
 //
 //testtiming:keep pins FindBaseDir's own return value and its wrapped sentinel, which the covering Edit rows only match as text
 func TestFindBaseDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -594,6 +599,7 @@ func TestFindBaseDir(t *testing.T) {
 //
 //testtiming:keep pins that the sentinel matches by identity and not by message text, which no covering test asserts
 func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	unrelated := errors.New("not initialized")
 
@@ -604,6 +610,7 @@ func TestErrNotInitialized_NotMatchedByUnrelatedError(t *testing.T) {
 
 // TestConfigPaths pins the path constructors configengine singly declares: ConfigDir and ConfigFile live under LymDirName, StagingFile lives under the .lym counterpart, ConfigFileRel is relative and in lockstep with ConfigFile, and LymDirName is "_lym" -- the token internal/lymdirs is the sole declarer of.
 func TestConfigPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := "/home/user/project"

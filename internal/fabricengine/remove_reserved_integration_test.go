@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_reserved_integration_test.go proves Remove refuses the same reserved slugs Add refuses,
 // against a real hub with those directories actually present on disk.
 // Before the shared validator, `lym fabric remove` of the Bolt checkout and `lym fabric remove <prime>-weft`
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
 func TestRemove_RefusesReservedSlugsAndLeavesThemOnDisk(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

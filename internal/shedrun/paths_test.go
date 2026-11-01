@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedrun
 
 import (
@@ -9,6 +7,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // worktreeName is the worktree name of every syntheticLocation, the run-id "self" resolves to.
@@ -30,6 +29,7 @@ func syntheticLocation(t *testing.T) *lymcwd.Location {
 
 // TestPathConstructors pins every path constructor's layout under the anchor: durable files under _lym/shed/<run>, ephemeral ones under .lym/shed/<run>.
 func TestPathConstructors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -149,6 +149,7 @@ func TestPathConstructors(t *testing.T) {
 
 // TestBattenWatchedContent pins the batten-watched marker's format: a pid alone is one line, a pid with a scratch directory and a row round-trips, and a first line that is no positive pid fails to parse.
 func TestBattenWatchedContent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -182,6 +183,7 @@ func TestBattenWatchedContent(t *testing.T) {
 }
 
 func TestParkMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := syntheticLocation(t)
 	for _, runID := range []string{"worktree", "self"} {
@@ -205,6 +207,7 @@ func TestParkMarker(t *testing.T) {
 }
 
 func TestRunsRootRel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := syntheticLocation(t)
 	root := RunsRootRel()
@@ -259,6 +262,7 @@ func TestRunsRootRel(t *testing.T) {
 }
 
 func TestDriveReportsRel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	anchored := syntheticLocation(t)
 	anchored.AnchorRel = "sub"
@@ -288,6 +292,7 @@ func TestDriveReportsRel(t *testing.T) {
 //
 //testtiming:keep pins that RunLock, StatusLock, PrimeRunLock and LandLock never share a file, which its covering tests do not
 func TestLocksAreDistinct(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := syntheticLocation(t)
 	prime := PrimeRunLock(l)

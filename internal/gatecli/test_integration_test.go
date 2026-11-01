@@ -1,5 +1,3 @@
-//go:build tier1
-
 // test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
 // the tier run, its slots, the slot wait, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
 // It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs, so it needs the integration build tag.
@@ -39,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -625,6 +624,7 @@ func standaloneWorktree(t *testing.T, withConfig bool) string {
 }
 
 func TestGateTest_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -2029,6 +2029,7 @@ func TestGateTest_Scenario(t *testing.T) {
 }
 
 func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
@@ -2063,6 +2064,7 @@ func TestGateTest_UnsetDirFollowsTheAnchor(t *testing.T) {
 
 // TestGateRunner starts the gate helper as `run-detached` over run directories a test writes itself, with the stand-in as the tier command.
 func TestGateRunner(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // tiers_unix_test.go holds the tier command rendering test, whose expected quoting is the sh form.
 
@@ -9,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRenderTierCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

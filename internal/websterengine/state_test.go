@@ -1,5 +1,3 @@
-//go:build tier0
-
 // state_test.go covers LoadState/SaveState's documented cases: round-tripping a populated State
 // through disk (including a persisted digest and per-card SHA trail), an absent state.json
 // returning (nil, nil), a corrupt state.json returning a
@@ -20,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -39,6 +38,7 @@ func scratchSibling(t *testing.T) (websterDir, scratchDir string) {
 //
 //testtiming:keep pins every State and BatchState field surviving save and load, and the lock landing in the scratch dir only; the run-level test round-trips only the fields its run sets
 func TestState_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	websterDir, scratchDir := scratchSibling(t)
@@ -121,6 +121,7 @@ func TestState_RoundTrip(t *testing.T) {
 
 // TestLoadState_UnusualFiles pins LoadState on a state.json that is absent (nil, nil), corrupt (a wrapped error, never a guessed value) or written before the integration stage was retired (the retired integrationFix and assertedModel fields are ignored on load, every other field loads intact and a save keeps both retired keys as unknown keys, the reserved -1 batch record stays an ordinary entry, and the audit-ledger fields it predates decode as nil).
 func TestLoadState_UnusualFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const legacy = `{
@@ -241,6 +242,7 @@ func TestLoadState_UnusualFiles(t *testing.T) {
 //
 //testtiming:keep pins the lease's cross-holder exclusion and release directly; the covering run-level test only observes ErrRunBusy
 func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 
 	held, err := websterengine.AcquireStateMutation(scratchDir)
@@ -273,6 +275,7 @@ func TestAcquireStateMutation_ExcludesSecondHolder(t *testing.T) {
 //
 //testtiming:keep pins RunActive's not-active result releasing the probed lock and its active result while the lock is held; the plan-reset tests only observe the busy refusal
 func TestRunActive_ReflectsRunLockHeld(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 
 	active, err := websterengine.RunActive(scratchDir)

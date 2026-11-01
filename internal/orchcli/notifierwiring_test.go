@@ -1,5 +1,3 @@
-//go:build tier0
-
 // notifierwiring_test.go pins the route of every runner's hold notice: each module wires its shuttle runner's notifier through NotifyAsker.
 
 package orchcli_test
@@ -8,11 +6,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunnerNotifiers_ResolveWithTheAskerRule proves each module that builds a shuttle runner wires its notifier through NotifyAsker, so a held agent's notice reaches the orch its own question reached.
 // The runner keeps its notifier private and the wiring builds the runner inside the engine stack, so the test reads the wiring source.
 func TestRunnerNotifiers_ResolveWithTheAskerRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

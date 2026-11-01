@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verbs_test.go pins the pool's verbs over the fake delivery seam: mail, replies, reads, forwards, the log, injects, interrupts and holds.
 
 package creelengine_test
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -126,6 +125,7 @@ func eventsOf(entries []creelengine.LogEntry) []string {
 }
 
 func TestStore_Mail(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -633,6 +633,7 @@ func TestStore_Mail(t *testing.T) {
 }
 
 func TestStore_InjectAndHold(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -1097,6 +1098,7 @@ func TestStore_InjectAndHold(t *testing.T) {
 }
 
 func TestStore_ClaimAtBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// claimWith claims as the strand at boundary and returns the claimed messages' lines, leaving the reading unacknowledged.
 	claimWith := func(t *testing.T, e *env, as string, boundary creelengine.Boundary) (*creelengine.Reading, []string) {

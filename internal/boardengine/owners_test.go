@@ -1,5 +1,3 @@
-//go:build tier0
-
 // owners_test.go — ParseOwners, Owners.Effective and OwnedElsewhere.
 
 package boardengine
@@ -7,9 +5,12 @@ package boardengine
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOwnersEffective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	errParent := errors.New("parent unreadable")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handle_test.go covers CanonicalizeHandles: the batched Name call, positional matching, the
 // Rename-derived source, failure and collision handling, and the on-disk rewrite.
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -20,6 +19,7 @@ import (
 // TestCanonicalizeHandles_Rewrites covers CanonicalizeHandles rewriting the draft handles of a plan into their canonical spelling without a finding.
 // Create declarations and a Rename-derived declaration ride one batched call; each declaration is matched back to its own handle by position, so a handle sorting after another's whose declared identifier differs from its member name must not be cross-wired; the rewrite lands on every card referencing the handle; a Rename's unit comes from the old side's resolved glyph, never from the draft, so a misspelled unit does not survive; and a method rename derives a method declaration, where the receiver clause once produced "func (c *Counter.Tallyer) Count() int", which quarry rejected as member_too_deep, so no method could be renamed through the glyph alphabet at all.
 func TestCanonicalizeHandles_Rewrites(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	oldFoo := map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"}
@@ -151,6 +151,7 @@ func TestCanonicalizeHandles_Rewrites(t *testing.T) {
 // resolve layer must not pick one canonical by map-iteration accident and rewrite the plan on disk
 // with it before that refusal is ever rendered.
 func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": "package sub\n\nfunc Old() {}\n"})
 	repo, err := openRepo(root)
 	if err != nil {
@@ -190,6 +191,7 @@ func TestCanonicalizeHandles_OneDraftTwoCanonicalsRewritesNothing(t *testing.T) 
 // method's receiver verbatim, so the first textual occurrence of the declared identifier is
 // frequently inside the receiver TYPE rather than at the declared name.
 func TestRenameSignature(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name      string
 		signature string
@@ -270,6 +272,7 @@ func TestRenameSignature(t *testing.T) {
 
 // TestRenameCSharpDecl pins the exact heads a C# rename derives, which the glyph-chain rows see only through the minted id.
 func TestRenameCSharpDecl(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -300,6 +303,7 @@ func TestRenameCSharpDecl(t *testing.T) {
 }
 
 func TestRenameCSharpDecl_ConstructorIsNamedByItsType(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -326,6 +330,7 @@ func TestRenameCSharpDecl_ConstructorIsNamedByItsType(t *testing.T) {
 }
 
 func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#DoesNotExist` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
@@ -396,6 +401,7 @@ func TestCanonicalizeHandles_RenameOldUnresolved(t *testing.T) {
 // not a symbol — and the finding must say so instead of claiming the old side "did not resolve
 // found", which is false for it and sends the operator at a resolution problem.
 func TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub/a.go#` -> `plan:sub#New`\n\n**Intent:** one\n\n## Rename mechanic\n",
 	})
@@ -419,6 +425,7 @@ func TestCanonicalizeHandles_RenameOldSelfGlyphNamesTheShapeMistake(t *testing.T
 }
 
 func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Card 1's draft handle deliberately misspells the declared identifier ("Good" versus the
 	// declaration head's own "ActualGood") so its successful rewrite is verifiable against a
 	// changed string, not merely a no-op round trip.
@@ -453,6 +460,7 @@ func TestCanonicalizeHandles_OneFailingDeclarationLeavesOthersRewritten(t *testi
 }
 
 func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Create:**\n- `plan:sub#One` -> `func Same() {}`\n\n**Intent:** one\n",
 		2: "**Create:**\n- `plan:sub#Two` -> `func Same() {}`\n\n**Intent:** two\n",
@@ -481,6 +489,7 @@ func TestCanonicalizeHandles_CanonicalCollisionRewritesNeither(t *testing.T) {
 }
 
 func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 
@@ -496,6 +505,7 @@ func TestCanonicalizeHandles_LanguageNoneNoOp(t *testing.T) {
 // TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard covers one handle bound from a
 // matching Created symbol and rewritten on both the declaring and the referencing card.
 func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Create:**\n- `plan:sub#New` -> `func New() {}`\n\n**Intent:** one\n",
 		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
@@ -559,6 +569,7 @@ func TestBindHandles_MatchedHandleRewritesDeclaringAndReferencingCard(t *testing
 // TestBindHandles_HandleBindsToTheOtherPackageOfItsDirectory covers a handle whose test the card wrote into its directory's other Go package:
 // it binds to the glyph the delta created there, in either direction, and the plan is rewritten to that glyph.
 func TestBindHandles_HandleBindsToTheOtherPackageOfItsDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -604,6 +615,7 @@ func TestBindHandles_HandleBindsToTheOtherPackageOfItsDirectory(t *testing.T) {
 // TestBindHandles_OtherPackageMatchStillCountsTowardMismatch covers a card whose handle only the other package of its directory matches:
 // the match counts as a match, so any handle left unmatched, or reaching an already bound glyph, makes bind-count-mismatch and rewrites nothing.
 func TestBindHandles_OtherPackageMatchStillCountsTowardMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -665,6 +677,7 @@ func TestBindHandles_OtherPackageMatchStillCountsTowardMismatch(t *testing.T) {
 // TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither covers two handles on one card
 // with only one delta match, producing bind-count-mismatch and rewriting neither.
 func TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Create:**\n- `plan:sub#One` -> `func One() {}`\n- `plan:sub#Two` -> `func Two() {}`\n\n**Intent:** one\n",
 	})
@@ -694,6 +707,7 @@ func TestBindHandles_PartialMatchOnOneCardMismatchesAndRewritesNeither(t *testin
 // TestBindHandles_ZeroHandleCardNoFindingNoWrite covers a zero-handle card producing no finding
 // and no write.
 func TestBindHandles_ZeroHandleCardNoFindingNoWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Edit:**\n- `sub/a.go`\n\n**Intent:** one\n",
 	})
@@ -716,6 +730,7 @@ func TestBindHandles_ZeroHandleCardNoFindingNoWrite(t *testing.T) {
 // a card outside the completed batch: RewriteRefs rewrites the whole plan directory, so a
 // referencing card not itself passed in cards still gets rewritten.
 func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Create:**\n- `plan:sub#New` -> `func New() {}`\n\n**Intent:** one\n",
 		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
@@ -745,6 +760,7 @@ func TestBindHandles_SubstitutionReachesCardOutsideTheCompletedBatch(t *testing.
 // declaration would be.
 // Before this fix, BindHandles skipped any card with zero Declarations, so this card's own "plan:sub#New" handle never lost its prefix, permanently invisible to collectGlyphTargets.
 func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** rename\n",
 		2: "**Uses:**\n- `plan:sub#New`\n\n**Edit:**\n- `sub/other.go`\n\n**Intent:** two\n",
@@ -789,6 +805,7 @@ func TestBindHandles_RenameNewSideHandleBinds(t *testing.T) {
 // TestBindHandles_RenameFileSidePairIsNotAHandle covers a file-rename pair (both sides self glyphs, per spec's own exemption) producing no finding and no write.
 // Neither side is handle-shaped, so planparser.OwnedHandles reports nothing to bind and the card is skipped exactly like a zero-handle card.
 func TestBindHandles_RenameFileSidePairIsNotAHandle(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub/old.go` -> `sub/new.go`\n\n**Intent:** rename a file\n",
 	})
@@ -811,6 +828,7 @@ func TestBindHandles_RenameFileSidePairIsNotAHandle(t *testing.T) {
 // expected glyph the delta's Renamed set does not carry: bind-count-mismatch, rewriting neither
 // side, exactly as an unmatched Create declaration does.
 func TestBindHandles_RenameNewSideUnmatchedMismatches(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir, plan := writePlanFixture(t, map[int]string{
 		1: "**Rename:**\n- `sub#Old` -> `plan:sub#New`\n\n**Intent:** rename\n",
 	})
@@ -838,6 +856,7 @@ func TestBindHandles_RenameNewSideUnmatchedMismatches(t *testing.T) {
 
 // TestBindHandles_LanguageNoneNoOp mirrors CanonicalizeHandles' own no-op under language: none.
 func TestBindHandles_LanguageNoneNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	plan := &planparser.Plan{Dir: dir, Language: "none"}
 

@@ -116,10 +116,12 @@ adjust package paths.
 go build ./...
 go vet ./internal/<module>engine/... ./internal/<module>cli/...
 go test -count=5 ./internal/<module>engine/... ./internal/<module>cli/... ./cmd/lym/...   # hermetic
-go test -tags tier2 ./internal/<module>cli/... -run Smoke -v -count=1                      # live serial — LLM-driving module: -tags tier3 and -run <ExactTestName>, never bare Smoke
+LYM_TEST_TIER=2 go test ./internal/<module>cli/... -run Smoke -v -count=1                # live serial — LLM-driving module: LYM_TEST_TIER=3 and -run <ExactTestName>, never bare Smoke
 # THE decisive amplifier — N× CONCURRENT full smoke suites (compile once, run N copies):
 # TMUX-ONLY MODULES LIKE REED ONLY — see the LLM-driving-modules note above before ever running this against burler/loom.
-go test -c -tags tier2 -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
+go test -c -o "$SCRATCH/smoke.test.exe" ./internal/<module>cli/...
+# the compiled binary reads the tier at run time, not at compile time
+export LYM_TEST_TIER=2
 for i in 1 2 3; do ( "$SCRATCH/smoke.test.exe" -test.run Smoke -test.count=1 -test.v \
     > "$SCRATCH/s_$i.txt" 2>&1; echo rc=$? ) & done; wait
 grep -hiE 'being used by another process|TempDir RemoveAll|did not start|FAIL' "$SCRATCH"/s_*.txt \

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const monitorLaunchTranscript = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Monitor","input":{"command":"tail -f x"}}]}}
@@ -62,6 +61,7 @@ func parseOneKind(t *testing.T, line []byte) shuttleengine.Event {
 }
 
 func TestParseEvents_StopWithRunningBackgroundTaskIsWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	tasks := []any{map[string]any{"id": "a1", "type": "subagent", "status": "running"}}
 	ev := parseOneKind(t, stopLine(t, "", tasks))
 	if ev.Kind != shuttleengine.EventWaiting {
@@ -73,6 +73,7 @@ func TestParseEvents_StopWithRunningBackgroundTaskIsWaiting(t *testing.T) {
 }
 
 func TestParseEvents_StopWithCompletedTasksAndCleanTranscriptIsStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	tasks := []any{map[string]any{"id": "a1", "type": "subagent", "status": "completed"}}
 	path := writeBgTranscript(t, monitorLaunchTranscript+taskNotification)
 	ev := parseOneKind(t, stopLine(t, path, tasks))
@@ -90,6 +91,7 @@ const queuedCommandNotification = `{"attachment":{"type":"queued_command","promp
 `
 
 func TestParseEvents_BackgroundTasksKeyIsAuthoritativeOverTranscript(t *testing.T) {
+	tiergate.Require(t, 0)
 	unmatched := writeBgTranscript(t, monitorLaunchTranscript)
 	absorbedByQueueOperation := writeBgTranscript(t, monitorLaunchTranscript+queueOperationNotification)
 	absorbedByAttachment := writeBgTranscript(t, monitorLaunchTranscript+queuedCommandNotification)
@@ -125,6 +127,7 @@ func TestParseEvents_BackgroundTasksKeyIsAuthoritativeOverTranscript(t *testing.
 }
 
 func TestParseEvents_MatchingTaskNotificationIsStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := writeBgTranscript(t, monitorLaunchTranscript+taskNotification)
 	ev := parseOneKind(t, stopLine(t, path, nil))
 	if ev.Kind != shuttleengine.EventStop {
@@ -133,6 +136,7 @@ func TestParseEvents_MatchingTaskNotificationIsStop(t *testing.T) {
 }
 
 func TestParseEvents_MissingTranscriptIsStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	ev := parseOneKind(t, stopLine(t, filepath.Join(t.TempDir(), "absent.jsonl"), nil))
 	if ev.Kind != shuttleengine.EventStop {
 		t.Fatalf("kind = %v, want EventStop", ev.Kind)
@@ -140,6 +144,7 @@ func TestParseEvents_MissingTranscriptIsStop(t *testing.T) {
 }
 
 func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
+	tiergate.Require(t, 0)
 	bash := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_b","name":"Bash","input":{"command":"sleep 99","run_in_background":true}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Command running in background with ID: bqx98765"}]}}
 `
@@ -181,6 +186,7 @@ const forkLaunchTranscript = `{"type":"assistant","message":{"content":[{"type":
 // TestOutstandingForks pins which forks the session's transcript reports still running, read from the project directory of the workdir under HOME.
 // It is not parallel: it sets HOME.
 func TestOutstandingForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	forkNotification := `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>a5e3629456cc7489a</task-id>\n</task-notification>"}` + "\n"
 	wantFork := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundFork, ID: "a5e3629456cc7489a", Signal: shuttleengine.SignalTranscript}}
 
@@ -232,6 +238,7 @@ func TestOutstandingForks(t *testing.T) {
 
 // TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting pins that a Stop payload with no background_tasks list reads a fork launched without run_in_background as outstanding work.
 func TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	ev := parseOneKind(t, stopLine(t, writeBgTranscript(t, forkLaunchTranscript), nil))
 	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundFork, ID: "a5e3629456cc7489a", Signal: shuttleengine.SignalTranscript}}
 	if ev.Kind != shuttleengine.EventWaiting || !reflect.DeepEqual(ev.Outstanding, want) {
@@ -240,6 +247,7 @@ func TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting(t *testing.
 }
 
 func TestParseEvents_RunningShellEntryYieldsShellTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	tasks := []any{map[string]any{"id": "bsh12345", "type": "shell", "status": "running", "command": "sleep 600"}}
 	ev := parseOneKind(t, stopLine(t, "", tasks))
 	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundShell, ID: "bsh12345", Label: "sleep 600", Signal: shuttleengine.SignalPayload}}
@@ -249,6 +257,7 @@ func TestParseEvents_RunningShellEntryYieldsShellTask(t *testing.T) {
 }
 
 func TestParseEvents_RunningForkEntryCarriesDescriptionAsLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	tasks := []any{
 		map[string]any{"id": "a1", "type": "subagent", "status": "running", "description": "review the diff"},
 		map[string]any{"id": "a2", "type": "subagent", "status": "running"},
@@ -264,6 +273,7 @@ func TestParseEvents_RunningForkEntryCarriesDescriptionAsLabel(t *testing.T) {
 }
 
 func TestParseEvents_ShellEntryLabelFallsBackToDescriptionThenID(t *testing.T) {
+	tiergate.Require(t, 0)
 	tasks := []any{
 		map[string]any{"id": "m1", "type": "monitor", "status": "running", "description": "watch logs"},
 		map[string]any{"id": "m2", "type": "monitor", "status": "running"},
@@ -275,6 +285,7 @@ func TestParseEvents_ShellEntryLabelFallsBackToDescriptionThenID(t *testing.T) {
 }
 
 func TestParseEvents_TranscriptOnlyBashYieldsShellTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	bash := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_b","name":"Bash","input":{"command":"sleep 99","run_in_background":true}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Command running in background with ID: bqx98765"}]}}
 `
@@ -286,6 +297,7 @@ func TestParseEvents_TranscriptOnlyBashYieldsShellTask(t *testing.T) {
 }
 
 func TestParseEvents_PayloadListIsTheWholeOutstandingListAndTranscriptIsUnread(t *testing.T) {
+	tiergate.Require(t, 0)
 	agent := `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_a","name":"Agent","input":{"run_in_background":true}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a","content":"async launched"}]},"toolUseResult":{"agentId":"agent7654321"}}
 `
@@ -301,6 +313,7 @@ func TestParseEvents_PayloadListIsTheWholeOutstandingListAndTranscriptIsUnread(t
 }
 
 func TestParseEvents_StopWithNothingOutstandingCarriesNoList(t *testing.T) {
+	tiergate.Require(t, 0)
 	ev := parseOneKind(t, stopLine(t, "", nil))
 	if ev.Kind != shuttleengine.EventStop || ev.Outstanding != nil {
 		t.Errorf("kind = %v, Outstanding = %+v", ev.Kind, ev.Outstanding)

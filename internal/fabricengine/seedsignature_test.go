@@ -1,14 +1,14 @@
-//go:build tier0
-
 package fabricengine
 
 import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSeedCommitSignature(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	id := buildvcs.Identity{Revision: "0123456789abcdef0123456789abcdef01234567"}

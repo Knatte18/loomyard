@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wait_test.go covers Run.Wait's poll loop against fakeReed/fakeEngine and a fake clock: all four
 // outcome classifications, KeepPane skipping cleanup, the startup probe's trust-dismiss and
 // fast-fail-on-timeout paths, multi-Stop offset tracking, events-offset resilience across a partial
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,6 +88,7 @@ var _ Clock = (*scriptedClock)(nil)
 //
 //testtiming:keep pins the busy-spin guard: a poll_interval_ms below one second is floored to one second, which no Wait test measures
 func TestPollInterval_FloorsNonPositive(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		intervalMS int
@@ -117,6 +117,7 @@ func TestPollInterval_FloorsNonPositive(t *testing.T) {
 // leaves the caller unable to diagnose, resume, or tear down what it started.
 // Reproduced live by tearing the reed session down under an in-flight run.
 func TestRun_Wait_MechanismFailure_KeepsRunIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A permanently failing reed.Status is the live shape (a torn-down session answers every
 	// Status the same way), so Wait gives up after maxStatusRetries consecutive failures.
 	reed := &fakeReed{StatusErr: errors.New(`no reed session; run "lym reed up"`)}
@@ -188,6 +189,7 @@ const (
 //
 //testtiming:keep pins the outcome, hold log and cleanup of every pane, events and file state Wait classifies, of which the held-run test reaches only a few
 func TestRun_Wait_Classification(t *testing.T) {
+	tiergate.Require(t, 0)
 	liveStrands := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
 	deadPane := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: false}}}}
 	clearedBinding := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "", Live: false}}}}
@@ -549,6 +551,7 @@ func sessionEngine(liveness Liveness) func() Engine {
 // A later Stop with every output file finalizes done, also through a gate.
 // A held run finalizes died on a dead pane, done when its outputs appear as the pane dies, and timeout at its unchanged deadline.
 func TestRun_Wait_HeldTurnEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	passingGate := GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}
 	live := []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", Live: true}}}}
@@ -890,6 +893,7 @@ type wantLogLines struct {
 //
 //testtiming:keep pins that the startup window, not the run deadline, classifies every not-ready path, and that a satisfied file contract outranks the expired window
 func TestRun_Wait_StartupWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
 	tests := []struct {
 		name string
@@ -1037,6 +1041,7 @@ func TestRun_Wait_StartupWindow(t *testing.T) {
 // TestRun_Wait_DeadlineExcludesSleptAndPausedTime pins that the run deadline counts awake, unpaused time:
 // a one-hour run across a three-hour machine sleep, and across a three-hour pause, times out one hour after the time it excluded.
 func TestRun_Wait_DeadlineExcludesSleptAndPausedTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const timeout = time.Hour
 	const excludedFor = 3 * time.Hour
@@ -1108,6 +1113,7 @@ func TestRun_Wait_DeadlineExcludesSleptAndPausedTime(t *testing.T) {
 //
 //testtiming:keep pins that a satisfied file contract outranks the run deadline for a started run, with no startup probe run
 func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl") // never created
 	outputFile := filepath.Join(runDir, "out.md")
@@ -1146,6 +1152,7 @@ func TestRun_Wait_RunDeadline_SatisfiedFileContractWinsOverTimeout(t *testing.T)
 //
 //testtiming:keep pins that Wait over a started handle never re-runs the startup probe, with no new engine Startup call and no new capture
 func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}
 	readyStart(reed, engine)
@@ -1199,6 +1206,7 @@ func TestRun_Wait_StartedRun_SkipsStartupProbe(t *testing.T) {
 // two are the same value in the hub shape, so a detached runner whose pane runs at the worktree
 // root while its anchor sits outside it (standalone geometry) is what tells them apart.
 func TestRun_Wait_ForkAudit(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		forkSubagents bool
@@ -1277,6 +1285,7 @@ func TestRun_Wait_ForkAudit(t *testing.T) {
 // leaving the strand and run dir in place exactly as a mechanism failure does, a caller had nothing
 // left to tell the two apart with.
 func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	// auditHidden wraps an Engine in a struct that exposes only the Engine interface, hiding the audit methods of the engine inside.
 	type auditHidden struct{ Engine }
 	tests := []struct {
@@ -1350,6 +1359,7 @@ func TestRun_Wait_ForkAuditFailure_KeepsTheClassifiedOutcome(t *testing.T) {
 //
 //testtiming:keep pins the offset rules over the events file: the last of several Stops wins, a failed parse's bytes are re-read, and a partial line stays unconsumed
 func TestRun_Wait_EventsHandling(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		events string
@@ -1415,6 +1425,7 @@ func TestRun_Wait_EventsHandling(t *testing.T) {
 //
 //testtiming:keep pins that finalize persists the matching Outcome in run.json for every terminal outcome, and does so before the done cleanup
 func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		seedEvents  string
@@ -1520,6 +1531,7 @@ func TestRun_Wait_Finalize_PersistsOutcomeForEveryTerminalOutcome(t *testing.T) 
 // following fakeEngine.PrepareHook's precedent for planting on-disk state that breaks a later
 // saveRunState call.
 func TestRun_Wait_Finalize_OutcomeWriteFailure_StillReturnsClassifiedResult(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := t.TempDir()
 	eventsPath := filepath.Join(runDir, "events.jsonl")
 	outputFile := filepath.Join(runDir, "out.md")
@@ -1570,6 +1582,7 @@ func (e *usageEngine) SessionUsage(sessionID, workdir string) SessionUsage {
 //
 //testtiming:keep pins finalize's UsageReader wiring, which the Classification table covering its blocks does not assert
 func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reading := SessionUsage{Known: true, Fresh: 100, CacheRead: 900, Forks: 2, ForkFresh: 60, ForkCacheRead: 500}

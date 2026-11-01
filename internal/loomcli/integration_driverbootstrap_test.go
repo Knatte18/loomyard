@@ -1,5 +1,3 @@
-//go:build tier2
-
 // integration_driverbootstrap_test.go covers the one property no Tier 1 test in this task can reach:
 // that a real end-to-end llm driver launch -- the production driverStarter seam, backed by a real
 // *shuttleengine.Runner starting a real (stubbed) provider process in a real reed pane over a fixture
@@ -40,6 +38,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -109,6 +108,7 @@ func waitForDriveReport(t *testing.T, dir string, timeout time.Duration) string 
 
 // TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver drives one end-to-end llm driver launch over a fixture hub built through hubforge, seeded with the llm driver, and asserts three things: the launch call returns once the stub's ready marker lands and well before its settle delay elapses, proving shuttle's own blocking Start returns past the provider's startup gates rather than waiting on the whole driver session to finish; the started run's persisted state file exists under the run directory the handle reports; and the drive report the stubbed driver writes and exits lands under the run's durable drive-reports directory, never its ephemeral scratch one.
 func TestIntegrationDriverBootstrap_ReturnsWithoutWaitingOnTheDriver(t *testing.T) {
+	tiergate.Require(t, 2)
 	// Long enough that Start's own startup probing and its typing and settling of the color command finish well inside it.
 	const stubSettleDelay = 5 * time.Second
 	stubPath := integrationWriteStubDriverScript(t, stubSettleDelay)

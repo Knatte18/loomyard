@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landnotice_test.go pins the landing notice over a pass harness: which runs get a line under each land_notice value, the line's text, the request's clearing, the retry of a failed post and the memory's upkeep.
 
 package dobbyengine
@@ -10,9 +8,12 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLandNotices(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const commit = "0123456789abcdef0123456789abcdef01234567"
 	running := RunView{Slug: "task", State: runStateRunning, Producer: producerRunShed}

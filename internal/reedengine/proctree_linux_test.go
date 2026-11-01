@@ -1,5 +1,3 @@
-//go:build tier0
-
 // proctree_linux_test.go pins the Linux wiring of the clock tick rate: the host's real auxiliary vector holds an AT_CLKTCK entry that clockTicksFromAuxv picks up.
 
 package reedengine
@@ -8,9 +6,12 @@ import (
 	"testing"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestClockTicksFromAuxvReadsHostVector(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	auxv, err := unix.Auxv()
 	if err != nil {

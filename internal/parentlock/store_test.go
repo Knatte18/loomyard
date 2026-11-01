@@ -1,5 +1,3 @@
-//go:build tier0
-
 // store_test.go covers the record store, its ticket queue and the compare rules at the package surface, with a fake liveness check and clock.
 
 package parentlock
@@ -15,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -73,6 +72,7 @@ func mustTryAcquire(t *testing.T, store *Store, branch string, owner Owner) Atte
 }
 
 func TestTryAcquire_RacingAcquirersProduceOneGrant(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -96,6 +96,7 @@ func TestTryAcquire_RacingAcquirersProduceOneGrant(t *testing.T) {
 }
 
 func TestTryAcquire_GrantsWaitersInTicketOrderSkippingDeadOnes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -137,6 +138,7 @@ func TestTryAcquire_GrantsWaitersInTicketOrderSkippingDeadOnes(t *testing.T) {
 }
 
 func TestTryAcquire_CoveredRunYieldsItsTurnAndKeepsItsTicket(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -200,6 +202,7 @@ func TestTryAcquire_CoveredRunYieldsItsTurnAndKeepsItsTicket(t *testing.T) {
 }
 
 func TestTryAcquire_TakesRecordOfDeadOrRecycledOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -235,6 +238,7 @@ func TestTryAcquire_TakesRecordOfDeadOrRecycledOwner(t *testing.T) {
 }
 
 func TestTryAcquire_ConfinesBranchNameToDirAndCreatesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -259,6 +263,7 @@ func TestTryAcquire_ConfinesBranchNameToDirAndCreatesIt(t *testing.T) {
 }
 
 func TestTryAcquire_ClockJumpDoesNotFreeALiveOwnersRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -273,6 +278,7 @@ func TestTryAcquire_ClockJumpDoesNotFreeALiveOwnersRecord(t *testing.T) {
 }
 
 func TestTryAcquire_SameRunRewritesOwnerProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -291,6 +297,7 @@ func TestTryAcquire_SameRunRewritesOwnerProcess(t *testing.T) {
 }
 
 func TestReleaseAndHandOff_LeaveRecordOfAnotherProcessAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -323,6 +330,7 @@ func TestReleaseAndHandOff_LeaveRecordOfAnotherProcessAlone(t *testing.T) {
 }
 
 func TestStore_UndecodableRecordReturnsErrUnreadableAndChangesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -353,6 +361,7 @@ func TestStore_UndecodableRecordReturnsErrUnreadableAndChangesNothing(t *testing
 }
 
 func TestList_ReportsLivenessAndWaitersOldestFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)
@@ -389,6 +398,7 @@ func TestList_ReportsLivenessAndWaitersOldestFirst(t *testing.T) {
 }
 
 func TestStore_HeldBy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -431,6 +441,7 @@ func TestStore_HeldBy(t *testing.T) {
 }
 
 func TestForceRelease_RemovesRecordWhateverItsOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	store, processes := newTestStore(t)

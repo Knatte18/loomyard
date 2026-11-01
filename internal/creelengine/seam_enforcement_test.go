@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces `PATTERN-pane-text-injection`'s import half: production code in this package never imports reed or shuttle, so every keystroke goes through the Delivery seam.
 
 package creelengine
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -42,6 +41,7 @@ func deliverySeamImportFindings(filename string, data []byte) ([]string, error) 
 
 // TestCreelStore_DeliverySeamImports enforces that internal/creelengine reaches a pane only through its Delivery seam.
 func TestCreelStore_DeliverySeamImports(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

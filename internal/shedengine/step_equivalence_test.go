@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_equivalence_test.go is the test that protects the (*Shed).Run / (*Shed).Step extraction:
 // for each fixture it drives one Shed to a terminal state with repeated Step calls, drives an
 // identical second Shed once with Run, and asserts the two resulting status files agree on every
@@ -10,6 +8,8 @@ package shedengine
 import (
 	"context"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stepEquivalenceMaxIterations caps the stepping loop below. A regression that never leaves
@@ -84,6 +84,7 @@ func assertStatusesAgree(t *testing.T, stepped, run Status) {
 
 // TestStepRunEquivalence drives each fixture to a terminal state with repeated Step calls and once with Run, and asserts the two agree on the status file and on the Run result versus the final StepResult.
 func TestStepRunEquivalence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string

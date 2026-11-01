@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buildvcs_test.go covers the mapping from build settings onto an Identity, its Clean and Label forms, and OfFile's read of a binary on disk.
 
 package buildvcs
@@ -10,9 +8,12 @@ import (
 	"runtime/debug"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIdentityOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	commitTime := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	tests := []struct {
@@ -40,6 +41,7 @@ func TestIdentityOf(t *testing.T) {
 }
 
 func TestOfFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	executable, err := os.Executable()
 	if err != nil {
@@ -59,6 +61,7 @@ func TestOfFile(t *testing.T) {
 }
 
 func TestIdentity_CleanAndLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string

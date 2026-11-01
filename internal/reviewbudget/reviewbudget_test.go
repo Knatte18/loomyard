@@ -1,5 +1,3 @@
-//go:build tier0
-
 package reviewbudget
 
 import (
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func intPtr(v int) *int { return &v }
@@ -29,6 +28,7 @@ func writeLayer(t *testing.T, dirs configengine.Dirs, spec configengine.Spec, la
 }
 
 func TestCheckResolved(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	perWorktree := configengine.Spec{
@@ -257,6 +257,7 @@ func TestCheckResolved(t *testing.T) {
 }
 
 func TestCheckLocal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	perches := []string{"plan", "merge"}

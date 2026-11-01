@@ -1,5 +1,3 @@
-//go:build tier0
-
 // journal_test.go pins how the journal folds into the pool and how retention carries live state out of old day files.
 
 package creelengine
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -70,6 +69,7 @@ func shapesOf(p *pool) map[int64]messageShape {
 
 // TestJournal_Fold mutates the process-global logger output, so it does not run in parallel.
 func TestJournal_Fold(t *testing.T) {
+	tiergate.Require(t, 0)
 	line := func(rec record) string { return recordLine(t, rec) }
 	posted := func(id int64, from, to, body string) string {
 		return line(record{Event: eventPosted, ID: id, From: from, To: to, Body: body})
@@ -475,6 +475,7 @@ func checkRepairedTail(t *testing.T, dir string, p *pool, buf *logcapture.Buffer
 }
 
 func TestJournal_Retention(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "journal")
 	clock := &testClock{now: journalEpoch}

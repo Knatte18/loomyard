@@ -1,5 +1,3 @@
-//go:build tier1
-
 // configcli_integration_test.go — e2e integration tests for configcli.
 // Tests real fabriccli.RunCLI over a hubforge.CopyHub fixture.
 
@@ -28,12 +26,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runprofile"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in the Bolt checkout with no per-worktree copy written.
 // Its steps run in this order on one hub and pair, so the scenario builds the hub once.
 // It does not call t.Parallel: it sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	const slug = "config-hub-test"
 
 	// fabriccli.CloneAndWire has already materialized every registered module's config plus the repo-wide fabric.yaml at BoardDir, and the records-side primary already sits on its RecordsBranchName-suffixed branch.

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verifiedtree_test.go enforces `PATTERN-gate-slot`:
 // every plan-verify site goes through verifytree.Verify, so none verifies a dirty tree and none skips without the record.
 // It is a tripwire over production source, like constraintchokepoint_test.go: a same-line substring scan that skips comment-only lines.
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // planVerifySites are the production files that run the plan's verify command, each of which must call verifytree.Verify.
@@ -57,6 +56,7 @@ func callsAny(data []byte, token string) bool {
 //
 //lym:guard
 func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
+	tiergate.Require(t, 0)
 	seen := map[string]bool{}
 	scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(f *scankit.File) {
 		for _, site := range planVerifySites {
@@ -83,6 +83,7 @@ func TestVerifiedTree_PlanVerifySitesCallVerify(t *testing.T) {
 //
 //lym:guard
 func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
+	tiergate.Require(t, 0)
 	allowedSeen := map[string]bool{}
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
 		if strings.HasPrefix(f.Rel, "internal/verifytree/") || !callsAny(f.Data, "verifyrun.Run(") {
@@ -106,6 +107,7 @@ func TestVerifiedTree_NoOtherVerifyRunCaller(t *testing.T) {
 //
 //lym:guard
 func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
 		if callsAny(f.Data, retiredMarkerName) {
 			t.Errorf("`PATTERN-gate-slot` violated: %s names the retired %s marker", f.Rel, retiredMarkerName)
@@ -118,6 +120,7 @@ func TestVerifiedTree_NoRetiredMarker(t *testing.T) {
 //
 //testtiming:keep proves the scan helpers of the TestVerifiedTree_* guards fire on an offending source and stay quiet on a compliant or commented one
 func TestVerifiedTree_ScanHelpersFireOnOffendingStayQuietOnCompliant(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		src   string

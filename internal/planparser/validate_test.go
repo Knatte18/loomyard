@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
 // triggering and one clean case, per contracts/specs/loom-plan-spec.md's distinct
 // ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // validCard returns a fully well-formed format-4 Card at position number with slug — Type Edit,
@@ -106,6 +105,7 @@ func materializeFiles(t *testing.T, root string, paths ...string) {
 // proving all seventeen checks pass simultaneously on the format-4 happy path, including card 2's
 // multi-label Edit-plus-Create shape.
 func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan, err := planparser.ParsePlan(goodPlanDir())
@@ -135,6 +135,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 
 // TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter and contracts/specs/loom-plan-spec.md checks them as a pair; ValidateFormat reports the same format-unrecognized but never plan-unapproved, whether approved: is true, false, or (Go's zero value) absent.
 func TestValidate_FormatAndApproval(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -182,6 +183,7 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 //
 //testtiming:keep pins the fixed finding order of format-unrecognized then plan-unapproved, which TestValidate_FormatAndApproval counts but does not order
 func TestValidate_FormatAndApprovalOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{
@@ -214,6 +216,7 @@ func TestValidate_FormatAndApprovalOrder(t *testing.T) {
 //
 //testtiming:keep pins that an unrecognized language silences the alphabet-gated checks (R6-22), which its covering tests do not assert
 func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{
@@ -241,6 +244,7 @@ func TestValidate_UnrecognizedLanguageSilencesEveryAlphabetGatedCheck(t *testing
 // "no plan directory was told" and scans nothing; a Dir that IS told but cannot be listed is its own
 // finding (see TestValidate_IndexFileMismatch_UnlistablePlanDirIsAFinding).
 func TestValidate_IndexFileMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("clean", func(t *testing.T) {
@@ -323,6 +327,7 @@ func TestValidate_IndexFileMismatch(t *testing.T) {
 //
 //testtiming:keep pins the card-type-missing finding for zero type labels and its absence for several, which its covering tests do not assert
 func TestValidate_CardTypeMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("zero type labels", func(t *testing.T) {
@@ -354,6 +359,7 @@ func TestValidate_CardTypeMissing(t *testing.T) {
 // TestValidate_CustomNotAlone covers card-custom-not-alone: a Custom group coexisting with a
 // differently-typed group on the same card is a defect, but repeating Custom is not.
 func TestValidate_CustomNotAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Custom group plus Edit group yields exactly one finding", func(t *testing.T) {
@@ -437,6 +443,7 @@ func TestValidate_CustomNotAlone(t *testing.T) {
 
 // TestValidate_CardRetiredLabel covers card-retired-label: one finding per RetiredLabels entry.
 func TestValidate_CardRetiredLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("two retired labels", func(t *testing.T) {
@@ -455,6 +462,7 @@ func TestValidate_CardRetiredLabel(t *testing.T) {
 //
 //testtiming:keep pins the card-path-malformed finding on path-shaped and glyph-reached entries, which its covering tests do not assert
 func TestValidate_CardPathMalformed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("malformed symbol-shaped entry produces no finding", func(t *testing.T) {
@@ -501,6 +509,7 @@ func TestValidate_CardPathMalformed(t *testing.T) {
 
 // TestValidate_RenameFormat covers rename-format: one finding per RenameRaw entry.
 func TestValidate_RenameFormat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("two malformed Rename bullets", func(t *testing.T) {
@@ -518,6 +527,7 @@ func TestValidate_RenameFormat(t *testing.T) {
 
 // TestValidate_HandleConsistency covers handle-dangling and handle-collision, each firing exactly once on a minimal offending plan, and a well-formed plan with one declaration and one reference producing neither.
 func TestValidate_HandleConsistency(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("well-formed plan with one declaration and one reference produces no findings", func(t *testing.T) {
@@ -633,6 +643,7 @@ func TestValidate_HandleConsistency(t *testing.T) {
 // TestValidate_HandleMalformed covers handle-malformed: one finding per CreateRaw entry, and one
 // finding for a handle whose text after HandlePrefix carries no "#".
 func TestValidate_HandleMalformed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("malformed Create arrow bullet", func(t *testing.T) {
@@ -680,6 +691,7 @@ func renameCard(number int, slug, oldSide, newSide string) planparser.Card {
 // ones — the sub-tests naming a path-shaped side are R9-2's regression, since the enumerated form
 // let refKindPath through both halves.
 func TestValidate_RenamePairShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("path-shaped new side is rename-to-not-handle", func(t *testing.T) {
@@ -792,6 +804,7 @@ func TestValidate_RenamePairShape(t *testing.T) {
 //
 //testtiming:keep pins the rename-mechanic-missing finding, which its covering tests do not assert
 func TestValidate_RenameMechanicMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("no Rename card, mechanic absent", func(t *testing.T) {
@@ -844,6 +857,7 @@ func TestValidate_RenameMechanicMissing(t *testing.T) {
 
 // TestValidate_RenameLeavesTest covers rename-leaves-test: under go, a symbol Rename pair whose same-named tests a card still lists under Edit, with no Rename pair of their own, is one finding per test ref, attributed to the renaming card.
 func TestValidate_RenameLeavesTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -894,6 +908,7 @@ func TestValidate_RenameLeavesTest(t *testing.T) {
 //
 //testtiming:keep pins the card-missing-field finding per card type, which its covering tests do not assert
 func TestValidate_CardMissingField(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("missing Intent", func(t *testing.T) {
@@ -990,6 +1005,7 @@ func TestValidate_CardMissingField(t *testing.T) {
 // TestValidate_CardFieldEmpty covers card-field-empty: a present label with zero-length content
 // is distinct from an absent label, checked on each of the four applicable fields.
 func TestValidate_CardFieldEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("type label present with zero Targets", func(t *testing.T) {
@@ -1068,6 +1084,7 @@ func TestValidate_CardFieldEmpty(t *testing.T) {
 //
 //testtiming:keep pins the card-field-overlap finding, which its covering tests do not assert
 func TestValidate_CardFieldOverlap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("entry in both Targets and Uses", func(t *testing.T) {
@@ -1084,6 +1101,7 @@ func TestValidate_CardFieldOverlap(t *testing.T) {
 
 // TestValidate_UsesLaterTarget covers uses-later-target: a card's Uses entry naming a target of a card with a higher number is one finding attributed to the consumer, matched like the sequencer's producer-before-consumer rule (exact string after trimming, empty entries ignored, any type label).
 func TestValidate_UsesLaterTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1168,6 +1186,7 @@ func TestValidate_UsesLaterTarget(t *testing.T) {
 
 // TestValidate_RedundantPackageTarget covers redundant-package-target: a package self glyph listed on one card beside a member, a file self glyph or a handle of that package is one finding per contained target, attributed to the card with Ref the contained target.
 func TestValidate_RedundantPackageTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	renameCard := func(number int, old, new string) planparser.Card {
@@ -1259,6 +1278,7 @@ func TestValidate_RedundantPackageTarget(t *testing.T) {
 
 // TestValidate_ResignNotMember covers resign-not-member: an Edit re-sign arrow is clean on a member glyph and a finding, with Ref the target, on a file path, a file or package self glyph, a bare symbol or a handle; a malformed glyph is left to glyph-malformed, and nothing is reported under language: none.
 func TestValidate_ResignNotMember(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1312,6 +1332,7 @@ func TestValidate_ResignNotMember(t *testing.T) {
 // TestValidate_ImpactSummaryMultiline covers impact-summary-multiline: a non-empty
 // ImpactSummaryTrailing is a defect, since ImpactSummary is required to stay a single line.
 func TestValidate_ImpactSummaryMultiline(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("trailing lines", func(t *testing.T) {
@@ -1331,6 +1352,7 @@ func TestValidate_ImpactSummaryMultiline(t *testing.T) {
 // member glyph or anything that fails to parse as a glyph at all; under "none" it keeps its
 // pre-glyph path-vs-symbol behavior exactly.
 func TestValidate_ProsaSymbolTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("clean (file self glyph)", func(t *testing.T) {
@@ -1435,6 +1457,7 @@ func TestValidate_ProsaSymbolTarget(t *testing.T) {
 // Unlike most other checks, this one re-reads the card file from plan.Dir, so both cases need a
 // real on-disk plan directory rather than a hand-built Plan struct.
 func TestValidate_CardNumbering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("heading number mismatch", func(t *testing.T) {
@@ -1461,6 +1484,7 @@ func TestValidate_CardNumbering(t *testing.T) {
 //
 //testtiming:keep pins the path-missing finding per card type, group and glyph shape, which its covering tests do not assert
 func TestValidate_PathMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("Edit/Delete/Move/Prosa absent target produces a finding", func(t *testing.T) {
@@ -1710,6 +1734,7 @@ func TestValidate_PathMissing(t *testing.T) {
 //
 //testtiming:keep pins the commit-subject-mismatch finding, which its covering tests do not assert
 func TestValidate_CommitSubjectMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("wrong prefix", func(t *testing.T) {
@@ -1726,6 +1751,7 @@ func TestValidate_CommitSubjectMismatch(t *testing.T) {
 
 // TestValidate_VerifyNestedModule covers verify-nested-module: a go command in a card's Verify: value must not name a package of a nested module other than the one it runs in; the overview's verify chain is never read.
 func TestValidate_VerifyNestedModule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1804,6 +1830,7 @@ func TestValidate_VerifyNestedModule(t *testing.T) {
 // TestValidate_VerifyPackageMissing covers verify-package-missing: a relative package argument of a go test, build or vet or a lym gate test command in a card's Verify: value must name a directory on disk or one the plan creates by then; the overview's verify chain is never read.
 // The test sits in the external package for its card helpers, so it is named by its file rather than a handle.
 func TestValidate_VerifyPackageMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -1908,6 +1935,7 @@ func TestValidate_VerifyPackageMissing(t *testing.T) {
 
 // TestValidate_LanguageMismatch covers plan-language-mismatch's pure half over in-memory plans: the plan's language against the extensions of the files its cards' Targets name, and the refs that exempt a plan from the judgment.
 func TestValidate_LanguageMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1956,6 +1984,7 @@ func TestValidate_LanguageMismatch(t *testing.T) {
 
 // TestValidate_RenameNamespacePair covers rename-namespace-pair over a worktree holding Program.cs and docs/guide.md: under csharp a slash-free old side that names nothing on disk, and nothing an earlier card creates or renames into, is refused.
 func TestValidate_RenameNamespacePair(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -2019,6 +2048,7 @@ func TestValidate_RenameNamespacePair(t *testing.T) {
 
 // TestValidate_VerifyModuleWide covers verify-module-wide: a card's Verify: must not hold a module-wide go build, test or vet, or a go test selecting the tier2 or tier3 tier; the overview's verify chain is never read.
 func TestValidate_VerifyModuleWide(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	withVerify := func(verify string) planparser.Card {
@@ -2080,6 +2110,7 @@ func TestValidate_VerifyModuleWide(t *testing.T) {
 //
 //testtiming:keep pins that a Custom card stays bound by the generic checks, which its covering tests do not assert together
 func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	card := cardOfType(1, "a", planparser.CardTypeCustom, []string{"/abs/malformed.go", "shared.go"})
@@ -2103,6 +2134,7 @@ func TestValidate_CustomCardBoundByGenericChecks(t *testing.T) {
 //
 //testtiming:keep pins the plan-language-unrecognized finding, which its covering tests do not assert
 func TestValidate_LanguageRecognized(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -2132,6 +2164,7 @@ func TestValidate_LanguageRecognized(t *testing.T) {
 //
 //testtiming:keep pins the bare-symbol-target finding, which its covering tests do not assert
 func TestValidate_BareSymbolTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("clean (glyph target)", func(t *testing.T) {
@@ -2182,6 +2215,7 @@ func TestValidate_BareSymbolTarget(t *testing.T) {
 //
 //testtiming:keep pins the directory-target finding and its file-self-glyph remedy text, which its covering tests do not assert
 func TestValidate_DirectoryTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("clean (file with extension)", func(t *testing.T) {
@@ -2254,6 +2288,7 @@ func TestValidate_DirectoryTarget(t *testing.T) {
 // already follow. Before this check existed, every one of the malformed cases below validated
 // completely clean.
 func TestValidate_GlyphMalformed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("clean (well-formed glyph target)", func(t *testing.T) {
@@ -2354,6 +2389,7 @@ func TestValidate_GlyphMalformed(t *testing.T) {
 //
 //testtiming:keep pins the end-to-end canonicalization of repository-root filenames (R9-1), which its covering tests do not assert
 func TestValidate_RootFilenameCanonicalizesEndToEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := writePlanFiles(t, map[string]string{
@@ -2410,6 +2446,7 @@ Framing paragraph.
 // access to validate.go's unexported cardID, so the equivalence is expressed against the same
 // "N-<slug>" format cardID itself produces, rather than by calling it directly.
 func TestCardID(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := planparser.Card{Number: 3, Slug: "exported-surface"}
@@ -2421,6 +2458,7 @@ func TestCardID(t *testing.T) {
 // TestValidate_IndexFileMismatch_FirstCard covers the first_card numbering base: the Card Index must run first_card..first_card+n-1,
 // and an invalid first_card is a finding of its own.
 func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -2461,6 +2499,7 @@ func TestValidate_IndexFileMismatch_FirstCard(t *testing.T) {
 
 // TestValidate_PatternEntryLineCap covers pattern-entry-line-cap: the rule text of a PATTERN.md entry line a card prescribes in a fenced code block must stay within the cap in runes, whatever the fence's info string, the entry's name or its tail, and prose or an unfenced line is never scanned.
 func TestValidate_PatternEntryLineCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// entryLine returns an entry line whose rule text is exactly length runes of filler.
@@ -2530,6 +2569,7 @@ func TestValidate_PatternEntryLineCap(t *testing.T) {
 }
 
 func TestSymbolRenamePairs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	symbolPair := planparser.MovePair{Old: "internal/greeter#Hello", New: "plan:internal/greeter#Farewell"}
 	otherSymbolPair := planparser.MovePair{Old: "internal/greeter#Bye", New: "plan:internal/greeter#Leave"}
@@ -2566,6 +2606,7 @@ func TestSymbolRenamePairs(t *testing.T) {
 
 // TestValidate_PartScope covers the part scope of a split plan's part directory: the exports of other parts count as declared for handle-dangling and path-missing, the shared spots are refused as targets, and a reparse keeps the scope.
 func TestValidate_PartScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const handle = "plan:internal/foo#Ext"

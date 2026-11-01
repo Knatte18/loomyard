@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_teardown_test.go pins the teardown guarantees of `reed down` and `reed remove` against a real tmux server: the server is released before down returns, every pane descendant is reaped, and a worktree's down never touches a sibling worktree's session.
 
 package reedcli
@@ -17,12 +15,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 // TestSmokeTeardown runs the teardown claims against one hub, each step bringing up its own session on the prime worktree and ending with that session down, so the next step starts from the same cold state.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 func TestSmokeTeardown(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 

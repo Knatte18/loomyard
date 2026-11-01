@@ -1,5 +1,3 @@
-//go:build tier0
-
 // strict_test.go tests ReadJSON's unknown-field tolerance, its error sentinels and its contract that a read creates no directory, using only temp files — no git, no spawning.
 
 package state
@@ -9,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 type strictTestValue struct {
@@ -16,6 +16,7 @@ type strictTestValue struct {
 }
 
 func TestReadJSON(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

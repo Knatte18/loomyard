@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // Compile-time proof that *shedfake.SeatRunner satisfies SeatRunner.
@@ -55,6 +54,7 @@ func writeTableFiles(t *testing.T, table seatengine.Table) []string {
 }
 
 func TestMultiLLMProducer_ProbesBeforeArchiving(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a live chair is resumed and the outputs are left alone", func(t *testing.T) {
@@ -204,6 +204,7 @@ func TestMultiLLMProducer_ProbesBeforeArchiving(t *testing.T) {
 }
 
 func TestMultiLLMProducer_Cancellation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	done := seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: []string{"/w/chair.md"}}
 	died := seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, ChairOutputs: []string{"/w/chair.md"}}
@@ -254,6 +255,7 @@ func TestMultiLLMProducer_Cancellation(t *testing.T) {
 }
 
 func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	one, two := 1, 2
 	// The span times sit in a zone two hours east of UTC, so the wanted strings also pin the conversion to UTC.
@@ -411,6 +413,7 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 }
 
 func TestMultiLLMProducer_MapsAWriterThatEndedTheStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
 		label      = "writer seat advisor-1 of part advisor-1"
@@ -510,6 +513,7 @@ func TestMultiLLMProducer_MapsAWriterThatEndedTheStep(t *testing.T) {
 }
 
 func TestMultiLLMProducer_ErrorExits(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boom := errors.New("boom")
 	stuck := seatengine.ErrSeatNotStopped

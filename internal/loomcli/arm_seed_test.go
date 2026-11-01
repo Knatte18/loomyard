@@ -1,5 +1,3 @@
-//go:build tier0
-
 // arm_seed_test.go covers arm's seed-presence refusal: resolveRunID drives the whole check against
 // a hand-built *lymcwd.Location, with no real git repository behind it (shedrun.ReadSeed and
 // shedrun.List are both plain filesystem reads under AnchorPath), so this file stays Tier 1.
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedRunID seeds a run-id under loc with shedrun.RecipeTapestry/shedrun.DriverGo, t.Fatal-ing on
@@ -30,6 +29,7 @@ func seedRunID(t *testing.T, loc *lymcwd.Location, runID string) {
 // the non-generic verbs never reach the seed-presence refusal, and reject's positional review file leaves the run-id at self.
 // resolveRunID performs reads alone (shedrun.ReadSeed, shedrun.List), and arm never reaches wireLightweight/wire on this path.
 func TestResolveRunID(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		verb        string
@@ -104,6 +104,7 @@ func TestResolveRunID(t *testing.T) {
 // TestResolveRunID_RefusalNamesEveryExistingRunID asserts the refusal's text lists every run-id
 // shedrun.List finds, sorted, when the addressed run-id itself has no seed.
 func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	seedRunID(t, loc, "alpha")
 	seedRunID(t, loc, "bravo")
@@ -127,6 +128,7 @@ func TestResolveRunID_RefusalNamesEveryExistingRunID(t *testing.T) {
 // present at the addressed run-id, with no seed beside it, still refuses -- the inconsistency the
 // refusal exists to catch (e.g. a worktree from before this task).
 func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
 	statusPath := shedrun.StatusFile(loc, shedrun.SelfRunID)
 	if err := os.MkdirAll(filepath.Dir(statusPath), 0o755); err != nil {
@@ -145,6 +147,7 @@ func TestResolveRunID_StatusFilePresentWithNoSeedTakesTheSameRefusal(t *testing.
 
 // TestResolveRecipe asserts resolveRecipe records the recipe the addressed run's seed names, loom when the run has no seed, and leaves the seed unwritten.
 func TestResolveRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		seed   *shedrun.Seed
@@ -186,6 +189,7 @@ func TestResolveRecipe(t *testing.T) {
 // a pawl run and a tapestry run pass both checks, and the arming `lym shed` shares never refuses a non-loom recipe.
 // The checks read a seed and a recipe's rows and write nothing, so a hand-built location with no git repository behind it drives them.
 func TestArmAt_RefusesOffLoomRecipes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

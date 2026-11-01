@@ -1,5 +1,3 @@
-//go:build tier0
-
 // check_test.go table-drives Check across every finding kind, its deterministic output order, and
 // the tolerated-malformed-input behaviours. Every case builds bare []shedengine.ProducerDef
 // literals with Producer left nil -- no fakes of any kind.
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantFinding is the Message-free projection every case's want table compares against: Kind,
@@ -44,6 +43,7 @@ func assertFindings(t *testing.T, got []Finding, want []wantFinding) {
 }
 
 func TestCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	// defectProducers carries one instance of every non-endpoint finding kind at once: a dangling
 	// edge, an unreachable row, an unexpected silent terminal, a done cycle, and a blind gate.
 	// Reused across the endpoint-suppression cases below, so those cases prove the endpoint kinds

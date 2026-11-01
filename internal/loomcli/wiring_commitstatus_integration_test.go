@@ -1,5 +1,3 @@
-//go:build tier1
-
 // wiring_commitstatus_integration_test.go drives the per-transition status seam, and commitRecordsVerb over the same deps, against a REAL
 // fabric pair — real MergeStateActive, real CommitAnchoredPaths, real PushPairAnchored, real git — which
 // wiring_commitstatus_test.go's Tier 1 stub closures by construction cannot.
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // realSeamFixture builds a hub, adds one pair, seeds a status file at loom's own status path, and
@@ -106,6 +105,7 @@ func mergeHeadPresent(t *testing.T, dir string) bool {
 //
 // It is serial because it swaps a package variable.
 func TestCommitStatusSeam_Real(t *testing.T) {
+	tiergate.Require(t, 1)
 	seam, location, recordsSibling := realSeamFixture(t)
 
 	type spawnRequest struct {

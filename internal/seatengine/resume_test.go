@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resume_test.go covers Engine.Probe and Engine.Resume: probing before anything is archived, attaching to a live chair, and telling it of the advisors the probe lost.
 
 package seatengine
@@ -12,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
@@ -83,6 +83,7 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 }
 
 func TestEngine_Resume_Writers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
 
@@ -196,6 +197,7 @@ func TestEngine_Resume_Writers(t *testing.T) {
 }
 
 func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
@@ -233,6 +235,7 @@ func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *te
 }
 
 func TestEngine_ProbeAndResume_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	probeFailure := errors.New("reed unreachable")
 	tests := []struct {

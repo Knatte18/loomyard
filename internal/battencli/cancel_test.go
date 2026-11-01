@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cancel_test.go pins cancelRun's decisions and order over fake substrates, and the pure readings it builds on.
 
 package battencli
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const cancelSlug = "some-slug"
@@ -239,6 +238,7 @@ func runningStatus(producer string) shedengine.Status {
 
 // TestCancelRun drives cancelRun through the fakes; a refusal row asserts none of the destructive seams ran, bar the rows that name the seam that refused.
 func TestCancelRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	liveRecord := runproc.Record{PID: 4242, Role: "batten", RegisteredAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
@@ -905,6 +905,7 @@ func TestCancelRun(t *testing.T) {
 
 // TestChildReachedParent pins which readings of batten's and the child's status say the work reached the parent.
 func TestChildReachedParent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	finalizeDone := shedengine.Status{State: shedengine.StateRunning, History: []shedengine.HistoryEntry{{Producer: loomshed.NameFinalize, Outcome: shedengine.Done}}}

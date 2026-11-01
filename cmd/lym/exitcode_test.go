@@ -1,5 +1,3 @@
-//go:build tier0
-
 // exitcode_test.go asserts the exit-code contract for the lym cobra root via the run() seam.
 // It covers four distinct exit paths: help (exit 0), unknown command (exit 1, cobra text), handler
 // failure (exit 1, JSON envelope), and confirms that help paths never emit a JSON error envelope.
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setupBoardConfig creates a minimal board.yaml in a temp directory and changes cwd.
@@ -42,6 +41,7 @@ func setupBoardConfig(t *testing.T) {
 // TestExitCode_HelpPaths asserts help paths exit 0, never emit JSON error envelopes, and name the modules or text a help listing must carry.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_HelpPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -82,6 +82,7 @@ func TestExitCode_HelpPaths(t *testing.T) {
 // TestExitCode_UnknownModule asserts unknown modules, including the removed "update" verb, exit 1 with "unknown command" in the JSON error field.
 // run() rewrites package-global flag state in newRoot, so neither the test nor its rows run in parallel.
 func TestExitCode_UnknownModule(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -106,6 +107,7 @@ func TestExitCode_UnknownModule(t *testing.T) {
 
 // TestExitCode_HandlerFailure asserts handler failures exit 1 with JSON {"ok":false} envelope.
 func TestExitCode_HandlerFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	setupBoardConfig(t)
 

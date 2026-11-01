@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pairparts_integration_test.go covers Topology.PairParts, Topology.TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
 // Every hub has an empty branch_prefix, so a pair's task branch is the bare slug.
 //
@@ -14,10 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPairParts pins what PairParts reads of a pair across its life and what TaskBranchOnOrigin reads of the task repository's origin.
 func TestPairParts(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	all := fabricengine.PairParts{TaskWorktree: true, RecordsWorktree: true, RecordsBranch: true, TaskBranch: true, Launchers: true}
@@ -103,6 +103,7 @@ func TestPairParts(t *testing.T) {
 
 // TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads from the local branches and the origin remote-tracking branches.
 func TestTaskBranchSlugs(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

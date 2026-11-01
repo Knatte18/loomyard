@@ -1,5 +1,3 @@
-//go:build tier0
-
 // samplerwiring_test.go covers the watch on the Sampler-Session row's record.
 
 package loomcli
@@ -11,10 +9,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOpenRecordWatch pins that the watch delivers when the record is written after it opened, and is nil when the record's directory cannot be created.
 func TestOpenRecordWatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a record write is delivered", func(t *testing.T) {

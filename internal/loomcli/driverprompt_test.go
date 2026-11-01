@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -11,6 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seededStencils returns a stencils directory holding every shipped stencil.
@@ -23,6 +22,7 @@ func seededStencils(t *testing.T) string {
 
 // TestDriverPrompt asserts the rendered prompt carries every marker value and the parent directive for the given parent name, leaves no marker unfilled, and that a missing driver stencil is refused rather than rendered empty.
 func TestDriverPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const runID = "operator-surface"
 	const reportPath = "/hub/wt/.lym/shed/operator-surface/drive-report-20260920-120000-cafe.md"
@@ -97,6 +97,7 @@ func TestDriverPrompt(t *testing.T) {
 
 // TestDriverPrompt_ParentNotifyRuleFollowsWatched asserts a watched prompt tells the driver to message the parent only for a relay, a question or a failed friction and never that the run stopped, and an unwatched prompt keeps the generic escalation line.
 func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -144,6 +145,7 @@ func TestDriverPrompt_ParentNotifyRuleFollowsWatched(t *testing.T) {
 
 // TestDriverWatched asserts a marker holding a live pid reads as watched, and an absent marker, a garbage one and a dead pid read as unwatched.
 func TestDriverWatched(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const livePID = 4242
@@ -179,6 +181,7 @@ func ptr(s string) *string { return &s }
 
 // TestWriteParkMarker_CreatesDirAndHoldsReportPath asserts the marker is written under a not-yet-existing directory and holds the report path.
 func TestWriteParkMarker_CreatesDirAndHoldsReportPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	marker := filepath.Join(t.TempDir(), "shed", "run", "driver-parked")
 	if err := writeParkMarker(marker, "/hub/wt/report.md"); err != nil {
 		t.Fatalf("writeParkMarker() error = %v; want nil", err)

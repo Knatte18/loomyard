@@ -1,5 +1,3 @@
-//go:build tier0
-
 package battencli
 
 import (
@@ -9,6 +7,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // locationFixtures returns two synthetic *lymcwd.Location fixtures: one anchored at the worktree
@@ -41,6 +40,7 @@ func locationFixtures(t *testing.T) map[string]*lymcwd.Location {
 //
 //testtiming:keep pins every path constructor's segment, distinctness and containment, which the integration steps only use as inputs
 func TestPaths_ResolveUnderTheAnchorBySegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for name, l := range locationFixtures(t) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // clone_reset_guard_test.go pins --reset's hub predicate.
 //
 // The hub name --reset acts on is DERIVED, never typed: from the warp URL in the two-argument form,
@@ -18,6 +16,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResetHub_RefusesADirectoryThatIsNotAHub parks user content in a directory named like a hub
@@ -25,6 +25,7 @@ import (
 //
 //testtiming:keep resetHub refusing a directory named like a hub and leaving every byte of user content in place; coverage of its blocks by other tests does not show an assertion of this
 func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	parent := t.TempDir()
@@ -61,6 +62,7 @@ func TestResetHub_RefusesADirectoryThatIsNotAHub(t *testing.T) {
 //
 //testtiming:keep resetHub still tearing down a directory carrying either structural hub mark, so --reset stays an idempotent re-clone; coverage of its blocks by other tests does not show an assertion of this
 func TestResetHub_RemovesARealHub(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -94,6 +96,7 @@ func TestResetHub_RemovesARealHub(t *testing.T) {
 // TestResetHub_AbsentPathIsANoop keeps --reset idempotent: resetting a hub that was never created
 // is success, not an error.
 func TestResetHub_AbsentPathIsANoop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	parent := t.TempDir()

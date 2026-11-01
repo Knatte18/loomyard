@@ -1,5 +1,3 @@
-//go:build tier0
-
 // land_test.go covers the Land row's pure wiring helpers: how a pull's error splits into a records-side stop and a failure.
 
 package battencli
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPullStopOutcome asserts a lone records-side stop comes back as its message with a nil error, and a stop joined with a code-side error or any other error comes back as that error with no stop.
 func TestPullStopOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stop := fabricengine.NewRecordsStopError("main", errors.New("replay conflict"), "settle it")

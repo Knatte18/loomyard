@@ -1,5 +1,3 @@
-//go:build tier1
-
 // run_integration_test.go exercises Run against real shell processes, so it carries the integration tag.
 
 package verifyrun
@@ -17,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runCapture redirects logger output into a buffer at Info verbosity for one test.
@@ -34,6 +33,7 @@ func runCapture(t *testing.T) *bytes.Buffer {
 
 // TestRun table-drives Run over a command that exits: one that passes captures both of its streams, a non-zero exit is reported as its code with no error, whether the output goes to a buffer or is discarded, and the command runs in the told working directory.
 func TestRun(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	workingDirectory, echoVariable := "pwd", "echo $VERIFYRUN_TOLD_VARIABLE"
@@ -129,6 +129,7 @@ func TestRun(t *testing.T) {
 }
 
 func TestRun_SpawnFailure(t *testing.T) {
+	tiergate.Require(t, 1)
 	buf := runCapture(t)
 	t.Setenv("PATH", "")
 
@@ -143,6 +144,7 @@ func TestRun_SpawnFailure(t *testing.T) {
 }
 
 func TestRun_Cancellation(t *testing.T) {
+	tiergate.Require(t, 1)
 	buf := runCapture(t)
 	long := "sleep 30"
 	if runtime.GOOS == "windows" {

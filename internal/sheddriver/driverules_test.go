@@ -1,5 +1,3 @@
-//go:build tier0
-
 // driverules_test.go — tier 0 tests for the Go driver's rule table and its stop parse.
 
 package sheddriver
@@ -11,10 +9,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDecideDrive pins every row of the rule table, in order, with one row per stop class and the neighbours that decide between adjacent rows.
 func TestDecideDrive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	blockedStop := Stop{OK: true, State: "blocked", LoopState: "blocked", CurrentProducer: "Plan-Write", HistoryLength: 3}
@@ -124,6 +124,7 @@ func TestDecideDrive(t *testing.T) {
 // TestParseDriveStop covers the loop envelope's decode: a halted success, an error carrying kind and transient, an interrupted loop object, and bytes that do not decode.
 // Each decoded row also pins the stop key, which falls back to the top-level state when the loop object names none.
 func TestParseDriveStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

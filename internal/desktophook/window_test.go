@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // window_test.go covers desktophook.AfterWindow running a real sh command; the commands are POSIX shell, so Windows is left out.
 
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/desktophook"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAfterWindow covers four behaviors.
@@ -21,6 +22,7 @@ import (
 // A failing command's error carries its output.
 // A hanging command is cut off at the timeout.
 func TestAfterWindow(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

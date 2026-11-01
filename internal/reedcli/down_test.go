@@ -1,5 +1,3 @@
-//go:build tier0
-
 // down_test.go pins the wait `reed down` makes for the hub's watchdog lock, through the fake engine seam and an injected probe and sleep so no test waits out the production bound.
 
 package reedcli
@@ -21,11 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer drives downCmd over a fake engine and asserts the envelope, the number of lock probes and the single Warn a timed-out wait logs.
 // It captures the process-global logger, so it is not parallel.
 func TestDownCmd_WaitsForTheWatchdogOnlyWhenItEndedTheServer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const poll = 100 * time.Millisecond
 	tests := []struct {
 		name string

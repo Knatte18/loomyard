@@ -1,5 +1,3 @@
-//go:build tier0
-
 // emptytier_test.go covers the failure of a go-json tier whose command lacks its tag: a package that holds tests under the tier's tag yet ran none.
 
 package gatecli
@@ -10,9 +8,12 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEmptyTierFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	otherOS := "windows"

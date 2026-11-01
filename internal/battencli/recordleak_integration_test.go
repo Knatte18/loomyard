@@ -1,5 +1,3 @@
-//go:build tier1
-
 // recordleak_integration_test.go pins, end to end through batten's own rows, that a task pair no longer inherits the batten run records prime has committed.
 // It stays a white-box "package battencli" test on a hubforge hub, for the reasons lifecycle_integration_test.go's header gives.
 

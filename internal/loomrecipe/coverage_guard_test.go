@@ -1,5 +1,3 @@
-//go:build tier0
-
 // coverage_guard_test.go pins the registry's reason to exist: every row the recipe's built list actually assembles resolves through internal/shedrecipe's registry via the row-to-engine table of wantProducerTable (shape_test.go),
 // checked in both directions against New's real, current output rather than against a standalone literal that could drift silently.
 // It builds a real shedrecipe.Env/ShedPaths pair and calls this package's own New, rather than iterating the table alone.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCoverageGuard_EveryLoomRowHasAnEngine asserts three things about the row-to-engine mapping read off wantProducerTable (shape_test.go) against New's real, current row list:
@@ -25,6 +24,7 @@ import (
 // every key in the table names a row New actually has (the direction that keeps the table from accumulating dead entries);
 // and every engine name the table maps to resolves through shedrecipe.Lookup without error.
 func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -55,6 +55,7 @@ func TestCoverageGuard_EveryLoomRowHasAnEngine(t *testing.T) {
 // intact: a row absent from the table, a table key naming no row, and a table engine that
 // does not resolve.
 func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {
@@ -115,6 +116,7 @@ func TestCoverageGuard_EveryDirectionFailsOnItsOwnTrigger(t *testing.T) {
 // Both underlying constructors discard the name argument because their identity is a package constant carried by their log lines and error text -- mergeInName and finalizeName in internal/landingshed.
 // A renamed row would therefore produce a producer whose logged identity disagrees with its row name.
 func TestCoverageGuard_MergeInAndFinalizeRowNamesMatchTheirProducerIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)
 	if err != nil {

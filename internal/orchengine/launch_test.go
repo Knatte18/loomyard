@@ -1,13 +1,14 @@
-//go:build tier0
-
 package orchengine
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDecideStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		strand, watcher bool
 		want            StartAction
@@ -36,6 +37,7 @@ func existsOnly(paths ...string) func(string) bool {
 }
 
 func TestChooseStartPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {

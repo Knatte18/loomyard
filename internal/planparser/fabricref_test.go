@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fabricref_test.go covers CheckCardFabricReference through the real location-free rule from internal/fabricengine, over plans parsed from a temp directory.
 
 package planparser_test
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckCardFabricReference covers the spans scanned and the ones that are not: each span kind carrying a sibling path or a spelling fails naming its place and the matched text, while inline code and prose carrying a spelling, a quoted search pattern and a plan without either pass.
 // A card slug ending in the fabric suffix fails naming the card and the rename, while one holding the suffix mid-name passes.
 func TestCheckCardFabricReference(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	siblingPath := fabricengine.RecordsWorktree(&lymcwd.Location{HubPath: "/hub", WorktreeName: "task"})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // listreconcile_test.go covers the reconcile listing that breaks strand panes left in the shell window out into windows of their own, against the scripted multiplexer fake.
 
 package reedengine
@@ -10,11 +8,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestListReconcilePanesLocked_MovesShellWindowStrands drives the listing the three reconcile call sites share:
 // list-panes answers the pre-move listing until a break-pane succeeds and the post-move listing after.
 func TestListReconcilePanesLocked_MovesShellWindowStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	type breakAnswer struct {
 		out string

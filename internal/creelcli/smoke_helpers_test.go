@@ -1,5 +1,3 @@
-//go:build tier2 || tier3
-
 // smoke_helpers_test.go builds what both smoke tiers share: a hub with a live reed session, a strand added through `lym reed add`, the creel daemon run in process on the real socket, and pane polling.
 
 package creelcli

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package websterengine
 
 import (
@@ -7,9 +5,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseVerifyFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	longTail := make([]string, 0, 50)
 	for i := 1; i <= 50; i++ {
 		longTail = append(longTail, fmt.Sprintf("    line %d", i))

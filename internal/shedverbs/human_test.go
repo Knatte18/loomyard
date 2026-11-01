@@ -1,5 +1,3 @@
-//go:build tier0
-
 // human_test.go covers the human status renderer's exact output, and the status verb's choice
 // between it and the JSON envelope: terminal vs. non-terminal writer, --json, --watch --json, and
 // an absent status file on a terminal.
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func humanRouting() shedengine.Routing {
@@ -30,6 +29,7 @@ func humanRouting() shedengine.Routing {
 }
 
 func TestRenderStatusHuman(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stuckHistory := []shedengine.HistoryEntry{{Producer: "Plan", Outcome: shedengine.Stuck}}
 	type renderArgs struct {
@@ -176,6 +176,7 @@ func runStatus(spec *Spec, args ...string) (string, int) {
 }
 
 func TestStatusCmd_TerminalPrintsHumanView(t *testing.T) {
+	tiergate.Require(t, 0)
 	forceTerminal(t, true)
 	out, code := runStatus(humanSpec(t))
 	if code != 0 {
@@ -187,6 +188,7 @@ func TestStatusCmd_TerminalPrintsHumanView(t *testing.T) {
 }
 
 func TestStatusCmd_NonTerminalPrintsEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	forceTerminal(t, false)
 	out, code := runStatus(humanSpec(t))
 	if code != 0 || !strings.HasPrefix(out, "{") || !strings.Contains(out, `"run_id":"self"`) {
@@ -195,6 +197,7 @@ func TestStatusCmd_NonTerminalPrintsEnvelope(t *testing.T) {
 }
 
 func TestStatusCmd_JSONFlagPrintsEnvelopeOnTerminal(t *testing.T) {
+	tiergate.Require(t, 0)
 	forceTerminal(t, true)
 	out, code := runStatus(humanSpec(t), "--json")
 	if code != 0 || !strings.HasPrefix(out, "{") {
@@ -203,6 +206,7 @@ func TestStatusCmd_JSONFlagPrintsEnvelopeOnTerminal(t *testing.T) {
 }
 
 func TestStatusCmd_WatchJSONRefusedBeforeReading(t *testing.T) {
+	tiergate.Require(t, 0)
 	forceTerminal(t, true)
 	// No status file is seeded and the paths are unset: a refusal that read anything would fail
 	// differently, and a --watch that got through would block forever.
@@ -213,6 +217,7 @@ func TestStatusCmd_WatchJSONRefusedBeforeReading(t *testing.T) {
 }
 
 func TestStatusCmd_AbsentFileOnTerminalStillReportsEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	forceTerminal(t, true)
 	paths := newTestPaths(t)
 	spec := &Spec{StatusPath: paths.StatusPath, StatusLockPath: paths.StatusLockPath, EnsureStatusLockDir: true}

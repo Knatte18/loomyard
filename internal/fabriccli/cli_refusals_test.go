@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_refusals_test.go covers the fabric CLI's refusals and help output that arise before any hub or git work:
 // the --warp-path/--weft-path push-only gate, clone's positional arity and merge's usage surface.
 // Every case runs against a bare temporary directory, spawning nothing.
@@ -13,9 +11,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunCLI_RefusesBeforeAnyHubWork(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const worktreeContextRefusal = "subcommand requires a worktree context"

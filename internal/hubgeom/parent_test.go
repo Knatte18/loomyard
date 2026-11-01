@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parent_test.go covers ResolveParent's decision table over the pure helper, and the one filesystem case a parent worktree that no longer exists.
 
 package hubgeom
@@ -12,9 +10,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDecideParent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -91,6 +91,7 @@ func TestDecideParent(t *testing.T) {
 
 // TestResolveParent_LegacySeedParentIsIgnored asserts a seed carrying a top-level parent key beside an origin record naming a parent worktree resolves to the origin's parent.
 func TestResolveParent_LegacySeedParentIsIgnored(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	l := hubWithOrigin(t, `{"parent_branch":"main","parent_worktree":"gone-task"}`)

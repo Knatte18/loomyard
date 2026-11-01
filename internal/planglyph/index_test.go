@@ -1,5 +1,3 @@
-//go:build tier0
-
 // index_test.go covers the checks the plan index appends beside planparser's entry points.
 
 package planglyph
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // noFabricReference is a FabricReferenceMatcher that never matches.
@@ -24,6 +23,7 @@ func (noFabricReference) MatchSpelling(string) (string, bool) { return "", false
 // TestIndex_AppendsPlanChecks asserts the index reports a declared host-geometry name (fabric-vocabulary-name) and a test file under Edit (edit-test-file) through its format, rework and dispatch validations.
 // A completed card is dropped at dispatch for the first check, and at format validation for the second, which dispatch never runs.
 func TestIndex_AppendsPlanChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	declaring := func(handle, decl string) planparser.Card {
@@ -171,6 +171,7 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 
 // TestResolveGlyphs asserts the index answers each glyph by the same status policy a card ref gets, positionally, and reports a quarry failure as an error.
 func TestResolveGlyphs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := writeFixtureRepo(t, map[string]string{

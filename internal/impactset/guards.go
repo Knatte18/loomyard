@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -25,13 +26,16 @@ const (
 	testtimingKeepTag = "//testtiming:keep"
 )
 
+// RequireImportPath is the import path of the test kit whose Require call opens every test function with its tier.
+const RequireImportPath = "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // GuardScanKind classifies a GuardScanError by the way forward its author has.
 type GuardScanKind string
 
 const (
 	// GuardMisplaced is a marker not directly above a top-level `func Test…` line.
 	GuardMisplaced GuardScanKind = "misplaced"
-	// GuardWrongTier is a marker in a `tier2` or `tier3` test file, whose tier a gate runs only whole or by hand.
+	// GuardWrongTier is a marker in a `tier2` or `tier3` test file, a tier a gate runs only whole or by hand.
 	GuardWrongTier GuardScanKind = "wrong-tier"
 	// GuardParse is a file the Go parser rejects, including a file that cannot be read.
 	GuardParse GuardScanKind = "parse"
@@ -41,7 +45,7 @@ const (
 type GuardTest struct {
 	// Name is the top-level test function's name.
 	Name string
-	// Tier is the N of the `tierN` tag the file's build constraint names, 0 for a file naming none.
+	// Tier is the file's tier as FileTier reads it.
 	Tier int
 }
 
@@ -201,20 +205,75 @@ func onlyKeepLinesAfter(comments []*ast.Comment) bool {
 	return true
 }
 
-// FileTier returns the tier of a test file: the N of the `tierN` tag its `//go:build` constraint names, 0 when it names none.
+// FileTier returns the tier of a test file: the lowest tier its top-level functions name in an opening `tiergate.Require` call.
+// A file making no such call, such as one written before the run-time selector, reads its tier from its `//go:build` constraint: the N of the `tierN` tag it names, 0 when it names none.
 // A negated tag does not count, and a constraint naming several tier tags reads as the lowest.
 func FileTier(file *ast.File) int {
+	tier := -1
+	for _, decl := range file.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			continue
+		}
+		if required, ok := RequiredTier(file, fn); ok && (tier < 0 || required < tier) {
+			tier = required
+		}
+	}
+	if tier >= 0 {
+		return tier
+	}
 	expr := buildConstraint(file)
 	if expr == nil {
 		return 0
 	}
-	tier := -1
 	for _, number := range positiveTierTags(expr) {
 		if tier < 0 || number < tier {
 			tier = number
 		}
 	}
 	return max(tier, 0)
+}
+
+// RequiredTier returns the tier fn's first statement names in a `tiergate.Require(t, N)` call with an integer literal N, under whatever name file imports the kit as.
+// It reports false when the first statement is no such call.
+func RequiredTier(file *ast.File, fn *ast.FuncDecl) (int, bool) {
+	kitName := ""
+	for _, imp := range file.Imports {
+		if strings.Trim(imp.Path.Value, `"`) != RequireImportPath {
+			continue
+		}
+		kitName = path.Base(RequireImportPath)
+		if imp.Name != nil {
+			kitName = imp.Name.Name
+		}
+	}
+	if kitName == "" || fn.Body == nil || len(fn.Body.List) == 0 {
+		return 0, false
+	}
+	statement, ok := fn.Body.List[0].(*ast.ExprStmt)
+	if !ok {
+		return 0, false
+	}
+	call, ok := statement.X.(*ast.CallExpr)
+	if !ok || len(call.Args) != 2 {
+		return 0, false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "Require" {
+		return 0, false
+	}
+	if pkg, ok := selector.X.(*ast.Ident); !ok || pkg.Name != kitName {
+		return 0, false
+	}
+	literal, ok := call.Args[1].(*ast.BasicLit)
+	if !ok || literal.Kind != token.INT {
+		return 0, false
+	}
+	tier, err := strconv.Atoi(literal.Value)
+	if err != nil {
+		return 0, false
+	}
+	return tier, true
 }
 
 // positiveTierTags returns the N of every `tierN` tag the expression names outside a negation.

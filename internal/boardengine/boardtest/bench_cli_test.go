@@ -1,5 +1,3 @@
-//go:build tier1
-
 // bench_cli_test.go — integration-tier benchmarks for the board CLI commands.
 //
 // Upsert/Get/List drive boardcli.RunCLI, whose cwd-authoritative config
@@ -26,6 +24,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardcli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedWikiRepo seeds a board (via seedWiki) and initialises a git repo at its
@@ -59,6 +58,7 @@ func seedWikiRepo(tb testing.TB, n int) string {
 // It updates an existing task so the per-op work is stable across iterations.
 // CLI-bench numbers include the os.Getwd() + LoadConfig cost from cwd-based config.
 func BenchmarkUpsert(b *testing.B) {
+	tiergate.Require(b, 1)
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
@@ -80,6 +80,7 @@ func BenchmarkUpsert(b *testing.B) {
 // BenchmarkGet measures a "get" command: the read path (load tasks.json, look up one task by slug).
 // No render, no write.
 func BenchmarkGet(b *testing.B) {
+	tiergate.Require(b, 1)
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {
@@ -101,6 +102,7 @@ func BenchmarkGet(b *testing.B) {
 // BenchmarkList measures a "list" command: load all tasks, compute layers and has_proposal, and
 // serialise the brief view.
 func BenchmarkList(b *testing.B) {
+	tiergate.Require(b, 1)
 	b.Setenv("BOARD_SKIP_GIT", "1")
 	for _, n := range benchSizes {
 		b.Run(fmt.Sprintf("n=%d", n), func(b *testing.B) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // workspace_test.go covers BuildWorkspace's exact output shape and its settings splicing, and the workspace look WorkspaceSettings sets.
 
 package vscode
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBuildWorkspace(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	folders := []WorkspaceFolder{{Name: "prime", Path: "../prime"}, {Name: "board", Path: "../" + lymcwd.BoltDirName}}
@@ -56,6 +56,7 @@ func TestBuildWorkspace(t *testing.T) {
 }
 
 func TestWorkspaceSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const beamColor = "#7d2d6b"
@@ -144,6 +145,7 @@ func TestWorkspaceSettings(t *testing.T) {
 }
 
 func TestRelativeSettingKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		settings []byte

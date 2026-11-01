@@ -1,5 +1,3 @@
-//go:build tier0
-
 // removefields_test.go covers removeFields, the pure mapping from a RemoveResult and the composite's SessionResult to the `lym fabric remove` envelope fields:
 // the warp-branch keys, the teardown keys, the conditional keys absent when empty, and the unchanged existing ones.
 
@@ -12,9 +10,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRemoveFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

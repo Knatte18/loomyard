@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watchfilechanges_test.go drives watchFileChanges over a real temporary directory, and the PR-Review wait's RecordChanges seam that watches the run's pull request record through it.
 
 package loomcli
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -43,6 +42,7 @@ func assertNoChange(t *testing.T, changes <-chan struct{}) {
 }
 
 func TestWatchFileChanges(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("AWriteToTheWatchedFileDeliversAChange", func(t *testing.T) {
@@ -123,6 +123,7 @@ func TestWatchFileChanges(t *testing.T) {
 
 // TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord asserts a write to the run's pull request record reaches the RecordChanges channel of the PR-Review wait.
 func TestPullRequestDeps_RecordChangesWatchesTheRunsPullRequestRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}

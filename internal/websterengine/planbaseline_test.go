@@ -1,5 +1,3 @@
-//go:build tier0
-
 // planbaseline_test.go covers the plan baseline store and RestorePlan.
 // Tier 1: no git, only t.TempDir().
 
@@ -13,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // baselineFixture is a plan directory restamped into a webster dir.
@@ -39,6 +39,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 
 //testtiming:keep pins each stored copy's bytes under its own hash and an existing copy left unrewritten by a second store; the covering begin-batch test only counts copies
 func TestStorePlanBaseline_ContentAddressed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	planDir := t.TempDir()
 	fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "alpha", "02-b.md": "beta"})
@@ -80,6 +81,7 @@ func TestStorePlanBaseline_ContentAddressed(t *testing.T) {
 
 // TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash proves a file edited after its hash was computed is refused and nothing is stored under that hash.
 func TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	planDir := t.TempDir()
 	fingerprintWriteFiles(t, planDir, map[string]string{"01-a.md": "alpha"})
@@ -100,6 +102,7 @@ func TestStorePlanBaseline_RefusesBytesNotMatchingTheirHash(t *testing.T) {
 }
 
 func TestStorePlanBaseline_EmptyWebsterDirIsAnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if err := storePlanBaseline("", t.TempDir(), map[string]string{}); err == nil {
 		t.Fatal("storePlanBaseline(\"\") error = nil; want a wiring error")
@@ -111,6 +114,7 @@ func TestStorePlanBaseline_EmptyWebsterDirIsAnError(t *testing.T) {
 // unchanged plan, and refuses, naming the file and the fresh-run way forward and leaving the plan as
 // it was, when a stored copy or the recorded hashes are missing.
 func TestRestorePlan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

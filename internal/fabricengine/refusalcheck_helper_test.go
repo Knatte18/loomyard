@@ -1,5 +1,5 @@
 // refusalcheck_helper_test.go holds assertRefusalCheck, the destructive-gate refusal assertion the tier0 and tier1 gate tests share.
-// It carries no build tag, so it compiles into every tag set.
+// It serves every tier's tests, since the package's one test binary holds them all.
 
 package fabricengine
 

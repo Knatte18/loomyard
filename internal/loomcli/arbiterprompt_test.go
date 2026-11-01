@@ -1,14 +1,15 @@
-//go:build tier0
-
 package loomcli
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestArbiterAmendmentTarget asserts the target is the recipe's once the plan is approved, and none for an unapproved plan, an approval read error and a recipe that sets none.
 func TestArbiterAmendmentTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

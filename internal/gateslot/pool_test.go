@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pool_test.go covers the slot pool, its holder records, the inherited slot check, the child environment and the wait records over file locks in a temp directory.
 // File locks are not spawns, so the tests stay untagged and run with a shortened poll interval.
 
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const testPoll = 5 * time.Millisecond
@@ -38,6 +37,7 @@ func shortContext(t *testing.T) context.Context {
 }
 
 func TestAcquire_TakesFreeSlotsUpToLimitThenRefusesAnother(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(2))
@@ -65,6 +65,7 @@ func TestAcquire_TakesFreeSlotsUpToLimitThenRefusesAnother(t *testing.T) {
 
 // The logger's output is process-global, so this test does not run in parallel.
 func TestAcquire_WaitsForReleaseAndLogsWaitStartAndEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	logs := logcapture.CaptureVerbose(t)
 	pool := newPool(t, fixedLimits(1))
 	first, err := pool.Acquire(shortContext(t), Holder{Site: "first"})
@@ -111,6 +112,7 @@ func TestAcquire_WaitsForReleaseAndLogsWaitStartAndEnd(t *testing.T) {
 }
 
 func TestAcquire_CancelledWaitHoldsNoSlot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(1))
@@ -137,6 +139,7 @@ func TestAcquire_CancelledWaitHoldsNoSlot(t *testing.T) {
 }
 
 func TestAcquire_ReadsLimitsAtEveryAcquire(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	slots := 2
@@ -180,6 +183,7 @@ func TestAcquire_ReadsLimitsAtEveryAcquire(t *testing.T) {
 }
 
 func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(2))
@@ -213,6 +217,7 @@ func TestHolders_NamesLiveHoldersAndDropsRecordsOfFreeLocks(t *testing.T) {
 }
 
 func TestDraining_ReportsTheDrainLockWithoutCreatingIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(2))
@@ -242,6 +247,7 @@ func TestDraining_ReportsTheDrainLockWithoutCreatingIt(t *testing.T) {
 }
 
 func TestInherited(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(2))
@@ -335,6 +341,7 @@ func holdsSlot(pool *Pool, number int) bool {
 }
 
 func TestAcquireSlots(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a count of 1 takes one slot as Acquire does", func(t *testing.T) {
@@ -507,6 +514,7 @@ func TestAcquireSlots(t *testing.T) {
 }
 
 func TestLeaseEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pool := newPool(t, fixedLimits(1))
@@ -552,6 +560,7 @@ func TestLeaseEnv(t *testing.T) {
 }
 
 func TestReadWaits_ReturnsLiveWaitersOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := WaitDir(t.TempDir())

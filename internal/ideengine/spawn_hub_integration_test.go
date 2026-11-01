@@ -1,5 +1,3 @@
-//go:build tier1
-
 // spawn_hub_integration_test.go holds the Spawn and OpenTask checks that run against the prime and against a task pair of one hubforge hub:
 // the prime opens the lym-generated hub workspace, a task slug still opens its bare folder, and the window command follows a launch.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.

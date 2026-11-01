@@ -1,14 +1,11 @@
-//go:build tier0
-
-// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`: only `tier3` test files reach an LLM, through internal/testkit/llmkit.
-// The guard sees the static shape only: a `tier2` test that drives `lym` into spawning an LLM without calling llmkit is caught by review.
+// llmtier_test.go enforces the LLM-tier half of `PATTERN-test-speed`: only `tier3` tests reach an LLM, through internal/testkit/llmkit.
+// The guard sees the static shape only: a `tier2` test that drives `lym` into spawning an LLM without calling llmkit, or a lower-tier test calling an llmkit helper of a support file, is caught by review.
 
 package main
 
 import (
 	"fmt"
 	"go/ast"
-	"go/build/constraint"
 	"go/parser"
 	"os"
 	"path/filepath"
@@ -17,8 +14,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// llmTier is the tier whose tests may reach an LLM.
+const llmTier = 3
 
 const (
 	llmkitImportPath = "github.com/Knatte18/loomyard/internal/testkit/llmkit"
@@ -128,14 +130,6 @@ func nonLookPathExecUse(file *ast.File) string {
 	return used
 }
 
-// canCompileWithoutLLM reports whether the constraint can be true with `tier3` unset and every other tag and platform term set.
-func canCompileWithoutLLM(expr constraint.Expr) bool {
-	if expr == nil {
-		return true
-	}
-	return expr.Eval(func(tag string) bool { return tag != "tier3" })
-}
-
 // llmTierFailures walks the Go files under opts and returns the violating files' failure lines and the number of files scanned.
 func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlist) (failures []string, scanned int) {
 	t.Helper()
@@ -156,21 +150,22 @@ func llmTierFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowlis
 			}
 			return
 		}
-		if importsPath(file, llmkitImportPath) && canCompileWithoutLLM(buildConstraint(file)) {
-			failures = append(failures, fmt.Sprintf("%s: imports llmkit but can compile without the `tier3` tag; constrain it to `//go:build tier3`", f.Rel))
+		if importsPath(file, llmkitImportPath) && len(testFunctions(file)) > 0 && impactset.FileTier(file) != llmTier {
+			failures = append(failures, fmt.Sprintf("%s: imports llmkit but holds tests below tier3; open each with tiergate.Require(t, 3), or move them to a file of their own", f.Rel))
 		}
 		if bin := lookPathLLMBinary(file); bin != "" {
-			failures = append(failures, fmt.Sprintf("%s: looks up %q with exec.LookPath outside llmkit; call llmkit.Claude from a `tier3` file", f.Rel, bin))
+			failures = append(failures, fmt.Sprintf("%s: looks up %q with exec.LookPath outside llmkit; call llmkit.Claude from a `tier3` test", f.Rel, bin))
 		}
 	})
 	sort.Strings(failures)
 	return failures, scanned
 }
 
-// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit without being confined to the `tier3` tag, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
+// TestLLMTier_OnlyLLMFilesReachAnLLM fails for a test file that imports llmkit and holds a test below `tier3`, for a test file outside the kit that looks up an LLM binary, and for a kit file using `os/exec` beyond LookPath.
 //
 //lym:guard
 func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedLLMTierScanData)
 	failures, scanned := llmTierFailures(t, scankit.Options{}, allow)
 	scankit.RequireFloor(t, scanned, 20, "llm tier guard")
@@ -181,7 +176,12 @@ func TestLLMTier_OnlyLLMFilesReachAnLLM(t *testing.T) {
 }
 
 func TestLLMTier_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	const importsKit = "package p\n\nimport _ \"github.com/Knatte18/loomyard/internal/testkit/llmkit\"\n"
+	importsKitTest := func(tier int) string {
+		return fmt.Sprintf("package p\n\nimport (\n\t\"testing\"\n\n\t_ \"github.com/Knatte18/loomyard/internal/testkit/llmkit\"\n\t\"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n)\n\nfunc TestX(t *testing.T) {\n\ttiergate.Require(t, %d)\n}\n", tier)
+	}
+	const importsKitUnrequired = "package p\n\nimport (\n\t\"testing\"\n\n\t_ \"github.com/Knatte18/loomyard/internal/testkit/llmkit\"\n)\n\nfunc TestX(t *testing.T) {}\n"
 	const lookPathClaude = "package p\n\nimport \"os/exec\"\n\nfunc f() { _, _ = exec.LookPath(\"claude\") }\n"
 	const lookPathConst = "package p\n\nimport \"os/exec\"\n\nconst bin = \"claude\"\n\nfunc f() { _, _ = exec.LookPath(bin) }\n"
 	const lookPathTmux = "package p\n\nimport \"os/exec\"\n\nfunc f() { _, _ = exec.LookPath(\"tmux\") }\n"
@@ -193,12 +193,12 @@ func TestLLMTier_FixtureTrees(t *testing.T) {
 		files    map[string]string
 		wantFail int
 	}{
-		{"untagged file imports llmkit", map[string]string{"p/a_test.go": importsKit}, 1},
-		{"tier1 file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier1\n\n" + importsKit}, 1},
-		{"retired llm spelling imports llmkit", map[string]string{"p/a_test.go": "//go:build llm\n\n" + importsKit}, 1},
-		{"tier3 file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier3\n\n" + importsKit}, 0},
-		{"tier3 and platform file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier3 && linux\n\n" + importsKit}, 0},
-		{"tier2 or tier3 file imports llmkit", map[string]string{"p/a_test.go": "//go:build tier2 || tier3\n\n" + importsKit}, 1},
+		{"support file imports llmkit", map[string]string{"p/a_test.go": importsKit}, 0},
+		{"tier3 test imports llmkit", map[string]string{"p/a_test.go": importsKitTest(3)}, 0},
+		{"tier3 test with platform term imports llmkit", map[string]string{"p/a_test.go": "//go:build linux\n\n" + importsKitTest(3)}, 0},
+		{"tier1 test imports llmkit", map[string]string{"p/a_test.go": importsKitTest(1)}, 1},
+		{"tier2 test imports llmkit", map[string]string{"p/a_test.go": importsKitTest(2)}, 1},
+		{"test without Require imports llmkit", map[string]string{"p/a_test.go": importsKitUnrequired}, 1},
 		{"tier1 file looks up claude", map[string]string{"p/a_test.go": "//go:build tier1\n\n" + lookPathClaude}, 1},
 		{"tier1 file looks up claude through a constant", map[string]string{"p/a_test.go": "//go:build tier1\n\n" + lookPathConst}, 1},
 		{"tier1 file looks up tmux", map[string]string{"p/a_test.go": "//go:build tier1\n\n" + lookPathTmux}, 0},

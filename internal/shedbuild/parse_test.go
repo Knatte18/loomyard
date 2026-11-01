@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parse_test.go covers Parse's shape checks and decode errors, table-driven over inline YAML
 // byte-slice literals with no filesystem access anywhere in this file.
 
@@ -8,9 +6,12 @@ package shedbuild
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParse_ValueAndErrorCases(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

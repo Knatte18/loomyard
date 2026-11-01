@@ -1,5 +1,3 @@
-//go:build tier0
-
 // panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and composePaneLaunchLine, driven directly against injected inputs with no tmux and no process spawned.
 // Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path, which PATTERN-spawn-observability bars re-exec'ing, so no case here reads it.
 // The stageLaunchScript cases at the end cover the per-strand launch script file.
@@ -17,12 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPaneBinPrelude_ComposesPrependThenExport drives paneBinPrelude directly, once per dialect.
 //
 //testtiming:keep pins the prelude's own shape per dialect: one line, the PATH prepend of the executable's directory before the LYM_BIN export of the full path, joined by "; "; its covering tests run this code without asserting it
 func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
+	tiergate.Require(t, 0)
 	dialects := []struct {
 		name string
 		sh   shell.Shell
@@ -83,6 +83,7 @@ func TestPaneBinPrelude_ComposesPrependThenExport(t *testing.T) {
 //
 //testtiming:keep pins the composed pane launch line per dialect: prelude, name and parent exports then the command on one line, the prelude alone for an empty command, and only the prelude dropped with a warning naming the strand when the executable cannot be resolved; its covering tests run this code without asserting it
 func TestComposePaneLaunchLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		exe       = "/opt/lym/bin/lym"
 		launchCmd = "claude --continue"
@@ -209,6 +210,7 @@ func launchScriptDialects() []shell.Shell {
 // the file holds the last staged line and a newline (an empty line still writes a newline-only script),
 // regenerating replaces the content without leftovers, and the script carries 0o644 on non-Windows hosts.
 func TestStageLaunchScript(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		lines []string
@@ -263,6 +265,7 @@ func TestStageLaunchScript(t *testing.T) {
 //
 //testtiming:keep pins an unwritable launch directory returning the composed line unchanged and logging the strand and script path; its covering tests run this code without asserting it
 func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
+	tiergate.Require(t, 0)
 	sh := shell.Posix()
 	stateDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(stateDir, "reed"), []byte("x"), 0o644); err != nil {
@@ -282,6 +285,7 @@ func TestStageLaunchScript_WriteFailureDegrades(t *testing.T) {
 // TestComposeSwitchCommand pins the switch command a key binding runs and the follow command the follow button runs: the pinned tokens are quoted once and have every # doubled, #{q:client_name} or #{q:session_name} stays an unquoted word, and an unresolvable executable pins nothing.
 // It captures the process-global logger, so it does not run in parallel.
 func TestComposeSwitchCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		exe        = "/opt/it's#here/lym"
 		socketPath = "/tmp/tmux-1000/it's#socket"

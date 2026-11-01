@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_lifecycle_test.go drives the composed up/add/remove/status/down behaviors through RunCLIIn against a real tmux server: the basic round-trip, successive adds each opening a window of their own, foreign-pane reaping, recovery from a scrubbed state file, the --if-absent reopen sequence, the told pane cwd, the detached self-removal, and the interactive attach handover.
 
 package reedcli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -45,6 +44,7 @@ func restartSession(t *testing.T, worktree string) {
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and its tmux server.
 // Every step drives reed through RunCLIIn, which seeds the worktree into the execution context without moving the process, so the told anchor and the test process's own cwd are two different directories.
 func TestSmokeLifecycle(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 	lymExe := lymbin.Build(t)
@@ -534,6 +534,7 @@ func pollProcessGone(t *testing.T, pid int, timeout time.Duration) {
 //
 // The scenario brings the prime worktree up once, so the hub's shared tmux server is live for every row, and gives each row its own sibling worktree; the rows run serially and call t.Parallel at the scenario level only, because they share the hub and its server.
 func TestSmokeUpRefusesAWorktreeNameTmuxWouldRewrite(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 

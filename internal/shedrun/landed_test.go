@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landed_test.go pins the landed-commit file's place and its round trip.
 
 package shedrun
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLandedCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := syntheticLocation(t)
 

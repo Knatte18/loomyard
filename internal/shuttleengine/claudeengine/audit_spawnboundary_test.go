@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_spawnboundary_test.go covers the fork-transcript spawn-boundary exclusion: on Claude Code
 // 2.1.205 a fork transcript's first assistant line replays the PARENT's own spawning Agent tool_use
 // (observed live in webster's hardening round fable-r1),
@@ -13,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeSpawnBoundaryFixture copies the spawn-boundary fork transcript into dir
@@ -33,6 +33,7 @@ func writeSpawnBoundaryFixture(t *testing.T, withMeta bool) string {
 }
 
 func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
+	tiergate.Require(t, 0)
 	transcript := writeSpawnBoundaryFixture(t, true)
 
 	report, err := auditForkTranscript(transcript)
@@ -62,6 +63,7 @@ func TestAuditForkTranscript_SpawnBoundaryAgentCallExcluded(t *testing.T) {
 }
 
 func TestAuditForkTranscript_MissingMetaFallsBackToCountingEverything(t *testing.T) {
+	tiergate.Require(t, 0)
 	transcript := writeSpawnBoundaryFixture(t, false)
 
 	report, err := auditForkTranscript(transcript)

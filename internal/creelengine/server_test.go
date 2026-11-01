@@ -1,5 +1,3 @@
-//go:build tier0
-
 // server_test.go pins the daemon over a real socket: the protocol, identity from the peer, the single-instance lifecycle and the waiting verbs across a restart.
 
 package creelengine_test
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rig is one hub's geometry, a fake delivery and a fake daemon clock; a test starts daemons over it.
@@ -328,6 +327,7 @@ func (r *rig) sweepLast() {
 }
 
 func TestDaemon_Protocol(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -815,6 +815,7 @@ const (
 )
 
 func TestDaemon_Lifecycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

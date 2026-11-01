@@ -1,5 +1,3 @@
-//go:build tier1
-
 // landingdeps_integration_test.go drives landingDeps' seams over a real hub.
 // ConfigChanges reads a pair's committed config files through real branches.
 // Notify posts creel mail to the prime's orch.
@@ -28,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -36,6 +35,7 @@ import (
 // and the queueing step relies on the no-strand step having queued nothing,
 // so none runs in parallel.
 func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -138,6 +138,7 @@ func TestLandingDeps_ConfigNoticeSeamsOverRealHub(t *testing.T) {
 // TestParentRecordsCommitter_CommitsTheRecordedParent shows the notice walk does not reach Finalize's parent-records commit:
 // with member m forked from beam b, whose orch is stopped, the committer commits a run-records file left in b's records and leaves the prime's records untouched.
 func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -177,6 +178,7 @@ func TestParentRecordsCommitter_CommitsTheRecordedParent(t *testing.T) {
 // a task under the prime reads the prime's, a member under a beam reads the beam's, and the beam reads the prime's.
 // It also asserts EntryField reads the run's own board entry.
 func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -259,6 +261,7 @@ func TestLandingDeps_PullRequestModeReadsTheParent(t *testing.T) {
 
 // TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent asserts the TaskHasCommits seam is false for a task branch level with its parent, true once the task branch holds a commit the parent lacks, and an error when the parent branch does not resolve.
 func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -301,6 +304,7 @@ func TestLandingDeps_TaskHasCommitsReadsTheTaskHeadAgainstTheParent(t *testing.T
 
 // TestLandingDeps_RecordLandingWritesWhereTheDobbyReads asserts the RecordLanding seam of a pair writes the commit into the prime's scratch of the run named for that pair, where shedrun.ReadLandedCommit reads it.
 func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

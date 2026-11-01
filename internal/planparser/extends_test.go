@@ -1,5 +1,3 @@
-//go:build tier0
-
 // extends_test.go covers the Extends type label's checks and the readers that treat an Extends group as an Edit group.
 
 package planparser_test
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidate_ExtendsChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const ref = "pkg/ext.go"

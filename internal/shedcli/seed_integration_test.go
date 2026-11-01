@@ -1,5 +1,3 @@
-//go:build tier1
-
 // seed_integration_test.go proves the batten entry's seed-location rule against a real hub: the
 // prime-name comparison behind battencli.RefuseUnlessPrime reaches a git worktree listing, which the
 // Test Tier Purity Invariant bars from untagged files.

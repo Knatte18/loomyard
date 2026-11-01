@@ -1,13 +1,14 @@
-//go:build tier0
-
 // drop_test.go pins DropKeys over the document shapes a retired key can sit in.
 
 package yamlengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestDropKeys pins which keys are removed with their comments, the reported lines, that a document without the keys comes back byte-identical, and the refusal of a document with no mapping root.
 func TestDropKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // switch_integration_test.go drives SwitchClient against a real tmux server with a real attached client:
 // it steps the client across three sessions in id order, wraps at both ends, and errors on an unknown client or a socket nothing listens on.
@@ -11,9 +11,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSwitchClient_StepsAnAttachedClientThroughSessionsInIDOrder(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newIntegrationEngine(t, "off")
 	if _, err := e.Up(); err != nil {

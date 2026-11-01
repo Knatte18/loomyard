@@ -1,5 +1,3 @@
-//go:build tier0
-
 // name_test.go verifies newGUID produces unique, well-formed hex identifiers.
 
 package reedengine
@@ -7,10 +5,13 @@ package reedengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins newGUID returning 32 lowercase hex characters, unique across calls; its covering tests run this code without asserting it
 func TestNewGUID_UniqueAndHex(t *testing.T) {
+	tiergate.Require(t, 0)
 	const n = 50
 	seen := make(map[string]bool, n)
 	for i := 0; i < n; i++ {

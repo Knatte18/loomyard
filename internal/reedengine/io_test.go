@@ -1,5 +1,3 @@
-//go:build tier0
-
 // io_test.go drives resolveLivePaneID directly against fixture ReedState values: unknown guid,
 // hidden anchor, and empty-PaneID rejections, plus the happy path.
 // SendText, SendKey, AND CapturePane all resolve their target pane through this exact function
@@ -19,10 +17,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResolveLivePaneID pins the lookup all pane-transport ops share.
 func TestResolveLivePaneID(t *testing.T) {
+	tiergate.Require(t, 0)
 	st := &ReedState{Strands: []Strand{
 		{GUID: "live", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}},
 		{GUID: "hidden", Display: render.Display{Anchor: render.AnchorHidden}},
@@ -61,6 +61,7 @@ func TestResolveLivePaneID(t *testing.T) {
 
 // TestCapturePaneArgv pins each capture read's tmux argv, that it returns the capture unchanged, and that a failed capture reaches the caller wrapped.
 func TestCapturePaneArgv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const styledScreen = "\x1b[2mTry something\x1b[0m\n"
@@ -137,6 +138,7 @@ func TestCapturePaneArgv(t *testing.T) {
 
 // TestPasteSubmitArgv pins the exact command list of a paste with and without the trailing Enter.
 func TestPasteSubmitArgv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -171,6 +173,7 @@ func TestPasteSubmitArgv(t *testing.T) {
 
 // TestPasteSubmit pins that a write is one tmux invocation with no send-keys -l, that an unresolvable strand fails before any invocation, and that a failed invocation deletes its named buffer.
 func TestPasteSubmit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -248,6 +251,7 @@ func TestPasteSubmit(t *testing.T) {
 // TestActiveClientOnPane pins which client lines count as an active operator, and the quiet-window floor of a hand-built Config.
 // The floor sits here rather than in config_test.go because that file is an external test package and cannot reach operatorQuiet.
 func TestActiveClientOnPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Unix(1787000100, 0)
@@ -284,6 +288,7 @@ func TestActiveClientOnPane(t *testing.T) {
 
 // TestSetWaitMark pins the exact tmux argument lists of a set and a clear, and the unknown-guid refusal.
 func TestSetWaitMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	start := time.Unix(1787000000, 0)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // replayer_test.go drives heddle's Bolt replayer over a temporary directory standing in for the Bolt checkout.
 
 package heddleengine
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // storeBytes encodes a store as the commit side of a replay request.
@@ -53,6 +52,7 @@ func applyReplay(t *testing.T, origin Store, base, parent, commit []byte) (fabri
 }
 
 func TestReplayer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	a, b := replayEntry("a", "A", 1), replayEntry("b", "B", 2)

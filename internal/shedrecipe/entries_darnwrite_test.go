@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_darnwrite_test.go covers darnWriteEntry: its construction-time validation over Config, the injected DarnTable and Seats and every Env.Darn seam, plus the happy path that runs one table through the seat runner.
 
 package shedrecipe
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // darnTestEnv returns newTestEnv(t) with DarnTable and every Darn seam filled, over a decision record and a support log that exist.
@@ -53,6 +52,7 @@ func darnTestEnv(t *testing.T) Env {
 }
 
 func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	gated := gatesCfg("description", 3)
 	tests := []struct {
 		name  string
@@ -86,6 +86,7 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 
 // TestDarnWriteEntry_HappyPath asserts a fully-filled Env constructs a producer, whose one Call runs the told table through the seat runner under the row's resolved gates.
 func TestDarnWriteEntry_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := Config{"gates": []any{
 		map[string]any{"name": "verify", "attempts": 2},
 		map[string]any{"name": "description", "attempts": 2},

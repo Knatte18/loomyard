@@ -1,13 +1,11 @@
-//go:build tier0
-
 // fabric_test.go — unit tests for the Fabric handle, sync options, and ScopedPathspec.
 // No git spawn: newPaired only stat-checks paths, and Open needs nothing beyond a hand-built *lymcwd.Location for that same stat-only contract to hold.
 // The missing-path contract (warp checked first, *ErrMissingPath naming the absent side) is restated here through Open(l), the constructor the contract now belongs to, using a hand-built Location rather than a real git fixture.
 //
-// TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: an
-// untagged unit test of the newPaired constructor itself, spawning no git and having nothing to do
-// with hub fixtures, so it stays untagged and must never gain a hubforge import — the Test Tier
-// Purity Invariant bans an untagged test from calling the hubforge package's hub constructor.
+// TestNew_HappyPath below is this package's only remaining NewPairedFromPathsForTest consumer: a
+// tier0 unit test of the newPaired constructor itself, spawning no git and having nothing to do
+// with hub fixtures, so it stays tier0 and must never gain a hubforge import — the Test Tier
+// Purity Invariant bans a tier0 test from calling the hubforge package's hub constructor.
 
 package fabricengine_test
 
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -30,6 +29,7 @@ import (
 //
 //testtiming:keep Open returning *ErrMissingPath naming the warp path first, then the weft path, and a non-nil handle when both exist; coverage of its blocks by other tests does not show an assertion of this
 func TestOpen(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -91,6 +91,7 @@ func TestOpen(t *testing.T) {
 //
 //testtiming:keep newPaired yielding a non-nil warp and weft when both paths exist as directories, in the untagged tier; coverage of its blocks by other tests does not show an assertion of this
 func TestNew_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmp := t.TempDir()
 	warpPath := filepath.Join(tmp, "warp")
 	weftPath := filepath.Join(tmp, "weft")
@@ -116,6 +117,7 @@ func TestNew_HappyPath(t *testing.T) {
 // TestEnvSyncOptions covers the FABRIC_SKIP_GIT / FABRIC_SKIP_PUSH mapping: unset, "1", and other
 // values.
 func TestEnvSyncOptions(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		skipGitVal   string
@@ -158,6 +160,7 @@ func TestEnvSyncOptions(t *testing.T) {
 //
 //testtiming:keep ScopedPathspec returning the entries unchanged at the root and prefixed by a nested relPath; coverage of its blocks by other tests does not show an assertion of this
 func TestScopedPathspec(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		relPath string
@@ -188,6 +191,7 @@ func TestScopedPathspec(t *testing.T) {
 // notion of a weft sibling or the board checkout — so the refusal has to happen here.
 // No git spawn: the guard is pure name math over a hand-built Location.
 func TestRequireWarpWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		worktreeName string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // prune_unowned_integration_test.go pins Prune's ownership gate.
 // Prune's orphan pass enumerates on directory NAME alone — every hub child whose name ends in the
 // weft suffix — so the set it reports has never been the set it owns.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPrune_RefusesHubDirectoryItDoesNotOwn parks an ordinary operator directory named
@@ -27,6 +26,7 @@ import (
 // run, not on --apply, and not even on --apply --force, since force answers "discard this work",
 // never "this directory is mine".
 func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -84,6 +84,7 @@ func TestPrune_RefusesHubDirectoryItDoesNotOwn(t *testing.T) {
 // clean working tree. The clean tree means the dirty-tracked gate has nothing to say even in
 // principle, so only the ownership gate stands between `prune --apply` and the whole clone.
 func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -129,6 +130,7 @@ func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 // stale pair — a weft worktree the hub's weft repo really does register — must still be removed by
 // --apply, so the gate refuses only what fabric does not own rather than disabling prune outright.
 func TestPrune_StillRemovesAStaleWeftWorktreeItOwns(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "prune-owned"

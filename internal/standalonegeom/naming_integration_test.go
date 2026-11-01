@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 // naming_integration_test.go carries the standalone acceptance criterion at the engine `lym webster run --target-dir` and `lym burler run --target-dir` build,
 // since a CLI-level run would spawn live Claude producers.
@@ -21,10 +21,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
 func TestNaming_StandaloneStrandIsShortnameAndRoleWithNoParent(t *testing.T) {
+	tiergate.Require(t, 2)
 	target := t.TempDir()
 	if out, err := exec.Command("git", "-C", target, "init").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)

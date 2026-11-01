@@ -1,5 +1,3 @@
-//go:build tier0
-
 // failure_test.go covers the landing failure record codec without spawning anything.
 
 package verifytree
@@ -11,9 +9,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLandingFailureRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	newPaths := func(t *testing.T) Paths {

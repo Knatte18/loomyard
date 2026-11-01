@@ -1,5 +1,3 @@
-//go:build tier0
-
 // selvagepane_test.go tests the seam helpers selvagepane.go owns: bottommostPaneID and
 // ensureSelvagePaneLocked's create/heal path (relocated from lifecycle_test.go, unchanged).
 // All are pure/hermetic or driven through the e.tmux.execHook fake — no live tmux required.
@@ -11,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNewReapPolicy_ThreeQuestionsAssertedIndependently drives newReapPolicy's three consulting
@@ -20,6 +20,7 @@ import (
 //
 //testtiming:keep pins the reap policy's three questions apart: an alive Selvage is exempt from both kills and authorizes the reap, a present corpse is exempt from both but authorizes none, and an unrelated pane is never exempt; its covering tests run this code without asserting it
 func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
+	tiergate.Require(t, 0)
 	const selvagePane = "%selvage"
 	const otherPane = "%other"
 
@@ -92,6 +93,7 @@ func TestNewReapPolicy_ThreeQuestionsAssertedIndependently(t *testing.T) {
 //
 //testtiming:keep pins the seeded claim: the Selvage pane id is added to the claimed set when set and an absent Selvage claims nothing; its covering tests run this code without asserting it
 func TestSeedSelvageClaim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("NonEmptyID_Added", func(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		claimed := map[string]bool{}
@@ -115,6 +117,7 @@ func TestSeedSelvageClaim(t *testing.T) {
 //
 //testtiming:keep pins the Selvage binding being emptied when set and left empty when already empty; its covering tests run this code without asserting it
 func TestClearSelvagePaneBinding(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SetID_Cleared", func(t *testing.T) {
 		st := &ReedState{SelvagePaneID: "%selvage"}
 		clearSelvagePaneBinding(st)
@@ -137,6 +140,7 @@ func TestClearSelvagePaneBinding(t *testing.T) {
 //
 //testtiming:keep pins the split target being chosen by pane_top rather than list-panes order, which tmux does not guarantee is top to bottom; its covering tests run this code without asserting it
 func TestBottommostPaneID(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		live []LivePane
@@ -159,6 +163,7 @@ func TestBottommostPaneID(t *testing.T) {
 // TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure pins the validateSplitCreatedNewPane
 // guard at its call site (against regression).
 func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	// One alive, non-Selvage pane (%0) — the new-session initial pane a fresh
@@ -199,6 +204,7 @@ func TestEnsureSelvagePaneLocked_RebuildRejectsSilentSplitFailure(t *testing.T) 
 //
 //testtiming:keep pins the Selvage create path's split-window call: targeting the bottommost pane with no -b, pinned to PaneCwd, launching the shell as the trailing argument and never via send-keys, then recording the new pane id; its covering tests run this code without asserting it
 func TestEnsureSelvagePaneLocked_SplitsOnceBelowTheBottommostPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	const topPaneID = "%0"
 	const bottomPaneID = "%1"

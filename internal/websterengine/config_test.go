@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies webster.yaml's template parses, defaults resolve through LoadConfig,
 // overrides round-trip, a malformed role model-spec fails loud naming the offending key, and an
 // absent _lym/ degrades to the embedded template,
@@ -18,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -43,6 +42,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 //testtiming:keep pins every Config yaml tag having a template line; the load test only observes the keys the template already holds
 //lym:seam internal/websterengine#Config
 func TestConfigTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	text := websterengine.ConfigTemplate()
@@ -79,6 +79,7 @@ func containsKey(text, key string) bool {
 // positive-integer check still refuses a knob the file sets to zero, which the template fill never touches.
 // Both refusals are marked configengine.ErrInvalid.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	templateDefaults := websterengine.Config{

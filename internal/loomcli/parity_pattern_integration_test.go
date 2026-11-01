@@ -1,5 +1,3 @@
-//go:build tier1
-
 // parity_pattern_integration_test.go pins the Gate Self-Check Parity Invariant for the plan gate's pattern-headroom check, which reads the overview at a merge base through a real git repository.
 
 package loomcli
@@ -19,11 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGateParity_PatternHeadroom drives NewPlanGate and `validate-plan` over a branch that already grew PATTERN.md under the headroom line, with a card fencing an entry line.
 // Both read the base through loomshed.PatternBaseReader over the told merge base, so a line that grows the projection past the line is stuck on both, and an equal-size replacement passes on both.
 func TestGateParity_PatternHeadroom(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	const shortEntry = "- `PATTERN-a` — short."
 	tests := []struct {

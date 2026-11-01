@@ -1,5 +1,3 @@
-//go:build tier0
-
 // failedstop_test.go covers WriteFailedStop: the failed write on a running file and every case that leaves the file alone.
 
 package shedengine
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteFailedStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

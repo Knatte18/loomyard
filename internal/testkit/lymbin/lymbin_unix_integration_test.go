@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // lymbin_unix_integration_test.go holds the lymbin timeout test whose sleeper's child is the Unix sleep command.
 
@@ -11,10 +11,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_TimesOutNamingTheTimeout passes whether or not the sleeper starts within the timeout, since either way it outlives it.
 func TestRun_TimesOutNamingTheTimeout(t *testing.T) {
+	tiergate.Require(t, 1)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

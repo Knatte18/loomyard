@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository,
 // proving the standalone pre-run reaches a verb's own RunE rather than failing with a
 // cwd-resolution error -- the one property no untagged test in this package can observe, since it
@@ -15,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched drives "run" from a temporary directory that is not a git repository at all -- lymcwd.Resolve fails there, so preflight.ResolveMode folds it into standalone mode rather than refusing outright.
@@ -27,6 +27,7 @@ import (
 // The same invocation proves the two-roots split's whole point: the target directory itself -- the operator's git repository -- gains no hidden state tree, no lock file, and no rendered prompt from a standalone invocation.
 // Every durable and scratch artifact lives under the derived state directory instead, and the absence needs a real Derive call and a real filesystem to assert against.
 func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGateAndLeavesTargetUntouched(t *testing.T) {
+	tiergate.Require(t, 1)
 	target := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("LOCALAPPDATA", t.TempDir())

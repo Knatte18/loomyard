@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parity_test.go asserts the Gate Self-Check Parity Invariant for the gate sites the loomshed
 // gate closures cover: NewDiscussionGate against validate-discussion, NewPlanGate against
 // validate-plan's flag-absent mode. Both the gate closure and its loomcli verb must
@@ -34,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -52,6 +51,7 @@ type discussionParityCase struct {
 // values: a clean fixture (done), a missing-support-log fixture and a missing-heading fixture
 // (stuck), and a decision-record-is-a-directory fixture (error).
 func TestGateParity_DiscussionGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []discussionParityCase{
 		{
 			name: "Clean",
@@ -375,6 +375,7 @@ func testTierPlanFixture(t *testing.T, anchorPath, worktreeRoot string) *loomCLI
 // exactly what proves the F7 deadlock is gone -- planglyph.ValidateFormat never runs the
 // plan-unapproved check, so an unapproved plan is a clean pre-review pass on both sides.
 func TestGateParity_PlanGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []planParityCase{
 		{
 			name: "CleanApproved",
@@ -720,6 +721,7 @@ func TestGateParity_PlanGate(t *testing.T) {
 //
 //testtiming:keep pins run, step, status, pause and goto each accepting zero or one positional run-id and refusing two; its covering test builds the tree without asserting argument counts
 func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := Command()
 
 	for _, name := range []string{"run", "step", "status", "pause", "goto"} {
@@ -750,6 +752,7 @@ func TestGenericVerbs_AcceptOptionalRunIDPositional(t *testing.T) {
 // (done), a file with a Co-Authored-By line (stuck), and a directory at the description path, a
 // read failure other than not-exist (error).
 func TestGateParity_DescriptionGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []discussionParityCase{
 		{
 			name: "Clean",

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_test.go covers loom's own step wiring: the interrupt policy it threads onto the envelope, the bootstrap-stage classification, and the busy refusal driven end-to-end against a hand-populated receiver, per the new-tests-stay-untagged-and-pure Shared Decision.
 // step's success envelope cannot be reached in an untagged test without a real fabric and a real reed session,
 // so these pure decisions are tested directly instead.
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStepEnvelope_NextInterruptPolicyMatchesTable asserts next_interrupt_policy equals
@@ -31,6 +30,7 @@ import (
 //
 //testtiming:keep pins next_interrupt_policy against the interrupt-policy table over a reinvoke row, the handback row and an empty next; the covering step tests assert other envelope keys
 func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		next string
@@ -57,6 +57,7 @@ func TestStepEnvelope_NextInterruptPolicyMatchesTable(t *testing.T) {
 // stepKindOwnership, and every other stage -- bootstrapStageOrigin, bootstrapStageCommit, and
 // bootstrapStageNone included -- maps to stepKindBootstrap.
 func TestStepKindForBootstrapStage(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		stage bootstrapStage
@@ -86,6 +87,7 @@ func TestStepKindForBootstrapStage(t *testing.T) {
 // The status file is seeded to match the handoff voucher,
 // so an observation taken before the probe would consume that voucher and write a crash-resume note.
 func TestStepCmd_BusyRefusal_BeforeBootstrap(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	lockPath := filepath.Join(dir, "run.lock")
 

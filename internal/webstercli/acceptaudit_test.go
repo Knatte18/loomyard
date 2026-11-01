@@ -1,5 +1,3 @@
-//go:build tier1
-
 // acceptaudit_test.go covers the accept-audit verb through its cobra.Command, on the verbs fixture's hub.
 package webstercli
 
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -31,6 +30,7 @@ func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 
 // TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent proves the verb lists a pending finding, clears it and records no disposition, and that a second call reports nothing.
 func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.seedPendingFinding(t)
@@ -72,6 +72,7 @@ func TestAcceptAuditCmd_AcceptsPendingThenIsIdempotent(t *testing.T) {
 // names recover-batch as next, and that a second call refuses because nothing is left to accept.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.CLI.geom.WorktreeRoot = fx.Worktree
@@ -156,6 +157,7 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 // an edited path refuses with the git way forward, and a commit on top of the recorded head refuses even when a second commit restores the file's content.
 // It sets FABRIC_SKIP_GIT, so it is not parallel.
 func TestAcceptAuditCmd_Refusals(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 
 	cases := []struct {
@@ -226,6 +228,7 @@ func TestAcceptAuditCmd_Refusals(t *testing.T) {
 
 // TestAcceptAuditCmd_FabricSyncFailureNamesWayForward proves a fabric sync failure still leaves the acceptance saved and names the sentinel and `lym fabric commit`.
 func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	fx.seedPendingFinding(t)
@@ -252,6 +255,7 @@ func TestAcceptAuditCmd_FabricSyncFailureNamesWayForward(t *testing.T) {
 
 // TestAcceptAuditCmd_AbsentContractFilesCarryNext proves accepting a finding on absent contract files succeeds and the envelope's next field names the re-run that has Master write them again.
 func TestAcceptAuditCmd_AbsentContractFilesCarryNext(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.seedPendingFinding(t)

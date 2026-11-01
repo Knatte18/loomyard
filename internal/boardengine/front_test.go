@@ -1,5 +1,3 @@
-//go:build tier0
-
 // front_test.go — tests for Board.FileFrontTask: what it stores, and the payload it refuses that no board verb reaches.
 
 package boardengine_test
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFrontTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	b := boardengine.New(boardengine.Config{Path: t.TempDir(), Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
 

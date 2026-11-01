@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the Fswatch Leaf Invariant.
 // Production code in internal/fswatch imports only the standard library, fsnotify and internal/logger.
 
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
@@ -18,5 +17,6 @@ var allowedImports = []string{
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/fswatch", allowedImports...)
 }

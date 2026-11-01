@@ -1,5 +1,3 @@
-//go:build tier0
-
 // events_test.go exercises ParseEvents against a fixture JSONL containing two Stop events, an
 // interleaved garbage line, a non-Stop/non-ask event, and a blank line — asserting the lenient skip
 // behaviour and that Raw round trips the exact line it was parsed from — plus dedicated cases for
@@ -12,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseEvents_LenientFixture(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	events, err := c.ParseEvents([]byte(fixtureJSONL))
 	if err != nil {
@@ -51,6 +51,7 @@ func TestParseEvents_LenientFixture(t *testing.T) {
 // TestParseEvents_LiveAsk verifies a PreToolUse+AskUserQuestion line becomes an EventAsk carrying
 // every tool_input.questions[].question string newline-joined.
 func TestParseEvents_LiveAsk(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which approach?"},{"question":"Proceed now?"}]}}`
 	events, err := c.ParseEvents([]byte(line))
@@ -77,6 +78,7 @@ func TestParseEvents_LiveAsk(t *testing.T) {
 // hook_event_name/tool_name pair is confirmed) but with an empty Message, per the leniency contract
 // — never an error.
 func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"AskUserQuestion","tool_input":{"unexpected":true}}`
 	events, err := c.ParseEvents([]byte(line))
@@ -97,6 +99,7 @@ func TestParseEvents_LiveAsk_UnexpectedShape(t *testing.T) {
 // TestParseEvents_PreToolUse_OtherToolSkipped verifies a PreToolUse line for a tool other than
 // AskUserQuestion is skipped entirely, same as any other unrecognized line.
 func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	const line = `{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{}}`
 	events, err := c.ParseEvents([]byte(line))
@@ -112,6 +115,7 @@ func TestParseEvents_PreToolUse_OtherToolSkipped(t *testing.T) {
 // line bytes -- including incidental leading/trailing whitespace -- rather than the trimmed copy
 // used internally for the blank-line check and JSON parse.
 func TestParseEvents_RawPreservesSurroundingWhitespace(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	const line = `  {"hook_event_name":"Stop","last_assistant_message":"padded"}  `
 	events, err := c.ParseEvents([]byte(line))
@@ -127,6 +131,7 @@ func TestParseEvents_RawPreservesSurroundingWhitespace(t *testing.T) {
 }
 
 func TestParseEvents_EmptyInput(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := New()
 	events, err := c.ParseEvents([]byte(""))
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the GitHub Auth Invariant's leaf half: production code in
 // internal/githubclient imports ONLY the standard library, go-github, golang.org/x/sys, internal/proc, and internal/pauserecord.
 // It never imports internal/output, cobra, internal/gitexec, internal/gitrepo, or golang.org/x/oauth2.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
@@ -24,5 +23,6 @@ var allowedImports = []string{
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/githubclient", allowedImports...)
 }

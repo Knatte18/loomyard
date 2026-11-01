@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resolve_test.go contains table-driven tests for the Resolve function and its supporting expansion
 // logic.
 
@@ -8,9 +6,12 @@ package yamlengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolve_EmptyInput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -41,6 +42,7 @@ func TestResolve_EmptyInput(t *testing.T) {
 }
 
 func TestExpandScalar(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -106,6 +108,7 @@ func TestExpandScalar(t *testing.T) {
 }
 
 func TestResolve_ExpandsMarkersInNestedMappingsAndSequences(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // takegateslot_integration_test.go pins the one slot every testtiming mode holds, over a hubforge hub whose pool it reads.
 // It is Tier 2: the hub fixture spawns git, so it needs the integration build tag.
 
@@ -16,9 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTakeGateSlot(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("a mode in a hub holds one testtiming slot until it returns and gets tier0's parallel", func(t *testing.T) {

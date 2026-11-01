@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_test.go drives the `lym creel` verbs through RunCLIIn over a hubforge hub, with the daemon run in process on a fake delivery and fake clocks.
 // The rows set the strand name in the environment and replace the package's client seam, which is process-global state, so the test does not run in parallel.
 
@@ -43,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/creelfake"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var epoch = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -355,6 +354,7 @@ func (r *rig) sweepLast() {
 }
 
 func TestCreelCLI(t *testing.T) {
+	tiergate.Require(t, 1)
 	// LYM_STRAND_NAME and the client seam are process-global, so no row runs in parallel.
 	t.Setenv(agentname.StrandNameEnv, "")
 

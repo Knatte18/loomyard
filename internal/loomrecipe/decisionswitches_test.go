@@ -1,5 +1,3 @@
-//go:build tier0
-
 // decisionswitches_test.go pins which shipped recipe rows carry the decision-escalation switches:
 // escalate_decisions on a Bouncer row and decisions_escalated on a BurlerFix row.
 //
@@ -17,11 +15,13 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly asserts both switches are true on exactly Discussion-Bouncer and Discussion-Burler-Fix in the tapestry recipe and on no row of the darn recipe.
 // The Plan-Review and Code-Review rows therefore keep the fix row's own parent notice.
 func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shipped := map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe}
 	for name, raw := range shipped {

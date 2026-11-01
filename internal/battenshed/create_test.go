@@ -1,5 +1,3 @@
-//go:build tier0
-
 // create_test.go covers NewWorktreeCreate over fake seams: the happy path, the prime-lock
 // dispositions, and createWorktree's error mappings, including fabric's own verbatim refusal text.
 
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakePrimeLock builds a PrimeLock whose Acquire reports the told disposition and records whether
@@ -83,6 +82,7 @@ func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.Out
 
 // TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim asserts every createWorktree error parks the row Stuck with the error's own text in the reason file, unreworded -- fabric's pre-existing-branch remedy wording and its bare dirty-worktree string included -- and releases the prime lock; a PreconditionError, bare or wrapped, instead halts with a precondition-unmet reason naming what is unmet and its way forward.
 func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -151,6 +151,7 @@ func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 }
 
 func TestWorktreeCreate_AcquireError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	acquireErr := errors.New("flock: device error")
@@ -170,6 +171,7 @@ func TestWorktreeCreate_AcquireError(t *testing.T) {
 }
 
 func TestWorktreeCreate_CancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
@@ -195,6 +197,7 @@ func TestWorktreeCreate_CancelledContext(t *testing.T) {
 // its own error, Call must report the "context cancelled during run" diagnosis, not the raw
 // Acquire error text -- the property F1 (crucible round sonnet-xhigh-r3) found missing here.
 func TestWorktreeCreate_CancelledDuringAcquireError(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	acquireErr := errors.New("flock: device error")
@@ -220,6 +223,7 @@ func TestWorktreeCreate_CancelledDuringAcquireError(t *testing.T) {
 }
 
 func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
@@ -244,6 +248,7 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 
 // TestWorktreeCreate_CreatesOnceTheLockIsFree asserts the row creates the worktree and reports Done whether the prime lock is free at once or contended for a few polls first, sleeping once per contended poll, and releases the lock afterwards.
 func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, contendedPolls := range []int{0, 3} {
@@ -276,6 +281,7 @@ func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
 }
 
 func TestWorktreeCreate_LockStillHeldPastBoundIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	var sleeps int
@@ -301,6 +307,7 @@ func TestWorktreeCreate_LockStillHeldPastBoundIsStuck(t *testing.T) {
 }
 
 func TestWorktreeCreate_CancelledDuringLockWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	var sleeps int
@@ -329,6 +336,7 @@ func TestWorktreeCreate_CancelledDuringLockWait(t *testing.T) {
 }
 
 func TestWorktreeCreate_AcquireErrorOnLaterAttempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	var released bool
 	var sleeps int

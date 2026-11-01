@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_verify_test.go covers the clean-tree checks and the post-merge verify gate as Finalize.mergeAndGate wires them around every merge of the parent, against fake verifytree seams, a scripted resolver and the package's fake merger.
 
 package landingshed
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -90,6 +89,7 @@ func (fx *finalizeVerifyFixture) requireNotLanded(t *testing.T) {
 //
 //testtiming:keep pins the verify call count, the Finalize site label and the clean-tree check count on the landing path, which its covering tests do not assert
 func TestFinalizeVerify_Lands(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		alreadyUpToDate bool
@@ -120,6 +120,7 @@ func TestFinalizeVerify_Lands(t *testing.T) {
 //
 //testtiming:keep pins the landing failure record's gate kind and row, which TestFinalize_GateAndFixer does not assert
 func TestFinalizeVerify_Fail(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newFinalizeGateFixture(t)
 	fx.fz.deps.Config.FinalizeFixAttempts = 1
 	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1})
@@ -145,6 +146,7 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,
 // before the parent-side merge.
 func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name       string
 		point      int
@@ -181,6 +183,7 @@ func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {
 
 // TestFinalizeVerify_RetryMergeInIsBracketedAgain pins that the merge-in-required retry's second merge-in is verified and clean-checked like the first: a second verify that fails, or a dirty tree after the retry's merge-in, ends Stuck and nothing lands.
 func TestFinalizeVerify_RetryMergeInIsBracketedAgain(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		setup func(fx *finalizeVerifyFixture)

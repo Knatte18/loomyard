@@ -1,5 +1,3 @@
-//go:build tier0
-
 package vscode
 
 import (
@@ -8,9 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReadSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("present", func(t *testing.T) {
 		dir := t.TempDir()
 		want := []byte("\xEF\xBB\xBF{\n  // c\n  \"a\": 1,\n}\n")

@@ -1,6 +1,4 @@
-//go:build tier0
-
-// recordswritelock_test.go — Tier-0 (untagged, no git spawn) test for HoldRecordsWriteLock, the exported hold of the combined records write lock.
+// recordswritelock_test.go — Tier-0 (no git spawn) test for HoldRecordsWriteLock, the exported hold of the combined records write lock.
 
 package fabricengine
 
@@ -9,10 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHoldRecordsWriteLock covers a free lock being held, a second hold reading not held while the first holds it, and a hold succeeding once the first is released.
 func TestHoldRecordsWriteLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	recordsWorktree := t.TempDir()
 	// An empty .git directory is the geometry the lock directory's exclude seeding needs.

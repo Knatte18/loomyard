@@ -1,14 +1,15 @@
-//go:build tier0
-
 package shedrecipe
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolveUnderRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PlainRelativeValueJoinsUnderRoot", func(t *testing.T) {
 		root := t.TempDir()
 		got, err := resolveUnderRoot("MyEntry", "mykey", root, "sub/file.txt")

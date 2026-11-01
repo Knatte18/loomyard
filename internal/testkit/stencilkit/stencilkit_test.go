@@ -1,5 +1,3 @@
-//go:build tier0
-
 package stencilkit
 
 import (
@@ -9,9 +7,11 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSeed_ReadsBackEveryRegistryName(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := Seed(t)
 	reg := stencils.Registry()
 	for _, name := range reg.Names() {
@@ -27,6 +27,7 @@ func TestSeed_ReadsBackEveryRegistryName(t *testing.T) {
 }
 
 func TestSeedInto_UsesGivenDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SeedInto(t, dir)
 	for _, name := range stencils.Registry().Names() {
@@ -37,6 +38,7 @@ func TestSeedInto_UsesGivenDirectory(t *testing.T) {
 }
 
 func TestRemove_LeavesTheRest(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := Seed(t)
 	names := stencils.Registry().Names()
 	gone := names[0]

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // crosscompile_test.go is the durable in-repo cross-compile gate for Linux support.
 // It shells out to the real `go` toolchain with GOOS=linux and fails the build if any
 // package in the module — including every `_linux.go` file, which the host's native
@@ -26,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCrossCompileLinux cross-compiles the entire module for GOOS=linux and fails on any non-zero
@@ -35,6 +34,7 @@ import (
 // seamed package (proc, fslink, vscode, configengine, tools/deploy) plus every Linux-tagged file
 // added across the task still compiles together, indefinitely.
 func TestCrossCompileLinux(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Skip cleanly rather than fail when the go toolchain is not on PATH, so this
 	// gate never blocks environments (e.g. a minimal CI image) that lack it.
 	if _, err := exec.LookPath("go"); err != nil {

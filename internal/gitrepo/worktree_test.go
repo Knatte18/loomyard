@@ -1,5 +1,3 @@
-//go:build tier1
-
 // worktree_test.go covers WorktreeChangedFiles against a real git repository built under t.TempDir(), reusing gitrepo_test.go's newRepo/writeFile/ commitAll fixture helpers rather than redeclaring them — this file lives in the same external package (gitrepo_test) as gitrepo_test.go, so a same-named helper here would collide at compile time.
 
 package gitrepo_test
@@ -11,12 +9,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWorktreeChangedFiles covers WorktreeChangedFiles over one repository: a clean one reports nothing, then the three uncommitted-change shapes it must catch — a modification to an already-tracked file, a brand-new untracked file, and a separately-staged file — are all reported together, none more than once.
 // The steps run serially in that order and share the repository's state.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestWorktreeChangedFiles(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -52,6 +52,7 @@ func TestWorktreeChangedFiles(t *testing.T) {
 
 // TestTrackedRootEntries covers TrackedRootEntries: committed and staged-only root entries count, an untracked one does not, and an absent index is an empty result.
 func TestTrackedRootEntries(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("committed and staged roots are tracked and an untracked one is not", func(t *testing.T) {

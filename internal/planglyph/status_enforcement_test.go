@@ -1,5 +1,3 @@
-//go:build tier0
-
 // status_enforcement_test.go is the resolve-status tripwire: it parses every production .go file
 // directly under internal/planglyph and flags any ast.SelectorExpr reading quarry's status
 // vocabulary -- a Sel named "Status", "Known" or "Rejected" (statusVocabularySelectors) -- that sits
@@ -39,6 +37,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // statusVocabularySelectors is the closed set of selector names that read quarry's resolve-status
@@ -146,6 +145,7 @@ func statusHitsIn(astFile *ast.File) []statusHit {
 // "Status" selector sits outside a function named in allowedStatusConsumers.
 // It spawns no process and carries no build tag.
 func TestStatusEnforcement_NoOutOfAllowlistConsumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedStatusConsumers)
 
 	var failures []string
@@ -178,6 +178,7 @@ func TestStatusEnforcement_NoOutOfAllowlistConsumer(t *testing.T) {
 // source string reading .Status from a function not in allowedStatusConsumers must be caught by
 // statusHitsIn.
 func TestStatusHitsIn_CatchesOutOfAllowlistConsumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func newUnguardedConsumer(r quarry.ResolveResult) bool {
@@ -204,6 +205,7 @@ func newUnguardedConsumer(r quarry.ResolveResult) bool {
 // for it -- and it names no "Status" selector anywhere, so the pre-fix matcher returned zero hits
 // and the consumer shipped unreviewed.
 func TestStatusHitsIn_CatchesRejectedConsumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func newRejectedConsumer(r quarry.ResolveResult) bool {
@@ -230,6 +232,7 @@ func newRejectedConsumer(r quarry.ResolveResult) bool {
 // alone is a status-vocabulary consumer even though it names no Status, Known, or Rejected selector
 // anywhere.
 func TestStatusHitsIn_CatchesUnitConsumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func newUnitConsumer(r quarry.ResolveResult) bool {
@@ -252,6 +255,7 @@ func newUnitConsumer(r quarry.ResolveResult) bool {
 // allowlist obligation cannot be dodged by reading the vocabulary through the predicate rather than
 // the field.
 func TestStatusHitsIn_CatchesKnownConsumer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func newKnownConsumer(s quarry.Status) bool {
@@ -274,6 +278,7 @@ func newKnownConsumer(s quarry.Status) bool {
 // selector's own name -- a field read that merely happens to share a receiver with a Status read
 // must not false-positive.
 func TestStatusHitsIn_UnrelatedSelectorNotCaught(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func readsSomethingElse(r quarry.ResolveResult) string {

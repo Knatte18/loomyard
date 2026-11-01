@@ -1,5 +1,3 @@
-//go:build tier0
-
 // dobbynotice_test.go pins what the run notices read of a child over a task worktree on disk: the mapping of its status file and respawn memory record into dobby's reading, and the held-lock reading of a child's driver.
 
 package battencli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // noticeTaskWorktree creates a directory the repository walk accepts as the root of the task worktree slug under a new hub, and returns the hub's prime location.
@@ -38,6 +37,7 @@ func noticeTaskWorktree(t *testing.T, slug string) *lymcwd.Location {
 }
 
 func TestReadNoticeChild(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const slug = "run-a"
 	statusWritten := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -136,6 +136,7 @@ func TestReadNoticeChild(t *testing.T) {
 }
 
 func TestChildDriverLockHeld(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const slug = "run-a"
 

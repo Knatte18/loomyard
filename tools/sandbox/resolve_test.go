@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resolve_test.go contains unit tests for resolveLym (dev/prod binary resolution) and prependPath
 // (child-process PATH construction).
 // All tests are Tier-1 pure: the devBinPath and lookPath seams are stubbed,
@@ -13,11 +11,14 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResolveLym_DevBinaryExists verifies that resolveLym returns the dev-binary path and sourceDev
 // when devBinPath resolves to an existing file.
 func TestResolveLym_DevBinaryExists(t *testing.T) {
+	tiergate.Require(t, 0)
 	devPath := filepath.Join(t.TempDir(), "lym")
 	if err := os.WriteFile(devPath, []byte("fake dev lym"), 0o755); err != nil {
 		t.Fatalf("write fake dev binary: %v", err)
@@ -42,6 +43,7 @@ func TestResolveLym_DevBinaryExists(t *testing.T) {
 // TestResolveLym_DevBinaryMissingFallsBackToProd verifies that resolveLym falls back to lookPath
 // and returns sourceProd when the dev binary is absent.
 func TestResolveLym_DevBinaryMissingFallsBackToProd(t *testing.T) {
+	tiergate.Require(t, 0)
 	missingDevPath := filepath.Join(t.TempDir(), "lym")
 	const fakeProdPath = "/fake/prod/lym"
 
@@ -68,6 +70,7 @@ func TestResolveLym_DevBinaryMissingFallsBackToProd(t *testing.T) {
 // TestResolveLym_DevBinaryMissingAndLookPathFails verifies that resolveLym propagates a lookPath
 // error when both the dev binary is absent and PATH lookup fails.
 func TestResolveLym_DevBinaryMissingAndLookPathFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	missingDevPath := filepath.Join(t.TempDir(), "lym")
 	wantErr := errors.New("exec: \"lym\": executable file not found in $PATH")
 
@@ -91,6 +94,7 @@ func TestResolveLym_DevBinaryMissingAndLookPathFails(t *testing.T) {
 // TestPrependPath verifies that prependPath makes dir the first PATH segment, leaves non-PATH env vars untouched, returns environ unchanged when dir is empty, and edits a Windows-form "Path=..."
 // entry in place without appending a duplicate "PATH=" entry.
 func TestPrependPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	sep := string(os.PathListSeparator)

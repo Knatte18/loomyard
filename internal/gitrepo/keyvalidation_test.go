@@ -1,5 +1,3 @@
-//go:build tier0
-
 // keyvalidation_test.go covers validSHA — pure string-matching logic with no git spawn, no
 // filesystem I/O, and no gitkit fixture.
 // It is deliberately untagged (no //go:build constraint) and in the internal package so it reaches
@@ -10,8 +8,11 @@ package gitrepo
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 //testtiming:keep pins validSHA's accepted and rejected forms, which its covering test reaches only for a full SHA
 func TestValidSHA(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

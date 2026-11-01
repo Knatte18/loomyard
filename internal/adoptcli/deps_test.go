@@ -1,5 +1,3 @@
-//go:build tier0
-
 // deps_test.go covers the hub-only pause reading that makes a pair under a slug-scope pause read live, the adopt check start's guard under go test, its alive skip and its liveness reading, and the adopt gate tiers it carries.
 
 package adoptcli
@@ -20,9 +18,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHubOnlyPaused(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	writeRecord := func(t *testing.T, live ...pauserecord.Entry) string {
@@ -66,6 +66,7 @@ func TestHubOnlyPaused(t *testing.T) {
 }
 
 func TestStartSuiteStartsNothingUnderTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	outPath := filepath.Join(t.TempDir(), "adopt", checkOutName)
 	if pid, err := startSuite(t.TempDir(), outPath, "alpha"); err == nil {
@@ -77,6 +78,7 @@ func TestStartSuiteStartsNothingUnderTest(t *testing.T) {
 }
 
 func TestEnsureCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	runningRecord := CheckRecord{PID: 77, State: checkRunning, Gate: checkGateKey}
@@ -127,6 +129,7 @@ func TestEnsureCheck(t *testing.T) {
 }
 
 func TestAdoptGateTiers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const declaredTiers = "slots: 2\ntiers:\n  tier0: {command: x, timeout_min: 5, counter: vstest}\n  tier1: {command: y, timeout_min: 5, counter: vstest}\n"
@@ -162,6 +165,7 @@ func TestAdoptGateTiers(t *testing.T) {
 }
 
 func TestStartCheckWithTiers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
@@ -206,6 +210,7 @@ func TestStartCheckWithTiers(t *testing.T) {
 }
 
 func TestCheckAlive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	self := os.Getpid()

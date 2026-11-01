@@ -1,5 +1,3 @@
-//go:build tier0
-
 package llmkit
 
 import (
@@ -7,12 +5,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const testOverrideEnv = "LLMKIT_TEST_CLAUDE"
 
 // Serial: t.Setenv of PATH and the override variable is process-global state.
 func TestClaude(t *testing.T) {
+	tiergate.Require(t, 0)
 	fakeDir := t.TempDir()
 	name := "claude"
 	if runtime.GOOS == "windows" {

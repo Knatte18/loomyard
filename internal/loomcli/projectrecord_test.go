@@ -1,5 +1,3 @@
-//go:build tier0
-
 // projectrecord_test.go covers where a run's decision record lives by its recipe, and the project records a member's run reads from the beams above its pair.
 
 package loomcli
@@ -19,9 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunRecordOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	location := &lymcwd.Location{HubPath: filepath.Join("hub"), WorktreeName: "a-beam", AnchorRel: "."}
 
@@ -57,6 +57,7 @@ func TestRunRecordOf(t *testing.T) {
 
 // TestProjectRecordPaths pins that a member reads the record of every beam above it, nearest first, from each beam's own worktree, and skips a beam whose record is absent.
 func TestProjectRecordPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := t.TempDir()
 	writeBeamBoard(t, hub)
@@ -138,6 +139,7 @@ func writeBeamRecords(t *testing.T, hub string, slugs ...string) func(slug strin
 
 // TestWithProjectDirective pins that a member under a beam with a record gets a project directive naming that record, and a pair under no beam keeps the marker empty with every other table value untouched.
 func TestWithProjectDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := t.TempDir()
 	writeBeamBoard(t, hub)

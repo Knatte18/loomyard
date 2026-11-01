@@ -1,5 +1,3 @@
-//go:build tier0
-
 // halt_test.go covers loom's halt friction: the halt note, loomAfterStep under step and loomPostRun under run.
 // Every test is untagged Tier 1: the reflection agent is a shedfake.Shuttle, which also stands in for its `lym selfreport create` filing, so nothing spawns an agent or files an issue.
 
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -130,6 +129,7 @@ func readNote(t *testing.T, path string) string {
 }
 
 func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	history := []shedengine.HistoryEntry{
@@ -215,6 +215,7 @@ func TestWriteHaltNote_NamesAnomalyProducerReasonAndHistory(t *testing.T) {
 }
 
 func TestWriteHaltNote_EmptyDirectoryWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if err := writeHaltNote("", haltNote{Producer: "p", State: shedengine.StateBlocked}); err != nil {
@@ -224,6 +225,7 @@ func TestWriteHaltNote_EmptyDirectoryWritesNothing(t *testing.T) {
 
 // TestLoomAfterStep_WritesNothing asserts a busy shed, a stale failed status carrying a different error, and an awaiting or paused hand-off each skip reflection: no halt note and no reflection spawn.
 func TestLoomAfterStep_WritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -252,6 +254,7 @@ func TestLoomAfterStep_WritesNothing(t *testing.T) {
 }
 
 func TestLoomAfterStep_Done_ReportsTheRowStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -270,6 +273,7 @@ func TestLoomAfterStep_Done_ReportsTheRowStatus(t *testing.T) {
 }
 
 func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -286,6 +290,7 @@ func TestLoomAfterStep_UnwritableFrictionDirectory_StillReturnsAStatus(t *testin
 }
 
 func TestLoomPostRun_HaltNotes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("BlockedWritesTheNoteAndSpawnsNoReflection", func(t *testing.T) {
@@ -412,6 +417,7 @@ func (f *haltFixture) stepOver(t *testing.T, preStep func(context.Context) (stri
 
 // TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes drives step with a producer that returns Stuck on a row with no OnStuck, the escalation arm.
 func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -449,6 +455,7 @@ func TestStep_EscalationHaltSkipsReflectionAndKeepsBothNotes(t *testing.T) {
 
 // TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection drives step with a producer that returns an error: the error envelope reports friction skipped, the halt note is on disk and no reflection ran.
 func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	f := newHaltFixture(t)
@@ -475,6 +482,7 @@ func TestStep_ProducerErrorWritesTheHaltNoteAndNoReflection(t *testing.T) {
 // TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection asserts the interrupt hook writes the `loom-halt` note as an interrupted stop with the cause as reason, reports skipped and runs the reflection shuttle zero times.
 // The note records the state the status file holds after the stop, `failed` when there is none, and an error in it the stop did not write.
 func TestLoomAfterInterrupt_WritesTheHaltNoteAndNoReflection(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -566,6 +574,7 @@ func (f *haltFixture) handoffSteps(t *testing.T, beforeSecond func()) {
 }
 
 func TestStep_CrashResumeNoteFollowsTheHandoffVoucher(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	removeVoucher := func(t *testing.T, f *haltFixture) {

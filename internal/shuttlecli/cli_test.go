@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the shuttlecli cobra seam through RunCLI: run's flag-shape validation and the positional-argument validation of the remaining verbs.
 // No live tmux/claude session is required by any test in this file;
 // the full run round-trip against a live agent lives in smoke tests (batch 6) and
@@ -29,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-cmp/cmp"
 	"github.com/spf13/cobra"
 )
@@ -65,6 +64,7 @@ func newFakeClockRunner(reed shuttleengine.ReedOps, engine shuttleengine.Engine,
 // Each case asserts the whole buffer parses as EXACTLY ONE JSON object: the module's contract is one
 // envelope per invocation, and a substring check cannot see a second one.
 func TestRunCLI_Run_FlagValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -170,6 +170,7 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 // original intent is untouched and still covered: TestRunCLI_Run_FlagValidation above proves a flag
 // error is reported on its own whenever the pre-run did NOT abort.
 func TestRunCLI_Run_PreRunAbort_EmitsExactlyOneEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		args []string
@@ -226,6 +227,7 @@ func parseSingleEnvelope(t *testing.T, out []byte) map[string]any {
 // It also asserts the command tree registers no `send` or `interrupt` child, so a verb registered again fails.
 // Each subtest that runs the CLI changes the process working directory, so none runs in parallel.
 func TestRunCLI_PositionalArgValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, removed := range []string{"send", "interrupt"} {
 		t.Run("NoChild_"+removed, func(t *testing.T) {
 			for _, child := range Command().Commands() {
@@ -275,6 +277,7 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 // TestAwaitVerb runs await from a temp directory outside any git repository and asserts its answer, exit code and envelope for each way a watched path can exist, be absent or be unreadable, and that the verb writes nothing.
 // A live poll waits out no interval here; the engine's poll test pins it.
 func TestAwaitVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -407,6 +410,7 @@ func (e *forkListEngine) OutstandingForks(string, string) ([]shuttleengine.Backg
 // It also pins the ok envelope with ready false and the forks still running when the cap elapses.
 // It is not parallel: it sets the strand-name environment variable.
 func TestAwaitForksVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	fork := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundFork, ID: "a1", Label: "lens a"}
 
 	tests := []struct {
@@ -499,6 +503,7 @@ func startupPending(string) shuttleengine.StartupState { return shuttleengine.St
 // Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
 // That failure happens before any strand exists, so the error envelope must carry none of the run-identity fields (guid, sessionId, runDir) rather than three empty strings.
 func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name           string
@@ -579,6 +584,7 @@ func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
 // the bare error and no handle at all, while the run directory was still on disk and the strand
 // possibly still live — nothing left for the operator to attach to or tear down.
 func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	anchorPath := t.TempDir()
 	worktreeRoot := filepath.Dir(anchorPath)
@@ -651,6 +657,7 @@ func (stateEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Time, b
 // TestStateCmd_ListsRunningRunsAndNarrowsByStrand drives stateCmd over a run-directory root holding one running record with a stamped turn end and its output file,
 // and asserts the envelope's run, state, cause and history, then that --strand with a name matching no running run prints an empty list.
 func TestStateCmd_ListsRunningRunsAndNarrowsByStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	root := t.TempDir()
 	runDir := filepath.Join(root, "run-1")
@@ -736,6 +743,7 @@ func (e *openRecorderEngine) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttle
 
 // TestOpenCmd_ModelAliasEngine pins the engine and permission mode `open` hands Runner.Open, the engine, model and effort its envelope reports, and that a refusal from Open reaches the error envelope.
 func TestOpenCmd_ModelAliasEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -814,6 +822,7 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 
 // TestOpenCmd_ListModels pins that --list-models, with no --role, prints the loaded registry sorted by alias with each alias's engine, model and default effort, and opens nothing.
 func TestOpenCmd_ListModels(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	anchor := t.TempDir()
 	if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
@@ -868,6 +877,7 @@ func TestOpenCmd_ListModels(t *testing.T) {
 
 // TestOpenCmd_ListModelsRegistryLoadFailure pins that --list-models over an unparsable models config returns an error envelope naming the flag and opens nothing.
 func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	anchor := t.TempDir()
 	if err := os.MkdirAll(configengine.ConfigDir(anchor), 0o755); err != nil {
@@ -903,6 +913,7 @@ func TestOpenCmd_ListModelsRegistryLoadFailure(t *testing.T) {
 
 // TestAwaitCap pins where a call's cap comes from: a given --cap wins and calls neither function, a found worktree answers the resolver's cap, and no worktree answers the default without asking the resolver.
 func TestAwaitCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const strand = "sh:slug:implementer"

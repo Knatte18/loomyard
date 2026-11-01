@@ -1,5 +1,3 @@
-//go:build tier0
-
 // strand_test.go drives the strand-mutation *Locked helpers directly against a fixture .lym: guid
 // generation/uniqueness, unknown/cyclic parent rejection, the hidden-add no-launch path, the
 // launch-path decision seam (needsLaunchOnAdd/needsLaunchOnSurface — the actual real-tmux launch
@@ -29,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAddStrandLocked pins the hidden-add path and the engine-boundary rejections of one fresh state.
@@ -38,6 +37,7 @@ import (
 // An unknown parent, an own-window display with a negative window size, a mistyped anchor or an empty one is rejected before any pane is launched or record registered —
 // without that guard an in-process caller (shuttle) would persist the strand, launch its pane, and fail every subsequent apply in render until the strand was removed.
 func TestAddStrandLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	st := &ReedState{}
 	hidden := render.Display{Anchor: render.AnchorHidden}
@@ -178,6 +178,7 @@ func TestAddStrandLocked(t *testing.T) {
 }
 
 func TestWouldFormCycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []Strand{
 		{GUID: "root", Parent: ""},
 		{GUID: "mid", Parent: "root"},
@@ -207,6 +208,7 @@ func TestWouldFormCycle(t *testing.T) {
 
 //testtiming:keep pins the add-time launch decision: a hidden add never launches and an own-window add does; its covering tests run this code without asserting it
 func TestNeedsLaunchOnAdd(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		anchor render.Anchor
@@ -227,6 +229,7 @@ func TestNeedsLaunchOnAdd(t *testing.T) {
 
 //testtiming:keep pins the surface-time launch decision: only a hidden strand turned visible launches, a hidden-to-hidden or visible-to-visible update never does; its covering tests run this code without asserting it
 func TestNeedsLaunchOnSurface(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		wasHidden bool
@@ -253,6 +256,7 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 // A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
 // A window-move refusal names the way forward, lym reed remove.
 func TestUpdateStrandLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	visible := render.Display{Anchor: render.AnchorOwnWindow}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 	own := render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 2}
@@ -315,6 +319,7 @@ func TestUpdateStrandLocked(t *testing.T) {
 // and the recursive remove cascades to every descendant, lists each removed strand with its name and leaves unrelated strands alone.
 // A window group's record outlives all but the group's last strand.
 func TestRemoveStrandLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	st := &ReedState{Strands: []Strand{
 		{GUID: "root", Name: "root-name"},
@@ -372,6 +377,7 @@ func TestRemoveStrandLocked(t *testing.T) {
 // strand is expected to still own a live pane (mirroring anyPlacedStrand's Anchor !=
 // render.AnchorHidden filter).
 func TestRemovalEmptiedSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		remaining   []Strand
@@ -424,6 +430,7 @@ func TestRemovalEmptiedSession(t *testing.T) {
 // Testing section enumerates: an empty-PaneID candidate, a candidate bound to a pane present but not
 // alive, and a hidden strand sharing a name with a not-alive visible one.
 func TestClassifyIfAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	visible := render.Display{Anchor: render.AnchorOwnWindow}
 	hidden := render.Display{Anchor: render.AnchorHidden}
 
@@ -532,6 +539,7 @@ func TestClassifyIfAbsent(t *testing.T) {
 //
 //testtiming:keep pins --if-absent requiring a name: rejected naming --name when IfAbsent is set without one, accepted otherwise; its covering tests run this code without asserting it
 func TestValidateIfAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		spec    AddSpec
@@ -577,6 +585,7 @@ func installIfAbsentTmux(t *testing.T, e *Engine, paneLines string) *fakeTmux {
 // even though the incoming spec carries a Focus:true Display and different Cmd/ResumeCmd/Parent than what is persisted.
 // An alive match is a no-op, a hidden-only match is a no-op regardless of any pane being alive, and a role-segment --name matches on the full name it resolves to.
 func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		paneLines string
@@ -668,6 +677,7 @@ func TestAddStrand_IfAbsent_NoOps(t *testing.T) {
 
 // TestAddStrandUnless_NamedStrandSkips pins that a named strand skips the add whether it is live, dormant (its pane gone) or hidden, and that a skip saves, launches and moves nothing.
 func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -724,6 +734,7 @@ func TestAddStrandUnless_NamedStrandSkips(t *testing.T) {
 
 //testtiming:keep pins the add going ahead when no strand carries the named name, with the new strand named from the told geometry and persisted after the existing ones; its covering tests run this code without asserting it
 func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -773,6 +784,7 @@ func TestAddStrandUnless_NoNamedStrandAdds(t *testing.T) {
 // TestAddStrand_ReclaimsADeadHoldersName pins that an add removes a dead, visible, childless, unpaused holder of the exact asked-for name before naming, and leaves every other holder in place.
 // The holder is an own-window strand named tc:tslug:fix, and the new strand is added hidden so nothing launches.
 func TestAddStrand_ReclaimsADeadHoldersName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const holderGUID = "holder-guid"
@@ -921,6 +933,7 @@ func TestAddStrand_ReclaimsADeadHoldersName(t *testing.T) {
 }
 
 func TestAddStrandUnless_UnformableNameRefusesBeforeTmux(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	fake := installIfAbsentTmux(t, e, "%1 0 0 100 20 4321\n")
 
@@ -937,6 +950,7 @@ func TestAddStrandUnless_UnformableNameRefusesBeforeTmux(t *testing.T) {
 // ensureSessionLocked rather than requireSessionLocked: a --if-absent call with no name override must
 // fail with validateIfAbsent's own error, not the nonexistent multiplexer binary's.
 func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	_, err := e.AddStrand(AddSpec{IfAbsent: true, Display: render.Display{Anchor: render.AnchorHidden}})
@@ -952,6 +966,7 @@ func TestAddStrand_IfAbsentWithoutName_FailsBeforeAnyTmuxContact(t *testing.T) {
 // The returned error IS still non-nil — the fixture's configured tmux/shell binaries do not exist on disk, so ensureSessionLocked's own sessionSubstrateLocked probe fails with that nonexistent binary's exec error, reached before anything else runs.
 // Asserting that binary error's exact text would pin an OS-specific string, so this only asserts what the self-heal change actually promises: neither the no-session phrase nor the `lym reed up` remedy noSessionMessage names appears in the error AddStrand now returns.
 func TestAddStrand_ColdEngine_NoLongerReturnsNoSessionMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	_, err := e.AddStrand(AddSpec{NameOverride: "claude", Display: render.Display{Anchor: render.AnchorHidden}})
@@ -988,6 +1003,7 @@ func hiddenSpec(role, nameOverride string) AddSpec {
 //
 //testtiming:keep pins how an add forms its strand name: the role numbered by the strands holding it, a dormant strand still counting, a legacy name holding nothing, an empty slug giving two segments and an empty role defaulting to strand; its covering tests run this code without asserting it
 func TestStrandNameLocked_Names(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		existing  []Strand
@@ -1049,6 +1065,7 @@ func TestStrandNameLocked_Names(t *testing.T) {
 }
 
 func TestStrandNameLocked_ExplicitNameHeldRefuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 	st := &ReedState{}
 	held, err := e.addStrandLocked(st, hiddenSpec("", "driver"))
@@ -1076,6 +1093,7 @@ func TestStrandNameLocked_ExplicitNameHeldRefuses(t *testing.T) {
 }
 
 func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	for _, override := range []string{"other:tslug:driver", "tc:otherslug:driver"} {
@@ -1088,6 +1106,7 @@ func TestStrandNameLocked_ForeignPrefixRefuses(t *testing.T) {
 // TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand pins every up-front refusal of add and replace:
 // the exact way-forward text or the named config key, and no tmux command issued.
 func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		shortname string
@@ -1132,6 +1151,7 @@ func TestAddStrand_UnformableName_RefusesBeforeAnyTmuxCommand(t *testing.T) {
 //
 //testtiming:keep pins the reap-root selection: only a pane that is requested, present and alive contributes its pid, a dead, pid-less or absent one never does since a dead pane's recorded pid may have been reused; its covering tests run this code without asserting it
 func TestAlivePanePIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	live := []LivePane{
 		{ID: "%1", Dead: false, PID: 100},
 		{ID: "%2", Dead: true, PID: 200},
@@ -1161,6 +1181,7 @@ func TestAlivePanePIDs(t *testing.T) {
 //
 //testtiming:keep pins that Down's reap roots exclude a dead pane's recorded pid, a pid-less pane and a corpse-only session; its covering tests run this code without asserting it
 func TestSessionReapRoots(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		live []LivePane
@@ -1213,6 +1234,7 @@ func TestSessionReapRoots(t *testing.T) {
 //
 //testtiming:keep pins the kill-pane targets being filtered to panes of this worktree's session, a dead but present pane kept and a sibling worktree's pane id dropped; its covering tests run this code without asserting it
 func TestPaneIDsInSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	live := []LivePane{
 		{ID: "%1", Dead: false},
 		{ID: "%2", Dead: true},
@@ -1264,6 +1286,7 @@ func TestPaneIDsInSession(t *testing.T) {
 // CapturePane share this resolution, and a pane id belonging to another worktree's session on the
 // shared socket is a target send-keys accepts — one agent's input typed into another agent's pane.
 func TestResolvePaneInThisSessionLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// strand is the strand "a" resolves; the zero value is a window 0 strand bound to %7.
@@ -1331,6 +1354,7 @@ func TestResolvePaneInThisSessionLocked(t *testing.T) {
 //
 //testtiming:keep pins RemoveStrand's kill-pane loop consulting the session filter, so a stale reed.json naming a sibling worktree's pane kills nothing there; its covering tests run this code without asserting it
 func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newTestEngine(t)
 
 	// Only %1 is a pane of this session; %7 is a sibling worktree's live pane on the shared socket,
@@ -1366,6 +1390,7 @@ func TestRemoveStrand_NeverKillsAPaneOutsideThisSession(t *testing.T) {
 // TestWriteOps_RefuseARetiredAnchor pins that each write op refuses a Go-built display naming a retired anchor before any pane or state changes.
 // ReplaceStrand removes the old strand and kills its pane before it adds, so its refusal has to come at its head, which the replace rows pin.
 func TestWriteOps_RefuseARetiredAnchor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const persistedGUID = "persisted-guid"

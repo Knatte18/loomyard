@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_awaiting_test.go covers the inner-run watch's awaiting hand-off, the resume once per decision, and the done arm's wait for the driver strand.
 
 package battenshed
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func awaitingStatus() []statusResult {
@@ -36,6 +35,7 @@ func doneStatus() []statusResult {
 //
 //testtiming:keep pins the no-decision wait -- its reason, one yield and no spawn -- which the decision-bearing awaiting tests never reach
 func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, awaitingStatus(), clock)
@@ -66,6 +66,7 @@ func TestInnerRun_AwaitingWithoutApprovalWaitsExempt(t *testing.T) {
 
 // TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints asserts an awaiting child's dead driver strand is revived once, and that the hand-off hint keeps naming both hand-offs.
 func TestInnerRun_AwaitingRevivesADeadDriverAndKeepsItsHints(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	scratchDir := t.TempDir()
@@ -113,6 +114,7 @@ func awaitingStatusWithHistory(n int) statusResult {
 
 // TestInnerRun_AwaitingResumesOncePerApproval walks an approval through successive passes: it is acted on at the first pass after it appears, the passes go on yielding until the child leaves awaiting, and the same approval is never acted on twice while a new one is.
 func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	current := awaitingStatusWithHistory(4).status
@@ -196,6 +198,7 @@ func TestInnerRun_AwaitingResumesOncePerApproval(t *testing.T) {
 
 // TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint asserts a child that awaits again after a resume, seen by the wait as a longer history in the same state, gets the decide-again hint and no second resume.
 func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	statuses := []statusResult{awaitingStatusWithHistory(4), awaitingStatusWithHistory(5)}
@@ -228,6 +231,7 @@ func TestInnerRun_AwaitingAgainAfterResumeGetsReapproveHint(t *testing.T) {
 }
 
 func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, spawnCalls, deps := newInnerRunDeps(t, nil, nil, []statusResult{awaitingStatusWithHistory(4)}, clock)
@@ -253,6 +257,7 @@ func TestInnerRun_AwaitingOldLayoutMarkerGetsReapproveHint(t *testing.T) {
 }
 
 func TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	statuses := []statusResult{awaitingStatusWithHistory(4), awaitingStatusWithHistory(5)}
@@ -288,6 +293,7 @@ func TestInnerRun_AwaitingResumesOnARejectionOnceAndAgainOnASameSecondApproval(t
 }
 
 func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	spawnErr := errors.New("bootstrap exited 1")
@@ -322,6 +328,7 @@ func TestInnerRun_AwaitingSpawnErrorWritesNoMarkerAndRetries(t *testing.T) {
 // TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes asserts a resume the child's driver refuses, as not parked yet or as a busy pane, leaves the decision unacted, is retried across passes at most once per notice probe, and is acted on once the driver takes it.
 // A busy pane reports the draft and the remedy and queues one orch notice per stall, which quotes the refusal's draft text.
 func TestInnerRun_AwaitingRefusedResumeRetriesWithoutMarkerThenResumes(t *testing.T) {
+	tiergate.Require(t, 0)
 	const draft = "half-typed operator draft"
 	busy := fmt.Errorf("%w: the input box holds a draft: %s", ErrChildDriverBusy, draft)
 	notParked := fmt.Errorf("%w: exit status 1", ErrChildNotParked)
@@ -442,6 +449,7 @@ func testInnerRunRefusedResume(t *testing.T, draft string, refusals []error, sec
 }
 
 func TestInnerRun_ReadDecisionErrorIsHardError(t *testing.T) {
+	tiergate.Require(t, 0)
 	clock := &fakeClock{}
 	readErr := errors.New("decision unreadable")
 	_, _, deps := newInnerRunDeps(t, nil, nil, awaitingStatus(), clock)
@@ -455,6 +463,7 @@ func TestInnerRun_ReadDecisionErrorIsHardError(t *testing.T) {
 
 // TestInnerRun_DoneWaitsForLiveDriverThenFinishes asserts a done child with a live driver yields on each pass, with the done-seen marker written on first sight, until the driver is gone.
 func TestInnerRun_DoneWaitsForLiveDriverThenFinishes(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, doneStatus(), clock)
@@ -489,6 +498,7 @@ func TestInnerRun_DoneWaitsForLiveDriverThenFinishes(t *testing.T) {
 }
 
 func TestInnerRun_DoneLivenessErrorIsTreatedAsLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, doneStatus(), clock)
 	deps.DriverAlive = func(ctx context.Context) (bool, error) { return false, errors.New("reed unreadable") }
@@ -506,6 +516,7 @@ func TestInnerRun_DoneLivenessErrorIsTreatedAsLive(t *testing.T) {
 // The done arm's reason takes a new text as the grace counts up, and logs once for the whole wait.
 // It captures the process-global logger at Info, so it is not parallel.
 func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 
 	scratchDir := t.TempDir()
@@ -547,6 +558,7 @@ func TestInnerRun_DoneFinishesPastGraceWithLiveDriverAndWarns(t *testing.T) {
 }
 
 func TestInnerRun_UnparseableDoneSeenMarkerRestartsTheGrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, doneStatus(), clock)
@@ -580,6 +592,7 @@ func TestInnerRun_UnparseableDoneSeenMarkerRestartsTheGrace(t *testing.T) {
 }
 
 func TestInnerRun_StaleDoneSeenMarkerIsClearedWhileRunning(t *testing.T) {
+	tiergate.Require(t, 0)
 	scratchDir := t.TempDir()
 	clock := &fakeClock{}
 	statuses := []statusResult{{status: shedengine.Status{State: shedengine.StateRunning}, found: true}}
@@ -642,6 +655,7 @@ func newRunShed(t *testing.T, producer shedengine.ShedProducer, counted int) *sh
 }
 
 func TestInnerRun_DoneWaitIsNeitherCountedNorBlockedByTheRunningBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	const counted = 3
 	clock := &fakeClock{}
 	_, _, deps := newInnerRunDeps(t, nil, nil, doneStatus(), clock)
@@ -681,6 +695,7 @@ func TestInnerRun_DoneWaitIsNeitherCountedNorBlockedByTheRunningBudget(t *testin
 // every return routes back to Run-Shed, still running, even with the budget fully spent,
 // and that the returns for successive state changes are separate budget-exempt history entries, never folded across changes even when two of them read alike.
 func TestInnerRun_EachStateChangeIsItsOwnHistoryEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	const counted = 3
 	const changes = 6
 	clock := &fakeClock{}

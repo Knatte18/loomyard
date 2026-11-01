@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hub_test.go proves the bare-pair template builder and the CloneAndWire-backed hub factory each do what their doc comments claim: the template carries the symbolic-ref gotcha's fix and a genuinely empty weft bare, and NewHub produces a real, fully-wired fabric hub rather than a hand-assembled stand-in — the whole reason NewHub calls CloneAndWire instead of CloneHub alone.
 // It also proves the helpers a built hub offers — the config seeders, AddPair, AddPairWith and OpenFabric — and that hub teardown is safe.
 
@@ -26,9 +24,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBuildBareTemplate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpBare, weftBare := buildBareTemplate()
@@ -73,6 +73,7 @@ func TestBuildBareTemplate(t *testing.T) {
 // Steps run serially in this order: the config steps come before the steps that add pairs, and the fabric-config seed comes last because it changes the branch prefix later pairs would inherit.
 // Each anchor's scenario calls t.Parallel; no step does, because they share the one hub.
 func TestNewHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "backend"} {
@@ -325,6 +326,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 // It also pins the fixture-build counter: gitkit.FixtureGitEnv is unset in the process environment once the last build has returned.
 // It does not call t.Parallel, because the marker is process-global state and parallel tests build hubs too.
 func TestNewHub_Concurrent(t *testing.T) {
+	tiergate.Require(t, 1)
 	const n = 8
 
 	hubs := make([]*Hub, n)
@@ -369,6 +371,7 @@ func TestNewHub_Concurrent(t *testing.T) {
 // test's own end, so the subtest's teardown (registerTeardown, registered exactly as NewHub registers
 // it) is what is under test here, isolated from Go's own recursive directory removal.
 func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container, err := lymtemp.MkdirTemp("hubforge-teardown-keeps-targets-*")
@@ -462,6 +465,7 @@ func TestNewHub_TeardownRemovesJunctionsKeepsTargets(t *testing.T) {
 // Teardown must complete without failing the test in either case — registerTeardown reports every
 // error via tb.Logf and never tb.Fatalf/tb.Errorf, so a test that already passed must stay passed.
 func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("RepointedJunction", func(t *testing.T) {
@@ -504,6 +508,7 @@ func TestNewHub_TeardownSurvivesCorruptHub(t *testing.T) {
 // TestCopyHub copies the "." shape with its one pair and asserts the copy is a working hub of its own:
 // fabric status is clean on its prime, every worktree git lists resolves, the pair's launcher directory resolves, no `_portals` directory exists, and no file or link names the template root.
 func TestCopyHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	shape := Shape{Anchor: ".", Pairs: []string{TemplatePairSlug}}
@@ -629,6 +634,7 @@ func (r *recordingTB) failedNaming(fixture string) bool {
 // TestSharedHub writes into the shared hub of a shape no other test uses and asserts the test's cleanup fails naming the fixture, after which a later SharedHub and CopyHub of the same shape fail naming it too.
 // A read-only sharer first passes cleanly.
 func TestSharedHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	shape := Shape{Anchor: "backend"}

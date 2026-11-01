@@ -1,5 +1,3 @@
-//go:build tier0
-
 package frictionengine
 
 import (
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reflectionStencilFixture is a minimal, valid reflection stencil carrying exactly the markers
@@ -138,6 +137,7 @@ func writeNote(t *testing.T, deps Deps, name, content string) {
 
 // TestBuildReflectionSpec_SkillsAndParentDirective covers the composed Spec's reflection skill and its parent directive, with and without a recorded parent.
 func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -176,6 +176,7 @@ func TestBuildReflectionSpec_SkillsAndParentDirective(t *testing.T) {
 // TestReflect_OneNote_SpawnsAndArchives covers the full happy path: exactly one spawn, the composed
 // Spec's shape, the prompt naming the friction directory, and the archive-and-recreate.
 func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -271,6 +272,7 @@ func TestReflect_OneNote_SpawnsAndArchives(t *testing.T) {
 // friction.ReportFileName present alongside a real note before Reflect runs is deleted before the
 // spec is composed, so the composed Spec.OutputFiles entry does not already exist.
 func TestReflect_StaleReportDeletedBeforeSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -303,6 +305,7 @@ func archiveDirFor(deps Deps, suffix string) string {
 // TestReflect_LiveAgentAttached_WaitsAndArchives covers a record whose agent is still live:
 // Attach finds it, nothing is spawned, and the covered files are archived once it is done.
 func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := &shedfake.Shuttle{AttachFound: true, AttachResult: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -332,6 +335,7 @@ func TestReflect_LiveAgentAttached_WaitsAndArchives(t *testing.T) {
 // TestReflect_RecordAndReport_ArchivesWithoutSpawn covers a finished prior reflection:
 // no live agent, the report present, so the covered files are archived and nothing is spawned.
 func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -364,6 +368,7 @@ func TestReflect_RecordAndReport_ArchivesWithoutSpawn(t *testing.T) {
 // the archive leaves it behind and it is the only note the next spawn's prompt lists.
 // The two archives of one call share a clock second, so they also land in distinct directories.
 func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -396,6 +401,7 @@ func TestReflect_NoteAfterRecord_LeftForNextSpawn(t *testing.T) {
 // TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive covers a note written while the agent runs:
 // the archive covers only the recorded notes, so the new one stays for the next reflection.
 func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := doneShuttle()
 	deps := newTestDeps(t, shuttle, fixedClock())
@@ -419,6 +425,7 @@ func TestReflect_NoteWrittenDuringSpawn_StaysAfterArchive(t *testing.T) {
 // TestReflect_Skipped covers every friction directory with nothing to reflect: Reflect reports skipped and spawns nothing.
 // That is a missing directory, an empty one, one holding only a non-markdown file, and one whose only .md entry is a stale friction.ReportFileName left by a timed-out run, which must not be mistaken for one note.
 func TestReflect_Skipped(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -465,6 +472,7 @@ func TestReflect_Skipped(t *testing.T) {
 // TestReflect_ShuttleFailures_FailedNoArchive covers every way a spawned run fails to finish: the three non-done outcomes and a plain Shuttle.Run error.
 // Each yields StatusFailed with a nil Reflect error, and the friction directory is left exactly as it was, with the note and the covered record in place and no archive sibling created.
 func TestReflect_ShuttleFailures_FailedNoArchive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -506,6 +514,7 @@ func TestReflect_ShuttleFailures_FailedNoArchive(t *testing.T) {
 // TestReflect_AttachFailures_FailedNoSpawn covers a record whose attach probe leaves the reflection unfinished: an attached run that does not finish, and a probe that cannot answer and so may be hiding a live agent.
 // Each yields StatusFailed, nothing is spawned and the friction directory is left exactly as it was, so the notes, record and report stay in place.
 func TestReflect_AttachFailures_FailedNoSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -547,6 +556,7 @@ func TestReflect_AttachFailures_FailedNoSpawn(t *testing.T) {
 // one whose agent is gone with no report, and one that reads but does not parse.
 // The unparsable record is discarded without an attach probe.
 func TestReflect_UnusableRecord_DiscardedAndReflectedAgain(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name             string
@@ -591,6 +601,7 @@ func TestReflect_UnusableRecord_DiscardedAndReflectedAgain(t *testing.T) {
 // A partial spend gives the spawn the budget left as its Spec.Timeout.
 // A zero Deps.Timeout, the friction_timeout_min 0 that defers to shuttle's run_timeout_min, carries no budget: the attach probe and the spawn both receive a zero Spec.Timeout.
 func TestReflect_AttachBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -654,6 +665,7 @@ func TestReflect_AttachBudget(t *testing.T) {
 
 // TestReflect_DepsValidation covers each Deps field Reflect refuses: a nil Shuttle, an empty or relative FrictionDir, and an empty ArchivePrefix, StencilsDir or TaskSlug.
 func TestReflect_DepsValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string

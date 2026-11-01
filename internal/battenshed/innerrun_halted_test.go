@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_halted_test.go covers the inner-run watch's halted arm: a blocked, paused or failed child is a budget-exempt wait that never spawns or resumes it, logs one Info line per halt episode and revives a dead driver strand once per episode.
 // The tests that capture log output replace the process-global logger output,
 // so they do not run in parallel.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func haltedStatus(state shedengine.State, historyLen int) statusResult {
@@ -37,6 +36,7 @@ func haltedStatus(state shedengine.State, historyLen int) statusResult {
 
 // TestInnerRun_HaltedStatesWaitExemptWithoutSpawning asserts a halted child yields on each pass until the test's pause ends the run with a budget-exempt Stuck, spawns nothing, and that a child blocked at Parent-Align or Finalize gets one state-changed notice like every other halt.
 func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		state       shedengine.State
@@ -96,6 +96,7 @@ func TestInnerRun_HaltedStatesWaitExemptWithoutSpawning(t *testing.T) {
 
 // TestInnerRun_HaltWarnsOncePerEpisode asserts the passes at one unchanged status log one Info line, and that a longer history in the same state, written between passes, starts a new episode.
 func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 
 	const warnText = "level=INFO msg=\"battenshed: inner shed run halted"
@@ -139,6 +140,7 @@ func TestInnerRun_HaltWarnsOncePerEpisode(t *testing.T) {
 }
 
 func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := logcapture.CaptureVerbose(t)
 
 	// A failed child resumed and failing again on the same producer appends no history entry, so both halts read length 4.
@@ -180,6 +182,7 @@ func TestInnerRun_ReHaltAfterObservedResumeWarnsAgainAtTheSameHistoryLength(t *t
 }
 
 func TestInnerRun_PausedThenRunningThenDoneReachesDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	clock := &fakeClock{}
 	paused := haltedStatus(shedengine.StatePaused, 2).status
 	current := paused
@@ -241,6 +244,7 @@ const reviveFailedWarn = "the revive left the child's driver strand not live"
 // TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode asserts a halted child's dead driver strand is revived once per episode however many passes it takes, that the child is never spawned or resumed,
 // that a retiring, live or absent strand is not revived, and that the reason names `lym loom resume` and, only when no driver can be woken, `lym loom start` too.
 func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		strands      []ChildDriverStrand
@@ -330,6 +334,7 @@ func TestInnerRun_HaltedRevivesADeadDriverOncePerEpisode(t *testing.T) {
 // TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn asserts a DriverStrand read error is warned about once per episode and never fails the row or revives.
 // The strand read fails on the first three probes and then answers live, so the halted arm's revive is skipped three times and never needed.
 func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
+	tiergate.Require(t, 0)
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
 	logger.SetVerbosity(2)
@@ -369,6 +374,7 @@ func TestInnerRun_StrandReadErrorSkipsTheReviveWithAWarn(t *testing.T) {
 // TestInnerRun_ARunningChildEndsTheReviveEpisode asserts the revived marker is removed once the child is seen running,
 // so the next halt revives afresh.
 func TestInnerRun_ARunningChildEndsTheReviveEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	scratchDir := t.TempDir()
@@ -517,6 +523,7 @@ func (h *restepHarness) marker() string {
 // The marker survives a restart, a newer build re-steps again, a refused spawn writes no marker and is retried, and every other condition spawns nothing.
 // The check backs off from the notice probe up to the ceiling while nothing changes.
 func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("OnceAndSurvivesARestart", func(t *testing.T) {
@@ -608,6 +615,7 @@ func TestInnerRun_BinaryChangeRestepsADriverlessGoChild(t *testing.T) {
 // TestInnerRun_BinaryChangeSkipsALandingHalt pins that a halt the hand-back check marks is never re-stepped on a changed build and writes no marker, while an unmarked blocked halt still is.
 // One landing-halt row covers every kind, since the re-step reads only the check's answer.
 func TestInnerRun_BinaryChangeSkipsALandingHalt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	handBack := func(status shedengine.Status) bool {

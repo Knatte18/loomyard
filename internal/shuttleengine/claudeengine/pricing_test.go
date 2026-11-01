@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -7,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPriceMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

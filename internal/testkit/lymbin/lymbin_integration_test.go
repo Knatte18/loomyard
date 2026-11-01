@@ -1,5 +1,3 @@
-//go:build tier1
-
 // These tests set the prebuilt-binary variable through t.Setenv, so none of them calls t.Parallel: the process environment is the global state they share.
 
 package lymbin
@@ -16,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -85,6 +84,7 @@ func requireExecutable(t *testing.T, bin string) {
 }
 
 func TestBuild_ProducesExecutableBinary(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(gateslot.PrebuiltLymEnv, "")
 	built := Build(t)
 
@@ -131,6 +131,7 @@ func TestBuild_ProducesExecutableBinary(t *testing.T) {
 // TestBuildWithLDFlags_ReachTheBuild checks the ldflags through their effect: `-s -w` strips the symbol table and DWARF, so the binary is smaller than the unstripped Build one.
 // The build info cannot show them, since a `-trimpath` build, which a gate run's GOFLAGS makes, omits its `-ldflags` setting.
 func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
+	tiergate.Require(t, 1)
 	prebuiltPath := Build(t)
 	unstripped, err := os.Stat(prebuiltPath)
 	if err != nil {
@@ -161,6 +162,7 @@ func TestBuildWithLDFlags_ReachTheBuild(t *testing.T) {
 }
 
 func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(gateslot.PrebuiltLymEnv, "")
 	blocker := filepath.Join(t.TempDir(), "blocker")
 	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
@@ -174,6 +176,7 @@ func TestBuildInto_UnwritableDirReturnsError(t *testing.T) {
 }
 
 func TestRun_PassesTheEnvironment(t *testing.T) {
+	tiergate.Require(t, 1)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawn_linux_test.go — the registration of the detached board sync child in the owner record, driven with a harmless real child that is reaped by the test.
 
 package boardengine
@@ -16,11 +14,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSpawnSync_RegistersUnderTheHubOwner covers the owner record of a started board sync: it lands under the hub owner with role sync, and a record directory that cannot be written logs a warning and still spawns the child.
 // It is not parallel: it replaces a package variable and captures the process-wide logger.
 func TestSpawnSync_RegistersUnderTheHubOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	truePath, err := exec.LookPath("true")
 	if err != nil {
 		t.Skip("no true binary on PATH")

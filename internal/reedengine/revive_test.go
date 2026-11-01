@@ -1,5 +1,3 @@
-//go:build tier0
-
 // revive_test.go pins the revival trigger inside the boot and the Revive predicate against the fake tmux.
 
 package reedengine
@@ -9,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reviveTestEngine builds an engine whose boot reaches the point where it would create its session:
@@ -44,6 +44,7 @@ func toldSpawnOrder() func() ([]ReviveEntry, error) {
 // only for a recorded session that is not live, with a spawn order told and the skip unset.
 // A first boot, a nil spawn order and the skip each go on to create the session, which the nonexistent multiplexer binary refuses as "start tmux".
 func TestEnsureServerAndSession_RevivalTrigger(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		recorded  bool
@@ -94,6 +95,7 @@ func TestEnsureServerAndSession_RevivalTrigger(t *testing.T) {
 
 // TestRevive_CreatesNothingWithoutThePredicate pins that Revive reports false and spawns nothing for a worktree that records no session or whose recorded session is live.
 func TestRevive_CreatesNothingWithoutThePredicate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		recorded  bool

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // endsession_test.go drives endSessionByNameVia through the fake tmux seam.
 
 package reedengine
@@ -7,6 +5,8 @@ package reedengine
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // exitCodeErr stands in for tmux's exit-1 "no such session" answer without spawning a process.
@@ -36,6 +36,7 @@ func endSessionFixture(t *testing.T, present bool, listed string) *fakeTmux {
 // TestEndSessionByName pins which kills endSessionByNameVia issues: none for an absent session,
 // an exact-match kill-session alone while sibling sessions remain, and kill-server after the last session.
 func TestEndSessionByName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		present         bool
@@ -67,6 +68,7 @@ func TestEndSessionByName(t *testing.T) {
 }
 
 func TestEndSessionByName_HasSessionFailureIsAnError(t *testing.T) {
+	tiergate.Require(t, 0)
 	var cmd TmuxCmd
 	fake := installFakeTmuxOn(t, &cmd)
 	fake.answer("has-session", "", errors.New("tmux unreachable"))

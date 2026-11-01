@@ -1,5 +1,3 @@
-//go:build tier0
-
 // refusalnote_test.go covers noteRefusals and addVerbs over a hand-built websterCLI and a temporary friction directory.
 // No hub is needed: every refusal here fires before a verb reaches the plan, state or fabric.
 package webstercli
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -45,6 +44,7 @@ func stubRefusal(c *websterCLI) *cobra.Command {
 }
 
 func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		args []string
@@ -86,6 +86,7 @@ func TestNoteRefusals_ArgumentRefusals_WriteOneNoteEach(t *testing.T) {
 }
 
 func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	okVerb := func(c *websterCLI) *cobra.Command {
@@ -151,6 +152,7 @@ func TestNoteRefusals_VerbEnvelopes(t *testing.T) {
 
 //testtiming:keep pins that a validate refusal writes no friction note, which its covering tests do not assert
 func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	c, _ := newTestCLI(t)
 	c.frictionDir = dir
@@ -166,6 +168,7 @@ func TestAddVerbs_ValidateRefusal_WritesNoNote(t *testing.T) {
 }
 
 func TestNoteRefusals_UnusableFrictionDir_KeepsExitAndEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	blocker := filepath.Join(t.TempDir(), "not-a-dir")

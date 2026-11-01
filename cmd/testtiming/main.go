@@ -9,8 +9,8 @@
 //	go run ./cmd/testtiming -full            # tier1 — slow (real git; ~a minute); runs -tags tier1
 //	go run ./cmd/testtiming -tags tier1,tier2 # any tag set; -full means -tags tier1
 //
-// The tiers are disjoint: -tags tier1 runs none of tier0's tests, so a run that wants several tiers names every tag.
-// Passing both -full and -tags is refused.
+// A test binary holds every tier's tests and runs those of the tiers LYM_TEST_TIER selects, so every mode sets it from the tags: tier1 alone runs none of tier0's tests, and a run that wants several tiers names every tag.
+// The tiers the tags name must form one range, such as tier0,tier1,tier2; passing both -full and -tags is refused.
 //
 // It shells out to `go test ./... -json -count=1 -tags <tags>` (tier0 when no tags are given), parses the JSON event stream, and prints per-package times, the measured wall-clock, and the slowest top-level tests.
 // Each package row carries its top-level test count (TESTS) and serial time (SERIAL), the sum of those tests' elapsed seconds; subtests count in neither.
@@ -48,7 +48,7 @@
 // A package that fails to list or build keeps its old section, and the run exits 1 after writing the others.
 // For each package it runs every top-level test alone under one coverage binary and writes, per package, the tests whose covered blocks other tests already cover, the removable set among them, and the tests whose coverage cannot be judged (skipped, covering nothing, or possibly running this module's code in another process).
 // The static scan in spawnscan.go decides the last: a test is excluded as out of process when, directly or through a followed same-package or testkit call, it references the lymbin kit, os.Executable, os.Args[0] or exec.Command("go", ...), or when it sits in a tmux-tier file.
-// A test in a file with no tier tag is always judged, and a tier-tagged test with a call the scan cannot resolve is excluded as an unclassifiable call.
+// A test in a tier0 file is always judged, and a test above tier0 with a call the scan cannot resolve is excluded as an unclassifiable call.
 // The scan does not see a hook, alias or helper that a test installs so that git runs module code.
 // Reading each candidate before deleting it is the backstop.
 // A test the prune keeps carries `//testtiming:keep <reason>` on the line directly above its `func Test…` line.
@@ -67,7 +67,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,19 +120,22 @@ func main() {
 		lymtemp.Remove()
 		os.Exit(1)
 	}
-	if *resources {
-		var tags string
-		if tags, err = resolveTags(*full, *tagFlag); err == nil {
-			err = runResources(tags, *pkg)
-		}
-	} else if *redundancy {
-		var tags string
-		if tags, err = redundancyTags(*full, *tagFlag); err == nil {
-			err = runRedundancy(tags, *pkg, *out)
-		}
+	var tags string
+	if *redundancy {
+		tags, err = redundancyTags(*full, *tagFlag)
 	} else {
-		var tags string
-		if tags, err = resolveTags(*full, *tagFlag); err == nil {
+		tags, err = resolveTags(*full, *tagFlag)
+	}
+	if err == nil {
+		err = exportTierSelection(tags)
+	}
+	if err == nil {
+		switch {
+		case *resources:
+			err = runResources(tags, *pkg)
+		case *redundancy:
+			err = runRedundancy(tags, *pkg, *out)
+		default:
 			err = run(tags, *top)
 		}
 	}
@@ -170,12 +175,50 @@ func isOfflineRun(tags string) bool {
 	return tags == "" || tags == offlineTier
 }
 
+// tierSelectorEnv names the environment variable a test binary reads its tier selection from; every go command of a run inherits it from this process.
+const tierSelectorEnv = "LYM_TEST_TIER"
+
+// tierSelection returns the LYM_TEST_TIER value that selects the tiers tags name: one tier number, or `<low>-<high>` for several.
+// A tag that names no tier is ignored, and tags naming no tier select tier0.
+// It refuses tiers that do not form one range, such as tier0,tier2, since the selector takes one range.
+func tierSelection(tags string) (string, error) {
+	var tiers []int
+	for _, tag := range strings.Split(tags, ",") {
+		number, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(tag), "tier"))
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(tag), "tier") || slices.Contains(tiers, number) {
+			continue
+		}
+		tiers = append(tiers, number)
+	}
+	if len(tiers) == 0 {
+		return "0", nil
+	}
+	low, high := slices.Min(tiers), slices.Max(tiers)
+	if high-low+1 != len(tiers) {
+		return "", fmt.Errorf("-tags %s names tiers that do not form one range, and %s selects one range; name every tier from tier%d to tier%d", tags, tierSelectorEnv, low, high)
+	}
+	if low == high {
+		return strconv.Itoa(low), nil
+	}
+	return fmt.Sprintf("%d-%d", low, high), nil
+}
+
 // goTestTags returns the tags a `go` command runs under: tags, or the offline tier when a run has none of its own.
 func goTestTags(tags string) string {
 	if tags == "" {
 		return offlineTier
 	}
 	return tags
+}
+
+// exportTierSelection sets LYM_TEST_TIER in this process to the selection tags name, so every go command the run starts inherits it.
+// It returns the error tierSelection gives for tags that do not form one range, and sets nothing then.
+func exportTierSelection(tags string) error {
+	selection, err := tierSelection(goTestTags(tags))
+	if err != nil {
+		return err
+	}
+	return os.Setenv(tierSelectorEnv, selection)
 }
 
 func run(tags string, top int) error {

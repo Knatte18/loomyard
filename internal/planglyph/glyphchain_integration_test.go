@@ -1,5 +1,3 @@
-//go:build tier1
-
 // glyphchain_integration_test.go carries each glyph-chain shape row's legs past the plan gate through a real commit's delta, handle binding, the on-disk rewrite and the done-checks, spawning git through Delta — the reason this file carries the integration build tag.
 // glyphchain_test.go holds the shape table and the untagged plan-gate legs.
 
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -104,6 +103,7 @@ func requireDoneChecksClean(t *testing.T, plan *planparser.Plan, cards []planpar
 
 // TestGlyphChain_Delta runs each shape row's Create, Rename and Delete legs, each in its own repository, past the plan gate through a committed code change, the delta, handle binding and the done-checks.
 func TestGlyphChain_Delta(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, row := range shapeRows() {
@@ -164,6 +164,7 @@ func TestGlyphChain_Delta(t *testing.T) {
 
 // TestGlyphChain_UnreferencedHandle pins that a Create handle no other card references is bound at record-batch and passes its done-check.
 func TestGlyphChain_UnreferencedHandle(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, base := newGlyphChainRepo(t)
@@ -183,6 +184,7 @@ func TestGlyphChain_UnreferencedHandle(t *testing.T) {
 
 // TestGlyphChain_ReworkGenerations pins the rework-generations scenario: three cards share a file and validate clean at the plan gate, and once card 1's code is bound a dispatch with card 1 completed reports no blocking finding and no redundant-file-target for card 2's file and handle built in that file.
 func TestGlyphChain_ReworkGenerations(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, base := newGlyphChainRepo(t)
@@ -211,6 +213,7 @@ func TestGlyphChain_ReworkGenerations(t *testing.T) {
 
 // TestGlyphChain_RedundantPackage pins redundant-package-target across the plan gate and dispatch: a package self glyph beside a handle of that package is flagged both before and after card 1's handle is bound, and a rename's to-side handle belongs to the old glyph's package, not the package its draft spelling names.
 func TestGlyphChain_RedundantPackage(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	redundant := []findingKey{{"redundant-package-target", "2-card2", SeverityBlocking}}
@@ -303,6 +306,7 @@ const usesOfMethod = "package callers\n\nimport \"example.com/glyphchain/callees
 // TestGlyphChain_CallerCoverageTyped pins caller-uncovered with a real go list load: type information tells receivers apart, and the import-path scan answers where the load has none.
 // The same rows pin delete-before-reference over that load: one load serves both checks, a deleted method's calls inside a later card's code are blocking where the load types them, and dispatch, which loads nothing, reports a name match informationally.
 func TestGlyphChain_CallerCoverageTyped(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const (

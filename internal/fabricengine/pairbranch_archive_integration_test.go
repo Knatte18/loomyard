@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pairbranch_archive_integration_test.go covers the archive step of the verb that deletes an existing pair's weft branch besides Remove: Cleanup's apply loop tags the branch tip under archive/<slug>/ and pushes the tag to the weft origin before deleting the branch.
 //
 // Every hub is built through hubforge.NewHub, with the hub's RecordsBare as the weft origin.
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantArchiveTag returns the archive tag name archiveWeftTip derives for slug and tip.
@@ -22,6 +21,7 @@ func wantArchiveTag(slug, tip string) string {
 
 // TestCleanup_ApplyArchivesEachOrphanBeforeDeleting covers Cleanup's apply loop: every orphan weft branch is tagged on the origin at its tip and then deleted.
 func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	slugs := []string{"cleanup-archive-a", "cleanup-archive-b"}
@@ -61,6 +61,7 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 
 // TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep covers a failed archive: the entry carries the error, the branch stays, and Cleanup itself still returns no error.
 func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-archive-fail-weft"
@@ -86,6 +87,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 
 // TestCleanup_NoOriginDeletesAndReportsArchiveSkip covers a weft repo with no origin: the orphan is deleted as before and the result reports the skipped archive once.
 func TestCleanup_NoOriginDeletesAndReportsArchiveSkip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "cleanup-archive-noorigin-weft"

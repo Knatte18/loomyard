@@ -1,5 +1,3 @@
-//go:build tier0
-
 // step_test.go covers battenPreStep and the step verb's whole new path end to end, since none of
 // run_test.go's coverage touches it: seeding an absent status before shed.Step reads it, each of
 // the three refusal-kind mappings, and BuildShed being non-nil for verb == "step". Every fixture
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBattenPreStep_SeedsAbsentStatus asserts battenPreStep seeds a fresh status file -- current producer Worktree-Create, state running -- when none is persisted yet, before shed.Step ever reads it.
@@ -30,6 +29,7 @@ import (
 //
 //testtiming:keep pins the seeded status's current producer and state, which the end-to-end step test never reads
 func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)
 
 	if _, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath); err != nil || found {
@@ -66,6 +66,7 @@ func TestBattenPreStep_SeedsAbsentStatus(t *testing.T) {
 
 // TestBattenPreStep_RefusalKinds asserts each pre-producer failure maps to its own refusal kind, with a non-nil error that is never transient: a held run lock is shedverbs.KindBusy, a status file that exists but fails to decode is shedverbs.KindUnseeded, and a status already in StateDone -- "any other pre-producer failure" -- is shedverbs.KindBootstrap, whose remedy names the whole abandon path.
 func TestBattenPreStep_RefusalKinds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -154,6 +155,7 @@ func TestBattenPreStep_RefusalKinds(t *testing.T) {
 // "nothing here yet". battenPreStep's own seed lets shed.Step's Worktree-Create row run to
 // completion against newFakeReceiver's fakes.
 func TestStepCmd_FreshSlugNeverSurfacesKindProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := newFakeReceiver(t, nil)
 
 	var out bytes.Buffer

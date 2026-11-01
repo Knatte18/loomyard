@@ -1,5 +1,3 @@
-//go:build tier0
-
 package envelope
 
 import (
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordingTB records Fatalf instead of ending the test, by panicking with fatalSignal.
@@ -41,6 +40,7 @@ func fatals(fn func(tb testing.TB)) (fataled bool, stub *recordingTB) {
 }
 
 func TestDecode_OkFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	var buf bytes.Buffer
 	output.Ok(&buf, map[string]any{"name": "x"})
 
@@ -57,6 +57,7 @@ func TestDecode_OkFields(t *testing.T) {
 }
 
 func TestDecode_ErrAndErrFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	var buf bytes.Buffer
 	output.Err(&buf, "  boom ")
 	env := Decode(t, buf.String())
@@ -76,6 +77,7 @@ func TestDecode_ErrAndErrFields(t *testing.T) {
 }
 
 func TestDecode_PartialFalseIsPresent(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := Decode(t, `{"ok":true,"partial":false}`)
 	if env.Partial == nil || *env.Partial {
 		t.Errorf("Partial = %v, want pointer to false", env.Partial)
@@ -83,6 +85,7 @@ func TestDecode_PartialFalseIsPresent(t *testing.T) {
 }
 
 func TestDecode_Fatals(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, out := range map[string]string{
 		"malformed":      `{"ok":`,
 		"empty":          ``,
@@ -97,6 +100,7 @@ func TestDecode_Fatals(t *testing.T) {
 }
 
 func TestRequireOK(t *testing.T) {
+	tiergate.Require(t, 0)
 	RequireOK(t, `{"ok":true}`)
 	if fataled, _ := fatals(func(tb testing.TB) { RequireOK(tb, `{"ok":false,"error":"x"}`) }); !fataled {
 		t.Error("RequireOK accepted an error envelope")
@@ -104,6 +108,7 @@ func TestRequireOK(t *testing.T) {
 }
 
 func TestRequireErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := RequireErr(t, `{"ok":false,"error":"it broke"}`, "broke")
 	if env.Error != "it broke" {
 		t.Errorf("Error = %q", env.Error)

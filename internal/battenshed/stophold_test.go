@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stophold_test.go covers the eligible-stop hold: when the state-changed notice of an arbiter-eligible stop waits for the arbiter, and when the report wait starts after the hold.
 
 package battenshed
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // holdScenario is one row's running producer, with the time the stop began.
@@ -29,6 +28,7 @@ type holdStep struct {
 
 // TestNotice_EligibleStopHold pins the hold over a blocked or awaiting stop whose reading is eligible: no notice while the arbiter may still settle the stop, and noticeReportWait counted from the hold's end.
 func TestNotice_EligibleStopHold(t *testing.T) {
+	tiergate.Require(t, 0)
 	const timeout = 30 * time.Minute
 	eligible := ChildArbiterStop{Eligible: true, On: true, Timeout: timeout, SpawnsLeft: true}
 	minutes := func(n int) time.Duration { return time.Duration(n) * time.Minute }

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // joinparts_test.go covers the join-parts verb's refusal order and envelope over fake deps.
 
 package loomcli
@@ -13,9 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestJoinPartsVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

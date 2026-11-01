@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tied_linux_test.go covers the Linux tree kill: Tied.Kill reaching a grandchild, KillTree's start-time gate and SelfRecord.
 // It spawns real children, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
 
@@ -14,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // processGone reports whether pid no longer runs; a zombie awaiting reaping by init counts as gone.
@@ -34,6 +34,7 @@ func waitUntilGone(t *testing.T, pid int) {
 }
 
 func TestTiedStopEndsGrandchild(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -80,6 +81,7 @@ func TestTiedStopEndsGrandchild(t *testing.T) {
 }
 
 func TestKillTree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -127,6 +129,7 @@ func TestKillTree(t *testing.T) {
 }
 
 func TestSelfRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	record := SelfRecord()

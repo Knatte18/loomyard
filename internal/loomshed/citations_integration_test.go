@@ -1,5 +1,3 @@
-//go:build tier1
-
 // citations_integration_test.go covers the loom discussion check's citation test against a real git repository, since a cited path counts only when git tracks its root entry.
 
 package loomshed
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planindex"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // unavailableIndex is a planindex.Index whose glyph resolution reports a quarry outage.
@@ -83,6 +82,7 @@ func citationCheck(decisionRecordPath, supportLogPath, relevantPath, worktreeRoo
 }
 
 func TestValidateLoomDiscussion_Citations(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo := newCitationRepo(t, citationFixtureFiles)

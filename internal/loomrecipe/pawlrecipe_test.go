@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment and of a reroute edge, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
 
 package loomrecipe
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/preflightshed"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantPawlRow is one row of the pawl recipe: its name, its engine's producer type and its edges.
@@ -45,6 +44,7 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 }
 
 func TestPawlRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("NewBuildsTheRowsAndTheirEdges", func(t *testing.T) {
@@ -101,6 +101,7 @@ func TestPawlRecipe(t *testing.T) {
 // TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign pins boardengine.RunHolds, which imports no recipe package, against the recipe's rows:
 // a beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Parent-Align, and holds it at Parent-Align and every row after it.
 func TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	names, err := RowNames(shedrun.RecipePawl)
 	if err != nil {
@@ -132,6 +133,7 @@ func TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign(t *testing.T) {
 // TestPawlRecipe_BodyLocksFromRecordWrite pins boardengine's body lock of a beam project, which imports no recipe package, against the recipe's rows:
 // the project's body takes an edit at batten's claim row and at Preflight, before Record-Write writes the project record from it, and none from Record-Write on.
 func TestPawlRecipe_BodyLocksFromRecordWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	names, err := RowNames(shedrun.RecipePawl)
 	if err != nil {

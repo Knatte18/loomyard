@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stopEventFor builds a Stop event whose payload names the given transcript path.
@@ -37,6 +36,7 @@ func fixturePath(t *testing.T, name string) string {
 }
 
 func TestContextTokens_LastMainChainAssistantEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	got := c.ContextTokens(stopEventFor(t, fixturePath(t, "usage-main-chain.jsonl")))
 	if !got.Known || got.Tokens != 3+40+5000 || got.Compacted || !got.BoundaryAt.IsZero() {
@@ -45,6 +45,7 @@ func TestContextTokens_LastMainChainAssistantEntry(t *testing.T) {
 }
 
 func TestContextTokens_IgnoresSidechainAndZeroUsage(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	got := c.ContextTokens(stopEventFor(t, fixturePath(t, "usage-sidechain-last.jsonl")))
 	if !got.Known || got.Tokens != 7+70+700 {
@@ -53,6 +54,7 @@ func TestContextTokens_IgnoresSidechainAndZeroUsage(t *testing.T) {
 }
 
 func TestContextTokens_FollowsTranscriptNamedByEachStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	before := c.ContextTokens(stopEventFor(t, fixturePath(t, "usage-main-chain.jsonl")))
 	if !before.Known || before.Tokens != 5043 {
@@ -65,6 +67,7 @@ func TestContextTokens_FollowsTranscriptNamedByEachStop(t *testing.T) {
 }
 
 func TestContextTokens_BoundaryAfterLastAssistantIsTheReading(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	got := c.ContextTokens(stopEventFor(t, fixturePath(t, "usage-boundary-last.jsonl")))
 	want := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
@@ -74,6 +77,7 @@ func TestContextTokens_BoundaryAfterLastAssistantIsTheReading(t *testing.T) {
 }
 
 func TestContextTokens_AssistantAfterBoundaryWins(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	got := c.ContextTokens(stopEventFor(t, fixturePath(t, "usage-assistant-after-boundary.jsonl")))
 	if !got.Known || got.Tokens != 4+50+400 || got.Compacted || !got.BoundaryAt.IsZero() {
@@ -82,6 +86,7 @@ func TestContextTokens_AssistantAfterBoundaryWins(t *testing.T) {
 }
 
 func TestReadContext_EntrySpanningChunkEdgeIsReadWhole(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, name := range []string{"usage-main-chain.jsonl", "usage-boundary-last.jsonl", "usage-assistant-after-boundary.jsonl"} {
 		data, err := os.ReadFile(fixturePath(t, name))
 		if err != nil {
@@ -98,6 +103,7 @@ func TestReadContext_EntrySpanningChunkEdgeIsReadWhole(t *testing.T) {
 }
 
 func TestReadContext_NoQualifyingEntryIsUnknown(t *testing.T) {
+	tiergate.Require(t, 0)
 	data := []byte("{\"type\":\"user\",\"message\":{\"content\":\"hi\"}}\nnot json\n{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"isSidechain\":true,\"timestamp\":\"2026-03-04T05:06:07Z\",\"compactMetadata\":{\"postTokens\":5}}\n")
 	for _, chunk := range []int{1, 16, 4096} {
 		if got := readContext(bytes.NewReader(data), int64(len(data)), chunk); got != (shuttleengine.ContextReading{}) {
@@ -107,6 +113,7 @@ func TestReadContext_NoQualifyingEntryIsUnknown(t *testing.T) {
 }
 
 func TestContextTokens_Unknown(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	missing := filepath.Join(t.TempDir(), "absent.jsonl")
 	if _, err := os.Stat(missing); err == nil {
@@ -137,6 +144,7 @@ const timedTranscript = `{"type":"assistant","isSidechain":false,"timestamp":"20
 `
 
 func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hour := func(h int) time.Time { return time.Date(2026, 3, 4, h, 0, 0, 0, time.UTC) }
@@ -163,6 +171,7 @@ func TestCompactedSince_FindsNewestMainChainBoundaryAfterSince(t *testing.T) {
 }
 
 func TestCompactedSince_NoBoundaryInTranscript(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	got, found := c.CompactedSince(stopEventFor(t, fixturePath(t, "usage-main-chain.jsonl")), time.Time{})
 	if found || got != (shuttleengine.CompactionBoundary{}) {
@@ -171,6 +180,7 @@ func TestCompactedSince_NoBoundaryInTranscript(t *testing.T) {
 }
 
 func TestCompactedSince_ReadsTheTranscriptNamedByTheTurnEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	path := filepath.Join(t.TempDir(), "transcript.jsonl")
 	if err := os.WriteFile(path, []byte(timedTranscript), 0o644); err != nil {
@@ -183,6 +193,7 @@ func TestCompactedSince_ReadsTheTranscriptNamedByTheTurnEnd(t *testing.T) {
 }
 
 func TestCompactedSince_DegradesToNotFound(t *testing.T) {
+	tiergate.Require(t, 0)
 	c := &Claude{}
 	missing := filepath.Join(t.TempDir(), "absent.jsonl")
 	noPath, _ := json.Marshal(map[string]any{"hook_event_name": "Stop"})
@@ -201,6 +212,7 @@ func TestCompactedSince_DegradesToNotFound(t *testing.T) {
 
 // TestCompactedSince_CountsTurnEndsAfterTheBoundary covers the turn-end count and the match of the read turn end against the transcript's newest one.
 func TestCompactedSince_CountsTurnEndsAfterTheBoundary(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const boundary = `{"type":"system","subtype":"compact_boundary","isSidechain":false,"timestamp":"2026-03-04T01:00:00Z","compactMetadata":{"postTokens":10}}` + "\n"
@@ -261,6 +273,7 @@ func idlessLine(input, cacheRead int) string {
 // TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, a session without a subagents directory has zero forks, and a missing transcript reads unknown.
 // It runs serially because it sets the process-global HOME.
 func TestSessionUsage_SumsParentAndForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	const workdir = "/home/op/usage"
 	const sessionID = "sess-usage"
 

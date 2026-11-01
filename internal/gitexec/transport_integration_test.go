@@ -1,5 +1,3 @@
-//go:build tier1
-
 // transport_integration_test.go pins the real stderr git prints for an unreachable remote and for a rejected push.
 
 package gitexec_test
@@ -10,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the real stderr git prints for an unreachable remote and a hook-rejected push, which TestIsTransportFailure's hand-built stderr rows do not
 func TestIsTransportFailure_RealGit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // donecheck_resolve_test.go covers DoneChecks against fixture repositories, since it resolves against the actual on-disk tree rather than a hand-built []quarry.ResolveResult.
 // The fixtures are plain files that quarry reads; nothing here spawns git.
 
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDoneChecks_Verdicts covers the done-checks of Create, Delete and Rename groups against the tree the fork left behind: a landed Create, Delete or Rename passes, and a Create that never landed, a Delete that survived or a Rename never performed reports its blocking finding.
@@ -20,6 +19,7 @@ import (
 // A Create test written into its directory's other Go package, the external test package or the package itself, is done.
 // A target no glyph spells, a bare root filename or a path whose directory holds a space, is judged by whether its path exists, and a missing Create names the unit's files and where else its name is declared.
 func TestDoneChecks_Verdicts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -246,6 +246,7 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 // TestDoneChecks_QuarryUnavailable covers a quarry-unavailable root: the infrastructure error
 // blocks the done-checks rather than passing them.
 func TestDoneChecks_QuarryUnavailable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	missing := filepath.Join(t.TempDir(), "does-not-exist")

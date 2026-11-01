@@ -1,5 +1,3 @@
-//go:build tier0
-
 // goto_test.go covers batten's PreGoto hook: Worktree-Teardown is admitted only from Worktree-Teardown itself or once the child run reads done.
 
 package battencli
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeGotoStatus(t *testing.T, dir, row string, st shedengine.State) string {
@@ -29,6 +28,7 @@ func writeGotoStatus(t *testing.T, dir, row string, st shedengine.State) string 
 }
 
 func TestPreGoto(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		teardown = "Worktree-Teardown"
 		land     = "Land"
@@ -83,6 +83,7 @@ func TestPreGoto(t *testing.T) {
 
 // TestPreGoto_UnresolvedWorktreeRefused asserts a task worktree that does not resolve counts as not done.
 func TestPreGoto_UnresolvedWorktreeRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	own := writeGotoStatus(t, t.TempDir(), "Run-Shed", shedengine.StateBlocked)
 	err := preGoto("Worktree-Teardown", "s", own, func() (string, error) { return "", errors.New("no worktree") })
 	if err == nil || !strings.Contains(err.Error(), "lym batten step s") {

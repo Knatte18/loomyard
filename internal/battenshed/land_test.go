@@ -1,5 +1,3 @@
-//go:build tier0
-
 // land_test.go covers NewLand over fake seams, a fake clock and a recording Notify:
 // the landing dispositions, every failing step, the dirty-prime and land-lock waits and the records-stop notice.
 
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // landFixture holds the fake seams of one Land row and what they recorded.
@@ -159,6 +158,7 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 // No landing with a clean pull queues a notice.
 // Another parent skips the pull and the deploy without reading the prime's tree, a parent outside the deploy list pulls only, and an empty deploy command runs nothing.
 func TestLand_Dispositions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -195,6 +195,7 @@ func TestLand_Dispositions(t *testing.T) {
 
 // TestLand_FailingStepsAreStuckWithOneNotice asserts every failing step is Stuck naming the reason and posts no notice, on the first call and on a re-entry.
 func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")
@@ -250,6 +251,7 @@ func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 
 // TestLand_DirtyPrimeWait asserts a prime that turns clean within the bound lands, one still dirty past the bound is Stuck naming the paths, and a pause during the wait is Stuck with no notice and a reason naming the goto and run way forward.
 func TestLand_DirtyPrimeWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("CleanWithinBound", func(t *testing.T) {
@@ -311,6 +313,7 @@ func TestLand_DirtyPrimeWait(t *testing.T) {
 
 // TestLand_LandLockWait asserts a contended land lock is polled with sleeps doubling from the base to the ceiling until it frees, the prime lock is held only around the pull, a pause ends the wait with no notice, and a cancelled context is a hard error.
 func TestLand_LandLockWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("PollsUntilFreeAndHoldsPrimeLockOnlyAroundPull", func(t *testing.T) {
@@ -387,6 +390,7 @@ func TestLand_LandLockWait(t *testing.T) {
 // With no orch strand recorded nothing is queued and one Warn names the slug.
 // It is serial: it captures the process-global logger.
 func TestLand_RecordsStopNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		orchUnrecorded bool

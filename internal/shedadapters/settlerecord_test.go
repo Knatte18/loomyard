@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -8,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var settleTestInstant = time.Date(2026, 8, 16, 15, 13, 26, 0, time.UTC)
@@ -35,6 +35,7 @@ func writeRecordFiles(t *testing.T, dir string, files map[string]string) {
 }
 
 func TestSettleLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -151,6 +152,7 @@ func TestSettleLive(t *testing.T) {
 }
 
 func TestSubject_Unchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	codeSettled := Subject{Kind: SubjectCode, MergeBase: "base-1", Head: "head-1", FullHash: "full-1", PatchID: "patch-1"}
 	mergeInOnly := func(answer bool) func(string) (bool, error) {
@@ -201,6 +203,7 @@ func TestSubject_Unchanged(t *testing.T) {
 }
 
 func TestCarryRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	source := map[string]string{
 		settleRecordFile:     "source settle",
@@ -277,6 +280,7 @@ func TestCarryRecords(t *testing.T) {
 }
 
 func TestSettleRoundStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	start := time.Date(2026, 10, 23, 7, 30, 15, 0, time.UTC)
 	withStart := func(startedAt string) settleRecord {

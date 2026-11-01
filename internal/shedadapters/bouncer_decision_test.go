@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_decision_test.go covers the Bouncer's escalation of a judged round whose review holds a decision-class finding to the run's parent:
 // the cause-decision record, the parent's recorded accept and continue, the refusal check they meet, and the carry-over a decision accept writes.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reviewFixtureFinding is one finding of a decision-test review: its id, severity and class.
@@ -197,6 +196,7 @@ var (
 //
 //testtiming:keep pins the decision cause's routing, snapshot, refusal and carry-over contract across the verdicts, the budget and the hard cap, which no other test reaches
 func TestBouncer_DecisionEscalation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("EveryVerdictOverADecisionFindingEscalatesWithTheRecordAndNoSettle", func(t *testing.T) {

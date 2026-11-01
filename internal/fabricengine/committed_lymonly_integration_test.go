@@ -1,5 +1,3 @@
-//go:build tier1
-
 // committed_lymonly_integration_test.go pins the value-identity argument from the discussion's
 // commit-result-committed-method decision: a Fabric.Commit call whose file list is
 // ScopedPathspec(AnchorRel, ["_lym"])-scoped -- _lym-only input, the same shape every one of the
@@ -12,11 +10,14 @@ package fabricengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestCommit_LymOnlyPathspec_NeverProducesWarpCommit asserts that a Commit call scoped to
 // ScopedPathspec(".", ["_lym"]) -- the pathspec shape every CLI caller uses -- never lands a warp
 // commit, so Committed() is value-identical to WeftCommitted for that call shape, even when an
 // unrelated warp-side file is also dirty in the worktree.
 func TestCommit_LymOnlyPathspec_NeverProducesWarpCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)

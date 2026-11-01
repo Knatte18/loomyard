@@ -1,5 +1,3 @@
-//go:build tier0
-
 // render_test.go covers the plan-directory display split the standalone Master fix introduced
 // (crucible round fable5-high-r3, F-A4).
 
@@ -10,12 +8,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPlanDirDisplay proves hub geometry keeps the plan directory's byte-exact relative "_lym/plan" spelling, standalone geometry gets the absolute plan directory no relative spelling reaches from the pane's cwd, and the card pointers re-root onto whichever display applies.
 //
 //testtiming:keep pins both geometries' plan-directory display and the card pointers re-rooted onto it byte for byte; the covering begin-batch and render tests each reach one geometry
 func TestPlanDirDisplay(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// The base is always the PANE's cwd: hub geometry's pane runs at the anchor the plan junction

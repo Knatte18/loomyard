@@ -1,5 +1,3 @@
-//go:build tier0
-
 // engine_test.go covers Engine.Run: the start order, how the chair's result and failures end the step, advisor failures, the notices sent to the chair and the stop rule.
 
 package seatengine
@@ -17,9 +15,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	waitErr := errors.New("wait failed")
 	tests := []struct {
@@ -109,6 +109,7 @@ func TestEngine_Run_ChairEndStopsEverySeat(t *testing.T) {
 }
 
 func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	chairRole := role("")
 	lastAdvisorRole := role(advisorName(2))
@@ -214,6 +215,7 @@ func TestEngine_Run_StartFailureEndingTheRunStopsEveryStartedSeat(t *testing.T) 
 }
 
 func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	advisorRole := role(advisorName(1))
 	tests := []struct {
@@ -283,6 +285,7 @@ func TestEngine_Run_AdvisorStartFailureIsRecordedAndNamedToTheChair(t *testing.T
 }
 
 func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -374,6 +377,7 @@ func pausedRefusal() error {
 }
 
 func TestEngine_Run_AdvisorsEndingTogetherOrAsTheyStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	chairRole := role("")
 	died := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
@@ -430,6 +434,7 @@ func TestEngine_Run_AdvisorsEndingTogetherOrAsTheyStart(t *testing.T) {
 }
 
 func TestEngine_Run_DoneAdvisorSendsNothingAndIsKeptUntilTheChairEnds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
@@ -463,6 +468,7 @@ func TestEngine_Run_DoneAdvisorSendsNothingAndIsKeptUntilTheChairEnds(t *testing
 }
 
 func TestEngine_Run_FailedStopReturnsTheWayForwardUnretried(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	shuttle.stopErrs = map[string]error{role(advisorName(1)): errors.New("pane gone")}
@@ -484,6 +490,7 @@ func TestEngine_Run_FailedStopReturnsTheWayForwardUnretried(t *testing.T) {
 }
 
 func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	waitErr, acceptErr, startErr := errors.New("wait failed"), errors.New("output rejected"), errors.New("no pane")
 	died := shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}
@@ -630,6 +637,7 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 }
 
 func TestEngine_Run_WriterSeat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
@@ -658,6 +666,7 @@ func TestEngine_Run_WriterSeat(t *testing.T) {
 }
 
 func TestEngine_Run_WriterEndDecidesTheJoin(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shuttle := newFakeShuttle(t)
 	engine, geom := engineFixture(t, shuttle)
@@ -687,6 +696,7 @@ func TestEngine_Run_WriterEndDecidesTheJoin(t *testing.T) {
 }
 
 func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	midTurn := shuttleengine.RunSessionState{State: shuttleengine.SessionState{Name: shuttleengine.SessionBusy, Cause: shuttleengine.SessionCauseTurn}}
 	tests := []struct {

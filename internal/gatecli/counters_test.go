@@ -1,5 +1,3 @@
-//go:build tier0
-
 // counters_test.go covers the counters a tier names: the text they pass through and the test counts they report.
 
 package gatecli
@@ -17,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // buildEvent renders one `go test -json` event line of a package's build, which names its package by ImportPath, without its newline.
@@ -58,6 +57,7 @@ func goPackageEvent(pkg, action, output string, offset, elapsed float64) string 
 }
 
 func TestCounters(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	splitEvent := goEvent("output", "TestA", "=== RUN   TestA\n") + "\n"

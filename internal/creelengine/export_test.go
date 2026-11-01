@@ -1,5 +1,3 @@
-//go:build tier0
-
 // export_test.go exposes the store internals the external tests drive: a callback that journals and then fails, and an injected journal write fault.
 
 package creelengine

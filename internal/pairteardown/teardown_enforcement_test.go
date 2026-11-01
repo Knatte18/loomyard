@@ -1,5 +1,3 @@
-//go:build tier0
-
 package pairteardown
 
 import (
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -24,6 +23,7 @@ const (
 //
 //lym:guard
 func TestEnforcement_PairTeardownChokepoint(t *testing.T) {
+	tiergate.Require(t, 0)
 	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.All}, func(f *scankit.File) {
 		for _, finding := range scanSource(t, f) {
 			t.Error(finding)
@@ -84,6 +84,7 @@ func importsFabricEngine(file *ast.File) bool {
 //
 //testtiming:keep guard self-check: pins that the chokepoint scan fires on an offending four-argument Remove call, which no other test of the package exercises
 func TestEnforcement_PairTeardownScanIsNotVacuous(t *testing.T) {
+	tiergate.Require(t, 0)
 	const offending = `package x
 import "github.com/Knatte18/loomyard/internal/fabricengine"
 func f(top *fabricengine.Topology) { top.Remove(nil, "s", false, false) }

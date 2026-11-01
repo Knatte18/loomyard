@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tied_test.go covers the platform-independent behavior of StartTied and IsBreakawayRefused.
 // It spawns a real child, which this package's Test Tier Purity allowlist entry admits: process control is the package's subject.
 
@@ -10,9 +8,12 @@ import (
 	"os"
 	"os/exec"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStartTiedRecordsChildInItsOwnGroup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
@@ -30,6 +31,7 @@ func TestStartTiedRecordsChildInItsOwnGroup(t *testing.T) {
 }
 
 func TestIsBreakawayRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

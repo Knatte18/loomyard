@@ -1,5 +1,3 @@
-//go:build tier1
-
 // teardownlock_integration_test.go covers the per-slug teardown lock between Remove and the pair's detached pushes:
 // Remove's refusal while a push of the pair holds the lock, the shared hold of a push child for its whole run, a child that meets the lock held or the worktrees gone, and the respawn of the pair's push after a Remove that fails and leaves a worktree behind.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // teardownTestWait is the shortened teardown-lock wait of every row; no row sleeps, since each ordering is told by channels.
@@ -54,6 +53,7 @@ func requireBranchesGoneFromOrigins(t *testing.T, h *hubforge.Hub, slug string) 
 // TestRemove_TeardownLockAgainstThePairsPush drives Remove against the pair's own detached pushes, one hub per row.
 // It sets package-level hooks, so neither it nor its rows are parallel.
 func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
+	tiergate.Require(t, 1)
 	const slug = "teardown-lock"
 
 	newPairHub := func(t *testing.T) *hubforge.Hub {

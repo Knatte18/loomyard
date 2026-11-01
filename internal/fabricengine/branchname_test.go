@@ -1,5 +1,3 @@
-//go:build tier0
-
 // branchname_test.go — unit tests for RecordsBranchName's uniform derivation.
 
 package fabricengine_test
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRecordsBranchName covers the uniform <warp>/<warp>-weft scheme across the primary branch, a
@@ -15,6 +14,7 @@ import (
 //
 //testtiming:keep the <warp>/<warp>-weft scheme for the primary branch, a prefixed task branch and an empty-prefix slug; coverage of its blocks by other tests does not show an assertion of this
 func TestRecordsBranchName(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		warpBranch string
@@ -39,6 +39,7 @@ func TestRecordsBranchName(t *testing.T) {
 //
 //testtiming:keep WeftWarpSlug recovering the warp branch from every RecordsBranchName output; coverage of its blocks by other tests does not show an assertion of this
 func TestRecordsBranchName_RoundTripsWithWeftWarpSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	warpBranches := []string{"main", "hanf/foo", "foo"}
 	for _, warp := range warpBranches {
 		weft := fabricengine.RecordsBranchName(warp)

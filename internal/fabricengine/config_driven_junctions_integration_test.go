@@ -1,5 +1,3 @@
-//go:build tier1
-
 // config_driven_junctions_integration_test.go proves the two behaviors batch
 // 3 exists to prove: (1) the extensibility promise of the hybrid name-sourcing
 // seam — WireJunctions/UnwireJunctions wire and unwire exactly the name-set a
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWireJunctions_WiresEveryPassedName is the extensibility proof under the hybrid seam: WireJunctions/UnwireJunctions wire and unwire exactly the name-set they are given — here a three-name set including "_extra" and "_other", names that are neither part of the default pathspec nor hub-reserved — with no SeedConfig, because WireJunctions no longer reads config at all.
@@ -32,6 +31,7 @@ import (
 //
 //testtiming:keep WireJunctions and UnwireJunctions wiring exactly the name set they are given, including names outside the default pathspec; coverage of its blocks by other tests does not show an assertion of this
 func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -95,6 +95,7 @@ func TestWireJunctions_WiresEveryPassedName(t *testing.T) {
 //
 //testtiming:keep a redundant narrow pathspec reading healthy; coverage of its blocks by other tests does not show an assertion of this
 func TestHealthy_NarrowPathspecIsHealthy(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

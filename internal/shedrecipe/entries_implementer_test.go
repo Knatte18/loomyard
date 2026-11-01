@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_implementer_test.go pins the Implementer entry: the engine its setting names builds the row, and every unusable setting refuses with a way forward.
 
 package shedrecipe
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newImplementerTestEnv returns newTestEnv with a setting lookup answering tapestry.implementer with webster.
@@ -26,6 +25,7 @@ func implementerTestConfig(*testing.T, Env) Config {
 }
 
 func TestImplementerEntry_WebsterBuildsTheWebsterProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	env := newImplementerTestEnv(t)
 	producer, err := implementerEntry(RowIdentity{Name: "Webster"}, implementerTestConfig(t, env), env)
@@ -39,6 +39,7 @@ func TestImplementerEntry_WebsterBuildsTheWebsterProducer(t *testing.T) {
 }
 
 func TestImplementerEntry_ForwardsTheRestOfTheRowConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -73,6 +74,7 @@ func TestImplementerEntry_ForwardsTheRestOfTheRowConfig(t *testing.T) {
 }
 
 func TestImplementerEntry_RefusesAnUnusableSetting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string

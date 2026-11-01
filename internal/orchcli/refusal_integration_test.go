@@ -1,5 +1,3 @@
-//go:build tier1
-
 // refusal_integration_test.go proves the orch refusals end to end over one hub: the prime-or-beam rule (`status`, `resume-context`, `rules` and `BeamUp` from a task worktree that is no beam or the prime's records sibling) and the config refusal (a non-bypass permission_mode makes `status` and the watcher start fail with the fix named), each landing before any .lym/orch is created.
 
 package orchcli
@@ -16,12 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOrchIntegration_Refusals runs both refusal families as steps over one hub.
 // The prime-or-beam step goes first and leaves the prime's config untouched; the permission-mode step then writes orch.yaml into the prime and relies on no earlier state.
 // It calls t.Parallel as a whole and no step does, since the steps share the one hub.
 func TestOrchIntegration_Refusals(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

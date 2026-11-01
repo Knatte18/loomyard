@@ -1,5 +1,3 @@
-//go:build tier1
-
 // clone_adopt_test.go proves CloneHub's weft-primary-branch handling: the
 // adopt path (an existing remote main-weft branch is checked out as a
 // tracking local branch, inheriting the accumulated weft content and a
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -217,6 +216,7 @@ func hasNoCommits(t *testing.T, dir string) bool {
 // main-weft, at the remote branch's tip (the synced marker file present), with origin/main-weft as
 // its upstream.
 func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -290,6 +290,7 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 // weft primary's suffixed branch fresh at the cloned HEAD rather than requiring a pre-existing
 // remote ref to adopt.
 func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -345,6 +346,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 // nonexistent path instead would fail at the probe, before teardownHub is ever reached, which is now
 // covered as a probe-taxonomy hard error rather than this residual-hub path.
 func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -379,6 +381,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 // freshly orphan- created "main" branch that shares no history with the weft primary's "main-weft"
 // branch — both end up with no commits at all.
 func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -433,6 +436,7 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 // bare created by `git init --bare` on a host whose default branch is "master" must still yield
 // "main-weft" and a Bolt checkout on "main" for a warp on "main", or `lym fabric add` can never fork a pair.
 func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -466,6 +470,7 @@ func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 // TestCloneHub_AnchorCreatePath asserts the create path:
 // a first-ever clone with an existing "backend" subdirectory in the warp commits the marker at the prime weft's root, not on the board, and returns a fully-populated CloneResult naming it.
 func TestCloneHub_AnchorCreatePath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -524,6 +529,7 @@ func assertMarkerCommittedOnPrimeWeftNotBoard(t *testing.T, res fabricengine.Clo
 // which is refused with a message that says so — "does not exist" alone misled, since the path
 // plainly exists.
 func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -578,6 +584,7 @@ func TestCloneHub_AnchorGuardHardErrors(t *testing.T) {
 // subpath commits "."
 // as the prime weft's marker and returns Anchor == ".".
 func TestCloneHub_AnchorRootDefaultPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -623,6 +630,7 @@ func seedWeftBranchFromMain(t *testing.T, dir, bareRemote, branch string) {
 // a matching --subpath succeeds;
 // and no re-clone writes a Bolt marker the weft's own branch did not already carry.
 func TestCloneHub_AnchorAdoptPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -707,6 +715,7 @@ func TestCloneHub_AnchorAdoptPath(t *testing.T) {
 // and that teardownHub removes the hub — an old clone must never silently fall through to the
 // create path and re-anchor under the new name.
 func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -752,6 +761,7 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 // ScopedPathspec built an absolute pathspec from it; an escaping subpath was caught only much
 // later, by an unrelated resolver, with a diagnosis blaming a marker that had never been written.
 func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -805,6 +815,7 @@ func TestCloneHub_RejectsUnusableSubpath(t *testing.T) {
 // branches at all is the genuine empty-remote bootstrap and must still clone, since an unborn warp
 // HEAD is a legitimate documented state on its own. Only the conjunction is refused.
 func TestCloneHub_RefusesAWarpRemoteWhoseHeadNamesANonexistentBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("UnbornHeadWithBranchesOnTheRemoteIsRefused", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamland_test.go pins the beam landing refusal's judgement over told facts: each blocker names its way forward, and a beam with nothing under it passes.
 
 package battencli
@@ -7,9 +5,12 @@ package battencli
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBeamLandRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

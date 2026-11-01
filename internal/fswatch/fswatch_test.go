@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fswatch_test.go tests Watch against real files in a temp directory.
 
 package fswatch
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const eventTimeout = 10 * time.Second
@@ -28,6 +28,7 @@ func receive(t *testing.T, w *Watcher) Event {
 }
 
 func TestWatch_DeliversNamedEntryChanges(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	w, err := Watch(dir, "wanted")
@@ -65,6 +66,7 @@ func TestWatch_DeliversNamedEntryChanges(t *testing.T) {
 }
 
 func TestWatch_NoNamesDeliversEveryEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	w, err := Watch(dir)
@@ -82,6 +84,7 @@ func TestWatch_NoNamesDeliversEveryEntry(t *testing.T) {
 }
 
 func TestWatcher_CloseEndsChannel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w, err := Watch(t.TempDir())
 	if err != nil {
@@ -101,6 +104,7 @@ func TestWatcher_CloseEndsChannel(t *testing.T) {
 }
 
 func TestWatch_MissingDirectoryErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if _, err := Watch(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("Watch on a missing directory returned no error")

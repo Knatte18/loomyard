@@ -1,5 +1,3 @@
-//go:build tier0
-
 // envscrub_test.go verifies EnvScrub strips exactly the keys it is told and reports them in environ order.
 
 package reedengine
@@ -7,10 +5,13 @@ package reedengine
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins EnvScrub.Apply stripping exactly the told names and prefixes, reporting them in environ order and leaving other keys and an unaffected environ as they were; its covering tests run this code without asserting it
 func TestEnvScrub_Apply(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		scrub        EnvScrub

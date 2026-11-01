@@ -1,5 +1,3 @@
-//go:build tier0
-
 // apply_test.go table-tests engineAliveIDs, the predicate that reads a pane whose engine exited to its start shell as dead.
 
 package reedengine
@@ -8,9 +6,12 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEngineAliveIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

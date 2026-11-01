@@ -1,5 +1,3 @@
-//go:build tier0
-
 // baseline_test.go — tier 0 tests for the Drift-Baseline producer over fake Deps and a scripted seat runner.
 
 package driftengine
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // baselineFixture is the fake world one DriftBaseline pass runs in, with counters of what the pass did.
@@ -159,6 +158,7 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 
 // TestDriftBaseline covers the producer's way through each scope, capture start and refusal, and the paths it commits on every way out.
 func TestDriftBaseline(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	scopeAndReport := []string{path.Join(DirRel(), "scope.json"), path.Join(DirRel(), "baseline.md")}

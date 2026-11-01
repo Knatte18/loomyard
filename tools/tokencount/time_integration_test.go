@@ -1,5 +1,3 @@
-//go:build tier1
-
 // time_integration_test.go checks that run reads each finished run's archived shed status from a real git repository's archive tags,
 // and that with no slugs named it counts only full tapestry runs and says in the header which it counted and skipped.
 // It also checks that -no-cutoff counts every located session and keeps the span from the seed's start,
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // burlerSessions returns the sessions cell of the burler part row in a -detail segment table, empty when the row is absent.
@@ -32,6 +31,7 @@ func burlerSessions(section string) string {
 }
 
 func TestRunReadsArchivedShedStatus(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	records, hub := t.TempDir(), t.TempDir()
 	gitkit.Git(t, records, "init", "-b", "main")

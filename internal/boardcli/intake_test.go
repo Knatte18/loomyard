@@ -1,5 +1,3 @@
-//go:build tier0
-
 // intake_test.go covers the intake handlers against an httptest server standing in for the hub's repository, reached through a hubissues.Repo, and a Board over a temp dir with SkipGit.
 // No test reaches real token resolution or the network, and every refusal asserts that board.json is unchanged.
 
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/hubissues"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const fakeIssuesPath = "/repos/owner/hub-repo/issues"
@@ -246,6 +245,7 @@ func runHandler(t *testing.T, fn func(out *bytes.Buffer) int) (int, map[string]a
 }
 
 func TestIntakeList_ExcludesPullRequestsRecordedAndClosedAcrossPages(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fullInbox := []fakeIssue{
 		{number: 1, state: "open", thread: []string{"one", "two"}},
@@ -379,6 +379,7 @@ const quotedPointerComment = "Earlier it said: Imported into the board as `old`.
 var threadWithPointer = []string{"First comment.", " Imported into the board as `old-slug`.\n", quotedPointerComment}
 
 func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 7, state: "open", labels: []string{"bug", "stray"}, thread: threadWithPointer})
 	b, path := newIntakeBoard(t)
@@ -422,6 +423,7 @@ func TestIntakeImport_NewNoteCommentsAndCloses(t *testing.T) {
 }
 
 func TestIntakeImport_FoldIntoEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 8, state: "open", labels: []string{"undecided"}, thread: threadWithPointer})
 	b, _ := newIntakeBoard(t)
@@ -462,6 +464,7 @@ func TestIntakeImport_FoldIntoEntry(t *testing.T) {
 }
 
 func TestIntakeImport_RecordedIssueIsNoOp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 9, state: "open"})
 	b, path := newIntakeBoard(t)
@@ -488,6 +491,7 @@ func TestIntakeImport_RecordedIssueIsNoOp(t *testing.T) {
 }
 
 func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name    string
@@ -532,6 +536,7 @@ func TestIntakeImport_RefusedBeforeAnyWrite(t *testing.T) {
 }
 
 func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 16, state: "open", labels: []string{"bug"}})
 	inbox.failClose = true
@@ -559,6 +564,7 @@ func TestIntakeImport_CloseFailureReportsShortResultAndClosePayload(t *testing.T
 }
 
 func TestIntakeClose(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name       string
@@ -601,6 +607,7 @@ func TestIntakeClose(t *testing.T) {
 }
 
 func TestIntakeClose_RecordedOpenIssue(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	inbox := newFakeInbox(t, fakeIssue{number: 30, state: "open"})
 	b, path := newIntakeBoard(t)

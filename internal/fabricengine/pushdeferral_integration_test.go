@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushdeferral_integration_test.go covers a detached push child whose first gated push meets a covering pause, over plain code and records repos with local bare origins.
 
 package fabricengine
@@ -11,12 +9,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCoalescePushRequest_CoveredCallDefers covers a detached child whose first gated push meets a covering pause:
 // the exit runs once at that push, both pending flags are back on disk, origin holds neither commit and no failed push is recorded.
 // Serial: it installs the process's network gate and swaps the deferral's exit.
 func TestCoalescePushRequest_CoveredCallDefers(t *testing.T) {
+	tiergate.Require(t, 1)
 	// withBareOrigin gives a plain repo a bare origin holding its main and returns the origin's path.
 	withBareOrigin := func(repo string) string {
 		bare := newBoltBareRemote(t, t.TempDir())

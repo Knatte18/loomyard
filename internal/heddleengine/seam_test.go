@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_test.go drives the worktree seam over temporary directories, without git.
 
 package heddleengine
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seamFixture is a seam over a store holding a claude-file and a codex-file entry.
@@ -47,6 +46,7 @@ func (f seamFixture) tookInAfterClearing(t *testing.T, paths ...string) {
 }
 
 func TestSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("MadeWritesBothFileTargets", func(t *testing.T) {

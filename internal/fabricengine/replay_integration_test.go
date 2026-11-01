@@ -1,5 +1,3 @@
-//go:build tier1
-
 // replay_integration_test.go proves the records replay and the ended-set rule on hubforge hubs.
 // The other machine is a second clone of the hub's records bare repository.
 //
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordsFixture is a hub whose records bare repository a second clone moves.
@@ -214,6 +213,7 @@ func statusJSON(producer string, history ...string) string {
 }
 
 func TestRecordsReplay(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("Weft", func(t *testing.T) {

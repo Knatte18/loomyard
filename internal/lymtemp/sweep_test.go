@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sweep_test.go — tests for the dead-owner sweep (sweep.go).
 //
 // A dead owner is a run directory whose lock nobody holds, which is what a killed test binary leaves behind.
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newTestRoot opens a root over its own temp directory with the fixed clock.
@@ -50,6 +49,7 @@ func makeRunDirectory(t *testing.T, path string, withLock bool, age time.Duratio
 }
 
 func TestSweep(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	past := creationGrace + time.Minute
 

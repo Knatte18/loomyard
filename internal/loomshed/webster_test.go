@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -46,6 +45,7 @@ func (f *fakeWebsterRun) run(deps websterengine.RunDeps, _ websterengine.RunOpti
 }
 
 func TestWebsterProducer_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("BatcherActiveErrorMapsToStuckNotError", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		writeBatcherConfig(t, anchorPath, "active: [not valid yaml\n")
@@ -123,6 +123,7 @@ func TestWebsterProducer_Call(t *testing.T) {
 // missing seam turns Done into a returned error rather than leaving Master's contract files
 // untracked behind a Done verdict.
 func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	commitErr := errors.New("commit failed")
 	tests := []struct {
 		name        string
@@ -175,6 +176,7 @@ func TestWebsterProducer_CommitsTheRunRecordOnDoneOnly(t *testing.T) {
 //
 //testtiming:keep pins that a stuck run's StuckReason arrives as the returned Reason, which TestWebsterProducer_Call never asserts
 func TestWebsterProducer_PassesStuckReasonThrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath := t.TempDir()
 	writeBatcherConfig(t, anchorPath, `active: "identity"`+"\n")
 

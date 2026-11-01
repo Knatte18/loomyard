@@ -1,5 +1,3 @@
-//go:build tier1
-
 // derive_integration_test.go drives DeriveDiff over real git repositories holding the shared C# tree.
 
 package dotnetimpact
@@ -14,9 +12,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDeriveDiff(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	const unknownBase = "0123456789abcdef0123456789abcdef01234567"
 	tests := []struct {

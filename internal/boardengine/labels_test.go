@@ -1,5 +1,3 @@
-//go:build tier0
-
 // labels_test.go — unit tests for label validation (labels.go).
 
 package boardengine
@@ -7,9 +5,12 @@ package boardengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidateLabels(t *testing.T) {
+	tiergate.Require(t, 0)
 	vocab := Vocabulary{Types: []string{"bug", "enhancement"}, Labels: []string{"undecided", "area"}}
 
 	tests := []struct {
@@ -80,6 +81,7 @@ func newVocabStore(v Vocabulary) *Store {
 }
 
 func TestStoreValidatesLabelsWithVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	vocab := Vocabulary{Types: []string{"bug"}, Labels: []string{"area"}}
 
 	t.Run("upsert refused on an unconfigured label", func(t *testing.T) {

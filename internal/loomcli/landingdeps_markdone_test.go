@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landingdeps_markdone_test.go drives landingDeps' MarkTaskDone closure against a hub directory holding only the board config, so the board config load, the hub-board path and the status write run for real with no git and no hub fixture.
 // Every test sets the board skip variables, which are process-global, so none calls t.Parallel.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -43,6 +42,7 @@ func markDoneFixtureDir(t *testing.T) (markDone func() error, board *boardengine
 }
 
 func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	markDone, board, slug, _ := markDoneFixtureDir(t)
 
 	if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Mark done", "kind": "task", "labels": []string{"bug"}}); err != nil {
@@ -62,6 +62,7 @@ func TestLandingDeps_MarkTaskDone_SetsStatusDone(t *testing.T) {
 }
 
 func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	markDone, _, _, _ := markDoneFixtureDir(t)
 
 	if err := markDone(); err == nil {
@@ -71,6 +72,7 @@ func TestLandingDeps_MarkTaskDone_UnknownSlugIsError(t *testing.T) {
 
 // TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON seeds the hub board with a legacy tasks.json holding the pair's slug and checks MarkTaskDone leaves that entry done in board.json.
 func TestLandingDeps_MarkTaskDone_MigratesLegacyTasksJSON(t *testing.T) {
+	tiergate.Require(t, 0)
 	markDone, _, slug, boardDir := markDoneFixtureDir(t)
 
 	legacy := `[{"id":0,"slug":"` + slug + `","title":"Mark done","depends_on":[],"isolated":false,"deferred":false,"brief":"","body":""}]`

@@ -1,5 +1,5 @@
 // fixture_test.go holds the C# tree and expectations the derivation tests of every tier share.
-// It carries no build tag, so it compiles into every tag set.
+// It serves every tier's tests, since the package's one test binary holds them all.
 
 package dotnetimpact
 

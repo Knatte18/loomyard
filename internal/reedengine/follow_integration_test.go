@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // follow_integration_test.go proves the follow state against a real tmux with real attached clients.
 // A run start turns follow on and moves every client to the relevant window, a second attach moves the clients only while follow is on, and a resume or a failed option write changes nothing it should not.
@@ -14,11 +14,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFollow_RealTmux runs its steps in order on one cold session with four attached clients.
 // It captures the process-global logger output in one step, so it does not run in parallel.
 func TestFollow_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	e := newColdScratchEngine(t)
 	if _, err := e.Up(); err != nil {
 		t.Fatalf("Up: %v", err)

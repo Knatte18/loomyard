@@ -1,5 +1,3 @@
-//go:build tier0
-
 // clitree_test.go derives the CLI / Cobra Invariant's per-command obligations from one walk of newRoot(), so no hand-kept list of modules or verbs exists to drift.
 
 package main
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // walkCommands calls fn on cmd and every descendant, skipping cobra's completion subtree.
@@ -101,6 +100,7 @@ func checkInvocation(t *testing.T, args []string, problems []string, out string)
 // TestCLITree_EveryCommand walks newRoot() from a cwd that is not a git repository.
 // It chdirs, which is process-global state, so neither it nor its subtests run in parallel.
 func TestCLITree_EveryCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Chdir(t.TempDir())
 
 	root := newRoot()
@@ -309,6 +309,7 @@ func formTestCommand(use, short string, annotations map[string]string) *cobra.Co
 // TestCLIForm_EveryCommand pins the audience, Use, Short and Long form on every command of newRoot() with pure checks that run no invocation.
 // The checks are proven first against small synthetic trees, so a negative case fails for the reason named.
 func TestCLIForm_EveryCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	operator := map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator}

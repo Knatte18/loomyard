@@ -1,5 +1,3 @@
-//go:build tier0
-
 // corpus_test.go replays the corpus of real turn ends under testdata/corpus through ParseEvents, shuttle's wait loop and the session-state fold.
 // Each case directory holds a trimmed transcript, the run's events file and a case.yaml naming the reading each turn end must get and the session state each signal-bearing line reaches.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // corpusDir holds one directory per corpus case.
@@ -132,6 +131,7 @@ func (r *corpusReplay) checkRead(index int) {
 }
 
 func TestCorpus_ReplaysEachTurnEnd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	entries, err := os.ReadDir(corpusDir)
 	if err != nil {

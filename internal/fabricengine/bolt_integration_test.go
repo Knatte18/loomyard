@@ -1,5 +1,3 @@
-//go:build tier1
-
 // bolt_integration_test.go — integration coverage for Bolt.Commit/Push/Sync,
 // the unpaired weft:main handle: a dirty repo commits and pushes, a clean
 // repo is a true no-op, SkipGit short-circuits before any git runs, and
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newBoltBareRemote creates a bare git repository at <dir>/bolt-remote.git
@@ -62,6 +61,7 @@ func newBoltRepo(t *testing.T, dir, name, bareRemote string) string {
 // advances the bare origin to that same SHA,
 // and that the commit leaves machine-local scratch under .lym untracked in a repo nothing seeded excludes for.
 func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -107,6 +107,7 @@ func TestBolt_DirtyRepo_CommitsAndPushes(t *testing.T) {
 // and a subsequent Push is a true no-op (never touches the network, never errors) once nothing is
 // ahead of upstream.
 func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -147,6 +148,7 @@ func TestBolt_CleanRepo_CommitAndPushAreNoOps(t *testing.T) {
 // TestBolt_SkipGit_ShortCircuits asserts that opts.SkipGit stops Commit before any git is spawned,
 // leaving a dirty untracked file untouched.
 func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -178,6 +180,7 @@ func TestBolt_SkipGit_ShortCircuits(t *testing.T) {
 // other dirty files for the next sync, and that a write error is returned as is with HEAD unchanged.
 // It also pins deletion staging, a path HEAD never held being left out, an unborn HEAD, the empty path list and the SkipGit gate.
 func TestBolt_CommitWritten(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -316,6 +319,7 @@ func TestBolt_CommitWritten(t *testing.T) {
 // at the same board.push.lock path Bolt.Sync documents, held once for the whole loop: an
 // externally-held lock at that exact path blocks a concurrent Sync call until released.
 func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts root and so holds the run of a task only the first holds, and the first adopts it back over local commits and a live pair.
 
 package adoptcli_test
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -51,6 +50,7 @@ func holdOwnerPause(t *testing.T, location *lymcwd.Location) {
 }
 
 func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -204,6 +204,7 @@ func slugOutcomeOf(t *testing.T, got adoptcli.Outcome, slug string) adoptcli.Slu
 }
 
 func TestCommand_RunsFromABeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 
@@ -226,6 +227,7 @@ func TestCommand_RunsFromABeam(t *testing.T) {
 }
 
 func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 

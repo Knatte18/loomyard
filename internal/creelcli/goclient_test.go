@@ -1,5 +1,3 @@
-//go:build tier0
-
 // goclient_test.go pins the program claim a Go creel client signs with.
 
 package creelcli
@@ -7,9 +5,12 @@ package creelcli
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestProgramClaim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

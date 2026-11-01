@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the halt note's sole-parser invariant: production code in internal/haltnote imports the standard library and nothing else,
 // and no production file outside it spells the halt note's title.
 
@@ -10,16 +8,19 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports is empty: no non-stdlib import is permitted.
 var allowedImports = []string{}
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/haltnote", allowedImports...)
 }
 
 func TestSoleParser_NoOtherProductionFileSpellsTheNoteTitle(t *testing.T) {
+	tiergate.Require(t, 0)
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal"}, Filter: scankit.Prod}, func(f *scankit.File) {
 		if strings.HasPrefix(f.Rel, "internal/haltnote/") {
 			return

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // anchorchange_integration_test.go covers the change of a worktree's anchor over hubforge hubs:
 // the move, every refusal, the failures that undo it, the records a killed run leaves and the re-runs that finish them, the integration of a change a second clone made, and the read of a run status at a weft's upstream.
 // A hub's prime warp tracks sub/ and other/ before any pair is added, so both are directories git tracks in every pair's warp.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // anchorKill is what the kill hook panics with, standing in for a process that dies in the middle of a change.
@@ -160,6 +159,7 @@ func requireMovedToSub(t *testing.T, h *hubforge.Hub, slug string) {
 }
 
 func TestAnchorChange(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Not parallel: the failure hook is process-global, so every subtest that sets it runs in turn;
 	// the other subtests are parallel and resume once this function has returned and its hooks are gone.
 	const mover = "mover"

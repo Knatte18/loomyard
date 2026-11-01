@@ -1,5 +1,3 @@
-//go:build tier1
-
 // weftgit_pathspec_integration_test.go — integration coverage for
 // weftPathspecFilter, the pre-stage filter CommitWeft runs immediately
 // before f.records.StageAndCommit: one test per predicate clause, against real
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
@@ -65,6 +64,7 @@ func mustWriteFileWeft(t *testing.T, path, content string) {
 //
 //testtiming:keep an untracked new directory counting as a pathspec match while a nonexistent first entry is dropped; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -99,6 +99,7 @@ func TestCommitWeft_UntrackedNewFileCountsAsMatch(t *testing.T) {
 //
 //testtiming:keep an index-only deletion counting as a pathspec match so Unwire's deletion commit lands; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -143,6 +144,7 @@ func TestCommitWeft_IndexOnlyDeletionCountsAsMatch(t *testing.T) {
 //
 //testtiming:keep an :(exclude) pathspec entry passing through untouched while a positive entry still commits and the excluded artifact stays unstaged; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -181,6 +183,7 @@ func TestCommitWeft_ExcludeMagicPassesThroughUntouched(t *testing.T) {
 // entry is read as "everything except those," which would otherwise stage the entire weft worktree
 // (including the dirty config.yaml) rather than nothing.
 func TestCommitWeft_OnlyPositiveEntryMatchingNothing_StagesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -245,6 +248,7 @@ func resolvedDefaultRoutingNames(t *testing.T) []string {
 //
 //testtiming:keep the resolved default routing set being _lym alone so a template change cannot silently widen it; coverage of its blocks by other tests does not show an assertion of this
 func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
+	tiergate.Require(t, 1)
 	dirs := resolvedDefaultRoutingNames(t)
 	if len(dirs) != 1 || dirs[0] != "_lym" {
 		t.Fatalf("resolvedDefaultRoutingNames() = %v; want [_lym]", dirs)
@@ -257,6 +261,7 @@ func TestResolvedDefaultRoutingNames_IsLymAlone(t *testing.T) {
 // Without weftPathspecFilter, this is exactly the silent regression the batch scope describes: `git add -- _lym _extra` fails in its entirety the moment `_extra` matches nothing, and CommitWeft's own pre-existing "did not match any files" tolerance swallows that into ("", false, nil) with no error — so the only way to catch it is asserting the commit actually happened, not checking for an error.
 // Covers both shapes an empty "_extra" can take — wholly absent and present-but-empty — since git tracks files, not directories, and a materialised-but-empty "_extra/" is a normal, expected state for any optional pathspec entry a repo has not yet populated.
 func TestCommitWeft_WidenedPathspecTolerance_LymChangeStillCommitsWithEmptyOptionalDir(t *testing.T) {
+	tiergate.Require(t, 1)
 	dirs := []string{"_lym", "_extra"}
 
 	t.Run("OptionalDirWhollyAbsent", func(t *testing.T) {

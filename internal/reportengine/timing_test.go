@@ -1,5 +1,3 @@
-//go:build tier0
-
 // timing_test.go tests ComputeTiming over a fake records repository: which runs it covers, each run's span and phases, machine sleep, the day and week buckets and the phase medians.
 
 package reportengine
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // secondsAfter returns the time seconds after base.
@@ -333,6 +332,7 @@ var darnRowPhases = []struct{ row, phase string }{
 }
 
 func TestComputeTiming(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// run is the run every row below starts from: at(1) is its opening, and each row's stamps are offsets from it.
@@ -1571,6 +1571,7 @@ func markdownCell(t *testing.T, section, header, first string) string {
 }
 
 func TestRenderTimingMarkdown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	landTime := seconds(1800)

@@ -1,12 +1,13 @@
-//go:build tier0
-
 package main
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReflowText(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		input string
@@ -185,6 +186,7 @@ func TestReflowText(t *testing.T) {
 // TestReflowText_CollapsedInvariant enforces the safety invariant relied on
 // by the repo sweep: reflowing must never change content, only line breaks.
 func TestReflowText_CollapsedInvariant(t *testing.T) {
+	tiergate.Require(t, 0)
 	samples := []string{
 		"Plain paragraph. With two sentences, and a clause; plus a semicolon.\n",
 		"- List item one. With two sentences.\n- List item two, and more text here.\n",
@@ -203,6 +205,7 @@ func TestReflowText_CollapsedInvariant(t *testing.T) {
 
 //testtiming:keep pins collapsed's own output, the oracle TestReflowText_CollapsedInvariant compares against, which that test cannot check itself
 func TestCollapsed(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		input string

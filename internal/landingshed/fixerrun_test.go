@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixerrun_test.go drives the merge fixer loop over a fake seat runner, the gate fixture's fake verify tree and fake seams.
 // fakeFixerSeats is the shared fake the Merge-In and Finalize fixer tests drive too.
 
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -164,6 +163,7 @@ const (
 )
 
 func TestFixerRun_Outcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}

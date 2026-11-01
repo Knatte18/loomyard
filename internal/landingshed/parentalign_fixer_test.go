@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentalign_fixer_test.go drives Parent-Align's alignment through the merge fixer loop over the Parent-Align fixture's fake seat runner, tips, gate and line-change reads.
 
 package landingshed
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -104,6 +103,7 @@ func (fx *mergeInFixture) resumeAfterMerge() {
 
 // TestMergeIn_Fixer pins Merge-In's alignment: when the merge fixer spawns, how its attempts are kept across resumes, and where its halts and caps lead.
 func TestMergeIn_Fixer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}

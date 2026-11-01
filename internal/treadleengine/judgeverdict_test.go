@@ -1,5 +1,3 @@
-//go:build tier0
-
 // judgeverdict_test.go table-drives ParseJudgeVerdict (both framings) over
 // the happy paths and every fail-loud rule documented on it: every legal verdict per framing, the
 // wrong framing's vocabulary rejected, lowercase rejected, missing/empty rationale rejected,
@@ -10,9 +8,12 @@ package treadleengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseJudgeVerdict(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		content       string

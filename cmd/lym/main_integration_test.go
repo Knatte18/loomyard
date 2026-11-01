@@ -1,5 +1,3 @@
-//go:build tier1
-
 // main_integration_test.go holds the module-dispatcher tests that spawn gitkit.Git(t, cwd, "init") to seed a real git repo so lymcwd.Resolve succeeds, so this file is integration-tagged per the Test Tier Purity Invariant.
 
 package main
@@ -22,11 +20,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunDispatchesToBoard dispatches a succeeding and a failing board command against one seeded repo and checks the exit code and envelope each propagates.
 // It chdirs, which is process-global state, so neither it nor its steps run in parallel.
 func TestRunDispatchesToBoard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	// Create temp cwd with _lym/config/board.yaml
 	cwd := t.TempDir()
@@ -77,6 +77,7 @@ var traceFilenamePattern = regexp.MustCompile(`^trace-\d{8}T\d{6}Z-[0-9a-f]{16}-
 
 // TestRootHookWritesTraceFileOnNonZeroExit verifies the root hook writes trace files on failure.
 func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
+	tiergate.Require(t, 1)
 	lymExe := lymbin.Build(t)
 
 	// Initialize a git repo so the spawned process's lymcwd.Resolve succeeds.
@@ -139,6 +140,7 @@ func TestRootHookWritesTraceFileOnNonZeroExit(t *testing.T) {
 }
 
 func TestRunDispatchesToConfigReconcile(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Create temp cwd with git repo and _lym/config to allow config reconcile to work.
 	// configcli.RunCLI should recognize the subcommand and produce JSON output.
 	cwd := t.TempDir()
@@ -230,6 +232,7 @@ func (fx exitSweepFixture) logNames(t *testing.T) map[string]bool {
 }
 
 func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
+	tiergate.Require(t, 1)
 	lymExe := lymbin.Build(t)
 	fx := newExitSweepFixture(t, "trace_retention_count: 2\ntrace_retention_days: 14\n")
 
@@ -255,6 +258,7 @@ func TestExitSweep_ConfiguredCountKeepsNewestSeededTraces(t *testing.T) {
 }
 
 func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
+	tiergate.Require(t, 1)
 	lymExe := lymbin.Build(t)
 	baseline := newExitSweepFixture(t, "")
 	wantCode, _ := baseline.run(t, lymExe, "bogus-subcommand")
@@ -283,6 +287,7 @@ func TestExitSweep_InvalidConfigWarnsAndKeepsExitCode(t *testing.T) {
 }
 
 func TestExitSweep_QuietZeroExitNeitherArmsNorSweeps(t *testing.T) {
+	tiergate.Require(t, 1)
 	lymExe := lymbin.Build(t)
 	for name, loggerYAML := range map[string]string{
 		"absent":  "",

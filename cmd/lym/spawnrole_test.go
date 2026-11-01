@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawnrole_test.go enforces the role-constant rule of agentname's package doc:
 // the module that spawns an agent owns its role name as a constant, so no spawn spec carries an inline role literal.
 // It is a tripwire over production source: it flags a `shuttleengine.Spec` or `reedengine.AddSpec` composite literal whose `Role` field is a string literal.
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // spawnSpecTypes are the selector expressions, as "package.Type", whose composite literals start an agent.
@@ -64,6 +63,7 @@ func isSpawnSpecType(expr ast.Expr) bool {
 //
 //lym:guard
 func TestSpawnRole_NoInlineRoleLiteral(t *testing.T) {
+	tiergate.Require(t, 0)
 	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
 		for _, finding := range roleLiteralFindings(f.FileSet(), f.AST(t, 0), f.Rel) {
 			t.Error(finding)
@@ -76,6 +76,7 @@ func TestSpawnRole_NoInlineRoleLiteral(t *testing.T) {
 //
 //testtiming:keep proves the TestSpawnRole_NoInlineRoleLiteral scan flags a literal role and passes a constant one
 func TestSpawnRole_FixtureFlagsInlineLiteral(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fixture
 
 import (

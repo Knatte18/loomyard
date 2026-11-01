@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landingdeps_test.go drift-guards landingDeps: it asserts every field of the returned
 // landingshed.Deps is populated, via a reflection-based walk rather than an enumerated list of field
 // assertions, so a newly added field is caught automatically rather than silently passing. This test
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -44,6 +43,7 @@ import (
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#PullRequestDeps
 func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
@@ -161,6 +161,7 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 
 // TestRowEntry asserts rowEntry answers the history index just after the last entry another producer made.
 func TestRowEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	entry := func(producer string) shedengine.HistoryEntry { return shedengine.HistoryEntry{Producer: producer} }
@@ -186,6 +187,7 @@ func TestRowEntry(t *testing.T) {
 
 // TestFixerTestFileMatcher asserts the matcher a recipe with no Plan-Write row gets is the union over languages, and one with a Plan-Write row follows the live plan's language.
 func TestFixerTestFileMatcher(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	writePlan := func(t *testing.T, language string) string {
@@ -237,6 +239,7 @@ func TestFixerTestFileMatcher(t *testing.T) {
 //
 // It stays serial because logcapture swaps the process-global logger.
 func TestHoldsParentLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	if holdsParentLock(nil, "pair")() {
 		t.Error("holdsParentLock(nil, pair)() = true; want false")
 	}
@@ -257,6 +260,7 @@ func TestHoldsParentLock(t *testing.T) {
 
 // TestDriverWaitMark asserts the callback marks the driver strand only while it is live and not retiring, is a no-op returning nil for a gone, dead or retiring one, and passes a failing strand read or mark op through.
 func TestDriverWaitMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	start := time.Date(2026, 10, 3, 9, 15, 0, 0, time.UTC)
@@ -314,6 +318,7 @@ func TestDriverWaitMark(t *testing.T) {
 // TestConflictSessionStopper asserts the seam stops every non-retiring conflict strand of the run by guid, numbered forms included, when it is live or an own-window strand with a present pane.
 // It stops nothing for a retiring or absent one, or one with neither a live nor a present pane, and passes a failing table read or stop through with the guid the failure belongs to.
 func TestConflictSessionStopper(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	conflict := func(guid, role string, live, retiring bool) reedengine.StrandStatus {
@@ -379,6 +384,7 @@ func TestConflictSessionStopper(t *testing.T) {
 
 // TestPRSessionSeams asserts the liveness seam reads a strand as live only while it is live and not retiring, and the registrar registers the pane process of a strand that has one, and refuses a strand that is absent or has none, passing a failing table read through.
 func TestPRSessionSeams(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	strand := func(guid string, live, retiring bool, panePID int) reedengine.StrandStatus {
@@ -435,6 +441,7 @@ func TestPRSessionSeams(t *testing.T) {
 
 // TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait writes a status running at Publish and asserts the pause seam reports false with no condition, false with pause_after naming another row, true with it naming Publish, and false with only pause_requested set.
 func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -468,6 +475,7 @@ func TestParentLockDeps_PauseAfterTheWaitingRowEndsTheWait(t *testing.T) {
 }
 
 func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	report := fabricengine.OriginReport{
 		Unreachable: true,
@@ -489,6 +497,7 @@ func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 }
 
 func TestMergeableTips(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -515,6 +524,7 @@ func TestMergeableTips(t *testing.T) {
 // A loom.yaml that fails to load is returned as the seam's error.
 // On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out, and a non-bool value is returned as the gate's error.
 func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overlay_test.go pins ListSessions' parsing half against TmuxCmd's execHook seam, driving the
 // three outcomes the watchdog daemon's idle rule distinguishes: a multi-line listing, an exit-0
 // empty listing, and an error — with no live tmux server required. It also pins the reap seam's
@@ -17,9 +15,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestListSessions(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		out     string
@@ -133,6 +134,7 @@ const unreachablePaneLine = "%1 0 0 80 24 999999\n"
 
 //testtiming:keep pins the exact kill-session argv with the exact-match target and that it runs uncaptured; its covering tests run this code without asserting it
 func TestReapSessionKill(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 	fake := installFakeTmuxOn(t, &cmd)
 
@@ -160,6 +162,7 @@ func TestReapSessionKill(t *testing.T) {
 
 //testtiming:keep pins list-panes output parsed into LivePane rows and a listing failure surfacing as an error; its covering tests run this code without asserting it
 func TestReapSessionPanes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("successful listing", func(t *testing.T) {
 		cmd := TmuxCmd{tmuxPath: "tmux", socket: "test-socket"}
 		fake := installFakeTmuxOn(t, &cmd)
@@ -199,6 +202,7 @@ func TestReapSessionPanes(t *testing.T) {
 //
 //testtiming:keep pins list-panes running before kill-session and a list-panes failure still reaching kill-session, with the pane list feeding the reap roots; its covering tests run this code without asserting it
 func TestReapSession_CallOrdering(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		panesOut     string
@@ -267,6 +271,7 @@ func TestReapSession_CallOrdering(t *testing.T) {
 // TestTmuxExecRetriesEAGAIN pins the exec seam's retry: a tmux the host could not start for EAGAIN is tried again after a doubling wait, up to execAgainAttempts tries.
 // Any other failure, a tmux that ran and exited nonzero included, is returned at once.
 func TestTmuxExecRetriesEAGAIN(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	forkAgain := &os.PathError{Op: "fork/exec", Path: "/usr/bin/tmux", Err: syscall.EAGAIN}
 	exited := errors.New("exit status 1: can't find pane: %9")

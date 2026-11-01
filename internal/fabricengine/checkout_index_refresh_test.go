@@ -1,5 +1,3 @@
-//go:build tier1
-
 // checkout_index_refresh_test.go proves Checkout refreshes the pair's
 // per-worktree correspondence index for the newly-current branch. Pre-fix,
 // entries recorded on the previous branch survived the switch and kept passing
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckout_RefreshesCorrespondenceIndex records a correspondence on the primary pair's original
@@ -29,6 +28,7 @@ import (
 // that record, and asserts the lookup now misses (ErrNoCorrespondence) instead of serving the other
 // branch's weft SHA.
 func TestCheckout_RefreshesCorrespondenceIndex(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

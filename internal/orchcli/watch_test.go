@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watch_test.go covers the watch verb and its production session adapter with a fake strandOps and no real reed.
 
 package orchcli
@@ -15,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunnerSession_StrandAlive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeStrands{strands: []reedengine.StrandStatus{
@@ -49,6 +49,7 @@ func TestRunnerSession_StrandAlive(t *testing.T) {
 
 // TestWatcherIndexSource pins which binary the watch verb's watcher reads its index from: the one the orch strand recorded, through the CLI's index runner, and a refusal naming the way forward when none usable is recorded.
 func TestWatcherIndexSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recorded := filepath.Join(t.TempDir(), "lym")
@@ -94,6 +95,7 @@ func TestWatcherIndexSource(t *testing.T) {
 }
 
 func TestWatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {

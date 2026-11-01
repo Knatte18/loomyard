@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func stopEventNaming(t *testing.T, transcriptPath string) shuttleengine.Event {
@@ -22,6 +21,7 @@ func stopEventNaming(t *testing.T, transcriptPath string) shuttleengine.Event {
 }
 
 func TestClassifySkillLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	mixed := filepath.Join("testdata", "skillload-mixed.jsonl")
 	noListing := filepath.Join("testdata", "skillload-no-listing.jsonl")
@@ -77,6 +77,7 @@ func TestClassifySkillLoad(t *testing.T) {
 }
 
 func TestSkillLoadMessage_IsOneSlashlessLineNamingEverySkillInOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	skills := []string{"scribe:prose", "ly:board", "scribe:testing"}
 	message := (&Claude{}).SkillLoadMessage(skills)

@@ -1,5 +1,3 @@
-//go:build tier2
-
 // windoworder_integration_test.go proves the window order against a real tmux.
 // The session's windows hold the overview first, the agents in start order, then the window named shell, then the hidden windows; a relaunch keeps its window's place, and a session booted by an older lym is brought into that order.
 // One cold session serves every step.
@@ -15,11 +13,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWindowOrder_RealTmux runs its steps in order on one cold session.
 // It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
 func TestWindowOrder_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "lym")

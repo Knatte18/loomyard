@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recoverbatch_test.go exercises RecoverBatch end to end: a temp directory backs WorktreeRoot over a fakeGit for the head, dirty and merge questions, a real *shuttleengine.Runner wired over the shuttlefake Reed/Engine is the Starter, webster's own established fake-starter approach, and a fake Clock replays the whole bounded-wait sequence with no real sleeps, webster's own fakeClock.
 // The re-entrancy contract (spawn-once, attach-thereafter, elapsed-across-calls) is this file's test centre, per the batch's own "Batch Tests" note.
 
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -46,6 +45,7 @@ import (
 //
 //testtiming:keep pins the whole first-spawn effect — the stale report archived under the injected clock's stamp, the prior live strand stopped and every recorded strand field — which the spawn-decision table only samples one field at a time
 func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecoverFixture(t)
 
 	stalePath := filepath.Join(fx.ReportsDir, "01-json-flag.yaml")
@@ -145,6 +145,7 @@ func TestRecoverBatch_FirstCallSpawnsArchivesStaleReportAndStopsLiveStrand(t *te
 // naming record-batch as the consuming verb and leaving the report in place for it (recover-batch never archives finished work),
 // EXCEPT when the batch's persisted state is terminal dead, webster's own dead-orphan late-report case, where the report is archived and the spawn proceeds.
 func TestRecoverBatch_DoneReportGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const doneReport = "status: OK\nhead_sha: deadbeef\n"
@@ -207,6 +208,7 @@ func TestRecoverBatch_DoneReportGuard(t *testing.T) {
 // the recovery timeout is measured from the recorded SpawnedAt across calls, and the default wait budget ends a silent strand dead inside one call but returns at a report that landed.
 // Over real Claude hook lines, a turn end counts dead/asking only when no later turn start follows it, it has stood past the settle, and nothing keeps it waiting.
 func TestRecoverBatch_SecondCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// secondCall is what a case's afterFirst reports about the second call it prepared.
@@ -664,6 +666,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 // Here the recovery reports done over a Create card whose target never appeared in the tree.
 // The mechanical pass must refuse it and take the batch terminal failed with its report archived, exactly as record-batch does, so the next recover-batch spawns a fresh strand.
 func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	logs := captureLogs(t)
 	logger.SetVerbosity(1)
 	t.Cleanup(func() { logger.SetVerbosity(0) })
@@ -854,6 +857,7 @@ func recoverRemovedLaterTarget(t *testing.T, renames, wantPending string) {
 // A re-edit during a recovery forces that recovery's done report failed with card_amended.
 // A stuck recovery keeps the entry for the next spawn, and a done recovery clears it.
 func TestRecoverBatch_AmendedCards(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 	const amendedLine = "card 01-json-flag was amended after the previous attempt began"
@@ -947,6 +951,7 @@ type recoverSpawnCase struct {
 //
 //testtiming:keep pins the spawn-or-attach decision for every batch state, the prompt's card set, start commit and digests, the archived late report and the refusals; each covering test reaches one state
 func TestRecoverSpawnOrAttach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reorderedBatches := func(fx *recoverFixture) {
@@ -1744,6 +1749,7 @@ func TestRecoverSpawnOrAttach(t *testing.T) {
 // a failed git read, a start absent from the store, gives false and a Warn line.
 // It captures the logger's process-global output, so it and its rows run without t.Parallel.
 func TestRecoveryRetry(t *testing.T) {
+	tiergate.Require(t, 0)
 	const unreadMessage = "could not tell whether the dead recovery committed"
 	cases := []struct {
 		name string
@@ -1902,6 +1908,7 @@ func deadRecovery(recoveries int, start string) *websterengine.BatchState {
 // TestRecoverSpawnOrAttach_StartFailures asserts a transient failure before the recovery strand is recorded refuses with the transient re-run as the way forward, leaves the batch's record and its recovery count unchanged, and spawns no strand, after which re-running the verb once the failure clears spawns it and counts it.
 // The failures are a not-ready start (shuttle's Start returning ErrNotStarted after tearing its own strand down, a strand that must never be persisted as this batch's recovery record), a HEAD that cannot be read before the spawn and, for the recovery prompt's uncommitted paths, a git status that cannot list them or an audit of the run's sessions that cannot tell which of them the run wrote.
 func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	statusErr := errors.New("git status failed")
@@ -1991,6 +1998,7 @@ func TestRecoverSpawnOrAttach_StartFailures(t *testing.T) {
 
 // TestRecoverSpawnOrAttach_UnresolvableRunStopsStrand proves a recovery strand whose run cannot be resolved after the spawn is stopped and left unrecorded.
 func TestRecoverSpawnOrAttach_UnresolvableRunStopsStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fx := newRecoverFixture(t)
 	prior := &websterengine.BatchState{Slug: "json-flag", Kind: "recovery", Terminal: true, Status: websterengine.DigestStatusDead, Recoveries: 1, RecoveryStartSHA: fx.Git.head}
@@ -2012,6 +2020,7 @@ func TestRecoverSpawnOrAttach_UnresolvableRunStopsStrand(t *testing.T) {
 // TestRecoverSpawnOrAttach_ContractFileEvidence proves a failed batch whose only uncheckable entry is a contract file
 // is refused toward the delete route while a fork wrote the file last, and recovers once Master wrote it after the fork.
 func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
+	tiergate.Require(t, 0)
 	at := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name   string
@@ -2121,6 +2130,7 @@ func TestRecoverSpawnOrAttach_ContractFileEvidence(t *testing.T) {
 // TestPersistRecoveryTerminal_WayForward_NoRecordedState proves a batch whose record vanished underneath the recovery wait names the recover-batch re-run,
 // and that re-running spawns afresh.
 func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecoverFixture(t)
 	clk := &recoverFakeClock{now: time.Unix(0, 0)}
 
@@ -2138,6 +2148,7 @@ func TestPersistRecoveryTerminal_WayForward_NoRecordedState(t *testing.T) {
 // and the refusal leaves the begun card's CardHashes unchanged,
 // including when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp, as validate's path does when its edit check refuses.
 func TestPersistRecoveryTerminal_RefusesForeignPlanEdit(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, canonicalize := range []bool{false, true} {
 		t.Run(fmt.Sprintf("canonicalize=%v", canonicalize), func(t *testing.T) {
 			t.Parallel()

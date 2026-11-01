@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remoteonly_integration_test.go proves Fabric.RemoteOnlyCommits reports the remote task branch's tip and the commits the warp HEAD lacks over a real hub with its origin.
 
 package fabricengine_test
@@ -11,10 +9,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFabricRemoteOnlyCommits covers the three answers over the prime warp worktree: a remote branch ahead of HEAD, a remote branch at or behind HEAD, and no remote branch or no remote at all.
 func TestFabricRemoteOnlyCommits(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

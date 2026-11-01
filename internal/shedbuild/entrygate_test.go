@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entrygate_test.go covers the entry gate Build makes from a parsed recipe's entry_gate key, evaluated against a fake setting lookup and no worktree.
 
 package shedbuild
@@ -12,9 +10,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBuild_EntryGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const setting = "tapestry.plan_auto_accept"

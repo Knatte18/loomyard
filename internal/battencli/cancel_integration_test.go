@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cancel_integration_test.go drives "lym batten cancel" through RunCLIIn over hubforge hubs: a blocked run with no pair, a kept pair whose reconcile only judges, and a pair removed with its task branch.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
@@ -29,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedCancelRun writes and commits a batten seed and a status at producer in rowState for slug on h's prime, and claims slug's board entry with claim.
@@ -98,6 +97,7 @@ func overviewListsSlug(t *testing.T, h *hubforge.Hub, slug string) bool {
 // TestCancelIntegration_BlockedRunWithNoPair cancels a run blocked at Worktree-Create with no pair, a claim and a tackler marker naming a guid no strand holds:
 // the records are removed and committed, the tackler is stopped, the claim is cleared, the run leaves the overview, and a second cancel finds nothing left.
 func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "cancel-blocked"
@@ -165,6 +165,7 @@ func TestCancelIntegration_BlockedRunWithNoPair(t *testing.T) {
 // TestCancelIntegration_KeptPairJudgeOnly cancels, without --remove, a paused run whose pair's records branch on origin is ahead of the local one:
 // the pair is kept, the reconcile the cancel ran moved no ref, the claim is cleared, and the way forward names the cancel with --remove.
 func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	slug := hubforge.TemplatePairSlug
@@ -205,6 +206,7 @@ func TestCancelIntegration_KeptPairJudgeOnly(t *testing.T) {
 // TestCancelIntegration_RemoveTearsDownPairAndBranch cancels with --remove a paused run whose pair holds an unpushed commit and an uncommitted file, and whose slug holds a live pause entry:
 // the pair is removed with its uncommitted file snapshotted, the task branch is archived and deleted locally and on origin, the pause entry is lifted and the claim is cleared.
 func TestCancelIntegration_RemoveTearsDownPairAndBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	slug := hubforge.TemplatePairSlug

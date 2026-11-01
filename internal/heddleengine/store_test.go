@@ -1,5 +1,3 @@
-//go:build tier0
-
 // store_test.go drives the store through its file contract: load, save, ordering, entry edits and their refusals.
 
 package heddleengine
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // storeWithUnknownKeys is a heddle.json with an unknown top-level key and an unknown key on each of three entries.
@@ -67,6 +67,7 @@ func assertUnknownKeysKept(t *testing.T, store Store, wantSlugs ...string) {
 }
 
 func TestStore(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("UnknownKeysSurviveEdits", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watcher_pause_test.go drives the watcher over a temp pause record: what it interrupts, holds and queues while a hub pause entry is live and after it is resumed.
 
 package orchengine
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pauseGrace = 30 * time.Second
@@ -119,6 +118,7 @@ func assertPauseLogs(t *testing.T, logs string, wantInfo, wantPicker int) {
 }
 
 func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	orchCaller, err := agentname.Format("lym", "", agentname.RoleOrch)
 	if err != nil {
 		t.Fatal(err)
@@ -505,6 +505,7 @@ func TestWatcher_HubPauseInterruptsAtGraceEndHoldsAndQueuesTheResumeLine(t *test
 
 // TestCycleRequest_HubPauseTimeIsNotAge pins that the time a hub pause held the watcher counts toward neither the stale age of a cycle request nor the handoff timeout.
 func TestCycleRequest_HubPauseTimeIsNotAge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// pausedFor pauses the hub now, holds it for twice the handoff timeout with a tick held in the middle, and resumes it.

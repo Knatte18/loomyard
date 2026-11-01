@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tidy_test.go pins dobby's board-tidy step over a fake shuttle, a fake notice and a temp state record: the landing count, the spawn every few landings, the report and the timeout, and the agent's prompt and launch spec.
 
 package dobbyengine
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // tidyShuttleFake records the agents started and the strands stopped.
@@ -135,6 +134,7 @@ func (h *tidyHarness) seedUnflagged(tidy *TidyState, landed []string) {
 }
 
 func TestCountLandingsAndTidy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	five := []string{"a", "b", "c", "d", "e"}
 
@@ -316,6 +316,7 @@ func TestCountLandingsAndTidy(t *testing.T) {
 }
 
 func TestTidyPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stencils := filepath.Join(t.TempDir(), "stencils")
 	stencilkit.SeedInto(t, stencils)

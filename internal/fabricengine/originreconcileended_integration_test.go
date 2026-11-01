@@ -1,5 +1,3 @@
-//go:build tier1
-
 // originreconcileended_integration_test.go proves what the origin reconcile does with the runs origin has ended, on hubforge hubs.
 // The teardown seam is a recording fake, since the local removal's own effects belong to the removal.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // teardownRecorder is a teardown seam that records each request and answers with reply.
@@ -102,6 +101,7 @@ func endedHub(t *testing.T, slugs ...string) (*originHub, string) {
 // TestReconcileOrigin_Ended covers the origin reconcile's handling of runs origin has ended: which entries it ends, what it hands the teardown seam and how it reports each outcome.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Ended(t *testing.T) {
+	tiergate.Require(t, 1)
 	boardkit.InstallReplay(t)
 
 	t.Run("An entry done on origin with a local pair is handed to the teardown seam once and reported ended as landed", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stencilsdir_test.go covers StencilsDir's derivation from BoardDir and lymdirs.LymDirName.
 
 package fabricengine
@@ -8,10 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep StencilsDir deriving the Bolt checkout's _lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
 func TestStencilsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := "/h"
 	got := StencilsDir(hub)
 	want := filepath.Join(hub, BoltDirName, "_lym", "stencils")

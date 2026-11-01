@@ -1,5 +1,3 @@
-//go:build tier1
-
 // destroy_landedwork_integration_test.go drives the pair-warp ownership kind and the unlanded-work
 // dirtiness kind against real throwaway git repositories (hermetic git via testmain_test.go, empty
 // branch_prefix so the warp branch is the bare slug). No hub is involved: the gate reads only the
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // landedWorkRepo returns a repository whose main branch holds one commit, plus a bare remote it
@@ -41,6 +40,7 @@ func landedWorkCheck(repo, branch string) error {
 }
 
 func TestLandedWork_PushedBranchPasses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)
@@ -55,6 +55,7 @@ func TestLandedWork_PushedBranchPasses(t *testing.T) {
 }
 
 func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)
@@ -70,6 +71,7 @@ func TestLandedWork_SquashLandedBranchPasses(t *testing.T) {
 }
 
 func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)
@@ -87,6 +89,7 @@ func TestLandedWork_UnlandedBranchRefusedEvenWithForce(t *testing.T) {
 }
 
 func TestLandedWork_CheckedOutBranchRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo, _ := landedWorkRepo(t)

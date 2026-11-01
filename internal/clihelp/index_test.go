@@ -1,5 +1,3 @@
-//go:build tier0
-
 // index_test.go pins RenderIndex's line forms and audience filtering over a synthetic cobra tree.
 
 package clihelp
@@ -9,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // indexFixtureCommand builds a command with an audience, a Short and, when run is true, a RunE.
@@ -25,6 +25,7 @@ func indexFixtureCommand(use, short, audience string, run bool) *cobra.Command {
 
 // TestRenderIndex_FormsAndFiltering pins the group and leaf forms, the flag run, the runnable-group forms, the pruning of groups outside the audience and the skips, per audience.
 func TestRenderIndex_FormsAndFiltering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := &cobra.Command{Use: "lym"}

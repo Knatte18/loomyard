@@ -1,5 +1,3 @@
-//go:build tier0
-
 // logger_test.go verifies how records route to stderr and the durable sink by level and verbosity, the LYM_LOG_LEVEL and LYM_LOG_FILE environment seams, and the SetOutput test seam.
 // Only TestDefaultOutput_DiscardsUnderGoTest calls t.Parallel; every other test mutates process-global logger state (verbosity, the output writer, the durable sink, LYM_* environment variables) that the tests share.
 
@@ -12,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // withCapturedOutput redirects output to a fresh buffer for the test duration.
@@ -30,6 +30,7 @@ var originalOut = out
 // TestDefaultOutput_DiscardsUnderGoTest pins that the stderr half defaults to io.Discard inside the test binary, both from DefaultOutput and from the value out held at package init.
 // It reads no state it mutates, so it runs in parallel.
 func TestDefaultOutput_DiscardsUnderGoTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if DefaultOutput() != io.Discard {
 		t.Errorf("DefaultOutput() = %v, want io.Discard", DefaultOutput())
@@ -42,6 +43,7 @@ func TestDefaultOutput_DiscardsUnderGoTest(t *testing.T) {
 // TestLogging_RoutesRecordsByLevelAndVerbosity pins the dual-handler fan-out: Warn reaches stderr and the durable sink at every verbosity, Info reaches the durable sink always and stderr from -v, Debug reaches stderr and the durable sink only at -vv.
 // Every record a half receives carries the current trace ID, and a Warn with no durable sink armed still reaches stderr.
 func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		emit        func(msg string, args ...any)
@@ -112,6 +114,7 @@ func TestLogging_RoutesRecordsByLevelAndVerbosity(t *testing.T) {
 }
 
 func TestConfigureFromEnv_LogLevel(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		level    string
@@ -143,6 +146,7 @@ func TestConfigureFromEnv_LogLevel(t *testing.T) {
 }
 
 func TestConfigureFromEnv_LogFileRedirectsOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	SetVerbosity(1)
 	t.Cleanup(func() {
 		SetVerbosity(0)
@@ -165,6 +169,7 @@ func TestConfigureFromEnv_LogFileRedirectsOutput(t *testing.T) {
 }
 
 func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := withCapturedOutput(t)
 	SetVerbosity(1)
 	t.Cleanup(func() { SetVerbosity(0) })
@@ -184,6 +189,7 @@ func TestConfigureFromEnv_UnopenableLogFileFallsBackToStderr(t *testing.T) {
 //
 //testtiming:keep pins one sink file and one truncation marker under concurrent first writers, which the serial size-cap test does not exercise
 func TestWriteDurable_ConcurrentWarnCallsProduceOneFileAndOneTruncationMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	SetDurableSinkDir(dir)
 	withCapturedOutput(t)

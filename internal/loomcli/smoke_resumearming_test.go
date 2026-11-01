@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_resumearming_test.go pins the half of `loom resume` past the reed config load after a hub reconcile, on a hub whose reed config is good and whose tmux key is registered with the kit.
 // The reconcile half, which refuses at reed's config load before any server could start, is TestLoomResumeReconcilesTheHubConfigBeforeArming in the integration tier.
 
@@ -15,12 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoomResumeReconcilesThenRefusesWithoutLiveDriver asserts `loom resume` on a hub whose build has no stamp reconciles the hub config and then gets past the reed config load.
 // The stamp exists afterwards, and the verb reaches the run's own state: it refuses over the missing driver with the way forward, never over a config.
 // Resume brings no reed session up, so reed reports no session on the registered hub key.
 func TestLoomResumeReconcilesThenRefusesWithoutLiveDriver(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, slug := newWiredPairFixture(t)

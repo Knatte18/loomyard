@@ -1,5 +1,3 @@
-//go:build tier0
-
 package termwindow
 
 import (
@@ -7,9 +5,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	onPath := func(names ...string) func(string) (string, error) {
@@ -61,6 +62,7 @@ func TestResolve_ChoosesLauncherPerPlatform(t *testing.T) {
 }
 
 func TestLauncher_ArgumentsOpenTitledWindowRunningAttach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	line := attachLine("/opt/lym dev/lym", "/hub/my slug")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // skipenv_test.go — unit tests for ApplySkipEnv.
 //
 // Tests the env→cfg resolution helper that folds BOARD_SKIP_* environment variables into the Config
@@ -9,9 +7,12 @@ package boardengine
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestApplySkipEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		skipGitEnv   string

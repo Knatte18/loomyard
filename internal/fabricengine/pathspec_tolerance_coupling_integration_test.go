@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pathspec_tolerance_coupling_integration_test.go pins the one coupling commitWeftLocked's
 // "did not match any files" tolerance rests on, which no behavioural test of that tolerance covers.
 //
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pathspecMissMarker is the substring commitWeftLocked (recordsgit.go) matches to recognise a pathspec
@@ -39,6 +38,7 @@ const pathspecMissMarker = "did not match any files"
 //
 //testtiming:keep git's "did not match any files" text surviving gitrepo.StageAndCommit's error chain, which the pathspec tolerance matches on; coverage of its blocks by other tests does not show an assertion of this
 func TestStageAndCommit_PathspecMissMarkerSurvivesTheErrorChain(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// A real hub gives a real weft checkout with real history, so `git add` fails for the reason

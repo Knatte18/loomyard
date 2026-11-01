@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_parentfacts_test.go covers the parent-session write/bash fact extraction AuditForks
 // populates onto ForkAudit: ParentWriteCalls, ParentWrites, and ParentBashCommands.
 // Fixture transcripts are written directly with os.WriteFile (Tier 1: no fixture files, no
@@ -12,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeParentTranscript writes lines (already-JSON transcript lines) as a
@@ -38,6 +38,7 @@ func writeParentTranscript(t *testing.T, projectDir, sessionID string, lines []s
 // SpawnCalls/NamedSpawns facts — and that the missing-subagents-dir zero-fork finding still carries
 // these fields.
 func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -101,6 +102,7 @@ func TestAuditForks_ParentWritesAndBashInOrder(t *testing.T) {
 // ParentWriteCalls,
 // but contributes no entry to ParentWrites.
 func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -134,6 +136,7 @@ func TestAuditForks_ParentWriteMissingPathKeyCountedNotPanicked(t *testing.T) {
 // writes/bash still reports empty ParentWrites/ParentBashCommands (not nil-vs-empty confusion) and
 // the existing SpawnCalls/NamedSpawns/Forks facts are unaffected.
 func TestAuditForks_ExistingZeroForkAndForkFactsUnchanged(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 

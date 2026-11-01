@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runlog_test.go covers the run record and log a tier run leaves behind, and the summary line a site reads back from a log.
 
 package gateslot
@@ -12,9 +10,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteRunRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	now := time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC)

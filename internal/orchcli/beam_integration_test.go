@@ -1,5 +1,3 @@
-//go:build tier1
-
 // beam_integration_test.go proves an orch can run in a beam over one hub: a marked beam pair's orch paths lie under its own anchor, its reed geometry names the orch strand under the beam's slug, and HubOrchs lists it while skipping a pair not yet wired.
 
 package orchcli
@@ -19,9 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOrchInBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "b"
@@ -62,6 +62,7 @@ func TestOrchInBeam(t *testing.T) {
 
 // It is not parallel: logcapture.CaptureVerbose swaps the process-global logger to read the warnings.
 func TestHubOrchs_ListsWiredBeamsAndSkipsUnwiredPairs(t *testing.T) {
+	tiergate.Require(t, 1)
 	logs := logcapture.CaptureVerbose(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

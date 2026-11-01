@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_integration_test.go drives RunCLIIn against a temporary directory outside any git repository, proving the standalone pre-run leaves the target untouched and a wrongly entered hub refuses -- properties no untagged test in this package can observe, since they require the real standalonestate.Derive, the real standalone stencil seed, and an end-to-end pre-run.
 // The test that boots a real reed session lives in cli_tmux_test.go.
 // It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged proves the two-roots split's whole point:
@@ -40,6 +39,7 @@ import (
 // NotifyExit is called only from cmd/lym/main.go -- mentioned here, not read -- and this test drives RunCLIIn directly, so NotifyExit never executes in this process at all;
 // a broader "target always stays clean" claim would be false of the shipped path even though this test could not observe it either way.
 func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
@@ -120,6 +120,7 @@ func TestRunCLIIn_StandalonePreRun_TargetDirectoryUnchanged(t *testing.T) {
 // operator's real state directory. The redirect means this test must not be marked t.Parallel() --
 // t.Setenv panics under a parallel test.
 func TestRunCLIIn_WronglyEnteredHub_Refuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	sub := filepath.Join(h.PrimeWorktree(), "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {

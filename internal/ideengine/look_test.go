@@ -1,5 +1,3 @@
-//go:build tier0
-
 // look_test.go covers lookFor over a hub of plain directories: the window title from the hub shortname,
 // and the project and worktree colours of the prime, a beam and a task under each.
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -74,6 +73,7 @@ func writeBars(t *testing.T, dir, title, activity string) {
 }
 
 func TestLookFor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := lookHub(t, "tst")
 	tests := []struct {
@@ -102,6 +102,7 @@ func TestLookFor(t *testing.T) {
 }
 
 func TestLookForDegradesToATaskUnderThePrime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -151,6 +152,7 @@ func TestLookForDegradesToATaskUnderThePrime(t *testing.T) {
 }
 
 func TestLookForWithoutShortnameTitlesTheSlugAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := lookHub(t, "")
 	own, err := lymcwd.NamedWorktree(l.HubPath, "t3")

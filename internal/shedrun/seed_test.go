@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedrun
 
 import (
@@ -11,9 +9,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -65,6 +65,7 @@ func TestWriteSeed_ReadSeed_RoundTrip(t *testing.T) {
 }
 
 func TestReadSeed_Absent(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 
 	got, found, err := ReadSeed(l, "self")
@@ -80,6 +81,7 @@ func TestReadSeed_Absent(t *testing.T) {
 }
 
 func TestReadSeed_AbsentDriverDefaultsToGo(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 	if err := os.MkdirAll(RunDir(l, "self"), 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
@@ -104,6 +106,7 @@ func TestReadSeed_AbsentDriverDefaultsToGo(t *testing.T) {
 }
 
 func TestValidateDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -129,6 +132,7 @@ func TestValidateDriver(t *testing.T) {
 }
 
 func TestParseSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -159,6 +163,7 @@ func TestParseSeed(t *testing.T) {
 }
 
 func TestValidateRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		recipe  string
@@ -193,6 +198,7 @@ func TestValidateRecipe(t *testing.T) {
 
 //testtiming:keep pins the sorted order of the recipe vocabulary, which its covering test does not
 func TestRecipeNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := RecipeNames()
 	want := []string{RecipeBatten, RecipeDarn, RecipePawl, RecipeSampler, RecipeTapestry}
 	if len(got) != len(want) {
@@ -218,6 +224,7 @@ func writeLegacySeedFile(t *testing.T, l *lymcwd.Location, body string) {
 
 // TestSeed_UnknownKey pins that a seed.json carrying keys this binary does not know, the retired parent key included, reads with its known fields decoded, and that an agreeing WriteSeed leaves the file byte for byte.
 func TestSeed_UnknownKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := syntheticLocation(t)
 	body := `{"recipe":"tapestry","driver":"go","parent":"ab:hub","future":{"x":1}}`
@@ -244,6 +251,7 @@ func TestSeed_UnknownKey(t *testing.T) {
 }
 
 func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 	first := Seed{Recipe: RecipeTapestry, Driver: DriverGo}
 	second := Seed{Recipe: RecipeBatten, Driver: DriverGo}
@@ -290,6 +298,7 @@ func TestWriteSeed_RefusesDisagreeingSeed(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 
 	// One directory with a valid, readable seed.json.
@@ -338,6 +347,7 @@ func TestList(t *testing.T) {
 }
 
 func TestList_MissingParentDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 
 	got, err := List(l)
@@ -350,6 +360,7 @@ func TestList_MissingParentDirectory(t *testing.T) {
 }
 
 func TestMissingSeedMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := MissingSeedMessage("lym batten step", "example-run", []string{"b-run", "a-run"}, "seed a run first")
 	if !strings.Contains(got, "example-run") {
 		t.Errorf("MissingSeedMessage() = %q; want it to name the addressed run-id", got)
@@ -366,6 +377,7 @@ func TestMissingSeedMessage(t *testing.T) {
 }
 
 func TestMissingSeedMessage_EmptyListing(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := MissingSeedMessage("lym batten step", "example-run", nil, "seed a run first")
 	if !strings.Contains(got, "no run is seeded yet") {
 		t.Errorf("MissingSeedMessage() = %q; want it to say plainly that no run is seeded yet", got)

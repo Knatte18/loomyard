@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_integration_test.go drives `lym heddle` through the command tree over hubforge hubs: the entry verbs and their refusals, the Bolt write lock and sync around a write, the hub-resolution refusals, and render's worktree choice, exclude seeding and warnings.
 
 package heddlecli
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // excludedPaths are the paths fabric's exclude list names for a worktree root.
@@ -210,6 +209,7 @@ func entrySlugs(t *testing.T, env envelope.Envelope) []string {
 }
 
 func TestHeddleCLI(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("EntryVerbs", func(t *testing.T) {

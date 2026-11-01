@@ -1,4 +1,4 @@
-//go:build tier2 && !windows
+//go:build !windows
 
 // serverconfig_integration_test.go proves against a real tmux server that reed's own server reads no operator config and that its strand panes start non-login shells.
 // It also pins the shell options reed's session pins share with the test kit's server config, and that the capability probe's transient server stays off the hub's socket.
@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -67,6 +68,7 @@ func bootOwnServer(t *testing.T, e *Engine) error {
 // The second step pins that the option names the kit's config sets to the shell are the names reed pins per session.
 // It sets HOME, process-global state, so it does not run in parallel.
 func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Run("ReadsNoOperatorConfigAndStartsNonLoginPanes", func(t *testing.T) {
 		home := t.TempDir()
 		operatorConfig := "set -g @operator_marker yes\nnew-session -d -s operator\n"
@@ -146,6 +148,7 @@ func TestBoot_ReadsNoOperatorConfigAndStartsNonLoginPanes(t *testing.T) {
 //
 // Not parallel: it scans the socket directory every test in the binary shares, which a parallel probe would litter mid-scan.
 func TestProbeCapability_LeavesTheHubSocketAndNoProbeSocketBehind(t *testing.T) {
+	tiergate.Require(t, 2)
 	e := newHubEngine(t, t.TempDir(), "worktree", nil)
 	if err := e.probeCapabilityLocked(); err != nil {
 		t.Fatalf("probeCapabilityLocked() = %v, want nil", err)

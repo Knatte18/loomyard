@@ -1,5 +1,3 @@
-//go:build tier0
-
 // report_test.go contains unit tests for the sandbox-report.json contract and the fetchReport validate/stamp/fetch pipeline.
 // All tests use t.TempDir() -- no real lym, claude, or network calls are made.
 // The runFetch tests rewrite the package-level devBinPath and lookPath seams, so they do not call t.Parallel; the fetchReport tests touch no seam and run in parallel.
@@ -14,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeBinaryInfo returns a fixed binaryInfo for fetchReport tests.
@@ -53,6 +53,7 @@ func scratchIsEmpty(t *testing.T, loomyardRoot string) bool {
 //
 //testtiming:keep pins the stamped fingerprint and the decoded items of a fetched report, which TestRunFetch_StampsTheResolvedBinary reads only as far as the source
 func TestFetchReport_AcceptsValidReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -133,6 +134,7 @@ func TestFetchReport_AcceptsValidReport(t *testing.T) {
 
 // TestFetchReport_RejectsInvalidReport verifies every unusable report is refused with an error that names the cause, and that nothing is written to .scratch: a missing items key, truncated JSON (the error names the source path), a missing or incorrect "source" field, and an absent file (a missing-file error distinct from the JSON parse error, so an operator can tell "the agent wrote nothing" from "the agent wrote garbage").
 func TestFetchReport_RejectsInvalidReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -218,6 +220,7 @@ func stubLymLookPath(t *testing.T, fakeLym string) func() {
 
 // TestRunFetch_StampsTheResolvedBinary verifies runFetch fetches a valid report and stamps it with the fingerprint of the binary resolveLym picked: the on-PATH binary as prod, or the dev binary as dev without consulting PATH at all.
 func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		wantSource string
@@ -298,6 +301,7 @@ func TestRunFetch_StampsTheResolvedBinary(t *testing.T) {
 
 // TestRunFetch_HubAbsent verifies runFetch returns an error when Hub is absent.
 func TestRunFetch_HubAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir := t.TempDir()
 	loomyardRoot := t.TempDir()
 
@@ -319,6 +323,7 @@ func TestRunFetch_HubAbsent(t *testing.T) {
 
 // TestRunFetch_MissingReport verifies runFetch errors when no report exists.
 func TestRunFetch_MissingReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir, _ := makeFetchHubRepo(t)
 	loomyardRoot := t.TempDir()
 

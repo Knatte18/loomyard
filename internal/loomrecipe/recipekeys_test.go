@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recipekeys_test.go covers the recipe-keyed accessors: contract, engines, record engine, verify source and retired rows.
 
 package loomrecipe
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRecipeKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // spawn_status_integration_test.go covers SpawnStatusPush, the one entry point for a status push, over a hubforge hub: the prime rule, the slug roles, the board working directory and the local-branch check.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -21,11 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime, a task pair, a local pair and a pair whose code branch alone is marked and a pair whose records branch alone is marked.
 // Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 func TestSpawnStatusPush(t *testing.T) {
+	tiergate.Require(t, 1)
 	const localSlug = "localpair"
 	pairSlug := hubforge.TemplatePairSlug
 

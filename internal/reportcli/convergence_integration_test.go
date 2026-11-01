@@ -1,5 +1,3 @@
-//go:build tier1
-
 // convergence_integration_test.go drives `lym report convergence` through RunCLIIn over a hubforge hub: the prime-only refusals, the empty report before any tag, and the report of one finished run seeded the way a landing leaves it.
 
 package reportcli
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -49,6 +48,7 @@ func marshalStatus(t *testing.T, status shedengine.Status) string {
 }
 
 func TestReportVerbs_RefuseOutsideThePrimeThenReportTheSeededRun(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // baretemp_test.go enforces the Lym Temp Root Invariant: no Go file outside internal/lymtemp creates a temp file or directory directly in the bare system temp directory.
 // A creation goes through lymtemp.MkdirTemp or lymtemp.CreateTemp, so it lands in the process run directory and is removed with it.
 // Modelled on hermeticenv_test.go and tmuxisolation_test.go; see `PATTERN-lym-temp-root`.
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedBareTemp is the Lym Temp Root Invariant allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.MkdirTemp`.
@@ -103,6 +102,7 @@ func bareTempFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 //
 //lym:guard
 func TestBareTemp_NoCreationInTheBareSystemTempDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(allowedBareTemp)
 	failures, scanned := bareTempFailures(t, scankit.Options{}, allow)
 	scankit.RequireFloor(t, scanned, 1, "bare temp scan")
@@ -113,6 +113,7 @@ func TestBareTemp_NoCreationInTheBareSystemTempDirectory(t *testing.T) {
 }
 
 func TestBareTemp_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	const header = "package p\n\nimport \"os\"\n\n"
 	cases := []struct {
 		name     string

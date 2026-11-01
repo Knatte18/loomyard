@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_interrupt_test.go proves the run loop's core interrupt use case
 // against a REAL claude in a REAL tmux pane: Runner.Start's returned *Run
 // stays usable while its Wait call blocks in a goroutine, so an operator
@@ -55,6 +53,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -236,6 +235,7 @@ func pollFileContentEquals(path, want string, deadline time.Time) (last string, 
 // It asserts too that Wait then drains with the done outcome:
 // the interrupted turn's own Stop is a hold, so only the redirect turn's completion ends the run.
 func TestSmokeInterruptSendContinues(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

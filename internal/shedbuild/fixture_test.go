@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixture_test.go holds the one test helper shedbuild's tests keep to themselves:
 // writeStencilFile.
 // The full Env every test builds from comes from envkit.FullEnv.

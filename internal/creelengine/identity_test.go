@@ -1,5 +1,3 @@
-//go:build tier0
-
 // identity_test.go pins how a request's sender is resolved from the peer's process ancestry and its claim.
 
 package creelengine
@@ -8,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolveSender(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const (
 		linux = "linux"

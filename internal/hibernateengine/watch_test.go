@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watch_test.go drives the daemon's sequence over fakeWorld.
 
 package hibernateengine
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // sessionReading is one session's reading; with kinds it reads busy on background work of those kinds.
@@ -79,6 +78,7 @@ func requireNotice(t *testing.T, w *fakeWorld, parts ...string) {
 }
 
 func TestWatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		run  func(t *testing.T)

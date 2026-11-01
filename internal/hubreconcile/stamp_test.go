@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stamp_test.go covers the build key, the stamp file round trip and the stamp and lock paths.
 
 package hubreconcile
@@ -10,10 +8,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBuildKey_DiffersOnEveryInput verifies each input moves the key and equal inputs agree.
 func TestBuildKey_DiffersOnEveryInput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := BuildKey(buildvcs.Identity{Revision: "abc", Modified: false}, "fp")
@@ -38,6 +38,7 @@ func TestBuildKey_DiffersOnEveryInput(t *testing.T) {
 
 // TestStamp_ReadWrite verifies an absent stamp is not found without error and a written stamp round-trips all three fields.
 func TestStamp_ReadWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "nested", "build-stamp.json")
@@ -60,6 +61,7 @@ func TestStamp_ReadWrite(t *testing.T) {
 
 // TestGeometry_Paths verifies the stamp and lock sit side by side under the never-tracked mirror of the config dir.
 func TestGeometry_Paths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	geom := Geometry{BoardDir: filepath.Join("hub", fabricengine.BoltDirName)}

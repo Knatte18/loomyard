@@ -1,5 +1,3 @@
-//go:build tier0
-
 // attach_test.go pins AttachArgv's argv shape, its pre-flight and its window selection.
 //
 // Every case drives AttachArgv entirely through TmuxCmd's execHook seam — no external process spawn,
@@ -18,10 +16,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestClientAttached drives ClientAttached through a fake tmux: one attached client, none, a missing session and a failed listing.
 func TestClientAttached(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -57,6 +57,7 @@ func TestClientAttached(t *testing.T) {
 
 // TestParseClientList is a table of `list-clients` answer shapes, asserting the parsed attachedClient slice element by element.
 func TestParseClientList(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		out  string
@@ -168,6 +169,7 @@ func assertResizedUnpinned(t *testing.T, fake *fakeTmux, target string) {
 // The unpins land on the strand window where one resolves and on the session's current window where none does.
 // has-session failing returns before any pin.
 func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		strands       []Strand
@@ -215,6 +217,7 @@ func TestAttachArgv_EveryOtherDegradedPathYieldsBareArgv(t *testing.T) {
 //
 //testtiming:keep pins one known-good AttachArgv call issuing every geometry pin itself, the window-resized unpin in both scopes after list-panes, no pane-set mutation, reed.json left untouched, and a failing set-hook leaving the argv unchanged; its covering tests run this code without asserting it
 func TestAttachArgv_PreflightOnAKnownGoodSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	e, fake := newAttachTestEngine(t, goodAttachStrands())
 	fake.mustNotCall("select-layout", "select-pane", "kill-pane", "split-window")
 	// Where the shell resolves, the pre-flight also pins the session's two shell options.
@@ -357,6 +360,7 @@ func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows,
 // Beside another attached client, or a failed client listing, the selection is kept only while the follow state reads on, an unset option included, and dropped while it reads off or its read fails.
 // Attach reads the follow state only then and never writes it.
 func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	const cols, rows = 80, 24
 	tests := []struct {
 		name       string
@@ -428,6 +432,7 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 // with no attached clients at all, since the warning is a side effect that must never perturb it.
 // That holds while the follow state reads off or no window is relevant, which is when the other client's presence drops the window selection.
 func TestAttachArgv_MultiClientWarning(t *testing.T) {
+	tiergate.Require(t, 0)
 	const cols, rows = 80, 24
 
 	t.Run("SameSizeClient_NoWarning", func(t *testing.T) {

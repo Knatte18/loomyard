@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stencil_test.go is the black-box contract test for stencil.Fill, stencil.FillOptional and stencil.FillWith:
 // one table covers the happy path, the unfilled-top-level-marker guard (including sorting/dedup), the incremental branch-internal guard, conditional sections, the leading-comment strip, the no-HTML-escaping guarantee, and FillOptional's optional-marker exemption from both guards.
 
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fillCase is one row of TestFill: a template and values rendered through stencil.Fill, or through stencil.FillOptional when optional is non-nil.
@@ -54,6 +53,7 @@ func errText(err error) string {
 // Every row must leave the caller's values map untouched, and rendered a second time must give byte-identical output and error text.
 // A row without optional names is also rendered through FillOptional(template, values, nil), which must match Fill byte for byte.
 func TestFill(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const branchTemplate = `{{if eq .Type "Cluster"}}Body: {{.Body}}{{end}}`

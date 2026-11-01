@@ -1,5 +1,3 @@
-//go:build tier0
-
 // owner_test.go covers batten's owner checks over fake owner seams: the start check, the Worktree-Teardown owner pre-flight, the pass exit codes of the owner refusals, and the owner keys of the status envelope.
 
 package battencli
@@ -17,10 +15,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRefuseStartOwnedElsewhere covers the owner check of a start: an owner elsewhere refuses, so does an unspawned member of a beam whose beam another machine owns, an owner here, an absent entry and a receiver with no seams pass, a pull that fails refuses with its way forward, an unreadable hostname refuses, and a hub with no prime owner has this machine claim it first.
 func TestRefuseStartOwnedElsewhere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "some-slug"
@@ -170,6 +170,7 @@ func TestRefuseStartOwnedElsewhere(t *testing.T) {
 // It resumes when the local board shows the run owned here, and refuses naming the owner and the adopt, with no wait for origin, when it shows another.
 // A resume at another row with its pair gone, and a Worktree-Teardown resume with its pair present, still run the reconcile.
 func TestOwnerPreflight_TeardownResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -269,6 +270,7 @@ func TestOwnerPreflight_TeardownResume(t *testing.T) {
 // TestPassExitCode asserts a pass exits 77 for each refusal of a run another machine owns that the pre-run reaches, wrapped or not, 78 for a covered run, 79 for a continue pass of a run dobby may not continue, and 1 for any other error.
 // A claim the Worktree-Create row loses is not a row here, since no pre-run wraps it and its stop ends in the driver's own envelope.
 func TestPassExitCode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "some-slug"
@@ -309,6 +311,7 @@ func TestPassExitCode(t *testing.T) {
 
 // TestBattenStatus_CarriesTheOwner asserts the status envelope names the slug's effective owner as owner_machine and whether this machine holds it as owned_here, and adds neither for an unreadable board or a receiver with no owner seams.
 func TestBattenStatus_CarriesTheOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

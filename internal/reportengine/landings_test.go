@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landings_test.go tests the landing joins, kinds and the fresh-code rule over fake parent, records and board repositories.
 
 package reportengine
@@ -12,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantLanding is what a row expects of one landing.
@@ -45,6 +44,7 @@ func (w *world) exactRun(slug, sha string, hour int, task string, history []shed
 }
 
 func TestCompute_Landings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	opts := Options{Since: at(-500), FreshDays: 3}
 

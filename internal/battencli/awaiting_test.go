@@ -1,5 +1,3 @@
-//go:build tier0
-
 // awaiting_test.go asserts a batten status file in StateAwaiting arms without refusal in both
 // battenPreRun and battenPreStep, rather than tripping the unrecognised-state default.
 
@@ -11,9 +9,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAwaitingStatusArmsWithoutRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c := newFakeReceiver(t, nil)

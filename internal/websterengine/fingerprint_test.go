@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fingerprint_test.go covers fingerprint's identity properties: identical directories fingerprint
 // identically,
 // and a rename, a one-byte content edit, or an added batch file each change the result, while
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // overviewWithIndex is a minimal valid 00-overview.md whose Card Index holds indexLines, for fixtures that restamp a plan directory.
@@ -43,6 +42,7 @@ func fingerprintWriteFiles(t *testing.T, dir string, files map[string]string) {
 
 //testtiming:keep pins which plan-directory changes move the fingerprint and which (non-markdown files, subdirectories, the amendment log) do not; the covering record-batch test only observes a refusal on one edit
 func TestFingerprint(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("identical directories match", func(t *testing.T) {
@@ -214,6 +214,7 @@ func TestFingerprint(t *testing.T) {
 // TestMoveBegunCardHashes proves a begun card's recorded hash moves only when it equals the pre-rewrite file hash,
 // a mismatching one keeps its old hash, a file absent from either map is left alone, and empty PlanFileHashes is a no-op.
 func TestMoveBegunCardHashes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	newState := func() *State {
@@ -264,6 +265,7 @@ func TestMoveBegunCardHashes(t *testing.T) {
 //
 //testtiming:keep pins both re-baselines' fingerprint and stored copies and that only restampFingerprint moves a begun card's hash; the covering regression test observes one begin
 func TestRestamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -352,6 +354,7 @@ func editFixture(t *testing.T) (*State, *BatchState, batcher.Batch, string, stri
 // TestPlanEditErrors proves an unchanged plan passes both guards, a card edit makes PlanEditError wrap ErrFingerprintMismatch naming rebaseline and restore-plan,
 // and a begun card edited since its batch began is named by batchCardEditError.
 func TestPlanEditErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("PlanEditError is nil on an unchanged plan and names the way forward after an edit", func(t *testing.T) {

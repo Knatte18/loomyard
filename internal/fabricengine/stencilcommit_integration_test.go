@@ -1,5 +1,3 @@
-//go:build tier1
-
 // stencilcommit_integration_test.go covers CommitSeededStencils against a real hubforge hub: the
 // no-op empty-input case, the scoped-pathspec commit (including the seeded .gitattributes), the
 // regression guard that an unrelated dirty board file is never swept into the commit, the mutation
@@ -17,11 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommitSeededStencils_EmptyInputIsNoOp asserts an empty writtenRelPaths list takes no lock,
 // commits nothing, and leaves the record empty.
 func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -46,6 +46,7 @@ func TestCommitSeededStencils_EmptyInputIsNoOp(t *testing.T) {
 //
 //testtiming:keep a scoped commit confined to the stencils subtree, leaving unrelated board dirt untouched, recording file_written and commit_created and never pushing; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -156,6 +157,7 @@ func TestCommitSeededStencils_ScopedCommitExcludesUnrelatedDirt(t *testing.T) {
 // regression that would result from generalising the pathspec half of the function while leaving the
 // mutation-record half pointed at the stencils directory.
 func TestCommitSeededStencils_SecondSubtreeCommitsAndRecordsItsOwnDirectory(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

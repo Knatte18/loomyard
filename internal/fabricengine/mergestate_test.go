@@ -1,20 +1,21 @@
-//go:build tier0
-
 // mergestate_test.go is pure-logic (Tier 1) coverage for the merge record's two derived flags,
 // landedConcludeCommit and bothSidesAlreadyUpToDate, which MergeResult.Committed and
 // MergeResult.AlreadyUpToDate are read off.
 // Both are two-sided predicates, and a two-sided predicate needs the mixed rows to be load-bearing:
 // dropping the weft conjunct from bothSidesAlreadyUpToDate left every other test in the repo green,
 // because nothing asserted a record with one side up_to_date and the other not.
-// Struct-literal only — no git, no spawn — so this file stays untagged per the Test Tier Purity
+// Struct-literal only — no git, no spawn — so this file stays tier0 per the Test Tier Purity
 // Invariant.
 
 package fabricengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 //testtiming:keep the landed-conclude predicate over every landed combination; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_LandedConcludeCommit(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		warpCommitted string
@@ -45,6 +46,7 @@ func TestMergeState_LandedConcludeCommit(t *testing.T) {
 //
 //testtiming:keep both conjuncts of the AlreadyUpToDate predicate, with the mixed rows; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeState_BothSidesAlreadyUpToDate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		warpOutcome string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // callerset_enforcement_test.go enforces half of the Cliwire Sole-Wiring Invariant: internal/cliwire
 // is the only PRODUCTION caller of internal/standalonestate's Derive, since every standalone-capable
 // CLI is supposed to reach the derived state directory through this package's ResolveStandalone
@@ -26,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedDeriveCallerDir is the only package directory (relative to the repository root) whose
@@ -52,6 +51,7 @@ const minDeriveScanFiles = 100
 //
 //lym:guard
 func TestDeriveCallerSet_CliwireOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{}, func(f *scankit.File) {
@@ -142,6 +142,7 @@ func callsDerive(astFile *ast.File, standalonestateAlias string) bool {
 //
 //testtiming:keep a guard self-check: pins that the selector walk catches a direct call and a captured function value and spares an unrelated Derive, which the real-tree scan never exercises
 func TestCallsDerive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

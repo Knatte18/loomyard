@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentdirective_test.go pins PATTERN-parent-directive: every spawned role's opening stencil
 // renders the parent directive, and no stencil outside the orch family tells an agent to ask the
 // operator in its pane.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // carriesMarker reports whether body holds marker itself or through a registered stencil it includes.
@@ -112,6 +111,7 @@ func registeredBodies(t *testing.T) map[string]string {
 //testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, violation := range openingStencilViolations(roleOpeningStencils, registeredBodies(t), parentMarker) {
@@ -124,6 +124,7 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 //testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, violation := range openingStencilViolations(roleOpeningStencils, registeredBodies(t), editMarker) {
@@ -136,6 +137,7 @@ func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 //testtiming:keep pins the rule that only the edit-directive stencil states the edit rule, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoEditRuleRestatement(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for name, body := range registeredBodies(t) {
@@ -153,6 +155,7 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 //testtiming:keep pins PATTERN-parent-directive's ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoUnboundedAskOperator(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for name, body := range registeredBodies(t) {
@@ -169,6 +172,7 @@ func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 //
 //testtiming:keep proves each parent-directive scan fires on a stencil that breaks its rule, which the scans over the real stencils cannot show while those stencils comply
 func TestParentDirectiveScans_SyntheticRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("opening stencil without the marker", func(t *testing.T) {

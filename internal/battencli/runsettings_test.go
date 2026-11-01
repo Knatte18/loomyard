@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runsettings_test.go table-drives Seed-Child's prepare step against a profiles.yaml under t.TempDir.
 
 package battencli
@@ -12,11 +10,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPrepareRunSettings pins how Seed-Child's prepare step lays a task's run settings over its run profile's block for the task's recipe, or the recipe's default profile when the task names none.
 // It also pins that an unknown profile, a profile without the recipe's block, a profiles file that does not decode, and a refused key each route to Stuck through ErrInvalidRunSettings.
 func TestPrepareRunSettings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const profiles = "defaults: {darn: light}\n" +
 		"light:\n  tapestry:\n    loom: {plan_max_bounces: 1, code_max_bounces: 1, merge_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 2}\n" +

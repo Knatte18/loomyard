@@ -1,5 +1,3 @@
-//go:build tier0
-
 // premerge_test.go covers the pre-merge step Merge-In and Finalize run ahead of their merge-in, driven through each producer's Call with the package's fake resolver and recording seam closures.
 // It captures the process-global logger output, so its tests do not run in parallel.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -26,6 +25,7 @@ const (
 // the seam calls it makes, whether the merge-in follows, and the Stuck reason or error it ends the call with.
 // A last subtest pins that Finalize probes again before the merge-in it repeats after the parent moved.
 func TestPreMerge_ClearsOwnParkedMergeIn(t *testing.T) {
+	tiergate.Require(t, 0)
 	probeErr := errors.New("probe boom")
 	statusErr := errors.New("strand table unreadable")
 	stopErr := errors.New("stop boom")

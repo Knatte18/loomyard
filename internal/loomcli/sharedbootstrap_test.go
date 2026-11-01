@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sharedbootstrap_test.go covers the three helpers sharedbootstrap.go extracts, driven against a
 // hand-populated *loomCLI receiver -- bypassing wire entirely, the idiom cli_test.go already uses for
 // the drive/pause refusal paths. No test here spawns a real hub or brings up a real reed session;
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBootstrapStage_ConstantsAreDistinctAndZeroValued asserts the four stage constants are
@@ -33,6 +32,7 @@ import (
 //
 //testtiming:keep pins the bootstrap stage constants being distinct with bootstrapStageNone the zero value; no behavior test asserts the enumeration
 func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
+	tiergate.Require(t, 0)
 	if bootstrapStageNone != 0 {
 		t.Errorf("bootstrapStageNone = %d; want 0 (the zero value)", bootstrapStageNone)
 	}
@@ -62,6 +62,7 @@ func TestBootstrapStage_ConstantsAreDistinctAndZeroValued(t *testing.T) {
 // repository behind c.location, which this untagged suite must not spawn (the
 // new-tests-stay-untagged-and-pure Shared Decision); that deeper coverage belongs to a tagged suite.
 func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 	c := &loomCLI{
@@ -93,6 +94,7 @@ func TestSeedAndCommitBootstrap_SecondCallDoesNotDivergeOnErrSeedExists(t *testi
 // It also asserts writing that shape twice, for the same parent and driver, at the same location and run-id, is a no-op the second time:
 // the idempotency seedAndCommitBootstrap's own comment relies on to make a crashed-and-resumed bootstrap safe to re-run.
 func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	loc := &lymcwd.Location{HubPath: dir, WorktreeName: "pair", AnchorRel: "."}
 
@@ -124,6 +126,7 @@ func TestLoomSeedFor_WriteSeedIsIdempotent(t *testing.T) {
 
 // TestResolveSeedDriver covers resolveSeedDriver: an unseeded worktree takes the resolved driver_kind, and a recorded seed's driver wins over it.
 func TestResolveSeedDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		existing shedrun.Seed
@@ -153,6 +156,7 @@ func TestResolveSeedDriver(t *testing.T) {
 
 // TestResolveSeedRecipe covers resolveSeedRecipe's read-through: an unseeded worktree takes loom, and a recorded recipe is preserved, so `lym loom start` never writes a recipe over an existing seed.
 func TestResolveSeedRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		existing shedrun.Seed
@@ -182,6 +186,7 @@ func TestResolveSeedRecipe(t *testing.T) {
 // SelfRunID) alongside the status file and origin record, so a crashed-and-resumed bootstrap's
 // seed self-heals into the fabric exactly as the status file and origin record already do.
 func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
 	got := bootstrapCommitPaths(loc)
 

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // preflight_integration_test.go covers preflightshed.NewPreflight's wrapper against a hubforge
 // fixture hub. It is in-package because nothing in hubforge's dependency set reaches this new leaf
 // (go list -deps ./internal/hubforge contains internal/preflight but not internal/preflightshed),
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setupPreflightWrapperFixture builds a fully-configured real hub with fabric and junction setup.
@@ -75,6 +74,7 @@ func setupPreflightWrapperFixture(t *testing.T) *hubforge.Hub {
 //
 // The cancelled step is Tier 2, not Tier 1, because preflight.Check reaches lymcwd.Resolve's git spawn unconditionally, so every path that calls Check at all is Tier 2 regardless of what it returns -- the producer holds no injectable seam between entryErr and the Check call that would let it run without a real fixture.
 func TestPreflight_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := setupPreflightWrapperFixture(t)
@@ -146,6 +146,7 @@ func commitRetiredBatcherKey(t *testing.T, recordsRoot string) {
 
 // TestPreflight_StaleStampReconcilesBeforeTheCleanCheck verifies a stale hub's committed retired key is removed and committed ahead of the worktree-clean check, so the row still ends Done and the stamp is written.
 func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := setupPreflightWrapperFixture(t)
@@ -166,6 +167,7 @@ func TestPreflight_StaleStampReconcilesBeforeTheCleanCheck(t *testing.T) {
 
 // TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck verifies an unparseable config in another pair, and a held hub lock, each let the row reach the check and settle Done on an otherwise clean hub, and leave no stamp.
 func TestPreflight_ReconcileFailureWarnsAndGoesOnToTheCheck(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("unparseable config in another pair", func(t *testing.T) {

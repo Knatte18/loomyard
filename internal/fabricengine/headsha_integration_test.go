@@ -1,5 +1,3 @@
-//go:build tier1
-
 // headsha_integration_test.go proves Fabric.HeadSHA and Fabric.RecordsHeadSHA track their checkout's HEAD over a real pair.
 
 package fabricengine_test
@@ -10,11 +8,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFabricHeadSHA_TracksWorktreeHead asserts HeadSHA equals git rev-parse HEAD of the task worktree
 // before and after a new commit, and RecordsHeadSHA does the same for the weft checkout.
 func TestFabricHeadSHA_TracksWorktreeHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

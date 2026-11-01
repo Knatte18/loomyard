@@ -1,5 +1,3 @@
-//go:build tier0
-
 // projectdirective_test.go covers ProjectRecordDirective over the seeded stencils.
 
 package loomengine
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestProjectRecordDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 

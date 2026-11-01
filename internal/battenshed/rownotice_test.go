@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rownotice_test.go covers the row notifier's delivery bound and the per-run marker reset.
 
 package battenshed
@@ -11,10 +9,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRowNotifierSend_DeliveryBound asserts send skips Notify when no orch strand is recorded, retries an unqueued line with the retry spacing up to noticeMaxAttempts and then drops it, and stops retrying once the line is queued.
 func TestRowNotifierSend_DeliveryBound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -68,6 +69,7 @@ func TestRowNotifierSend_DeliveryBound(t *testing.T) {
 
 // TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly asserts ClearRunMarkers removes a marker for every suffix in runMarkerSuffixes, the run's memory record and its lock file among them, leaves any other file, and accepts an absent directory.
 func TestClearRunMarkers_RemovesEveryRunMarkerSuffixOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()

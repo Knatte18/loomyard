@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_judge_test.go covers Bouncer.Call's judge mode: the happy paths (CONVERGED and CONTINUE), the unconditional-OutputFiles guard against the conditional-output regression that would make shedengine.Done unreachable, the previous-ledger marker's three cases, every judge-call degradation, harvest, debris handling, and stale-output archival.
 // The seed call, the re-bounce, replay, focus synthesis, pointer discipline, and cancellation are
 // left to bouncer_seed_test.go (batch 3) and bouncer_replay_test.go (batch 4's own second file).
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // bouncerJudgeFixture is one round's worth of on-disk state a judge-call test lays out before
@@ -107,6 +106,7 @@ func judgeFakeShuttle(round int, verdictBody, ledgerBody string, writeFocus bool
 // {{.specs_dir}} marker inside the rubric value is invisible to a rubric-bytes-only assertion
 // and only a check of the composed prompt can catch a literal marker surviving.
 func TestBouncer_PromptComposition(t *testing.T) {
+	tiergate.Require(t, 0)
 	specsDir := t.TempDir()
 	if !filepath.IsAbs(specsDir) {
 		t.Fatalf("t.TempDir() = %q; want an absolute path", specsDir)
@@ -194,6 +194,7 @@ func writeJudgePattern(t *testing.T) string {
 
 // TestBouncer_JudgeCall_PatternDirective asserts the judge prompt carries the RoleJudge directive, ahead of the rubric, when PATTERN.md exists at the configured worktree root, and omits it when the file or the root is absent.
 func TestBouncer_JudgeCall_PatternDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		root func(t *testing.T) string
@@ -251,6 +252,7 @@ func writePatternRecord(t *testing.T, body string) string {
 
 // TestBouncer_JudgeCall_PatternDirectiveFailureDegrades asserts an active PATTERN whose directive stencil cannot be read, or whose decision record's PATTERN changes section is malformed, degrades the judge call rather than spawning a judge without the directive.
 func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		missingStenc []string
@@ -293,6 +295,7 @@ func TestBouncer_JudgeCall_PatternDirectiveFailureDegrades(t *testing.T) {
 //
 //testtiming:keep pins the judge call's outcome and ledger pointer per verdict, the three declared outputs and the well-formed empty next-round focus file
 func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		verdict     string
@@ -350,6 +353,7 @@ func TestBouncer_JudgeCall_Verdicts(t *testing.T) {
 // TestBouncer_JudgeCall_RefusedJudgment covers the judgments Go refuses and the rounds it leaves as recorded:
 // a refused round archives its three judge outputs, returns a counted Stuck whose Reason names the cause and the re-judge, runs no seam and escalates nothing.
 func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const blockingReview = "---\nverdict: BLOCKING\nfindings:\n  - id: f1\n    severity: BLOCKING\n    class: design\n    location: plan.md\n    summary: broken\n---\nreview\n"
 	alpha := evidenceEntry{"alpha", "open", "design", "MEDIUM"}
@@ -510,6 +514,7 @@ func TestBouncer_JudgeCall_RefusedJudgment(t *testing.T) {
 
 //testtiming:keep pins the judge prompt's inputs: the facts and review paths, never the artifacts or the fixer report, and the Go-built parse-error decision-rule sentence
 func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
+	tiergate.Require(t, 0)
 	shuttle := judgeFakeShuttle(1, bouncerVerdictContent("CONVERGED"), bouncerLedgerContent(1), true)
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 	layoutBouncerRun(t, cfg, []bouncerJudgeFixture{{round: 1, report: bouncerReport(1)}})
@@ -551,6 +556,7 @@ func TestBouncer_JudgeCall_PromptReadsFactsNotArtifacts(t *testing.T) {
 // round N's judge reads round N-1's ledger when it parses, and the literal "(none)" when it is
 // malformed or absent. The judged round's own report path is named alongside.
 func TestBouncer_JudgeCall_PreviousLedgerHandling(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// round is the round being judged; rounds below it are laid out with a report, and with a
@@ -656,6 +662,7 @@ func assertJudgeDegraded(t *testing.T, outcome shedengine.Outcome, ptr shedengin
 }
 
 func TestBouncer_JudgeCall_Degradations(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		buildBouncer func(t *testing.T) (*Bouncer, BouncerConfig)
@@ -805,6 +812,7 @@ func TestBouncer_JudgeCall_Degradations(t *testing.T) {
 
 //testtiming:keep pins that the harvest is keyed on judged(N): a written verdict settles the round whatever the run reported, and a non-completion with nothing written degrades
 func TestBouncer_JudgeCall_Harvest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("NonCompletionOutcome_CONTINUE", func(t *testing.T) {
 		shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}}
 		shuttle.DuringRun = func() {
@@ -860,6 +868,7 @@ func TestBouncer_JudgeCall_Harvest(t *testing.T) {
 //
 //testtiming:keep pins that stale or half-written judge outputs are archived byte-identical before the spawn and never mistaken for a judged round
 func TestBouncer_JudgeCall_DebrisIsNotJudged(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// debris maps each path standing in the run dir before the call to its content.

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store, with the fixer's turn standing in for whatever releases the record between the acquire and the re-check.
 
 package landingshed
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -20,6 +19,7 @@ import (
 // it lands nothing, halts with LandingStopPrefix and takes no lock, and its resume re-runs from step 1 under a lock taken afresh.
 // The fixer's turn releases the record, so the release happens between the guard's acquire and the re-check within one Call.
 func TestFinalize_LockRecheckAndLanding(t *testing.T) {
+	tiergate.Require(t, 0)
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	passing := verifytree.Result{Status: verifytree.StatusPassed}
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // launcher_content_test.go tests the pure, build-tag-free launcher content builder for both the Windows (.cmd) and non-Windows (.sh) branches.
 // Because launcherScript and launcherExt take goos as a parameter rather than reading runtime.GOOS, both branches are exercised on any warp, including this Windows dev box.
 // The fabric-checkout case asserts fabric's own checkout script content ("fabric checkout" lym args), and the run case asserts the run launcher's own command line ("loom start" lym args).
@@ -18,9 +16,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLauncherExt(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		goos string
@@ -41,6 +41,7 @@ func TestLauncherExt(t *testing.T) {
 }
 
 func TestLauncherScript(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		goos     string
@@ -185,6 +186,7 @@ func TestLauncherScript(t *testing.T) {
 //
 //testtiming:keep the run launcher keeping its "run"+ext filename and a content that invokes "loom start"; coverage of its blocks by other tests does not show an assertion of this
 func TestWriteLaunchers_RunScriptContentAndFilename(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // removedverbs_test.go pins that no production source, stencil or skill names a verb lym no longer has,
 // so every way forward names the verb that replaced it.
 
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // removedVerbs are the commands that no longer exist; each is named by `lym beam start`, `lym adopt <beam>`, `lym adopt root`, `lym creel post` or `lym creel interrupt` now.
@@ -38,6 +37,7 @@ func removedVerbHits(content string) []string {
 }
 
 func TestRemovedVerbs_NamedNowhere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("FixtureRows", func(t *testing.T) {

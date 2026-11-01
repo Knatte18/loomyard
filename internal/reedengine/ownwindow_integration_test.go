@@ -1,5 +1,3 @@
-//go:build tier2
-
 // ownwindow_integration_test.go proves own-window strands against a real tmux.
 // An own-window strand opens in a detached window of its own named by its role without moving the viewer, keeps a dead pane bound across later operations, is found again by Resume after a server restart, is refused a move out of its anchor, and takes its window with it on removal.
 // One cold session serves every step.
@@ -16,11 +14,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOwnWindow_RealTmux runs its steps in order on one cold session.
 // It overrides the executable path so the detached `lym` window of OpenWindow is a stub that sleeps for its first argument's seconds.
 func TestOwnWindow_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "lym")

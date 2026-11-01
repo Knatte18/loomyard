@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanup_integration_test.go drives "lym batten cleanup" through RunCLIIn over a hubforge hub: the prime-only refusal, the dry run and the applied removal with its records commit; the push is spawned, and the test binary's spawn forks nothing.
 // It stays a white-box "package battencli" test, like the other integration files here.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stringsOf converts a decoded JSON array of strings.
@@ -39,6 +38,7 @@ func runCleanup(t *testing.T, cwd string, args ...string) (string, int) {
 }
 
 func TestCleanupIntegration_RefusesOutsideThePrimeThenDryRunsThenRemovesAndPushes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{hubforge.TemplatePairSlug}})

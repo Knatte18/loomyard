@@ -1,5 +1,3 @@
-//go:build tier0
-
 package tmuxkit
 
 import (
@@ -12,9 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCheckSocketPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		dir     string
@@ -41,6 +41,7 @@ func TestCheckSocketPath(t *testing.T) {
 }
 
 func TestSetEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("TMUX", "/outer/tmux,1,0")
 	t.Setenv("TMUX_PANE", "%3")
 	t.Setenv("LYM_REED_TMUX_CONF", "/operator/tmux.conf")
@@ -75,12 +76,14 @@ func TestSetEnv(t *testing.T) {
 }
 
 func TestListSockets_MissingDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	if got := listSockets(t.TempDir(), 1000); len(got) != 0 {
 		t.Errorf("listSockets of a directory with no tmux subdirectory = %v, want none", got)
 	}
 }
 
 func TestMaxKeyBytes_HoldsReedServerName(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := "/" + strings.Repeat("h", 300) + "-LYMHUB"
 	if got := len(reedengine.ServerName(hub)); got > maxKeyBytes {
 		t.Errorf("reedengine.ServerName of an over-long hub path is %d bytes, over the kit's %d-byte key bound", got, maxKeyBytes)
@@ -88,6 +91,7 @@ func TestMaxKeyBytes_HoldsReedServerName(t *testing.T) {
 }
 
 func TestAfterRun_ReportsFailedRemovalKeepingTheCode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, code := range []int{0, 1} {
 		dir := t.TempDir()

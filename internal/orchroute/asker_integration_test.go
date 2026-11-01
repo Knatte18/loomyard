@@ -1,5 +1,3 @@
-//go:build tier1
-
 // asker_integration_test.go proves Asker over a real hub: the walk starts at a beam or the prime itself and at a pair's recorded parent.
 
 package orchroute
@@ -11,9 +9,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAsker(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watchdog_test.go pins the watchdog daemon's pure seams — planSessionDiff, sessionsAreIdle,
 // planReapCycle, worktreeRootGone, hubIsLiveDir, validateWatchdogFlags, watchdogDefaultTiming, discoveryWake and consumeDiscoverSignal —
 // against no tmux server and no filesystem at all beyond t.TempDir(), table-driven.
@@ -28,10 +26,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the appeared and departed sets for the empty, populated, partial-overlap and unchanged listings, which the live daemon scenario reaches for two at most
 func TestPlanSessionDiff(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -97,6 +97,7 @@ func TestPlanSessionDiff(t *testing.T) {
 
 //testtiming:keep pins the idle rule for all four listing and error combinations, which the live watchdog test reaches for one
 func TestSessionsAreIdle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string
@@ -156,6 +157,7 @@ type reapCycle struct {
 }
 
 func TestPlanReapCycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	alpha := []string{"alpha"}
 	alphaGone := map[string]bool{"alpha": true}
@@ -313,6 +315,7 @@ func TestPlanReapCycle(t *testing.T) {
 // The unreadable row pins the one case where treating an unreadable path as gone would destroy live work: a stat that fails with neither a not-exist result nor success (the EACCES shape) must answer false — conservative — from both predicates, and deliberately not each other's negation.
 // That row is skipped on Windows, where directory mode bits do not deny traversal this way, and skipped when the test runs as uid 0, where mode bits are not enforced at all — in both cases the stat would succeed and the assertion would pass for the wrong reason.
 func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -404,6 +407,7 @@ func TestWorktreeRootGoneAndHubIsLiveDir(t *testing.T) {
 
 // validateWatchdogFlags is asserted here rather than through watchdogCmd's RunE deliberately — a CLI-level test of the accepting case would fall through the pre-flight into a global logger mutation, a lock acquisition under a scratch directory the command never creates, and then the discovery loop, whose first tick shells out to tmux via the os/exec package and is forbidden in an untagged file.
 func TestValidateWatchdogFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -437,6 +441,7 @@ func TestValidateWatchdogFlags(t *testing.T) {
 //
 //testtiming:keep a guard that fires when watchdogDefaultTiming diverges from the production cadence constants, which no covering test asserts
 func TestWatchdogDefaultTiming(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	got := watchdogDefaultTiming()
 	want := watchdogTiming{
@@ -461,6 +466,7 @@ func TestWatchdogDefaultTiming(t *testing.T) {
 // TestDiscoveryWake pins the wake planner over scripted cycles and signals: the wait doubles to the ceiling across unchanged listings (order aside) and returns to the base on a changed set or a signal, and a signal runs its cycle once the base has passed since the last one, at once when it already has.
 // A signal carrying a stop request waits only for the stop floor, whichever signal arrives first, and the cycle that serves it restores the base.
 func TestDiscoveryWake(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const base, ceiling, stopFloor = 5 * time.Second, 20 * time.Second, time.Second
 	type step struct {
@@ -534,6 +540,7 @@ func TestDiscoveryWake(t *testing.T) {
 
 // TestConsumeDiscoverSignal pins that a present signal file is consumed and removed, and reports a stop only for the stop marker; an absent file answers false, false and leaves nothing; a read or removal failure is an error with both results false.
 func TestConsumeDiscoverSignal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -634,6 +641,7 @@ func TestConsumeDiscoverSignal(t *testing.T) {
 // TestExeReplaced pins the comparison over real files: only a baseline whose file is replaced or rewritten answers true,
 // and a missing baseline or a failed stat never does.
 func TestExeReplaced(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	statOf := func(t *testing.T, path string) os.FileInfo {
 		t.Helper()
@@ -742,6 +750,7 @@ type listerEnv struct {
 // Each row asserts its own trace lines.
 // It points the process-global durable log sink at the hub's logs directory, so it is not parallel.
 func TestWatchdogCmd_ExitsZeroBeforeOrInsteadOfLooping(t *testing.T) {
+	tiergate.Require(t, 0)
 	const tmuxPath, shellPath = "/fixed/tmux", "/fixed/shell"
 	const manyCycles = 1000000
 	var idle, live = []string(nil), []string{"ghost"}

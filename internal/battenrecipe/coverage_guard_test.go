@@ -1,5 +1,3 @@
-//go:build tier0
-
 // coverage_guard_test.go pins the registry's reason to exist for this package's own three rows: it
 // builds a real shedrecipe.Env/ShedPaths pair, calls this package's own New, and checks the
 // row-to-engine table below in both directions against New's real, current output rather than
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // battenRowEngines maps each of New's row names to the engine name backing it. The
@@ -38,6 +37,7 @@ var battenRowEngines = map[string]string{
 // dead entries); and every engine name the table maps to resolves through shedrecipe.Lookup
 // without error.
 func TestCoverageGuard_EveryBattenRowHasAnEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
 	if err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package websterengine
 
 import (
@@ -8,10 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the archive stamp name, each transcript appended once, every suspect path in the way forward and the terminal failed digest; the covering record and recover tests observe each only in part
 func TestFailBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("archives the report and frees the live path", func(t *testing.T) {

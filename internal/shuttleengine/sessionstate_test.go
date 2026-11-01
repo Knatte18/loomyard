@@ -1,17 +1,18 @@
-//go:build tier0
-
 package shuttleengine
 
 import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSessionFold covers how session signals and facts reduce to a session state.
 // Each row folds its steps in order on one SessionFold and compares the final state and the whole history.
 // The rows cover every state and cause, the precedence of the facts over the signals, each source of Since, the re-judging of the newest turn end once outputs appear, and the transcript markers.
 func TestSessionFold(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)

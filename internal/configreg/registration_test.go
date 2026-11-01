@@ -1,5 +1,3 @@
-//go:build tier0
-
 // registration_test.go — membership oracle for the module registry.
 
 package configreg
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -27,6 +26,7 @@ const (
 //
 //lym:guard
 func TestRegistration_MatchesDeclarers(t *testing.T) {
+	tiergate.Require(t, 0)
 	declared := map[string]bool{}
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal"}}, func(f *scankit.File) {
 		file := f.AST(t, parser.SkipObjectResolution)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // amendment_test.go covers the plan amendment record: its append-only writes, tolerant read, removal and the settle rule.
 
 package loomshed
@@ -10,9 +8,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAmendmentRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	written := time.Date(2026, 10, 23, 7, 30, 15, 123456789, time.UTC)

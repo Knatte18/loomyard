@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bindings_test.go pins bindingArgvs's output: the five Alt keys and the status click, each a root-table binding, and no other key.
 // It also pins the bindings' build stamp and the op lock's re-pin of a server an older build pinned.
 
@@ -14,9 +12,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBindingArgvs_BindsTheFiveAltKeysAndTheStatusClickInTheRootTableOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const prev, next = "switch --prev", "switch --next"
@@ -178,6 +178,7 @@ func clickBranchCommand(t *testing.T, click []string, rangeType string) string {
 
 // TestBindingsBuildStamp pins the bindings' build stamp: when a stamp is stale, what the pin writes, and the op lock re-pinning a server an older build pinned.
 func TestBindingsBuildStamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	commitTime := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)

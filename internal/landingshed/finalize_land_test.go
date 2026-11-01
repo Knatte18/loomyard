@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_land_test.go covers Finalize's land check against a scripted blocker seam: each blocker's own ways forward, and the runs that land.
 
 package landingshed
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFinalize_LandCheck pins that a beam's landing halts while a member or a forked pair remains under it, each blocker naming its own ways forward and the halt ending in the resume, and that no halt names the landing of a member or merges anything.
 // An empty list, no seam and a parent already holding the beam's work land as before.
 func TestFinalize_LandCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		nilSeam     bool

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // roleskills_test.go pins PATTERN-parent-directive: a skill reaches a spawned session because the
 // spawning module names it on the launch spec and lym delivers it, so no stencil asks an agent to load
 // a skill.
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var (
@@ -52,6 +51,7 @@ func skillLoadViolations(body string) []string {
 //testtiming:keep pins PATTERN-parent-directive's ban on a stencil telling an agent to load a skill that lym delivers, or naming the Skill tool, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for name, def := range shippedStencils(t) {
@@ -65,6 +65,7 @@ func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 //
 //testtiming:keep proves the skill-load scan fires on a stencil that breaks the rule and stays quiet on a bare pointer, which the scan over the real stencils cannot show while those stencils comply
 func TestSkillLoadViolations_SyntheticRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

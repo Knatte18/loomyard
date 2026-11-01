@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies reed.yaml's template parses, defaults resolve through LoadConfig, and
 // environment overrides + the template-fallback path behave the way shuttleengine's config tests
 // establish the pattern.
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,6 +40,7 @@ func seedLymConfig(t *testing.T, tmpDir, module, content string) {
 
 //testtiming:keep pins every shipped template default through a seeded reed.yaml: tmux and shell per GOOS, width, height, debug_log off, mouse on, window_share_max 2 and window_split width; its covering tests run this code without asserting it
 func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	seedLymConfig(t, tmpDir, "reed", reedengine.ConfigTemplate())
 
@@ -234,6 +234,7 @@ var wantSegmentColors = map[string]string{
 
 // TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults pins that a reed.yaml lacking the whole block, or a single key of it, loads with the template defaults.
 func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -267,6 +268,7 @@ func TestLoadConfig_MissingSegmentColorsTakeTemplateDefaults(t *testing.T) {
 }
 
 func TestLoadConfig_EnvOverride(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	t.Setenv("LYM_REED_TMUX", `D:\tools\tmux.exe`)
 	t.Setenv("LYM_REED_TMUX_CONF", "/home/operator/tmux.conf")
@@ -286,6 +288,7 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 }
 
 func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	// Seed under a non-"reed" module name with a config whose width differs
 	// from the template default, so a hardcoded module name would be caught
@@ -314,6 +317,7 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 }
 
 func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tmpDir := t.TempDir()
 	// Do NOT create _lym/ -- LoadConfig must degrade to the embedded
 	// template. Only assert GOOS-invariant keys: Tmux/Shell differ between
@@ -335,6 +339,7 @@ func TestLoadConfig_UninitializedFallsBackToTemplate(t *testing.T) {
 //
 //testtiming:keep pins an older reed.yaml with a stale header block or the retired strand_name key loading cleanly with the rest of the config undisturbed; its covering tests run this code without asserting it
 func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		extra string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // guardscan_integration_test.go drives ModuleGuardTests over a real module, whose package listing spawns `go list`.
 
 package impactset
@@ -12,11 +10,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestModuleGuardTests_OverAModule walks one module through the scan and each way it can fail.
 // The steps share the module and run in order, so the test is parallel as a whole and no step is.
 func TestModuleGuardTests_OverAModule(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	moduleDir := t.TempDir()

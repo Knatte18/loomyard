@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lint_test.go drives the break classification over base and new text pairs.
 
 package commentlint
@@ -8,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // source wraps comment lines in a Go file, one `//` line each, above a declaration.
@@ -25,6 +25,7 @@ func flaggedLines(baseText, newText string) []int {
 }
 
 func TestFindNewWrappedBreaks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	wrapped := source("// the first line of a", "// fixed-column wrapped comment", "// that goes on.")
@@ -128,6 +129,7 @@ func TestFindNewWrappedBreaks(t *testing.T) {
 }
 
 func TestParseNameStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := parseNameStatus("M\x00a.go\x00A\x00b.go\x00D\x00c.go\x00R100\x00old.go\x00new.go\x00")

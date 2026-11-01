@@ -1,5 +1,3 @@
-//go:build tier1
-
 // finalize_integration_test.go drives Finalize against a real two-worktree pair on both the task
 // side and the parent side, built by the standard hub fixture (internal/hubforge), with only the
 // model seam faked: fakeResolutionShuttle stands in for a real conflict-resolution session, writing
@@ -34,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // finalizeConflictStencilFixture is a minimal, valid conflict stencil carrying exactly the two
@@ -154,6 +153,7 @@ func newFinalizeAt(t *testing.T, taskBranch, taskCode, parentCode string, shuttl
 // so no step runs in parallel;
 // the top-level test calls t.Parallel because the hub is its own.
 func TestFinalize_OverRealHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

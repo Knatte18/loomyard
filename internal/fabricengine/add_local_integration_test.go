@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_local_integration_test.go covers AddLocal, the local-only pair, and a plain Add's adoption of a local pair's marked branches.
 // Every hub here has an origin URL pointing at a path that does not exist, in both repos, so any network call fails the add.
 //
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newDeadOriginHub returns a hub whose warp and weft origin URLs name a path that does not exist.
@@ -67,6 +66,7 @@ func requireNoPairWorktrees(t *testing.T, h *hubforge.Hub, slug string) {
 // TestAddLocal covers AddLocal over a hub with a dead origin, and the adopt-clears rule of a plain Add.
 // It stays serial (no t.Parallel), since two rows set the package-level hook.
 func TestAddLocal(t *testing.T) {
+	tiergate.Require(t, 1)
 	const slug = "localpair"
 	weftBranch := fabricengine.RecordsBranchName(slug)
 

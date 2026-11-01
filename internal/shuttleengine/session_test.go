@@ -1,5 +1,3 @@
-//go:build tier0
-
 // session_test.go covers Runner's session surface: ReadEvents' offset rules and the SessionCycler-backed ContextTokens, SessionIdle, ClearSession and CompactSession, including the plain-engine refusals.
 
 package shuttleengine
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cyclerEngine is a fakeEngine that also implements SessionCycler with scripted answers.
@@ -58,6 +57,7 @@ func (e *cyclerEngine) CompactSessionSequence(focus string) []PaneInput {
 // Each event takes its stamp's time, a stamp ahead of its payload stays unconsumed, and a read whose marked signals do not pair with its events gives every event the zero time.
 // An engine without a signal reading gives the zero time.
 func TestRunner_ReadEvents(t *testing.T) {
+	tiergate.Require(t, 0)
 	const complete = "STOP:one\nSTOP:two\n"
 	stampOne := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	stampTwo := stampOne.Add(time.Minute)
@@ -188,6 +188,7 @@ func checkReadEvents(t *testing.T, events []Event, offset int64, wantMessage []s
 func ptrTo[T any](value T) *T { return &value }
 
 func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
@@ -219,6 +220,7 @@ func TestRunner_SessionMethods_ErrorOnPlainEngine(t *testing.T) {
 }
 
 func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(false)}
 	runner := newFixture(t, reed, &cyclerEngine{idle: true}, withStrand("strand-1")).Runner
 	if _, err := runner.SessionIdle("strand-1"); err == nil {
@@ -233,6 +235,7 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
+	tiergate.Require(t, 0)
 	type probe struct {
 		// events is appended to the run's events file before the probe.
 		events string
@@ -684,6 +687,7 @@ func checkPastedSessionCommand(t *testing.T, wantText string, call func(*Runner)
 }
 
 func TestRunner_ClearSession_PlaysScriptedSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
@@ -714,6 +718,7 @@ func sentCalls(reed *fakeReed) []string {
 }
 
 func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
@@ -743,6 +748,7 @@ func TestRunner_ReloadPlugins_PlaysSequenceOnALiveShuttleStrand(t *testing.T) {
 // A color with no command returns nil with no paste, even beside an active operator, so no idle wait or activity query runs for it.
 // An unknown strand is refused before reed is touched.
 func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	checkPastedSessionCommand(t, "/color green", func(r *Runner) error { return r.TypeColor("strand-1", segmentcolor.Green) })
@@ -769,6 +775,7 @@ func TestRunner_TypeColor_PlaysTheSequenceAndWaitsItOut(t *testing.T) {
 }
 
 func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"IDLE"}}
@@ -790,6 +797,7 @@ func TestRunner_CompactSession_PlaysSequenceForFocus(t *testing.T) {
 }
 
 func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, focus := range []string{"a\nb", "a\r\nb"} {
 		reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 		engine := &cyclerEngine{}
@@ -804,6 +812,7 @@ func TestRunner_CompactSession_RefusesMultiLineFocus(t *testing.T) {
 }
 
 func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true)}
 	runner := newFixture(t, reed, &cyclerEngine{}, withStrand("strand-1")).Runner
 	if err := runner.ClearSession("nope"); err == nil {
@@ -815,6 +824,7 @@ func TestRunner_ClearSession_UnknownGUID(t *testing.T) {
 }
 
 func TestRunner_LoadSkills_GuardStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	refused := []struct {
 		name string
@@ -837,6 +847,7 @@ func TestRunner_LoadSkills_GuardStrands(t *testing.T) {
 }
 
 func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"❯ ", "❯ ", "❯ LOAD:a,b"}}
 	want := SkillLoadReport{Verified: true, Loaded: []string{"a"}, Missing: []string{"b"}}
@@ -855,6 +866,7 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_DriveTheEngine(t *testing.T) {
 }
 
 func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) {
+	tiergate.Require(t, 0)
 	runner := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &fakeEngine{}, withStrand("strand-1")).Runner
 	if err := runner.LoadSkills("strand-1", []string{"a"}); err == nil || !strings.Contains(err.Error(), "SkillLoader") {
 		t.Errorf("LoadSkills error = %v; want one naming SkillLoader", err)
@@ -866,6 +878,7 @@ func TestRunner_LoadSkillsAndClassifySkillLoad_ErrorOnPlainEngine(t *testing.T) 
 
 // TestRunner_SessionState covers the state read of one run by guid: the found run reads at the runner's clock, and an unknown guid is an error.
 func TestRunner_SessionState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	fx := newFixture(t, &fakeReed{}, &fakeEngine{}, withStrand("strand-1"), withClock(&frozenClock{now: now}))

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
 // exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason
@@ -52,6 +50,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // spawnObservabilityLoggerImportPath is the full import path fileImportsLogger matches against.
@@ -119,6 +118,7 @@ const spawnObservabilityMinScannedFiles = 200
 //
 //lym:guard
 func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(spawnObservabilityAllowedSpawners)
 	var failures []string
 
@@ -237,6 +237,7 @@ func execImportName(file *ast.File) (name string, ok bool) {
 //
 //testtiming:keep proves the TestSpawnObservability_ProductionSpawnsAreLogged guard's AST matching fires on unlogged spawns and ignores doc-comment mentions
 func TestSpawnObservability_DetectionHelper(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		src  string

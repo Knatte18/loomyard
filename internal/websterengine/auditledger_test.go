@@ -1,5 +1,3 @@
-//go:build tier0
-
 // auditledger_test.go covers the audit ledger's once-per-identity rule, the parent/fork identity split, ordering of RecordedAuditWarnings, and the pathless-finding refusal.
 // Plain t.TempDir() files only — Test Tier Purity Invariant.
 
@@ -13,9 +11,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRecordBatchWarning_RepeatAddsNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st := &State{}
 	bs := &BatchState{}
@@ -34,6 +34,7 @@ func TestRecordBatchWarning_RepeatAddsNothing(t *testing.T) {
 
 //testtiming:keep pins a parent finding's identity carrying its session, so one key under two sessions is two findings, and a fork finding's identity being its bare key; no RecordBatch test records one parent key under two sessions
 func TestFindingIdentity_ParentKeyPerSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	parent := AuditViolation{Key: "parent:named-spawn:1"}
 	a, b := findingIdentity("s1", parent), findingIdentity("s2", parent)
@@ -52,6 +53,7 @@ func TestFindingIdentity_ParentKeyPerSession(t *testing.T) {
 
 //testtiming:keep pins the order of recorded warnings: batch warnings in batch-list order, not batch number, then run-level warnings last; the covering tests record a single batch
 func TestRecordedAuditWarnings_BatchesThenRunLevel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st := &State{Batches: map[int]*BatchState{1: {}, 3: {}}}
 	recordBatchWarning(st, st.Batches[1], "a", "c1", "d1")
@@ -73,6 +75,7 @@ func TestRecordedAuditWarnings_BatchesThenRunLevel(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_RefusesPathlessFinding(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	st := &State{PendingAuditFindings: []PendingAuditFinding{{ID: "s1/parent:named-spawn:1", Class: "named-spawn", Detail: "d"}}}
 

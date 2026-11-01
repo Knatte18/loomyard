@@ -1,5 +1,3 @@
-//go:build tier0
-
 // template_test.go proves the embedded seed template always passes the loader's own validation:
 // writing ConfigTemplate() verbatim to a fresh models.yaml must load with exactly the four
 // documented live entries.
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	baseDir := t.TempDir()
 	if err := os.MkdirAll(configengine.ConfigDir(baseDir), 0o755); err != nil {

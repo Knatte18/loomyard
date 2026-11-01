@@ -1,5 +1,3 @@
-//go:build tier0
-
 // originseams_test.go drives the origin reconcile's seams through the fake substrates, so it spawns nothing.
 
 package pairteardown
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // removeRecorder replaces a teardown's removal with one that keeps the request it was given and answers with result and err.
@@ -37,6 +36,7 @@ func mutationRecord(tag string) fabricengine.MutationRecord {
 
 // TestTeardown_OriginSeams pins what the origin reconcile's seams read and how they drive a local removal.
 func TestTeardown_OriginSeams(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("A quiet pair is not live and a busy one is", func(t *testing.T) {

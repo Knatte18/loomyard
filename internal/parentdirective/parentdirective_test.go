@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentdirective_test.go covers Directive's three renderings and its missing-stencil error.
 // Every test here reads a seeded temporary stencils directory and spawns nothing.
 
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // banLine is a phrase unique to the operator-ban stencil.
@@ -19,6 +18,7 @@ const banLine = "never the way forward"
 
 // TestDirective_ParentNameRendersParentAndBan covers the non-interactive parent variant: the parent name and the operator-ban line are both present.
 func TestDirective_ParentNameRendersParentAndBan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 
@@ -39,6 +39,7 @@ func TestDirective_ParentNameRendersParentAndBan(t *testing.T) {
 
 // TestDirective_InteractiveOmitsOnlyBan covers the interactive variant: the text equals the non-interactive one minus the ban line.
 func TestDirective_InteractiveOmitsOnlyBan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 
@@ -63,6 +64,7 @@ func TestDirective_InteractiveOmitsOnlyBan(t *testing.T) {
 
 // TestDirective_EmptyNameRendersNoParentVariant covers the no-parent variant: no parent sentence, and the same text whether or not the role is interactive.
 func TestDirective_EmptyNameRendersNoParentVariant(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := stencilkit.Seed(t)
 
@@ -81,6 +83,7 @@ func TestDirective_EmptyNameRendersNoParentVariant(t *testing.T) {
 
 // TestDirective_MissingStencilNamesIt covers a missing stencil: each variant's error names the stencil it could not read.
 func TestDirective_MissingStencilNamesIt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

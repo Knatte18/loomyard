@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergeweftlocal_integration_test.go pins the warp-only merge against a real hubforge pair: the weft
 // is never a merge participant in either verb or either direction, so a weft counterpart that
 // rewrites system-file content, diverges independently, or evolves the same _lym/ path from a shared
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged covers scenario 1: a
@@ -27,6 +26,7 @@ import (
 // alternative way (per the plan) of pinning that the merge record's WeftOutcome was written as
 // up_to_date, since the record itself is deleted by the time a successful call returns.
 func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
@@ -68,6 +68,7 @@ func TestMergeWeftLocal_TargetWeftRewritesStatusManyTimes_WarpAdvancesWeftUnchan
 // content is unchanged after the merge — proving the target's own divergence is never reconciled
 // against the source's, since there is no merge between them to reconcile it.
 func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
@@ -112,6 +113,7 @@ func TestMergeWeftLocal_TargetWeftDivergedStatus_ContentUnchanged(t *testing.T) 
 // would conflict. It must now complete and report Committed true, since the weft is not a merge
 // participant and there is nothing left on that side to conflict.
 func TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, target, commitOnSourceWarp, commitOnSourceWeft := newMergeTargetFixture(t, ".")
@@ -142,6 +144,7 @@ func TestMergeWeftLocal_BothSidesEvolveLymFromSharedBase_NowCompletes(t *testing
 // opposite direction — a parent branch's _lym/ content never reaches the child's weft worktree, and
 // the child's own live _lym/ content is unchanged.
 func TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
@@ -185,6 +188,7 @@ func TestMergeWeftLocal_MergeIn_ParentLymNeverReachesChildWeft(t *testing.T) {
 // warp-side conflict still reaches unifyConflictPaths. MergeIn returns a non-empty Conflicts list
 // naming the warp path, leaving the pair mid-merge for MergeContinue.
 func TestMergeWeftLocal_MergeIn_WarpConflictReachesUnifyConflictPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")

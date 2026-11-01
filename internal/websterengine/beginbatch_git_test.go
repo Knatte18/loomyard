@@ -1,5 +1,3 @@
-//go:build tier1
-
 // beginbatch_git_test.go pins BeginBatch's wiring to the real repository: with no Git told, the batch's start commit is the worktree's actual HEAD.
 // Every other BeginBatch behavior is tested over a fakeGit in beginbatch_test.go.
 
@@ -9,11 +7,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 //testtiming:keep pins a nil Git defaulting to the real repository's HEAD as the start commit; every other begin-batch test runs over a fake git
 func TestBeginBatch_StartSHAIsTheRealHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newBeginFixture(t)
 	repo := newScratchRepo(t)
 	head := gitkit.CommitFile(t, repo, "base.txt", "base", "base commit")

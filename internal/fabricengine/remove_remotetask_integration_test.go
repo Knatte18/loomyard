@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_remotetask_integration_test.go covers Remove's deletion of the pair's task branch on the warp repo's origin under remote:
 // a landed tip goes, an unlanded one stays with a reason (and is then the only copy of its work, the local step having deleted the pushed local branch), a tip that moved after it was observed fails the lease, and without remote the origin copy is untouched.
 //
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // originHasBranch reports whether the bare repo at bare holds branch.
@@ -50,6 +49,7 @@ func squashLand(t *testing.T, h *hubforge.Hub, slug string) {
 }
 
 func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rt-landed"
@@ -76,6 +76,7 @@ func TestRemove_RemoteDeletesSquashLandedTaskBranchOnOrigin(t *testing.T) {
 }
 
 func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rt-unlanded"
@@ -101,6 +102,7 @@ func TestRemove_RemoteKeepsUnlandedTaskBranchOnOrigin(t *testing.T) {
 }
 
 func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rt-noremote"
@@ -120,6 +122,7 @@ func TestRemove_WithoutRemoteLeavesTaskBranchOnOrigin(t *testing.T) {
 }
 
 func TestDeleteTaskBranchAtTip_MovedTipFailsLease(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "rt-lease"

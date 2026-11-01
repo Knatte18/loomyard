@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verify_test.go — tier 0 tests for the Drift-Verify producer over the fake Deps the baseline tests use, a scripted compare and a seat runner that evaluates the agent's gate the way the run loop does.
 
 package driftengine
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeChair is a live chair handle that does nothing.
@@ -233,6 +232,7 @@ func requireDone(f *verifyFixture) {
 
 // TestDriftVerify covers the row's order of checks, its decision halts under each scope, the agent's gate, the halts that record gate_halt_at and the resumes from them, the interrupted agent, and the rulings under scope full.
 func TestDriftVerify(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	partial := ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}

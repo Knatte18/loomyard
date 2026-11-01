@@ -1,5 +1,3 @@
-//go:build tier0
-
 // create_test.go drives the create sequence over fake deps: each refusal with its text, a fresh create running its steps in order with the run start last, and a re-run finishing only the steps whose result is not yet there.
 
 package beamcli
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -114,6 +113,7 @@ func (w *createWorld) deps() createDeps {
 }
 
 func TestCreate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -342,6 +342,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestCreate_StepFailureNamesTheRerun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

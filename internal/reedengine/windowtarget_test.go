@@ -1,5 +1,3 @@
-//go:build tier0
-
 // windowtarget_test.go covers the strand-window seam: which window it resolves for each shape of recorded state and session listing, against the scripted multiplexer fake.
 
 package reedengine
@@ -8,9 +6,12 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStrandWindowTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const session = "worktree"
 	current := exactSessionWindowTarget(session)

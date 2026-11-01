@@ -1,5 +1,3 @@
-//go:build tier0
-
 // coalesce_test.go covers coalescePush's loop-exit contract with scripted step closures: no real
 // git is spawned, only a flock on a t.TempDir() path, so this file stays untagged per the Test Tier
 // Purity Invariant.
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
@@ -30,6 +29,7 @@ import (
 //
 //testtiming:keep coalescePush's loop-exit contract driven only by the step's own progressed return; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		progressCount int
@@ -63,6 +63,7 @@ func TestCoalescePush_LoopsWhileProgressed(t *testing.T) {
 // loop on that call — no further step calls — and coalescePush returns that exact error to the
 // caller.
 func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
+	tiergate.Require(t, 0)
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 	wantErr := errors.New("boom")
 
@@ -87,6 +88,7 @@ func TestCoalescePush_StepErrorAbortsImmediately(t *testing.T) {
 //
 //testtiming:keep coalescePush releasing its absorbing lock before it returns; coverage of its blocks by other tests does not show an assertion of this
 func TestCoalescePush_ReleasesLockOnReturn(t *testing.T) {
+	tiergate.Require(t, 0)
 	lockPath := filepath.Join(t.TempDir(), "push.lock")
 
 	step := func() (bool, error) { return false, nil }
@@ -143,6 +145,7 @@ func newPendingFlagFixture(t *testing.T) pendingFlagFixture {
 // TestPushDeferral_PutsBackTheUnpushedFlags covers the deferral a detached push child installs:
 // every owed side not yet pushed gets its flag back with its path and slugs, a pushed side's flag stays off, and the exit runs once.
 func TestPushDeferral_PutsBackTheUnpushedFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -191,6 +194,7 @@ func TestPushDeferral_PutsBackTheUnpushedFlags(t *testing.T) {
 // and an owed side's flag is only ever taken.
 // It swaps the package's spawn variable and the logger's output, so it is not parallel.
 func TestCoalesceFlagged_PendingFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	tryAcquire := lock.TryAcquireWriteLock
 
 	t.Run("HeldLockLeavesFlagAndRunsNoStep", func(t *testing.T) {

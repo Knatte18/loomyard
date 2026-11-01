@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dotnetfixture_integration_test.go drives `lym gate test` over a real .NET solution under the dotnet scoper, with the real `dotnet` for the shared build and the test run.
 
 package gatecli
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
@@ -32,6 +31,7 @@ const dotnetPackageReferences = `    <PackageReference Include="Microsoft.NET.Te
 // The build leaves an MSBuild node, and perhaps a compiler server, running until the SDK's idle timeout.
 // That is process-global state that outlives the test: `dotnet build-server shutdown` would also end the nodes of other gate runs, so the test leaves them to the idle timeout.
 func TestGateTest_DotnetFixture(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dotnet, err := exec.LookPath("dotnet")

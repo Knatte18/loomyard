@@ -1,5 +1,3 @@
-//go:build tier0
-
 // set_test.go contains table-driven tests for SetValues, covering unknown-key rejection, byte-for-byte round-tripping of tricky values, comment/order preservation, orphan-key preservation, list keys and open maps, and the partial-existing regression case that motivated Card 1's always-mutate-the-template-tree design.
 
 package yamlengine
@@ -12,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -56,6 +55,7 @@ func assertDecodesAsInts(t *testing.T, merged []byte, want map[string]*int) {
 
 // TestSetValues pins what a successful SetValues merges: the requested values land byte-for-byte, every other key keeps its existing value or its template default, template comments and key order survive, an orphan top-level key is preserved whole and reported, list keys and open maps are set whole, a per-name map keeps only the names that differ from the template, and a second call on the merged output reproduces it.
 func TestSetValues(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name          string
@@ -395,6 +395,7 @@ func TestSetValues(t *testing.T) {
 
 // TestSetValues_UnknownKeys pins that an unknown key rejects the whole call: Unknown names it, Merged is nil so no partial mutation is observable, and Known lists what was settable.
 func TestSetValues_UnknownKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -467,6 +468,7 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 
 // TestSetValues_Refusals pins the errors SetValues returns for a value that does not fit its key.
 func TestSetValues_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -608,6 +610,7 @@ func assertMergedKeyValue(t *testing.T, result SetResult, key, want string) {
 
 // TestSetEntries pins whole-entry sets: a new entry is appended, an existing one replaced whole with its key's comment kept, the other entries and comments untouched, and a value that is not a JSON object or an empty name refused.
 func TestSetEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const existing = "# head\nlight:\n  loom: {plan_max_bounces: 1}\n# about docs\ndocs:\n  darn: {writer: sonnet}\n"
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttleengine
 
 import (

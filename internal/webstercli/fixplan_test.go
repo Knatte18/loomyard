@@ -1,5 +1,3 @@
-//go:build tier1
-
 // fixplan_test.go covers the `fix-plan` verb's envelopes and state persistence over the verbs fixture: the no-record refusal, a running snapshot, a done verdict and a dead fixer, each driven through clihelp.Execute.
 
 package webstercli
@@ -10,11 +8,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestFixPlanCmd drives the verb's first call, which spawns the plan fixer and returns a running snapshot, then the second call that attaches to it and reaches a terminal result.
 func TestFixPlanCmd(t *testing.T) {
+	tiergate.Require(t, 1)
 	// spawnWait makes the spawn call return its running snapshot at once.
 	const spawnWait = "1ns"
 

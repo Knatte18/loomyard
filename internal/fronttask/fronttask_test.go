@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fronttask_test.go pins filing, removing and settling a front task over a fake board and a temp record file.
 
 package fronttask
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeBoard is a board of entries with a call log, standing in for the hub's board and the batten cancel.
@@ -126,6 +125,7 @@ func frontTask(slug, project, onLand string, status *string) boardengine.Task {
 }
 
 func TestFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -245,6 +245,7 @@ func TestFile(t *testing.T) {
 }
 
 func TestRemove(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name          string
@@ -377,6 +378,7 @@ func TestRemove(t *testing.T) {
 }
 
 func TestSettle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type step struct {

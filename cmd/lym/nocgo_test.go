@@ -1,5 +1,3 @@
-//go:build tier0
-
 // nocgo_test.go enforces that no Go file of the module imports "C".
 // Under `-trimpath` the Go build cache shares a cgo package's generated files between worktrees, and those files name the source by the absolute path of the checkout that first built it,
 // so `go vet` in another worktree opens that path and fails once the first worktree is torn down.
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cgoImportFailures walks the Go files under opts and returns one failure line per file that imports "C", with the number of files scanned.
@@ -41,6 +40,7 @@ func cgoImportFailures(t *testing.T, opts scankit.Options) (failures []string, s
 //
 //lym:guard
 func TestNoCgo_NoFileOfTheModuleImportsC(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	failures, scanned := cgoImportFailures(t, scankit.Options{})
 	scankit.RequireFloor(t, scanned, 1, "cgo import scan")
@@ -50,6 +50,7 @@ func TestNoCgo_NoFileOfTheModuleImportsC(t *testing.T) {
 }
 
 func TestNoCgo_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // isalive_test.go covers IsAlive, defined identically-named on both platforms, so this file carries no platform constraint.
 // It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control is the package's subject — its tests must spawn"): the "exited child" row spawns a short-lived exec.Command child to obtain a confirmed-dead PID fixture.
 
@@ -10,6 +8,8 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // exitedChildPID spawns a short-lived child, waits for it to exit and returns its now-dead PID.
@@ -34,6 +34,7 @@ func exitedChildPID(t *testing.T) int {
 
 // TestIsAlive asserts IsAlive reports true for the test process's own PID, which is alive for the duration of the test, and false for the PID of a child that has exited.
 func TestIsAlive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

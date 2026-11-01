@@ -1,5 +1,3 @@
-//go:build tier0
-
 package logcapture
 
 import (
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCapture_CapturesWarnButNotInfo(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := Capture(t)
 	logger.Info("quiet-info")
 	logger.Warn("loud-warn")
@@ -25,6 +25,7 @@ func TestCapture_CapturesWarnButNotInfo(t *testing.T) {
 }
 
 func TestCaptureVerbose_CapturesInfo(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := CaptureVerbose(t)
 	logger.Info("verbose-info")
 
@@ -34,6 +35,7 @@ func TestCaptureVerbose_CapturesInfo(t *testing.T) {
 }
 
 func TestBuffer_ResetDiscardsEarlierOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := Capture(t)
 	logger.Warn("before-reset")
 	buf.Reset()
@@ -46,6 +48,7 @@ func TestBuffer_ResetDiscardsEarlierOutput(t *testing.T) {
 }
 
 func TestCapture_RestoresOutputAfterTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	var buf *Buffer
 	t.Run("inner", func(t *testing.T) {
 		buf = CaptureVerbose(t)
@@ -63,6 +66,7 @@ func TestCapture_RestoresOutputAfterTest(t *testing.T) {
 }
 
 func TestCapture_ConcurrentWritesAndReads(t *testing.T) {
+	tiergate.Require(t, 0)
 	buf := Capture(t)
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

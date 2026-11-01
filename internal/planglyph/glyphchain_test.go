@@ -1,5 +1,3 @@
-//go:build tier0
-
 // glyphchain_test.go drives every member shape class real plans name through the glyph chain's plan gate against the committed fixture module in testdata/glyphchain: parse, the resolve status policy, the Create inversion, handle canonicalization and the on-disk rewrite.
 // The legs here read files and spawn no process; the legs that need a real commit's delta live in glyphchain_integration_test.go beside them.
 
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGlyphChain_PlanGate runs each shape row through its legs against its own fixture copy and plan directory, and asserts the exact finding set of every plan.
 func TestGlyphChain_PlanGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, row := range shapeRows() {
@@ -108,6 +108,7 @@ func TestGlyphChain_PlanGate(t *testing.T) {
 
 // TestGlyphChain_CrossCard pins the cross-card verdicts: a member and its file, or either and its package self glyph, or one file, on different cards validate clean, and so does a Create handle no other card references.
 func TestGlyphChain_CrossCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -147,6 +148,7 @@ func TestGlyphChain_CrossCard(t *testing.T) {
 // TestGlyphChain_CSharp runs csharp plans over a fixture copy through both gates and asserts the exact finding set of each, so a C# glyph parses, resolves and names a handle through its own alphabet.
 // The Go rows of the other chain tests keep their findings with csharp/Renderer.cs in the fixture, since no Go unit of it spells the namespace Glyphchain.Sharp.
 func TestGlyphChain_CSharp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const namespace = "Glyphchain.Sharp"
@@ -441,6 +443,7 @@ func assertSingleFindingDetails(t *testing.T, source string, findings []Finding,
 
 // TestGlyphChain_RedundantFile pins redundant-file-target: a file beside a member that resolves into it is flagged by ValidateFormat and not by ValidateDispatch, and a file beside a member of another file is clean.
 func TestGlyphChain_RedundantFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -520,6 +523,7 @@ func TestGlyphChain_RedundantFile(t *testing.T) {
 
 // TestGlyphChain_ResignScenarios pins the arrow's verdicts: the mismatch verdicts, which every gate reports, resign-interface-method on an interface method declared once per build-constraint set, which only the plan gate reports, and that one member re-signed on two cards validates clean and leaves both card files untouched.
 func TestGlyphChain_ResignScenarios(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -719,6 +723,7 @@ func TestGlyphChain_ResignScenarios(t *testing.T) {
 
 // TestGlyphChain_FuncNamedInterfaceMethod pins that an interface method whose name opens with "func" is still told apart from a declared method: its arrow reports resign-interface-method, and its Rename canonicalizes.
 func TestGlyphChain_FuncNamedInterfaceMethod(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const member = "shapes#FuncNamed.funcLike"
@@ -767,6 +772,7 @@ const skippedCaller = "package caller\n\nimport \"example.com/glyphchain/callees
 // The untagged tier's type loader always fails, so the rows pin that the gate then answers with the scan's findings and no error.
 // One row fails the load at a slotted index's acquire instead, over an unusable gate.yaml, and pins the same answer with no wait record left.
 func TestGlyphChain_CallerCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

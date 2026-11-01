@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parse_test.go covers ParsePlan's overview-parsing behavior (frontmatter decoding, Card Index
 // parsing, framing extraction), its per-card file-parsing behavior (the title heading, the
 // format-4 one-or-more type-label model and its per-label TargetGroups, Uses:/Intent:/
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writePlanFiles writes every entry of files (keyed by filename, e.g.
@@ -66,6 +65,7 @@ func minimalCardFile(number int, name, editPath string) string {
 //
 //testtiming:keep pins the overview's frontmatter, framing and Card Index fields, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Overview(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type wantCard struct {
@@ -161,6 +161,7 @@ func TestParsePlan_Overview(t *testing.T) {
 }
 
 func TestParsePlan_Overview_Errors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -249,6 +250,7 @@ func mapReader(files map[string]string) func(string) ([]byte, error) {
 
 //testtiming:keep pins ParsePlanFrom's equality with ParsePlan and its card-file-not-found error, which its covering tests do not assert
 func TestParsePlanFrom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("matches ParsePlan over the same files", func(t *testing.T) {
@@ -287,6 +289,7 @@ func TestParsePlanFrom(t *testing.T) {
 }
 
 func TestParsePlan_CardHeading(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("em dash separator", func(t *testing.T) {
@@ -341,6 +344,7 @@ func TestParsePlan_CardHeading(t *testing.T) {
 // TestParsePlan_CardFields covers how one card file's body parses into its Card, each row pinning one field family:
 // the one-or-more type-label model and its per-label TargetGroups (two recognized labels on a card, even the same label twice, is the supported shape; zero labels stays a defect card-type-missing catches); a "**Uses:**" label present with no bullets (a non-nil zero-length slice, distinct from an absent label); the ImpactSummary inline remainder plus trailing lines; the retired labels routed to RetiredLabels while terminating the preceding Intent prose; the Rename and Create grammars, where a malformed bullet reaches RenameRaw or CreateRaw rather than becoming a parse error and the arrow form reaches its matcher with its backticks intact; a handle-shaped target never picking up a root: prefix; and the optional Commit and Verify fields.
 func TestParsePlan_CardFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const rootedOverview = `---
@@ -689,6 +693,7 @@ Framing paragraph.
 // (e.g. "**Edit:** `foo.go`") is a fail-loud ParsePlan error, never silently read as an empty
 // field — for both a type label and "**Uses:**".
 func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -725,6 +730,7 @@ func TestParsePlan_InlineFieldValueFailsLoud(t *testing.T) {
 //
 //testtiming:keep pins SourcePath as the bare worktree-relative token without the absolute plan directory, which TestParsePlan_CardFields does not assert
 func TestParsePlan_Card_SourcePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const overview = `---
@@ -779,6 +785,7 @@ func goodPlanDir() string {
 //
 //testtiming:keep pins the full field-by-field round-trip of the golden fixture, which TestValidate_CardNumbering does not assert
 func TestParsePlan_GoldenFixture(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan, err := planparser.ParsePlan(goodPlanDir())
@@ -1010,6 +1017,7 @@ func TestParsePlan_GoldenFixture(t *testing.T) {
 //
 //testtiming:keep pins the language: key's effect on Plan.Language, canonicalization and SurfaceRefs, which its covering tests do not assert
 func TestParsePlan_Language(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1059,6 +1067,7 @@ func TestParsePlan_Language(t *testing.T) {
 
 // TestParsePlan_FirstCard pins how the optional first_card overview key parses, including that a non-integer value reaches validation instead of failing the strict decode.
 func TestParsePlan_FirstCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1095,6 +1104,7 @@ func TestParsePlan_FirstCard(t *testing.T) {
 
 // TestOverviewWithoutCardIndex covers the overview comparison form webster hashes: an index change leaves the output equal, a change anywhere else changes it, an index at the end of the file is cut to the end, and a missing heading or an unterminated frontmatter fence errors.
 func TestOverviewWithoutCardIndex(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const overview = "---\nformat: 5\napproved: true\n---\n\n# Plan: x\n\nFraming.\n\n## Card Index\n\n1 — one — first\n\n## Shared Decisions\n\nDecided.\n\n## Rename mechanic\n\nNone.\n\n## verify:\n\ngo test ./...\n"

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // archive_integration_test.go covers archiveWeftTip: the archive tag lands on the weft origin at the branch tip, the call is idempotent on an unchanged tip, and each degraded shape — no origin, an unreachable origin, a branch only on origin, a clashing tag — answers as the helper documents.
 //
 // Every hub is built through hubforge.CopyHub, with the hub's RecordsBare as the weft origin.
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // tagTargetAt returns the SHA the tag names in the repo at repoRoot, or "" when the tag is absent.
@@ -49,6 +48,7 @@ func countKind(rec *fabricengine.Mutations, kind fabricengine.Kind) int {
 // The degraded shapes that break the shared origin — no origin, an unreachable origin — keep their
 // own hubs in the tests below.
 func TestArchiveWeftTip(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -147,6 +147,7 @@ func TestArchiveWeftTip(t *testing.T) {
 //
 //testtiming:keep a weft repo with no origin giving a skip reason, no tag and no error; coverage of its blocks by other tests does not show an assertion of this
 func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const branch = "archive-no-origin-weft"
@@ -178,6 +179,7 @@ func TestArchiveWeftTip_NoOriginSkips(t *testing.T) {
 //
 //testtiming:keep a configured but unreachable origin giving an error naming the tag and no tag on the real remote; coverage of its blocks by other tests does not show an assertion of this
 func TestArchiveWeftTip_UnreachableOriginErrors(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "archive-unreachable"

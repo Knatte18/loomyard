@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dobbytrace_integration_test.go pins that each exit `lym beam dobby` takes before dobbyengine.Run leaves a line in the dobby's log and, after a re-exec, a notice, over a hubforge hub.
 
 package beamcli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // postedNotice is one call of the notify seam.
@@ -27,6 +26,7 @@ type postedNotice struct {
 }
 
 func TestRunDobbyWith_TracesEachExitBeforeRun(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

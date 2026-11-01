@@ -1,5 +1,3 @@
-//go:build tier1
-
 // entersession_integration_test.go pins that the watchdog daemon's per-session engine drives the tmux binary the daemon was told, against a hub fixture and with no tmux server.
 
 package reedcli
@@ -14,10 +12,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestEnterSession_DrivesTheToldTmux seeds a worktree config naming one tmux path and watchdog: off, then asserts enterSession's engine drives a different told path and starts no watcher.
 func TestEnterSession_DrivesTheToldTmux(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()

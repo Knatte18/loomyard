@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_empty_anchor_integration_test.go pins Reconcile's refusal to wire a pair whose own lym-anchor marker is present but empty.
 // lymcwd treats an empty marker as absent and answers the "." anchor.
 // Wiring such a pair on a subpath-anchored hub laid a full SECOND junction set at the repo root beside the live set at the real anchor.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pairResultFor returns the reconcile outcome of the warp worktree called slug, failing the test when the pass reported none.
@@ -38,6 +37,7 @@ func pairResultFor(t *testing.T, h *hubforge.Hub, res fabricengine.ReconcileResu
 
 // TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot truncates one worktree's own marker and asserts that pair alone fails, naming the file and the way forward.
 func TestReconcile_RefusesEmptyAnchorMarkerInsteadOfWiringAtTheRoot(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

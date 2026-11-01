@@ -1,5 +1,3 @@
-//go:build tier0
-
 // selfreport_test.go is selfreportengine's own test suite, covering CreateIssue directly through
 // the NewGitHubClient seam.
 // The package had no tests of its own before this batch -- every case previously lived one layer up
@@ -25,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/githubclient"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // requestCapture describes one HTTP request CreateIssue actually sent: the
@@ -102,6 +101,7 @@ func installFailingGitHubClientFactory(t *testing.T, err error) {
 
 // TestDefaultLabels verifies that DefaultLabels returns exactly the single-element "bug" default the automatic and manual filing paths share, and that each call returns its own slice, so mutating one call's result cannot corrupt the default seen by the next caller.
 func TestDefaultLabels(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	first := DefaultLabels()
@@ -120,6 +120,7 @@ func TestDefaultLabels(t *testing.T) {
 
 // TestCreateIssue_Success drives the successful path with and without a body: the returned url and number match the server's typed response, and the request sent carries the expected method, path, title, labels in order and, only when a body was given, the "body" field.
 func TestCreateIssue_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	const issueURL = "https://github.com/Knatte18/loomyard/issues/42"
 	tests := []struct {
 		name string
@@ -178,6 +179,7 @@ func TestCreateIssue_Success(t *testing.T) {
 // NewGitHubClient factory itself fails, CreateIssue must surface a typed error rather than
 // proceeding with a nil client.
 func TestCreateIssue_TokenNotResolvable(t *testing.T) {
+	tiergate.Require(t, 0)
 	installFailingGitHubClientFactory(t, githubclient.ErrTokenUnresolvable)
 	buf := logcapture.Capture(t)
 
@@ -206,6 +208,7 @@ func TestCreateIssue_TokenNotResolvable(t *testing.T) {
 // connection), asserting it is neither a token-resolution failure nor an API rejection -- a network
 // problem calls for different operator action than either.
 func TestCreateIssue_NetworkFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	installGitHubClientPointedAtDeadAddress(t)
 
 	url, number, err := CreateIssue("t", nil, []string{"bug"})
@@ -228,6 +231,7 @@ func TestCreateIssue_NetworkFailure(t *testing.T) {
 // TestCreateIssue_NonSuccessResponse covers a non-2xx GitHub response, asserting the returned error
 // surfaces the response's message and is distinct from both other error cases.
 func TestCreateIssue_NonSuccessResponse(t *testing.T) {
+	tiergate.Require(t, 0)
 	const errMessage = "Validation Failed"
 	var captured []requestCapture
 	server := newIssueServer(t, http.StatusUnprocessableEntity, `{"message":"`+errMessage+`"}`, &captured)

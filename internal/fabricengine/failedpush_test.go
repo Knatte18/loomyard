@@ -1,5 +1,3 @@
-//go:build tier0
-
 // failedpush_test.go covers the failed-push record store, its once-per-episode notice and its way-forward lines.
 // It is an external test package, and the notifier is process-global, so every test here that installs one runs without t.Parallel.
 
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func composedPushLine(f fabricengine.FailedPush) string {
@@ -36,6 +35,7 @@ func codePushFailure() fabricengine.FailedPush {
 //
 // It runs without t.Parallel: the notifier it installs is process-global.
 func TestFailedPushRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
 	t.Run("FirstFailureMailsOnceAndLaterOnesOnlyUpdate", func(t *testing.T) {

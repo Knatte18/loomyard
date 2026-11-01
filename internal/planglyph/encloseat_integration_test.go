@@ -1,5 +1,3 @@
-//go:build tier1
-
 // encloseat_integration_test.go covers EncloseAt against a real git fixture repository, reading files committed at a revision through quarry's git layer.
 
 package planglyph
@@ -9,10 +7,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/quarry"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestEncloseAt commits one Go file holding an import and a function, and asserts how each kind of location answers at that commit.
 func TestEncloseAt(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	f := newDeltaFixtureRepo(t)
 	rev := f.writeAndCommit("sub/a.go", "package sub\n\nimport \"fmt\"\n\nfunc Foo() { fmt.Println() }\n", "add Foo")

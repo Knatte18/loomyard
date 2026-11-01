@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_staterecovery_test.go drives the R5 review's state-loss/corruption recovery findings at the CLI seam a real operator uses, against a real tmux server, as the one TestSmokeStateRecovery scenario: a reed.json that outlives the session incarnation it was written for (R5-F2), a worktree renamed while its session is up (R5-F5), and a .lym directory copied between two worktrees of one hub (R5-F4).
 // All three are ordinary operator/environment events — a backup restore, a `mv`, a `cp -r` — not adversarial misuse, which is why they belong in the live suite rather than only in hermetic unit tests.
 // Each also has a hermetic counterpart pinning the specific decision it rests on (generation_test.go, strand_test.go); these pin the OUTCOME an operator would actually see.
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -113,6 +112,7 @@ func assertDiagnosticVerbsRefuseAndDepositNothing(t *testing.T, tmuxPath, cwd, s
 // The steps run serially in a fixed order; each tears down every session it brought up, so the next step starts with no session on the hub's shared tmux server and no state in the prime worktree.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and server.
 func TestSmokeStateRecovery(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 

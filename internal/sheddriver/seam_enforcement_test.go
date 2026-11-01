@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces PATTERN-shed-driver's import seam and this package's Told-Geometry Invariant membership:
 // production code in internal/sheddriver takes every path from its caller and reaches recipe behaviour only through the seams its arming module fills.
 
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // sheddriverAllowedImports are the only non-stdlib import paths production code in this package may use.
@@ -52,6 +51,7 @@ func sheddriverDeniedImport(importPath string) bool {
 
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, and separately names any production import of a denied package.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/sheddriver", sheddriverAllowedImports...)
 
 	var deniedFound []string

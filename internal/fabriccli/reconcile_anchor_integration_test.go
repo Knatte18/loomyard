@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reconcile_anchor_integration_test.go drives `lym fabric reconcile` from a pair whose anchor differs from the prime's.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -14,11 +12,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_ReconcileFromAPairAtAnotherAnchor asserts a reconcile run from a pair at another anchor reseeds a missing hub-wide file from the prime's own base directory.
 // The prime sits at "." and holds a non-template unit of the board module; a read at <prime>/sub finds nothing and would seed the template only.
 func TestRunCLI_ReconcileFromAPairAtAnotherAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "anchored-pair"

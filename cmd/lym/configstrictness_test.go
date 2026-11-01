@@ -1,5 +1,3 @@
-//go:build tier0
-
 // configstrictness_test.go enforces the Config Strictness Invariant: a pinned set of
 // module package directories call internal/configengine's degrading entry point,
 // configengine.LoadOrTemplate, and a second pinned set calls its strict entry point,
@@ -40,6 +38,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // configStrictnessDegradingSet is the pinned set of module-relative, slash-separated package directories that call configengine.LoadOrTemplate -- the degrading loading policy, where an absent _lym/ directory or absent config file resolves the caller's embedded template instead of erroring.
@@ -92,6 +91,7 @@ const configStrictnessMinScannedFiles = 50
 //
 //lym:guard
 func TestConfigStrictness_PinnedCallSiteSets(t *testing.T) {
+	tiergate.Require(t, 0)
 	collectedDegrading := map[string]bool{}
 	collectedStrict := map[string]bool{}
 

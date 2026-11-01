@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bodyfile_test.go covers applyBodyFile with temp files and in-memory stdin only.
 
 package boardcli
@@ -10,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeBodyFile(t *testing.T, content string) string {
@@ -23,6 +23,7 @@ func writeBodyFile(t *testing.T, content string) string {
 
 // TestApplyBodyFile asserts applyBodyFile sets the body from a file, from stdin and from an empty file, and refuses a missing file, a body already in the payload and stdin claimed for both payload and body.
 func TestApplyBodyFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	str := func(s string) *string { return &s }
 	tests := []struct {

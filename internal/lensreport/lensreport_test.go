@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lensreport_test.go pins the lens report path pattern and the report file name test.
 
 package lensreport_test
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lensreport"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPathPattern(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -33,6 +33,7 @@ func TestPathPattern(t *testing.T) {
 }
 
 func TestIsReportName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // boltreplayers_integration_test.go proves the registry of Bolt replayers: what a replay, the ended-set read and the owner read do with no replayer or no run ledger registered, and how a replayer other than the board's is set aside.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeReplayer is a Bolt replayer named fake that claims `notes/fake.json`, writes the commit's bytes of it and reports one loss.
@@ -49,6 +48,7 @@ func (emptyEntryLedger) Apply(fabricengine.ReplayRequest) (fabricengine.ReplayRe
 }
 
 func TestBoltReplayers(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Not parallel: it empties and fills the process-wide registry of Bolt replayers.
 	boardkit.InstallReplay(t)
 

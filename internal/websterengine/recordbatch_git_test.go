@@ -1,5 +1,3 @@
-//go:build tier1
-
 // recordbatch_git_test.go exercises RecordBatch's post-batch checks over a real scratch git repository:
 // the delta of the batch's own commits, which quarry computes from git's blobs, drives handle binding, the scope guard and drift detection,
 // so these tests need real commits.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -98,6 +97,7 @@ func seedDriftPlanDir(t *testing.T, uses []string) string {
 // TestRecordBatch_PostBatchChecks runs every case whose outcome depends on the real delta of the batch's commits over one scratch repository, one step per case.
 // Each step starts by restarting the repository from the work commit, so no step relies on another's state.
 func TestRecordBatch_PostBatchChecks(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	s := newRecordScenario(t)
 

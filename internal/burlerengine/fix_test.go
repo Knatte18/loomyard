@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fix_test.go tables the fix half (Engine.Fix, ProbeFix, ResumeFix) against the same-package fakeShuttle.
 // It covers the one-seat table's shape, a spawn for a review holding only a NIT finding, the empty-review skip, routed decision findings, a failing gate spawning the fixer with the gate findings as its work, a gate closure error spawning nothing, ErrReviewChanged before and after the fixer, a failed fixer gate passing through, probe and resume, and what the fixer's files hold.
 
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -88,6 +87,7 @@ func fixInstructionFiles(t *testing.T, root string) map[string]string {
 // The single row's fix step equals the fix stencil with the self-check marker removed and has no lenses;
 // the twill row's forks, empty seat model key, self-check part and lenses are the fixer fan's.
 func TestEngine_Fix_TableShapeAndFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, twill := range []bool{false, true} {
@@ -233,6 +233,7 @@ func checkFixTableShapeAndFiles(t *testing.T, twill bool) {
 
 // TestEngine_Fix_Outcomes table-drives Fix over the empty-review skip, a failing gate, a gate closure error, ErrReviewChanged on either side of the fixer, a fixer gate that failed and every non-done outcome and start and stop failure.
 func TestEngine_Fix_Outcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -419,6 +420,7 @@ func TestEngine_Fix_Outcomes(t *testing.T) {
 // TestEngine_ProbeFix_And_ResumeFix proves ProbeFix classifies the fixer as live, done or gone from the fake's runs and the fixer report, names the report as the probed output and starts nothing,
 // and that ResumeFix attaches to a live fixer and concludes it against the digest, refusing a half that is not live and one not taken from a probe.
 func TestEngine_ProbeFix_And_ResumeFix(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}

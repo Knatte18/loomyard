@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's told-geometry membership: production code in internal/reportengine imports only the packages whose records it reads, and never internal/lymcwd.
 
 package reportengine
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
@@ -34,5 +33,6 @@ var allowedImports = []string{
 
 // TestToldGeometryInvariant_AllowlistOnly verifies the import allowlist, which excludes internal/lymcwd, and that no allowed path goes unused.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/reportengine", allowedImports...)
 }

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanup_integration_test.go drives "lym cleanup" through RunCLIIn over a hubforge hub seeded with one leftover for every segment: the prime-only refusal, the dry run that lists them all and the apply that removes them.
 
 package cleanupcli
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeAged(t *testing.T, path, content string, age time.Duration) {
@@ -53,6 +52,7 @@ func exists(path string) bool {
 }
 
 func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLeftover(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 

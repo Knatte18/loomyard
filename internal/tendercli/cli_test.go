@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_test.go drives `lym tender pause`, `status`, `resume` and `revive` through the cobra commands over a hubforge hub with one pair and no agents running, and the network gate installer over the same hub.
 // No test but TestNewShuttlePair_TellsTheHubsPauseGeometry calls t.Parallel: each sets the strand-name variable or reads the process-wide network gate.
 
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const pairSlug = hubforge.TemplatePairSlug
@@ -68,6 +67,7 @@ func report(t *testing.T, env envelope.Envelope, key string) map[string]any {
 }
 
 func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
 	pair := h.PairCodeWorktree(pairSlug)
@@ -111,6 +111,7 @@ func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
 }
 
 func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
 	prime := h.PrimeWorktree()
@@ -207,6 +208,7 @@ func TestPauseAndResume_WriteLiftAndRefuseOverTheHub(t *testing.T) {
 }
 
 func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
 	var ends []string
@@ -250,6 +252,7 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 }
 
 func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := newHub(t)
 	prime := h.PrimeWorktree()
 	agent, err := agentname.Format("lym", pairSlug, "worker")
@@ -312,6 +315,7 @@ func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 }
 
 func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "")
 	h := newHub(t)
 	allAlive := func(int, string) bool { return true }
@@ -423,6 +427,7 @@ func ptr(s string) *string {
 // TestNewShuttlePair_TellsTheHubsPauseGeometry pins that a pair's runner reads the hub's pause record with no slug of its own, so each send judges its target by the target's strand name.
 // It sets no process-wide state, so it runs parallel beside the file's serial tests.
 func TestNewShuttlePair_TellsTheHubsPauseGeometry(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := newHub(t)
 	location, err := lymcwd.ResolveWorktree(h.PairCodeWorktree(pairSlug))

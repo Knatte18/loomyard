@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mergepaths_test.go is table-driven, pure-logic (Tier 1) coverage for unifyConflictPaths' mapping
 // rule: warp pass-through, weft identity mapping at "." and a subpath anchor, the unmappable
 // classes (outside-wired-set and both-sides-collision), sort order, and the empty-never-nil result.
@@ -10,9 +8,12 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestMergePaths_UnifyConflictPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		warpConflicts  []string
@@ -152,6 +153,7 @@ func TestMergePaths_UnifyConflictPaths(t *testing.T) {
 //   - blanket-replacing every backslash regardless of the OS separator → the PosixBackslashInName
 //     rows start matching a component boundary that does not exist.
 func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
+	tiergate.Require(t, 0)
 	wired := []string{"_lym", ".lym"}
 
 	tests := []struct {
@@ -243,6 +245,7 @@ func TestMergePaths_WeftPathVisibleAcrossSeparators(t *testing.T) {
 //
 //testtiming:keep weftPathVisible being wired to its separator-explicit form, by source inspection; coverage of its blocks by other tests does not show an assertion of this
 func TestMergePaths_WeftPathVisibleUsesTheOSSeparator(t *testing.T) {
+	tiergate.Require(t, 0)
 	source, err := os.ReadFile("mergepaths.go")
 	if err != nil {
 		t.Fatalf("ReadFile(mergepaths.go) error = %v", err)

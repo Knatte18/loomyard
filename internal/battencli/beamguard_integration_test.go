@@ -1,5 +1,3 @@
-//go:build tier1
-
 // beamguard_integration_test.go drives the prime-or-beam guard over a hubforge hub with a marked beam: the guard's verdicts, the batten verbs run through a beam's anchor, and the self-pair refusals.
 
 package battencli
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // beamHub returns a hub with a marked beam "b", a member "m" forked from it, and a pair "p" forked from the prime, with the prime's worktree name.
@@ -46,6 +45,7 @@ func resolvePair(t *testing.T, h *hubforge.Hub, slug string) *lymcwd.Location {
 }
 
 func TestResolveBattenPrime(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)
@@ -150,6 +150,7 @@ func TestResolveBattenPrime(t *testing.T) {
 }
 
 func TestVerbs_RunFromABeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)
@@ -220,6 +221,7 @@ func TestVerbs_RunFromABeam(t *testing.T) {
 }
 
 func TestCancelCmd_RemoveRefusesFromInsideTheBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, primeName := beamHub(t)

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // scratchlink_integration_test.go covers the scratch step of fabric wiring against real hubs.
 // It pins the root `.scratch` becoming a link into the weft-side `.lym`, the adoption of a real directory, and the shapes the step leaves as found.
 // It also pins the step's reports when a seam refuses it after its classification.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const scratchNoteName = "note.txt"
@@ -306,6 +305,7 @@ var scratchShapeCases = []scratchShapeCase{
 // TestWireJunctions_ScratchLink pins the scratch step through WireJunctionsWith.
 // A link is created or kept, a real directory is adopted, and every leave shape is left as found without failing wiring.
 func TestWireJunctions_ScratchLink(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "backend"} {
@@ -476,6 +476,7 @@ func TestWireJunctions_ScratchLink(t *testing.T) {
 // Wiring still returns nil and the warn names the way forward.
 // It is serial: it sets package seams and captures the logger.
 func TestWireJunctions_ScratchLinkRefusedAfterClassify(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Each row builds and arranges its hub before it sets a seam, so the template build never fires one.
 	t.Run("RealDirectoryRecreatedBeforeTheLink", func(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -688,6 +689,7 @@ func mutationIndexes(record fabricengine.Mutations, kind fabricengine.Kind, targ
 // TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval pins Remove unlinking the root `.scratch` link through the gate ahead of the warp worktree removal.
 // It claims only a link into the pair's weft worktree and leaves every other root entry to the worktree removal.
 func TestRemove_UnlinksScratchLinkBeforeWorktreeRemoval(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("WiredLink", func(t *testing.T) {
@@ -796,6 +798,7 @@ func linkAnchoredScratch(t *testing.T, l *lymcwd.Location, slug string) string {
 // TestScratchNameAtSubpathAnchor pins that a link named `.scratch` inside a subpath anchor is an ordinary anchored junction.
 // Only the root `.scratch` link is the scratch step's; Unwire and Remove must still remove the anchored one.
 func TestScratchNameAtSubpathAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("UnwireRemovesItAndKeepsTheRootLink", func(t *testing.T) {
@@ -874,6 +877,7 @@ func addRawWarpWorktree(t *testing.T, h *hubforge.Hub, slug string, realLymDir b
 
 // TestReconcile_ScratchLink pins the scratch step under Reconcile: it converges every managed pair, reports in the pair's Detail without changing Action or Error, and creates nothing for a pair that never reaches the repair.
 func TestReconcile_ScratchLink(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("RealDirectoryAdoptedOnAHealthyPair", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // segmentcolor_test.go pins the palette, its tmux mapping, color parsing and the closed segment and palette sets.
 
 package segmentcolor
@@ -8,9 +6,12 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTmuxColor_MapsEveryPaletteColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	rows := []struct {
 		color Color
@@ -36,6 +37,7 @@ func TestTmuxColor_MapsEveryPaletteColor(t *testing.T) {
 }
 
 func TestParseColor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, c := range Palette() {
 		got, err := ParseColor(string(c))
@@ -57,6 +59,7 @@ func TestParseColor(t *testing.T) {
 }
 
 func TestClosedSets(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	wantSegments := []Segment{"coordinator", "discussion", "plan", "webster", "review", "describe", "landing", "darn", "merge"}
 	if got := Segments(); !slices.Equal(got, wantSegments) {

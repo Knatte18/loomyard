@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verifyfixer_test.go exercises the cold verify-gate fixer's spawn-or-attach and bounded wait over the recover-batch fixture: a real *shuttleengine.Runner over the shuttlefake Reed and Engine, and a fake Clock.
 
 package websterengine_test
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -55,6 +54,7 @@ func newFixVerifyFixture(t *testing.T, withReport bool) (*recoverFixture, webste
 
 // TestFixVerifySpawnOrAttach pins the refusal without a report, the spawn's spec and record, the attach to a running fixer and the fresh spawn after a terminal one.
 func TestFixVerifySpawnOrAttach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("no verify-gate report refuses and spawns nothing", func(t *testing.T) {
@@ -196,6 +196,7 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 
 // TestFixVerifyAwait pins the wait's classification and what each outcome stops, reads and removes.
 func TestFixVerifyAwait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

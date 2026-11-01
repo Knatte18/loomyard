@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verifygate_integration_test.go drives the verify gate's closure over a real scratch repository:
 // the clean-tree check at a done arrival, and the fixer commit check through the real fixCommitRejection.
 // It reuses the package's hermetic TestMain (testmain_test.go) and gitwrap_test.go's merge helpers.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -100,6 +99,7 @@ func (r verifyGateRepo) verifyRan() bool {
 }
 
 func TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	if err := os.WriteFile(filepath.Join(r.geom.WorktreeRoot, "loose.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write loose file: %v", err)
@@ -122,6 +122,7 @@ func TestVerifyGate_DirtyTreeFailsWithPathsAndRunsNoVerify(t *testing.T) {
 }
 
 func TestVerifyGate_CleanTreePassesAndRecordsTheTree(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
 
@@ -156,6 +157,7 @@ func failFirstThenFixerMerge(t *testing.T, r verifyGateRepo, gate shuttleengine.
 }
 
 func TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "", testFixPromptPath)
 
@@ -175,6 +177,7 @@ func TestVerifyGate_MergeAboveTheFixBaseOtherThanACleanParentMergeFailsTerminal(
 }
 
 func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	gate, _ := NewVerifyGate(r.geom, 3, nil, gitwrapParent, "", testFixPromptPath)
 
@@ -193,6 +196,7 @@ func TestVerifyGate_CleanParentMergeAboveTheFixBasePasses(t *testing.T) {
 // TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun pins that the gate tells geom.VerifyHold to every verify it runs:
 // a verify that fails on its first run and passes on the rerun waits out the pause once before each.
 func TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	failedOnce := filepath.ToSlash(filepath.Join(t.TempDir(), "failed-once"))
 	config := strings.Replace(verifyGateConfig(r.sentinel),
@@ -225,6 +229,7 @@ func TestVerifyGate_TellsTheGeometryHoldOnTheFirstRunAndTheRerun(t *testing.T) {
 }
 
 func TestVerifyGate_NoParentBranchAcceptsNoMerge(t *testing.T) {
+	tiergate.Require(t, 1)
 	r := newVerifyGateRepo(t)
 	gate, _ := NewVerifyGate(r.geom, 3, nil, nil, "", testFixPromptPath)
 

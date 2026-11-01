@@ -1,5 +1,3 @@
-//go:build tier0
-
 // command_test.go covers CommandProducer's per-call order over fake lookups and a recording runner: the command read, the placeholder quoting, the outcome mapping and the refusals that stop the run.
 
 package shedadapters
@@ -13,12 +11,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
 
 // TestCommandProducer table-drives Call.
 // It stays serial: logcapture.Capture redirects the process-wide logger, which each row's Warn assertions read.
 func TestCommandProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		rerun      = "lym batten run slug-one"
 		logPath    = "/hub/logs/Open-Window.log"

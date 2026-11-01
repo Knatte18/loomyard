@@ -1,5 +1,3 @@
-//go:build tier0
-
 // raddle_guard_test.go is a guard to ensure that internal/lymcwd never discovers or enumerates the
 // _raddle directory.
 // This documents that lymcwd never scans the worktree to mirror dirs — a future nested/ignored
@@ -15,11 +13,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRaddleGuard verifies that no production source file in internal/lymcwd contains the literal
 // substring _raddle.
 func TestRaddleGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("tree-scan", func(t *testing.T) {
 		// Predicate: returns true if the bytes contain _raddle.
 		containsRaddle := func(data []byte) bool {

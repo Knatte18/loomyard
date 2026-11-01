@@ -1,5 +1,3 @@
-//go:build tier0
-
 // record_test.go — tier 0 unit tests for the Sampler-Session record and the entry stamp.
 
 package samplerengine
@@ -10,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRecord covers an absent file reading not found, an update on an absent file, a second update keeping the fields it does not touch, and a file with an unknown key.
 func TestRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("absent file reads not found", func(t *testing.T) {
@@ -63,6 +63,7 @@ func TestRecord(t *testing.T) {
 
 // TestEntryStamp covers which history entries count as the run entering the row, and which leave the stamp unchanged.
 func TestEntryStamp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const row = "Sampler-Session"

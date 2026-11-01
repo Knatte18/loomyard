@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rubric_test.go pins the marker allowlist the two Bouncer stencils' {{.rubric}} interpolation depends on for every rubric:
 // a rubric may carry the specs_dir, stencils_dir, webster_record, gate_tiers and amendment markers and nothing else, and only the Plan-Review rubric renders the webster run record and the gate tiers, while every rubric renders the amendment note -- the old no-marker-at-all rule relaxed to the same shape rather than deleted, because a third marker is still invisible to the fill at the value-interpolation site and must still fail loudly.
 // It additionally pins that the markers render successfully through the production render helper, that the rubrics carrying the specs_dir marker render its value, and that both review rubrics name their writer's deployed stencil path.
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rubricMarkerAllowlist is the complete set of top-level stencil markers a rubric may carry: only specs_dir, stencils_dir, webster_record, gate_tiers, amendment and review_base, which internal/shedadapters.ReadRubric fills as the rubric's own template at read time.
@@ -29,6 +28,7 @@ var rubricMarkerAllowlist = map[string]bool{"specs_dir": true, "stencils_dir": t
 //   - a review rubric's rendered text names its writer stencil's deployed path as the registry lays it out, so the named path is pinned to stencilstore.Path rather than to a hand-typed string.
 //     The comparison is slash-normalised because the rubric text joins with "/" while the rendered prefix uses the OS separator.
 func TestLoomRubrics(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

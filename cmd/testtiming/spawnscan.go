@@ -2,7 +2,6 @@ package main
 
 import (
 	"go/ast"
-	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"os"
@@ -10,7 +9,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/Knatte18/loomyard/internal/impactset"
 )
+
+// tmuxTierNumber is the tier whose tests start tmux servers, and so run lym in reed panes.
+const tmuxTierNumber = 2
 
 // spawnVerdict is the static classification of one test for the redundancy mode.
 // A test whose verdict has either field set is never a redundancy candidate:
@@ -30,8 +34,8 @@ type funcInfo struct {
 	decl     *ast.FuncDecl
 	imports  map[string]string // file-level import name -> import path
 	isTest   bool              // declared in a _test.go file
-	tmuxTier bool              // the file's //go:build line mentions the tier2 tag
-	tagged   bool              // the file's //go:build line mentions a tier tag other than tier0
+	tmuxTier bool              // the file's tier, as impactset.FileTier reads it, is tier2
+	tagged   bool              // the file's tier is above tier0
 }
 
 // pkgSource indexes the declarations of one directory's Go sources.
@@ -77,7 +81,8 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 		if err != nil {
 			return nil, err
 		}
-		tagged, tmuxTier := fileTier(file)
+		tier := impactset.FileTier(file)
+		tagged, tmuxTier := tier > 0, tier == tmuxTierNumber
 		imports := map[string]string{}
 		for _, imp := range file.Imports {
 			p := strings.Trim(imp.Path.Value, `"`)
@@ -104,51 +109,6 @@ func loadPkgSource(dir string, withTests bool) (*pkgSource, error) {
 		}
 	}
 	return src, nil
-}
-
-// fileTier reads the file's //go:build line and reports whether it mentions a tier tag at all and the tmux tier in particular.
-// The tmux tier is `tier2`, and `tier1` or `tier3` makes the file tagged too.
-// A constraint such as `tier2 && linux` or `tier2 && !windows` mentions the tmux tier.
-// A file without a //go:build line, or one naming only `tier0`, mentions nothing.
-func fileTier(file *ast.File) (tagged, tmuxTier bool) {
-	for _, group := range file.Comments {
-		if group.Pos() >= file.Package {
-			break
-		}
-		for _, c := range group.List {
-			if !constraint.IsGoBuild(c.Text) {
-				continue
-			}
-			expr, err := constraint.Parse(c.Text)
-			if err != nil {
-				continue
-			}
-			for _, tag := range mentionedTags(expr) {
-				switch tag {
-				case "tier2":
-					tmuxTier, tagged = true, true
-				case "tier1", "tier3":
-					tagged = true
-				}
-			}
-		}
-	}
-	return tagged, tmuxTier
-}
-
-// mentionedTags returns every build tag the expression names, whatever its polarity.
-func mentionedTags(expr constraint.Expr) []string {
-	switch x := expr.(type) {
-	case *constraint.TagExpr:
-		return []string{x.Tag}
-	case *constraint.NotExpr:
-		return mentionedTags(x.X)
-	case *constraint.AndExpr:
-		return append(mentionedTags(x.X), mentionedTags(x.Y)...)
-	case *constraint.OrExpr:
-		return append(mentionedTags(x.X), mentionedTags(x.Y)...)
-	}
-	return nil
 }
 
 func (src *pkgSource) indexGenDecl(d *ast.GenDecl) {
@@ -190,7 +150,7 @@ type spawnScanner struct {
 }
 
 // scanSpawns returns the verdict of every Test, Example and Fuzz function declared in pkgDir's _test.go files.
-// A test in a file without a tier tag is always judged, because an untagged test spawns nothing;
+// A test in a tier0 file is always judged, because a tier0 test spawns nothing;
 // a test in a tmux-tier file is always out of process, because reed panes run lym.
 func scanSpawns(module, kitRoot, pkgDir string) (map[string]spawnVerdict, error) {
 	src, err := loadPkgSource(pkgDir, true)

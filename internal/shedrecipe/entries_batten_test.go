@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_batten_test.go covers the batten entries: worktreeCreateEntry, innerRunEntry,
 // seedChildEntry, landEntry and worktreeTeardownEntry. It follows entries_simple_test.go's table shape for
 // the shared Slug/ScratchDir/seam validation, plus innerRunEntry's own poll_interval_s config
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newTestEnvWithSeedChild returns newTestEnv(t) with Env.SeedChild filled with five no-op fakes,
@@ -124,6 +123,7 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 }
 
 func TestLifecycleEntries_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range lifecycleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			producer, err := tt.entry(RowIdentity{Name: "row-name"}, Config{}, tt.buildEnv(t))
@@ -138,6 +138,7 @@ func TestLifecycleEntries_HappyPath(t *testing.T) {
 }
 
 func TestLifecycleEntries_RejectsEmptySlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range lifecycleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			env := tt.buildEnv(t)
@@ -154,6 +155,7 @@ func TestLifecycleEntries_RejectsEmptySlug(t *testing.T) {
 }
 
 func TestLifecycleEntries_RejectsBadScratchDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range lifecycleEntryCases() {
 		t.Run(tt.registryKey+"_Empty", func(t *testing.T) {
 			env := tt.buildEnv(t)
@@ -182,6 +184,7 @@ func TestLifecycleEntries_RejectsBadScratchDir(t *testing.T) {
 }
 
 func TestLifecycleEntries_RejectsNilSeams(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range lifecycleEntryCases() {
 		t.Run(tt.registryKey, func(t *testing.T) {
 			for _, seam := range tt.zeroSeams {
@@ -203,6 +206,7 @@ func TestLifecycleEntries_RejectsNilSeams(t *testing.T) {
 // TestInnerRunEntry_NilNowIsAccepted asserts innerRunEntry does not validate Env.InnerRun.Now:
 // its nil value is legitimate and selects the production clock inside battenshed.NewInnerRun.
 func TestInnerRunEntry_NilNowIsAccepted(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	if env.InnerRun.Now != nil {
 		t.Fatalf("newTestEnv(t).InnerRun.Now is non-nil; want nil by default")
@@ -221,6 +225,7 @@ func TestInnerRunEntry_NilNowIsAccepted(t *testing.T) {
 // is rejected naming the key, and the retired poll_attempts key is now rejected as unrecognised
 // rather than silently read.
 func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsentBuildsSuccessfully", func(t *testing.T) {
 		if defaultInnerRunPollIntervalS < 1 {
 			t.Errorf("defaultInnerRunPollIntervalS = %d; want at least one second, the producer's poll floor", defaultInnerRunPollIntervalS)
@@ -267,6 +272,7 @@ func TestInnerRunEntry_PollConfigKeys(t *testing.T) {
 
 // TestInnerRunEntry_NoticeQuietKey covers innerRunEntry's notice_quiet_min config key, which it validates for the hub wiring: absent or explicit builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_NoticeQuietKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Absent", func(t *testing.T) {
 		producer, err := innerRunEntry(RowIdentity{Name: "InnerRun"}, Config{}, newTestEnv(t))
 		if err != nil || producer == nil {
@@ -291,6 +297,7 @@ func TestInnerRunEntry_NoticeQuietKey(t *testing.T) {
 
 // TestInnerRunEntry_DriverExitGraceKey covers innerRunEntry's driver_exit_grace_s config key: absent resolves to defaultInnerRunDriverExitGraceS, an explicit value builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("DefaultIsNineHundred", func(t *testing.T) {
 		if defaultInnerRunDriverExitGraceS != 900 {
 			t.Errorf("defaultInnerRunDriverExitGraceS = %d; want 900", defaultInnerRunDriverExitGraceS)
@@ -318,6 +325,7 @@ func TestInnerRunEntry_DriverExitGraceKey(t *testing.T) {
 
 // TestInnerRunEntry_NoticeProbeKey covers innerRunEntry's notice_probe_s config key: absent resolves to defaultInnerRunNoticeProbeS, an explicit value builds successfully, and a negative value is rejected naming the key.
 func TestInnerRunEntry_NoticeProbeKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("DefaultIsThirty", func(t *testing.T) {
 		if defaultInnerRunNoticeProbeS != 30 {
 			t.Errorf("defaultInnerRunNoticeProbeS = %d; want 30", defaultInnerRunNoticeProbeS)

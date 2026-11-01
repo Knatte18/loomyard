@@ -1,5 +1,3 @@
-//go:build tier0
-
 // messagetail_test.go verifies WithMessageTail appends the fixed tail exactly once.
 
 package shuttleengine_test
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWithMessageTail(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tail := shuttleengine.MessageTail

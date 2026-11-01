@@ -1,5 +1,3 @@
-//go:build tier0
-
 // merriambase_test.go covers the start base the batchifier prices Merriam's session from: the line sum of the texts it loads, the fixed system-prompt context, and how the base follows the worktree's CLAUDE.md and the plan's overview.
 // Tier 1: the base is read from a temp worktree with the shipped stencils seeded; no git, no process.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -35,6 +34,7 @@ func (e instructionFileEngine) InstructionFiles() []string { return e.files }
 // The steps share one temp worktree and each rewrites its own files, so none relies on another's result.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one worktree.
 func TestMerriamBase(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// wantFixed is 20600, the measured Merriam session start, minus the computed size of the texts the base covers at the commit the constant was taken at.

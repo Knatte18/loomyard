@@ -1,5 +1,3 @@
-//go:build tier0
-
 // refusalof_test.go covers RefusalOf's errors.As traversal: a bare refusal, one wrapped several
 // layers deep, a nil error, an ordinary error, and remove.go's own dirty pre-flight shape, which is
 // not a gate refusal at all. It is a pure-data table test with no git spawn, per the Test Tier
@@ -11,12 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRefusalOf covers the accessor's behaviour across every shape it must distinguish: a bare
 // refusal, a deeply wrapped one, a nil error, an ordinary error, and a bare pre-flight error that
 // merely resembles a gate refusal's own dirtiness reason text.
 func TestRefusalOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	bareRefusal := &destructiveRefusal{
 		Check:  CheckDirtiness,
 		What:   "remove worktree",
@@ -91,6 +92,7 @@ func TestRefusalOf(t *testing.T) {
 //
 //testtiming:keep the three Check constants' exact spellings the live-state harness copy and the refusal message depend on; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_RendersThreeSpellings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		c    Check
@@ -116,6 +118,7 @@ func TestCheck_RendersThreeSpellings(t *testing.T) {
 //
 //testtiming:keep Check having exactly three members and no force check; coverage of its blocks by other tests does not show an assertion of this
 func TestCheck_HasNoFourthMemberForForce(t *testing.T) {
+	tiergate.Require(t, 0)
 	all := []Check{CheckContainment, CheckOwnership, CheckDirtiness}
 	if len(all) != 3 {
 		t.Fatalf("Check enum carries %d members; want exactly 3 (no CheckForce)", len(all))

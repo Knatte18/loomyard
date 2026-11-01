@@ -1,5 +1,3 @@
-//go:build tier1
-
 // bench_test.go holds the permanent probes behind the numbers in
 // docs/benchmarks/fixture-copy.md, re-established on the real hub this batch introduces. Run them
 // with:
@@ -18,8 +16,11 @@ package hubforge
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // BenchmarkNewHub measures the full fixture — bare copy plus clone plus wire — serially.
 func BenchmarkNewHub(b *testing.B) {
+	tiergate.Require(b, 1)
 	for b.Loop() {
 		NewHub(b, ".")
 	}
@@ -28,6 +29,7 @@ func BenchmarkNewHub(b *testing.B) {
 // BenchmarkNewHubParallel measures the full fixture under b.RunParallel, exercising NewHub's
 // structural parallel safety: a sync.Once template read followed by a per-call tb.TempDir().
 func BenchmarkNewHubParallel(b *testing.B) {
+	tiergate.Require(b, 1)
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			NewHub(b, ".")
@@ -39,6 +41,7 @@ func BenchmarkNewHubParallel(b *testing.B) {
 // BenchmarkNewHub measures, so the clone-versus-copy comparison the whole design rests on stays
 // reproducible from inside the repo.
 func BenchmarkCopyBares(b *testing.B) {
+	tiergate.Require(b, 1)
 	for b.Loop() {
 		copyBares(b)
 	}

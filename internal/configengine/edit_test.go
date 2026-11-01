@@ -1,5 +1,3 @@
-//go:build tier0
-
 // edit_test.go — unit tests for the interactive config editing machinery (edit.go).
 //
 // Tests cover: scaffold-when-missing, edit of existing file, re-edit loop on validation failure,
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // editStep is one editor invocation: it writes content, fails with err, or leaves the file as it found it.
@@ -27,6 +26,7 @@ type editStep struct {
 
 // TestEdit pins the editing loop: a missing file is scaffolded from the template before the editor runs, invalid YAML re-opens the editor, an editor that leaves invalid YAML unchanged or fails aborts with ErrAborted and removes only a file Edit scaffolded, an empty or whitespace-only result aborts and restores the entry bytes of a pre-existing file while a comment-only one saves, and a base directory without _lym/ is refused with the not-initialized error before any editor runs.
 func TestEdit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const template = "key1: value1\nkey2: value2\n"
 	const original = "original: value\n"
@@ -369,6 +369,7 @@ func TestEdit(t *testing.T) {
 //
 //testtiming:keep pins that EditPath creates a missing parent directory chain, which the covering Edit tests never exercise
 func TestEditPath_ScaffoldsIntoMissingParentDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "missing", "parent", "staged.yaml")

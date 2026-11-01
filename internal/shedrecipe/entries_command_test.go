@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_command_test.go covers the Command entry: its build-time refusals, its defaults and the timeout it hands the producer's runner.
 
 package shedrecipe
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedadapters"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const commandTestRow = "Open-Window"
@@ -56,6 +55,7 @@ func newCommandTestEnv(t *testing.T) Env {
 }
 
 func TestCommandEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const refWayForward = "way forward: set command to a module.key setting reference in the row's config"

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // junction_repoint_test.go proves WireJunctions (via seedLymJunction) repairs a corrupted warp _lym junction — one that dangles, or resolves to the wrong target — instead of refusing it as a real pre-existing directory.
 // A live review round found the pre-fix code fell through the "predates weft" refusal for both drift shapes, and Reconcile's documented contract ("handles both the missing-junction and the wrong-target cases") was false as a result;
 // only the missing-junction case had test coverage (TestReconcile_DifferentialEquivalence/JunctionRepointed).
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWireJunctions_RepairsCorruptedJunctions points a warp junction at an unrelated (but real)
@@ -31,6 +30,7 @@ import (
 // The steps share one hub and run serially in table order: each step's WireJunctions call leaves
 // every junction healthy again, so the next step starts from a repaired hub.
 func TestWireJunctions_RepairsCorruptedJunctions(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

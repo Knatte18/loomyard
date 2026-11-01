@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reviewbudget_test.go asserts the review bounce budget comes from the caller, not the recipe:
 // New and Routing set it on every row of a Bouncer-holding segment.
 
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // loomReviewSegments lists the tapestry recipe's review segments, the keys of the per-segment budget map.
@@ -65,6 +64,7 @@ func assertReviewBudget(t *testing.T, producers []shedengine.ProducerDef, budget
 // TestReviewBudget_AppliedByNewAndRouting asserts both entry points stamp the budget on the review rows:
 // the same budget on every segment, and a segment's own budget on its three rows alone.
 func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
+	tiergate.Require(t, 0)
 	const budget = 7
 
 	tests := []struct {
@@ -101,6 +101,7 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 // That proves loomrecipe stamped zero_rounds on its row; the settle's seam order is TestBouncerEntry_SkipSeam's to pin.
 // It also asserts New and Routing keep each perch's route: the writers and Drift-Verify still hand to their Bouncer.
 func TestZeroBudget_BouncerSettlesAtOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		runWide int
@@ -187,6 +188,7 @@ func builtProducer(t *testing.T, shed *shedengine.Shed, name string) shedengine.
 
 // TestReviewBudget_NegativeRefused asserts New and Routing refuse a negative segment budget and a review segment with no budget, each naming the segment and its way forward, and accept a budget of 0.
 func TestReviewBudget_NegativeRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	zeroes := map[string]int{"Discussion-Review": 0, "Plan-Review": 0, "Code-Review": 0}
 	if _, err := Routing(shedrun.RecipeTapestry, zeroes); err != nil {
 		t.Errorf("Routing(%v) error = %v; want nil", zeroes, err)

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reportreads_integration_test.go covers the reads a report over finished runs builds on — TagRefs, Log, SubdirsAtRevision, PreImageLines and BlameLines — against one real git repository whose commits carry fixed committer dates, reusing blobread_integration_test.go's commitAllAt and gitrepo_test.go's newRepo and writeFile fixture helpers.
 
 package gitrepo_test
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // The fixed committer dates of the commits TestReportReads builds, one day apart.
@@ -64,6 +63,7 @@ func logSHAs(commits []gitrepo.LogCommit) []string {
 // an annotated tag archive/a/1 points at A, a lightweight archive/b/2 at M and other at B.
 // Every step only reads, so the steps run serially in one order over the shared repository.
 func TestReportReads(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

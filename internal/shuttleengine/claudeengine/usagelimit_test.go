@@ -1,13 +1,14 @@
-//go:build tier0
-
 package claudeengine
 
 import (
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestUsageLimitResetsAt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// 12:03:42 in Oslo, which keeps UTC+1 after the October clock change.
 	const written = "2026-10-28T11:03:42.000Z"

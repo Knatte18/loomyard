@@ -1,5 +1,3 @@
-//go:build tier2
-
 // watchdogreap_integration_test.go carries the orphan-reap tier's live assertions as one TestWatchdogReap scenario: the end-to-end reap and healthy-sibling non-interference, the never-entered orphan, the empty-shell degradation, the reap's process half, and loop liveness under a reap in flight.
 //
 // It is a separate file from watchdog_integration_test.go, rather than more cases appended to it, so the reap's own fixture and helpers stay together rather than growing that file's unrelated discovery/idle-exit/re-entry fixture shape.
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -125,6 +124,7 @@ func startReapLoop(fx reapFixture, shellPath string, timing watchdogTiming) (con
 // TestWatchdogReap runs the reap claims against one hub whose prime worktree stays booted and healthy throughout, each step adding its own pair worktree to orphan.
 // The steps run serially in a fixed order and do not rely on each other's results; the scenario calls t.Parallel but no step does, because every step shares the one hub, its tmux server and the prime session.
 func TestWatchdogReap(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	socket := reedengine.ServerName(h.Path)

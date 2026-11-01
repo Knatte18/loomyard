@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prerunlogging_test.go guards a dependency the standalone-mode fix relies on but cannot pin
 // behaviourally: root's PersistentPreRunE (newRoot, main.go) must not log at Info or above before its
 // seedStencils(cmd) call. cobra.EnableTraverseRunHooks runs every module's own PersistentPreRunE
@@ -36,12 +34,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils parses cmd/lym/main.go, locates root's PersistentPreRunE function literal inside newRoot's composite literal, and fails if any statement preceding its seedStencils(cmd) call contains a logger.Info or logger.Warn call.
 //
 //testtiming:keep pins that no Info or Warn log runs ahead of seedStencils in the root pre-run, a guard that fires on a source parse no other test reads
 func TestPersistentPreRunE_NoInfoOrWarnLoggingAheadOfSeedStencils(t *testing.T) {
+	tiergate.Require(t, 0)
 	mainGoPath := filepath.Join(scankit.Root(t), "cmd", "lym", "main.go")
 
 	fset := token.NewFileSet()

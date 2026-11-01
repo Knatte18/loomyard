@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buildenv_test.go covers classifyAmbiguity and the constraint text it describes each candidate
 // with, table-driven over Go files written to a temp root.
 
@@ -10,11 +8,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/quarry"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestClassifyAmbiguity asserts an ambiguous answer is partitioned only when no build environment
 // selects two candidate files, and that every candidate is described whatever the verdict.
 func TestClassifyAmbiguity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const body = "\n\npackage p\n"

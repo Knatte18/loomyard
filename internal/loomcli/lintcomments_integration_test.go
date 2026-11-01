@@ -1,5 +1,3 @@
-//go:build tier1
-
 // lintcomments_integration_test.go drives the lint-comments and lint-pattern verbs over a real repository.
 
 package loomcli
@@ -17,11 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLintCommentsCmd_OverARepository walks one repository through a wrapped new comment, a clean tree and a committed range, asserting lint-comments and lint-pattern over the same tree at each step.
 // The steps share the repository and run in order, so the test is parallel as a whole and no step is.
 func TestLintCommentsCmd_OverARepository(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()

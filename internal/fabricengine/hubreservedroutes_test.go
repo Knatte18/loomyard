@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hubreservedroutes_test.go covers the filterHubReserved wiring guard's live surface: a hub-reserved
 // name (the Bolt checkout, _portals, _launchers) must never appear in the routes that drive junction wiring or
 // the weft commit pathspec, over the config a hub is seeded with (the fabric config template).
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHubReserved_BoardExcludedFromPathspecRoutes guards the wiring guard's live surface against a
@@ -26,6 +25,7 @@ import (
 //
 //testtiming:keep the Bolt checkout appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReserved_BoardExcludedFromPathspecRoutes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boardDir := t.TempDir()

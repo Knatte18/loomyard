@@ -1,5 +1,3 @@
-//go:build tier0
-
 // dobbyreading_test.go pins what the pass wiring reads from the parent worktree's dobby: its pid, its recorded sleeps and the shared awake clock, and which runs take no slot.
 
 package battencli
@@ -17,9 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDobbyReading(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	base := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	slept := pauserecord.Interval{Start: base.Add(10 * time.Minute), End: base.Add(40 * time.Minute)}
@@ -84,6 +84,7 @@ func writeDobbyState(pid int, sleeps ...pauserecord.Interval) func(t *testing.T,
 }
 
 func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boardDir := t.TempDir()
 	entries := strings.Join([]string{
@@ -123,6 +124,7 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 }
 
 func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -171,6 +173,7 @@ func TestDobbyTasks_ReadsTheStartRefusalOfAFinishedRunRecord(t *testing.T) {
 }
 
 func TestRunTakesNoSlot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	status := func(producer string) *string {

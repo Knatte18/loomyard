@@ -1,5 +1,3 @@
-//go:build tier0
-
 // exec_test.go tests the exit-state holder, the Execute seam adapter, and WrapRun.
 // Tests use synthetic cobra command trees built in-test — no real lym commands.
 
@@ -17,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // handlerReturning returns a WrapRun-compatible handler function that writes
@@ -27,6 +26,7 @@ func handlerReturning(code int) func(io.Writer, []string) int {
 
 // TestExecute_HandlerExitCode verifies that Execute returns the exit code of a WrapRun handler.
 func TestExecute_HandlerExitCode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -56,6 +56,7 @@ func TestExecute_HandlerExitCode(t *testing.T) {
 }
 
 func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := &cobra.Command{Use: "root", Short: "test root"}
@@ -83,6 +84,7 @@ func TestExecute_UnknownSubcommandReturnsOneAndWritesUnknownCommand(t *testing.T
 
 // TestWrap_ShortCircuitsAfterAbort verifies that a WrapRun- or WrapRunCtx-wrapped handler short-circuits without running when Abort was called on the command's context before the leaf fired, and that Execute reports the aborted code.
 func TestWrap_ShortCircuitsAfterAbort(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -128,6 +130,7 @@ func TestWrap_ShortCircuitsAfterAbort(t *testing.T) {
 }
 
 func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// Run two concurrent Execute calls — one returning 0, one returning 7 —
@@ -174,6 +177,7 @@ func TestExecute_ConcurrentInvocationsDoNotCrossExitCodes(t *testing.T) {
 
 // TestExecuteIn_HandlerObservesInjectedCwd verifies that a handler reading lymcwd.CwdFrom(cmd.Context()) observes the exact directory passed to ExecuteIn.
 func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const want = "/injected/cwd"
@@ -205,6 +209,7 @@ func TestExecuteIn_HandlerObservesInjectedCwd(t *testing.T) {
 // driven through Execute (not ExecuteIn) observes the process cwd instead
 // of an injected one.
 func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	want, err := lymcwd.Getwd()
@@ -239,6 +244,7 @@ func TestExecute_HandlerObservesProcessCwd(t *testing.T) {
 // context carrying a value propagates that value into the command's
 // context.
 func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const want = "/propagated/cwd"
@@ -275,6 +281,7 @@ func TestRunRootCtx_PropagatesContextValue(t *testing.T) {
 // handler receives the command's own context, observed by reading a value
 // seeded into it.
 func TestWrapRunCtx_ReceivesCommandContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const want = "/seeded/cwd"

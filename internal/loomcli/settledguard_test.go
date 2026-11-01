@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSettledSegmentGuard covers which gotos the guard admits and refuses over a loom producer list and run directories holding records.
 func TestSettledSegmentGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	producers := []shedengine.ProducerDef{

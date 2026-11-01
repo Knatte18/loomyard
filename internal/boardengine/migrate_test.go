@@ -1,5 +1,3 @@
-//go:build tier0
-
 // migrate_test.go — unit tests for the old-shape conversion (migrate.go).
 
 package boardengine
@@ -7,6 +5,8 @@ package boardengine
 import (
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func intp(i int) *int { return &i }
@@ -22,6 +22,7 @@ func oldEntry(slug string, tier int, typ string) storedEntry {
 }
 
 func TestMigrateEntriesTierAndType(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		tier       int
 		typ        string
@@ -45,6 +46,7 @@ func TestMigrateEntriesTierAndType(t *testing.T) {
 
 //testtiming:keep pins the unspaced, vocabulary-type, repeated and non-leading bracket prefixes, which its covering tests do not assert
 func TestMigrateEntriesBracketPrefixes(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name       string
 		brief      string
@@ -70,6 +72,7 @@ func TestMigrateEntriesBracketPrefixes(t *testing.T) {
 }
 
 func TestMigrateEntriesRewrites(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	done := "done"
 	tests := []struct {

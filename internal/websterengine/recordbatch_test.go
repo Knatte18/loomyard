@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recordbatch_test.go exercises RecordBatch end to end.
 // A temp directory backs WorktreeRoot over a fakeGit for the head, dirty and merge questions.
 // The incremental fork audit (shuttleengine.ForkAuditor.AuditForksIncremental) is a local, call-scripted fake.
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -40,6 +39,7 @@ import (
 // A report present is archived and the batch re-driven through begin-batch, so begin-batch's pre-existing-report refusal no longer fires;
 // with no report the error still names begin-batch.
 func TestRecordBatch_NoBeginRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("report present is archived", func(t *testing.T) {
 		fx := newRecordFixture(t, nil)
 		fx.Deps.State.Batches = map[int]*websterengine.BatchState{}
@@ -111,6 +111,7 @@ func TestRecordBatch_NoBeginRecord(t *testing.T) {
 // recover-batch's to classify, never record-batch's — the refusal names the correct verb instead of
 // dying later in the fork audit with a misleading "never forked" error (round fable-r3 live).
 func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, nil)
 	fx.Deps.State.Batches[1].Kind = "recovery"
 
@@ -127,6 +128,7 @@ func TestRecordBatch_RecoveryBatchRefusedLoud(t *testing.T) {
 // zero new transcripts through the whole settle window never records the report, REGARDLESS of a batch-report file already sitting on disk — a report with no fork behind it means Master wrote it itself.
 // The report is archived, the batch record stays begun, and begin-batch re-drives it.
 func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{}})
 	writeReport(t, fx.ReportsDir, validReport(fx.HeadSHA))
 
@@ -160,6 +162,7 @@ func TestRecordBatch_ZeroNewTranscriptsArchivesReport(t *testing.T) {
 // single call is a warning only, never a hard error — legitimate retry behavior (a fork's Agent
 // call errored mid-flight followed by a direct re-fork, with no intervening record-batch call).
 func TestRecordBatch_MultipleNewTranscriptsWarnsNeverErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{
 			{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true},
@@ -248,6 +251,7 @@ func oneForkAudit() shuttleengine.ForkAudit {
 // naming recover-batch, archiving any report, and recording the Uncheckable entries recovery
 // cannot check.
 func TestRecordBatch_AuditOutcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	okReport := func(fx *recordFixture) string { return validReport(fx.HeadSHA) }
@@ -880,6 +884,7 @@ func TestRecordBatch_AuditOutcomes(t *testing.T) {
 //
 //testtiming:keep pins attribution advancing across a no-report call and the second call classifying only its own new transcript; the audit-outcome table only covers single calls
 func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 		{Forks: []shuttleengine.ForkReport{
@@ -931,6 +936,7 @@ func TestRecordBatch_OneNewTranscriptNoReport_RetrySeesExactlyOneNew(t *testing.
 // and a bracket whose transcripts never wrote the report still meets ErrNoForkTranscripts.
 // Every attributed transcript is held once in the seen set, the batch's fork transcripts and its bracket transcripts, so no other claim path takes it.
 func TestRecordBatch_ResumedForkAcrossNoReportCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const f1, f2 = "subagents/f1.jsonl", "subagents/f2.jsonl"
@@ -1085,6 +1091,7 @@ func TestRecordBatch_ResumedForkAcrossNoReportCall(t *testing.T) {
 //
 //testtiming:keep pins the warning staying recorded once across a no-report call and its retry, and the card verify re-running on the later OK report; the audit-outcome table only covers single calls
 func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
+	tiergate.Require(t, 0)
 	audit := shuttleengine.ForkAudit{
 		Forks:       []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 		NamedSpawns: 1,
@@ -1128,6 +1135,7 @@ func TestRecordBatch_RetryNeverDuplicatesWarning(t *testing.T) {
 // TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning proves the same flow with a failing verify fails the batch,
 // and the earlier recorded warning is among the reasons.
 func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
+	tiergate.Require(t, 0)
 	audit := shuttleengine.ForkAudit{
 		Forks:       []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 		NamedSpawns: 1,
@@ -1164,6 +1172,7 @@ func TestRecordBatch_RetryFailingVerifyFailsNamingEarlierWarning(t *testing.T) {
 //
 //testtiming:keep pins a session-wide finding dispositioned by the first batch and not re-warned on the second batch; the audit-outcome table only records single batches
 func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
+	tiergate.Require(t, 0)
 	f1 := shuttleengine.ForkReport{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}
 	f2 := shuttleengine.ForkReport{TranscriptPath: "subagents/f2.jsonl", ReportReturned: true}
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1202,6 +1211,7 @@ func TestRecordBatch_NamedSpawnWarnsOnceAcrossBatches(t *testing.T) {
 // TestRecordBatch_ForgedTerminalRecordFails proves a fork that marks its own batch done by writing state.json is audited before the "already terminal" refusal:
 // the batch fails with its reasons naming fork-state-write, while a terminal batch with no new transcript still refuses untouched.
 func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{{
 		Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}},
 	}})
@@ -1252,6 +1262,7 @@ func TestRecordBatch_ForgedTerminalRecordFails(t *testing.T) {
 // TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript proves a repeated record-batch on a done batch never attributes another fork's unseen transcript to it:
 // while a later fork batch of the same session is open, or once the verify-gate report exists, the call refuses as already terminal and consumes nothing.
 func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		setup func(t *testing.T, fx *recordFixture)
@@ -1296,6 +1307,7 @@ func TestRecordBatch_TerminalAuditSkipsAnotherForksTranscript(t *testing.T) {
 //
 //testtiming:keep pins the head_sha mismatch refusal naming the worktree's actual HEAD and the same call recording once the report is corrected; the parent-moved-HEAD table only refuses moved heads that match the report
 func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1328,6 +1340,7 @@ func TestRecordBatch_HeadSHAMismatchErrors(t *testing.T) {
 // TestRecordBatch_UnresolvableHeadSHARefused proves an abbreviated head_sha naming no commit, or several, is refused with ErrHeadSHAUnresolved and the git rev-parse way forward, never a reset.
 // The batch stays non-terminal with the report in place, and the same call records once the report names the full HEAD.
 func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -1388,6 +1401,7 @@ func TestRecordBatch_UnresolvableHeadSHARefused(t *testing.T) {
 // TestRecordBatch_NeedsParentWaits proves a NEEDS_PARENT report records the batch waiting with its need, in flight, its report archived and its recovery count unchanged,
 // and that record-batch on the waiting batch then refuses naming the need and begin-batch.
 func TestRecordBatch_NeedsParentWaits(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1427,6 +1441,7 @@ func TestRecordBatch_NeedsParentWaits(t *testing.T) {
 // TestRecordBatch_MalformedReportYAMLErrors proves an unparseable batch-report (here, an
 // unrecognized status value) is a hard error, never a guessed digest.
 func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1444,6 +1459,7 @@ func TestRecordBatch_MalformedReportYAMLErrors(t *testing.T) {
 // TestRecordBatch_WayForward_UnknownBatch proves a batch number outside the plan names `lym webster status`,
 // and that naming a batch the run does have then reaches the ordinary begin-record refusal instead.
 func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1462,6 +1478,7 @@ func TestRecordBatch_WayForward_UnknownBatch(t *testing.T) {
 // TestRecordBatch_MissingSessionTranscriptArchivesReport proves the TRUE cross-machine resume failure — the bracket-opening session's transcript file does not exist on this machine at all, so the audit read itself fails with fs.ErrNotExist — archives the report, keeps the batch begun, and explains the machine-local transcripts with the begin-batch way forward (found live in crucible round fable-r3).
 // errors.Is must still see the underlying fs.ErrNotExist.
 func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, nil)
 	fx.Audit.auditErr = fmt.Errorf("claudeengine: read parent transcript %q: %w", "/nope/session.jsonl", fs.ErrNotExist)
 	writeReport(t, fx.ReportsDir, "status: OK\nhead_sha: "+fx.HeadSHA+"\n")
@@ -1489,6 +1506,7 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 // TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
 // a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, and a target quarry rejects outright names the card amendment as the way forward.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1626,6 +1644,7 @@ func deleteReferencedBatches(t *testing.T, worktree, target, user string) []batc
 // TestRecordBatch_DeleteNotDoneNamesLaterCard proves a delete-not-done failure caused by an unbegun later card still referencing the target names that card and the reference and moves the way forward to the plan edit, or to the --fresh steps when the record also lists uncheckable entries;
 // a delete-not-done with no later reference keeps recover-batch, and so does one whose later card only calls a method of the same name, which is matched by name alone and so not a blocking reference.
 func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// target and user are deleteReferencedBatches' Delete target and user.go body.
@@ -1704,6 +1723,7 @@ func TestRecordBatch_DeleteNotDoneNamesLaterCard(t *testing.T) {
 // before attribution advances: the batch stays open, the transcripts stay unseen, the plan hashes are not re-recorded over the edit and the begun card's recorded hashes stay unchanged,
 // including when a canonicalizing planglyph.ValidateDispatch ran after the edit with no restamp, as validate's path does when its edit check refuses.
 func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, canonicalize := range []bool{false, true} {
 		t.Run(fmt.Sprintf("canonicalize=%v", canonicalize), func(t *testing.T) {
 			t.Parallel()
@@ -1810,6 +1830,7 @@ func TestRecordBatch_RefusesPlanEditedSinceBegin(t *testing.T) {
 // Resolve, unaffected) nor BindHandles (this card's card carries no Create declaration) has
 // anything to block on.
 func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})
@@ -1841,6 +1862,7 @@ func TestRecordBatch_ScopeGuardDegradesOnDeltaUnavailable(t *testing.T) {
 
 // TestRecordBatch_NilStateIsRefusedNotPanicked is R6-21's regression test for the record-batch half.
 func TestRecordBatch_NilStateIsRefusedNotPanicked(t *testing.T) {
+	tiergate.Require(t, 0)
 	_, err := websterengine.RecordBatch(websterengine.RecordDeps{Plan: &planparser.Plan{}}, 1)
 	if err == nil {
 		t.Fatal("websterengine.RecordBatch(nil State) error = nil; want a refusal naming the missing field")
@@ -1896,6 +1918,7 @@ func assertBatchOpen(t *testing.T, fx *recordFixture) {
 //
 //testtiming:keep pins each moved-HEAD shape's record or refusal, the warning naming every merge, the fork's own delta range and the retry once HEAD is moved back; each covering test reaches one shape
 func TestRecordBatch_ParentMovedHead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	resetWayForward := func(fx *recordFixture) string {
@@ -2135,6 +2158,7 @@ func TestRecordBatch_ParentMovedHead(t *testing.T) {
 // that concluding it by hand is still refused because a conflict resolution is not a clean parent merge,
 // and that the same call succeeds once HEAD is moved back to the report's head_sha as the refusal's remedy says.
 func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := parentMergeFixture(t)
 	restore := snapshotRecordState(fx)
 
@@ -2178,6 +2202,7 @@ func TestRecordBatch_MergeInProgressRefusedThenSucceeds(t *testing.T) {
 // It writes one per plan: handle the batch's cards own, with the outcome and the glyph or reason, and none when the verb fails before binding.
 // It lowers the process-global log threshold to Info, so it does not call t.Parallel.
 func TestRecordBatch_BindTrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	logger.SetVerbosity(1)
 	t.Cleanup(func() { logger.SetVerbosity(0) })
 

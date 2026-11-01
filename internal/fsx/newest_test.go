@@ -1,5 +1,3 @@
-//go:build tier0
-
 // newest_test.go — unit tests for NewestModTime (newest.go).
 
 package fsx_test
@@ -13,9 +11,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNewestModTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // markers_test.go pins the exact top-level marker set of each stencil whose markers no render test reads in its real file,
 // and the position of each Go-filled marker a row anchors on a heading or the whole text.
 // The rubrics' marker allowlist is pinned in rubric_test.go.
@@ -13,12 +11,14 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStencils_TopLevelMarkers asserts each stencil declares exactly its required top-level markers.
 //
 //testtiming:keep pins the exact marker set of each stencil, which the rubric test's subset check and the render tests do not
 func TestStencils_TopLevelMarkers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -109,6 +109,7 @@ func headingSection(text, heading string) (string, bool) {
 // TestStencils_MarkerPositions asserts each Go-filled marker sits where the prompt needs it, anchored on headings only.
 // A row with a heading holds its marker inside that heading's section; a row without one holds it anywhere in the whole text.
 func TestStencils_MarkerPositions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

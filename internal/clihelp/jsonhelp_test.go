@@ -1,5 +1,3 @@
-//go:build tier0
-
 // jsonhelp_test.go tests InstallJSONHelp and the renderCmdJSON renderer.
 // It builds a synthetic cobra command tree with a child command, a local flag, and a hidden flag, then asserts the JSON output matches the expected schema, and that the global --json runs no command except one whose own local --json shadows it.
 
@@ -14,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // buildJSONHelpRoot constructs a synthetic root command with:
@@ -50,6 +50,7 @@ func buildJSONHelpRoot() *cobra.Command {
 
 // TestInstallJSONHelp_RendersSchema renders the synthetic root's help once with the json flag set and asserts the output is a valid JSON document whose fields carry the command's own text, its child and its domain flag, and omit hidden flags, meta flags and the completion subcommand.
 func TestInstallJSONHelp_RendersSchema(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := buildJSONHelpRoot()
@@ -140,6 +141,7 @@ func TestInstallJSONHelp_RendersSchema(t *testing.T) {
 }
 
 func TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// --json is unset by default; the custom HelpFunc must delegate to cobra's default.
@@ -161,6 +163,7 @@ func TestInstallJSONHelp_FallsThroughToDefaultHelpWhenFlagFalse(t *testing.T) {
 
 // TestInstallJSONHelp_JSONNeverRunsACommand drives a fresh tree through Execute per row: under the global --json, a leaf whose run, pre-run hook and argument check would each fail prints its JSON help and exits 0, as does a group; a leaf declaring its own local --json runs with that meaning instead.
 func TestInstallJSONHelp_JSONNeverRunsACommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

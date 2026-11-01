@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cancel_test.go pins the cancel phase: its call order over the fake substrates, the records write lock hold, and the live-strand pick.
 
 package pairteardown
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // hookAnswer is one call's answer of the cancel request's AfterEnd hook.
@@ -29,6 +28,7 @@ type hookAnswer struct {
 // TestEndForCancel drives the cancel phase through the fake substrates and pins which substrate calls it makes, in what order, and what it returns.
 // A refusal row's calls end at the refusing step, so nothing after it ran.
 func TestEndForCancel(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
@@ -214,6 +214,7 @@ func TestEndForCancel(t *testing.T) {
 
 // TestHoldRecordsWriteLocks pins which records write locks the hold takes and that a lock held elsewhere refuses naming its path and leaves nothing held.
 func TestHoldRecordsWriteLocks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// A wait of zero reports busy before its first try, so the wait is a few milliseconds.
@@ -310,6 +311,7 @@ func TestHoldRecordsWriteLocks(t *testing.T) {
 
 // TestLiveStrandGUIDs pins that every live row is picked whatever its name, in row order, and no dormant row is.
 func TestLiveStrandGUIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

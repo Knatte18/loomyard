@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go verifies batcher.yaml's template parses and Active resolves the configured profile, including its two degrading-absence cases (absent _lym/, absent batcher.yaml) and its load-error paths, seeded via plain os.MkdirAll/os.WriteFile against a t.TempDir() rather than gitkit's config fixture-copy helpers: configengine.LoadOrTemplate only requires a filesystem _lym/config/<module>.yaml, no git repository, so this test stays in tier 0 and spawn-free.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
 
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -53,6 +52,7 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 // the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its wide profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lym/ degrades to the embedded template's wide batchifier rather than erroring, and every load error names batcher.yaml.
 // A layer's profiles add to the template's by name, each merging key by key, so the error rows tune a profile the template lacks.
 func TestActive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	template := batcher.ConfigTemplate()
 	if !strings.HasPrefix(template, `active: "wide"`) {
@@ -293,6 +293,7 @@ func TestActive(t *testing.T) {
 // TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key,
 // and that the template's wide and cautious profiles carry the same measured weights.
 func TestProfileWeights(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const valid = `profiles:
   tuned:
@@ -446,6 +447,7 @@ func TestProfileWeights(t *testing.T) {
 
 // TestMigrateConfig pins the retired-key rewrite: each retired key goes, orientation is added at the template's value only where a retired weights key stood and none existed, everything else is carried, and the result loads through Active where the input carried only retired keys.
 func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const costProfile = "    batchifier: cost\n    max_cards: 6\n    budget: 450000\n"
 	const weightsTail = "      batch_growth: 7000\n      fork_messages: 4\n      message_context: 300\n      target_messages: 6\n      test_file_messages: 0.5\n      uses_messages: 2\n      context_per_line: 12\n      package_context: 2000\n      write_per_card_line: 12\n"

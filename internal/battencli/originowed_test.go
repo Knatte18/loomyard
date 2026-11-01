@@ -1,5 +1,3 @@
-//go:build tier0
-
 // originowed_test.go pins the origin-owed marker a resume writes when it judged its owner without origin, and the reading of it.
 
 package battencli
@@ -11,11 +9,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOriginOwedMarker drives reconcileResume over a hand-populated receiver with a fake reconcile:
 // an unreachable resume writes the marker and resumes, one refused for another owner on the local board writes none, a resume whose marker path cannot be written is refused naming the cause and the re-run, and a resume that reached origin leaves none.
 func TestOriginOwedMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "some-slug"

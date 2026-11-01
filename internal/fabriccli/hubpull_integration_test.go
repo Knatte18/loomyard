@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubpull_integration_test.go drives `lym fabric pull --hub` through RunCLIIn from a task pair of a hubforge hub:
 // the prime resolved from the pair, the real parent lock taken and released, and the envelope on a clean and a stopped pull.
 
@@ -22,9 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunCLI_PullHubFromATaskPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -113,6 +113,7 @@ func waitForTicket(t *testing.T, store *parentlock.Store, branch string) parentl
 }
 
 func TestRunHubPull_WaitsForAHeldParentLock(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	tests := []struct {
 		name         string

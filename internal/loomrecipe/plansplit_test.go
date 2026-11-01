@@ -1,5 +1,3 @@
-//go:build tier0
-
 // plansplit_test.go covers the Parts-Write and Parts-Plan-Write rows of the tapestry recipe:
 // their entry gates against tapestry.plan_split, their edges, and a flag-on run through them.
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // planSplitSetting answers tapestry.plan_split as planSplit and every other setting from the templates.
@@ -32,6 +31,7 @@ func planSplitSetting(planSplit bool) func(module, key string) (any, error) {
 // TestPlanSplitRows asserts, for tapestry.plan_split false and true, that both parts rows' entry gates hold exactly when the flag is true and Plan-Write's exactly when it is false.
 // It also asserts the edges Drift-Baseline to Parts-Write to Parts-Plan-Write to Plan-Write to Plan-Bouncer, and that neither parts row has an on_stuck.
 func TestPlanSplitRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, planSplit := range []bool{false, true} {
@@ -85,6 +85,7 @@ func TestPlanSplitRows(t *testing.T) {
 // The history runs Parts-Write Done, Parts-Plan-Write Done and Plan-Write Skipped, then enters Plan-Bouncer.
 // A goto onto Plan-Write then lets its producer run and record Done although its entry gate does not hold, since a goto bypasses only its target's gate.
 func TestSequence_PlanSplitRunsThePartsRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath, env, paths := buildSequenceFixture(t)
 	env.Setting = planSplitSetting(true)
 	env.PartsTable = func() (seatengine.Table, error) {

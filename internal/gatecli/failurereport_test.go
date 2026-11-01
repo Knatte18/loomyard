@@ -1,5 +1,3 @@
-//go:build tier0
-
 // failurereport_test.go covers the failure report's rendering, the failed runs it is built from and the bound on a capped call's replayed stdout.
 
 package gatecli
@@ -16,9 +14,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRenderFailureReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -183,6 +183,7 @@ func TestRenderFailureReport(t *testing.T) {
 }
 
 func TestLintFailedRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -222,6 +223,7 @@ func TestLintFailedRun(t *testing.T) {
 }
 
 func TestBuildFailedRun_KeepsTheLastLinesOfItsOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var output strings.Builder
@@ -241,6 +243,7 @@ func TestBuildFailedRun_KeepsTheLastLinesOfItsOutput(t *testing.T) {
 }
 
 func TestTierFailedRun_NamesTheModuleOfItsRunDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()
@@ -265,6 +268,7 @@ func TestTierFailedRun_NamesTheModuleOfItsRunDirectory(t *testing.T) {
 }
 
 func TestReplayStdout(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	long := strings.Repeat("=== RUN   TestA\n", replayStdoutBytes/8)

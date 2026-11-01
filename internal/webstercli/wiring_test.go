@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_test.go pins wire's mode truth table at tier 0: every case drives c.wire directly with a
 // told preflight.Mode -- never through the real pre-run -- so no case spawns a process or resolves
 // cwd. websterCLI itself carries no *lymcwd.Location field (see cli.go's struct): that is a
@@ -43,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -101,6 +100,7 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 // silently send every one of these to standalone mode; none of them may be refused, and none of them
 // may land in standalone.
 func TestWire_ModeHubSelectsHubMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		worktreeName string
@@ -189,6 +189,7 @@ func hash8For(t *testing.T, target string) string {
 // the two-roots split (the worktree root, also the fork-audit workdir and the {{.worktree_root}} prompt token, is the target while every _lym/.lym path and module config base resolves under the derived state directory), the nil-or-eager seams (a non-nil RefMatcher that never matches, no fabric opener, an armed in-process reed bring-up, an empty friction directory), the default plan directory with its run-refusal mark clear, and a runner whose public entry points return their ordinary verdict instead of a told-path refusal.
 // It sets XDG_STATE_HOME and LOCALAPPDATA, so it is not parallel.
 func TestWire_StandaloneMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)
@@ -291,6 +292,7 @@ func TestWire_StandaloneMode(t *testing.T) {
 
 // TestWire_PlanDirResolution covers an explicit --plan-dir override in each mode, a spelling of the hub default that is no override, and the standalone refusal for an absent default plan directory.
 func TestWire_PlanDirResolution(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("ExplicitOverride_HubMode", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
@@ -396,6 +398,7 @@ func TestWire_PlanDirResolution(t *testing.T) {
 // run-refusal marker stayed clear -- pre-fix that same call marked the plan as moved and `run`
 // refused to spawn Master over a plan sitting in the default location.
 func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("HubMode", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
@@ -455,6 +458,7 @@ func TestWire_RelativeFlagDirsResolveAgainstCwd(t *testing.T) {
 // render, after the run lock and substrate boot. The boundary stat goes through the same
 // cliwire.Module method standalone's prologue uses, so the two modes cannot drift apart on it.
 func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := t.TempDir()
 	loc := hubLocation(t, hub, "pair", ".")
 	told := filepath.Join(t.TempDir(), "no-such-stencils")
@@ -473,6 +477,7 @@ func TestWireHub_AbsentStencilsDirIsRefused(t *testing.T) {
 // explaining why, and that the refusal happens before any config is loaded (an empty hub, no
 // module config on disk anywhere, still refuses on the flag alone).
 func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := t.TempDir()
 	loc := hubLocation(t, hub, "pair", ".")
 
@@ -491,6 +496,7 @@ func TestWire_TargetDirRefusedInHubMode(t *testing.T) {
 //
 //testtiming:keep pins that wireHub leaves the durable sink override untouched, which its covering test does not assert
 func TestWireHub_LeavesDurableSinkDirUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	sentinelDir := t.TempDir()
 	logger.SetDurableSinkDir(sentinelDir)
 	t.Cleanup(func() { logger.SetDurableSinkDir("") })
@@ -532,6 +538,7 @@ func seedGitRepositoryRoot(t *testing.T, dir string) string {
 // with webster's own "standalone plan directory ... does not exist" refusal, because the
 // subdirectory's own hash8 named a state directory nobody had ever seeded.
 func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	repoRoot := seedGitRepositoryRoot(t, t.TempDir())
 	subDir := filepath.Join(repoRoot, "src")
 	if err := os.MkdirAll(subDir, 0o755); err != nil {
@@ -566,6 +573,7 @@ func TestWireStandalone_SubdirectoryOfRepositoryWiresLikeItsRoot(t *testing.T) {
 // used to touch the nested-geometry and target-resolution messages is deleted above. Without this
 // test a reworded field would fail no test anywhere.
 func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	if wireModule.Name != "webster" {
 		t.Errorf("wireModule.Name = %q; want %q", wireModule.Name, "webster")
 	}
@@ -650,6 +658,7 @@ func TestWireModule_DescriptorIsVerbatim(t *testing.T) {
 // whole resolution depends on, since a `lym webster` verb must never fail because an unrelated
 // module's config could not be read.
 func TestWireHub_FrictionDirResolution(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("FrictionEnabled", func(t *testing.T) {
 		hub := t.TempDir()
 		loc := hubLocation(t, hub, "pair", ".")
@@ -700,6 +709,7 @@ func TestWireHub_FrictionDirResolution(t *testing.T) {
 // TestWireHub_LanguageSkills asserts hub wiring loads the hub's language.yaml once and tells the list to both the master's and the recovery strand's deps, and that an unusable file refuses with the module's own way forward.
 // Writing the file creates the board directory, so every other module wireHub loads resolves from an absent board default and wire reaches the language load in every row.
 func TestWireHub_LanguageSkills(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		fileContents string
@@ -840,6 +850,7 @@ func TestWireHub_LanguageSkills(t *testing.T) {
 //
 //testtiming:keep internal/loomcli/cli_test.go names this test
 func TestProductionFiles_NeverReferenceHubWatchdogMechanism(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	matches, err := filepath.Glob("*.go")

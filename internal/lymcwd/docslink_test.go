@@ -1,5 +1,3 @@
-//go:build tier0
-
 // docslink_test.go guards markdown link and anchor integrity under docs/: every inline markdown link's file part and #anchor must resolve somewhere in the repo.
 // The verbatim data under docs/research/*/data/ is outside the guard.
 // Its placement in internal/lymcwd is a file-layout convenience, not an ownership claim on markdown links by that package.
@@ -17,6 +15,7 @@ import (
 	"unicode"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // inlineLinkPattern matches an inline markdown link "[text](target)". Reference-style links
@@ -158,6 +157,7 @@ func docsLinkHeadingAnchors(data []byte) map[string]bool {
 //
 //testtiming:keep pins GitHub's heading-slug rules on literal headings, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -202,6 +202,7 @@ func TestDocsLinkSlug(t *testing.T) {
 //
 //testtiming:keep pins the inline-link grammar and fence skipping on literal data, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkExtract(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -261,6 +262,7 @@ func TestDocsLinkExtract(t *testing.T) {
 //
 //testtiming:keep pins anchor-set construction and duplicate-slug disambiguation on literal data, which the links scan covering its blocks only meets through the repo's own docs
 func TestDocsLinkHeadingAnchors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -417,6 +419,7 @@ var docsLinkAllowlist = []scankit.Entry{}
 //
 //lym:guard
 func TestEnforcement_MarkdownLinks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("repo", func(t *testing.T) {
 		breaks, stale, scanned := docsLinkScan(t, scankit.Root(t), []string{"docs"}, docsLinkAllowlist)
 

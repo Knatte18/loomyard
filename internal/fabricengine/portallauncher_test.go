@@ -1,5 +1,3 @@
-//go:build tier0
-
 // portallauncher_test.go covers the launcher path accessors — launchersDir, LauncherDir, menuLauncherPath, launcherSpawnRel and menuLauncherRel — and the launcher teardown.
 // It pins the _launchers layout and the launcher relative-path math across root and subpath AnchorRel cases, the reason a wrong HubPath base or a broken filepath.Rel would be caught here rather than in a live hub.
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantMenuLauncherName returns the expected menu launcher filename for the
@@ -29,6 +28,7 @@ func wantMenuLauncherName() string {
 //
 //testtiming:keep launchersDir and LauncherDir joining the hub, the _launchers name and the slug; coverage of its blocks by other tests does not show an assertion of this
 func TestLaunchersDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := filepath.Join("repos", "loomyard-LYMHUB")
@@ -50,6 +50,7 @@ func TestLaunchersDir(t *testing.T) {
 //
 //testtiming:keep the AnchorRel-mirrored launcher accessors at the root and a nested subpath, with distinct subpaths never colliding; coverage of its blocks by other tests does not show an assertion of this
 func TestMirroredLauncherMethods(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := filepath.Join("repos", "loomyard-LYMHUB")
@@ -213,6 +214,7 @@ func TestMirroredLauncherMethods(t *testing.T) {
 // It used to os.RemoveAll the whole directory, destroying anything the operator had placed beside
 // the launchers.
 func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -269,6 +271,7 @@ func TestRemoveLaunchers_PreservesForeignContent(t *testing.T) {
 //
 //testtiming:keep launcher-directory removal acting through the containment root so an escaping intermediate cannot delete an outside directory; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -310,6 +313,7 @@ func TestRemoveLaunchers_DirRemovalIsContained(t *testing.T) {
 //
 //testtiming:keep an empty launcher directory being removed and recorded exactly once with a silent second call; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()
@@ -357,6 +361,7 @@ func TestRemoveLaunchers_EmptyDirRemovedAndRecorded(t *testing.T) {
 // error was never the missing half: reverting refuseUncontainedPath to a bare fmt.Errorf still
 // returns an error here, and only the surfaceRefusal round-trip below fails.
 func TestRemoveLaunchers_ContainmentRefusalSurvivesSurfaceRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()

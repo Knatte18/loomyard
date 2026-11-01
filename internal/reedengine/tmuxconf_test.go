@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tmuxconf_test.go — tests for the operator tmux config feature's path validation.
 
 package reedengine
@@ -14,9 +12,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTmuxConfPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	write := func(name string) string {
@@ -81,6 +81,7 @@ func TestTmuxConfPath(t *testing.T) {
 // TestTmuxConfBootGuard pins the boot guard against the fake tmux.
 // It swaps the process-global logger output, so it does not run parallel.
 func TestTmuxConfBootGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	const path = "/home/operator/tmux.conf"
 	claimWithPath := "set-option -s @lym_tmux_conf_claimed sourced ; source-file " + path
 	claimWithoutPath := "set-option -s @lym_tmux_conf_claimed empty"

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // livestate_helpers_test.go holds the one small helper the live-state harness's own files
 // (livestate_states_test.go, livestate_verbs_test.go, livestate_manifest_selftest_test.go,
 // livestate_refusal_selftest_test.go) call directly but that does not move with any of them:

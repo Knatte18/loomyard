@@ -1,14 +1,15 @@
-//go:build tier0
-
 package websterengine
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteRefusalNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("content", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "friction")
 		n := RefusalNote{

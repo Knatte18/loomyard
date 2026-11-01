@@ -1,5 +1,3 @@
-//go:build tier1
-
 // create_integration_test.go runs "lym beam create" through RunCLIIn over a hubforge hub: from the parent beam of the entry it names, where it reaches the verb's own refusal, and from the prime, which it refuses naming the parent beam.
 
 package beamcli_test
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCreate_RunsFromABeamAndReachesTheVerbsOwnRefusal asserts the create of a task under the beam b, a refusal of the verb itself, is reached from b and refused from the prime, which names b as where to run it.
 func TestCreate_RunsFromABeamAndReachesTheVerbsOwnRefusal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	boardkit.InstallReplay(t)

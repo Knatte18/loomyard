@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -10,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeSessionTranscript writes lines as session sid's transcript under a temp HOME and returns the workdir it belongs to.
@@ -38,6 +37,7 @@ func titleLine(title string) string {
 const otherLine = `{"type":"assistant","message":{"content":[]}}`
 
 func TestSessionNameDrift(t *testing.T) {
+	tiergate.Require(t, 0)
 	const want = "tst:slug:worker"
 	tests := []struct {
 		name  string
@@ -85,6 +85,7 @@ func replaceTranscriptWithDirectory(t *testing.T, workdir, sid string) {
 
 // The tests below capture the process-global logger at Debug, so neither is parallel.
 func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("HOME", t.TempDir())
 	buf := logcapture.Capture(t)
 	logger.SetVerbosity(2)
@@ -101,6 +102,7 @@ func TestSessionNameDrift_MissingTranscriptReportsNoneAndLogs(t *testing.T) {
 }
 
 func TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs(t *testing.T) {
+	tiergate.Require(t, 0)
 	workdir := writeSessionTranscript(t, "sid", titleLine("x"))
 	replaceTranscriptWithDirectory(t, workdir, "sid")
 	buf := logcapture.Capture(t)
@@ -130,6 +132,7 @@ func TestSessionNameDrift_UnreadableTranscriptReportsNoneAndLogs(t *testing.T) {
 }
 
 func TestRenameText(t *testing.T) {
+	tiergate.Require(t, 0)
 	if got := New().RenameText("tst:slug:worker"); got != "/rename tst:slug:worker" {
 		t.Errorf("RenameText = %q", got)
 	}

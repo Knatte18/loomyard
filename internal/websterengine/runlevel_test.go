@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runlevel_test.go exercises Run end to end (Tier 1 — see docs/benchmarks/running-tests.md): a temp directory over a fakeGit backs WorktreeRoot and a real on-disk plan directory backs PlanDir (so ParsePlan/Validate/the batchifier/fingerprint all run for real, against the real identity batchifier — newRunFixture injects it into RunDeps.Batcher directly, since Run itself does no config I/O and needs no _lym/ tree on WorktreeRoot), while the Master spawn itself is a local, fully-scripted fake (MasterStarter/ MasterHandle) whose Wait method can carry an onWait side effect that writes outcome.yaml/summary.md the instant before it returns — modeling the real ordering (Master writes its two contract files DURING the run Wait blocks on).
 // FindRun's cross-process resolution is satisfied by hand-seeding a run.json under the fixture's own shuttle run-dir root, mirroring what a real *shuttleengine.Runner.Start would have produced.
 // Its helpers are package-local (the internal and external test packages deliberately do not share a test-helper package, mirroring recoverbatch_test.go/recordbatch_test.go's own precedent), except for the shared seedPlanDir/mustFingerprint/writeWorktreeFile helpers already defined in beginbatch_test.go and gitfake_test.go.
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -296,6 +295,7 @@ func snapshotWebsterDir(t *testing.T, fx *runFixture) (state, outcome []byte, en
 // error or message it carries, the way forward it names, that the Starter is never reached, and —
 // where the card has a way forward to take — that taking it lets the re-run reach the Master.
 func TestRun_RefusesBeforeSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var masterReed *shuttlefake.Reed
@@ -687,6 +687,7 @@ func TestRun_RefusesBeforeSpawn(t *testing.T) {
 
 // TestRun_DeadEndRefusalSparesRecoverableBatches asserts Run reaches Master, with no ErrBatchDeadEnd, over each recorded batch a Master or a recovery can still take.
 func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	unrendered := []websterengine.AmendedCard{{Card: "01-batch1", Rendered: false}}
@@ -721,6 +722,7 @@ func TestRun_DeadEndRefusalSparesRecoverableBatches(t *testing.T) {
 // Fresh beside the option keeps its archive path, and an in-flight card's edit is recorded for the next recovery to render.
 // The log capture swaps the logger's process-global output, so no subtest runs in parallel.
 func TestRun_AutoRebaseline(t *testing.T) {
+	tiergate.Require(t, 0)
 	const session = "master-session-auto"
 	const warningLead = "webster: the plan changed since the run recorded it and was rebaselined on entry"
 
@@ -1169,6 +1171,7 @@ func TestRun_AutoRebaseline(t *testing.T) {
 // Create target another card Uses, an informational-only findings set, a first init — still reaches the
 // Master spawn exactly once, and that the first init records a hash for every plan file.
 func TestRun_EntryValidationReachesMaster(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const startSHA = "0123456789abcdef0123456789abcdef01234567"
@@ -1274,6 +1277,7 @@ func TestRun_EntryValidationReachesMaster(t *testing.T) {
 // stale contract files are archived, live recorded strands are stopped, and a cleanly absent strand
 // is left alone.
 func TestRun_EntryHousekeeping(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -1494,6 +1498,7 @@ func TestRun_EntryHousekeeping(t *testing.T) {
 
 // TestRun_MasterSpawn asserts what Run hands the Master spawn and records around it: the strand role, model and skills, the awaited shell, the gate entries, the prompt (never written to a master.md), the strand and session identities, and the order of the batches the prompt lists.
 func TestRun_MasterSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -1751,6 +1756,7 @@ func TestRun_MasterSpawn(t *testing.T) {
 // matching its sentinel via errors.Is, names the re-run as the way forward, and that a fresh Master
 // resuming from state.json then finishes.
 func TestRun_MasterEndedEarly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -1820,6 +1826,7 @@ func TestRun_MasterEndedEarly(t *testing.T) {
 // clean or findings-bearing whole-session fork audit: the result, the warnings, the pending
 // findings that demote the run to stuck, the summary sections and the fixer prompt.
 func TestRun_DoneOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const fabricCommand = "cat FABRICREF/webster/state.json"
@@ -2184,6 +2191,7 @@ const (
 
 // TestRun_ExpiredShells asserts an ended shell states the run's outcome in its friction note and, on every outcome that returns a RunResult, in its warning; that only a done outcome lands in summary.md; and that an empty list adds no warning, summary section or friction note.
 func TestRun_ExpiredShells(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a waited-out shell warns, lands in the summary and is named in a friction note", func(t *testing.T) {
@@ -2307,6 +2315,7 @@ func auditDoneHandle(t *testing.T, fx *runFixture, session string, batchesDone i
 // TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck proves the run-exit audit demotes a done outcome to stuck on an undispositioned correctness finding — a Master write into a tracked file — naming the path and the git way forward,
 // that the finding stays pending and refuses a bare re-run, and that once the file is restored with git and the finding accepted a re-run with a clean audit ends done.
 func TestRun_DoneWithParentWriteToTrackedFileDemotesToStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fx := newRunFixture(t, 1)
 	seedMatchingState(t, fx, &websterengine.State{
@@ -2499,6 +2508,7 @@ func requireNoRecordedState(t *testing.T, fx *runFixture, _ error) {
 
 // TestRun_RunExitRefusals reaches each run-exit refusal over a done Master, asserts its message and way forward, then takes the way forward (the state a re-driven batch leaves, a finished summary, an audit that completed) and proves the re-run ends done; a resume whose prior session's batches fall outside the audit passes outright.
 func TestRun_RunExitRefusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const session = "master-session-exit"
@@ -2692,6 +2702,7 @@ func TestRun_RunExitRefusals(t *testing.T) {
 // a finished two-card run is archived with ArchiveRunRecord, the plan is replaced by a generation whose first_card is 3,
 // and Run starts over that plan with no ErrFingerprintMismatch, recording and telling Master only the new generation's batches.
 func TestRun_FreshRunOverNewGenerationAfterArchive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fx := newRunFixture(t, 2)
 	appendIntegrationVerify(t, fx.PlanDir, "go test ./...")
@@ -2828,6 +2839,7 @@ func plantReportsMarker(t *testing.T, fx *runFixture) string {
 // --fresh refuses, archiving nothing, while the evidence still stands, names the way forward, and drops the finding once the evidence is cleared.
 // Subtests share the logger's process-global output, so none runs in parallel.
 func TestRun_FreshOverPendingFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("refuses while the suspect path differs from the start commit", func(t *testing.T) {
 		fx := newRunFixture(t, 1)
 		tracked := filepath.Join(fx.Worktree, "base.txt")

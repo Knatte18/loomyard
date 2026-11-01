@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watcher_usagelimit_test.go covers the watcher under a usage limit at the orch's own turn end: the hold on its deliveries, no cycle, the wake line and its retries, and the release once the orch answers.
 
 package orchengine
@@ -13,9 +11,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWatcher_UsageLimitHoldsTheOrchAndWakesItAfterTheReset(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -94,6 +94,7 @@ func limitedWatchEnv(t *testing.T, resetsAt func(readAt time.Time) time.Time) (*
 }
 
 func TestWatcher_UsageLimitReadAfterItsResetWakesTheOrchAtOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	e, readAt := limitedWatchEnv(t, func(readAt time.Time) time.Time { return readAt.Add(-time.Hour) })
 	e.tick()
@@ -106,6 +107,7 @@ func TestWatcher_UsageLimitReadAfterItsResetWakesTheOrchAtOnce(t *testing.T) {
 }
 
 func TestWatcher_UsageLimitWakeFailuresRetryTheWake(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	noReset := func(time.Time) time.Time { return time.Time{} }
 	t.Run("WakeLineThatDoesNotRender", func(t *testing.T) {

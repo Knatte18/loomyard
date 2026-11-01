@@ -1,5 +1,3 @@
-//go:build tier0
-
 // holdreading_test.go pins HoldReading over a synthetic task worktree on disk.
 
 package arbiterstop
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // holdFixture is one task worktree under a temp hub, with the loom config seeded.
@@ -154,6 +153,7 @@ func utc(reading battenshed.ChildArbiterStop) battenshed.ChildArbiterStop {
 
 // TestHoldReading pins HoldReading's whole reading for each stop layout.
 func TestHoldReading(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const timeout = 30 * time.Minute
 	eligible := battenshed.ChildArbiterStop{Eligible: true, On: true, Timeout: timeout, SpawnsLeft: true}

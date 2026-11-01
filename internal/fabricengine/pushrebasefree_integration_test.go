@@ -1,5 +1,3 @@
-//go:build tier1
-
 // pushrebasefree_integration_test.go covers PushWarpRebaseFreeAt against a real warp checkout with a
 // bare origin: a commit ahead of its upstream pushes successfully and the returned record reports
 // the branch push; SkipGit and SkipPush each return an empty result with a nil error and push
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush covers the successful push path: a warp
@@ -25,6 +24,7 @@ import (
 // is left behind at the warp worktree root — the residue property PushWarpRebaseFreeAt exists to
 // guarantee.
 func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()
@@ -61,6 +61,7 @@ func TestPushWarpRebaseFreeAt_PushesAndRecordsBranchPush(t *testing.T) {
 // TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing asserts SkipGit and SkipPush each short-
 // circuit to an empty result and a nil error, leaving the bare remote unadvanced.
 func TestPushWarpRebaseFreeAt_SkipGitOrSkipPush_PushesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

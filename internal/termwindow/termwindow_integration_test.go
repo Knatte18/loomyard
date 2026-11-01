@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // termwindow_integration_test.go runs the window's shell line under bash, with a stub executable standing in for lym, to pin when the window ends and when it keeps its shell.
 
@@ -13,9 +13,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAttachLine_EndsOrKeepsTheShellByAttachStatus(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	if _, err := exec.LookPath("bash"); err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // transcriptPlaceholder in a chunk is replaced by the JSON-encoded path of the row's transcript file.
@@ -41,6 +40,7 @@ func signalPayload(t *testing.T, hook string, fields map[string]any) string {
 // Its rows cover each hook's kind and fields, the stamp pairing and its zero-time cases, the held trailing stamps across incremental reads, and the background tasks a turn end reads from the transcript at parse time.
 // Every row feeds its chunks one at a time, each call resuming at the previous call's consumed, and the signals of all calls must equal one whole-data call's.
 func TestParseSessionSignals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const stampTime = "2026-10-08T09:00:00Z"

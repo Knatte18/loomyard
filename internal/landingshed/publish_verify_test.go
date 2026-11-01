@@ -1,5 +1,3 @@
-//go:build tier0
-
 // publish_verify_test.go holds writeVerifyLog, the fake-verify log writer the Merge-In and Finalize gate tests share.
 
 package landingshed

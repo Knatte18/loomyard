@@ -1,5 +1,3 @@
-//go:build tier0
-
 // triage_test.go drives the verify gate's flaky-failure helpers: the warning and the friction note.
 
 package websterengine
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // failOutput renders go test output failing the named tests in pkg, each at its subtest nesting depth.
@@ -28,6 +27,7 @@ func failOutput(pkg string, tests ...string) string {
 }
 
 func TestTriageWarnings(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name string
 		in   []string
@@ -44,6 +44,7 @@ func TestTriageWarnings(t *testing.T) {
 }
 
 func TestWriteTriageFrictionNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("content", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "friction")
 		if err := writeTriageFrictionNote(dir, []string{"p.A", "p.B"}); err != nil {
@@ -82,6 +83,7 @@ func TestWriteTriageFrictionNote(t *testing.T) {
 
 // TestBackgroundShellNoteAndWarning asserts the friction note and the warning for an ended shell state, per outcome, the shell with its signal and time outstanding, that it was still running when the run ended, that the run never read its result, that lym did not stop the shell, what ends it and the final outcome, in the same words.
 func TestBackgroundShellNoteAndWarning(t *testing.T) {
+	tiergate.Require(t, 0)
 	endedShell := shuttleengine.EndedShell{Label: "sleep 9999", ID: "sh-1", Signal: shuttleengine.SignalTranscript, Outstanding: 90 * time.Second}
 	const removal = "shuttle removes Master's strand when the run finishes"
 	const reclaim = "the next `lym webster run` reclaims it at entry"

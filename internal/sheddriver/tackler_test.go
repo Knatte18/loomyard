@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tackler_test.go — tier 0 tests for the shed driver's tackler call, over a scripted agent shuttle, a fixed clock and a fake pause reader.
 
 package sheddriver
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // agentFake is a scripted AgentShuttle: it records every call and runs the scripted hooks inside Wait and AttachIfLive, where the real agent would write its verdict.
@@ -226,6 +225,7 @@ const (
 
 // TestTacklerCall_SpawnPath covers the call for a stop no open attempt judged: the budget refusals, what a fresh spawn records before and while the tackler runs, and the three ways a started tackler can end without a verdict.
 func TestTacklerCall_SpawnPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -395,6 +395,7 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 
 // TestTacklerCall_Rerun covers the call for a stop an attempt already judged: it returns or awaits that attempt's verdict, refuses an applied one and skips one already handed to the parent.
 func TestTacklerCall_Rerun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -518,6 +519,7 @@ func TestTacklerCall_Rerun(t *testing.T) {
 
 // TestTacklerCall_VerdictOutcomes covers the validation of the verdict a tackler wrote: which verdicts pass, and the cause each failing one reads as.
 func TestTacklerCall_VerdictOutcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergestateactive_integration_test.go covers MergeStateActive against a real hubforge pair: a clean
 // weft reports false; a weft carrying a live MERGE_HEAD (no conflicts) reports true; a weft carrying
 // a conflicted `git merge --squash` (no MERGE_HEAD) reports true, pinning that neither probe kind is
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // driveMergeHeadOnlyNoConflicts builds a divergent, non-conflicting branch in dir and runs
@@ -60,6 +59,7 @@ func driveConflictedSquashMerge(t *testing.T, dir string) {
 // The steps run serially on one pair.
 // Each leaves the weft clean or conflicted exactly as the next step expects.
 func TestMergeStateActive(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

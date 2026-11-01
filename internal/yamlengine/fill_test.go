@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fill_test.go covers FillMissing.
 
 package yamlengine
@@ -11,6 +9,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const fillTemplate = `name: tmpl
@@ -48,6 +48,7 @@ func rootKeyOrder(t *testing.T, data []byte) []string {
 // TestFillMissing pins the merge: missing keys are inserted whole and reported by path, and every value, shape and byte the file already holds survives.
 // A row sets wantBytes to pin the merged bytes exactly, wantMap to pin the decoded document, and wantOrder to pin the top-level key order.
 func TestFillMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	noOpExisting := "# keep me\nname:   spaced   # trailing\nselvage:\n    height_rows: 1\n    width: 2\nstatus_line:\n  enabled: no\n"
 	listElementExisting := "items:\n  - name: b\n"
@@ -198,6 +199,7 @@ func TestFillMissing(t *testing.T) {
 }
 
 func TestFillMissing_ShapeMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cases := []struct {
 		name, template, existing string
@@ -227,6 +229,7 @@ func TestFillMissing_ShapeMismatch(t *testing.T) {
 }
 
 func TestFillMissing_ParseErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if _, _, err := FillMissing([]byte("a: [unclosed\n"), []byte("a: 1\n")); err == nil {
 		t.Error("want template parse error")

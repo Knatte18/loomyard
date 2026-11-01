@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_judge_test.go is treadleengine's opt-in live-integration smoke
 // test: TestSmokeJudgeCirclingToyFixture drives one real per-round
 // circling-check progress judge call — runCircling — against a REAL claude
@@ -54,6 +52,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 )
@@ -218,6 +217,7 @@ func deferHubRelease(t *testing.T, hub string) {
 // TestSmokeJudgeCirclingToyFixture drives one real per-round circling-check progress judge call
 // against a real claude, proving the machinery works.
 func TestSmokeJudgeCirclingToyFixture(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	// shuttleengine.ConfigTemplate() and reedengine.ConfigTemplate() are each module's own plain

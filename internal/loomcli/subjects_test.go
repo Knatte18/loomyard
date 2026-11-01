@@ -1,5 +1,3 @@
-//go:build tier0
-
 // subjects_test.go drives the document and merge-in subjects and the review input seams over plain directories, with no git.
 
 package loomcli
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // subjectLocation returns a location whose anchor is a fresh temporary directory.
@@ -53,6 +52,7 @@ func documentSubjectOf(t *testing.T, location *lymcwd.Location, paths ...string)
 
 // TestDocumentSubject covers what documentSubject adds over the identity text it hashes: the decision record's carry-over blocks and a plan directory's approval flag, archived generations and lens review never change the subject, and any other edit does.
 func TestDocumentSubject(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a carry-over block leaves the decision record's subject unchanged", func(t *testing.T) {
@@ -129,6 +129,7 @@ func TestDocumentSubject(t *testing.T) {
 
 // TestReviewInputSeams asserts each review input seam answers not found while its file is absent under the scratch directory, and the file's path with its modification time once it is there.
 func TestReviewInputSeams(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

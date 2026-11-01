@@ -1,5 +1,3 @@
-//go:build tier0
-
 // refscanner_test.go covers RefScanner.Matches against the three cases websterengine's
 // audit_test.go exercises today for its own weftReferencePattern (a command containing the sibling
 // worktree path, a command containing a -weft sibling name, and a lym fabric/weft/warp invocation),
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeLayout returns a lymcwd.Location that resolves fabricengine.RecordsWorktree() without spawning
@@ -27,6 +26,7 @@ func fakeLayout() *lymcwd.Location {
 // packages: the sibling worktree path, a -weft sibling name, a lym fabric/weft/warp invocation, and
 // a clean command that must not match.
 func TestRefScanner_Matches(t *testing.T) {
+	tiergate.Require(t, 0)
 	layout := fakeLayout()
 	scanner := fabricengine.NewRefScanner(layout)
 	weftWorktree := fabricengine.RecordsWorktree(layout)
@@ -89,6 +89,7 @@ func TestRefScanner_Matches(t *testing.T) {
 // TestReferenceRule_Match covers what TestRefScanner_Matches cannot see.
 // That is the matched text each rule returns, taken from the copy its pattern ran on, and the two rules being callable apart.
 func TestReferenceRule_Match(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rule := fabricengine.NewReferenceRule()
@@ -125,6 +126,7 @@ func TestReferenceRule_Match(t *testing.T) {
 // TestIsReadOnlyCommand covers the allow-list of read forms (readers, lym help, lym fabric readers, git reads, sed prints) and the tokenised forms among them (quoted words, globs, tildes, the two stderr redirections),
 // and every way a command stops being read-only: a redirection, a substitution, backgrounding, an expanding word and any other command.
 func TestIsReadOnlyCommand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

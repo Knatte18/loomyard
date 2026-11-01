@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_cycle_test.go drives one full handoff cycle against a real Claude Code session in a real reed strand: start, one turn that launches a background task, a manual cycle, and the assertions that the handoff was written, the session was cleared and the resume prompt was typed.
 // It also records, without failing, the two questions only a live session answers: whether a background task's completion notification survives `/clear`, and whether the session's `SendMessage` address does.
 //
@@ -35,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -183,6 +182,7 @@ func waitFor(t *testing.T, attempts int, what string, cond func() bool) {
 
 // TestSmokeOrch_OneFullCycle drives start, one background-task turn, a manual cycle and the assertions.
 func TestSmokeOrch_OneFullCycle(t *testing.T) {
+	tiergate.Require(t, 3)
 	tmuxPath := os.Getenv("LYM_LOOM_TMUX")
 	if tmuxPath == "" {
 		var err error

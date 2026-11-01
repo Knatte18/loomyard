@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamdown_test.go pins that `lym beam stop` removes the orch strand first and then ends the dobby only when it is live, so a second call stops nothing.
 
 package orchcli
@@ -10,9 +8,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestBeamDown_StopsOrchThenTheDobbyByRole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

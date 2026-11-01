@@ -1,5 +1,3 @@
-//go:build tier0
-
 package discussionparser
 
 import (
@@ -10,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // addedDecision returns a complete AddedDecision dated 2026-03-04 in a non-UTC zone, so the test
@@ -43,6 +43,7 @@ func readFile(t *testing.T, path string) string {
 // TestAppendDecision_AppendsAtEndOfDecisionsSection asserts the entry lands after the Decisions section's last non-blank line, ignoring a heading inside a fence, and that the support log and the rest of the record stay byte-identical.
 // A PATTERN change replaces the section's bullet for its ID in place and is appended when the section holds none.
 func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	middleBefore := "# Record\n\n## Goal\n\nbody.\n\n## Scope\n\nbody.\n\n## Decisions\n\n### First\n\nDecision: a.\n\n"
@@ -187,6 +188,7 @@ func TestAppendDecision_AppendsAtEndOfDecisionsSection(t *testing.T) {
 }
 
 func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for name, mutate := range map[string]func(*AddedDecision){
 		"by":        func(d *AddedDecision) { d.By = "  " },
@@ -211,6 +213,7 @@ func TestAppendDecision_EmptyFieldWritesNothing(t *testing.T) {
 }
 
 func TestAppendDecision_MissingDecisionsHeadingWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	prior := strings.Replace(allSectionsContent(), "## Decisions", "## Choices", 1)
 	decisionPath, supportPath := writeFixture(t, t.TempDir(), prior, "log")
@@ -224,6 +227,7 @@ func TestAppendDecision_MissingDecisionsHeadingWritesNothing(t *testing.T) {
 }
 
 func TestAppendDecision_MissingRecordIsNotExist(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	_, err := AppendDecision(filepath.Join(dir, "absent.md"), filepath.Join(dir, "log.md"), addedDecision())
@@ -233,6 +237,7 @@ func TestAppendDecision_MissingRecordIsNotExist(t *testing.T) {
 }
 
 func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name          string
@@ -268,6 +273,7 @@ func TestAppendDecision_FindingRestoresRecord(t *testing.T) {
 // TestAppendDecisions_WritesBatchWholeOrNothing asserts a batch lands its entries in input order with each PATTERN bullet.
 // It also asserts an empty batch, an empty field in a later entry or a finding over the result leaves the record unchanged.
 func TestAppendDecisions_WritesBatchWholeOrNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	second := addedDecision()
 	second.Title = "Drop the flag"
@@ -311,6 +317,7 @@ func TestAppendDecisions_WritesBatchWholeOrNothing(t *testing.T) {
 }
 
 func TestParseAddedDecisions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	day := func(d int) time.Time { return time.Date(2026, 3, d, 0, 0, 0, 0, time.UTC) }
@@ -372,6 +379,7 @@ func TestParseAddedDecisions(t *testing.T) {
 
 // TestAddedDecisionTexts asserts each added entry comes back whole, heading and body up to the next heading, in record order, that a fenced heading starts no entry, and that a record with no entry, a missing record and an empty path read as none.
 func TestAddedDecisionTexts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	first := "### Added after Discussion (parent, 2026-03-01): Keep the cache\n\nDecision: keep it.\n\nRationale: it is warm."
@@ -423,6 +431,7 @@ func TestAddedDecisionTexts(t *testing.T) {
 // TestCheckAddedDecisionsKept asserts a record is held to every added entry its history held: each dropped entry is one finding naming its heading, an entry with the same title on another date is distinct, an unparseable heading in the record is a finding, and one in a history version contributes nothing.
 // An appended PATTERN bullet counts as kept while the record holds an appended bullet for its ID.
 func TestCheckAddedDecisionsKept(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	entry := func(date, title string) string {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStubProducer_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("HealthyContext", func(t *testing.T) {
 		p := NewStub("Discussion-Write")
 		outcome, pointer, err := p.Call(context.Background())

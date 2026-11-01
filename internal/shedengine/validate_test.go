@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validate_test.go is a table test over (*Shed).validate's rules: one case per rule, each
 // asserting a distinct error-message substring, plus one case asserting a fully-valid Shed
 // returns nil.
@@ -10,6 +8,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stubProducer is a trivial in-test ShedProducer stub used only for validate_test.go's non-nil
@@ -35,6 +35,7 @@ func validShed() *Shed {
 }
 
 func TestShed_Validate(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		mutate  func(*Shed)

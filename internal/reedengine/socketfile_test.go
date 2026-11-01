@@ -1,5 +1,3 @@
-//go:build tier0
-
 package reedengine
 
 import (
@@ -9,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // listenUnixSocket listens on the socket path dir/key and removes the file on close.
@@ -25,6 +25,7 @@ func listenUnixSocket(t *testing.T, dir, key string) *net.UnixListener {
 // TestBootSocketPath pins the socket path rules the boot refusal rests on: the limit per GOOS, the pure length check, and the base's symlinks being resolved before measuring.
 // It sets TMUX_TMPDIR, which is process-global, so it does not run in parallel.
 func TestBootSocketPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("LimitPerGOOS", func(t *testing.T) {
 		for goos, want := range map[string]int{"linux": 107, "darwin": 103, "freebsd": 103} {
 			if got := unixSocketPathLimit(goos); got != want {

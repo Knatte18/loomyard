@@ -1,5 +1,3 @@
-//go:build tier1
-
 // batchpause_test.go covers the pause refusal begin-batch, recover-batch, fix-verify and fix-plan make before they read or change any state, and the lookup of Master's strand it claims.
 
 package webstercli
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const undecodableRecord = "{not json"
@@ -28,6 +27,7 @@ const undecodableRecord = "{not json"
 // TestBatchVerbs_RefuseUnderAPause drives the batch verbs under a live hub entry with Master's strand lookup stubbed.
 // It does not run in parallel: envMasterStrand's part sets an environment variable, and the logger is process-global.
 func TestBatchVerbs_RefuseUnderAPause(t *testing.T) {
+	tiergate.Require(t, 1)
 	const (
 		masterName = "ly:pair:master"
 		masterGUID = "guid-master"

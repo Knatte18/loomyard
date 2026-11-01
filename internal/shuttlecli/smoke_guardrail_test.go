@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_guardrail_test.go is the live proof of the deny-and-steer guardrail path the hooks research flagged as unprobed
 // (docs/research/reed-hooks-exploration.md: "the deny-and-steer path itself is not yet probed"):
 // a REAL claude, when its Agent tool call is denied by the PreToolUse hook, actually resumes in-session on the steered instruction rather than stalling or aborting the turn,
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedcli"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSmokeGuardrailDeniesAgentTool proves the "deny-and-steer" path this round closes from the
@@ -37,6 +36,7 @@ import (
 // AND the steer redirected the work in-session, rather than the turn stalling or the agent giving
 // up once its preferred tool was refused.
 func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -95,6 +95,7 @@ func TestSmokeGuardrailDeniesAgentTool(t *testing.T) {
 // The test then answers through Run.Send with a text ending in MessageTail, and the run finishes done with the output file written —
 // the same live state the sandbox suite's S2 hold scenario depends on.
 func TestSmokeGuardrailQuestionHoldsRunUntilAnswered(t *testing.T) {
+	tiergate.Require(t, 3)
 	llmkit.Claude(t, "LYM_REED_CLAUDE")
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

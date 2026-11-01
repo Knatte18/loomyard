@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parse_test.go table-tests the pure pane-list parser in parse.go against the exact tmux output
 // shape it is expected to handle, including the pane_dead=1 row that remain-on-exit produces.
 
@@ -7,7 +5,10 @@ package reedengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestParsePaneList(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		out     string
@@ -120,6 +121,7 @@ func TestParsePaneList(t *testing.T) {
 }
 
 func TestParseWindowPanes(t *testing.T) {
+	tiergate.Require(t, 0)
 	out := "@2 1 grp %5 0 4242 a title\tnode\t/bin/bash -l\n" +
 		"@3 0 - %6 1 99 only a title\n" +
 		"@4 0 - %7\n"

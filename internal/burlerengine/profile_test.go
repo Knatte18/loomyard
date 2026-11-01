@@ -1,5 +1,3 @@
-//go:build tier0
-
 // profile_test.go table-drives Profile.validateReview and Profile.validateFix over the happy path and every fail-loud rule
 // documented on them: field-emptiness, path existence, FixScope legality, ClusterFan's
 // fan-resolution gate, and in-place absolute-path resolution for both relative and already-absolute
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testClusterFanConfig returns a lenses.Config fixture exercising every lenses.ResolveFan outcome profile_test.go's table needs:
@@ -78,6 +77,7 @@ func writeFixtureFile(t *testing.T, root, name, content string) {
 // TestProfile_Validate table-drives validateReview and validateFix over the happy paths and every fail-loud rule.
 // The two path-resolution rows also assert, through check, that every path field is rewritten in place to a cleaned absolute path: relative entries are joined onto worktreeRoot per entry, and an already-absolute entry outside worktreeRoot survives unchanged apart from filepath.Clean.
 func TestProfile_Validate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// outsideTarget is an existing absolute path in a directory of its own, outside every subtest's worktree root; subtests only read it.
@@ -476,6 +476,7 @@ func TestProfile_Validate(t *testing.T) {
 //
 //testtiming:keep pins the exclusion semantics, the resolved lens order and text and the ClusterExclude-without-ClusterFan error, which the Validate table covering its blocks does not assert
 func TestProfileValidate_ClusterExclude(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

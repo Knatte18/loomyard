@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_multillm_test.go covers multiLLMEntry: its construction refusals over Config and Env,
 // and the seat table a valid row hands the seat runner.
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeMultiLLMStencils seeds the shipped seat blocks into env's stencils directory and writes the lead and advisor stencils validMultiLLMConfig names.
@@ -58,6 +57,7 @@ func multiLLMSeatConfig(cfg Config, i int) map[string]any {
 }
 
 func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -119,6 +119,7 @@ func TestMultiLLMEntry_ConstructionFailures(t *testing.T) {
 }
 
 func TestMultiLLMEntry_ComposedTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	env := newTestEnv(t)

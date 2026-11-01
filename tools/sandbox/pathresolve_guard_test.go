@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pathresolve_guard_test.go enforces the Dev/Prod Binary Separation Invariant: no non-test *.go file in the tools/sandbox package, other than resolve.go, may perform a bare-PATH "lym" lookup or spawn -- lookPath("lym"), or an exec.Command/ exec.CommandContext call whose line also names "lym".
 // The exec forms are matched line-based rather than as a whole-file substring, because exec.CommandContext takes its context.Context argument first, so the literal exec.CommandContext("lym" never appears in compilable Go -- a substring scan for it can never match.
 // resolve.go's resolveLym is the single allowlisted resolution site;
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pathResolveAllowlist is the single file permitted to contain a banned bare-PATH lym literal.
@@ -34,6 +33,7 @@ var execSpawnTokens = []string{"exec.Command", "exec.CommandContext"}
 // TestPathResolveGuard_NoBarePathLymOutsideResolve fails if any non-test *.go file contains a
 // banned bare-PATH lym literal.
 func TestPathResolveGuard_NoBarePathLymOutsideResolve(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(pathResolveAllowlist)
 
 	var failures []string

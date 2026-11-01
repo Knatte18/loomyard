@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedrun
 
 import (
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // mkShedDir creates _lym/shed/<segment> under l's anchor.
@@ -20,6 +19,7 @@ func mkShedDir(t *testing.T, l *lymcwd.Location, segment string) {
 
 //testtiming:keep pins the self-to-worktree-name mapping and the pass-through of another id, which its covering test does not
 func TestResolveRunID(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -47,6 +47,7 @@ func TestResolveRunID(t *testing.T) {
 
 // TestRunDirResolution pins which directory a run-id addresses: the slug dir for a new run, the legacy self dir while only it exists, the slug dir once both exist, and an unrelated id's own dir.
 func TestRunDirResolution(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -90,6 +91,7 @@ func TestRunDirResolution(t *testing.T) {
 
 //testtiming:keep pins that self resolves against the told location, so a WriteSeed lands at SeedRel and SeedFile, which its covering tests do not
 func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
+	tiergate.Require(t, 0)
 	a := syntheticLocation(t)
 	b := &lymcwd.Location{RepoName: "repo", HubPath: a.HubPath, WorktreeName: "child-slug", AnchorRel: "."}
 	if got := ResolveRunID(b, SelfRunID); got != "child-slug" {
@@ -107,6 +109,7 @@ func TestSelfResolvesAgainstTheToldLocation(t *testing.T) {
 }
 
 func TestReadWriteSeed_InvalidResolvedIDRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	l := syntheticLocation(t)
 	if err := WriteSeed(l, "../x", Seed{Recipe: RecipeTapestry, Driver: DriverGo}); err == nil {
 		t.Error("WriteSeed with an invalid id = nil; want error")

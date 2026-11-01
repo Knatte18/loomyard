@@ -1,5 +1,3 @@
-//go:build tier0
-
 // build_test.go pins the build identity and the sidecar the bootstrap keeps or replaces a status strand by.
 
 package statuspane
@@ -9,11 +7,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const testSidecarFile = "status-strand.json"
 
 func TestIdentityOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("changes with size and mtime", func(t *testing.T) {
@@ -89,6 +90,7 @@ func TestIdentityOf(t *testing.T) {
 }
 
 func TestSidecar_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "nested", testSidecarFile)
@@ -109,6 +111,7 @@ func TestSidecar_RoundTrip(t *testing.T) {
 }
 
 func TestReadSidecar_UnreadableIsNil(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), testSidecarFile)

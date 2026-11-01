@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go pins the fields of the adopt envelope that depend on the outcome of the adopt checks' start and on the reconcile's warnings.
 
 package adoptcli
@@ -7,9 +5,12 @@ package adoptcli
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAdoptFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	started := []suiteStart{{Subject: "root", PID: 42}, {Subject: "alpha", PID: 43}}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_test.go — tests for run directories (run.go) and the process API (lymtemp.go).
 
 package lymtemp
@@ -16,9 +14,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNewRun_HoldsItsLockUntilRemoved(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	root := newTestRoot(t)
 
@@ -57,6 +57,7 @@ func TestNewRun_HoldsItsLockUntilRemoved(t *testing.T) {
 }
 
 func TestNewRun_RetriesATakenNameUpToTheBound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -158,6 +159,7 @@ func TestNewRun_RetriesATakenNameUpToTheBound(t *testing.T) {
 }
 
 func TestNewRun_InheritedRunDirectoryLandsBesideTheParents(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	uid := os.Getuid()
 	later := func() time.Time { return fixedClock().Add(24 * time.Hour) }
@@ -199,6 +201,7 @@ func TestNewRun_InheritedRunDirectoryLandsBesideTheParents(t *testing.T) {
 
 // TestProcessDirectory_StaysOneDirectoryUnderTheRoot leaves the run directory in place: the test binary's own run directory is removed by its TestMain.
 func TestProcessDirectory_StaysOneDirectoryUnderTheRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir, err := Dir()
 	if err != nil {

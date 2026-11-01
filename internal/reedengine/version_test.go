@@ -1,5 +1,3 @@
-//go:build tier0
-
 // version_test.go drives the pure `-V` parsers and the versionAtLeast comparator (version.go) with
 // fixtures covering both multiplexers' output shapes, plus malformed input and every relevant
 // versionAtLeast boundary.
@@ -8,7 +6,10 @@ package reedengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestParseTmuxVersion(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		out     string
@@ -34,6 +35,7 @@ func TestParseTmuxVersion(t *testing.T) {
 }
 
 func TestParseTmuxVersionWindows(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		out     string
@@ -57,6 +59,7 @@ func TestParseTmuxVersionWindows(t *testing.T) {
 }
 
 func TestVersionAtLeast(t *testing.T) {
+	tiergate.Require(t, 0)
 	pin := [3]int{3, 3, 3}
 	tests := []struct {
 		name string

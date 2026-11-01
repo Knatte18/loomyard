@@ -1,5 +1,3 @@
-//go:build tier1
-
 // stencilseed_integration_test.go pins the root pre-run's stencil-seed path against real hubs.
 // stencilSeedTarget's hub-presence gate is pinned against the defect that a plain repository with no hub-level sibling used to seed a fictional hub, and against a narrowing onto preflight.Wired, which would stop seeding in three real-hub situations that seed correctly today.
 // seedStencilsAt is driven directly because seedStencils is a no-op under testing.Testing():
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStencilSeedTarget_PlainRepoHasNoHub is the negative row and the defect this task exists to
@@ -34,6 +33,7 @@ import (
 // target, and stencilSeedTarget must not have caused any hub-level Bolt checkout to spring into
 // existence beside it.
 func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := t.TempDir()
@@ -57,6 +57,7 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 // The steps run serially in this order and the first-seed steps rely on the first seed that the "first seed" step performs; the last step removes a worktree, so it stays last.
 // The test calls t.Parallel but no step does, because the steps share the one hub fixture and its mutations.
 func TestStencilSeeding_HubScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -365,6 +366,7 @@ func TestStencilSeeding_HubScenario(t *testing.T) {
 // TestSeedStencils_NoOpAndEnvelopeUnderRoot drives one read-only command through the root against a real hub and asserts both that seedStencils stays a no-op under testing.Testing() -- without that guard every untagged cmd/lym test driving a Runnable command would spawn git -- and that the emitted JSON object carries neither a "mutations" nor a "partial" key, so a pre-run seed never widens a command's envelope.
 // It chdirs, which is process-global state, so it does not run in parallel.
 func TestSeedStencils_NoOpAndEnvelopeUnderRoot(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	stencilsDir := fabricengine.StencilsDir(hub.Path)
 	if _, err := os.Stat(stencilsDir); !os.IsNotExist(err) {

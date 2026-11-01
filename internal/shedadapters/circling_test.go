@@ -1,5 +1,3 @@
-//go:build tier0
-
 // circling_test.go covers the circling decision record over a temp run directory.
 
 package shedadapters
@@ -10,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // layoutCirclingRun writes a review, verdict and ledger for round with the given verdict word.
@@ -31,6 +31,7 @@ func layoutCirclingRun(t *testing.T, dir string, round int, verdict string) {
 
 //testtiming:keep pins the decision file RecordCirclingDecision writes per decision, escalation record and cause, and its round and cause return values
 func TestRecordCirclingDecision_WritesPendingFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -140,6 +141,7 @@ func writeEscalationRecord(t *testing.T, dir string, cause EscalationCause) {
 }
 
 func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	layoutCirclingRun(t, dir, 1, "CIRCLING")
 	if _, _, err := RecordCirclingDecision(dir, CirclingAccept); err != nil {
@@ -163,6 +165,7 @@ func TestRecordCirclingDecision_SecondRecordIsRefused(t *testing.T) {
 }
 
 func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		layout func(t *testing.T, dir string)
@@ -193,6 +196,7 @@ func TestRecordCirclingDecision_NotEscalatedWritesNothing(t *testing.T) {
 }
 
 func TestReadCirclingDecision(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -250,6 +254,7 @@ const escalationRecord = "---\nround: 1\ncause: budget\n---\nbrief\n"
 
 // TestPendingCirclingDecision pins PendingCirclingDecision over each layout of the latest round, and PendingEscalation over the same layouts.
 func TestPendingCirclingDecision(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

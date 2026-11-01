@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the Buildinfo Leaf Invariant: production code in
 // internal/buildinfo imports nothing at all -- not even the standard library.
 // Like modelspec's leaf_enforcement_test.go, this check is an ALLOWLIST: any import found fails
@@ -11,11 +9,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports is empty: no non-stdlib import is permitted.
 var allowedImports = []string{}
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/buildinfo", allowedImports...)
 }

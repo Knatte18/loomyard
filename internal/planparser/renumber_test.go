@@ -1,5 +1,3 @@
-//go:build tier0
-
 // renumber_test.go pins InsertCard and RemoveCard: the renumbered plan, the refusals that leave the plan directory untouched, and the reversal of an apply that fails at each step.
 
 package planparser_test
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -191,6 +190,7 @@ func removeAt(offset int) renumberCall {
 }
 
 func TestRenumber(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -358,6 +358,7 @@ func newCardIDFixture(t *testing.T) renumberFixture {
 // TestRenumber_RewritesCardIDs covers the card-id rewrite of a renumber: every `<N>-<slug>` and zero-padded file form naming a moved card moves to the new number, in a moved card, a card that keeps its number and the overview.
 // A token that runs on into a longer slug or word, a removed card's id and a bare number stay, and a rewritten id is not reported again as a prose mention.
 func TestRenumber_RewritesCardIDs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -446,6 +447,7 @@ func TestRenumber_RewritesCardIDs(t *testing.T) {
 
 // TestRenumber_CardIDRewriteFailureReversed covers a renumber that fails writing a card it rewrote in place: every file, that card included, is back as it was.
 func TestRenumber_CardIDRewriteFailureReversed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	fx := newCardIDFixture(t)
 	before := snapshot(t, fx.root)
@@ -458,6 +460,7 @@ func TestRenumber_CardIDRewriteFailureReversed(t *testing.T) {
 }
 
 func TestRenumber_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	verbs := map[string]func(ops planparser.RenumberIO, fx renumberFixture, position int, slug, intent string) error{
@@ -557,6 +560,7 @@ func TestRenumber_Refusals(t *testing.T) {
 }
 
 func TestRenumber_IOFailureReversed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -613,6 +617,7 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 }
 
 func TestRestoreRenumber(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const journalOutside = `{"files":{"00-overview.md":""},"created":["%s"]}`

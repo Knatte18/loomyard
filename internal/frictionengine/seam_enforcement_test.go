@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production
 // code in internal/frictionengine takes every absolute path it operates on from its caller and has
 // no direct production import of internal/lymcwd. Modelled directly on
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // frictionengineAllowedImports are the only non-stdlib import paths production code in this package
@@ -36,5 +35,6 @@ var frictionengineAllowedImports = []string{
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/frictionengine", frictionengineAllowedImports...)
 }

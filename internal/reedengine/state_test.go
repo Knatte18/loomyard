@@ -1,5 +1,3 @@
-//go:build tier0
-
 // state_test.go round-trips ReedState through Save/Load and pins the unreadable-file refusals.
 
 package reedengine
@@ -12,12 +10,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSaveState_ThenLoadState_RoundTrips pins that LoadState answers (nil, nil) for an absent file and returns what SaveState wrote.
 //
 //testtiming:keep pins LoadState answering (nil, nil) for an absent file and returning every field SaveState wrote, strand records included; its covering tests run this code without asserting it
 func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
+	tiergate.Require(t, 0)
 	dotLymDir := filepath.Join(t.TempDir(), ".lym")
 	absent, err := LoadState(dotLymDir)
 	if err != nil || absent != nil {
@@ -95,6 +95,7 @@ func TestSaveState_ThenLoadState_RoundTrips(t *testing.T) {
 // decoded to a valid EMPTY state, so `status` answered ok:true with zero strands and the whole
 // persisted table vanished silently.
 func TestLoadState_UnreadableFileIsActionable(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string

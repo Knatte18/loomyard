@@ -1,5 +1,3 @@
-//go:build tier1
-
 // adoptremote_integration_test.go drives the fabric CLI verbs that take a pair's weft branch from origin when it exists only there, and `add`'s adoption of a live pair's branches, against one real hub as an ordered scenario.
 // Origin-only branches are pushed into the hub's bare from a scratch clone,
 // and an unreachable origin is simulated by pointing the weft repo's origin URL at a missing path.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // originMarkerFile is the file an origin-only weft branch carries,
@@ -136,6 +135,7 @@ func requireAdoptedFromOrigin(t *testing.T, h *hubforge.Hub, slug string) {
 // The scenario calls t.Parallel as a whole;
 // no step does, because they share the one hub.
 func TestRunCLI_AdoptRemoteWeftScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

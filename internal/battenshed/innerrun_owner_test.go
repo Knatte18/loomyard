@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_owner_test.go covers the inner-run's owner check over a fake clock and fake seams:
 // when the check runs, what an owned-elsewhere verdict does to the parent lock, the pause and the notice, and how a spawn refused as owned elsewhere is held.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // ownerNotices counts the notices that name the adopt command, the one an owned-elsewhere run sends.
@@ -57,6 +56,7 @@ func elsewhereVerdict(int) (OwnerVerdict, error) {
 // It asserts a Finalize past its parent-side merge keeps the record, an unreachable verdict or a check error is retried at the next check, a done child waits out an owner hold, and a spawn refused as owned elsewhere pauses, writes no marker and spawns nothing more while the owner stands.
 // A machine wake does not trigger the check here: it reaches the verdict through the full pass the scheduling dobby owes.
 func TestInnerRun_OwnerCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"}
 	finalize := func(state shedengine.State, transient string) shedengine.Status {

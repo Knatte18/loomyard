@@ -1,5 +1,3 @@
-//go:build tier1
-
 // commitempty_integration_test.go covers Repo.CommitEmpty against a real git repository, reusing gitrepo_test.go's fixture helpers (newRepo, headFilesOf, requireCurrentSHA, runGit) rather than inventing a new harness.
 
 package gitrepo_test
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // treeSHA resolves rev's tree object SHA in dir, used to assert an empty
@@ -32,6 +31,7 @@ func treeSHA(t *testing.T, dir, rev string) string {
 // The steps run serially in one order and share the repository's state: the root-commit step relies on the staged entry the refusal step removes from the index, and the born-HEAD steps rely on the root commit and on a.txt committed by the step that opens them.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestCommitEmpty(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

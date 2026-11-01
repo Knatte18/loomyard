@@ -1,5 +1,3 @@
-//go:build tier0
-
 // render_test.go — unit tests for rendering (render.go).
 //
 // README and design-doc goldens over the kind-and-label layout: tasks in layers, notes grouped by type with an Other group, done and abandoned entries, dependencies, bodies, and the omitted Done section and empty Notes subsections.
@@ -20,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // renderTime is the time every render in these tests reads its ages as of.
@@ -41,6 +40,7 @@ func seedManifest(t *testing.T, dir string, names []string) {
 // TestRenderToDiskManifestCleanup covers RenderToDisk's outputs and the manifest-based cleanup scenarios:
 // a pre-seeded orphan removed with a custom design prefix, renamed outputs removed across consecutive renders, body loss removing a design doc, a removed project dropping its board file, unrelated files left untouched, and graceful degradation for missing/corrupt manifests.
 func TestRenderToDiskManifestCleanup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SeededManifestRemovesOrphanAndWritesOutputs", func(t *testing.T) {
 		dir := t.TempDir()
 		tasks := []boardengine.Task{
@@ -281,6 +281,7 @@ func readmeFixture() []boardengine.Task {
 // A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
 // A sixth row pins that a chain of nested projects stops deepening its headings at level six.
 func TestRenderReadmeGolden(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -972,6 +973,7 @@ func ownEntriesHeading(level int) string {
 
 // TestRenderDesignDocGoldens pins the design-doc header, the Depends on line with one linked and one named dependency, and a multi-line body appearing byte-identical.
 func TestRenderDesignDocGoldens(t *testing.T) {
+	tiergate.Require(t, 0)
 	task, note := boardengine.KindTask, boardengine.KindNote
 	tasks := []boardengine.Task{
 		{ID: 1, Slug: "linked", Title: "Linked", Kind: task, Labels: []string{"enhancement"}, Body: "linked body"},
@@ -1016,6 +1018,7 @@ func TestRenderDesignDocGoldens(t *testing.T) {
 //
 //testtiming:keep pins the result keys and design-doc links for a custom readme name and design prefix, which its covering test does not assert
 func TestRenderCustomOutputs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TestRenderConfigurableHomeFilename", func(t *testing.T) {
 		// Test that Render uses configured Readme filename instead of "Home.md"
 		task := boardengine.Task{
@@ -1088,6 +1091,7 @@ func getKeys(m map[string]string) []string {
 
 // TestFormatAge pins the unit boundaries, the unknown-date blank and the clamp of a future date.
 func TestFormatAge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const day = 24 * time.Hour
 	tests := []struct {

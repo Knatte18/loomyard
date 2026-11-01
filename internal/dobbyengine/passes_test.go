@@ -1,5 +1,3 @@
-//go:build tier0
-
 // passes_test.go pins the pass planner and the scheduling of passes over fake runs, a fake pass spawner and a temp state record.
 
 package dobbyengine
@@ -13,9 +11,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPlanPass(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	exited := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	running := RunView{Slug: "task", State: runStateRunning, Producer: producerRunShed, StatusModified: exited}
@@ -238,6 +238,7 @@ func (h *passHarness) recordLog() *[]string {
 }
 
 func TestLog_ChangesOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a tick that spawns passes and starts a task logs the start and no pass line", func(t *testing.T) {
@@ -312,6 +313,7 @@ func runningRun(slug string) RunView {
 }
 
 func TestDrivePasses_ExitHandling(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a dobby start owes every listed run a full pass and a re-exec owes none", func(t *testing.T) {

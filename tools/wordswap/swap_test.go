@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -8,6 +6,8 @@ import (
 	"regexp"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSwapText covers swapText's classification of every occurrence of "host":
@@ -20,6 +20,7 @@ import (
 //
 // Every row also asserts the reversibility check did not report a mismatch.
 func TestSwapText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -102,6 +103,7 @@ func TestSwapText(t *testing.T) {
 // TestProcessFile_DryRunWritesNothing verifies that processFile with dryRun=true reports the
 // change status without writing the file.
 func TestProcessFile_DryRunWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -135,6 +137,7 @@ func TestProcessFile_DryRunWritesNothing(t *testing.T) {
 // The failure is injected through the package-level revertSpans hook rather than by contriving input, since no genuine input can fail the real reversibility check.
 // It does not call t.Parallel because it rewrites the package-level revertSpans hook; the parallel tests of this package resume only after it has restored the hook.
 func TestProcessFile_MismatchLeavesFileUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	original := revertSpans
 	t.Cleanup(func() { revertSpans = original })
 	revertSpans = func(out string, spans []span) string {

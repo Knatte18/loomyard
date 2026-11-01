@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cli_test.go covers the ide CLI cobra surface: spawn dispatch with a stubbed
 // launcher, seed with and without a slug and its key bindings, the non-git refusal and the missing-slug error.
 
@@ -17,12 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/ideengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_SpawnScenario drives "lym ide spawn" against one hub: dispatch with a stubbed launcher and a temporary keybindings file, then the missing-slug error.
 // Neither step depends on the other's state.
 // Stays serial (no t.Parallel): the dispatch step swaps the package-level ideengine.CodeLauncher and ideengine.KeybindingsPath and restores them in a defer, which under t.Parallel() is both a data race on a production package-level variable and a restore firing while sibling tests still run.
 func TestRunCLI_SpawnScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Create a real hub so lymcwd.Resolve succeeds inside the PersistentPreRunE.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, "child", fabricengine.AddOptions{SkipPush: true})
@@ -187,6 +187,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 
 // TestRunCLI_NotAGitRepo verifies that "lym ide menu" run from a non-git temp directory surfaces lymcwd's bare ErrNotAGitRepo sentinel with no "failed to resolve layout:" prefix and no raw "fatal:" git stderr — the PersistentPreRunE aborts before menu's body runs, so the interactive picker is never reached.
 func TestRunCLI_NotAGitRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	tmpDir := t.TempDir()
 
 	var out bytes.Buffer

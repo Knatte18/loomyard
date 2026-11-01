@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergein_recovery_integration_test.go covers MergeIn's crash-recovery, freshness, foreign-state,
 // and illusion-integrity matrix: a fresh Fabric handle recovering a mid-merge record (both the
 // conflicted and the crashed-after-clean-staging shapes), a conclude-phase partial failure and its
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // openFreshFabric opens a brand-new *fabricengine.Fabric handle over warpPath, independent of any
@@ -93,6 +92,7 @@ func pushDetachedContentAsRemoteBranch(t *testing.T, dir, branch, filename, cont
 // conflicted MergeIn leaves its record on disk, and a brand-new Fabric handle over the same pair
 // drives MergeAbort to an exact two-sided restore.
 func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -125,6 +125,7 @@ func TestMergeAbort_FreshHandle_RecoversConflictedRecord(t *testing.T) {
 // hand-saved record and nothing concluded, then a fresh Fabric handle's MergeContinue concludes
 // both.
 func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -191,6 +192,7 @@ func TestMergeContinue_FreshHandle_RecoversCrashedAfterCleanStaging(t *testing.T
 // idempotency this test also used to cover is pinned instead by
 // TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking.
 func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -239,6 +241,7 @@ func TestMergeContinue_ConcludeFailureThenRetryConcludes(t *testing.T) {
 // error, while MergeIn, MergeContinue, and MergeAbort all refuse with *ErrForeignMergeState and
 // leave the foreign state untouched (same MERGE_HEAD, same conflicted files).
 func TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -287,6 +290,7 @@ func TestMergeVerbs_ForeignMergeState_RefuseWithoutTouching(t *testing.T) {
 // with neither a fabric record nor foreign git merge state present, MergeContinue and MergeAbort
 // both return *ErrNoMergeInProgress — pinning that the two errors are not interchangeable.
 func TestMergeVerbs_NoRecordNoForeignState_ReturnNoMergeInProgress(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	_, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -306,6 +310,7 @@ func TestMergeVerbs_NoRecordNoForeignState_ReturnNoMergeInProgress(t *testing.T)
 // TestMergeIn_Freshness_LocalBehindRemote covers the freshness rule's first branch: a local source
 // branch behind its remote-tracking ref merges the remote-tracking SHA, not the stale local one.
 func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -343,6 +348,7 @@ func TestMergeIn_Freshness_LocalBehindRemote(t *testing.T) {
 // TestMergeIn_Freshness_SourceOnlyRemote covers the freshness rule's second branch: a source branch
 // existing only on the remote (no local ref at all) merges cleanly once fetched.
 func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -372,6 +378,7 @@ func TestMergeIn_Freshness_SourceOnlyRemote(t *testing.T) {
 // reason — isolated by giving the weft counterpart a legitimate local branch, so the only guard
 // reason that can fire is the warp-side one.
 func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -398,6 +405,7 @@ func TestMergeIn_Freshness_SourceResolvableNowhere(t *testing.T) {
 // reaches the degenerate AlreadyUpToDate case instead of refusing — nothing mutates either way,
 // which is why the original nothing-mutated assertions still hold verbatim.
 func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -431,6 +439,7 @@ func TestMergeIn_NoWeftCounterpart_NothingMutated(t *testing.T) {
 // separately named tests rather than kept under one name that describes a property only one of them
 // still has.
 func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -459,6 +468,7 @@ func TestMergeIn_DirtyWarpRefuses(t *testing.T) {
 // created at the current HEAD, so with the guard gone the call reaches the degenerate
 // AlreadyUpToDate case rather than landing a real merge commit.
 func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -502,6 +512,7 @@ func TestMergeIn_DirtyWeftDoesNotRefuse(t *testing.T) {
 // conflict at all — see the merge-drops-weft task — leaving the warp-only assertion, which needs no
 // cross-side comparison any more since there is no other side to compare against.
 func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -548,6 +559,7 @@ func TestMergeIn_ConflictMarkers_NeverLeakWeftName(t *testing.T) {
 // two-sided design kept BOTH sides pending. With the weft no longer able to conflict, there is only
 // the warp side left to adopt — see the merge-drops-weft task.
 func TestMergeContinue_InvisibleLandedConclude_AdoptsInsteadOfSticking(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -640,6 +652,7 @@ func abortMergeAndLandUnrelatedCommit(t *testing.T, dir, filename string) string
 // The correct disposition is honestly stuck — *ErrMergeIncomplete with the record retained, so the
 // operator can still see what fabric thinks is happening.
 func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -705,6 +718,7 @@ func TestMergeContinue_UnrelatedCommitWhileRecordLive_IsNeverAdopted(t *testing.
 // against a base the paired side never saw; doc.go names this exact shape as not-adopted, and its
 // plain-git recovery instructions (reset to the recorded start first) exist because of it.
 func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -774,6 +788,7 @@ func TestMergeContinue_MergeOfSourceOntoWrongBase_IsNeverAdopted(t *testing.T) {
 // parents is the recorded source SHA" clause refuses it; without that clause adoption would claim a
 // merge of some other branch as this merge's conclude.
 func TestMergeContinue_MergeOfWrongSourceOntoStart_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -861,6 +876,7 @@ func rootCommitForTest(t *testing.T, dir string) string {
 // entry accounts for. fabric can never produce an octopus: it starts every non-squash merge with a
 // single `git merge --ff --no-commit <sourceSHA>`, so its conclude has exactly two parents.
 func TestMergeContinue_OctopusMergeCarryingTheSource_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, st := setupWarpStagedPendingConclude(t)
@@ -1001,6 +1017,7 @@ func assertConcludeRefusedWithoutCommitting(t *testing.T, h *hubforge.Hub, warpH
 // on the recorded start and a MERGE_HEAD is live, so sideConcludeAlreadyLanded correctly reports "not
 // landed" and hands straight to the commit that was the defect.
 func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, st := setupWarpStagedPendingConclude(t)
@@ -1050,6 +1067,7 @@ func TestMergeContinue_DifferentMergeLiveAtConcludeTime_IsNeverCommitted(t *test
 // The test asserts that first-entry-equals-the-source precondition explicitly, so a regression to the
 // truncating read fails here instead of passing.
 func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, st := setupWarpStagedPendingConclude(t)
@@ -1090,6 +1108,7 @@ func TestMergeContinue_UncommittedOctopusCarryingTheSource_IsNeverCommitted(t *t
 // It is the same silent false success as the live-different-merge shape, reached without any second
 // merge at all — one `git merge --abort` and one `git add`.
 func TestMergeContinue_StagedContentWithNoLiveMergeAtConcludeTime_IsNeverCommitted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, st := setupWarpStagedPendingConclude(t)
@@ -1201,6 +1220,7 @@ func commitParentsForTest(t *testing.T, dir, sha string) []string {
 // The refusal is honest, not lossy: the record is retained and *ErrMergeIncomplete comes back, which
 // is exactly the behaviour that held before an adoption arm existed at all.
 func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -1274,6 +1294,7 @@ func TestMergeContinue_SquashConcludeLandedByHand_IsNeverAdopted(t *testing.T) {
 // exists to prevent, and the assertion that discriminates is the same one: a verb that returns
 // without error must never leave git-level merge state behind on either side.
 func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, _, _, _ := newMergePairFixture(t, ".")
@@ -1355,6 +1376,7 @@ func TestMergeContinue_SecondMergeStartedOverALandedConclude_LeavesNoLiveMergeHe
 // correspondence for a pair whose two sides carry structurally different history — one squashed,
 // one not. Refusing keeps it honestly stuck, which is the pre-adoption-arm behaviour.
 func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -1434,6 +1456,7 @@ func TestMergeContinue_SquashRecordCarryingATwoParentMerge_IsNeverAdopted(t *tes
 // and a crash before its conclude leaves precisely this record behind. The fixture writes it
 // directly, which is the same on-disk state that crash produces.
 func TestMergeContinue_BothSidesAlreadyUpToDate_DerivesAlreadyUpToDate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -1549,6 +1572,7 @@ const (
 // Each row asserts its own shape with t.Fatal before asserting any refusal, so a fixture that silently
 // stopped producing the state under test fails on its precondition instead of passing vacuously.
 func TestMergeVerbs_ForeignMergeState_EverySideAndShapeRefuses(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // archive_test.go covers the shared run-file archive (absent no-op, rename/preserve and collision
 // suffixing over state.json, outcome.yaml and summary.md), archiveReportsDir's recreate-after-archive
 // and absent-dir-still-recreates behavior, and ArchiveRunRecord's move, idempotence and refusals.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // archiveFixedClock returns a func() time.Time that always returns t.
@@ -28,6 +27,7 @@ func archiveFixedClock(t time.Time) func() time.Time {
 // present one is renamed to <name>-<UTC stamp><ext> with its content preserved, and a stamp already
 // taken, with or without suffixes, takes the first free numeric suffix instead of clobbering.
 func TestArchiveRunFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stamp := time.Date(2026, 7, 11, 13, 45, 0, 0, time.UTC)
@@ -102,6 +102,7 @@ func TestArchiveRunFile(t *testing.T) {
 }
 
 func TestArchiveReportsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -193,6 +194,7 @@ func archiveRecordGeom(t *testing.T) Geometry {
 }
 
 func TestArchiveRunRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("moves the whole record and clears prompts", func(t *testing.T) {

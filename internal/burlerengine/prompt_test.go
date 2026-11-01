@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prompt_test.go covers the half prompts' marker composition.
 // The happy path fills every marker across the review half's three rendered assets and the fix half's two.
 // Each switched block (fix-scope, tool-use, prior-rounds, cluster-rules) renders the branch its Profile field selects and not the other branch's exclusive phrasing.
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // Placeholder absolute instruction paths every compose call in this file passes.
@@ -140,6 +139,7 @@ func fixHalf(t *testing.T, stencilsDir string, p *Profile, frictionDirective str
 // TestComposePrompt_FocusDirective proves a round's focus file reaches the explore step through its own channel, with the precedence rule, and never reaches the review step's prior-rounds block;
 // and that a round without a directive renders no focus text and no marker residue.
 func TestComposePrompt_FocusDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	stencilsDir := newTestStencilsDir(t)
 
 	t.Run("directive present", func(t *testing.T) {
@@ -226,6 +226,7 @@ func TestComposePrompt_FocusDirective(t *testing.T) {
 //
 //testtiming:keep pins the profile content, the directory annotation, the instruction file paths, the fixer stencil's pointers and the seat stencils' exclusion of the Go-built cluster block, which the cluster-rules test covering its blocks does not assert
 func TestComposePrompt_MinimalProfile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	p := newComposableProfile(t)
@@ -283,6 +284,7 @@ func TestComposePrompt_MinimalProfile(t *testing.T) {
 
 // TestComposePrompt_ParentDirective proves both seat stencils carry the parent variant naming the parent when one is told, the no-parent variant when none is, and no instruction file carries either.
 func TestComposePrompt_ParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := newComposableProfile(t)
 	stencilsDir := newTestStencilsDir(t)
 
@@ -317,6 +319,7 @@ func TestComposePrompt_ParentDirective(t *testing.T) {
 // and vice versa for FixScopeOverlay.
 // In neither scope does the fixer's rendered write surface list the review file, which only the reviewer writes.
 func TestComposePrompt_FixScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("source", func(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
@@ -347,6 +350,7 @@ func TestComposePrompt_FixScope(t *testing.T) {
 // TestComposePrompt_ToolUse proves the tool-use block switches on p.ToolUse, each value's phrase
 // present and the other's absent.
 func TestComposePrompt_ToolUse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("true drives the substrate", func(t *testing.T) {
 		p := newComposableProfile(t)
 		p.ToolUse = true
@@ -371,6 +375,7 @@ func TestComposePrompt_ToolUse(t *testing.T) {
 // TestComposePrompt_PriorRounds proves the prior-rounds block distinguishes a first round (no prior
 // files) from a round hydrated with prior review / fixer-report paths.
 func TestComposePrompt_PriorRounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("first round", func(t *testing.T) {
 		p := newComposableProfile(t)
 
@@ -402,6 +407,7 @@ func TestComposePrompt_PriorRounds(t *testing.T) {
 // composeReviewPrompt reads p.clusterLenses directly (as (*Profile).validateReview would have left it) rather
 // than calling lenses.ResolveFan itself.
 func TestComposePrompt_ClusterRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("non-cluster", func(t *testing.T) {
 		p := newComposableProfile(t)
 
@@ -508,6 +514,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 // pattern_directive does: enabled carries the directive text verbatim into the fix step alone, disabled
 // composes cleanly with no directive text, and a marker-free template composes cleanly regardless.
 func TestComposePrompt_FrictionDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("enabled", func(t *testing.T) {
 		p := newComposableProfile(t)
 		stencilsDir := newTestStencilsDir(t)
@@ -567,6 +574,7 @@ func requireNotContains(t *testing.T, text, needle string) {
 // it logs nothing for an empty focus block or a template carrying the marker, and exactly one line naming the stencil and the marker literal otherwise.
 // The logger output is process-global, so the test never runs in parallel.
 func TestWarnIfFocusMarkerAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	const stencilName = "burler-step-1-explore"
 	tests := []struct {
 		name      string

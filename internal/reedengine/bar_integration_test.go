@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // bar_integration_test.go expands the three-line status bar against a real tmux server and an attached client,
 // and asserts the acceptance rows: which button is lit, which windows get a button, the wait mark, and the session line.
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // barFixture is a session with Selvage, two strand panes (alpha in the review segment, beta in plan), a second window, a window carrying @lym_hidden and a second session, with a client attached.
@@ -81,6 +82,7 @@ func (f *barFixture) expand(t *testing.T, format string) string {
 }
 
 func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBarFixture(t)
 	e := f.e
@@ -212,6 +214,7 @@ func TestBar_LineOneButtonsFollowTheWindowZoomAndWaitMarks(t *testing.T) {
 // The session carrying @lym_prime_session comes ahead of the rest.
 // With no session marked the first loop draws nothing, and the second loop's order is session name on tmux 3.4 and session id on newer tmux, so no order is asserted.
 func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBarFixture(t)
 
@@ -294,6 +297,7 @@ func TestBar_LineTwoListsSessionsPrimeFirst(t *testing.T) {
 
 // TestBar_LineTwoShowsTheCheckMarkBeforeTheClock pins the check mark on line 2: absent while unset, its text and growing seconds styled by its running state, the green style without seconds once ended, and gone once cleared.
 func TestBar_LineTwoShowsTheCheckMarkBeforeTheClock(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	f := newBarFixture(t)
 

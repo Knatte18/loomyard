@@ -1,14 +1,15 @@
-//go:build tier0
-
 package battencli
 
 import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRefuseNonPrime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

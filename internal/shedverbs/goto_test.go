@@ -1,5 +1,3 @@
-//go:build tier0
-
 // goto_test.go covers the generic goto body: a blocked run moves onto the named row paused,
 // and each refusal names its way forward, listing the valid producers where the target is at fault.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func gotoTexts() VerbTexts {
@@ -51,6 +50,7 @@ func seedBlocked(t *testing.T, paths testPaths, current string) {
 
 // TestGotoCmd_MovesBlockedRunOntoRow asserts a blocked run lands paused on the target and the file is updated.
 func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 	// A goto leaves the run's scratch directory alone, so a gate findings file kept there survives it.
@@ -112,6 +112,7 @@ func TestGotoCmd_MovesBlockedRunOntoRow(t *testing.T) {
 
 // TestGotoCmd_RefusesMissingOrUnknownTarget asserts both refusals end in a way forward listing the valid producer names.
 func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		args     []string
@@ -150,6 +151,7 @@ func TestGotoCmd_RefusesMissingOrUnknownTarget(t *testing.T) {
 
 // TestGotoCmd_RefusesHeldRunLock asserts a held run lock names lym shed pause --after <current_producer>.
 func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 	held, locked, err := lock.TryAcquireWriteLock(paths.LockPath)
@@ -172,6 +174,7 @@ func TestGotoCmd_RefusesHeldRunLock(t *testing.T) {
 
 // TestGotoCmd_PassesToldWayForwardTexts asserts the verb hands the spec's run-id, missing-status clause, pause command and goto guard to the engine, seen in a refusal.
 func TestGotoCmd_PassesToldWayForwardTexts(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	spec := gotoSpec(paths)
 	spec.MissingStatusWayForward = "way forward: told clause"
@@ -235,6 +238,7 @@ func seedRunning(t *testing.T, paths testPaths) {
 
 // TestGotoCmd_PreGotoRefusalLeavesStatusUntouched asserts a refusing PreGoto hook puts its message on the envelope and leaves the status file byte-identical.
 func TestGotoCmd_PreGotoRefusalLeavesStatusUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 	before, err := os.ReadFile(paths.StatusPath)
@@ -265,6 +269,7 @@ func TestGotoCmd_PreGotoRefusalLeavesStatusUntouched(t *testing.T) {
 // TestGotoCmd_PassingPreGotoMoves asserts a passing hook still lets the move through;
 // the nil-hook case is TestGotoCmd_MovesBlockedRunOntoRow.
 func TestGotoCmd_PassingPreGotoMoves(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedBlocked(t, paths, "B")
 	spec := gotoSpec(paths)

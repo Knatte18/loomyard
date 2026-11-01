@@ -1,5 +1,3 @@
-//go:build tier0
-
 // planfixer_test.go exercises the plan fixer's bounded spawn-or-attach and its verdict-reading wait over the recover-batch fixture: a real *shuttleengine.Runner over the shuttlefake Reed and Engine, a fake git and a fake Clock.
 
 package websterengine_test
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -50,6 +49,7 @@ func newFixPlanFixture(t *testing.T, findings []string) (*recoverFixture, webste
 
 // TestFixPlanSpawnOrAttach pins the refusals and their bounds, the spawn's spec, prompt and record, and the attach to a running fixer.
 func TestFixPlanSpawnOrAttach(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a refusal names its way forward and spawns nothing", func(t *testing.T) {
@@ -201,6 +201,7 @@ func TestFixPlanSpawnOrAttach(t *testing.T) {
 
 // TestFixPlanAwait pins the verdict a terminal wait reads, the overrule of a fixed verdict that touched code, and the terminal record.
 func TestFixPlanAwait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gitkitspawnreference_test.go pins the gitkit-spawn definition gitkitspawn_test.go holds.
 // This file names no gitkit export, so it never trips the scans that use the definition.
 
@@ -7,8 +5,11 @@ package main
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 //testtiming:keep pins the gitkit-spawn definition the TestTierPurity_UntaggedTestsSpawnNothing and TestHermeticGitEnv_GitSpawningPackagesHaveTestMain guards share: every export but HermeticGitEnv spawns, file-name mentions do not
 func TestGitkitSpawnReference(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The sample references are assembled at run time so this file's own source carries none.
 	pkg := "git" + "kit."
 	tests := []struct {

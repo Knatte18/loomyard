@@ -1,5 +1,3 @@
-//go:build tier0
-
 // standalonegeom_test.go pins every field of both told-mode geometry builders against a fixed target directory and told literal stateDir/hash8 values.
 // Nothing here calls standalonestate.Derive or reads an environment variable — the whole point of the builders' told parameters is that these tests need no t.Setenv and can run t.Parallel().
 // Every target below is a fictional absolute path that does not exist, so ReedGeometry's one filesystem read (standalonestate.Normalize, see doc.go) resolves each of them to itself and these cases stay deterministic with no fixture; the symlink behaviour that read exists for is pinned separately in reedgeom_symlink_test.go, which needs a real filesystem.
@@ -18,11 +16,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 func TestBurlerGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// target is deliberately not under stateDir, since that is the whole reason
@@ -58,6 +58,7 @@ func TestBurlerGeometry(t *testing.T) {
 
 // TestStandaloneDirs pins each told-stateDir directory builder to its own subdirectory of stateDir, and that no two of them converge: StencilsDir and SpecsDir are separate directories under the durable lym directory, and LogsDir is a third under the ephemeral one, deliberately a different directory from the "logs" directory ReedGeometry's LogsDir field names for a different producer.
 func TestStandaloneDirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
@@ -98,6 +99,7 @@ func TestStandaloneDirs(t *testing.T) {
 
 //testtiming:keep pins every ReedGeometry field at once, including the two-root split and the identity fields, which the session-name table covering its blocks never reads
 func TestReedGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// target is deliberately not under stateDir, since that is the whole reason
@@ -160,6 +162,7 @@ func TestReedGeometry(t *testing.T) {
 // The hash8 suffix is asserted intact on every row, since sanitizing the readable half must never
 // touch the half that carries the identity.
 func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stateDir := filepath.Join(string(filepath.Separator), "var", "lib", "lym-state", "abcd1234")
@@ -202,6 +205,7 @@ func TestReedGeometry_SessionNameSanitizesTheReadableHalf(t *testing.T) {
 }
 
 func TestWebsterGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	target := filepath.Join(string(filepath.Separator), "home", "operator", "src", "distinctive-repo-name")

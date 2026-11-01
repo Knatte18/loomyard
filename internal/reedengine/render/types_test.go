@@ -1,5 +1,3 @@
-//go:build tier0
-
 // types_test.go pins the on-disk contract of Display's JSON keys, in particular that a record
 // still carrying the retired fixedRows, shrinkWhenWaitingOnChild and size keys decodes with all ignored,
 // and that the retired below-parent and top anchors decode as own-window.
@@ -10,9 +8,12 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDisplayDecodesRetiredKeysIgnored(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -49,6 +50,7 @@ func TestDisplayDecodesRetiredKeysIgnored(t *testing.T) {
 }
 
 func TestDisplayMarshalsWithoutRetiredKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	raw, err := json.Marshal(Display{Anchor: AnchorOwnWindow, Focus: true})
 	if err != nil {

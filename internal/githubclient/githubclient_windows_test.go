@@ -1,4 +1,4 @@
-//go:build tier0 && windows
+//go:build windows
 
 // githubclient_windows_test.go carries the one case in this package's test
 // suite that is genuinely platform-specific: asserting the token cache
@@ -25,6 +25,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWriteCachedToken_CreatesFileWithRestrictivePermissions asserts the hardening this file
@@ -33,6 +35,7 @@ import (
 // report the same value regardless of whether hardenCacheFile's os.Chmod call or its DACL step ran
 // at all.
 func TestWriteCachedToken_CreatesFileWithRestrictivePermissions(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	setCacheDir(t, dir)
 

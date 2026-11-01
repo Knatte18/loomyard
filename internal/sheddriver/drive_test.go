@@ -1,5 +1,3 @@
-//go:build tier0
-
 // drive_test.go — tier 0 tests for the shed driver's settle loop, over fake seams and a temp worktree.
 
 package sheddriver
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // driveTestEpoch is the time the scripted history is laid out from.
@@ -62,6 +61,7 @@ const wiredExecutable = "/wired/bin/lym"
 // TestGoDriver_Settle drives the loop over scripted envelopes and statuses and pins, per row, the seams it calls in order, the settle records it appends, how the run ended and what a hand-back leaves on disk.
 // The no-group rows leave one optional seam group nil and pin that the stop meets the later rows unchanged.
 func TestGoDriver_Settle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	blocked := func(t *testing.T) []byte {
@@ -875,6 +875,7 @@ func TestGoDriver_Settle(t *testing.T) {
 
 // TestDriveVerb pins the driver lock around a driver: a lock held past the grace refuses with the recipe's refusal and touches nothing, a lock released within the grace is taken, a lock directory that cannot be created ends the recipe's retry clause, a free lock clears the stale files, runs once and prints the run's fields, and a run that released the lock early for a hand-over leaves it free with no double release.
 func TestDriveVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const refusal = "test: a driver already drives this run; way forward: transient, the live driver settles it"

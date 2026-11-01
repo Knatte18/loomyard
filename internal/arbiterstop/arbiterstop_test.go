@@ -1,5 +1,3 @@
-//go:build tier0
-
 // arbiterstop_test.go pins the eligibility answer the Go driver's escalation fact takes.
 
 package arbiterstop
@@ -16,10 +14,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheck_RefusesLandingHalts pins that Check refuses a blocked landing halt with a refusal ending in HandBackWayForward, and admits a Webster reroute-cap halt and an ordinary blocked halt.
 func TestCheck_RefusesLandingHalts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -63,6 +63,7 @@ func TestCheck_RefusesLandingHalts(t *testing.T) {
 
 // TestEligibility_BattenRule pins batten's rule through Check: a tackler-escalated stop is eligible unless it is a spent budget, an unmet precondition or a pause-honoured Land stop, which end in BattenHandBackWayForward, while loom-shaped readers keep loom's answer for the budget and precondition stops.
 func TestEligibility_BattenRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	loomReaders := Readers{
 		PendingEscalation: func(string) (shedadapters.EscalationCause, string, bool, error) { return "", "", false, nil },
@@ -103,6 +104,7 @@ func TestEligibility_BattenRule(t *testing.T) {
 // TestEscalationEligible pins EscalationEligible over fake readers: only a pending hard-cap or circling escalation is eligible.
 // Every refused row also runs Check over an awaiting status and wants the refusal to end with HandBackWayForward.
 func TestEscalationEligible(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

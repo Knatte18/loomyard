@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verifygate_integration_test.go drives newVerifyGate's real verifytree functions against a scratch repo and real shell commands,
 // and pins the record-keyed behaviour the unit tests fake: the log holds the command's output on a pass and a fail,
 // a verify interrupted before the record write runs again, and a no-op merge onto a verified tree skips it.
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newGateScratch returns a Deps over a fresh one-commit repo whose verify directory and counter file lie outside the worktree,
@@ -53,6 +52,7 @@ func runs(t *testing.T, counter string) int {
 // The steps run in order on one repo and one verified-tree record, so no step runs in parallel and each relies on the state the one before it left;
 // the top-level test calls t.Parallel because the repo is its own.
 func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	deps, counter := newGateScratch(t)

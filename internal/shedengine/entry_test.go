@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entry_test.go covers the entry gate: a gated row's evaluation when the run enters it, the skip of a row whose gate does not hold and the chain of consecutive skips.
 
 package shedengine
@@ -9,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeGate is an EntryGate whose answer a test changes between steps, counting its evaluations.
@@ -37,6 +37,7 @@ func outcomeSequence(outcomes ...Outcome) *funcProducer {
 }
 
 func TestStep_EntryGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	step := func(t *testing.T, shed *Shed) StepResult {

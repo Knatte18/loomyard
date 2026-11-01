@@ -1,5 +1,5 @@
 // configcli_helper_test.go holds the fakes and fixture helpers that the tier 0 and tier 1 test files of this package share.
-// It carries no tier tag so each tier's test binary compiles it.
+// The package's one test binary holds every tier, so this file serves them all.
 
 package configcli
 

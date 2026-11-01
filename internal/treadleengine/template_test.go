@@ -1,5 +1,3 @@
-//go:build tier0
-
 // template_test.go pins that each shipped judge template names the verdict words and frontmatter keys this package parses,
 // and that each template fills through stencil with its required markers.
 
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // requireContains fails the test, naming the missing needle, if text does
@@ -79,6 +78,7 @@ func yamlTagOf(t *testing.T, v any, field string) string {
 // Targeting produces no verdict and parses no key, so it carries no list.
 // Fills with all markers: stencil.Fill succeeds when every required marker is supplied and fails, naming the marker, when any single one is absent.
 func TestShippedTemplates(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	frontmatterKeys := []string{

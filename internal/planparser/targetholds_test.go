@@ -1,12 +1,13 @@
-//go:build tier0
-
 // targetholds_test.go covers TargetHolds, the rule that decides whether a card target holds a code location.
 
 package planparser
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestTargetHolds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	goPlan := &Plan{Language: "go"}

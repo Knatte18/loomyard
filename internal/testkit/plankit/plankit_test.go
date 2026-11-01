@@ -1,5 +1,3 @@
-//go:build tier0
-
 package plankit
 
 import (
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRender_ParsesAndValidates(t *testing.T) {
+	tiergate.Require(t, 0)
 	create := func(n int, slug, path string) Card {
 		return Card{Number: n, Slug: slug, Groups: []Group{{Label: "Create", Targets: []string{path}}}}
 	}
@@ -74,6 +74,7 @@ func TestRender_ParsesAndValidates(t *testing.T) {
 }
 
 func TestRender_ApprovedGatesValidate(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	dir := filepath.Join(root, "plan")
 	Write(t, dir, Plan{Cards: []Card{{Number: 1, Slug: "alpha", Groups: []Group{{Label: "Create", Targets: []string{"a.go"}}}}}})
@@ -88,6 +89,7 @@ func TestRender_ApprovedGatesValidate(t *testing.T) {
 }
 
 func TestRender_BytesCanBeCorrupted(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	files := Render(Plan{Approved: true, Cards: []Card{{Number: 1, Slug: "alpha", Groups: []Group{{Label: "Create", Targets: []string{"a.go"}}}}}})
 	files["01-alpha.md"] = []byte(strings.Replace(string(files["01-alpha.md"]), "**Create:**", "**Frobnicate:**", 1))
@@ -107,6 +109,7 @@ func TestRender_BytesCanBeCorrupted(t *testing.T) {
 }
 
 func TestRepo_WritesNestedFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := Repo(t, map[string]string{"sub/dir/a.go": "package dir\n", "b.go": "package b\n"})
 	for rel, want := range map[string]string{"sub/dir/a.go": "package dir\n", "b.go": "package b\n"} {
 		got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))

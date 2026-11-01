@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bannedecl_enforcement_test.go enforces the other half of the Cliwire Sole-Wiring Invariant: neither
 // internal/webstercli nor internal/burlercli may re-declare any of the helper names that used to carry
 // the two CLIs' own copy of cliwire's wiring prologue. A package re-declaring one of these names is
@@ -18,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // policedCliDirs are the repository-relative package directories checked for a re-declared wiring
@@ -73,6 +72,7 @@ var bannedWiringDeclarations = map[string]bool{
 //
 //lym:guard
 func TestBannedDeclarations_CliPackagesCallIntoCliwire(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: policedCliDirs}, func(f *scankit.File) {
@@ -139,6 +139,7 @@ func bannedDeclNamesIn(astFile *ast.File) []string {
 //
 //testtiming:keep a guard self-check: pins that the declaration walk catches each banned shape and spares an unrelated name, which the real-tree scan never exercises
 func TestBannedDeclNamesIn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

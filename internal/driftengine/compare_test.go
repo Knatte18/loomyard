@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // compare_test.go — tier 1 tests for RunCompare, driven by fake sh commands against a temp gate-slot pool.
 
@@ -14,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newCompareFixture returns a compare request, and the pool it takes a slot of, that runs command in a temp worktree.
@@ -34,6 +35,7 @@ func newCompareFixture(t *testing.T, command string) (CompareRequest, *gateslot.
 
 // TestRunCompare covers a pass, a failure naming its log, the rendered placeholders, the marker read as held while the run waits for a slot, the timeout tree kill and a held marker.
 func TestRunCompare(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("exit 0 passes", func(t *testing.T) {

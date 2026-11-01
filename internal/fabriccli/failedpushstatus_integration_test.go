@@ -1,5 +1,3 @@
-//go:build tier1
-
 // failedpushstatus_integration_test.go covers `lym fabric status` printing the hub's outstanding failed-push records over a hubforge hub.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -13,9 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStatus_PrintsOutstandingFailedPushes(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	prime := h.PrimeWorktree()
 

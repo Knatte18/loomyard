@@ -1,5 +1,3 @@
-//go:build tier0
-
 // loop_test.go pins dobby's daemon loop over a fake clock, a fake watch and a temp state record: the lock, the owner exit, the wakeups, the sleep record and the start-or-re-exec reading.
 
 package dobbyengine
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // loopClock is a fake wall clock and awake clock: Sleep advances both, and suspend advances only the wall clock, as a machine sleep does.
@@ -179,6 +178,7 @@ func (h *loopHarness) run(t *testing.T) error {
 }
 
 func TestRun_LockOwnerAndWakeups(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("a held lock on a fresh start returns ErrDobbyRunning, logs the refusal unrotated and posts nothing", func(t *testing.T) {
@@ -572,6 +572,7 @@ func TestRun_LockOwnerAndWakeups(t *testing.T) {
 }
 
 func TestReadsAsReexec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -656,6 +657,7 @@ func writeLoopRecord(t *testing.T, h *loopHarness, pid int, startTicks string) {
 
 // TestRun_TickFailuresLogOncePerEpisode captures the process-global logger output, so it does not run in parallel.
 func TestRun_TickFailuresLogOncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	var captured bytes.Buffer
 	logger.SetVerbosity(1)
 	logger.SetOutput(&captured)
@@ -717,6 +719,7 @@ func (h *loopHarness) countLogged(prefix string) int {
 }
 
 func TestRun_Heartbeat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	listedRun := RunView{Slug: "a", State: runStateRunning, Producer: producerRunShed}
 
@@ -839,6 +842,7 @@ func TestRun_Heartbeat(t *testing.T) {
 }
 
 func TestNextWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string

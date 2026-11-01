@@ -1,5 +1,3 @@
-//go:build tier1
-
 // loop_arming_integration_test.go runs the loop's arming refusal over a real hub.
 // It drives a lym built by internal/testkit/lymbin over a loom-seeded run in a real hub, from the external test package because internal/hubforge reaches back into this package.
 
@@ -26,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -132,6 +131,7 @@ func (f *loomRunFixture) childLoopSpec() *shedverbs.Spec {
 }
 
 func TestLoopIntegration_ArmingRefusalStopsAsBootstrap(t *testing.T) {
+	tiergate.Require(t, 1)
 	f := newLoomRunFixture(t)
 	var childLoopEnv map[string]any
 	tests := []struct {

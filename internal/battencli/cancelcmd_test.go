@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cancelcmd_test.go pins the cancel verb's pre-resolution refusals and the helpers that wire its seams: the pause readings, the claim clear, the tackler stop and batten's two locks.
 
 package battencli
@@ -19,10 +17,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTakeBattenLocks pins that both locks are held until release, and that a busy lock names its own path with nothing held.
 func TestTakeBattenLocks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const wait = 20 * time.Millisecond
@@ -104,6 +104,7 @@ func TestTakeBattenLocks(t *testing.T) {
 
 // TestCancelPauseEntries pins which pause entries refuse a cancel and which of them the cancel lifts.
 func TestCancelPauseEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	epoch := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -141,6 +142,7 @@ func TestCancelPauseEntries(t *testing.T) {
 
 // TestClearRunClaim pins that only a run-form status is cleared, and that a failed read or write is returned.
 func TestClearRunClaim(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	running, done, backlog := "running · Run-Shed", "done", "backlog"
@@ -188,6 +190,7 @@ func TestClearRunClaim(t *testing.T) {
 
 // TestStopRecordedTackler pins that the strand a tackler marker names is stopped and its guid returned.
 func TestStopRecordedTackler(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	errStop := errors.New("stop failed")
@@ -225,6 +228,7 @@ func TestStopRecordedTackler(t *testing.T) {
 // TestCancelCmd_RefusesBeforeAnything pins that an omitted or reserved slug refuses before any path is resolved, and a named slug outside a repository refuses with the location's resolve error.
 // The prime-or-beam refusal is ResolveBattenPrime's, pinned by TestResolveBattenPrime.
 func TestCancelCmd_RefusesBeforeAnything(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	outside := t.TempDir()

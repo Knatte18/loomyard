@@ -1,5 +1,3 @@
-//go:build tier0
-
 // derive_test.go covers DeriveCards over fixture trees on disk.
 
 package dotnetimpact
@@ -16,9 +14,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDeriveCards(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string

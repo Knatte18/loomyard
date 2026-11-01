@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rundir_test.go covers the run-dir lifecycle: runDirRoot's default vs. configured resolution,
 // createRunDir + saveRunState/loadRunState round-tripping, findRunByStrand's hit/miss paths, and
 // sweepOrphans' age guard (young orphan kept, old orphan removed, live-guid dir kept).
@@ -15,9 +13,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunDirRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// A real subpath of a worktree root, so the default branch's anchor-path anchoring (as
@@ -64,6 +64,7 @@ func TestRunDirRoot(t *testing.T) {
 
 //testtiming:keep pins that every RunState field survives save and load, and that an absent run.json reads as not found rather than as an error
 func TestRunState_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	runID, runDir, err := createRunDir(root)
 	if err != nil {
@@ -123,6 +124,7 @@ func seedRun(t *testing.T, root, id, strandGUID string) string {
 }
 
 func TestFindRunByStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -220,6 +222,7 @@ func setDirMTime(t *testing.T, dir string, referenceNow time.Time, age time.Dura
 
 //testtiming:keep pins the age guard over orphans, a live strand guid keeping its dir, and a dir with no run.json being removed only when old
 func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	now := time.Now()
 	minAge := 90 * time.Second
@@ -281,6 +284,7 @@ func TestSweepOrphans_AgeGuardAndLiveGuid(t *testing.T) {
 // the first os.RemoveAll failure abandoned every later entry, so a single directory that cannot be
 // removed made every subsequent Start sweep nothing and orphan run dirs accumulated without bound.
 func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
+	tiergate.Require(t, 0)
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: a read-only parent directory does not stop RemoveAll")
 	}
@@ -314,6 +318,7 @@ func TestSweepOrphans_OneUndeletableDirDoesNotAbandonTheRest(t *testing.T) {
 }
 
 func TestPendingSend_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	runDir := t.TempDir()

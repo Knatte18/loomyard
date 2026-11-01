@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_remoteleftover_integration_test.go covers Add's pre-flight probes of both origins: a live pair's branches on origin are adopted,
 // and a leftover remote branch from a removed pair is refused with an *ErrRemoteLeftover before Add's first mutation, or, when provably replaceable, does not block the add.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // pushCommitToOrigin clones bare, adds one commit to branch, and pushes it back, so origin's branch diverges from any local copy.
@@ -88,6 +87,7 @@ func removedPair(t *testing.T, slug string) *hubforge.Hub {
 // TestAdd_OriginOnlyWeftAdopted covers a weft branch on origin that has moved past its archive tag, with no local weft branch: the pair is live,
 // so Add adopts it.
 func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-unarchived"
@@ -118,6 +118,7 @@ func TestAdd_OriginOnlyWeftAdopted(t *testing.T) {
 
 // TestAdd_LiveLocalWeftAgainstOrigin covers a local weft branch Add would adopt whose origin copy has moved on.
 func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, tc := range []struct {
@@ -189,6 +190,7 @@ func TestAdd_LiveLocalWeftAgainstOrigin(t *testing.T) {
 
 // TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin covers a live pair, by a surviving local weft branch, whose origin warp branch holds work the prime's HEAD lacks, while an archive tag also covers origin's weft tip.
 func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-live-warp"
@@ -226,6 +228,7 @@ func TestAdd_LiveLocalWeftAdoptsDivergedWarpFromOrigin(t *testing.T) {
 
 // TestAdd_WarpLeftoverRefusedAtPreflight covers a landed warp branch still on origin after its local copy is gone.
 func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-warp"
@@ -255,6 +258,7 @@ func TestAdd_WarpLeftoverRefusedAtPreflight(t *testing.T) {
 
 // TestAdd_WarpFastForwardableLeftoverProceeds covers an origin warp branch that is an ancestor of the prime's HEAD.
 func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-warp-ff"
@@ -284,6 +288,7 @@ func TestAdd_WarpFastForwardableLeftoverProceeds(t *testing.T) {
 // so both branches fork.
 // Origin's warp branch stays unchanged because Add pushes nothing and AddPairWith skips its push under SkipPush.
 func TestAdd_SkipPushSkipsLeftoverProbes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-skippush"
@@ -327,6 +332,7 @@ func requireArchiveCovers(t *testing.T, weftBare, slug, oldTip string) {
 
 // TestAdd_DivergedArchivedWeftLeftoverReplaced covers a pushed weft commit that the re-created weft branch does not descend from.
 func TestAdd_DivergedArchivedWeftLeftoverReplaced(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-diverged"
@@ -375,6 +381,7 @@ func pushNewPair(t *testing.T, h *hubforge.Hub, slug string) {
 
 // TestAdd_ArchivedAncestorWeftLeftoverReplaced covers an archive tag on an unpushed commit that is a strict descendant of origin's weft tip.
 func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "leftover-ancestor"
@@ -402,6 +409,7 @@ func TestAdd_ArchivedAncestorWeftLeftoverReplaced(t *testing.T) {
 // TestAdd_WeftReplaceLeaseRaceRefused covers origin's weft branch moving between the pre-flight and the replacement.
 // It sets a package hook, so it must not run in parallel.
 func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: SetAddBeforeWeftReplaceHookForTest sets the package-level addBeforeWeftReplaceHook.
 	const slug = "leftover-race"
 	weftBranch := fabricengine.RecordsBranchName(slug)

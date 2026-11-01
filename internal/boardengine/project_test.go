@@ -1,5 +1,3 @@
-//go:build tier0
-
 // project_test.go — the project kind's write rules (project.go): what a write may set on a project and its members, through a Board built from a board.yaml.
 
 package boardengine_test
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newProjectBoard returns a board whose config LoadConfig reads from a board.yaml with the bug and enhancement type labels and the Home.md output, under t.TempDir().
@@ -46,6 +45,7 @@ func seedBoardJSON(t *testing.T, boardPath string, entries ...string) {
 // TestProjectRules pins that a write setting or changing a task's depends_on to a project is refused naming the project's task members,
 // and that a stored dependency on a project takes any write that leaves it unchanged.
 func TestProjectRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	var boardPath string
 	b := newProjectBoard(t, func(cfg *boardengine.Config) { boardPath = cfg.Path })
@@ -115,6 +115,7 @@ func newMembershipBoard(t *testing.T) *boardengine.Board {
 // TestProjectRules_Membership pins each refusal of a write that sets or changes project or order, each naming the entry, the field and the slug at fault,
 // and the writes that pass: a valid membership, a valid order and a done-mark of a project its members still name.
 func TestProjectRules_Membership(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	refused := []struct {
 		name    string

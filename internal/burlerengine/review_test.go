@@ -1,5 +1,3 @@
-//go:build tier0
-
 // review_test.go tables the review half (Engine.Review, ProbeReview, ResumeReview) against the same-package fakeShuttle.
 // It covers the one-seat table's shape, an accepted review's digest, verdict and findings, the strict-parse and cluster-audit refusals, every non-done outcome, the start and stop failures, and probe and resume.
 
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // doneReview scripts a review half whose reviewer writes review and is done.
@@ -43,6 +42,7 @@ func writeDeclaredPatternRecord(t *testing.T, root, body string) string {
 // TestEngine_Review_TableShape proves Review starts exactly one seat and builds its spec and gate as the review half pins them:
 // the review role, segment and skills, the review file as the only output, the opts' review model choice, timeout and round, the review-parse gate that passes on its cap, and ForkSubagents exactly when the profile names a cluster fan.
 func TestEngine_Review_TableShape(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	opts := RunOpts{
@@ -174,6 +174,7 @@ func TestEngine_Review_TableShape(t *testing.T) {
 // TestEngine_Review_Outcomes table-drives Review over an accepted review, the strict-parse and cluster-audit refusals, every non-done outcome and the start and stop failures.
 // A non-done outcome carries through with no verdict and a nil error; every refusal and failure is an error; the reviewer's identity passes through to the result.
 func TestEngine_Review_Outcomes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
@@ -289,6 +290,7 @@ func TestEngine_Review_Outcomes(t *testing.T) {
 
 // TestEngine_Review_DigestIsTheAcceptedBytes proves an accepted review's Digest is the hex SHA-256 of the bytes on disk, and that its finding carries the fix key.
 func TestEngine_Review_DigestIsTheAcceptedBytes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	root, p := newEngineTestProfile(t)
 	e := newEngineForTest(t, root, doneReview(blockingReview))
@@ -313,6 +315,7 @@ func TestEngine_Review_DigestIsTheAcceptedBytes(t *testing.T) {
 // TestEngine_ProbeReview_And_ResumeReview proves ProbeReview classifies the reviewer as live, done or gone from the fake's runs and the review file, names the review file as the probed output and starts nothing,
 // and that ResumeReview attaches to a live reviewer and concludes it as a fresh review is, while a half that is not live, or was not taken from a probe, is refused with nothing started.
 func TestEngine_ProbeReview_And_ResumeReview(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reexecguard_test.go covers cliReexecArg's pure classification of a test binary's argv tail: only
 // a LEADING non-flag argument marks a CLI-style re-exec;
 // flag-led argv (including two-token flag values) stays allowed.
@@ -8,7 +6,10 @@ package gitkit
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestCLIReexecArg(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		args    []string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_parts_test.go covers partsWriteEntry and partsPlanWriteEntry: their construction-time validation over Config and the Env fields they read,
 // and the Calls proving each commits through its own seam, keeps a failed gate's findings, and hands the table source the hooks it builds.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // partsMaxSetting answers max for tapestry.parts_max and an error for any other setting.
@@ -77,6 +76,7 @@ func partsPlanGatesCfg() Config {
 }
 
 func TestPartsWriteEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("ConstructionFailures", func(t *testing.T) {
@@ -194,6 +194,7 @@ func TestPartsWriteEntry(t *testing.T) {
 }
 
 func TestPartsPlanWriteEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("ConstructionFailures", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // stuck_test.go pins that a stuck verdict's log line takes its level from its cause:
 // a failed producer step logs at Warn, and an ordinary wait or move logs at Info and leaves its reason in the reason file.
 
@@ -16,12 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStuckReport_LevelFollowsCause drives one producer per cause and asserts the single stuck line carrying the cause's reason has the cause's level.
 // An Info cause also leaves its reason in the reason file.
 // It captures the process-global logger at Info, so it is not parallel.
 func TestStuckReport_LevelFollowsCause(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	running := statusResult{status: shedengine.Status{State: shedengine.StateRunning}, found: true}
 	tests := []struct {

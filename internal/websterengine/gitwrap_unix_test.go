@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // gitwrap_unix_test.go holds the git-wrapper tests whose recording git is a shell script.
 
@@ -16,12 +16,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommitsNamedBy_OneBatchCheck pins that commitsNamedBy classifies every object a prefix names in a single `cat-file --batch-check` call, never one `cat-file -t` per object:
 // a recording git first on PATH logs each invocation, over a prefix naming a commit, a blob and a tree.
 // It sets PATH, process-global state, so it runs without t.Parallel.
 func TestCommitsNamedBy_OneBatchCheck(t *testing.T) {
+	tiergate.Require(t, 1)
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatalf("git not on PATH: %v", err)

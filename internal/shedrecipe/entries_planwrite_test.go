@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_planwrite_test.go covers planWriteEntry: its construction-time validation over Config and the Env fields it reads,
 // and the Calls proving the told table is evaluated once, carries the row's gate, reaches the seat runner with the prior-plan amendment on a fresh spawn only, and the commit closure fires.
 
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // withPlanTable fills env.PlanTable with a one-lead table writing output and returns the count of times the source was evaluated.
@@ -42,6 +41,7 @@ func withPlanTable(env *Env, output string) *int {
 // parameter, making the plain-nil branch unreachable and a second "typed-nil versus untyped-nil"
 // variant unnecessary.
 func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("NilPlanTable", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.PlanTable = nil
@@ -118,6 +118,7 @@ func TestPlanWriteEntry_ConstructionFailures(t *testing.T) {
 // TestPlanWriteEntry_HappyPath asserts a fully-filled Env constructs a non-nil producer with a nil
 // error.
 func TestPlanWriteEntry_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	producer, err := planWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
 	if err != nil {
@@ -144,6 +145,7 @@ func TestPlanWriteEntry_HappyPath(t *testing.T) {
 // It asserts the told table was evaluated once and reached the seat runner with the row's gate, the returned OutputPointer.Path is the lead's first output, and the injected commit closure fired exactly once.
 // env.AnchorPath from newTestEnv is a real directory that contains no plan directory, so the rotation is a legitimate absent-directory no-op here.
 func TestPlanWriteEntry_CallDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	env := newTestEnv(t)
 	output := filepath.Join(env.AnchorPath, "00-overview.md")
@@ -184,6 +186,7 @@ func TestPlanWriteEntry_CallDone(t *testing.T) {
 // A fresh spawn archives the stale plan and hands the seat runner a table whose Amendment is the rendered block;
 // a live lead resumes with the stale plan left in place, no table run, and a table that carries no amendment.
 func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	seedStalePlan := func(t *testing.T) (env Env, planDir string, archived *[]string) {
 		t.Helper()
@@ -273,6 +276,7 @@ func TestPlanWriteEntry_CallAppendsPriorPlanBlock(t *testing.T) {
 // TestPlanWriteEntry_GateConfig covers the "gates" Config key planWriteEntry resolves through resolveGateSpec:
 // a "plan" entry resolves to the plan validator.
 func TestPlanWriteEntry_GateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("GatePlanResolvesToPlanValidator", func(t *testing.T) {
 		env := newTestEnv(t)
 		gateSpec, err := resolveGateSpec("PlanWrite", gatesCfg("plan", 3), env)

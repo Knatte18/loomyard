@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verbs_test.go — tests for the board verbs beyond the store verbs: promote, rename, prune, find, retire-legacy, the --text listing on list and find, and list's --sort.
 // The steps run from TestCLI in cli_test.go, which also defines cliFixture; runCLI is in cli_unit_test.go, same package.
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the gitkit Leaf Invariant.
 // Production code in internal/gitkit imports only the standard library and internal/configengine, internal/lymcwd, internal/weftname, internal/lymdirs and internal/lymtemp.
 // It never imports internal/configreg or any feature package (boardengine/boardcli, ideengine/idecli, selfreportengine/selfreportcli, fabricengine/fabriccli).
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
@@ -23,5 +22,6 @@ var allowedImports = []string{
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/gitkit", allowedImports...)
 }

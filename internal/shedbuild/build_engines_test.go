@@ -1,5 +1,3 @@
-//go:build tier0
-
 // build_engines_test.go holds one test asserting every name shedrecipe.Names() returns is
 // buildable from a recipe given a sufficiently filled environment. It is deliberately not
 // filesystem-free: the bouncer and burler-round engines create the run directory they resolve, and
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // engineMinimalConfig maps an engine name to its minimal Config, covering only the engines that need one.
@@ -88,6 +87,7 @@ func engineMinimalConfig(advisorStencilName, leadStencilName, rubricStencilName 
 // shedrecipe.Names() rather than a local list so a newly registered engine fails this test
 // until this fixture covers it.
 func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := envkit.FullEnv(t)
 
 	const advisorStencil = "advisor-coverage"

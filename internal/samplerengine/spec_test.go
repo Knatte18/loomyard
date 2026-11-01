@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spec_test.go — tier 0 unit tests for samplerengine.SessionSpec.
 
 package samplerengine
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentdirective"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSessionSpec covers the spec a valid call builds, the required inputs it refuses by name, and an agent the registry cannot resolve.
 func TestSessionSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stencilsDir := stencilkit.Seed(t)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package preflightshed
 
 import (
@@ -12,12 +10,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNewPreflight_CarriesToldName asserts NewPreflight hardcodes nothing: the returned shedengine.ShedProducer's concrete type is *preflightProducer, and its name and cwd fields hold the told constructor arguments verbatim.
 //
 //testtiming:keep pins the told name and cwd landing on the producer's fields, which the cancelled-call test covering its blocks never reads
 func TestNewPreflight_CarriesToldName(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := NewPreflight("Some-Row", "/some/cwd")
 	if got == nil {
 		t.Fatalf("NewPreflight() = nil; want non-nil")
@@ -42,6 +42,7 @@ func TestNewPreflight_CarriesToldName(t *testing.T) {
 // reached, so nothing spawns; cwd is t.TempDir() so the test would not accidentally resolve a real
 // repository even if that guarantee ever broke.
 func TestCall_CancelledAtEntryReturnsErrorNotStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := NewPreflight("Preflight", t.TempDir())
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,6 +64,7 @@ func TestCall_CancelledAtEntryReturnsErrorNotStuck(t *testing.T) {
 // A nil or passing check never yields the batchifier reason.
 // It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
 func TestPreflight_BatcherCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	retiredErr := fmt.Errorf("batcher.yaml: key master_base is retired; run lym config reconcile --apply: %w", batcher.ErrRetiredKey)
 	plainErr := errors.New("unknown batchifier bogus")
 

@@ -1,5 +1,3 @@
-//go:build tier2
-
 // contract_integration_test.go asserts the full psmux/tmux wire contract that
 // doc.go's "Multiplexer contract surface" section pins, against a real,
 // running instance of the binary LoadConfig resolves (psmux on Windows
@@ -29,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -66,6 +65,7 @@ func waitUntil(t *testing.T, timeout time.Duration, msg string, cond func() bool
 
 // TestMultiplexerContract validates the multiplexer wire contract against a real binary.
 func TestMultiplexerContract(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -386,6 +386,7 @@ func TestMultiplexerContract(t *testing.T) {
 // touch the sibling — the canary for a configured binary (psmux) that does not implement the "="
 // target syntax.
 func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -463,6 +464,7 @@ func TestExactSessionTargetsNeverPrefixMatchSiblings(t *testing.T) {
 // The assertions below are therefore paired — the raw wire answer AND what parsePaneGeneration makes
 // of it — so the connection cannot be broken from either end without a failure.
 func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -530,6 +532,7 @@ func TestDisplayMessageDoesNotErrorForAnAbsentSession(t *testing.T) {
 // future tmux behaviour change (a hard rejection, a different substitute character, a wider rewrite
 // set) surface as a test failure rather than as a silently-weakened guard.
 func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -608,6 +611,7 @@ func TestSessionNameRewriteIsSilentAndExactTargetsMissIt(t *testing.T) {
 // it remains in place for the (now believed unreachable in practice, but still defensive) case
 // where Selvage is itself somehow absent.
 func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -733,6 +737,7 @@ func TestRemoveStrand_SoleStrandEmptiesSessionSucceeds(t *testing.T) {
 // That pane is the alive Selvage, and its height equals the window's height.
 // The fixture attaches no client, so window-size latest has none to follow.
 func TestDeadSelvagePaneIsHealedByUpWithoutCorruptingLayout(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmpDir := t.TempDir()
 	seedReedConfig(t, tmpDir)
@@ -859,6 +864,7 @@ func assertOnlySelvageFillsTheWindow(t *testing.T, e *Engine, selvagePaneID, ste
 // with another window made current in the session, the seam still resolves the window holding the strands.
 // An enumeration op (AddStrand) then lands the new strand in a window of its own and leaves the other window's pane unreaped, and the session-scoped pane-generation read still answers.
 func TestStrandOpsIgnoreASecondCurrentWindow(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newColdScratchEngine(t)
 	if _, err := e.Up(); err != nil {

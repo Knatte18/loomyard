@@ -29,7 +29,7 @@
 // Every top-level test marked `//lym:guard` runs by name in its own package, even when that package is outside the set.
 // A repository-scanning test can fail on a change far from its package.
 // Guards holds, per directory, the `//lym:guard` tests of the packages outside the set, sorted by name, so the gate's guard step runs them by name.
-// Each GuardTest carries the tier of its file, which FileTier reads from the `//go:build` line: the N of the `tierN` tag it names, and 0 for a file naming none.
+// Each GuardTest carries the tier of its file, which FileTier reads from the `tiergate.Require` call opening its test functions (RequiredTier reads one), and, for a file making none, from the `//go:build` line: the N of the `tierN` tag it names, and 0 for a file naming none.
 // The guard step runs each tier's guard tests under that tier's command.
 // A marker is found by a static parse of every `_test.go` file under every tag.
 // The marker scan is exported as FindGuardTests, and webster's card gate runs it over its own walk of the root module.

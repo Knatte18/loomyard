@@ -1,5 +1,3 @@
-//go:build tier0
-
 // donecheck_test.go covers doneCheckVerdicts, the pure half of DoneChecks: the three done rules applied to a hand-built answer index, plus the coverage guard that refuses an answer set which does not cover a target the caller asked about.
 // It reads no repository at all, only the candidate files an ambiguous row writes under a temp root — DoneChecks' own resolve-backed half is covered by donecheck_resolve_test.go instead.
 
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/glyph"
 	"github.com/Knatte18/quarry/quarry"
 )
@@ -21,6 +20,7 @@ import (
 // DoneChecks, so a missing answer is quarry's positional contract not holding — infrastructure,
 // never a verdict on the plan.
 func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	entries := []doneCheckEntry{{
@@ -52,6 +52,7 @@ func TestDoneCheckVerdicts_UncoveredTargetIsInfrastructureNotAPass(t *testing.T)
 //
 //testtiming:keep pins the ambiguous rows and the per-arm rule table, which the resolve-backed DoneChecks tests reach only for found and not_found
 func TestDoneCheckVerdicts_Rules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const key = "internal/greet#Thing"

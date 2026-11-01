@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cancelmarker_test.go pins the cancel marker's record, its writer-liveness reading and the refusal words a reading earns.
 
 package battencli
@@ -13,10 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCancelMarker walks one marker through its life over a temporary location: absent, taken, contended, left by a dead writer, taken over, removed and torn.
 func TestCancelMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	location := locationkit.Location(t.TempDir(), "prime", ".")
@@ -92,6 +92,7 @@ func TestCancelMarker(t *testing.T) {
 
 // TestJudgeCancelMarker pins each reading of the marker's three probes, the writer removing the marker between the first stat and the shared lock included.
 func TestJudgeCancelMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,11 +1,11 @@
-//go:build tier0
-
 package main
 
 import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func spliceFixtureSection(pkg string, tests int) pkgReport {
@@ -21,6 +21,7 @@ func spliceMeasured(r pkgReport) measuredPackage {
 }
 
 func TestSpliceReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const tags = "integration,tmux"
@@ -96,6 +97,7 @@ func TestSpliceReport(t *testing.T) {
 }
 
 func TestSpliceReportRejectsReportWithoutTagsHeader(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if got, err := spliceReport("# Test redundancy\n", "integration", nil); err == nil || got != "" {
@@ -104,6 +106,7 @@ func TestSpliceReportRejectsReportWithoutTagsHeader(t *testing.T) {
 }
 
 func TestSplitPatterns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {
@@ -123,6 +126,7 @@ func TestSplitPatterns(t *testing.T) {
 }
 
 func TestCoversModule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	layout := moduleLayout{dirs: map[string]string{"m/a": "a", "m/b": "b"}}

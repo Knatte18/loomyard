@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_test.go covers EnsureLive over fake seams and Live over a real lock file in a temp directory.
 
 package dobbyengine
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeStart is an in-memory stand-in for the hub: it serves the owners it holds, records the claims and spawns, and reads a spawned worktree as live afterwards.
@@ -96,6 +95,7 @@ func (f *fakeStart) baseDeps() StartDeps {
 }
 
 func TestEnsureLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -272,6 +272,7 @@ func TestEnsureLive(t *testing.T) {
 
 // TestOwnedWorktrees asserts the list holds the prime when this machine owns it or none is recorded, then every beam not owned elsewhere.
 func TestOwnedWorktrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -308,6 +309,7 @@ func TestOwnedWorktrees(t *testing.T) {
 
 // TestLive asserts a dobby reads live exactly while its lock is held, and a worktree with no beam directory reads not live.
 func TestLive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("NoBeamDirectoryReadsNotLive", func(t *testing.T) {
@@ -351,6 +353,7 @@ func TestLive(t *testing.T) {
 }
 
 func TestSpawnDetached_SendsOutputToOutPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	beamDir := filepath.Join(t.TempDir(), ".lym", "beam")
 	if err := os.MkdirAll(beamDir, 0o755); err != nil {

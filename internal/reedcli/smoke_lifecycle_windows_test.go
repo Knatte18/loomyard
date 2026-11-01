@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_lifecycle_windows_test.go holds the lifecycle smoke test that runs only on the psmux backend.
 
 package reedcli
@@ -10,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -21,6 +20,7 @@ import (
 // This premise holds identically on tmux — see reedengine.RemoveStrand's emptied-session swallow (strand.go) for how that path is handled at the engine level — so the test runs only on Windows for coverage economy, not backend-specific behavior:
 // the equivalent removing-the-last-strand-then-add shape is already exercised on the tmux backend by TestRemoveStrand_SoleStrandEmptiesSessionSucceeds (contract_integration_test.go), so running this real-tmux-session variant there too would be redundant.
 func TestSmokeRemoveLastStrandThenAddRunsTheNewCommand(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxPath := tmuxBinaryPath(t)
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

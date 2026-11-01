@@ -1,5 +1,3 @@
-//go:build tier0
-
 // reconcile_test.go pins the mapping of an origin reconcile report onto the hibernate engine's own view of it.
 
 package hibernatecli
@@ -12,9 +10,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWakeReconcileFromReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	recorder := fabricengine.NewMutations("")
 	recorder.AppendRef(fabricengine.KindTagCreated, "set-aside/p1/1", "snapshot of uncommitted paths")

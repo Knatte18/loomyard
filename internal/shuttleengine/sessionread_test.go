@@ -1,5 +1,3 @@
-//go:build tier0
-
 // sessionread_test.go covers ReadSessionStates over run directories written by the test, with an engine double that parses session signals and answers the prober and the transcript reading.
 // TestReadSessionStates captures the process-global logger, so it does not run in parallel.
 
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // readEngine is a fakeEngine that parses session signals from lines of the form START@<time> or END@<time>, each optionally followed by |<session id>,
@@ -78,6 +77,7 @@ type readRun struct {
 }
 
 func TestReadSessionStates(t *testing.T) {
+	tiergate.Require(t, 0)
 	now := time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC)
 	start := time.Date(2026, 10, 8, 7, 0, 0, 0, time.UTC)
 	end := start.Add(5 * time.Minute)

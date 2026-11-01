@@ -1,5 +1,3 @@
-//go:build tier0
-
 // record_test.go pins the pause record's read, locked update, coverage and interval behavior.
 
 package pauserecord
@@ -13,11 +11,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var epoch = time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 
 func TestRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	valid := filepath.Join(dir, "valid.json")
@@ -60,6 +61,7 @@ func TestRead(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("creates the file and its directory", func(t *testing.T) {
@@ -221,6 +223,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestCovering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := Entry{Scope: ScopeHub, PausedAt: epoch}
 	slugEntry := Entry{Scope: "a", PausedAt: epoch.Add(time.Minute)}
@@ -254,6 +257,7 @@ func TestCovering(t *testing.T) {
 }
 
 func TestOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	record := Record{Live: []Entry{{Scope: "a", Sessions: []Session{{GUID: "g1"}, {GUID: "g2"}}}}}
 	if entry, ok := record.Owner("g2"); !ok || entry.Scope != "a" {
@@ -265,6 +269,7 @@ func TestOwner(t *testing.T) {
 }
 
 func TestCoverageOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := epoch.Add(time.Hour)
 	live := Entry{Scope: "a", PausedAt: epoch}
@@ -328,6 +333,7 @@ func TestCoverageOf(t *testing.T) {
 }
 
 func TestReadCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), RecordFileName)
 	if _, err := Update(path, epoch, func(r *Record) error {
@@ -347,6 +353,7 @@ func TestReadCoverage(t *testing.T) {
 }
 
 func TestExcluded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	at := func(minutes int) time.Time { return epoch.Add(time.Duration(minutes) * time.Minute) }
 
@@ -373,6 +380,7 @@ func TestExcluded(t *testing.T) {
 }
 
 func TestCoveredError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	pausedAt := time.Date(2026, 1, 10, 12, 0, 0, 0, time.UTC)
 	tests := []struct {
@@ -405,6 +413,7 @@ func TestCoveredError(t *testing.T) {
 }
 
 func TestClaimSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	hub := Entry{Scope: ScopeHub, PausedAt: epoch, Caller: "EXTERNAL"}
 	slugEntry := Entry{Scope: "alpha", PausedAt: epoch.Add(time.Minute), Caller: "EXTERNAL"}

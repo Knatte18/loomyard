@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lock_test.go — unit tests for file locking (lock.go).
 //
 // Acquire/release and exclusive-lock contention between holders.
@@ -13,9 +11,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAcquireWriteLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -72,6 +72,7 @@ func TestAcquireWriteLock(t *testing.T) {
 
 // TestTryAcquireWriteLock verifies non-blocking acquisition and contention reporting.
 func TestTryAcquireWriteLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -135,6 +136,7 @@ func TestTryAcquireWriteLock(t *testing.T) {
 
 // TestAcquireWriteLockWithin verifies bounded acquisition: success on a free or released path, expiry without an error on a held one.
 func TestAcquireWriteLockWithin(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -184,6 +186,7 @@ func TestAcquireWriteLockWithin(t *testing.T) {
 
 // TestTryAcquireReadLock verifies shared holders coexist, an exclusive holder makes the attempt report false without an error, and the lock is acquirable once the exclusive holder releases.
 func TestTryAcquireReadLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	lockPath := filepath.Join(t.TempDir(), "tryread.lock")
@@ -226,6 +229,7 @@ func TestTryAcquireReadLock(t *testing.T) {
 }
 
 func TestAcquireReadLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()

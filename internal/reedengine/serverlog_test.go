@@ -1,5 +1,3 @@
-//go:build tier0
-
 // serverlog_test.go verifies the pure debug_log parsing helper.
 // Untagged: no filesystem or process I/O, per Test Tier Purity.
 
@@ -9,9 +7,12 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDebugLogArgs(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		level   string
@@ -50,6 +51,7 @@ func TestDebugLogArgs(t *testing.T) {
 
 //testtiming:keep pins which log files the prune plans to delete: none at or under the keep count, the oldest beyond it, and ties broken by name order; its covering tests run this code without asserting it
 func TestPlanLogPrune(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {

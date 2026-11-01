@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeDriverSender records SendDriver calls and answers from errs in order;
@@ -69,6 +68,7 @@ func notReady() error {
 //
 //testtiming:keep pins the resume send: one single-line message naming the drive-reports directory and the marker removed on success, waits through a not-ready pane, the attempt bound, and a non-readiness error never retried, with the marker kept on refusal; the covering tests assert the outcome of the resume, not each send
 func TestResumeParkedDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		sender    *fakeDriverSender

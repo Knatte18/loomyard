@@ -1,5 +1,3 @@
-//go:build tier0
-
 // planwrite_test.go exercises the Plan-Write row's two halves separately, which is what they now
 // are: NewPlanWrite's post-Done commit decoration, and NewPlanDirRotator's stale-plan-directory
 // rotation.
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -79,6 +78,7 @@ func fixedPlanClock() time.Time {
 }
 
 func TestPlanWrite_Call(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("DoneWithNilErrorInvokesCommitOnceAndReturnsInnerVerbatim", func(t *testing.T) {
 		inner := &planInnerProducer{
 			outcome: shedengine.Done,
@@ -253,6 +253,7 @@ func (r *websterArchiveRecorder) archive(dest string) error {
 }
 
 func TestNewPlanDirRotator(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("MovesEveryTopLevelMDFilePreservingContent", func(t *testing.T) {
 		anchorPath, planDir := setupPlanDir(t, "00-overview.md", "01-card-one.md")
 		webster := &websterArchiveRecorder{planDir: planDir}
@@ -555,6 +556,7 @@ func TestNewPlanDirRotator(t *testing.T) {
 // non-empty pointer, since the nil-commit-seam guard sits downstream of the pointer.Path == "" check
 // and must still fire on either shape.
 func TestPlanWrite_NilCommitSeamIsANamedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name    string
 		outcome shedengine.Outcome
@@ -584,6 +586,7 @@ func TestPlanWrite_NilCommitSeamIsANamedError(t *testing.T) {
 //
 //testtiming:keep pins that the wrapped producer's Reason reaches the caller unchanged in both stuck shapes, which TestPlanWrite_Call never asserts
 func TestPlanWrite_PassesStuckReasonThrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name string
 		path string

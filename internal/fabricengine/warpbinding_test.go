@@ -1,5 +1,3 @@
-//go:build tier0
-
 // warpbinding_test.go — table tests for the warp-binding core: the normalizer, the transport-identity
 // collapse, the pure conflict resolver, and the on-disk read/write round trip.
 // This is a Tier 1 file: it is package fabricengine (so it can exercise the unexported helpers
@@ -13,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNormalizeWarpURL covers normalizeWarpURL's trailing-slash strip, trailing-.git strip, and
@@ -21,6 +21,7 @@ import (
 //
 //testtiming:keep normalizeWarpURL's trailing-slash and .git stripping and host lowercasing while local paths and scp forms keep their case; coverage of its blocks by other tests does not show an assertion of this
 func TestNormalizeWarpURL(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		raw  string
@@ -59,6 +60,7 @@ func TestNormalizeWarpURL(t *testing.T) {
 // TestWarpURLTransportIdentity asserts that warpURLTransportIdentity collapses different transport
 // spellings of the same repo to the same identity string, while a different repo path stays distinct.
 func TestWarpURLTransportIdentity(t *testing.T) {
+	tiergate.Require(t, 0)
 	https := warpURLTransportIdentity("https://github.com/u/repo.git")
 	http := warpURLTransportIdentity("http://github.com/u/repo")
 	scp := warpURLTransportIdentity("git@github.com:u/repo")
@@ -81,6 +83,7 @@ func TestWarpURLTransportIdentity(t *testing.T) {
 //
 //testtiming:keep every row of the warp-binding conflict rule; coverage of its blocks by other tests does not show an assertion of this
 func TestResolveEffectiveWarpURL(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		recorded     string
@@ -210,6 +213,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 // TestWarpBindingReadWrite round-trips writeWarpBinding and readWarpBinding against a t.TempDir()
 // stand-in board directory, covering the absent, written, whitespace-only, and overwrite cases.
 func TestWarpBindingReadWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	boardDir := t.TempDir()
 
 	if url, found := readWarpBinding(boardDir); found || url != "" {

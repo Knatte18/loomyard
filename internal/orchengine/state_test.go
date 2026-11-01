@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -9,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func testPaths(t *testing.T) Paths {
@@ -32,6 +32,7 @@ func testPaths(t *testing.T) Paths {
 
 //testtiming:keep pins the full-field save and load round trip and the idle state of an absent file, which its covering test does not assert
 func TestSaveLoadState_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 	absent, err := LoadState(p)
 	if err != nil {
@@ -94,6 +95,7 @@ func TestSaveLoadState_RoundTrip(t *testing.T) {
 }
 
 func TestPeekState(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 
 	_, found, err := PeekState(p)
@@ -164,6 +166,7 @@ func TestPeekState(t *testing.T) {
 
 //testtiming:keep pins the write, probe and clear round trip of the cycle request marker, which its covering test does not assert
 func TestCycleRequest_WriteProbeClear(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 	if withdrawn, err := WithdrawCycleRequest(p); err != nil || withdrawn {
 		t.Fatalf("withdraw absent = %v, %v; want false and no error", withdrawn, err)
@@ -221,6 +224,7 @@ func TestCycleRequest_WriteProbeClear(t *testing.T) {
 }
 
 func TestResumeMark_WriteReadClear(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 	if _, found, err := ReadResumeMark(p); err != nil || found {
 		t.Fatalf("ReadResumeMark before = %v, %v; want none", found, err)
@@ -245,6 +249,7 @@ func TestResumeMark_WriteReadClear(t *testing.T) {
 }
 
 func TestCycleRequested_UnparseableMarkerIsPendingWithZeroRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	for name, content := range map[string]string{"legacy": "cycle\n", "garbage": "{", "unknown mode": `{"mode":"nap","requested_at":"2026-01-02T03:04:05Z"}`} {
 		t.Run(name, func(t *testing.T) {
 			p := testPaths(t)
@@ -264,6 +269,7 @@ func TestCycleRequested_UnparseableMarkerIsPendingWithZeroRequest(t *testing.T) 
 
 //testtiming:keep pins that handoff paths are distinct and sit directly under the handoffs directory, which its covering test does not assert
 func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	p := testPaths(t)
 	now := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	a := NewHandoffPath(p, now)
@@ -279,6 +285,7 @@ func TestNewHandoffPath_DistinctUnderHandoffsDir(t *testing.T) {
 }
 
 func TestResetForFreshLaunch(t *testing.T) {
+	tiergate.Require(t, 0)
 	deferred := time.Date(2026, 1, 2, 3, 5, 6, 0, time.UTC)
 	launched := time.Date(2026, 1, 2, 3, 6, 7, 0, time.UTC)
 	t.Run("idle", func(t *testing.T) {

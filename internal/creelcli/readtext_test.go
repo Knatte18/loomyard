@@ -1,5 +1,3 @@
-//go:build tier0
-
 // readtext_test.go pins the plain text `lym creel read` prints for each kind of sender and message; it is an internal test because the CLI cannot post as a program, and the delivery carries a program's or EXTERNAL's mail before a read could reach it.
 
 package creelcli
@@ -10,9 +8,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteMessagesText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 	fresh := now.Add(-5 * time.Minute)

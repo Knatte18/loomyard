@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verbs_test.go — tier 0 tests for the drift verbs' rules over a fake run status and seeded scope records.
 
 package driftengine
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // statusAt returns a VerbStatus at row in state, with an error text and the facts the verbs read beside the status.
@@ -71,6 +70,7 @@ func requireRefusal(t *testing.T, err error, want []string, p Paths, before *Sco
 
 // TestRecordScope covers the admitted scopes and every refusal, each refusal naming its way forward and leaving the record as it was.
 func TestRecordScope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recorded := &ScopeRecord{Scope: ScopeFull, RecordedAt: "2026-01-01T00:00:00Z"}
@@ -114,6 +114,7 @@ func TestRecordScope(t *testing.T) {
 
 // TestAcceptWithdraw covers Accept's callers and rulings, Withdraw, and CheckVerifyRow's admissions.
 func TestAcceptWithdraw(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	decisionHalt := shedadapters.DecisionHaltPrefix + "bouncer Drift-Verify: round 2"
@@ -245,6 +246,7 @@ func TestAcceptWithdraw(t *testing.T) {
 
 // TestDeferWaive covers the halts Defer and Waive admit and every refusal, each leaving the record as it was.
 func TestDeferWaive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	scoped := &ScopeRecord{Scope: ScopeFull}

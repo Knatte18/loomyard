@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shortnamebinding_test.go covers the .lym-shortname record's read/write helpers and every row of resolveEffectiveShortname.
 
 package fabricengine
@@ -9,10 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep the shortname record round-tripping through its file; coverage of its blocks by other tests does not show an assertion of this
 func TestShortnameRecord_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	if err := WriteShortname(dir, "lx"); err != nil {
 		t.Fatalf("WriteShortname() error = %v; want nil", err)
@@ -30,6 +31,7 @@ func TestShortnameRecord_RoundTrip(t *testing.T) {
 }
 
 func TestReadShortname_NotFound(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content *string
@@ -57,6 +59,7 @@ func TestReadShortname_NotFound(t *testing.T) {
 func ptr(s string) *string { return &s }
 
 func TestResolveEffectiveShortname(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		recorded    string

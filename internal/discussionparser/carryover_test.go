@@ -1,5 +1,3 @@
-//go:build tier0
-
 package discussionparser
 
 import (
@@ -8,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -51,6 +51,7 @@ func writeRecord(t *testing.T, content string) string {
 
 // TestWriteCarryOver_RendersConvergedAndAcceptedEntries pins the rendered entry: marker lines, the closing bullet per closing kind, the paths line and one nested bullet per finding.
 func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	converged := carryOverEntry("Plan-Review", "cache-key")
@@ -99,6 +100,7 @@ func TestWriteCarryOver_RendersConvergedAndAcceptedEntries(t *testing.T) {
 // TestWriteCarryOver_SplicesEntries asserts append, replace and remove touch only the segment's entry and the one blank line before it, leave other segments and prose byte-identical, write the same bytes on a replay and keep the record valid.
 // Marker text inline, in another section or in a fence is ordinary prose.
 func TestWriteCarryOver_SplicesEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	mine := carryOverEntry("Plan-Review", "cache-key")
@@ -171,6 +173,7 @@ func TestWriteCarryOver_SplicesEntries(t *testing.T) {
 
 // TestWriteCarryOver_RefusesWithoutWriting asserts each refusal names the record's path and leaves the file unchanged.
 func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pair := func(segment string) string {
@@ -227,6 +230,7 @@ func TestWriteCarryOver_RefusesWithoutWriting(t *testing.T) {
 
 // TestWriteCarryOver_DetectsConcurrentWriter asserts a write by another process between the carry-over's read and its rename is refused with nothing written, and one just after the rename is reported; either way the file holds the other writer's bytes.
 func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -278,6 +282,7 @@ func TestWriteCarryOver_DetectsConcurrentWriter(t *testing.T) {
 
 // TestWriteCarryOver_SanitizesHostileFields asserts a key holding a line break, a backtick, a marker string and a heading renders on one line and cannot end the entry early or add a heading.
 func TestWriteCarryOver_SanitizesHostileFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hostile := "a\nb `c` " + closeMarker + "\n## Injected"

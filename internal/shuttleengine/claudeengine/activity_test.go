@@ -1,5 +1,3 @@
-//go:build tier0
-
 package claudeengine
 
 import (
@@ -11,9 +9,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTurnEndActivity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -163,6 +163,7 @@ func TestTurnEndActivity(t *testing.T) {
 }
 
 func TestTurnEndUsageLimited(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // matrix_test.go is the cross-product driver: the one uniform loop over states, verbs and anchors that
 // runs every cell verbs.go and states.go describe, and the sole deliverable of batch 7.
 // It contains no per-verb or per-state special case — every restriction the loop honors is expressed as
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // anchors is the two anchor values every ordinary and hostile-input cell in the cross product runs
@@ -245,6 +244,7 @@ func runCell(t *testing.T, anchor string, state State, vc VerbCase) {
 // declares, at both anchors, as independent parallel subtests, one per cell.
 // The CloneHub{Reset: true} column is deliberately absent from this loop; see TestCloneHubReset.
 func TestCrossProduct(t *testing.T) {
+	tiergate.Require(t, 1)
 	verbs := mainVerbs()
 	ran := 0
 	omitted := 0
@@ -320,6 +320,7 @@ func assertCellTally(t *testing.T, ran, omitted int) {
 // cell -- h exists only to satisfy VerbCase.Arrange's signature for that case, and is the real reset
 // target only for cloneHubResetRealHubCase, where fixture.ResetHubPath equals h.Path.
 func TestCloneHubReset(t *testing.T) {
+	tiergate.Require(t, 1)
 	for _, anchor := range anchors {
 		for _, verbCase := range cloneHubResetVerbs() {
 			anchor, verbCase := anchor, verbCase

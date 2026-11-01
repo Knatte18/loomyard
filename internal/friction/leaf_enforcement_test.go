@@ -1,5 +1,3 @@
-//go:build tier0
-
 // leaf_enforcement_test.go enforces the Friction Leaf Invariant: production code in
 // internal/friction imports ONLY the standard library, internal/logger, internal/stencil, and
 // internal/stencilstore — never a feature package (websterengine, burlerengine, loomengine, or any
@@ -14,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedImports are the only non-stdlib import paths production code in this package may use.
@@ -24,5 +23,6 @@ var allowedImports = []string{
 }
 
 func TestLeafInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/friction", allowedImports...)
 }

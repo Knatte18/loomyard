@@ -1,5 +1,3 @@
-//go:build tier0
-
 // deleteorder_test.go covers LaterDeleteReferences against a fixture repository: which delete/edit pairs it refuses and which reference shapes it matches.
 
 package planglyph
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // deleteOrderFixture declares Foo and Thing.Run in package sub, and uses them from sub, from another package through the import and from a same-named local.
@@ -33,6 +32,7 @@ func groupCard(number int, slug string, groupType planparser.CardType, refs ...s
 }
 
 func TestLaterDeleteReferences(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	deleteFoo := groupCard(1, "del", planparser.CardTypeDelete, "sub#Foo")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // approve_test.go covers SetApproved: the flip, no-op, and insert cases over the approved:
 // frontmatter key, byte-for-byte preservation of every other frontmatter key/order and of the
 // entire body, and SetApproved's error cases.
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // richOverview is a format-4 overview carrying a root: key, a framing paragraph, a Card Index, and
@@ -37,6 +36,7 @@ func richOverview(approvedValue string) string {
 }
 
 func TestSetApproved(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

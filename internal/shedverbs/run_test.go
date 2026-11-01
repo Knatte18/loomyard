@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_test.go covers the generic run body's hook ordering, both busy treatments, and the
 // producer-hard-error path, driven against the fake Shed testsupport_test.go builds.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runTexts returns a minimal, non-blank VerbTexts for run alone -- the other three verbs' text
@@ -25,6 +24,7 @@ func runTexts() VerbTexts {
 
 // TestRunCmd_SuccessEnvelope covers a successful run's four-key envelope.
 func TestRunCmd_SuccessEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 
@@ -60,6 +60,7 @@ func TestRunCmd_SuccessEnvelope(t *testing.T) {
 // TestRunCmd_BusyTreatment covers both told treatments of an ErrShedBusy run: an empty
 // RunBusyMessage reports err.Error() verbatim, and a filled one reports the told text instead.
 func TestRunCmd_BusyTreatment(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		runBusyMessage string
@@ -108,6 +109,7 @@ func TestRunCmd_BusyTreatment(t *testing.T) {
 
 // TestRunCmd_ProducerHardError covers a producer hard error reaching the error envelope.
 func TestRunCmd_ProducerHardError(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")
 
@@ -130,6 +132,7 @@ func TestRunCmd_ProducerHardError(t *testing.T) {
 // TestRunCmd_PreRunErrorSkipsBuildShed covers a PreRun returning a non-nil error: it reports on
 // the error envelope and leaves BuildShed uncalled.
 func TestRunCmd_PreRunErrorSkipsBuildShed(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Only")
 
@@ -160,6 +163,7 @@ func TestRunCmd_PreRunErrorSkipsBuildShed(t *testing.T) {
 // TestRunCmd_PreRunAndPostRunNilOrFilled covers each of PreRun and PostRun nil and filled, over
 // the success path.
 func TestRunCmd_PreRunAndPostRunNilOrFilled(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		fillPreRun  bool
@@ -225,6 +229,7 @@ func TestRunCmd_PreRunAndPostRunNilOrFilled(t *testing.T) {
 // PostRun is called with the non-nil runErr, called BEFORE the error envelope is written, and its returned map does appear on that envelope.
 // Ordering is asserted by having PostRun write into the same buffer the envelope is written to and checking the buffer's ordering, not by a call counter alone -- a counter cannot distinguish "called before" from "called after".
 func TestRunCmd_PostRunRunsOnErrorPathBeforeEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	paths := newTestPaths(t)
 	seedStatus(t, paths, "Bad")
 

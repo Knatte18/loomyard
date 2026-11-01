@@ -1,5 +1,3 @@
-//go:build tier0
-
 // retiring_test.go pins MarkRetiring's persistence, its Status projection, and the ErrUnknownStrand sentinel the unknown-guid refusals wrap.
 
 package reedengine
@@ -7,9 +5,12 @@ package reedengine
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestMarkRetiring_RoundTripsThroughStateAndStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	const selvagePane = "%1"
 	const strandPane = "%2"
 	liveGeneration := PaneGeneration{SessionName: "worktree", TmuxSessionID: "$0", ServerPID: "4321", Created: "1787000000"}
@@ -65,6 +66,7 @@ func TestMarkRetiring_RoundTripsThroughStateAndStatus(t *testing.T) {
 // TestUnknownStrandRefusalsWrapErrUnknownStrand pins that every refusal naming a guid the state does not hold wraps ErrUnknownStrand,
 // whether the state file holds other strands, is absent, or is handed to the locked remove.
 func TestUnknownStrandRefusalsWrapErrUnknownStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		saved   *ReedState

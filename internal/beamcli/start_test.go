@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_test.go drives the start sequence over a fake bring-up: which target is prepared and how one beam's failure shows beside the others.
 
 package beamcli
@@ -13,9 +11,11 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStartBeams(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prime := beamTarget{Label: "prime"}

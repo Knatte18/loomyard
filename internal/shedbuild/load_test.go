@@ -1,5 +1,3 @@
-//go:build tier0
-
 // load_test.go covers Load's path handling only -- a well-formed round trip, an absent file, a
 // relative path, and a directory path -- deliberately not a second copy of the Parse table.
 
@@ -10,11 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoad_WellFormedFileParsesToSameRecipeAsParse writes a well-formed recipe into a t.TempDir()
 // file and asserts Load returns exactly the same Recipe value Parse returns for the same bytes.
 func TestLoad_WellFormedFileParsesToSameRecipeAsParse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	data := []byte(`
@@ -50,6 +51,7 @@ producers:
 
 // TestLoad_UnreadableAbsolutePathErrors asserts an absolute path naming no file, and one naming a directory, each error.
 func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -76,6 +78,7 @@ func TestLoad_UnreadableAbsolutePathErrors(t *testing.T) {
 // The file is one of the package's own sources, so the test writes nothing into the source tree.
 // Other packages' tests read its directory listings, and Go's test cache keys on them.
 func TestLoad_RelativePathErrorsBeforeAnyRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	relName := "doc.go"

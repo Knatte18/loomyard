@@ -1,5 +1,3 @@
-//go:build tier0
-
 package planparser_test
 
 import (
@@ -7,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCheckFirstCard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("EqualHasNoFinding", func(t *testing.T) {
 		if got := planparser.CheckFirstCard(&planparser.Plan{FirstCard: 5}, 5); len(got) != 0 {
 			t.Errorf("CheckFirstCard() = %v; want none", got)

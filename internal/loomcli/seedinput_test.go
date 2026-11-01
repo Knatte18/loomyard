@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -7,9 +5,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestResolveParentBranch(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		recorded    fabricengine.Origin
@@ -108,6 +108,7 @@ func TestResolveParentBranch(t *testing.T) {
 }
 
 func TestResolveLandingParent(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		recorded    fabricengine.Origin
@@ -170,6 +171,7 @@ func TestResolveLandingParent(t *testing.T) {
 
 //testtiming:keep pins seedSlug returning the worktree name unchanged and empty for an empty name; the covering test reaches it without asserting the result
 func TestSeedSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		worktreeName string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buildinfo_test.go pins the exact-match semantics of IsDev and IsProduction:
 // only the literal Channel value classifies, never a prefix or case-insensitive match.
 
@@ -7,7 +5,10 @@ package buildinfo
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestChannelAccessors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		channel        string

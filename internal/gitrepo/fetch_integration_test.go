@@ -1,5 +1,3 @@
-//go:build tier1
-
 // fetch_integration_test.go covers Repo.Fetch, and the remote-failure paths of Fetch and Pull, against real git repositories, reusing push_test.go's bare-remote/clone fixtures (newBareRemote, newRepoWithRemote, cloneFromBare) since Fetch needs the same bare-remote-plus-clones shape those tests already build.
 
 package gitrepo_test
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD asserts Fetch's whole point: after a
@@ -18,6 +17,7 @@ import (
 // its remote-tracking ref (`@{u}`) to the new tip while leaving local HEAD completely untouched —
 // unlike Pull, which would fast-forward HEAD itself.
 func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -71,6 +71,7 @@ func TestFetch_RemoteAdvanced_UpdatesTrackingRefWithoutMovingHEAD(t *testing.T) 
 // Fetch's error path is instead exercised against a remote whose URL cannot be reached, the closest real analogue to Pull's no-remote error.
 // Each error must name the repo path (per the documented error style) and must never leak git's raw "fatal:"-prefixed stderr.
 func TestRemoteFailurePaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

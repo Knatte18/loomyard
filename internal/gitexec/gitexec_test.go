@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gitexec_test.go covers the git command helpers exposed by this package.
 
 package gitexec_test
@@ -14,12 +12,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/toolfloor"
 )
 
 // TestRunGit pins RunGit's contract: a successful command returns its stdout with exit 0, a non-zero exit is reported through the exit code and stderr with a nil error, and an exec-level failure (a cwd that does not exist) returns exit -1 with blanked stdout and stderr.
 // The non-zero row also shows the cwd parameter is respected: run in the package directory instead, `git status` would succeed.
 func TestRunGit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -79,6 +79,7 @@ func TestRunGit(t *testing.T) {
 // Another sets GIT_OPTIONAL_LOCKS=1 and asserts the child sees it as 0 alone, so a read-only command never takes the index lock.
 // Those rows touch process-global state, the environment, so the test does not call t.Parallel; its table rows do.
 func TestRun(t *testing.T) {
+	tiergate.Require(t, 1)
 
 	nonZeroArgs := []string{"log", "--format=stdout-marker", "-1"}
 	nonZeroDir := t.TempDir()
@@ -205,6 +206,7 @@ func TestRun(t *testing.T) {
 //
 //testtiming:keep pins that stdout is returned alongside a *GitError, which the covering tests discard
 func TestRun_StdoutOnError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tempDir := t.TempDir()
@@ -253,6 +255,7 @@ func TestRun_StdoutOnError(t *testing.T) {
 // TestCheckFloor pins the once-per-process git floor check through every entry point.
 // It is serial: it replaces the process-global version probe and floor cache, which no parallel test may see.
 func TestCheckFloor(t *testing.T) {
+	tiergate.Require(t, 1)
 	// countingProbe scripts one answer per call, repeating the last, and counts the calls.
 	type answer struct {
 		line string

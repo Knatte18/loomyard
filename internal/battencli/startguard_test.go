@@ -1,5 +1,3 @@
-//go:build tier0
-
 // startguard_test.go pins the pre-run guard's refusals over fake seams, and the seed write's re-read of the cancel marker.
 
 package battencli
@@ -15,10 +13,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStartGuard_Refuse drives startGuard.refuse over fake seams: which verbs the cancel marker refuses, when a dirty source refuses, which left pair parts refuse a start, and that a failing probe refuses naming the re-run.
 func TestStartGuard_Refuse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "some-slug"
@@ -383,6 +383,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 
 // TestArmSeed_CancelMarkerRefusesTheWrite asserts a cancel marker read at the seed write refuses it with the cancel refusal, writes no seed and registers no process, and that an absent marker seeds as before.
 func TestArmSeed_CancelMarkerRefusesTheWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "some-slug"

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dobbypairanchor_test.go pins that dobby's two pair-reading callers place a task pair at the pair's own anchor, and what DobbyRuns reads of a run's place against its Land row, over a hubforge hub.
 
 package beamcli
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitAnchorMarker commits a .lym-anchor holding anchor, and an empty file under the anchor directory, in the pair's records worktree.
@@ -63,6 +62,7 @@ func seedBattenRun(t *testing.T, prime *lymcwd.Location, slug string) {
 }
 
 func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -163,6 +163,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 }
 
 func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -184,6 +185,7 @@ func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
 }
 
 func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

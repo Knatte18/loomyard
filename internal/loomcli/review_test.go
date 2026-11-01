@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -10,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeReviewTarget builds reviewTargetDeps over a hub with the given worktrees, each mapped to the recipe its run's seed records.
@@ -31,6 +30,7 @@ func fakeReviewTarget(prime string, existing map[string]string) reviewTargetDeps
 }
 
 func TestResolveReviewTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := filepath.Join(t.TempDir(), "repo-LYMHUB")
 	atPrime := &lymcwd.Location{HubPath: hub, WorktreeName: "repo"}
 	atTask := &lymcwd.Location{HubPath: hub, WorktreeName: "task-a"}

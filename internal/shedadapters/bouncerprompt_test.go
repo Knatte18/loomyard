@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncerprompt_test.go covers that BouncerConfig.ClusterExcludes and WebsterRecord reach the seed and judge fills
 // and that the judge prompt offers CIRCLING only from the checkpoint round.
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -62,6 +61,7 @@ func decisionRuleSection(t *testing.T, prompt string) string {
 
 //testtiming:keep pins the decision rule's text: both non-circling verdicts are always offered, the rising-count caveat comes with CIRCLING, and round 2 on renders the lighter rule with its earlier-open list and round-1 fallback
 func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name         string
 		round        int
@@ -103,6 +103,7 @@ func TestDecisionRuleMarker_CirclingOnlyFromTheCheckpoint(t *testing.T) {
 
 //testtiming:keep pins that the checkpoint round configured on the Bouncer reaches the judge prompt's decision rule
 func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name         string
 		checkpoint   int
@@ -138,6 +139,7 @@ func TestBouncer_JudgePromptOffersCirclingOnlyFromTheCheckpoint(t *testing.T) {
 //
 //testtiming:keep pins that the exclude_lenses example line and rule reach the seed and judge prompts exactly when ClusterExcludes is set, and that the WebsterRecord note reaches the rubric in both
 func TestBouncer_ClusterExcludesReachesSeedAndJudgePrompts(t *testing.T) {
+	tiergate.Require(t, 0)
 	const websterRecord = "Webster has begun these batches."
 	rubric := withStencilOverrides(map[string]string{bouncerFixtureRubricName: "Record: {{.webster_record}}\nTiers:\n{{.gate_tiers}}\n"})
 	const gateTiers = "- tier1: build first\n- gate card: [1]"

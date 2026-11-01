@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -10,12 +8,14 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDriverReportPath asserts the composed report path under a fixed clock and rand seam.
 //
 //testtiming:keep pins the report path composed under the drive-reports directory with a timestamp ahead of the random part, differing across two calls under a frozen clock and deterministic under a fixed rand; the covering integration test only runs the composer
 func TestDriverReportPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := &lymcwd.Location{}
 	now := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
@@ -83,6 +83,7 @@ func TestDriverReportPath(t *testing.T) {
 //
 //testtiming:keep pins the production random source returning four lowercase hex characters; its covering test passes a stub source instead
 func TestNewDriverReportRand_ProducesFourHexChars(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := newDriverReportRand()()
 	if len(got) != 4 {
 		t.Errorf("newDriverReportRand()() = %q; want 4 characters", got)

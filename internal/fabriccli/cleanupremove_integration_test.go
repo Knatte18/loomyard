@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanupremove_integration_test.go covers `lym fabric cleanup`, `prune` and `remove` through the CLI against one real hub as an ordered scenario:
 // the envelope and exit-code contract of `--remote` (alone it is still a dry run, a remote or local failure exits non-zero, the protected/unmanaged carve-outs and the no-origin skip reason exit 0), the origin task-branch sweep, and `remove` going through the pairteardown composite.
 // An exit code is observable only through the CLI seam, which is why none of these could be covered in fabricengine-level tests.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // remoteEnvelopeCreateOrphanBranch creates branch in the weft repo at weftRoot, pointed at HEAD, with
@@ -88,6 +87,7 @@ func warpEntryOf(t *testing.T, env envelope.Envelope, raw, branch string) map[st
 // Steps run serially in this order, each tolerating the branches earlier steps leave behind:
 // the all-protected step runs first because it needs a hub with no deletable branch, the steps that break or remove the weft origin run last because every later push would fail, and the pair the no-origin remove needs is added before the origin is broken, since `add` pushes.
 func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	weftRoot, err := fabricengine.RecordsRepoRoot(h.Location)
 	if err != nil {

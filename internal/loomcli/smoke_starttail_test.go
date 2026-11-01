@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_starttail_test.go covers the two live-substrate properties of `lym loom start`'s tail against a real wired hub and a real tmux session:
 // that the verb never attaches or switches a tmux client, and that the strand set it leaves -- on the unseeded fixture, which resolveSeedDriver seeds llm, exactly one status strand and no loom-operator strand -- is unchanged by that.
 // It also pins the watchdog spawn's gate position -- that it fires on every start, the one thing start_watchdog_test.go's Tier 1 file cannot reach through the real RunE (see its own doc comment) because reed Up needs a live tmux server.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -43,6 +42,7 @@ func reedAttachedClients(t *testing.T, tmuxPath string, eng *reedengine.Engine) 
 // The smoke run has no TTY,
 // so a start that still attached would exit non-zero.
 func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxPath := tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 
@@ -105,6 +105,7 @@ func TestSmokeStart_NeverAttachesAndAddsNoOperatorStrand(t *testing.T) {
 // TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon pins that a `lym loom start --no-attach` bootstrap leaves a live per-hub watchdog daemon for the fixture hub, found by the same argv-signature scan the smoke teardown uses.
 // This is what proves the watchdog spawn fires on every start, not only on an attaching one -- the single thing a later edit is most likely to get wrong -- which is the one property start_watchdog_test.go structurally cannot reach (see its own doc comment).
 func TestSmokeWatchdog_NoAttachStillSpawnsTheDaemon(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)

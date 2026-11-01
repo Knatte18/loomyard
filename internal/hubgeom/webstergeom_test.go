@@ -1,5 +1,3 @@
-//go:build tier0
-
 // webstergeom_test.go pins WebsterGeometry against the websterengine accessors, planparser.PlanDir
 // and fabricengine.StencilsDir themselves, so this test cannot drift from those packages' own joins.
 // Following hubgeom_test.go's fixture discipline, hub, worktree root, and anchor path stay three
@@ -22,12 +20,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 //testtiming:keep pins every WebsterGeometry directory against the accessors of the packages that own them, which the integration test covering its blocks never reads
 func TestWebsterGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

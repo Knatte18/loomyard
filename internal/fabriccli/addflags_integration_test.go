@@ -1,5 +1,3 @@
-//go:build tier1
-
 // addflags_integration_test.go drives the fabric CLI's `add --parent` and `add --adopt-local` over one real hub, with the refusals of `--local` combined with either.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFabricAdd_ParentAndAdoptLocal adds a beam, a member forked from it and a pair over an existing local branch, then the two refused `--local` combinations.
 // Steps run serially in this order over one hub.
 func TestFabricAdd_ParentAndAdoptLocal(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

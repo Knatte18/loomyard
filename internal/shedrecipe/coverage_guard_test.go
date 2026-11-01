@@ -1,5 +1,3 @@
-//go:build tier0
-
 // coverage_guard_test.go is the cross-consumer registry coverage guard: it unions every recipe
 // consumer's own RecipeEngines() and asserts every name in shedrecipe.Names() is reached by that
 // union or is explicitly allowlisted. This guard, not any one consumer, is where a new registry
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // coverageGuardAllowedUnreachableEngines names the registry engines this guard tolerates as
@@ -49,6 +48,7 @@ func reachedEngines() map[string]bool {
 //
 //testtiming:keep pins that every registered engine is reached or allowlisted, and that the allowlist does not drift, a guard that fires on a new registry key
 func TestCoverageGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reached := reachedEngines()
 	registered := make(map[string]bool)

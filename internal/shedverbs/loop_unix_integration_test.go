@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // loop_unix_integration_test.go holds the loop test that kills the child tree through its process group, which Windows replaces with a named job.
 
@@ -17,9 +17,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
+	tiergate.Require(t, 1)
 	dir := t.TempDir()
 	spec := helperSpec(dir, "")
 	status := shedengine.Status{CurrentProducer: "A", State: shedengine.StateRunning, History: []shedengine.HistoryEntry{}}

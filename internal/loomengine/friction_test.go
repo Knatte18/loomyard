@@ -1,5 +1,3 @@
-//go:build tier0
-
 // friction_test.go — untagged Tier-1 unit tests for LoomDurableDir, LoomFrictionDir, LoomFrictionArchivePrefix and LoomFrictionLock.
 // Pure path arithmetic over a hand-built lymcwd.Location, no live hub, reed, or network involved.
 
@@ -12,11 +10,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoomFrictionPaths verifies the durable and ephemeral friction paths at a subpath anchor, whose AnchorRel differs from "." to prove the accessors follow the anchored subpath, not the bare worktree root:
 // LoomDurableDir sits under the durable _lym tree and LoomDurableDirRel is its anchor-relative suffix, LoomFrictionDir sits beneath LoomDurableDir, LoomFrictionArchivePrefix is LoomFrictionDir's own return value with a trailing hyphen (asserted against it rather than a second hand-built literal, so the two cannot drift), and the reflection lock stays ephemeral: under .lym/loom, with its parent equal to LoomScratchDir.
 func TestLoomFrictionPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	l := &lymcwd.Location{
 		HubPath:      filepath.Join("home", "user", "repo-LYMHUB"),

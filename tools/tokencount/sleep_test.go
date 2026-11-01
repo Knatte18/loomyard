@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -9,9 +7,12 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestSleepsFromJournal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	base := time.Date(2026, 10, 14, 19, 0, 0, 0, time.UTC)
 	at := func(minutes int) time.Time { return base.Add(time.Duration(minutes) * time.Minute) }

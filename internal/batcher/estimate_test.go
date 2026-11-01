@@ -1,5 +1,3 @@
-//go:build tier0
-
 // estimate_test.go verifies PeakContext against a fake size source and hand-built cards, and DiskSizes against a temporary worktree tree.
 // Tier-1 (pure logic, no git, no spawn).
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeSizes is an in-memory SizeSource.
@@ -56,6 +55,7 @@ func editCard(number int, targets []string, uses ...string) planparser.Card {
 // TestPeakContext asserts the hand-computed peak of one-card segments over a fake size source,
 // and that merging cards counts a shared read-set entry once and never lowers the peak.
 func TestPeakContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	plan := &planparser.Plan{Language: "go"}
@@ -202,6 +202,7 @@ func TestPeakContext(t *testing.T) {
 // TestDiskSizes asserts DiskSizes counts the lines of present files and reports absent ones as missing.
 // It also asserts DiskSizes lists only the *_test.go files directly in a directory, with an absent directory listing none.
 func TestDiskSizes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()

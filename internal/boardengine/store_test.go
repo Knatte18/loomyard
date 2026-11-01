@@ -1,5 +1,3 @@
-//go:build tier0
-
 // store_test.go — unit tests for the Store (store.go).
 //
 // CRUD, sequential ID assignment, and every validation rule: dangling deps, isolated/kind/label constraints, cycle detection, and batch/merge atomicity.
@@ -18,9 +16,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// (a) new task gets sequential ID starting at 0
@@ -48,6 +48,7 @@ func TestUpsertTaskNewTaskSequentialID(t *testing.T) {
 }
 
 func TestUpsertTaskDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// (b) defaults applied (DependsOn=[], Isolated=false, Kind=note, Labels=[])
@@ -80,6 +81,7 @@ func TestUpsertTaskDefaults(t *testing.T) {
 }
 
 func TestUpsertKindAndRetiredKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	_, err := s.UpsertTask(map[string]any{"slug": "a", "kind": "epic"})
@@ -106,6 +108,7 @@ func TestUpsertKindAndRetiredKeys(t *testing.T) {
 }
 
 func TestKindDependencyRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	// seed builds a task "dep" and a note "idea", with no vocabulary so labels are not checked.
 	seed := func(t *testing.T) *boardengine.Store {
 		t.Helper()
@@ -202,6 +205,7 @@ func TestKindDependencyRules(t *testing.T) {
 }
 
 func TestUpsertTaskPreservesFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// Create a task
@@ -235,6 +239,7 @@ func TestUpsertTaskPreservesFields(t *testing.T) {
 }
 
 func TestUpsertTaskGroupKeyError(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// (d) `group` key is rejected by the store allowlist (coverage relocated from task_test.go)
@@ -254,6 +259,7 @@ func TestUpsertTaskGroupKeyError(t *testing.T) {
 // three entry points: UpsertTask, UpsertTasksBatch, and MergeTasks.
 // Also verifies that `status` IS in the allowed set and is persisted correctly.
 func TestUpsertFieldAllowlist(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("upsert_stray_phase_key_errors", func(t *testing.T) {
 		s := boardengine.NewStore("")
 		_, err := s.UpsertTask(map[string]any{
@@ -561,6 +567,7 @@ func TestUpsertFieldAllowlist(t *testing.T) {
 
 // TestValidateDependencyGraph verifies that UpsertTask rejects a dangling dependency, a dependency on an isolated task and a cycle with precise error messages, and accepts a chain without a cycle (the kind rules have their own test).
 func TestValidateDependencyGraph(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -636,6 +643,7 @@ func TestValidateDependencyGraph(t *testing.T) {
 }
 
 func TestRemoveTaskMissing(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// (j) RemoveTask returns error for missing slug
@@ -653,6 +661,7 @@ func TestRemoveTaskMissing(t *testing.T) {
 //
 // Folds: TestSetPhaseNil, TestSetPhaseMissing
 func TestSetStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TestSetPhaseNil", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -702,6 +711,7 @@ func TestSetStatus(t *testing.T) {
 //
 // Folds: TestMergeTasksAtomic, TestMergeTasksValidationRollback
 func TestMergeTasks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TestMergeTasksAtomic", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -894,6 +904,7 @@ func TestMergeTasks(t *testing.T) {
 // The remove and upsert steps are applied in-memory but writeOp discards them when mutate errors —
 // confirmed by loading a fresh store from disk and asserting the task list is identical.
 func TestMergeTasksSetStatusRollback(t *testing.T) {
+	tiergate.Require(t, 0)
 	taskPath := t.TempDir()
 
 	// Create an initial store with one task.
@@ -943,6 +954,7 @@ func TestMergeTasksSetStatusRollback(t *testing.T) {
 }
 
 func TestListTasksBriefLayerAndProposal(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 
 	// Create tasks
@@ -1062,6 +1074,7 @@ func TestListTasksBriefLayerAndProposal(t *testing.T) {
 // TestListAndFindReadmeOrder verifies ListTasksBrief and Find return entries in README order:
 // open tasks first, then open notes, done last, and that each listed entry carries its priority.
 func TestListAndFindReadmeOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 	for _, f := range []map[string]any{
 		{"slug": "x-first", "kind": "task"},
@@ -1100,6 +1113,7 @@ func TestListAndFindReadmeOrder(t *testing.T) {
 
 // TestListAndFindLabelFilter verifies the label filter keeps only entries carrying every named label, in README order.
 func TestListAndFindLabelFilter(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 	for _, f := range []map[string]any{
 		{"slug": "x-a", "kind": "note", "labels": []string{"a"}},
@@ -1136,6 +1150,7 @@ func TestListAndFindLabelFilter(t *testing.T) {
 //
 // Folds: TestSetDepsValid, TestSetDepsCycleRollback
 func TestSetDeps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TestSetDepsValid", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -1215,6 +1230,7 @@ func TestSetDeps(t *testing.T) {
 //
 // Folds: TestUpsertTasksBatchValid, TestUpsertTasksBatchInvalid
 func TestUpsertTasksBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TestUpsertTasksBatchValid", func(t *testing.T) {
 		s := boardengine.NewStore("")
 
@@ -1395,6 +1411,7 @@ var keptA = [][3]string{
 // TestLoad asserts Store.Load's handling of board.json: a missing file yields an empty store, nil depends_on and labels normalize to empty slices, the version-1 and old tier-and-type shapes load and a Save round-trips them, and an unknown version or corrupt file is an error.
 // It also pins the kept keys: an entry key or top-level key this binary does not know survives every write path with its exact digits, after the known fields in key order, while the retired tier and type are still dropped.
 func TestLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -1850,6 +1867,7 @@ func stringContains(s, substr string) bool {
 }
 
 func TestPromote(t *testing.T) {
+	tiergate.Require(t, 0)
 	seed := func(t *testing.T) *boardengine.Store {
 		t.Helper()
 		s := boardengine.NewStore("")
@@ -1930,6 +1948,7 @@ func TestPromote(t *testing.T) {
 }
 
 func TestPrune(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 	if _, err := s.UpsertTask(map[string]any{"slug": "d1", "kind": "task"}); err != nil {
 		t.Fatal(err)
@@ -1999,6 +2018,7 @@ func TestPrune(t *testing.T) {
 }
 
 func TestFind(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 	for _, f := range []map[string]any{
 		{"slug": "alpha-slug", "title": "One"},
@@ -2038,6 +2058,7 @@ func TestFind(t *testing.T) {
 
 // TestUpsertIssues verifies issues defaults to empty, is replaced as a whole and refuses duplicates and non-positive numbers.
 func TestUpsertIssues(t *testing.T) {
+	tiergate.Require(t, 0)
 	s := boardengine.NewStore("")
 	task, err := s.UpsertTask(map[string]any{"slug": "a"})
 	if err != nil {
@@ -2066,6 +2087,7 @@ func TestUpsertIssues(t *testing.T) {
 
 // TestMergeTasksIssueCarry verifies that a merge records the removed entries' issues on the upserted entry.
 func TestMergeTasksIssueCarry(t *testing.T) {
+	tiergate.Require(t, 0)
 	seed := func(t *testing.T) *boardengine.Store {
 		t.Helper()
 		s := boardengine.NewStore("")

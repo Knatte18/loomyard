@@ -1,5 +1,3 @@
-//go:build tier1
-
 // integrateweft_integration_test.go covers the weft integration that carries local commits onto a re-anchored upstream, over a plain records repository with a bare origin.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // integrateFixture is a records repository named like a pair's weft, with a bare origin and a second clone standing for the other machine.
@@ -82,6 +81,7 @@ func (f *integrateFixture) files(rev string) []string {
 }
 
 func TestIntegrateWeft(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	names := []string{"_lym"}
 	base := map[string]string{lymcwd.AnchorFileName: "a\n", "a/_lym/base.txt": "base\n"}

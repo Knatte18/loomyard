@@ -1,5 +1,3 @@
-//go:build tier1
-
 // taskpatch_integration_test.go proves the code-identity reads of taskpatch.go over real git checkouts:
 // ReadTaskPatch's patch, hashes and skips, and MergeInOnly's verdict on each way a task's history can move.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // taskPatchFixture is a warp checkout on a clean task branch forked from main, with its weft side beside it.
@@ -121,6 +120,7 @@ func readPatchAroundScratchWrite(t *testing.T, fx taskPatchFixture, linked bool)
 
 // TestFabric_ReadTaskPatch covers which changes the patch holds, how skip exempts untracked paths, what its hashes follow, and that a root `.scratch` never enters it.
 func TestFabric_ReadTaskPatch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -284,6 +284,7 @@ func TestFabric_ReadTaskPatch(t *testing.T) {
 
 // TestFabric_MergeInOnly covers the verdict for each way the task's first-parent history can stand against the parent.
 func TestFabric_MergeInOnly(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

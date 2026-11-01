@@ -1,5 +1,3 @@
-//go:build tier0
-
 // state_test.go table-drives loadOrInitState's fresh/resume/hash-mismatch/ terminal classification,
 // exercises moveStaleArtifacts' renaming (including the double-.stale collision case), and
 // round-trips a runState through saveState/loadOrInitState to check the persisted shape survives.
@@ -14,9 +12,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestLoadOrInitState(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("fresh dir writes an initial state and starts at round 1", func(t *testing.T) {
 		runDir := t.TempDir()
 
@@ -198,6 +199,7 @@ func TestLoadOrInitState(t *testing.T) {
 // never started a block), an in-flight block (empty Outcome), and a finished block, whose recorded
 // Outcome is reported with ok true.
 func TestTerminalOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("no state file reports not terminal", func(t *testing.T) {
 		runDir := t.TempDir()
 		outcome, ok, err := TerminalOutcome(runDir, runDir)
@@ -239,6 +241,7 @@ func TestTerminalOutcome(t *testing.T) {
 }
 
 func TestMoveStaleArtifacts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("moves every existing artifact aside with .stale", func(t *testing.T) {
 		runDir := t.TempDir()
 		paths := artifactPaths(runDir, 3, 1)
@@ -302,6 +305,7 @@ func TestMoveStaleArtifacts(t *testing.T) {
 }
 
 func TestPauseFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := t.TempDir()
 	flagPath := PauseFlagPath(runDir)
 	if filepath.Dir(flagPath) != runDir {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_incremental_test.go covers AuditForksIncremental's seen-set filtering: only fork
 // transcripts whose path is not a key of seenTranscripts are reported, a nil map is equivalent to
 // AuditForks, and the parent facts
@@ -14,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeForkTranscript writes lines as a newline-joined fork transcript at
@@ -38,6 +38,7 @@ func writeForkTranscript(t *testing.T, subagentsDir, name string, lines []string
 // TestAuditForksIncremental_SeenSetFiltering proves only fork transcripts whose full path is NOT a
 // key of seenTranscripts are reported in Forks.
 func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -74,6 +75,7 @@ func TestAuditForksIncremental_SeenSetFiltering(t *testing.T) {
 // TestAuditForksIncremental_NilMapEquivalentToAuditForks proves a nil seenTranscripts map reports
 // every fork transcript, identically to AuditForks.
 func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -116,6 +118,7 @@ func TestAuditForksIncremental_NilMapEquivalentToAuditForks(t *testing.T) {
 // the parent-session facts (SpawnCalls, NamedSpawns, ParentWriteCalls, ParentWrites,
 // ParentBashCommands) are always full/cumulative regardless of what seenTranscripts excludes.
 func TestAuditForksIncremental_ParentFactsUnaffectedBySeenSet(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 

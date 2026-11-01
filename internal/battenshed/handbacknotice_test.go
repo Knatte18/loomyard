@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handbacknotice_test.go pins HandBackNotice's and RowStopNotice's one-notice-per-stop rule against the hand-back marker.
 
 package battenshed
@@ -11,11 +9,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestHandBackNotice asserts a hand-back notice is queued once per stop, and skipped when an earlier hand-back of the same stop did.
 // It is queued when the marker only holds an earlier stop, held back without a recorded orch strand so a later call can still send, and never sent without a Notify.
 func TestHandBackNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const historyLen = 5
 
@@ -97,6 +98,7 @@ func TestHandBackNotice(t *testing.T) {
 
 // TestRowStopNotice asserts the row-stop notice names the row, the one-line reason, the report and the way forward, is posted once per stop, again for a later stop, and never without a Notify.
 func TestRowStopNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const reportPath = "/reports/stop.md"

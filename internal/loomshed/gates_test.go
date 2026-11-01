@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gates_test.go covers NewDiscussionGate and NewPlanGate's own outcome mapping, the ParsePlan error
 // split that is the subtlest rule in the task, the fail-closed severity predicate both gates key
 // their pass/fail split on.
@@ -38,12 +36,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestGateRows_StopsNameAWayForward pins the trailing way-forward clause on the gate rows' stops and takes each one:
 // the commit-seam failures and the batchifier fault are transient or operator-fixable, so the same row proceeds once the named fix is made.
 func TestGateRows_StopsNameAWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	commitFault := errors.New("index.lock exists")
 	for _, tt := range []struct {
 		name string
@@ -174,6 +174,7 @@ func TestGateRows_StopsNameAWayForward(t *testing.T) {
 }
 
 func TestNewDiscussionGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	index := planglyph.NewIndex(fabricengine.NewReferenceRule())
 	// gateOf builds the gate over a fixture directory holding record, with the citation checks on, and an empty history.
 	gateOf := func(t *testing.T, dir, record string) (DiscussionCheck, string) {
@@ -389,6 +390,7 @@ func TestNewDiscussionGate(t *testing.T) {
 }
 
 func TestNewPlanGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Pass", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
@@ -985,6 +987,7 @@ func firstCardOverview() string {
 // Passed false with the error's own text as findings, while both of ParsePlan's read faults produce
 // a returned error -- the overview read and the per-card read reached through parseCardFile.
 func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("MalformedOverviewFrontmatterIsFindings", func(t *testing.T) {
 		anchorPath := t.TempDir()
 		worktreeRoot := t.TempDir()
@@ -1104,6 +1107,7 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 //
 //testtiming:keep pins that an unrecognized or zero severity fails the plan gate closed, which TestNewPlanGate never asserts
 func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name     string
 		severity planindex.Severity
@@ -1126,14 +1130,14 @@ func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 // TestValidatePlan_CardChecks drives ValidatePlan over a language: go plan whose single card creates test files, and counts the findings of the card checks.
 // It is a table apart from TestNewPlanGate's context table because that table's plan is language: none, which the card checks skip.
 func TestValidatePlan_CardChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
 		ownLineClause  = "on a line that names no other test file"
 		untaggedClause = "or the word `untagged`"
-		joinClause     = "join them with ||"
-		keepOneClause  = "else keep one"
-		dropClause     = "drop untagged or the tag"
+		keepOneClause  = "several tiers, keep one"
+		dropClause     = "drop untagged or the tier"
 	)
 	tierTags := []string{"tier0", "tier1", "tier2", "tier3"}
 	doneBatchOne := &websterengine.State{Batches: map[int]*websterengine.BatchState{
@@ -1172,7 +1176,7 @@ func TestValidatePlan_CardChecks(t *testing.T) {
 		{name: "SameTagOnTwoLinesPasses", creates: []string{"internal/x/new_test.go"},
 			intent: "internal/x/new_test.go carries `//go:build tier1`.\nnew_test.go also pins the behavior under `//go:build tier1`."},
 		{name: "TwoTagsFail", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go carries tier0 tier1.",
-			wantFiles: []string{"internal/x/new_test.go"}, wantDetails: []string{"tier0", "tier1", joinClause, keepOneClause}},
+			wantFiles: []string{"internal/x/new_test.go"}, wantDetails: []string{"tier0", "tier1", keepOneClause}},
 		{name: "TagsJoinedByOrPass", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go carries `//go:build tier0 || tier1`."},
 		{name: "UntaggedPasses", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go is untagged support."},
 		{name: "UntaggedWithTagFails", creates: []string{"internal/x/new_test.go"}, intent: "new_test.go is untagged and carries tier0.",

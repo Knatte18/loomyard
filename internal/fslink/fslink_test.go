@@ -1,11 +1,11 @@
-//go:build tier0
-
 package fslink
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeFile creates a file with the given content.
@@ -18,6 +18,7 @@ func writeFile(t *testing.T, path, content string) {
 
 // TestCreate exercises link creation across clobber refusal and parent directory creation.
 func TestCreate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -130,6 +131,7 @@ func TestCreate(t *testing.T) {
 // TestIsLink exercises link detection across created links, regular files, directories, and missing
 // paths.
 func TestIsLink(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -212,6 +214,7 @@ func TestIsLink(t *testing.T) {
 
 // TestPointsTo exercises target resolution for valid links, non-links, and dangling links.
 func TestPointsTo(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -293,6 +296,7 @@ func TestPointsTo(t *testing.T) {
 
 // TestRemove exercises link removal, target preservation, and idempotence.
 func TestRemove(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -363,6 +367,7 @@ func TestRemove(t *testing.T) {
 // TestRemoveLinksIn exercises the link scanner across regular files, directories, link removal, and
 // error handling.
 func TestRemoveLinksIn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

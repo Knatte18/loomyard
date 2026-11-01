@@ -1,5 +1,3 @@
-//go:build tier1
-
 // add_anchor_integration_test.go covers Add forking a pair at a requested anchor and EnsureAnchor settling the anchor of a present pair, over hubforge hubs whose prime warp tracks y/.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newAtAnchorHub builds a "." hub whose prime warp tracks y/ before any pair is added.
@@ -70,6 +69,7 @@ func ensureAnchorOf(t *testing.T, h *hubforge.Hub, slug, anchor string) error {
 }
 
 func TestAdd_AtAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("A beam added at y has its marker, content, wiring and launcher there and no record", func(t *testing.T) {
@@ -152,6 +152,7 @@ func TestAdd_AtAnchor(t *testing.T) {
 }
 
 func TestEnsureAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("The pair's own anchor, named or empty, skips the move and restores a removed junction", func(t *testing.T) {

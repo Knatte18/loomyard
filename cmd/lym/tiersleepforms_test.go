@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tiersleepforms_test.go pins the long-sleep detection tiersleep_test.go holds against crafted code snippets, one per argument form.
 
 package main
@@ -7,12 +5,15 @@ package main
 import (
 	"go/token"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFindLongLiteralSleep_DetectsAllArgumentForms verifies detection against crafted code snippets.
 //
 //testtiming:keep proves the sleep check of TestTierPurity_UntaggedTestsSpawnNothing fires on every argument form of a long literal sleep
 func TestFindLongLiteralSleep_DetectsAllArgumentForms(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		src  string

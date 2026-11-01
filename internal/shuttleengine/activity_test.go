@@ -1,5 +1,3 @@
-//go:build tier0
-
 // activity_test.go covers ReadAgentActivity over run directories written by the test, with the liveness seam replaced so no process is spawned and an engine double that answers the transcript reading.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // activityEngine is a fakeEngine that also reads transcript activity from a table keyed by the turn end's message.
@@ -81,6 +80,7 @@ type activityRun struct {
 }
 
 func TestReadAgentActivity(t *testing.T) {
+	tiergate.Require(t, 0)
 	const livePID = 4242
 	prev := isAlive
 	isAlive = func(pid int) bool { return pid == livePID }

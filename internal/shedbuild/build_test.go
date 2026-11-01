@@ -1,5 +1,3 @@
-//go:build tier0
-
 // build_test.go covers Build's own routing logic against Recipe values constructed in Go rather
 // than parsed, so a Build failure can never be a Parse failure in disguise. The filesystem-backed
 // twelve-engine coverage lives in build_engines_test.go instead -- see that file's own doc comment.
@@ -12,10 +10,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBuild_RowsCarryRoutingInRecipeOrder asserts Build returns one definition per row, in recipe order, each carrying its row's routing fields and a producer.
 func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	r := Recipe{
@@ -49,6 +49,7 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 
 // TestBuild_Errors asserts each Build failure wraps the shedbuild prefix and names the offending row's index and name, an unknown engine, or the rejected config key.
 func TestBuild_Errors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -126,6 +127,7 @@ func TestBuild_Errors(t *testing.T) {
 
 // TestBuild_LoomContract asserts Build refuses a recipe declaring contract: loom that breaks a clause of the loom contract, naming the clause and its way forward, and never checks a recipe without the contract.
 func TestBuild_LoomContract(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	// validLoom returns a recipe meeting every clause: a record row, a build row after it, and a Finalize row followed only by a terminal.

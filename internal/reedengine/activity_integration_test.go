@@ -1,4 +1,4 @@
-//go:build tier2 && linux
+//go:build linux
 
 // activity_integration_test.go pins that a client's #{pane_id} in list-clients is its active pane.
 // It runs against a real tmux server and a client attached in a pty, whose keystroke makes OperatorActive read the pane active.
@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOperatorActive_ReadsAnAttachedClientsKeystroke(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newIntegrationEngine(t, "off")
 	if _, err := e.Up(); err != nil {

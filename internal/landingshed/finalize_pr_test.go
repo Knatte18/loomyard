@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_pr_test.go covers Finalize's landing through the run's pull request over a fake GitHub: the decision under the lock, each way it lands or halts, and the merge on GitHub before the parent-side merge.
 
 package landingshed
@@ -22,9 +20,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestFinalize_PullRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	githubOrigin := Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}

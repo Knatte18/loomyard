@@ -1,5 +1,3 @@
-//go:build tier0
-
 // removestrand_test.go enforces `PATTERN-shuttle-provider-seam`: a strand is removed from Go only inside the packages that own the removal.
 // The scan matches the selector, so a method value handed to a wrapper is caught as well as a call.
 
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // removeStrandAllowlist names the package directories permitted to select RemoveStrand, each with its reason.
@@ -51,6 +50,7 @@ func removeStrandSelectors(t *testing.T, base string, allow *scankit.Allowlist) 
 //
 //lym:guard
 func TestShuttleStop_RemoveStrandOnlyInAllowedPackages(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("fixture tree", func(t *testing.T) {

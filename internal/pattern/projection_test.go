@@ -1,12 +1,13 @@
-//go:build tier0
-
 // projection_test.go covers ProjectOverview and EntryBullet, one row per replace, append and delete outcome.
 
 package pattern
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestProjectOverview(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -99,6 +100,7 @@ func TestProjectOverview(t *testing.T) {
 }
 
 func TestEntryBullet(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	overview := []byte("- `PATTERN-a` — a.\n- `PATTERN-b` — b,\n  continued.\n\n- `PATTERN-c` — c.\n")
 	tests := []struct {

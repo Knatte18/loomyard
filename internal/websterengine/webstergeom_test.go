@@ -1,5 +1,3 @@
-//go:build tier0
-
 // webstergeom_test.go — pure path-math unit tests for the webster geometry accessors (Dir/ReportsDir/PromptsDir/ScratchDir).
 // These tests do not require a git repository and run under standard unit test verification.
 // They pin the scratch-dir split: Dir and ReportsDir (durable, fabric-synced) stay under lymdirs.LymDirName, while ScratchDir and PromptsDir (never-tracked) resolve under lymdirs.DotLymDirName at the same mirrored subpath, for both an unanchored and a subpath-anchored *lymcwd.Location's AnchorPath, and for a plain told directory driven with no Location at all.
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -21,6 +20,7 @@ import (
 // directory that is not derived from any *lymcwd.Location at all (the property
 // internal/standalonegeom depends on).
 func TestWebsterGeometryHelpers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseDir := "/home/user/project"

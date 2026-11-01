@@ -1,5 +1,3 @@
-//go:build tier0
-
 // checkedcall_test.go enforces the gitexec Checked-Call Invariant: gitexec.Run/runChecked is the
 // default, and every remaining raw gitexec.RunGit or r.run( call site in non-test source carries an
 // adjacent //gitexec:raw marker justifying why the raw form is correct there.
@@ -63,6 +61,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // checkedCallRawTokens are the two raw substrings a non-test .go file under internal/ or cmd/ may
@@ -109,6 +108,7 @@ const checkedCallMinScannedFiles = 200
 //
 //lym:guard
 func TestCheckedCallInvariant_RawSitesMarkedAndPinned(t *testing.T) {
+	tiergate.Require(t, 0)
 	var markerFailures []string
 	pkgRawCounts := map[string]int{}
 
@@ -203,6 +203,7 @@ func checkedCallCountDiff(want, got map[string]int) string {
 //
 //testtiming:keep proves the TestCheckedCallInvariant_RawSitesMarkedAndPinned guard's token spellings stay distinct from the three token guards it is contrasted with
 func TestCheckedCallInvariant_TokenSpellingsDoNotCollide(t *testing.T) {
+	tiergate.Require(t, 0)
 	if strings.Contains("r.runChecked(msg)", "r.run(") {
 		t.Error(`the "r.run(" token unexpectedly matches an r.runChecked( call — this would demand a //gitexec:raw marker at every migrated gitrepo call site`)
 	}

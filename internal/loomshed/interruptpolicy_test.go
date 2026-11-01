@@ -1,5 +1,3 @@
-//go:build tier0
-
 // interruptpolicy_test.go covers InterruptPolicyFor's own contract and the table's closed value
 // vocabulary. It does not check the table against loom's assembled rows -- that agreement is
 // internal/loomrecipe's interruptpolicy_meta_test.go, the only place that can see both the table and
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestInterruptPolicyFor(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		row  string
@@ -44,6 +44,7 @@ func TestInterruptPolicyFor(t *testing.T) {
 //
 //testtiming:keep pins that every policy value is a declared constant, which TestArchivedWebsterDirs never asserts
 func TestInterruptPolicies_ClosedVocabulary(t *testing.T) {
+	tiergate.Require(t, 0)
 	for row, policy := range InterruptPolicies {
 		if policy != shedverbs.InterruptPolicyReinvoke && policy != shedverbs.InterruptPolicyHandback {
 			t.Errorf("InterruptPolicies[%q] = %q; want %q or %q", row, policy, shedverbs.InterruptPolicyReinvoke, shedverbs.InterruptPolicyHandback)

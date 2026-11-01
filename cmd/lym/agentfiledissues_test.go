@@ -1,5 +1,3 @@
-//go:build tier0
-
 // agentfiledissues_test.go enforces `PATTERN-github-auth`: lym files a GitHub issue only through `lym selfreport create`,
 // run by an agent or the operator, so no production package outside the selfreport module calls selfreportengine.CreateIssue.
 
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // agentFiledIssuesAllowlist names the package directories permitted to reference the issue-creating call:
@@ -28,6 +27,7 @@ const createIssueCall = "selfreportengine.CreateIssue"
 //
 //lym:guard
 func TestAgentFiledIssues_NoCreateIssueOutsideSelfreport(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(agentFiledIssuesAllowlist)
 	var failures []string
 

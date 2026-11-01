@@ -1,5 +1,3 @@
-//go:build tier0
-
 // recipe_test.go builds through New and asserts the shape the batten recipe's rows must
 // carry: their names, the OnDone chain, the load-bearing empty/self-route OnStuck edges and empty
 // terminal OnDone edge, Run-Shed's in-call wait configuration, the absence of any Segment, and that the
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestNew_RowNamesMatchTheDurableIdentityConstants asserts New assembles exactly the rows the Name* constants name, in order.
@@ -27,6 +26,7 @@ import (
 // It also pins NameRunShed's value: shedengine persists the row name, not the engine name, into the status file,
 // so a symmetry-minded rename of the row onto its InnerRun engine would break resume for an in-flight run.
 func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
+	tiergate.Require(t, 0)
 	if NameRunShed != "Run-Shed" {
 		t.Errorf("NameRunShed = %q; want the durable value %q", NameRunShed, "Run-Shed")
 	}
@@ -51,6 +51,7 @@ func TestNew_RowNamesMatchTheDurableIdentityConstants(t *testing.T) {
 // TestNew_OnDoneChainAndLoadBearingEdges asserts the Worktree-Create -> Seed-Child -> Open-Window -> Seed-IDE -> Open-IDE -> Run-Shed -> Land -> Worktree-Teardown OnDone chain.
 // It also asserts Run-Shed's OnStuck self-route, Land's empty OnStuck, Worktree-Teardown's empty OnDone, that no row declares a Segment, and that the Open-Window, Seed-IDE and Open-IDE entry gates follow their batten setting.
 func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
 	if err != nil {
@@ -136,6 +137,7 @@ func TestNew_OnDoneChainAndLoadBearingEdges(t *testing.T) {
 // TestNew_RunShedWaitsInCallWithoutACountedBudget pins Run-Shed's wait in the recipe: a short check interval and a notice probe in its config, and no max_bounces.
 // Every Stuck the row returns is budget-exempt, so a counted budget would only be a limit nothing spends; a recipe that reintroduced one would read as a time limit on a running child that the producer no longer has.
 func TestNew_RunShedWaitsInCallWithoutACountedBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	recipe, err := shedbuild.Parse(recipes.BattenRecipe)
 	if err != nil {
 		t.Fatalf("Parse() error = %v, want nil", err)
@@ -160,6 +162,7 @@ func TestNew_RunShedWaitsInCallWithoutACountedBudget(t *testing.T) {
 // TestNew_CarriesShedPathsVerbatim asserts the returned *shedengine.Shed carries ShedPaths' five
 // values verbatim.
 func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	shed, err := New(env, paths)
 	if err != nil {
@@ -183,6 +186,7 @@ func TestNew_CarriesShedPathsVerbatim(t *testing.T) {
 // TestRecipeEngines_ReportsEveryEngineNameSortedOnce asserts RecipeEngines() returns the sorted, de-duplicated engine names of battenRowEngines.
 // It is the input the cross-consumer guard trusts, so a silently empty return would disable that guard rather than fail it.
 func TestRecipeEngines_ReportsEveryEngineNameSortedOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	got := RecipeEngines()
 	var want []string
 	for _, engine := range battenRowEngines {
@@ -204,6 +208,7 @@ func TestRecipeEngines_ReportsEveryEngineNameSortedOnce(t *testing.T) {
 // TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun asserts a pause requested during Land's land-lock wait halts batten blocked at Land with the pause flag still set.
 // It asserts a goto onto Land leaves the run paused with the flag cleared, and the next step calls Land again, which returns Done once the lock frees.
 func TestNew_PauseDuringLandReentersTheRowThroughGotoThenRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	lockPolls := 0
 	env.Land.LandLock.Acquire = func() (func() error, bool, error) {

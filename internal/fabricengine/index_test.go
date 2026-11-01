@@ -1,5 +1,3 @@
-//go:build tier0
-
 // index_test.go — Tier-1 unit coverage for parseTrailerScanRecord, the pure per-record parser
 // scanWarpSHATrailers's git-log scan loop calls.
 // No git spawn: every case here operates on hand-built record strings, never a real commit history,
@@ -10,6 +8,8 @@ package fabricengine
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestParseTrailerScanRecord_MultipleTagsSplitOnNewline is the TDD case for this card: a commit
@@ -21,6 +21,7 @@ import (
 //
 //testtiming:keep a multi-line Snapshot value splitting into one tag per line; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	record := "abc123" + warpSHATrailerFormatUnitSep +
@@ -54,6 +55,7 @@ func TestParseTrailerScanRecord_MultipleTagsSplitOnNewline(t *testing.T) {
 //
 //testtiming:keep the record shapes of the trailer scan: no Snapshot field, one tag, a Warp-SHA-less record skipped, an empty record and newline trimming; coverage of its blocks by other tests does not show an assertion of this
 func TestParseTrailerScanRecord(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

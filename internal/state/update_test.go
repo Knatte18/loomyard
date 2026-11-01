@@ -1,5 +1,3 @@
-//go:build tier0
-
 // update_test.go covers UpdateJSON's missing-file, existing-file and mutate-error dispositions, plus its core concurrency property: many concurrent callers each appending one element under UpdateJSON never lose or clobber each other's write.
 // Its corrupt-file disposition is covered by TestCorruptFile in state_test.go.
 
@@ -13,12 +11,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestUpdateJSON_MutateSeesCurrentValue verifies that mutate sees the zero value with found=false when the file does not exist yet and the decoded value with found=true when it does, and that mutate's returned value is on disk afterwards, created or replacing.
 //
 //testtiming:keep covering tests TestUpdateJSON_Concurrency and TestUpdateJSON_MutateError, which the report ties it to and which stay
 func TestUpdateJSON_MutateSeesCurrentValue(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -88,6 +88,7 @@ func TestUpdateJSON_MutateSeesCurrentValue(t *testing.T) {
 // TestUpdateJSON_MutateError verifies that a mutate error aborts the call with no write: an
 // existing file is left byte-identical, and a missing file stays absent.
 func TestUpdateJSON_MutateError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	mutateErr := errors.New("mutate boom")
@@ -149,6 +150,7 @@ func TestUpdateJSON_MutateError(t *testing.T) {
 //
 //testtiming:keep pins that concurrent appends never lose or clobber a write, which no covering test asserts
 func TestUpdateJSON_Concurrency(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // sync_integration_test.go covers boardengine.Sync's parity after delegating
 // its absorbing-lock coalescing loop to fabricengine.CoalescePush: a dirty
 // board still commits and pushes, .gitignore is still seeded with the
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newBareRemote creates a bare git repository for testing.
@@ -83,6 +82,7 @@ type syncFixture struct {
 // It calls t.Parallel and no step does: the steps share the one repository, so they run serially.
 // The skip-push step runs first because it asserts the remote is still empty, each later step relies on the repository the earlier steps left behind, and the retire-legacy step runs last because it replaces the legacy files the earlier steps wrote.
 func TestSync_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	container := t.TempDir()
 	bareRemote := newBareRemote(t, container)

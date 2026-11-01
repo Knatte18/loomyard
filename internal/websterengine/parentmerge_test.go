@@ -1,5 +1,3 @@
-//go:build tier1
-
 // parentmerge_test.go pins the observed wedge end to end (Tier 2 — see docs/benchmarks/running-tests.md):
 // a parent merge-in lands between a fork's commit and record-batch, and the run must still record the batch and open the next one.
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -22,6 +21,7 @@ import (
 //
 //testtiming:keep pins the 2026-09-30 wedge end to end over real git: a parent merge between the fork's commit and record-batch, then the next begin and record; each covering test pins one step over a fake or a single call
 func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newBeginFixture(t)
 	// The ring is git itself, so the fixture's fakeGit gives way to a real repository.
 	fx.Worktree = newScratchRepo(t)

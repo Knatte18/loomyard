@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cardverify_integration_test.go drives `lym gate card-verify` in-process over a git worktree outside every hub holding a plan, whose card lines spawn a shell.
 // It is Tier 2: it spawns git and the shell.
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // verifyCard returns a plan card whose `**Verify:**` line is verify.
@@ -22,6 +21,7 @@ func verifyCard(number int, slug, verify string) plankit.Card {
 }
 
 func TestGateCardVerify(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// worktree returns a git worktree outside every hub holding a plan of cards, or no plan when cards is empty.

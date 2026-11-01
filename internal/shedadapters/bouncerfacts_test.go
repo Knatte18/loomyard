@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // factsFinding is one finding line of a review fixture.
@@ -63,6 +62,7 @@ func writeFactsLedger(t *testing.T, dir string, round int, entries ...string) {
 }
 
 func TestComputeRoundFacts_CountsAndRecurringKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 1,
 		factsFinding{burlerengine.SeverityBlocking, "design"},
@@ -135,6 +135,7 @@ func TestComputeRoundFacts_CountsAndRecurringKeys(t *testing.T) {
 }
 
 func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityMedium, ""})
 	writeFactsReview(t, dir, 2, factsFinding{burlerengine.SeverityLow, "scope"})
@@ -161,6 +162,7 @@ func TestComputeRoundFacts_ClasslessReviewIsAParseErrorRow(t *testing.T) {
 
 // TestComputeRoundFacts_MissingReviewIsAParseErrorRow also covers a missing and an unparseable earlier ledger, each of which becomes a parse-error line in the earlier-open section.
 func TestComputeRoundFacts_MissingReviewIsAParseErrorRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 3)
 	if err := os.WriteFile(ledgerPath(dir, 2), []byte("not a ledger"), 0o644); err != nil {
@@ -183,6 +185,7 @@ func TestComputeRoundFacts_MissingReviewIsAParseErrorRow(t *testing.T) {
 
 //testtiming:keep pins the gating rule of the round facts: MEDIUM design findings are gating, a BLOCKING scope finding is counted but not gating
 func TestComputeRoundFacts_GatingRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -222,6 +225,7 @@ func TestComputeRoundFacts_GatingRule(t *testing.T) {
 //
 //testtiming:keep pins that two writes of the facts file are byte-identical and the no-recurring-key line, which the judge-call tests do not assert
 func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	writeFactsReview(t, dir, 1, factsFinding{burlerengine.SeverityMedium, "design"})
 	writeFactsReview(t, dir, 2, factsFinding{burlerengine.SeverityLow, "scope"})
@@ -257,6 +261,7 @@ func TestWriteRoundFacts_IsDeterministic(t *testing.T) {
 
 //testtiming:keep pins the facts file's name and that it is an input the judge reads, not an output a stale-output archive would move
 func TestFactsPath_IsNotAJudgeOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	want := factsPath(dir, 3)
 	if filepath.Base(want) != "round-3-facts.md" {
@@ -271,6 +276,7 @@ func TestFactsPath_IsNotAJudgeOutput(t *testing.T) {
 
 // TestWriteRoundFacts_LensSection pins the lens section of a fanned segment's facts file.
 func TestWriteRoundFacts_LensSection(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const review = `---
 verdict: APPROVED

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_pause_test.go covers the clean-stop, resume, and idempotence scenarios: an explicit pause
 // request and the resume that must follow it, context cancellation arriving between and during a
 // producer call, crash recovery and resuming a halted run across two separate Shed values against
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setPauseRequested flips pause_requested to true against statusPath/statusLockPath via
@@ -39,6 +38,7 @@ func setPauseRequested(t *testing.T, statusPath, statusLockPath string) {
 }
 
 func TestRun_PauseRequestedMidList(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	// The mutation happens from inside the fake producer's own closure -- the only point
@@ -80,6 +80,7 @@ func TestRun_PauseRequestedMidList(t *testing.T) {
 }
 
 func TestRun_ResumeAfterPause(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	pausing := &funcProducer{}
@@ -132,6 +133,7 @@ func TestRun_ResumeAfterPause(t *testing.T) {
 }
 
 func TestRun_CancelledBetweenProducers(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -169,6 +171,7 @@ func TestRun_CancelledBetweenProducers(t *testing.T) {
 }
 
 func TestRun_CancelledDuringProducerCall(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -209,6 +212,7 @@ func TestRun_CancelledDuringProducerCall(t *testing.T) {
 }
 
 func TestRun_CrashRecovery(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	wantErr := errors.New("plan-write: disk full")
@@ -276,6 +280,7 @@ func TestRun_CrashRecovery(t *testing.T) {
 }
 
 func TestRun_ResumeAfterHalt(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		state State
@@ -322,6 +327,7 @@ func TestRun_ResumeAfterHalt(t *testing.T) {
 // the only moment the property is observable -- afterwards the verdict's own persist has overwritten
 // it either way, which is exactly why the defect was invisible until a live run was watched.
 func TestRun_ResumeWritesRunningBeforeCallingTheProducer(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		state State
@@ -375,6 +381,7 @@ func TestRun_ResumeWritesRunningBeforeCallingTheProducer(t *testing.T) {
 // ordinary running-to-running path it must not fire, so the loop keeps its one-persist-per-iteration
 // shape for every step after a resume.
 func TestRun_AlreadyRunningStateWritesNothingExtra(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	var duringCall Status
@@ -419,6 +426,7 @@ func (p *callbackProducer) Call(_ context.Context) (Outcome, OutputPointer, erro
 }
 
 func TestRun_RerunIdempotence(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, "")})
@@ -463,6 +471,7 @@ func TestRun_RerunIdempotence(t *testing.T) {
 }
 
 func TestRun_RerunResultEquality(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	shed.Producers = linearChain(t, []string{"A", "B"}, []ShedProducer{fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, "")})
@@ -494,6 +503,7 @@ func TestRun_RerunResultEquality(t *testing.T) {
 }
 
 func TestRun_RerunWithChangedProducerList(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	seed := commonSeed("Retired-Producer")

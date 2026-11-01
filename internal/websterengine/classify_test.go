@@ -1,5 +1,3 @@
-//go:build tier0
-
 // classify_test.go covers Classify's pinned decision order: a present Report short-circuits to
 // terminal regardless of every other field, with its head SHA carried through.
 // A report's deviations are ignored: they never change the mapped status or fill the digest's list.
@@ -12,9 +10,12 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestClassify(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var many []string

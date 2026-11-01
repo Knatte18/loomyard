@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -8,6 +6,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // reportName is a small test convention naming a stand-in round-report artifact, independent of
@@ -26,6 +26,7 @@ func writeReport(t *testing.T, dir string, round int) {
 
 //testtiming:keep pins the round scan: the highest present round, zero for an empty run dir, and that a gap stops the scan
 func TestResolveRound(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -57,6 +58,7 @@ func TestResolveRound(t *testing.T) {
 }
 
 func TestResolveRound_MissingRunDirReturnsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := filepath.Join(t.TempDir(), "does-not-exist")
 
 	got, err := ResolveRound(dir, reportName)
@@ -66,6 +68,7 @@ func TestResolveRound_MissingRunDirReturnsError(t *testing.T) {
 }
 
 func TestResolveRound_NonDirectoryReturnsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "not-a-dir")
 	if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
@@ -80,6 +83,7 @@ func TestResolveRound_NonDirectoryReturnsError(t *testing.T) {
 
 //testtiming:keep pins the on-disk filename spellings the producers and stencils name, which no behavior test asserts byte for byte
 func TestRoundPathHelpers_PinExactFilenameSpellings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		fn   func(runDir string, round int) string
@@ -101,6 +105,7 @@ func TestRoundPathHelpers_PinExactFilenameSpellings(t *testing.T) {
 }
 
 func TestReviewRounds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name  string

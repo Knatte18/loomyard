@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's no-resolver, no-<module>cli import seam: production
 // code in internal/shedverbs takes every path it operates on from a told Spec, never derives one, and
 // never imports back into a CLI module.
@@ -19,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shedverbsAllowedImports are the only non-stdlib import paths production code in this package may
@@ -64,6 +63,7 @@ func isModuleCLIImportPath(importPath string) bool {
 // package imports only stdlib or an entry in shedverbsAllowedImports, and separately asserts that no
 // production import path is shedverbsDeniedLymcwdImport or matches the <module>cli shape.
 func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/shedverbs", shedverbsAllowedImports...)
 
 	var deniedFound []string
@@ -94,6 +94,7 @@ func TestNoResolverNoModuleCLIInvariant_AllowlistOnly(t *testing.T) {
 // selector-expression walk is enough, since the package imports no shell runner through which
 // `git rev-parse` could reach it.
 func TestNoResolverInvariant_NoOSGetwd(t *testing.T) {
+	tiergate.Require(t, 0)
 	var found []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/shedverbs"}, Shallow: true}, func(f *scankit.File) {

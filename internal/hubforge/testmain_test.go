@@ -6,9 +6,9 @@
 // This is what satisfies that invariant for a package whose hub_test.go spawns git; the guard named
 // in PATTERN-test-isolation and enforced by cmd/lym/hermeticenv_test.go looks for exactly this call.
 //
-// It carries no build tag deliberately: it must be compiled into the test binary on both a plain
-// `go test` and a `-tags integration` run, or the integration-tagged suite this package's hub_test.go
-// carries would run without the hermetic environment ever having been installed.
+// It runs for every tier's tests deliberately.
+// The one test binary holds the integration suite this package's hub_test.go carries.
+// Without this call that suite would run without the hermetic environment ever having been installed.
 
 package hubforge
 

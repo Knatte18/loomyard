@@ -1,5 +1,3 @@
-//go:build tier1
-
 // syncweft_integration_test.go — integration coverage for the parts of the
 // weft-git surface that genuinely need git spawned: the Warp-SHA trailer
 // landing in a real commit, RebuildIndex reconstructing what an incremental
@@ -19,12 +17,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRebuildIndex_EqualsIncrementallyBuiltIndex asserts that after several Commit rounds (each
 // incrementally updating the index via RecordCorrespondence), a full RebuildIndex reconstructs an
 // index whose entries are identical to the incrementally-built one.
 func TestRebuildIndex_EqualsIncrementallyBuiltIndex(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -95,6 +95,7 @@ func expireAndPruneUnreachable(t *testing.T, repoPath string) {
 // genuinely stop resolving via expireAndPruneUnreachable.
 // WeftSHAForWarpSHA must heal via one RebuildIndex retry to the surviving (amended) trailer commit.
 func TestWeftSHAForWarpSHA_DetachedPathSelfCorrection(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)
@@ -183,6 +184,7 @@ func staleCorrespondenceFixture(t *testing.T) (f *fabricengine.Fabric, warpSHA s
 // TestWeftSHAForWarpSHA_StalenessSurvivesRebuild covers a history rewrite RebuildIndex cannot
 // recover from: WeftSHAForWarpSHA must surface wrapped ErrStaleSHA (errors.Is).
 func TestWeftSHAForWarpSHA_StalenessSurvivesRebuild(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	f, warpSHA := staleCorrespondenceFixture(t)

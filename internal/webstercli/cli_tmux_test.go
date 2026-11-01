@@ -1,5 +1,3 @@
-//go:build tier2
-
 // cli_tmux_test.go holds the one cli_integration_test.go test that starts a tmux server:
 // the standalone `run` pre-run boots a real reed session before the plan-validation gate, so the test sits in the `tmux` tier.
 // It follows the shape internal/reedcli/cli_integration_test.go already establishes for a tagged CLI-level test;
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/standalonegeom"
 	"github.com/Knatte18/loomyard/internal/standalonestate"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -27,6 +26,7 @@ import (
 //
 // The seeded plan carries a card missing a required field, so once the pre-run itself succeeds "run" reaches its own automatic plan-validation gate (run.go's own Long documents this as "the automatic plan-validation gate") and refuses there -- proving the pre-run got all the way through wiring rather than dying earlier with a cwd-resolution error, which would produce a completely different message.
 func TestRunCLIIn_StandalonePreRun_ReachesRunsOwnValidationGate(t *testing.T) {
+	tiergate.Require(t, 2)
 	target := t.TempDir()
 	stateHome := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", stateHome)

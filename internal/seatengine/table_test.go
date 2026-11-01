@@ -1,5 +1,3 @@
-//go:build tier0
-
 // table_test.go covers Table.Validate against a seeded stencils directory, and the table's name, accessor and reserved-marker helpers.
 
 package seatengine
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -71,6 +70,7 @@ func validTable() Table {
 }
 
 func TestTable_Validate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := seatedStencils(t)
 	writeStencil(t, dir, "seat-test-nested", "Nested.\n{{template \"seat-test-includer\"}}\n")
@@ -179,6 +179,7 @@ func TestTable_Validate(t *testing.T) {
 }
 
 func TestTable_NamesAccessorsAndReservedMarkers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if got, want := SeatRole("multi", ""), "multi"; got != want {

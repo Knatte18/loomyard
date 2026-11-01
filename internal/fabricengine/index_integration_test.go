@@ -1,5 +1,3 @@
-//go:build tier1
-
 // index_integration_test.go — integration tests for the fabric layer's git
 // wiring around the correspondence index: gitdir resolution, the
 // RecordCorrespondence/WeftSHAForWarpSHA round trip, and RebuildIndex's
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commitWeftWithTrailer commits content into weftPath's tracked _lym config
@@ -39,6 +38,7 @@ func commitWeftWithTrailer(t *testing.T, weftPath, content, warpSHA string) stri
 // Each commits its own warp and weft commits, so none reads an earlier step's entries.
 // The rebuild step's lookups succeed only through the rebuild, never through an earlier step's RecordCorrespondence.
 func TestCorrespondenceIndex(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	warpPath := fabricengine.NewPlainWarpRepoForTest(t)

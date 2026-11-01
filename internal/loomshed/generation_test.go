@@ -1,5 +1,3 @@
-//go:build tier0
-
 // generation_test.go exercises PlanReviewSkippable at Tier 1 over a fake committed-file reader and temp directories.
 
 package loomshed
@@ -12,6 +10,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var (
@@ -36,6 +36,7 @@ func (f *reworkFixture) skippable() (bool, error) {
 }
 
 func TestPlanReviewSkippable(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		setup func(f *reworkFixture)
@@ -120,6 +121,7 @@ func TestPlanReviewSkippable(t *testing.T) {
 }
 
 func TestPlanReviewSkippable_UndecodableRecordErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := newReworkFixture(t)
 	f.writeGeneration(2, proseCard)
 	f.commitWorkingPlan()
@@ -131,6 +133,7 @@ func TestPlanReviewSkippable_UndecodableRecordErrors(t *testing.T) {
 }
 
 func TestPlanReviewSkippable_UnreadableAmendmentPathErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := newReworkFixture(t)
 	f.writeGeneration(2, proseCard)
 	f.commitWorkingPlan()
@@ -154,6 +157,7 @@ func (f *reworkFixture) writeAmendment() {
 }
 
 func TestPlanReviewSkippable_UncommittedPlanErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := newReworkFixture(t)
 	f.committed = map[string][]byte{}
 	if got, err := f.skippable(); err == nil || got {
@@ -162,6 +166,7 @@ func TestPlanReviewSkippable_UncommittedPlanErrors(t *testing.T) {
 }
 
 func TestArchivedWebsterDirs(t *testing.T) {
+	tiergate.Require(t, 0)
 	reworkDir := t.TempDir()
 	for _, n := range []string{"round-10", "round-2", "round-1"} {
 		if err := os.MkdirAll(filepath.Join(reworkDir, n, "prior-generation", "webster"), 0o755); err != nil {
@@ -185,6 +190,7 @@ func TestArchivedWebsterDirs(t *testing.T) {
 
 // TestArchivedWebsterDirs_UnreadableDirErrors covers a rework directory that cannot be listed: an error, never a silently empty list.
 func TestArchivedWebsterDirs_UnreadableDirErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	notADir := filepath.Join(t.TempDir(), "rework")
 	if err := os.WriteFile(notADir, []byte("not a directory\n"), 0o644); err != nil {
 		t.Fatal(err)

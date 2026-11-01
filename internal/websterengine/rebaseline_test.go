@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rebaseline_test.go exercises Rebaseline, reusing the begin fixture for the foreign-edit scenario and building bare RebaselineDeps for the card-set refusals.
 package websterengine_test
 
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -41,6 +40,7 @@ func doneBatchOne() *websterengine.BatchState {
 //
 //testtiming:keep pins the whole refuse, rebaseline, re-begin loop across three calls on one state; the covering tests each make one of those calls
 func TestRebaseline_ForeignEditAcceptedMidRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)
 	fx.Deps.State.Batches = map[int]*websterengine.BatchState{1: doneBatchOne()}
 	before := *fx.Deps.State.Batches[1]
@@ -146,6 +146,7 @@ func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []webst
 // a state without a partition regroups by identity and records none;
 // and a legacy record with no card set is accepted and restamped.
 func TestRebaseline_CardSet(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	card := func(number int, slug string) planparser.Card { return planparser.Card{Number: number, Slug: slug} }
@@ -516,6 +517,7 @@ func writePlanFile(t *testing.T, fx *beginFixture, name, body string) {
 // a state without plan-file hashes; a begun card's changed body, an edited card it was not told about
 // and an edited overview refuse, naming what changed and leaving the fingerprint.
 func TestRebaseline_EditedPlan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type editedPlanCase struct {
@@ -831,6 +833,7 @@ func TestRebaseline_EditedPlan(t *testing.T) {
 // and a changed overview in a run with an empty recorded frame refuses with the cause, one of no recorded overview hash, an absent baseline copy or a copy without a Card Index, the last two naming the copy's path, and logs that cause once at Info.
 // The log capture swaps the logger's process-global output and verbosity, so no row runs in parallel.
 func TestRebaseline_OverviewFrameUnreadable(t *testing.T) {
+	tiergate.Require(t, 0)
 	const freshRestart = "1) lym webster reset --to start; 2) lym webster run"
 	baselineCopy := func(fx *beginFixture) string {
 		return filepath.Join(fx.Deps.Geom.WebsterDir, "plan-baseline", fx.Deps.State.PlanFileHashes["00-overview.md"])
@@ -1057,6 +1060,7 @@ func beginThenLeaveHandleDraft(t *testing.T) *beginFixture {
 // when begin-batch's handle canonicalization rewrites a begun card, the card's recorded hash moves to the rewritten bytes, so the card never reads as a foreign edit.
 // The rewrite happens only when a begun card Uses a handle a later card declares, a backward dependency that Rebaseline refuses on the batch order, so the accept after a moved hash is pinned by the record-batch variant in rebaseline_git_test.go.
 func TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := beginThenLeaveHandleDraft(t)
 	st := fx.Deps.State
 	card1 := filepath.Join(fx.PlanDir, "01-json-flag.md")
@@ -1082,6 +1086,7 @@ func TestBeginBatch_RewrittenBegunCardMovesRecordedHash_Regression330(t *testing
 //
 //testtiming:keep pins a refused begin-batch leaving the begun card's recorded hash untouched, so a later rebaseline naming that card still refuses; the covering tests make only one of the two calls
 func TestRebaseline_ForeignEditToBegunCardStaysRefused(t *testing.T) {
+	tiergate.Require(t, 0)
 	fx := newBeginFixture(t)
 	beginAndFinishBatchOne(t, fx)
 	recorded := maps.Clone(fx.Deps.State.Batches[1].CardHashes)

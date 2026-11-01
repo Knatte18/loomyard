@@ -1,5 +1,3 @@
-//go:build tier0
-
 // generation_test.go covers the pane-generation stamp: parsing a display-message answer, the two
 // comparison predicates, and adoptPaneGenerationLocked's three outcomes (adopt, clear, refuse)
 // driven through TmuxCmd's execHook seam so no live server is required.
@@ -10,10 +8,13 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins the generation answer parser: a well-formed answer, trimmed whitespace, and an error for an empty, short, long, blank-field or tmux absent-session answer; its covering tests run this code without asserting it
 func TestParsePaneGeneration(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		out     string
@@ -78,6 +79,7 @@ func TestParsePaneGeneration(t *testing.T) {
 
 //testtiming:keep pins Recorded and SameIncarnation: a renamed session is the same incarnation, a different session id, server pid or creation time is not; its covering tests run this code without asserting it
 func TestPaneGeneration_RecordedAndSameIncarnation(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := PaneGeneration{SessionName: "svc", TmuxSessionID: "$0", ServerPID: "100", Created: "5"}
 
 	if (PaneGeneration{}).Recorded() {
@@ -157,6 +159,7 @@ func answerGenerations(f *fakeTmux, answersBySessionName map[string]string) {
 // (a renamed worktree, or a hand-copied .lym, silently double-launching every strand or targeting
 // another worktree's live panes).
 func TestAdoptPaneGenerationLocked(t *testing.T) {
+	tiergate.Require(t, 0)
 	const liveAnswer = "$4|900|1787043918"
 	liveGeneration := PaneGeneration{SessionName: "worktree", TmuxSessionID: "$4", ServerPID: "900", Created: "1787043918"}
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gate_list_test.go covers the ordered gate list: per-entry consecutive-failure counts, PassOnCap, off entries, and the per-entry GateOutcome report, driven through the same fake engine and scripted gate closures gate_test.go uses.
 
 package shuttleengine
@@ -11,6 +9,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // scriptedGate returns a Gate that answers from script, one element per call, repeating the last element once the script is spent, and counts its calls through calls.
@@ -91,6 +91,7 @@ func wantStates(t *testing.T, outcome *GateOutcome, want ...GateEntryState) {
 //
 //testtiming:keep pins the consecutive-failure reset: an entry that fails, passes and fails again gets its whole budget back, with and without pass_on_cap
 func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, passOnCap := range []bool{false, true} {
 		name := "without_pass_on_cap"
 		if passOnCap {
@@ -133,6 +134,7 @@ func TestGateList_FailPassFailStartsBudgetAfresh(t *testing.T) {
 //
 //testtiming:keep pins both final arrivals that cannot re-prompt, a failed send and an expired deadline, ending at a failing pass_on_cap entry with the later required entry reported not reached
 func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	newSpec := func() (GateSpec, *int) {
 		var pCalls, rCalls int
 		return GateSpec{
@@ -224,6 +226,7 @@ func TestGateList_FinalArrivalAtFailingPassOnCapEntry(t *testing.T) {
 // outcome; and one list reaches all five per-entry states with GateOutcome.Attempts the sum of the
 // entries' sent counts.
 func TestGateList_FinalReports(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		reprompts int

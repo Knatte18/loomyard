@@ -1,5 +1,3 @@
-//go:build tier1
-
 // openparent_integration_test.go covers OpenParent end to end against real hubforge fixtures: the
 // happy path (including the folded-in OriginURL delegation assertion), no live pair for the given
 // branch, the parent's own weft sibling missing, a prunable parent directory removed without pruning,
@@ -20,12 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestOpenParent_HappyPath asserts OpenParent, called from a task pair, resolves and opens the
 // parent's (prime) fabric pair rather than the task's own — and that f.OriginURL() delegates to the
 // warp side's configured origin remote.
 func TestOpenParent_HappyPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -66,6 +66,7 @@ func TestOpenParent_HappyPath(t *testing.T) {
 //
 //testtiming:keep OpenParent naming the branch when it has no live worktree at all; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_NoLivePairForBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -84,6 +85,7 @@ func TestOpenParent_NoLivePairForBranch(t *testing.T) {
 // naming the hub's own weft sibling when that sibling is deleted, leaving the task pair itself
 // untouched.
 func TestOpenParent_ParentSiblingMissing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -116,6 +118,7 @@ func TestOpenParent_ParentSiblingMissing(t *testing.T) {
 //
 //testtiming:keep a deleted but unpruned pair reporting "no live pair" naming the branch and never an *ErrMissingPath; coverage of its blocks by other tests does not show an assertion of this
 func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -144,6 +147,7 @@ func TestOpenParent_PrunableParentDirRemoved(t *testing.T) {
 // "prunable" porcelain line even once the directory is gone, which is the deterministic way to
 // construct "matched at List time, gone by ResolveWorktree time" without depending on a real race.
 func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -171,6 +175,7 @@ func TestOpenParent_ResolveFailureNamesBranchAndPath(t *testing.T) {
 // and a pair whose warp `_lym` junction is removed is listed but not complete.
 // It also pins that pair completeness, `Healthy` and `Status` stay blind to the root `.scratch` entry, whether a real directory or absent.
 func TestCodeWorktrees_ListOpenAndPairComplete(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	for _, anchor := range []string{".", "backend"} {

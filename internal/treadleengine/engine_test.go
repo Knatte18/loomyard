@@ -1,12 +1,10 @@
-//go:build tier0
-
 // engine_test.go drives Engine.Run against a scripted fakeRunner (RoundRunner) and a scripted
 // queuedShuttle (judge/targeting), adapted to the attempt-level RoundRunner seam.
 // Deliberately scoped to the seam contract itself: that the generalized loop works against a
 // non-burler runner, AttemptInput population and hydration, retry semantics at the seam,
 // name-parameterized diagnostics for an arbitrary caller name, ladder + gate parity, profile
 // validation, and the profile-gated pre-round targeting capability.
-// Untagged file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity
+// Tier0 file: no spawning — the fake CommandRunner is an in-process func (Test Tier Purity
 // Invariant).
 
 package treadleengine
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // queuedAttemptResult is one scripted (AttemptResult, error) pair
@@ -170,6 +169,7 @@ func stringSlicesEqual2(a, b []string) bool {
 // fed forward — with both attempts of the same round seeing IDENTICAL hydration (a retry produces
 // no new completed round).
 func TestEngine_AttemptInputPopulation(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := filepath.Join(t.TempDir(), "run")
 	gateDir := t.TempDir()
 
@@ -262,6 +262,7 @@ func TestEngine_AttemptInputPopulation(t *testing.T) {
 // a second consecutive non-done attempt is a name-prefixed hard error (never STUCK),
 // and a died or timed-out first attempt is retried once.
 func TestEngine_RetrySemantics(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("second consecutive died is a name-prefixed hard error", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		fr := &fakeRunner{}
@@ -312,6 +313,7 @@ func TestEngine_RetrySemantics(t *testing.T) {
 // diagnostics carrying that name's prefix — even for the ErrBlockBusy sentinel wrap — and that
 // errors.Is still matches the shared sentinel regardless of which name produced the wrap.
 func TestEngine_NameParameterization(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := filepath.Join(t.TempDir(), "run")
 
 	// blockingRunner's single RunAttempt call blocks until release is
@@ -380,6 +382,7 @@ func (b *blockingRunner) RunAttempt(AttemptInput) (AttemptResult, error) {
 // verdict, and GateCommand convergence via a fake CommandRunner that observes Profile.GateDir as
 // its cwd argument.
 func TestEngine_LadderAndGateParity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("hard cap stops unconditionally with no judge call", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		fr := &fakeRunner{}
@@ -464,6 +467,7 @@ func TestEngine_LadderAndGateParity(t *testing.T) {
 // Profile before ever touching the runner: an empty ProfileHash, a non-increasing RoundCaps ladder,
 // and an illegal Gate.Mode.
 func TestEngine_ProfileValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		profile   Profile
@@ -534,6 +538,7 @@ func readRunState(t *testing.T, runDir string) runState {
 // JudgeVerdict — the two are independent — and leaves HandoffPath empty, never an error and never
 // STUCK from the missing handoff alone.
 func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
+	tiergate.Require(t, 0)
 	newProfile := func() Profile {
 		return Profile{ProfileHash: "hash-1", Gate: Gate{Mode: GateLLMVerdict}, RoundCaps: []int{10}}
 	}
@@ -650,6 +655,7 @@ func TestEngine_HandoffLifecycle_RecordedOnlyWhenProduced(t *testing.T) {
 //     them out of round 4's read-set too, never resurfacing.
 //   - round 5: BLOCKING, gate passes — converges; no third judge call.
 func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	runDir := filepath.Join(t.TempDir(), "run")
 	gateDir := t.TempDir()
 
@@ -749,6 +755,7 @@ func TestEngine_HandoffLifecycle_ReadSetCoverage(t *testing.T) {
 // call's read-set falls back to the older-or-all-reviews list,
 // and the block continues (never STUCK, never an error) purely from the handoff machinery.
 func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
+	tiergate.Require(t, 0)
 	// These fail-safe Warns reach an operator's stderr on an ordinary run
 	// (logger's default threshold IS Warn), so the engine is named "tenter"
 	// here rather than this file's usual "gate": that proves the
@@ -820,6 +827,7 @@ func TestEngine_HandoffLifecycle_InvalidHandoffFallback(t *testing.T) {
 // (fakeRunner.onCall), so any handoff read on that round would surface as a "recorded handoff file
 // unparseable" Warn in the captured log — the pre-fix behavior.
 func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
 	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
@@ -911,6 +919,7 @@ func TestEngine_JudgeSkippedRoundReadsNoHandoffFiles(t *testing.T) {
 // they must carry the CALLING engine's name — the engine is named "tenter" here precisely so a
 // hardcoded package label would fail.
 func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.T) {
+	tiergate.Require(t, 0)
 	var logBuf bytes.Buffer
 	logger.SetOutput(&logBuf)
 	t.Cleanup(func() { logger.SetOutput(logger.DefaultOutput()) })
@@ -980,6 +989,7 @@ func TestEngine_RecordedHandoffCorruptedMidBlockWarnsUnderCallerName(t *testing.
 // below (the scripted queuedShuttle fake used here has no way to produce a non-done Outcome or a
 // claimed-done-but-unwritten output file).
 func TestEngine_PreRoundTargeting(t *testing.T) {
+	tiergate.Require(t, 0)
 	// roundsThroughHandoff scripts a fakeRunner/queuedShuttle pair that
 	// carries a block through round 1 (BLOCKING, no judge — nothing to
 	// compare it against yet) and round 2 (BLOCKING, triggers the circling
@@ -1241,6 +1251,7 @@ func (f *fixedShuttle) Run(shuttleengine.Spec) (shuttleengine.Result, error) {
 // file was never actually written (or was written empty) — every path returns ("", false) rather
 // than an error, mirroring runCircling/runMilestone.
 func TestRunTargeting_FailSafe(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		shSet func(seedPath string) Shuttle
@@ -1301,6 +1312,7 @@ func TestRunTargeting_FailSafe(t *testing.T) {
 // external caller's pause verb would race the same way against a real block), since the entry-time
 // clearPauseFlag would otherwise erase a flag pre-seeded before Run is ever called.
 func TestEngine_ScratchDirSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("(a) unset ScratchDir keeps run.lock, state.json.lock, and the pause flag in runDir", func(t *testing.T) {
 		runDir := filepath.Join(t.TempDir(), "run")
 		flagPath := PauseFlagPath(runDir)

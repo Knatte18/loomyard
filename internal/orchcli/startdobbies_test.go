@@ -1,5 +1,3 @@
-//go:build tier0
-
 // startdobbies_test.go pins that `lym beam start` starts the worktree's dobby once, before it touches a strand, that a dobby that does not start only warns, and that a bring-up for another verb reads a dobby that did not start as an error.
 
 package orchcli
@@ -15,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStart_StartsTheDobbiesFirst(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -95,6 +95,7 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 
 // TestBringUpLocation pins that the prime's name brings up the prime without resolving anything, and that any other name brings up the location resolved from that worktree's directory.
 func TestBringUpLocation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prime := &lymcwd.Location{HubPath: filepath.Join("hubs", "app.hub"), WorktreeName: "main", AnchorRel: "."}
@@ -143,6 +144,7 @@ func TestBringUpLocation(t *testing.T) {
 
 // TestDobbyStartError pins that a bring-up whose dobby started or was live passes, and that a refused, failed or unreported dobby start is an error naming the worktree and its cause.
 func TestDobbyStartError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

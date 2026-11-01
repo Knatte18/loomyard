@@ -1,5 +1,3 @@
-//go:build tier0
-
 // targets_test.go drives the pure core of DeriveTargets over a hand-built package graph and changed-path list.
 
 package impactset
@@ -7,9 +5,12 @@ package impactset
 import (
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTargetsFor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	guardsD := []GuardTest{{Name: "TestGuardD", Tier: 0}, {Name: "TestGuardD2", Tier: 1}}

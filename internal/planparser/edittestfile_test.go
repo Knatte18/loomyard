@@ -1,5 +1,3 @@
-//go:build tier0
-
 // edittestfile_test.go covers CheckEditTestFile over in-memory plans.
 
 package planparser_test
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckEditTestFile covers the refs under Edit that the check refuses and the ones it admits: groups other than Edit, member glyphs, handles, paths the go tool ignores, other languages and done cards.
 func TestCheckEditTestFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	wantDetail := func(card, ref string) string {

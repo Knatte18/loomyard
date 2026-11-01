@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_guard_integration_test.go pins the two guards that keep `lym fabric remove` from deleting a
 // directory git itself declined to remove.
 // Before them, `git worktree remove` refusing a main working tree (or any path that is not a linked
@@ -20,11 +18,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_RefusesPrimeWorktreeAndLeavesItIntact asserts Remove refuses the hub's prime slug and
 // that the warp clone — worktree contents and gitdir alike — survives the refusal untouched.
 func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -53,6 +53,7 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 // `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the exact shape the hub's Bolt checkout has — and the old fallback deleted the directory anyway, taking .lym-anchor, .lym-warp and the repo-wide fabric.yaml with it while reporting success.
 // The slug is deliberately NOT a reserved name, so this test exercises removeWarpWorktreeDir's registered-linked-worktree rule rather than the slug guard in front of it.
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

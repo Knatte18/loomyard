@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the append-system-prompt file carrying the deny notice and the creel trust sentence, ResumeSessionID adoption, and the skills-deferred prompt pointer.
 
 package claudeengine
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // ttlConfig returns a Config whose prompt-cache TTL and keep-warm cap fields come from the shipped claude.yaml template, so fixtures follow the template rather than restating it.
@@ -103,6 +102,7 @@ func promptCacheTTLAssignment(value string) string {
 // TestPrepare_RejectedBeforeArtifacts proves every unrealizable spec value fails Prepare before prompt.md/settings.json are written — the same before-artifacts guarantee TestPrepare_PromptLaunchLimit pins for the prompt-size guard, since a half-prepared run dir would look resumable to a later diagnosis pass.
 // A dashed model with a Version is a contradiction: the id already pins its own version.
 func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -175,6 +175,7 @@ func TestPrepare_RejectedBeforeArtifacts(t *testing.T) {
 
 // TestPromptCacheLifetime proves PromptCacheLifetime parses the role's resolved TTL to a duration and passes a resolution error through with its claude.yaml advice.
 func TestPromptCacheLifetime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -225,6 +226,7 @@ func TestPromptCacheLifetime(t *testing.T) {
 
 // TestKeepWarmCaps proves KeepWarmCaps answers a role's cap with the long cap, and refuses an unusable cap or config naming the key and the file to fix.
 func TestKeepWarmCaps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -294,6 +296,7 @@ type flagExpectation struct {
 // an empty ResumeSessionID mints a session as before;
 // and the resolved permission mode decides --dangerously-skip-permissions on the launch line and the resume line alike.
 func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const skipPermissions = "--dangerously-skip-permissions"
@@ -367,6 +370,7 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 //
 //testtiming:keep pins append-system-prompt.txt equal to the notice and the trust sentence, named on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
 			for _, denyPython := range []bool{false, true} {
@@ -414,6 +418,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 //
 //testtiming:keep pins that a ResumeSessionID launches with --resume, no --session-id, and the same id on the resume line and in Launch.SessionID, which its covering tests do not assert
 func TestPrepare_ResumeSessionID(t *testing.T) {
+	tiergate.Require(t, 0)
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	spec := shuttleengine.Spec{
 		Prompt:          "adopt",
@@ -447,6 +452,7 @@ func TestPrepare_ResumeSessionID(t *testing.T) {
 // A spec without skills keeps the pointer on the line with an empty PromptLine.
 // A skill-load message over the launch limit fails before any prompt file is written.
 func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
+	tiergate.Require(t, 0)
 	const id = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 	for _, resume := range []bool{false, true} {
 		for _, skills := range [][]string{nil, {"scribe:prose"}} {
@@ -498,6 +504,7 @@ func TestPrepare_SkillsDeferPromptPointer(t *testing.T) {
 // TestPrepare_LogsResolvedPromptCacheTTL proves Prepare logs the role and the TTL it resolved for it.
 // It does not run in parallel: the logger it captures is process-global.
 func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
+	tiergate.Require(t, 0)
 	logs := logcapture.CaptureVerbose(t)
 
 	if _, err := engineWith(t, templateConfig(t)).Prepare(t.TempDir(), shuttleengine.Spec{Prompt: "p", Role: "driver"}, shuttleengine.Config{}); err != nil {
@@ -517,6 +524,7 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 // a reader error leaves the launch succeeded with lym's sentences only and logs the way to inspect the store.
 // It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
+	tiergate.Require(t, 0)
 	sentences := creelTrustSentence
 	tests := []struct {
 		name string

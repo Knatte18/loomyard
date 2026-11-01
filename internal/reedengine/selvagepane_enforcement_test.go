@@ -1,5 +1,3 @@
-//go:build tier0
-
 // selvagepane_enforcement_test.go enforces the Selvage-confinement rule this batch's extraction exists to satisfy: every identifier naming Selvage lives in selvagepane.go, with one narrow carve-out elsewhere.
 // selvagepane.go owns the whole Selvage seam;
 // state.go is allowed only for the SelvagePaneID field declaration ReedState carries (state.go's subject is the persisted record in general, not Selvage specifically).
@@ -31,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // selvageScanMinFiles is the plausible floor for how many non-test .go files internal/reedengine holds.
@@ -50,6 +49,7 @@ var selvagePaneAllowlist = []scankit.Entry{
 // It parses every non-_test.go .go file directly inside internal/reedengine -- never
 // internal/reedengine/render/, and never any sibling package.
 func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(selvagePaneAllowlist)
 
 	var failures []string
@@ -77,6 +77,7 @@ func TestSelvageIdentifiersConfinedToSelvagePane(t *testing.T) {
 //
 //testtiming:keep pins the Selvage identifier scanner's exemptions and flags over a synthetic source, so the confinement scan cannot pass vacuously; its covering tests run this code without asserting it
 func TestSelvageIdentViolations_ExemptionsAndFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fake
 
 func example(e *engine, st *state, selvagePaneID string) {

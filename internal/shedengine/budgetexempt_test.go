@@ -1,5 +1,3 @@
-//go:build tier0
-
 // budgetexempt_test.go covers the budget-exempt Stuck verdict: an exempt Stuck routes like any Stuck but is neither counted toward, nor blocked by, its row's bounce budget.
 
 package shedengine
@@ -9,6 +7,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // scriptedStuckShed wires a single self-bouncing row "Wait" with the given budget, whose producer returns Stuck on every call with BudgetExempt taken in order from exempt (the last value repeats).
@@ -34,6 +34,7 @@ func scriptedStuckShed(t *testing.T, maxBounces int, exempt []bool) (shed *Shed,
 // TestStep_GenerationStartSkipsBudgetComparison pins that a Stuck carrying GenerationStart bounces over a spent episode,
 // and its entry carries the mark and no budget_capped.
 func TestStep_GenerationStartSkipsBudgetComparison(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{
@@ -63,6 +64,7 @@ func TestStep_GenerationStartSkipsBudgetComparison(t *testing.T) {
 }
 
 func TestStep_ExemptStuckRoutesAndPersistsFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, statusLockPath := scriptedStuckShed(t, 1, []bool{true})
 
 	res, err := shed.Step(context.Background())
@@ -79,6 +81,7 @@ func TestStep_ExemptStuckRoutesAndPersistsFlag(t *testing.T) {
 }
 
 func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	const n = 2
 	// Two counted Stucks stay within budget however many exempt ones interleave; the next counted one (the (N+1)th) blocks.
 	script := []bool{true, false, true, true, false, true, true, false}
@@ -107,6 +110,7 @@ func TestStep_ExemptStuckInterleavedWithinBudget(t *testing.T) {
 }
 
 func TestStep_ExemptStuckAfterBudgetFullySpent(t *testing.T) {
+	tiergate.Require(t, 0)
 	const n = 2
 	// N counted Stucks (all allowed), then an exempt one that must still route, then a counted one that blocks.
 	shed, _, _ := scriptedStuckShed(t, n, []bool{false, false, true, false})
@@ -130,6 +134,7 @@ func TestStep_ExemptStuckAfterBudgetFullySpent(t *testing.T) {
 }
 
 func TestStep_ExemptStuckWithoutOnStuckStillBlocks(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, _, _, _ := newTestShed(t)
 	shed.Producers = []ProducerDef{{
 		Name: "Wait",
@@ -149,6 +154,7 @@ func TestStep_ExemptStuckWithoutOnStuckStillBlocks(t *testing.T) {
 
 //testtiming:keep pins that an absent budget_exempt decodes as false, counts as a stuck and is omitted on marshal, which its covering test does not
 func TestHistoryEntry_MissingBudgetExemptDecodesAndCounts(t *testing.T) {
+	tiergate.Require(t, 0)
 	var e HistoryEntry
 	if err := json.Unmarshal([]byte(`{"producer":"Wait","outcome":"stuck","output":"","at":"2026-01-01T00:00:00Z"}`), &e); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
@@ -169,6 +175,7 @@ func TestHistoryEntry_MissingBudgetExemptDecodesAndCounts(t *testing.T) {
 }
 
 func TestStep_NonStuckOutcomeIgnoresBudgetExempt(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, outcome := range []Outcome{Done, Awaiting} {
 		shed, statusPath, _, statusLockPath := newTestShed(t)
 		shed.Producers = []ProducerDef{{
@@ -190,6 +197,7 @@ func TestStep_NonStuckOutcomeIgnoresBudgetExempt(t *testing.T) {
 
 // BenchmarkStep_LongHistory steps a self-bouncing row over a 5000-entry history, measuring the per-step cost of rewriting a long status file on every exempt bounce.
 func BenchmarkStep_LongHistory(b *testing.B) {
+	tiergate.Require(b, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(b)
 	shed.Producers = []ProducerDef{{
 		Name:    "Wait",
@@ -215,6 +223,7 @@ func BenchmarkStep_LongHistory(b *testing.B) {
 //
 //testtiming:keep pins that a segment Bouncer's done ends a Burler-round row's episode and segmentEnders of a standalone row is nil, which its covering tests do not
 func TestEpisodeStuckCount_SegmentDoneEndsEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	history := []HistoryEntry{
 		{Producer: "Bouncer", Outcome: Stuck},
 		{Producer: "Burler", Outcome: Stuck},

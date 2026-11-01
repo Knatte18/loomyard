@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins:
 // a dry run classifies every branch on the warp origin, apply deletes only the candidate, and a tip that moves after it was observed keeps the branch.
 //
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // markManaged gives branch a weft branch on the weft origin, which is what makes it fabric-managed.
@@ -76,6 +75,7 @@ func sweepFixture(t *testing.T) *hubforge.Hub {
 }
 
 func TestCleanupRemoteWarp_DryRunClassifiesEveryBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := sweepFixture(t)
@@ -118,6 +118,7 @@ func TestCleanupRemoteWarp_DryRunClassifiesEveryBranch(t *testing.T) {
 }
 
 func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := sweepFixture(t)
@@ -154,6 +155,7 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 }
 
 func TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := sweepFixture(t)
@@ -173,6 +175,7 @@ func TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion(t *testing.T) {
 }
 
 func TestCleanupRemoteWarp_MovedTipKeepsTheBranchWithAnError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := sweepFixture(t)

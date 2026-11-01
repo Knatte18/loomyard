@@ -1,4 +1,4 @@
-//go:build tier0 && linux
+//go:build linux
 
 // proc_test.go checks the kit's stat and comm probes against the test's own process.
 
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // commMaxBytes is the kernel's bound on a command name read from /proc/<pid>/comm.
@@ -16,6 +18,7 @@ const commMaxBytes = 15
 
 // TestProcProbes_OwnProcess checks the parent pid, state and comm probes against the running test process, and that each answers false for a pid above the kernel's range.
 func TestProcProbes_OwnProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const absentPID = 1 << 30

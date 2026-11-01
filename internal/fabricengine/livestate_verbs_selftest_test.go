@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verbs_test.go drives each entry in Verbs exactly once in the "clean" state, before the cross product
 // batch 7 builds multiplies any wiring mistake by nine.
 // Each subtest runs the five phases in order (build, arrange, state, capture-before, run-then-capture-
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // cleanStateEntry returns the "clean" State from the package-level States slice, failing tb if it is
@@ -36,6 +35,7 @@ func cleanStateEntry(tb testing.TB) State {
 // Expect("clean"), the clean-state Effect closure passes, and the manifest diff reports nothing
 // outside the cell's permitted roots.
 func TestVerbCases_CleanState(t *testing.T) {
+	tiergate.Require(t, 1)
 	for _, vc := range Verbs {
 		vc := vc
 
@@ -125,6 +125,7 @@ func TestVerbCases_CleanState(t *testing.T) {
 //
 //testtiming:keep hostile-input and CloneHub{Reset} cases restricting States to clean and ordinary verbs inheriting the full matrix; coverage of its blocks by other tests does not show an assertion of this
 func TestVerbCases_StatesRestrictionIsWellFormed(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	ordinary := map[string]bool{

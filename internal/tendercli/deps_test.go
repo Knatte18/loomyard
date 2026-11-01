@@ -1,5 +1,3 @@
-//go:build tier0
-
 // deps_test.go pins the readings shuttlePair derives from a run's session state: running turn, and background work left by an ended turn, and the pending reading of tender's orch revive injects.
 // It spawns nothing and touches neither reed nor the runner, so it stays out of the integration-tagged cli_test.go.
 
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // signalEngine is a shuttlefake.Engine that parses session signals: it returns its signals whatever the data.
@@ -45,6 +44,7 @@ func (e *signalEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Tim
 }
 
 func TestShuttlePairReadings(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name           string
@@ -110,6 +110,7 @@ func TestShuttlePairReadings(t *testing.T) {
 }
 
 func TestRevivePending(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	posted := creelengine.LogEntry{Event: "posted", ID: 7}
 	outcome := func(kind creelengine.OutcomeKind) creelengine.LogEntry {
@@ -137,6 +138,7 @@ func TestRevivePending(t *testing.T) {
 }
 
 func TestPairOwners(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const here = "desktop"
 	noParent := func(string) (string, error) { return "", nil }
@@ -204,6 +206,7 @@ func TestPairOwners(t *testing.T) {
 }
 
 func TestSyncBoardIfOwed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	probe := func(owed bool, err error) func() (bool, error) {
 		return func() (bool, error) { return owed, err }
@@ -238,6 +241,7 @@ func TestSyncBoardIfOwed(t *testing.T) {
 }
 
 func TestOwnedElsewhereEnder(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	failure := errors.New("seam failed")
 	survivors := &runproc.SurvivorsError{Survivors: []runproc.Ended{{PID: 7, Role: runproc.RoleDriver}}}
@@ -307,6 +311,7 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 }
 
 func TestReviveError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

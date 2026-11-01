@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hook_test.go covers InstallPostCheckoutHook: idempotent install, non-clobbering
 // chain of an existing user hook, and correct weft-sibling branch resolution for
 // prime and child worktrees under fabric's suffixed branch-naming scheme.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // resolveCommonHooksDir returns the common git hooks directory for the repo
@@ -49,6 +48,7 @@ func resolveCommonHooksDir(t *testing.T, repoDir string) string {
 //
 //testtiming:keep a second InstallPostCheckoutHook call leaving the script content unchanged and unduplicated; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -94,6 +94,7 @@ func TestInstallPostCheckoutHook_Idempotent(t *testing.T) {
 //
 //testtiming:keep an existing user hook being backed up to post-checkout.user, chained and left alone by a second install; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const userHookContent = "#!/bin/sh\necho user\n"
@@ -160,6 +161,7 @@ func TestInstallPostCheckoutHook_ChainIdempotent(t *testing.T) {
 //
 //testtiming:keep the installed hook resolving the <PrimeName>-weft sibling for a prime worktree under the suffixed branch scheme, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -220,6 +222,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Prime(t *testing.T) {
 //
 //testtiming:keep the installed hook resolving the <slug>-weft sibling for a child worktree, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "hook-child-test"
@@ -283,6 +286,7 @@ func TestInstallPostCheckoutHook_WeftResolution_Child(t *testing.T) {
 //
 //testtiming:keep the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -343,6 +347,7 @@ func TestInstallPostCheckoutHook_ChainedWrapperIsExecutable(t *testing.T) {
 //
 //testtiming:keep the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 func TestInstallPostCheckoutHook_HonoursCoreHooksPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

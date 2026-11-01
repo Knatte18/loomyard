@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spec_test.go verifies Spec.validate's normalization and error paths: mandatory
 // Prompt/OutputFiles, relative-to-absolute resolution for output files, the Timeout
 // defaulting/negative-rejection rules, and the Display.Anchor default.
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestSpec_Validate drives Spec.validate through its rejections, its defaults and the fields it
@@ -21,6 +20,7 @@ import (
 // vocabulary validated elsewhere, so validate must neither default nor reject them: a later "tidy
 // up the validator" change must not quietly start doing either.
 func TestSpec_Validate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const worktreeRoot = `C:\worktree`

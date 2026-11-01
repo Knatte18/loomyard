@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_owner_test.go covers Finalize's owner checks against scripted reconcile reports and owner seams.
 
 package landingshed
@@ -13,11 +11,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFinalize_OwnerChecks pins that a landing happens only when this machine owns the run and its parent, and that each halt names its owners and the adopt commands that move them.
 // A parent already holding the task's work lands whatever the owners and origin say, and a Finalize halted then resumed meets both checks again.
 func TestFinalize_OwnerChecks(t *testing.T) {
+	tiergate.Require(t, 0)
 	ownedElsewhere := func(owner string) *fabricengine.OriginReport {
 		return &fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: owner}}}
 	}

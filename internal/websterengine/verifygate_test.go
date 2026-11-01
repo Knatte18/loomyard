@@ -1,5 +1,3 @@
-//go:build tier0
-
 package websterengine
 
 import (
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -120,6 +119,7 @@ func passedResult() verifytree.Result {
 // outcome is stuck (even over a dirty tree) and when outcome.yaml is unreadable, leaving that file to the run's own mapping,
 // and that a gate-config refusal on a done outcome is returned as the gate's error, never a pass, with no verify run.
 func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -165,6 +165,7 @@ func TestVerifyGate_PassesWithoutVerifying(t *testing.T) {
 
 //testtiming:keep pins the rerun's flaky note naming the failing package and every verify site's gate label and attempt; the run-level verify-gate test observes only the pass
 func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := &gateFake{
 		outcome: outcomeDone,
 		command: "go test ./...",
@@ -193,6 +194,7 @@ func TestVerifyGate_FlakyFailurePassesOnRerunWithNote(t *testing.T) {
 
 // TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun pins that a verify that outlived its timeout or hung fails the gate at once, on the first run or on the rerun, with a report naming the timeout or the hang, the log path and the log tail, and that a failure that is no hang is still rerun.
 func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const tierDetail = "gate tier2 exceeded timeout_min 30m0s and was killed"
@@ -287,6 +289,7 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 
 //testtiming:keep pins the failure report's attempt, cap, failures, card hint, fix commits and log path, and the findings naming them; the run-level verify-gate test observes only the failure
 func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	reports := t.TempDir()
 	f := &gateFake{
 		outcome: outcomeDone,
@@ -340,6 +343,7 @@ func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 // TestVerifyGate_RoutesFailuresToFixer pins which fixer each failure goes to, as the report, the findings and the re-prompt line name it:
 // the failure that reaches the cap and one after a fixer that added no commit go cold, and every failure after a cold one stays cold.
 func TestVerifyGate_RoutesFailuresToFixer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -398,6 +402,7 @@ func TestVerifyGate_RoutesFailuresToFixer(t *testing.T) {
 // The notes keep each commit once across evaluations and list the `fix:` commit with its departure but not a plain commit.
 // A failing commit log read is the gate's error.
 func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fix := CommitLogEntry{SHA: "fix1", Subject: "fix: repair a", Departures: []string{"PATTERN-x — differs"}}
@@ -455,6 +460,7 @@ func TestVerifyGate_NotesFixCommitsOnce(t *testing.T) {
 //
 //testtiming:keep pins the pre-fix head recorded once per closure, overwritten by a new closure and cleared only on a pass, and the dirty report; the covering parent-merge gate test only passes a clean tree
 func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	reports := t.TempDir()
@@ -514,6 +520,7 @@ func TestVerifyGate_DirtyTreeRecordsPreFixHead(t *testing.T) {
 }
 
 func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := &gateFake{
 		outcome:   outcomeDone,
 		command:   "go test ./...",
@@ -530,6 +537,7 @@ func TestVerifyGate_PersistFailureIsTheGatesError(t *testing.T) {
 
 //testtiming:keep pins a rejected fix commit failing the gate terminally without verifying, its findings naming the commit, the reason and the pre-fix head and never telling Merriam to move HEAD; the covering merge test runs against real git and checks only the terminal failure
 func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
+	tiergate.Require(t, 0)
 	f := &gateFake{
 		outcome:   outcomeDone,
 		command:   "go test ./...",
@@ -565,6 +573,7 @@ func TestVerifyGate_RejectedFixCommitFailsTerminal(t *testing.T) {
 }
 
 func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T) {
+	tiergate.Require(t, 0)
 	gate := &shuttleengine.GateOutcome{Reason: "Commit mergeabc is rejected.\nIt is not on the parent branch."}
 	for _, tc := range []struct{ reentry, want string }{
 		{"lym webster run", "way forward: 1) lym webster reset --to pre-fix; 2) lym webster run"},
@@ -578,6 +587,7 @@ func TestVerifyGateStuckReason_TerminalRejectionEndsInResetToPreFix(t *testing.T
 }
 
 func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const log = "/wt/.lym/verify/verify.log"
@@ -627,6 +637,7 @@ func TestVerifyGateStuckReason_HungReportNamesTheHang(t *testing.T) {
 }
 
 func TestReadModulePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	if got := readModulePath(dir); got != "" {
 		t.Errorf("readModulePath() with no go.mod = %q; want empty", got)

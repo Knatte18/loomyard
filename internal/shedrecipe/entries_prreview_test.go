@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_prreview_test.go covers the PRReview entry: it builds the PR-Review row from an empty config and refuses every config key naming the way forward.
 
 package shedrecipe
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const prReviewTestRow = "PR-Review"
@@ -24,6 +23,7 @@ func prReviewTestConfig(*testing.T, Env) Config {
 }
 
 func TestPRReviewEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("EmptyConfigBuildsThePRReviewRow", func(t *testing.T) {

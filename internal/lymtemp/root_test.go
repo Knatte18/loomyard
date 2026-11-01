@@ -1,5 +1,3 @@
-//go:build tier0
-
 // root_test.go — tests for how the temp root is located, created and checked (root.go).
 
 package lymtemp
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func fixedClock() time.Time {
@@ -34,6 +33,7 @@ func entryNames(t *testing.T, dir string) []string {
 }
 
 func TestOpenRoot(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	uid := os.Getuid()
 
@@ -137,6 +137,7 @@ func TestOpenRoot(t *testing.T) {
 }
 
 func TestResolveRootPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	uid := os.Getuid()
 	name := rootName(uid)

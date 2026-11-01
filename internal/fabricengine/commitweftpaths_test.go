@@ -1,5 +1,3 @@
-//go:build tier0
-
 // commitweftpaths_test.go — unit tests for weftCommitPathspec and CommitRecordsPaths' git-free early
 // return paths. Every test here builds inputs by hand and spawns no git, per the Test Tier Purity
 // Invariant.
@@ -10,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWeftCommitPathspec covers anchorRel == "." (entries returned with no added segment) and
@@ -18,6 +18,7 @@ import (
 //
 //testtiming:keep weftCommitPathspec staying positive-only and prefixing each entry by the anchor; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftCommitPathspec(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		anchorRel string
@@ -64,6 +65,7 @@ func TestWeftCommitPathspec(t *testing.T) {
 //
 //testtiming:keep CommitRecordsPaths taking no lock and creating no directory under SkipGit against a nonexistent path, leaving the recorder empty; coverage of its blocks by other tests does not show an assertion of this
 func TestCommitRecordsPaths_SkipGit(t *testing.T) {
+	tiergate.Require(t, 0)
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")
 
@@ -83,6 +85,7 @@ func TestCommitRecordsPaths_SkipGit(t *testing.T) {
 // relPaths slice against a path that does not exist, proving no lock was taken and no directory
 // created, and that the passed recorder's snapshot stays empty.
 func TestCommitRecordsPaths_EmptyPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	weftPath := filepath.Join(t.TempDir(), "does-not-exist")
 	rec := NewMutations("")
 

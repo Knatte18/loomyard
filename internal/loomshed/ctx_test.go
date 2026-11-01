@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomshed
 
 import (
@@ -7,9 +5,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEntryErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("HealthyContext", func(t *testing.T) {
 		if err := entryErr(context.Background(), "Preflight"); err != nil {
 			t.Errorf("entryErr(healthy) = %v; want nil", err)
@@ -34,6 +35,7 @@ func TestEntryErr(t *testing.T) {
 }
 
 func TestCancelErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("HealthyContext", func(t *testing.T) {
 		if err := cancelErr(context.Background(), "Preflight"); err != nil {
 			t.Errorf("cancelErr(healthy) = %v; want nil", err)

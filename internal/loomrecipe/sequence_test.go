@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomrecipe
 
 import (
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantSequenceEntry pairs one expected history-row name with its expected shedengine.Outcome.
@@ -92,6 +91,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 // the trailing planparser.ParsePlan check below is the ONLY standing guard left anywhere that
 // Plan-Bouncer's approve seam genuinely ran.
 func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
+	tiergate.Require(t, 0)
 	anchorPath, env, paths := buildSequenceFixture(t)
 
 	var commitDiscussionCalls, commitPlanCalls int

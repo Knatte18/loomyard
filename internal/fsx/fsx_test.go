@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fsx_test.go — unit tests for filesystem-safety primitives (fsx.go).
 //
 // PathGuard rejection, AtomicWrite and AtomicWriteBytes behavior.
@@ -13,9 +11,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPathGuard(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -46,6 +46,7 @@ func TestPathGuard(t *testing.T) {
 }
 
 func TestAtomicWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -105,6 +106,7 @@ func TestAtomicWrite(t *testing.T) {
 
 //testtiming:keep pins the exported byte writer's absolute-path, binary-data and overwrite contract, which AtomicWrite's string subtests reach only through delegation
 func TestAtomicWriteBytes(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("writes binary data creating missing parent directories", func(t *testing.T) {

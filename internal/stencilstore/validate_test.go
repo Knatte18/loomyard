@@ -1,5 +1,3 @@
-//go:build tier0
-
 // validate_test.go covers Validate against a bare t.TempDir(), reusing fakeRegistry from
 // reconcile_test.go.
 
@@ -9,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseDir := t.TempDir()

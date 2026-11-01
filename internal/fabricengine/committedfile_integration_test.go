@@ -1,5 +1,3 @@
-//go:build tier1
-
 // committedfile_integration_test.go covers CommittedAnchoredFile and CommittedAnchoredFileHistory against a wired hub fixture:
 // the committed bytes come back despite a later working-tree edit, a path never committed reports found == false,
 // and the history holds every committed version, newest first.
@@ -16,11 +14,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommittedAnchoredFile runs the single-revision outcomes and the history read over one hub.
 // The steps run in order and touch disjoint paths.
 func TestCommittedAnchoredFile(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gitrepoboundary_test.go enforces the gitrepo Client Boundary Invariant: a pinned
 // set of methods on internal/gitrepo's Repo type may call r.run or r.runChecked (the
 // package's two CLI choke points), and exactly two gitexec entry-point call
@@ -41,6 +39,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gitrepoPinnedRunBoundMethods is the literal, pinned set of internal/gitrepo
@@ -114,6 +113,7 @@ const gitrepoBoundaryMinScannedFiles = 5
 //
 //lym:guard
 func TestGitrepoBoundary_PinnedRunCallSites(t *testing.T) {
+	tiergate.Require(t, 0)
 	const dir = "internal/gitrepo"
 
 	runBoundMethods := map[string]bool{}

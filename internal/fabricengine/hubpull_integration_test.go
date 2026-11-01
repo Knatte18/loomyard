@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hubpull_integration_test.go drives PullHub against a hubforge hub whose origin a second clone moves:
 // every side moved and then up to date, a stopped side beside the sides that still move, a beam with no upstream, each pair pulled inside its lock, and Bolt waiting for the board write lock.
 // Shares the single TestMain in testmain_test.go.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // The slugs of the pairs the hub pull tests add: a beam, a task pair that is not a beam, and a second beam.
@@ -81,6 +80,7 @@ func sideOutcomes(sides []fabricengine.HubPullSide) []string {
 }
 
 func TestPullHub_MovesEverySideOriginMovedThenReportsUpToDate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, hubPullBeam, fabricengine.AddOptions{Beam: true})
@@ -139,6 +139,7 @@ func TestPullHub_MovesEverySideOriginMovedThenReportsUpToDate(t *testing.T) {
 }
 
 func TestPullHub_StoppedSideLeavesTheOthersPulled(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, hubPullBeam, fabricengine.AddOptions{Beam: true})
@@ -184,6 +185,7 @@ func TestPullHub_StoppedSideLeavesTheOthersPulled(t *testing.T) {
 }
 
 func TestBoltPull_HoldsTheBoardWriteLockWhileItPulls(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	second := hubforge.CloneSecond(t, h)
@@ -251,6 +253,7 @@ func firstTrackedFile(t *testing.T, dir string) string {
 }
 
 func TestPullHub_HonorsSkipGitWithEverySideUpToDate(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, hubPullBeam, fabricengine.AddOptions{Beam: true})
@@ -273,6 +276,7 @@ func TestPullHub_HonorsSkipGitWithEverySideUpToDate(t *testing.T) {
 }
 
 func TestPullHub_UnreadableBeamRecordStopsOnlyThatBeam(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, hubPullBeam, fabricengine.AddOptions{Beam: true})
@@ -306,6 +310,7 @@ func TestPullHub_UnreadableBeamRecordStopsOnlyThatBeam(t *testing.T) {
 }
 
 func TestPullHub_StopsABoardSideAndAPairSideWithTheirDetail(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.AddPairWith(t, h, hubPullBeam, fabricengine.AddOptions{Beam: true})

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gitrepo_test.go covers the read/commit primitives (CurrentSHA, StageAndCommit, StageAllAndCommit, ChangedFilesSince, SHAExists, CurrentBranch) against real git repositories built under t.TempDir().
 // Every test spawns real git, so this file requires the hermetic TestMain in testmain_test.go.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newRepo creates a fresh git repository on branch main and returns both
@@ -128,6 +127,7 @@ func requireSameFiles(t *testing.T, call string, got []string, want ...string) {
 // The steps run serially against shared repository state: the second step relies on the commit it makes itself, after the first has seen the repository empty.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestCurrentSHA(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -154,6 +154,7 @@ func TestCurrentSHA(t *testing.T) {
 // The steps run serially in one order and share the repository's state: every step starts from a clean tree on main with the files a.txt and b.txt tracked, except where a comment names the dirt an earlier step leaves for the next, and the mid-merge step runs last because it leaves a merge pending.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestCommitAndReadPrimitives(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

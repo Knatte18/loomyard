@@ -1,5 +1,3 @@
-//go:build tier0
-
 // hub_test.go pins the spawn of a land action: the command it builds, its output file, its spawn log and the refusal of a key outside the action table.
 
 package fronttask
@@ -18,10 +16,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStartAction runs without t.Parallel: it captures the process-global logger output.
 func TestStartAction(t *testing.T) {
+	tiergate.Require(t, 0)
 	logger.SetVerbosity(1)
 	t.Cleanup(func() {
 		logger.SetVerbosity(0)

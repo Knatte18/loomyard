@@ -1,5 +1,3 @@
-//go:build tier1
-
 // probequiet_integration_test.go pins probeQuiet's reading of the Go driver's lock on a real git worktree, which the untagged tests cannot create.
 
 package pairteardown
@@ -15,9 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestProbeQuietSeesTheGoDriverLock(t *testing.T) {
+	tiergate.Require(t, 1)
 	hub := t.TempDir()
 	taskRoot := filepath.Join(hub, "slug")
 	if err := os.MkdirAll(taskRoot, 0o755); err != nil {

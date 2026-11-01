@@ -1,5 +1,3 @@
-//go:build tier0
-
 // daemonwakeups_test.go enforces `PATTERN-daemon-wakeups`: the files that hold an unbounded wait carry no sub-second duration literal and no sub-second `MS` or `Ms` constant unless the line announces itself with `//lym:one-shot <reason>`, and no production file outside that list starts a `time.NewTicker` or `time.Tick`.
 // The scan sees literal shapes only; a computed period, or a sleep loop in a file the list does not name, is left to review.
 
@@ -18,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // unboundedWaitFiles are the module-relative, slash-separated files that hold an unbounded wait or the loop that drives one.
@@ -154,6 +153,7 @@ func tickerCallPositions(fset *token.FileSet, file *ast.File) []string {
 //
 //lym:guard
 func TestDaemonWakeups_UnboundedWaitsStayAboveTheFloor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

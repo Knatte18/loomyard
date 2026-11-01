@@ -1,5 +1,3 @@
-//go:build tier0 || tier1
-
 // machine_test.go holds the fixture helper both test tiers use: a hub's desktop machine override.
 
 package desktophook_test

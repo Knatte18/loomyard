@@ -1,5 +1,3 @@
-//go:build tier0
-
 // audit_streaming_test.go is R2-F5's regression guard: it pins that forEachTranscriptLine walks a
 // session transcript as a STREAM rather than materialising it, and that the two edge cases a naive
 // streaming port breaks — a final line with no trailing newline, and a single line larger than
@@ -14,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeTranscript writes body to a fresh .jsonl file under t.TempDir() and returns its path and
@@ -51,6 +51,7 @@ func assistantBashLine(commandBody string) string {
 // unreachable, so HeapAlloc reports what the walk is actually still HOLDING rather than what it has
 // cumulatively allocated (TotalAlloc, which does not separate the two implementations at all).
 func TestForEachTranscriptLine_StreamsRatherThanMaterialising(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		lineCount        = 2000
 		commandBodyBytes = 4000
@@ -102,6 +103,7 @@ func TestForEachTranscriptLine_StreamsRatherThanMaterialising(t *testing.T) {
 // bufio.Scanner's 64 KiB default token cap — which is why this reads with bufio.Reader.ReadString,
 // whose line length is unbounded, and not with a Scanner.
 func TestForEachTranscriptLine_EdgeCases(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Comfortably past bufio.Scanner's 64 KiB default token cap, so a Scanner-based implementation
 	// would drop this line (or error) rather than decode it.
 	const oversizedCommandBytes = 256 * 1024
@@ -152,6 +154,7 @@ func TestForEachTranscriptLine_EdgeCases(t *testing.T) {
 // audit's own output rather than only forEachTranscriptLine's call count: a fork whose transcript
 // ends without a trailing newline still has that last line's Bash command reported.
 func TestAuditForkTranscript_UnterminatedFinalLineStillCounted(t *testing.T) {
+	tiergate.Require(t, 0)
 	path, _ := writeTranscript(t, assistantBashLine("git status")+"\n"+assistantBashLine("git push"))
 
 	report, err := auditForkTranscript(path)

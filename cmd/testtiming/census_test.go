@@ -1,13 +1,14 @@
-//go:build tier0
-
 package main
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseTraceEvents(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	version := `{"event":"version","evt":"3","exe":"2.50.0"}` + "\n"
@@ -55,6 +56,7 @@ func TestParseTraceEvents(t *testing.T) {
 }
 
 func TestRenderCensus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var first, second gitCensus
@@ -84,6 +86,7 @@ func TestRenderCensus(t *testing.T) {
 }
 
 func TestTraceEnv(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	got := strings.Join(traceEnv("/tmp/trace"), "\n")

@@ -1,15 +1,17 @@
-//go:build tier0
-
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const testPkgPrefix = "github.com/Knatte18/loomyard/"
 
 func TestParseLineAggregatesPerPackage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	stream := strings.Join([]string{
@@ -58,6 +60,7 @@ func TestParseLineAggregatesPerPackage(t *testing.T) {
 }
 
 func TestRedundancyTags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {
@@ -89,7 +92,67 @@ func TestRedundancyTags(t *testing.T) {
 	}
 }
 
+func TestTierSelection(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	rows := []struct {
+		name    string
+		tags    string
+		want    string
+		wantErr bool
+	}{
+		{name: "offline tier", tags: "tier0", want: "0"},
+		{name: "one tier", tags: "tier2", want: "2"},
+		{name: "a range", tags: "tier0,tier1,tier2", want: "0-2"},
+		{name: "unordered with a platform tag", tags: "tier2,linux,tier1", want: "1-2"},
+		{name: "no tier tag", tags: "linux", want: "0"},
+		{name: "a gap", tags: "tier0,tier2", wantErr: true},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := tierSelection(row.tags)
+			if (err != nil) != row.wantErr {
+				t.Fatalf("tierSelection(%q) error = %v; want error %v", row.tags, err, row.wantErr)
+			}
+			if got != row.want {
+				t.Errorf("tierSelection(%q) = %q; want %q", row.tags, got, row.want)
+			}
+		})
+	}
+}
+
+// TestExportTierSelection sets LYM_TEST_TIER, a process-global variable, so it does not run in parallel.
+func TestExportTierSelection(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	rows := []struct {
+		name    string
+		tags    string
+		want    string
+		wantErr bool
+	}{
+		{name: "two tiers", tags: "tier1,tier2", want: "1-2"},
+		{name: "no tags", tags: "", want: "0"},
+		{name: "a gap sets nothing", tags: "tier0,tier2", want: "", wantErr: true},
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			t.Setenv(tierSelectorEnv, "")
+			err := exportTierSelection(row.tags)
+			if (err != nil) != row.wantErr {
+				t.Fatalf("exportTierSelection(%q) error = %v; want error %v", row.tags, err, row.wantErr)
+			}
+			if got := os.Getenv(tierSelectorEnv); got != row.want {
+				t.Errorf("%s after exportTierSelection(%q) = %q; want %q", tierSelectorEnv, row.tags, got, row.want)
+			}
+		})
+	}
+}
+
 func TestModeConflict(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {
@@ -121,6 +184,7 @@ func TestModeConflict(t *testing.T) {
 }
 
 func TestResolveTags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {

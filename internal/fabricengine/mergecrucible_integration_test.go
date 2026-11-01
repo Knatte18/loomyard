@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergecrucible_integration_test.go holds the regression scenarios the crucible review round
 // opus-medium-r1 found against real git repositories — the ones the hermetic and pre-existing
 // integration tiers both passed while the defect was live.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertSoleGuardReason fails unless err is a *fabricengine.MergeGuardError carrying exactly the one
@@ -50,6 +49,7 @@ func assertSoleGuardReason(t *testing.T, label string, err error, want string) {
 // attachment cannot affect a warp-only merge's correctness — TestMergeCrucible_WeftDetachedDoesNotRefuse
 // below covers that side instead, asserting the merge proceeds.
 func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
@@ -85,6 +85,7 @@ func TestMergeCrucible_DetachedHeadRefused(t *testing.T) {
 // evaluates the warp side alone now, so a detached weft HEAD no longer blocks MergeIn: the weft is
 // not a merge participant, and its own detachment cannot affect a warp-only merge's correctness.
 func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, _, _ := newMergePairFixture(t, ".")
@@ -118,6 +119,7 @@ func TestMergeCrucible_WeftDetachedDoesNotRefuse(t *testing.T) {
 // that could never succeed), and left the pair out of correspondence.
 // MergeAbort must still recover the same record — that is the whole point of refusing.
 func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
@@ -186,6 +188,7 @@ func TestMergeCrucible_ContinueRefusesAttemptThatNeverReachedBothSides(t *testin
 // committed:false}. The second subtest is that sequential control, which is what the interleaved
 // loser now also reports.
 func TestMergeCrucible_ResultFlagsDescribeWhatHappened(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("FastForwardBothSidesFabricatesNoCommit", func(t *testing.T) {
@@ -260,6 +263,7 @@ func fileExistsInWorktree(t *testing.T, dir, name string) bool {
 // from the remote if the operator then aborted. Once the merge is aborted the same Remove must
 // succeed again, so the guard closes a window rather than blocking the pair forever.
 func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -328,6 +332,7 @@ func TestMergeCrucible_RemoveRefusesAPairSomeOtherMergeIsConsuming(t *testing.T)
 // The check is on the marshalled JSON, since null-vs-[] is the property that actually matters to a
 // consumer.
 func TestMergeCrucible_ConflictsIsEmptyNeverNil(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	assertConflictsMarshalsAsArray := func(t *testing.T, label string, res fabricengine.MergeResult) {
@@ -463,6 +468,7 @@ func mergeHeadPresentInCheckout(t *testing.T, dir string) bool {
 // The assertion that catches the regression is the MERGE_HEAD pair: a verb that returns without
 // error must never leave git-level merge state behind on either side.
 func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
@@ -538,6 +544,7 @@ func TestMergeCrucible_EmptyResultMergeIsConcludedNotAbandoned(t *testing.T) {
 //
 // Both must refuse, and the landed commit must survive; MergeContinue must then still finish.
 func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -618,6 +625,7 @@ func TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded(t *testing.T) {
 // TestMergeCrucible_AbortRefusesAnAttemptWhoseConcludeLanded's RecordedConcludeSHA arm builds — a real
 // MergeContinue call has no independent weft side left to fail on and finish one-sided.
 func TestMergeCrucible_AbortRefusesOnTheRecordedConcludeSHAAlone(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f := mergeCrucibleWarpConflictFixture(t)
@@ -696,6 +704,7 @@ func readMergeRecordWarpStart(t *testing.T, h *hubforge.Hub) string {
 // stages nothing, moves no HEAD, writes no MERGE_HEAD, and classifies up_to_date on both sides.
 // Reporting AlreadyUpToDate there is the honest answer, and it can only have come from the record.
 func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, commitOnWarpBranch, commitOnWeftBranch, commitOnWarpCurrent, commitOnWeftCurrent := newMergePairFixture(t, ".")
@@ -765,6 +774,7 @@ func TestMergeCrucible_DerivedAlreadyUpToDateIsReadFromTheRecord(t *testing.T) {
 // Both record locations are asserted with t.Fatal before Remove is called: the linked one must exist
 // and the prime one must not, or the test would pass on the path it is not trying to cover.
 func TestMergeCrucible_RemoveRefusesWhenALinkedPairIsConsumingTheSource(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

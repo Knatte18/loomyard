@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, every fetch, pull and push method waiting on it, and concurrent fetches and pushes of one repository that all succeed under it.
 
 package gitrepo_test
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // remoteRefsLockPath returns where the remote-refs lock of the repository at dir lives.
@@ -43,6 +42,7 @@ func publishedClone(t *testing.T) (clone, bareRemote string) {
 }
 
 func TestHoldRemoteRefs_OneLockServesEveryWorktreeOfARepository(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	clone, _ := publishedClone(t)
 	linked := filepath.Join(t.TempDir(), "linked")
@@ -77,6 +77,7 @@ func TestHoldRemoteRefs_OneLockServesEveryWorktreeOfARepository(t *testing.T) {
 const remoteRefsHeldWindow = 500 * time.Millisecond
 
 func TestRemoteRefsLock_EveryFetchPullAndPushMethodWaitsWhileTheLockIsHeld(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	absentSHA := strings.Repeat("a", 40)
 	tests := []struct {
@@ -131,6 +132,7 @@ func TestRemoteRefsLock_EveryFetchPullAndPushMethodWaitsWhileTheLockIsHeld(t *te
 // TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed reproduces two lym processes writing one repository's tracking refs at once.
 // Without the lock, git fails the loser with "incorrect old value provided" or "cannot lock ref".
 func TestRemoteRefsLock_ConcurrentFetchesAndPushesOfOneRepositoryAllSucceed(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	clone, bareRemote := publishedClone(t)
 	other := filepath.Join(t.TempDir(), "other")

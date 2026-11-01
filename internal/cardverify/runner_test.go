@@ -1,5 +1,3 @@
-//go:build tier1
-
 // runner_test.go exercises Runner against real shell lines and a temp gate-slot pool.
 
 package cardverify
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func verifyCard(n int, slug, command string) planparser.Card {
@@ -34,6 +33,7 @@ func newPool(t *testing.T, limits func() (gateslot.Limits, error)) *gateslot.Poo
 // TestRunner does not call t.Parallel: two subtests set the process environment through t.Setenv, which forbids it in the test and its ancestors.
 // Those subtests run first, in order, and the parallel ones resume after.
 func TestRunner(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("a stale prebuilt-lym variable never reaches a line", func(t *testing.T) {
 		t.Setenv(gateslot.PrebuiltLymEnv, "/stale/lym")
 		runner := Runner{Worktree: t.TempDir()}

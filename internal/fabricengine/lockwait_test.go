@@ -1,5 +1,3 @@
-//go:build tier0
-
 // lockwait_test.go pins that the weft write lock's wait signal reaches only the path a test registered for.
 
 package fabricengine
@@ -7,9 +5,12 @@ package fabricengine
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAcquireWeftWriteLock_SignalsOnlyItsOwnPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	first, second, third := t.TempDir(), t.TempDir(), t.TempDir()
 	firstSignal := AwaitWeftLockWaitForTest(t, filepath.Join(first, weftWriteLockFile))

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // suite_test.go contains unit tests for the suite launcher functions: binary fingerprinting, scheme rendering, git-exclude management, and the runSuite orchestration.
 // All tests use seam stubs and temp directories -- no real lym, claude, or network calls are made.
 // The runSuite and launchAgent tests rewrite package-level seams (devBinPath, lookPath, launchAgent, reedDown, interactiveStdio) or os.Stderr, so they do not call t.Parallel; the pure tests run in parallel, which Go starts only after every serial test has restored its seams.
@@ -16,10 +14,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBinaryFingerprint verifies that binaryFingerprint returns the correct size, SHA256 prefix, and path for a real temp file, and returns an error when the target file does not exist.
 func TestBinaryFingerprint(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	content := []byte("fake lym binary content for testing")
@@ -65,6 +66,7 @@ func TestBinaryFingerprint(t *testing.T) {
 //
 //testtiming:keep pins the exact fingerprint fields and suite body renderScheme writes, which the runSuite tests only reach through a fixed header marker
 func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, source := range []string{sourceDev, sourceProd} {
@@ -106,6 +108,7 @@ func TestRenderScheme_ContainsHeaderAndBody(t *testing.T) {
 
 // TestEnsureGitExclude covers the four behaviour scenarios for idempotent exclude-file management.
 func TestEnsureGitExclude(t *testing.T) {
+	tiergate.Require(t, 0)
 	const entry = "SANDBOX-CORE-SUITE.md"
 
 	createGitDir := func(t *testing.T) string {
@@ -275,6 +278,7 @@ func makeFakeLym(t *testing.T, tmpDir string) string {
 // TestRunSuite_HubAbsent verifies that runSuite returns an error when the Hub repo subdirectory
 // does not exist.
 func TestRunSuite_HubAbsent(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir := t.TempDir()
 
 	restore := stubSuiteSeams(t, "", "", func(dir, claude, instruction, binDir string) int {
@@ -294,6 +298,7 @@ func TestRunSuite_HubAbsent(t *testing.T) {
 
 // TestRunSuite_PerSuiteSpec verifies, for each suite runSuite is parameterized over, that a default run removes a stale sandbox-report.json before the agent launches, calls launchAgent with the repo directory, the resolved claude, the suite's default instruction and an empty binDir (a prod resolution), writes only its own scheme file with the fingerprint header and embedded doc body, and registers that file and the report in .git/info/exclude; and that a -prompt override reaches launchAgent verbatim.
 func TestRunSuite_PerSuiteSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	suites := []suiteSpec{mainSuite, reedSuite, shuttleSuite, creelSuite}
 	tests := []struct {
 		name string
@@ -413,6 +418,7 @@ func TestRunSuite_PerSuiteSpec(t *testing.T) {
 // TestRunSuite_DevBinaryPrependsBinDir verifies that runSuite passes the dev binary's directory as
 // launchAgent's binDir when a dev binary exists.
 func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
 
@@ -458,6 +464,7 @@ func TestRunSuite_DevBinaryPrependsBinDir(t *testing.T) {
 
 // TestRunSuite_Overrides verifies that runSuite honours -claude and -prompt override arguments.
 func TestRunSuite_Overrides(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
 	fakeLym := makeFakeLym(t, parentDir)
 
@@ -501,6 +508,7 @@ func TestRunSuite_Overrides(t *testing.T) {
 // TestRunSuite_NonZeroLaunchTolerated verifies that a non-zero exit code from launchAgent is
 // tolerated (interactive sessions are expected to exit manually).
 func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
 	fakeLym := makeFakeLym(t, parentDir)
 	fakeClaude := filepath.Join(parentDir, "claude.exe")
@@ -521,6 +529,7 @@ func TestRunSuite_NonZeroLaunchTolerated(t *testing.T) {
 // TestRunSuite_ClaudeNotFound verifies that runSuite returns an error when claude cannot be
 // resolved from PATH.
 func TestRunSuite_ClaudeNotFound(t *testing.T) {
+	tiergate.Require(t, 0)
 	parentDir, _ := makeHubRepo(t)
 	fakeLym := makeFakeLym(t, parentDir)
 
@@ -555,6 +564,7 @@ func TestRunSuite_ClaudeNotFound(t *testing.T) {
 
 // TestSuiteSpecs_ReedTeardownFlag verifies which suites have the reedTeardown flag.
 func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	if mainSuite.reedTeardown {
 		t.Error("mainSuite.reedTeardown = true; the core suite boots no reed substrate")
 	}
@@ -567,6 +577,7 @@ func TestSuiteSpecs_ReedTeardownFlag(t *testing.T) {
 
 // TestRunSuite_ReedTeardown verifies that a live-reed suite calls reedDown exactly once, after the agent session ends and whatever the agent's exit code, with the repo directory and the resolved lym; that the core suite never calls it; and that a reedDown error does not turn a completed session into a launcher failure.
 func TestRunSuite_ReedTeardown(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		spec        suiteSpec
@@ -625,6 +636,7 @@ func TestRunSuite_ReedTeardown(t *testing.T) {
 
 // TestIsCharDevice_RegularFile verifies that isCharDevice reports false for a regular file.
 func TestIsCharDevice_RegularFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	f, err := os.Open(makeFakeLym(t, t.TempDir()))
 	if err != nil {
 		t.Fatalf("open temp file: %v", err)
@@ -638,6 +650,7 @@ func TestIsCharDevice_RegularFile(t *testing.T) {
 // TestLaunchAgent_NonInteractiveWarning verifies that launchAgent prints nonInteractiveWarning when
 // stdio is not attached to a console.
 func TestLaunchAgent_NonInteractiveWarning(t *testing.T) {
+	tiergate.Require(t, 0)
 	missingClaude := filepath.Join(t.TempDir(), "claude.exe")
 
 	oldInteractive := interactiveStdio

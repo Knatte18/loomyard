@@ -1,5 +1,3 @@
-//go:build tier0
-
 // looparm_test.go pins the hook loom arms on the loop's step watchdog: what it stops and what it tells the interrupted cause.
 
 package loomcli
@@ -18,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRegisterRunProcess serves two roles: the loop's start hook and the driver's own call each register the test's pid under the slug, and a record directory that cannot be created registers nothing and warns once.
 // Each role runs over its own hub, since one process keeps one record per owner.
 // It stays serial because logcapture swaps the process-global logger.
 func TestRegisterRunProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	roles := []struct {
 		name     string
 		role     string
@@ -69,6 +69,7 @@ func TestRegisterRunProcess(t *testing.T) {
 }
 
 func TestWatchdogKillNote_StopsTheKilledStepsRunsAndNamesTheRest(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		report   shuttleengine.StepStopReport

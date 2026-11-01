@@ -1,5 +1,3 @@
-//go:build tier0
-
 package battencli
 
 import (
@@ -28,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -183,6 +182,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestWire_EverySeamFilled(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	location := &lymcwd.Location{
@@ -222,6 +222,7 @@ func TestWire_EverySeamFilled(t *testing.T) {
 
 // TestRestepSkips pins which child statuses the binary re-step leaves alone: a blocked landing, decision or escalate halt, and nothing else.
 func TestRestepSkips(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -266,6 +267,7 @@ func wiredPrime(t *testing.T) (*battenCLI, *lymcwd.Location) {
 // TestWire_PointsTheNetworkGateAtItsSlug installs a gate with no slug over a record holding a live entry for the wired slug, and asserts a network call made after wire waits.
 // It is not parallel because the network gate is process-wide.
 func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
 	now := time.Now()
 	if _, err := pauserecord.Update(recordPath, now, func(record *pauserecord.Record) error {
@@ -294,6 +296,7 @@ func TestWire_PointsTheNetworkGateAtItsSlug(t *testing.T) {
 }
 
 func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c, _ := wiredPrime(t)
@@ -307,6 +310,7 @@ func TestWire_PairDirRefusesAnAbsentTaskWorktreeByName(t *testing.T) {
 // TestWire_BattenStatusSeamsReadBattensOwnStatus asserts the wired seams that read batten's own status file agree on one fixture:
 // the pause seams of Run-Shed and Land report the pause_requested flag and false while the file is absent, and the row notices' history seam reports the history length and 0 while the file is absent.
 func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -357,6 +361,7 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 // TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam, the run notices' agent seam and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
 // The run notices read an absent task worktree's child as not found.
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	c, location := wiredPrime(t)
@@ -390,6 +395,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 // TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, PR-Review or Sampler-Session, ignoring a lock wait record whose writer is dead.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
+	tiergate.Require(t, 0)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	registry := filepath.Join(home, ".claude", "sessions")
@@ -542,6 +548,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 // Every row that passes the claim fails the closure on the absent fabric config, so no pair is created.
 // It sets BOARD_SKIP_GIT and BOARD_SKIP_PUSH, process-global, so it does not call t.Parallel.
 func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	t.Setenv("BOARD_SKIP_PUSH", "1")
 

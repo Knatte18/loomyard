@@ -1,5 +1,3 @@
-//go:build tier0
-
 // owned_test.go pins the handling of a run a full pass found owned by another machine: the pause, the single notice, the full pass at the lift and the owner re-read.
 
 package dobbyengine
@@ -8,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestOwnedElsewhere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	owned := PassExit{Code: PassExitOwnedElsewhere}
 

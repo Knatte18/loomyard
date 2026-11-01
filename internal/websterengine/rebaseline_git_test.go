@@ -1,5 +1,3 @@
-//go:build tier1
-
 // rebaseline_git_test.go pins Rebaseline after a record-batch handle binding, which needs the real delta of a real commit.
 // Every other Rebaseline behavior is tested over a fakeGit in rebaseline_test.go.
 
@@ -15,12 +13,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330 is the #330 scene with a record-batch handle binding as the rewrite:
 // binding card 1's handle moves batch 1's recorded hash, so a later Rebaseline naming only an edited pending card succeeds.
 func TestRebaseline_AfterRecordBatchBoundBegunCard_Regression330(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newRealRecordFixture(t, []shuttleengine.ForkAudit{
 		{Forks: []shuttleengine.ForkReport{{TranscriptPath: "subagents/f1.jsonl", ReportReturned: true}}},
 	})

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verbs_regenerate_integration_test.go proves the fabric verbs that create, remove or switch a warp worktree regenerate the hub workspace file,
 // and that a failed regeneration never changes a verb's result.
 // Shares the single TestMain in testmain_test.go.
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertFoldersAndNoPortals asserts the workspace file's folders as assertFolders does, and that the verb that preceded it left no `_portals` entry in the hub.
@@ -33,6 +32,7 @@ func assertFoldersAndNoPortals(t *testing.T, h *hubforge.Hub, path string, names
 // The top level is not parallel: some rows set a process-global hook or environment variable, or capture the logger,
 // so they run before the parallel rows are released and no verb runs beside them.
 func TestVerbsRegenerateHubWorkspace(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Run("AddFailedByTheHookStillRegenerates", func(t *testing.T) {
 		// Serial: the hook is process-global.
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

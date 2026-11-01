@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cleanup_test.go covers CleanupHandoffs over told paths under a temp directory: which handoffs survive, when nothing is removed, and the state lock held against a cycle.
 
 package orchengine
@@ -15,9 +13,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCleanupHandoffs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	handoffs := []string{"h1.md", "h2.md", "h3.md", "partial.md"}
@@ -185,6 +185,7 @@ func TestCleanupHandoffs(t *testing.T) {
 }
 
 func TestCleanupHandoffs_HoldsTheStateLockSoACycleLosesNoHandoff(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	p := testPaths(t)

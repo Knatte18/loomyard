@@ -1,5 +1,3 @@
-//go:build tier0
-
 // publishfailure_test.go covers the Plan-Review rubric's note of webster's run record, with no repository.
 
 package loomshed
@@ -10,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -25,6 +24,7 @@ func testGateTiers(gate string) ([]int, error) {
 }
 
 func TestWebsterRecordNote(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	followUpRule := "A done card is frozen: its work has landed, and the plan gate refuses an edit to it.\nA finding against a done card lands as a follow-up card after the last begun batch, with its Card Index line in `00-overview.md`."

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // toolfloor_test.go covers the version-line parsing and floor comparison of CheckGit and CheckTmux, and the allow-set-title release check.
 
 package toolfloor
@@ -8,9 +6,12 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestTmuxHasAllowSetTitle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -37,6 +38,7 @@ func TestTmuxHasAllowSetTitle(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string

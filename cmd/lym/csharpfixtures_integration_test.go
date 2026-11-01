@@ -1,5 +1,3 @@
-//go:build tier1
-
 // csharpfixtures_integration_test.go compiles every C# fixture under a `testdata/` directory with `dotnet build`.
 // Quarry's tree-sitter parse accepts invalid C#, so it cannot prove a fixture is valid.
 
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // csharpFixtureSkipDirs are directories the fixture scan never enters: version control and lym state hold no fixture.
@@ -50,6 +49,7 @@ const csharpFixtureProject = `<Project Sdk="Microsoft.NET.Sdk">
 //
 //lym:guard
 func TestCSharpFixtures_CompileWithDotnet(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dotnet, err := exec.LookPath("dotnet")

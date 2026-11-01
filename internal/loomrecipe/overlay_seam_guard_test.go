@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overlay_seam_guard_test.go enforces the Fabric Git Invariant at the recipe-shape level:
 // every BurlerFix row whose target paths reach into the overlay tree (the durable _lym directory) must run fix-scope: overlay,
 // and its partner Bouncer row must carry a commit_seam key matching the overlay subdirectory those target paths share.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertOverlayBurlerCommitSeams walks every shedbuild.Row in r whose Engine is "BurlerFix" and, for each row that declares at least one overlay target path (a path whose first segment equals lymdirs.LymDirName), asserts both halves of the Fabric Git Invariant's overlay-seam rule: the row's profile.fix-scope must be "overlay", and the row's partner Bouncer row (same Segment) must carry a commit_seam config value equal to the single overlay subdirectory the row's overlay target paths share.
@@ -164,6 +163,7 @@ func assertCommitSeam(t testing.TB, r shedbuild.Recipe, burlerRow shedbuild.Row,
 //
 //testtiming:keep pins that the shipped overlay Burlers commit through their partner Bouncer's seam, which TestOverlayBurlerCommitSeams_RejectsBadShapes only checks on hand-written recipes
 func TestShippedRecipe_OverlayBurlersCommitThroughSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
@@ -216,6 +216,7 @@ func runOverlaySeamRule(t *testing.T, name string, r shedbuild.Recipe) (reported
 //
 //testtiming:keep pins that the seam rule rejects each bad overlay shape, a guard self-check the shipped-recipe test never exercises
 func TestOverlayBurlerCommitSeams_RejectsBadShapes(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		yaml       string

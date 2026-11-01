@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ready_test.go covers Ready(l)'s three outcomes: sibling absent, sibling present, and a stat
 // failure other than not-exist.
 
@@ -12,10 +10,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestReady covers the weft sibling worktree absent, present, and unstatable.
 func TestReady(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

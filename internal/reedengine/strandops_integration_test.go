@@ -1,5 +1,3 @@
-//go:build tier2
-
 // strandops_integration_test.go proves ReplaceStrand and AddStrand with an empty Cmd against a real tmux.
 // Replacing the first of three strands leaves the replacement in its slot of the strand table, with the other strands' panes untouched;
 // an empty Cmd still leaves a live pane running the pane's own shell, now with the pane-binary prelude applied to it.
@@ -14,11 +12,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStrandOps_RealTmux runs its steps in order on one cold session.
 // EmptyCmdLeavesALivePane relies on the three strands ReplaceKeepsTheTopSlot leaves behind and asserts only on its own strand.
 func TestStrandOps_RealTmux(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	e := newColdScratchEngine(t)
 

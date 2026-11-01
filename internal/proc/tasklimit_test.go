@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tasklimit_test.go pins the task-limit reader over fixture cgroup files: the tightest level wins, and an unreadable or limitless ancestry reads as not found.
 
 package proc
@@ -8,9 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReadTaskLimitAt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const leaf = "/user.slice/user-1000.slice/user@1000.service/app.slice/run.scope"

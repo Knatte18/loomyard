@@ -1,5 +1,3 @@
-//go:build tier1
-
 // recoverbatch_git_test.go exercises recover-batch's suspect-path evidence over a real scratch git repository:
 // the flagged blob a failed batch recorded is looked up by git in the recovery report's head, at the start commit and in the worktree, so these tests need git's own object and ignore semantics.
 // Every other RecoverBatch behavior is tested over a fakeGit in recoverbatch_test.go.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -74,6 +73,7 @@ func recoverSuspect(t *testing.T, fx *recoverFixture) (*recoverDriveResult, erro
 // TestRecoverBatch_SuspectEvidence runs every suspect-evidence case over one scratch repository, one step per case.
 // Each step starts by restarting the repository from its base commit, so no step relies on another's state.
 func TestRecoverBatch_SuspectEvidence(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	s := newSuspectScenario(t)
 
@@ -262,6 +262,7 @@ func TestRecoverBatch_SuspectEvidence(t *testing.T) {
 // TestRecoverBatch_UncommittedPathsPrompt spawns a recovery over a real dirty worktree and asserts the prompt groups each uncommitted path by whether some session of the run wrote it.
 // The run-written paths are a file and a file inside a directory git collapses; the foreign path no session wrote.
 func TestRecoverBatch_UncommittedPathsPrompt(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	s := newSuspectScenario(t)
 	fx := s.restart(t)

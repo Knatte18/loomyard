@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamup_test.go covers the Beam-Up and Beam-Down rows and the constructors' refusal of an unset seam.
 
 package pawlengine_test
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // beamUpDeps returns the world's deps with two beam steps that log their calls.
@@ -28,6 +27,7 @@ func beamUpDeps(w *world, stepErr error) pawlengine.Deps {
 
 // TestBeamUp asserts a fresh pair runs every step in order and clears what an earlier run left, and that a failing step halts the row naming its cause and `lym loom resume`.
 func TestBeamUp(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string
@@ -114,6 +114,7 @@ func TestBeamUp(t *testing.T) {
 
 // TestBeamUp_RerunIsIdempotent asserts a second call over the same beam, as a resume makes, runs every step again and is Done.
 func TestBeamUp_RerunIsIdempotent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
 	producer, err := pawlengine.NewBeamUp(pawlengine.NameBeamUp, beamUpDeps(w, nil))
@@ -132,6 +133,7 @@ func TestBeamUp_RerunIsIdempotent(t *testing.T) {
 
 // TestBeamDown asserts a stop is called once and the row is Done, also when the stop fails.
 func TestBeamDown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -164,6 +166,7 @@ func TestBeamDown(t *testing.T) {
 
 // TestNewProducers_RefuseAnUnsetSeam asserts each constructor refuses a Deps with a nil seam it uses, naming the field.
 func TestNewProducers_RefuseAnUnsetSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	build := map[string]func(pawlengine.Deps) error{
 		"BeamUp":    func(d pawlengine.Deps) error { _, err := pawlengine.NewBeamUp("Beam-Up", d); return err },

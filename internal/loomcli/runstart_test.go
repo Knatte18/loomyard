@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runstart_test.go covers seedRunStart's three outcomes over a hand-built location: a parsed stamp, a zero time after a warning, and a read failure.
 // It also covers findRunPullRequest's run-start bound.
 
@@ -18,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-github/v75/github"
 )
 
 // TestSeedRunStart pins the start a seed yields: its parsed stamp, the zero time with one warning when the seed has no usable stamp, and an error naming the seed file when it cannot be decoded.
 // It never runs in parallel: the durable sink override is process-global state.
 func TestSeedRunStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		seed        string
@@ -86,6 +86,7 @@ func TestSeedRunStart(t *testing.T) {
 // TestFindRunPullRequest pins that the approve and reject verbs' lookup honours the run's start: a pull request created before it reads as none, one created after it is returned.
 // It never runs in parallel: it swaps the package-level newGitHubClient.
 func TestFindRunPullRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	since := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
 		name      string

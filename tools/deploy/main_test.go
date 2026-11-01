@@ -1,5 +1,3 @@
-//go:build tier0
-
 // main_test.go covers the production deploy's pieces — the dirty-tree refusal, the marketplace
 // parse, the plugin mirror, the binary install and the stray-binary report — plus -dev's destination and a
 // source-level guard that the -ldflags -X path in run() still names a variable that actually exists
@@ -23,11 +21,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fslink"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/tools/internal/devbin"
 )
 
 // TestResolveDest_DevUsesDerivedDevBinDir verifies -dev resolves to devbin.Dir().
 func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	want, err := devbin.Dir()
 	if err != nil {
 		t.Fatalf("devbin.Dir() error: %v", err)
@@ -45,6 +45,7 @@ func TestResolveDest_DevUsesDerivedDevBinDir(t *testing.T) {
 // TestDirtyError_RefusesAnyChange verifies production refuses a tree git reports any change in,
 // and accepts a clean one.
 func TestDirtyError_RefusesAnyChange(t *testing.T) {
+	tiergate.Require(t, 0)
 	if err := dirtyError(""); err != nil {
 		t.Errorf("dirtyError(\"\") = %v; want nil for a clean tree", err)
 	}
@@ -57,6 +58,7 @@ func TestDirtyError_RefusesAnyChange(t *testing.T) {
 
 // TestParseMarketplace_ReadsPluginEntries verifies the fields the plugin sync depends on.
 func TestParseMarketplace_ReadsPluginEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	m, err := parseMarketplace([]byte(`{"name":"loomyard","plugins":[{"name":"ly","version":"1.0.0","source":"./plugins/ly"}]}`))
 	if err != nil {
 		t.Fatalf("parseMarketplace error: %v", err)
@@ -73,6 +75,7 @@ func TestParseMarketplace_ReadsPluginEntries(t *testing.T) {
 // files with their mode, drops files outside the plugin, and removes whatever the cache held
 // before (a stale built binary included).
 func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	write := func(rel string, mode os.FileMode) {
 		p := filepath.Join(root, filepath.FromSlash(rel))
@@ -121,6 +124,7 @@ func TestMirrorFiles_ReplacesTargetWithExactlyTheListedFiles(t *testing.T) {
 // TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce verifies a second lym on PATH is reported whether it sits before or after the production dir, while the production binary, a foreign program of the same name and a second PATH entry reaching an already seen file through a directory link never are.
 // The test binary stands in for lym, recognised by its own main package path.
 func TestOtherLymBinaries_ReportsEachLymCopyOutsideTheDestDirOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	self, err := os.Executable()
 	if err != nil {
@@ -194,6 +198,7 @@ func repoRoot(t *testing.T) string {
 // error, no test failure, and no visible symptom until someone notices stencils refreshing when
 // they should not.
 func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := repoRoot(t)
 
 	wantLdflags := []string{
@@ -234,6 +239,7 @@ func TestLdflagsPath_MatchesBuildinfoChannel(t *testing.T) {
 // TestLymMainPackage_MatchesModulePath guards lymMainPackage against drift from go.mod's module path:
 // a stale constant matches no installed lym, so the foreign-lym warning would never fire with every other test green.
 func TestLymMainPackage_MatchesModulePath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	goMod, err := os.ReadFile(filepath.Join(repoRoot(t), "go.mod"))
 	if err != nil {
@@ -278,6 +284,7 @@ func declaresExportedVar(file *ast.File, name string) bool {
 
 // TestInstallBinary_RenameFailureRemovesTheBuild verifies a rename that fails leaves the target as it was and no temporary file behind.
 func TestInstallBinary_RenameFailureRemovesTheBuild(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	// A non-empty directory at the target makes the rename of the built file over it fail.
@@ -308,6 +315,7 @@ func TestInstallBinary_RenameFailureRemovesTheBuild(t *testing.T) {
 // TestInstallBinary_RenamesTheBuildOverTheTarget verifies a deploy never rewrites the installed binary in place:
 // a reader holding the old file keeps its content, and the install directory ends with the target alone.
 func TestInstallBinary_RenamesTheBuildOverTheTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	buildErr := errors.New("go build: exit status 1")
 	tests := []struct {

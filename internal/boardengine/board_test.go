@@ -1,5 +1,3 @@
-//go:build tier0
-
 // board_test.go — unit tests for the Board facade (board.go).
 //
 // Upsert / remove / rerender against a temp board with git skipped.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testTypes and testLabels are the vocabulary every facade test's Config carries; bugLabels is a valid label set for an entry.
@@ -31,6 +30,7 @@ var (
 // Drop: store-layer assertion "update preserves fields" (owned by
 // store_test.go:TestUpsertTaskPreservesFields).
 func TestUpsertTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
 	w := boardengine.New(cfg)
@@ -65,6 +65,7 @@ func TestUpsertTask(t *testing.T) {
 // TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting locks in boardCriticalSection's fail-fast guard:
 // a Board built without output filenames (the --board-path shape) must reject a write before touching disk, never save board.json and then fail the render on an empty filename.
 func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
+	tiergate.Require(t, 0)
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, SkipGit: true}
 	w := boardengine.New(cfg)
@@ -84,6 +85,7 @@ func TestUpsertTaskUnconfiguredOutputsFailsBeforeWriting(t *testing.T) {
 // TestPrimeOwnerReadAndRendered pins Board.PrimeOwner for an absent board directory and a recorded owner,
 // and that the README a write renders states the recorded prime owner.
 func TestPrimeOwnerReadAndRendered(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "absent")
 	absent := boardengine.New(boardengine.Config{Path: missing, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
@@ -117,6 +119,7 @@ func TestPrimeOwnerReadAndRendered(t *testing.T) {
 }
 
 func TestRerender(t *testing.T) {
+	tiergate.Require(t, 0)
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
 	w := boardengine.New(cfg)
@@ -137,6 +140,7 @@ func TestRerender(t *testing.T) {
 
 // TestHealthCheck asserts HealthCheck passes while a store file is readable, whatever its content, and fails for an absent board dir or no store file.
 func TestHealthCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -231,6 +235,7 @@ func assertSameFiles(t *testing.T, before, after map[string]string) {
 }
 
 func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": legacyNotesJSON})
 	before := dataFiles(t, boardPath)
 
@@ -276,6 +281,7 @@ func TestLegacyBoardReadsMigratedWithoutWriting(t *testing.T) {
 
 // TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone asserts a first write creates board.json, keeps the legacy files byte-identical, and creates none on a board that had none.
 func TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string
@@ -314,6 +320,7 @@ func TestFirstWriteCreatesBoardJSONAndLeavesLegacyFilesAlone(t *testing.T) {
 }
 
 func TestDuplicateLegacySlugRefusesReadsAndWrites(t *testing.T) {
+	tiergate.Require(t, 0)
 	dupNotes := `[{"id":5,"slug":"alpha","title":"Dup","depends_on":[]}]`
 	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON, "notes.json": dupNotes})
 	before := dataFiles(t, boardPath)
@@ -332,6 +339,7 @@ func TestDuplicateLegacySlugRefusesReadsAndWrites(t *testing.T) {
 }
 
 func TestReadFoldsLegacyDoneWithoutWriting(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, nil)
 	if _, err := w.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask: %v", err)
@@ -356,6 +364,7 @@ func TestReadFoldsLegacyDoneWithoutWriting(t *testing.T) {
 // TestPreUpgradeDoneMarkSurvivesNewWrite plays a pre-upgrade binary's SetStatus (rewrite tasks.json under board.lock)
 // and checks the next new-binary write keeps the entry done in board.json.
 func TestPreUpgradeDoneMarkSurvivesNewWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": legacyTasksJSON})
 	if _, err := w.UpsertTask(map[string]any{"slug": "beta", "title": "Beta", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask beta: %v", err)
@@ -408,6 +417,7 @@ func TestPreUpgradeDoneMarkSurvivesNewWrite(t *testing.T) {
 }
 
 func TestPromoteMakesNoteATaskAndIsIdempotent(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, nil)
 	if _, err := w.UpsertTask(map[string]any{"slug": "idea", "title": "Idea", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask: %v", err)
@@ -451,6 +461,7 @@ func TestPromoteMakesNoteATaskAndIsIdempotent(t *testing.T) {
 
 // TestPromotePreservesRecipeAndLabels checks that making an entry a task leaves its recipe and labels alone, and that an id selects it as a slug does.
 func TestPromotePreservesRecipeAndLabels(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, _ := newLegacyBoard(t, nil)
 	created, err := w.UpsertTask(map[string]any{"slug": "typed", "title": "Typed", "recipe": "batten", "labels": []string{"bug", "undecided"}})
 	if err != nil {
@@ -468,6 +479,7 @@ func TestPromotePreservesRecipeAndLabels(t *testing.T) {
 
 // TestBoardRefusesUnconfiguredLabel checks a write through a config-built Board validates labels, including a status write.
 func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, nil)
 	_, err := w.UpsertTask(map[string]any{"slug": "x", "title": "X", "labels": []string{"bug", "mystery"}})
 	if err == nil || !strings.Contains(err.Error(), "mystery") || !strings.Contains(err.Error(), "board.yaml") {
@@ -490,6 +502,7 @@ func TestBoardRefusesUnconfiguredLabel(t *testing.T) {
 }
 
 func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, nil)
 	for _, slug := range []string{"finished", "dropped"} {
 		if _, err := w.UpsertTask(map[string]any{"slug": slug, "title": slug, "labels": bugLabels, "body": "design of " + slug}); err != nil {
@@ -547,6 +560,7 @@ func TestPruneRemovesDoneEntryAndDesignDocKeepsAbandoned(t *testing.T) {
 }
 
 func TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	doneTasks := `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[],"status":"done"}]`
 	w, boardPath := newLegacyBoard(t, map[string]string{"tasks.json": doneTasks, "notes.json": legacyNotesJSON})
 	// A locked read or write leaves swap locks beside the legacy files.
@@ -597,6 +611,7 @@ func TestRetireLegacyFoldsDoneMarkAndRemovesLegacyFiles(t *testing.T) {
 }
 
 func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	w, boardPath := newLegacyBoard(t, nil)
 	if _, err := w.UpsertTask(map[string]any{"slug": "alpha", "title": "Alpha", "labels": bugLabels}); err != nil {
 		t.Fatalf("UpsertTask: %v", err)
@@ -615,6 +630,7 @@ func TestRetireLegacyWithoutLegacyFilesRefusesAndWritesNothing(t *testing.T) {
 // TestRetireLegacyFailedDeletionKeepsLegacyDone forces the deletion to fail after board.json is saved and checks that the surviving legacy file folds nothing twice:
 // an entry done at migration and reopened since must stay reopened.
 func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	doneNotes := `[{"id":0,"slug":"beta","title":"Beta","depends_on":[],"status":"done"}]`
 	w, boardPath := newLegacyBoard(t, map[string]string{"notes.json": doneNotes})
 	active := "active"
@@ -643,6 +659,7 @@ func TestRetireLegacyFailedDeletionKeepsLegacyDone(t *testing.T) {
 // TestFilterLabelValidation covers D6: a config-built Board refuses a filter label that is unconfigured and carried by no entry,
 // accepts one removed from config that an entry still carries, and a path-only Board filters without validating.
 func TestFilterLabelValidation(t *testing.T) {
+	tiergate.Require(t, 0)
 	boardPath := t.TempDir()
 	cfg := boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true}
 	cfg.Labels = []boardengine.Label{{Name: "undecided"}, {Name: "retired"}}
@@ -697,6 +714,7 @@ func TestFilterLabelValidation(t *testing.T) {
 
 // TestSetRunStatus pins SetRunStatus's skip: an entry with no status is set, a done entry and an absent slug are left alone.
 func TestSetRunStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	rows := []struct {
@@ -742,6 +760,7 @@ func TestSetRunStatus(t *testing.T) {
 // TestNotifyOnLand pins the notify_on_land field: an upsert stores it only when true, and a note carrying it is refused.
 // ClearNotifyOnLand clears it, and leaves board.json byte-identical when the entry is absent or does not carry it.
 func TestNotifyOnLand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	rows := []struct {
 		name string
@@ -823,6 +842,7 @@ func TestNotifyOnLand(t *testing.T) {
 //
 //testtiming:keep pins the priority field across every facade write path and its omitempty storage on disk, which no other test asserts
 func TestPriorityRoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boardPath := t.TempDir()
 	b := boardengine.New(boardengine.Config{Path: boardPath, Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
@@ -906,6 +926,7 @@ func TestPriorityRoundTrip(t *testing.T) {
 // TestEntryDates pins how every write stamps an entry's dates from the configured clock:
 // a new entry gets both, a status change, a promote or a notify_on_land change revises nothing, a scope change revises (an upsert flipping a note to a task included), an upsert's own dates are kept even on a run-held entry, and a merge keeps the oldest creation date of the entries it joins.
 func TestEntryDates(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	start := time.Date(2026, 10, 12, 9, 30, 0, 0, time.UTC)
 	now := start

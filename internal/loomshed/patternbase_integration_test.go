@@ -1,5 +1,3 @@
-//go:build tier1
-
 // patternbase_integration_test.go covers PatternBaseReader against a real git repository, so it carries the integration tag.
 
 package loomshed
@@ -10,9 +8,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPatternBaseReader(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	worktree := t.TempDir()
 	gitkit.Git(t, worktree, "init", "-b", "main")

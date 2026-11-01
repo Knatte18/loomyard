@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // run_tied_integration_test.go holds the tests of RunTied: the process-group record it reports and the parent-death tie of its shell.
 
@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitForPidFile polls for a pid file a process writes and returns the pid it holds.
@@ -49,6 +50,7 @@ func waitForGone(t *testing.T, pid int) {
 }
 
 func TestRunTied(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("StartedReceivesTheShellGroupAndTheExitCodeIsTheCommands", func(t *testing.T) {

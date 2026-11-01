@@ -1,5 +1,3 @@
-//go:build tier3
-
 // smoke_test.go walks the live-only webster behaviors the hermetic tests can
 // never exercise, against the REAL substrate (a real logged-in `claude`): the
 // fork-context guard that deterministically closes the fork-loop deadlock
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/llmkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -94,6 +93,7 @@ func runHook(t *testing.T, command, payload string) string {
 }
 
 func TestSmoke_ForkGuardHookDeniesForkPayload(t *testing.T) {
+	tiergate.Require(t, 3)
 	if _, err := exec.LookPath("sh"); err != nil {
 		t.Skip("sh not found on PATH; skipping guard payload-replay")
 	}
@@ -177,6 +177,7 @@ func mintSessionID(t *testing.T) string {
 }
 
 func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
+	tiergate.Require(t, 3)
 	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
@@ -208,6 +209,7 @@ func TestSmoke_ForkContextGuardDeniesLiveFork(t *testing.T) {
 }
 
 func TestSmoke_ForkTranscriptAuditCountsOneNoNestedAgent(t *testing.T) {
+	tiergate.Require(t, 3)
 	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
@@ -273,6 +275,7 @@ func smokeGitRepo(t *testing.T, dir string) string {
 }
 
 func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
+	tiergate.Require(t, 3)
 	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()
@@ -356,6 +359,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 }
 
 func TestSmoke_AwaitBatchSeesForkWrittenReport(t *testing.T) {
+	tiergate.Require(t, 3)
 	bin := llmkit.Claude(t, "")
 	settingsPath := realForkSettingsPath(t)
 	dir := t.TempDir()

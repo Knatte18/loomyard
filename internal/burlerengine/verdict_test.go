@@ -1,5 +1,3 @@
-//go:build tier0
-
 // verdict_test.go table-drives ParseReview over the happy paths and every fail-loud rule documented on it: frontmatter presence/closure, YAML validity, verdict spelling, per-finding key completeness, severity and class vocabularies, duplicate ids, the two verdict/findings consistency rules, and the optional Origin field's pass-through (with and without it present).
 
 package burlerengine
@@ -7,9 +5,12 @@ package burlerengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseReview(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		content      string
@@ -516,6 +517,7 @@ findings:
 }
 
 func TestParseCurrentReview(t *testing.T) {
+	tiergate.Require(t, 0)
 	const finding = "  - id: F1\n    severity: MEDIUM\n    class: scope\n    location: file.go:7\n    summary: unchecked error\n    fix: return the error at file.go:7\n"
 	tests := []struct {
 		name         string

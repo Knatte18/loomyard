@@ -1,5 +1,3 @@
-//go:build tier0
-
 // standalonestate_test.go drives both platform rows of derive through its unexported seam, so runtime.GOOS being a compile-time constant never leaves one row unexercised in CI.
 // A test that changes the working directory with t.Chdir cannot run in parallel; the one such test names that process-global state, and every other test here runs in parallel.
 
@@ -9,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestDerive_StateDir pins which base each platform row of derive joins "lym" and hash8 onto, and which environments it refuses.
@@ -19,6 +19,7 @@ import (
 // The three bases answer a relative value differently because their specifications do: a relative XDG_STATE_HOME is ignored per the XDG Base Directory specification, while a relative LOCALAPPDATA or home has no fallback left and is refused.
 // Every surviving row asserts an ABSOLUTE stateDir, which is the property that actually matters.
 func TestDerive_StateDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -137,6 +138,7 @@ func TestDerive_StateDir(t *testing.T) {
 //
 //testtiming:keep pins hash8's shape, stability, Normalize input and per-platform case folding, which the state-directory table covering its blocks never reads
 func TestDerive_Hash8(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("shape is eight lowercase hex digits", func(t *testing.T) {
@@ -224,6 +226,7 @@ func TestDerive_Hash8(t *testing.T) {
 //
 //testtiming:keep pins that Normalize cleans a target absent from disk instead of failing, which the state-directory table covering its blocks never reads
 func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	absent := filepath.Join(t.TempDir(), "never", "..", "never", "created")
@@ -237,6 +240,7 @@ func TestNormalize_AbsentTargetFallsBackToClean(t *testing.T) {
 // A relative target is rejected under both goos values; a relative environment base is ignored rather than resolved; and Normalize cleans a relative target instead of resolving it, the one branch of Normalize that exists purely to protect the Standalonestate Leaf Invariant (filepath.EvalSymlinks resolves a relative path against the process working directory).
 // It changes the working directory with t.Chdir, which is process-global state, so neither it nor its subtests run in parallel.
 func TestRelativeInputs_NeverConsultTheWorkingDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	const relative = "relative/./target"
 
 	cases := []struct {
@@ -295,6 +299,7 @@ func TestRelativeInputs_NeverConsultTheWorkingDirectory(t *testing.T) {
 
 // TestDerive_SymlinkNormalization pins that derive creates nothing on disk -- no directory, no file -- and that a symlink and its real target produce the same hash8, skipping the symlink half when os.Symlink fails with a permission error so a Windows host without Developer Mode does not fail the suite.
 func TestDerive_SymlinkNormalization(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	base := t.TempDir()

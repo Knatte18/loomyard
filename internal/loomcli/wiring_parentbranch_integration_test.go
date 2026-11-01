@@ -1,5 +1,3 @@
-//go:build tier1
-
 // wiring_parentbranch_integration_test.go covers the webster RunDeps.ParentBranch seam wire() fills: it reads the parent branch from the pair's origin record, which needs a git repository for the records side's lock directory.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary, so this file adds no TestMain.
 
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWire_WebsterParentBranchReadsPairOrigin asserts the wired RunDeps.ParentBranch refuses while the pair has no origin record and then returns the parent branch the record names.
 func TestWire_WebsterParentBranchReadsPairOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	loc := hubLocation(t, "pair", ".")
 
 	c := &loomCLI{runID: shedrun.SelfRunID}

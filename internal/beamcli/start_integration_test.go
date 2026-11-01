@@ -1,5 +1,3 @@
-//go:build tier1
-
 // start_integration_test.go runs "lym beam start" through RunCLIIn over a hubforge hub, on every target it refuses before the hub is reconciled or an orch is started.
 
 package beamcli_test
@@ -16,9 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStart_RefusesBeforeTheReconcile(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

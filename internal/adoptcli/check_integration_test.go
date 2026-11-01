@@ -1,5 +1,3 @@
-//go:build tier1
-
 // check_integration_test.go drives the adopt check over a hubforge hub: its reconcile and its gate key.
 
 package adoptcli
@@ -21,9 +19,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHubCheckDeps_StaleStampRunsTheTunedFinalizeTiers(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 

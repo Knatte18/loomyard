@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parentbeam_test.go — the board's half of the parent resolver: ParentBeam over a list of entries, and the parent_beam a Board's list and ParentBeamOf carry.
 
 package boardengine_test
@@ -9,10 +7,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestParentBeam pins the beam an entry resolves to over a plain list, and the parent_beam a Board's list and ParentBeamOf carry from its Config.ParentOf seam.
 func TestParentBeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	done := "done"
 	entry := func(slug, kind, project string, beam bool, status *string) boardengine.Task {

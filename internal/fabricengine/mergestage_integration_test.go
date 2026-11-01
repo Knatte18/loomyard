@@ -1,5 +1,3 @@
-//go:build tier1
-
 // mergestage_integration_test.go covers MergeStageResolved against real conflicted pairs: resolving
 // on disk then staging via the verb (unblocking MergeContinue), a path neither side lists (error, not
 // a silent skip), a delete/modify conflict resolved by deletion (staging succeeds), the empty-paths
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging pins the foreign-state refusal on
@@ -28,6 +27,7 @@ import (
 // ConflictedFiles() lists the conflict, so the partition routed that path straight to `git add -A`
 // and staged into a merge fabric had no record of and no lock over.
 func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -63,6 +63,7 @@ func TestMergeStageResolved_ForeignMergeStateRefusesWithoutStaging(t *testing.T)
 // index — MergeStageResolved with exactly the conflicted paths clears both sides' ConflictedFiles(),
 // and a subsequent MergeContinue then succeeds.
 func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -103,6 +104,7 @@ func TestMergeStageResolved_ResolvedConflictsStageThenContinueSucceeds(t *testin
 // TestMergeStageResolved_PathNotConflictedOnEitherSide covers the caller-bug guard: a path listed by
 // neither side's ConflictedFiles() is an error naming that path, never a silent skip.
 func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -131,6 +133,7 @@ func TestMergeStageResolved_PathNotConflictedOnEitherSide(t *testing.T) {
 // identically here and rewriting `add -A --` to `add --` keeps this test green. The `-A` is a version
 // pin whose correctness no test on a modern git can demonstrate — see StageResolved's own godoc.
 func TestMergeStageResolved_DeleteModifyConflictResolvedByDeletion(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h, f, _, _, _, _ := newMergePairFixture(t, ".")
@@ -194,6 +197,7 @@ func commitOnBranchDeleting(t *testing.T, dir, branch, filename string) {
 // TestMergeStageResolved_EmptyPathsIsNoOp covers the empty-slice call: a nil error and an empty
 // mutation record, with nothing staged.
 func TestMergeStageResolved_EmptyPathsIsNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	_, f, _, _, _, _ := newMergePairFixture(t, ".")

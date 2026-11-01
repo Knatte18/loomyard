@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -33,6 +32,7 @@ var bouncerFileParsers = map[string]func(content []byte) (summary, prose string,
 // driven through each of the three top-level parsers so a regression in the shared
 // splitFrontmatter/frontmatterProse helpers is caught no matter which parser exposed it.
 func TestParseCommonRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -84,6 +84,7 @@ func TestParseCommonRules(t *testing.T) {
 //
 //testtiming:keep pins that each file contract tolerates an unknown frontmatter key and normalises CRLF prose to LF
 func TestParseProseAndUnknownKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		kind        string
@@ -128,6 +129,7 @@ func TestParseProseAndUnknownKey(t *testing.T) {
 }
 
 func TestParseVerdictSpecific(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -202,6 +204,7 @@ func TestParseVerdictSpecific(t *testing.T) {
 }
 
 func TestParseLedgerSpecific(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -277,6 +280,7 @@ func TestParseLedgerSpecific(t *testing.T) {
 }
 
 func TestParseLedger_ClassAndSeverity(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		entry        string
@@ -342,6 +346,7 @@ func TestParseLedger_ClassAndSeverity(t *testing.T) {
 
 //testtiming:keep pins the focus frontmatter's accept and reject rows (round bounds, scalar focus, absent exclude_lenses), which the bouncer tests reach only through well-formed files
 func TestParseFocusSpecific(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		content string
@@ -406,6 +411,7 @@ func TestParseFocusSpecific(t *testing.T) {
 //
 //testtiming:keep pins the render and parse round trip for shapes the bouncer tests never write: nil lists, YAML metacharacters in a lens name, and prose
 func TestRenderFocus_RoundTripsThroughParseFocus(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		f    focusFile
@@ -488,6 +494,7 @@ func writeVerdictAndLedger(t *testing.T, runDir string, round, ledgerRound int) 
 // number its own filename already encodes must not be trusted as "this round has been judged" --
 // recordedVerdict's whole job, per its own doc comment.
 func TestRecordedVerdict_LedgerRoundMustMatchItsOwnFilename(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("MatchingRoundIsTrusted", func(t *testing.T) {
 		dir := t.TempDir()
 		writeVerdictAndLedger(t, dir, 3, 3)

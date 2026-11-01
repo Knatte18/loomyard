@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // forkaudit_integration_test.go runs forkaudit.sh against temporary directories and checks its exit codes, refusals and report.
 
@@ -23,6 +23,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // workMarker is the file that marks a directory as a forkaudit work directory.
@@ -364,6 +365,7 @@ type refusalRow struct {
 }
 
 func TestForkauditRefusals(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	since := []string{"--since", "2026-10-14"}
 	rows := []refusalRow{
@@ -545,6 +547,7 @@ type reportRow struct {
 }
 
 func TestForkauditReport(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	rows := []reportRow{
 		{name: "runs name matching no project directory",
@@ -932,6 +935,7 @@ type traceRow struct {
 }
 
 func TestForkauditTraceCrossCheck(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	const sha = "0123456789abcdef0123456789abcdef01234567"
 	oneLine := func(layout string) []traceSpec {
@@ -1110,6 +1114,7 @@ func TestForkauditTraceCrossCheck(t *testing.T) {
 }
 
 func TestForkauditPlanSection(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	d := newAuditDirs(t)
 	records := recordsRepo(t, []recordsRun{

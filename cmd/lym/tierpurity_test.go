@@ -1,27 +1,31 @@
-//go:build tier0
-
-// tierpurity_test.go enforces the Test Tier Purity Invariant: untagged *_test.go files (the ones that run in `tier0`, without `-tags tier1`, `tier2` or `tier3`) perform no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
-// This is the repo-wide grep-guard that keeps the offline Tier 1 loop's premise from rotting silently again, machine-enforcing what was previously review discipline only.
+// tierpurity_test.go enforces the Test Tier Purity Invariant: a *_test.go file whose tests are `tier0` (their opening tiergate.Require names tier 0) performs no expensive spawns — no gitexec.Run, no exec.Command/CommandContext, no gitkit spawn (every gitkit export but the hermetic-environment helper), and no hubforge.NewHub real-hub fixture build.
+// This is the repo-wide grep-guard that keeps the offline tier0 loop's premise from rotting silently again, machine-enforcing what was previously review discipline only.
+// A support file, one holding no test function, is not scanned: one test binary holds every tier, so its helpers may serve any tier's tests.
 // See `PATTERN-test-speed`.
-// It also flags an untagged file containing a long literal time.Sleep(...)
+// It also flags a tier0 file containing a long literal time.Sleep(...)
 // (see cmd/lym/tiersleep_test.go).
 
 package main
 
 import (
 	"fmt"
-	"go/build/constraint"
+	"go/ast"
+	"go/parser"
 	"go/token"
-	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/impactset"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// tmuxTier is the lowest tier whose tests may start a tmux server.
+const tmuxTier = 2
 
 // allowedSpawners is the Test Tier Purity Invariant allowlist: module-relative,
 // slash-separated file paths, or directory paths ending in "/", that are permitted to contain
-// a banned spawn token in an untagged test file, each with a one-line reason —
+// a banned spawn token in a tier0 test file, each with a one-line reason —
 // mirroring sandbox_coverage_test.go's excludedModules style.
 var allowedSpawners = []scankit.Entry{
 	{Key: "internal/proc/", Why: "process control is the package's subject — its tests must spawn"},
@@ -41,36 +45,27 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "cmd/lym/interactivespawn_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as fixture source for the headless-spawn scan, which only parses it (`PATTERN-interactive-spawn` guard)"},
 }
 
-// allowedTmuxkitOutsideTmuxTier lists tagged files that compile in tier 2 and reference a tmuxkit export, each with a reason it starts no server there.
+// allowedTmuxkitOutsideTmuxTier lists tier1 test files that reference a tmuxkit export, each with a reason they start no server.
 var allowedTmuxkitOutsideTmuxTier = []scankit.Entry{
-	{Key: "internal/loomcli/smoke_helpers_test.go", Why: "reads /proc through the kit's spawn-free Pids, ProcArgv, ProcCwd, ProcPPID and IsWatchdog probes to find a fixture's driver and watchdog processes; starts no server"},
-	{Key: "internal/shedverbs/loop_integration_test.go", Why: "reads a process's state through the kit's spawn-free ProcState probe; starts no server"},
 	{Key: "internal/gatecli/test_integration_test.go", Why: "reads a process's state through the kit's spawn-free ProcState probe; starts no server"},
 }
 
-// knownTierTags are the build tags that mark a *_test.go file as tagged (i.e. not run in `tier0`) for Test Tier Purity purposes:
-// the tier tags `tier1`, `tier2` and `tier3`.
-// A `tier0` tag is no entry: a file tagged `tier0` runs in `tier0` and is held to the untagged rules.
-// isTierTagged reads a file as tagged when its constraint can hold only with one of these tags, so adding a new tier tag here is the single place
-// that both the purity guard and its doc comments need to stay in sync with.
-var knownTierTags = []string{"tier1", "tier2", "tier3"}
-
-// bannedTokens are the raw substrings an untagged *_test.go file may not contain.
+// bannedTokens are the raw substrings a tier0 *_test.go file may not contain.
 // Matching is deliberately raw-substring, not whole-token or AST: exec.Command also matches exec.CommandContext.
 // A gitkit spawn is not a token here: gitkitSpawnReference (cmd/lym/gitkitspawn_test.go) defines it once, for this scan and the Hermetic Env scan alike.
 // A tmuxkit spawn is not a token here either: tmuxkitSpawnReference (cmd/lym/tmuxkitspawn_test.go) defines it once, as every tmuxkit export but Main.
 // Comment or string-literal mentions trip the guard too — that is
-// accepted (rename the mention or tag the file).
-// hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so an
-// untagged test calling it is exactly the expensive-spawn violation this guard exists to catch.
+// accepted (rename the mention or make the file's tests tier1).
+// hubforge.NewHub is banned by the same rule: it drives a real fabriccli.CloneAndWire clone, so a
+// tier0 test calling it is exactly the expensive-spawn violation this guard exists to catch.
 // hubforge.SeedConfig and hubforge.SeedFabricConfig need no separate entries — both take a *Hub that
 // only NewHub can produce, so this token already covers every package that can reach them.
 // hubforge.CopyHub and hubforge.SharedHub are banned the same way, since each builds a real hub on first use.
 // DeltaGit is deliberately narrow and deliberately NOT quarry.Open: only DeltaGit spawns a
 // process, while Resolve, TOC, Glyphs and Expand read files and Name performs no I/O at all, so
-// banning the constructor would force integration tags onto tests that spawn nothing. Raw-substring
+// banning the constructor would force tier1 onto tests that spawn nothing. Raw-substring
 // is the right shape here, matching this guard's own documented design.
-// bannedTokens scans untagged *_test.go files, so it catches a DIRECT TEXTUAL DeltaGit call site
+// bannedTokens scans tier0 *_test.go files, so it catches a DIRECT TEXTUAL DeltaGit call site
 // only — a test calling a planglyph wrapper that reaches DeltaGit transitively contains no such
 // token and still passes. The existing tokens accept exactly this limit and this one inherits it;
 // the guard narrows the gap, it does not close it, and a later change must not restate this as full
@@ -86,51 +81,21 @@ var bannedTokens = []string{
 }
 
 // TestTierPurity_UntaggedTestsSpawnNothing walks every *_test.go file under the module root.
-// It fails if any untagged file contains a banned spawn token as a raw substring, unless the file (or its containing directory) is on the allowedSpawners allowlist.
-// An untagged file is one whose `//go:build` constraint, if it has one, can hold without any of knownTierTags.
-// Platform-only constraints (e.g. `//go:build windows`) count as untagged: they still run in `tier0` on that platform, and so does `tier0`.
+// It fails if a tier0 file, one whose tests impactset.FileTier reads as tier 0, contains a banned spawn token as a raw substring, unless the file (or its containing directory) is on the allowedSpawners allowlist.
+// It also fails if a tier1 file references a tmuxkit spawn, unless allowedTmuxkitOutsideTmuxTier lists it.
+// A support file holding no test function is skipped.
 //
 //lym:guard
 func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	spawners := scankit.NewAllowlist(allowedSpawners)
 	sleepers := scankit.NewAllowlist(allowedLongSleepers)
 	tmuxless := scankit.NewAllowlist(allowedTmuxkitOutsideTmuxTier)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Filter: scankit.Test}, func(f *scankit.File) {
-		if isTierTagged(f.Data) {
-			if ref, found := tmuxkitSpawnReference(string(f.Data)); found && !isTmuxTier(f.Data) && !tmuxless.Allowed(f.Rel) {
-				failures = append(failures, fmt.Sprintf(
-					"%s: references tmuxkit spawn %q in a file that compiles in the `tier0` or `tier1` build — constrain the file to `tier2` and `tier3` only, or split the reed-starting half into a `tier2` file",
-					f.Rel, ref,
-				))
-			}
-			return
-		}
-
-		bannedTok, bad := firstBannedToken(f.Data)
-		if !bad {
-			bannedTok, bad = gitkitSpawnReference(string(f.Data))
-		}
-		if !bad {
-			bannedTok, bad = tmuxkitSpawnReference(string(f.Data))
-		}
-		if bad && !spawners.Allowed(f.Rel) {
-			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned token %q in an untagged test file — move it behind one of knownTierTags' `//go:build` constraints (tier1, tier2 or tier3), or add an allowedSpawners entry in cmd/lym/tierpurity_test.go with a reason",
-				f.Rel, bannedTok,
-			))
-		}
-
-		// Sleep guard is an independent check and must still run for every untagged file.
-		if !sleepers.Allowed(f.Rel) {
-			if evidence, found := findLongLiteralSleep(token.NewFileSet(), f.Abs, f.Data); found {
-				failures = append(failures, fmt.Sprintf(
-					"%s: contains a literal time.Sleep(...) of >= 1s in an untagged test file (%s) — move it behind a build tag, shrink the duration, or add an allowedLongSleepers entry in cmd/lym/tiersleep_test.go with a reason",
-					f.Rel, evidence,
-				))
-			}
-		}
+		file := f.AST(t, parser.ParseComments|parser.SkipObjectResolution)
+		failures = append(failures, tierPurityFailures(f.Rel, f.Abs, f.Data, file, spawners, sleepers, tmuxless)...)
 	})
 	scankit.RequireFloor(t, scanned, 20, "tier purity guard")
 	spawners.RequireNoStale(t)
@@ -142,124 +107,101 @@ func TestTierPurity_UntaggedTestsSpawnNothing(t *testing.T) {
 	}
 }
 
-// isTierTagged reports whether data's `//go:build` constraint can hold only with one of knownTierTags.
-// A file tagged `tier0` or not at all is untagged here.
-func isTierTagged(data []byte) bool {
-	return holdsOnlyWithOneOf(data, knownTierTags)
-}
-
-// isTmuxTier reports whether data's `//go:build` constraint is false in every build that lacks the `tier2` and `tier3` tags.
-// A file with no constraint line compiles everywhere and is never tmux-tier.
-func isTmuxTier(data []byte) bool {
-	return holdsOnlyWithOneOf(data, []string{"tier2", "tier3"})
-}
-
-// holdsOnlyWithOneOf reports whether data's `//go:build` constraint is false in every build that lacks all of tags.
-// It evaluates the expression under every assignment of its other tags, platform tags included, so the host's GOOS plays no part.
-// A file with no constraint line compiles everywhere and holds with none of them.
-func holdsOnlyWithOneOf(data []byte, tags []string) bool {
-	for _, line := range strings.Split(string(data), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		if !constraint.IsGoBuild(trimmed) {
-			return false
-		}
-		expr, err := constraint.Parse(trimmed)
-		if err != nil {
-			return false
-		}
-		var others []string
-		seen := map[string]bool{}
-		walkTags(expr, func(tag string) {
-			if !slices.Contains(tags, tag) && !seen[tag] {
-				seen[tag] = true
-				others = append(others, tag)
-			}
-		})
-		for assignment := 0; assignment < 1<<len(others); assignment++ {
-			enabled := map[string]bool{}
-			for i, tag := range others {
-				enabled[tag] = assignment&(1<<i) != 0
-			}
-			if expr.Eval(func(tag string) bool { return enabled[tag] }) {
-				return false
-			}
-		}
-		return true
+// tierPurityFailures returns the Test Tier Purity failures of one test file: rel is its module-relative path, abs its absolute path, data its source and file its parse.
+// A support file holding no test function yields none.
+// A tier0 file fails on a banned spawn token or a long literal sleep unless the matching allowlist lists it;
+// a tier1 file fails on a tmuxkit spawn reference unless tmuxless lists it.
+func tierPurityFailures(rel, abs string, data []byte, file *ast.File, spawners, sleepers, tmuxless *scankit.Allowlist) []string {
+	if len(testFunctions(file)) == 0 {
+		return nil
 	}
-	return false
-}
-
-// walkTags calls visit for every tag leaf of expr.
-func walkTags(expr constraint.Expr, visit func(tag string)) {
-	switch e := expr.(type) {
-	case *constraint.TagExpr:
-		visit(e.Tag)
-	case *constraint.NotExpr:
-		walkTags(e.X, visit)
-	case *constraint.AndExpr:
-		walkTags(e.X, visit)
-		walkTags(e.Y, visit)
-	case *constraint.OrExpr:
-		walkTags(e.X, visit)
-		walkTags(e.Y, visit)
-	}
-}
-
-// TestIsTierTagged_RecognizesKnownTagsList verifies isTierTagged recognizes all known tier tags, and isTmuxTier separates the tmux-only constraints from those that compile in tier 2.
-//
-//testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard classifies every known tier tag as tagged
-func TestIsTierTagged_RecognizesKnownTagsList(t *testing.T) {
-	tmuxTier := []struct {
-		line string
-		want bool
-	}{
-		{"//go:build tier1 || tier2", false},
-		{"//go:build tier1 && windows", false},
-		{"//go:build tier0", false},
-		{"//go:build tier1", false},
-		{"//go:build tier2", true},
-		{"//go:build tier3", true},
-		{"//go:build tier2 || tier3", true},
-		{"//go:build tier2 && !windows", true},
-	}
-	for _, tt := range tmuxTier {
-		if got := isTmuxTier([]byte(tt.line)); got != tt.want {
-			t.Errorf("isTmuxTier(%q) = %v; want %v", tt.line, got, tt.want)
+	var failures []string
+	if tier := impactset.FileTier(file); tier > 0 {
+		if ref, found := tmuxkitSpawnReference(string(data)); found && tier < tmuxTier && !tmuxless.Allowed(rel) {
+			failures = append(failures, fmt.Sprintf(
+				"%s: references tmuxkit spawn %q in a tier%d test file — make its tests tier2 with tiergate.Require(t, 2), or split the reed-starting half into a tier2 file",
+				rel, ref, tier,
+			))
 		}
+		return failures
 	}
 
+	bannedTok, bad := firstBannedToken(data)
+	if !bad {
+		bannedTok, bad = gitkitSpawnReference(string(data))
+	}
+	if !bad {
+		bannedTok, bad = tmuxkitSpawnReference(string(data))
+	}
+	if bad && !spawners.Allowed(rel) {
+		failures = append(failures, fmt.Sprintf(
+			"%s: contains banned token %q in a tier0 test file — make the spawning tests tier1 or higher with tiergate.Require in a file of their own, or add an allowedSpawners entry in cmd/lym/tierpurity_test.go with a reason",
+			rel, bannedTok,
+		))
+	}
+
+	// Sleep guard is an independent check and must still run for every tier0 file.
+	if !sleepers.Allowed(rel) {
+		if evidence, found := findLongLiteralSleep(token.NewFileSet(), abs, data); found {
+			failures = append(failures, fmt.Sprintf(
+				"%s: contains a literal time.Sleep(...) of >= 1s in a tier0 test file (%s) — move it to a tier1 test, shrink the duration, or add an allowedLongSleepers entry in cmd/lym/tiersleep_test.go with a reason",
+				rel, evidence,
+			))
+		}
+	}
+	return failures
+}
+
+// TestTierPurityFailures proves the scan body of the purity guard on source text: which files it skips, flags and lets through.
+func TestTierPurityFailures(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const rel = "p/a_test.go"
+	const requireImport = "package p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n"
 	tests := []struct {
-		name string
-		line string
-		want bool
+		name         string
+		src          string
+		allowTmuxkit bool
+		want         string
 	}{
-		{"shared_helper_disjunction", "//go:build tier2 || tier3", true},
-		{"tier0_untagged", "//go:build tier0", false},
-		{"tier0_or_tier1_untagged", "//go:build tier0 || tier1", false},
-		{"tier1", "//go:build tier1", true},
-		{"tier2", "//go:build tier2", true},
-		{"tier3", "//go:build tier3", true},
-		{"tier2_not_windows", "//go:build tier2 && !windows", true},
-		{"platform_only_untagged", "//go:build windows", false},
-		{"empty", "", false},
+		{"SupportFileIsSkipped", "package p\n\nfunc helper() { exec.Command(\"git\") }\n", false, ""},
+		{"Tier0FileWithoutSpawn", "package p\n\nfunc TestA(t *testing.T) {}\n", false, ""},
+		{"Tier0FileWithBannedToken", "package p\n\nfunc TestA(t *testing.T) { exec.Command(\"git\") }\n", false, "banned token \"exec.Command\""},
+		{"Tier1FileReferencingTmuxkitSpawn", requireImport + "func TestA(t *testing.T) {\n\ttiergate.Require(t, 1)\n\ttmuxkit.Socket(t)\n}\n", false, "tmuxkit spawn \"tmuxkit.Socket\""},
+		{"Tier1FileOnTheTmuxkitAllowlist", requireImport + "func TestA(t *testing.T) {\n\ttiergate.Require(t, 1)\n\ttmuxkit.Socket(t)\n}\n", true, ""},
+		{"Tier2FileReferencingTmuxkitSpawn", requireImport + "func TestA(t *testing.T) {\n\ttiergate.Require(t, 2)\n\ttmuxkit.Socket(t)\n}\n", false, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := isTierTagged([]byte(tt.line))
-			if got != tt.want {
-				t.Errorf("isTierTagged(%q) = %v; want %v", tt.line, got, tt.want)
+			t.Parallel()
+			file, err := parser.ParseFile(token.NewFileSet(), rel, tt.src, parser.ParseComments|parser.SkipObjectResolution)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var tmuxEntries []scankit.Entry
+			if tt.allowTmuxkit {
+				tmuxEntries = append(tmuxEntries, scankit.Entry{Key: rel, Why: "fixture"})
+			}
+			got := tierPurityFailures(rel, rel, []byte(tt.src), file, scankit.NewAllowlist(nil), scankit.NewAllowlist(nil), scankit.NewAllowlist(tmuxEntries))
+			if tt.want == "" {
+				if len(got) != 0 {
+					t.Errorf("tierPurityFailures() = %q; want none", got)
+				}
+				return
+			}
+			if len(got) != 1 || !strings.Contains(got[0], tt.want) {
+				t.Errorf("tierPurityFailures() = %q; want one failure containing %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: an untagged test file's raw source containing the literal DeltaGit token trips the guard exactly like every other bannedTokens entry.
+// TestFirstBannedToken_RecognizesDeltaGit proves the new token detection fires: a tier0 test file's raw source containing the literal DeltaGit token trips the guard exactly like every other bannedTokens entry.
 //
-//testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard fires on an untagged file carrying the DeltaGit token
+//testtiming:keep proves the TestTierPurity_UntaggedTestsSpawnNothing guard fires on a tier0 file carrying the DeltaGit token
 func TestFirstBannedToken_RecognizesDeltaGit(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		src  string

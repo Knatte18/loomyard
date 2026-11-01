@@ -1,5 +1,3 @@
-//go:build tier0
-
 // buttons_test.go pins the decoding and validation of button entries and the placeholder filling of their run and confirm text.
 
 package reedengine
@@ -12,6 +10,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -30,6 +29,7 @@ func buttonsNode(t *testing.T, doc string) yaml.Node {
 // TestPlaceButtons pins which entries each place takes from a buttons node and which invalid shapes are skipped with a Warn.
 // It captures the process-global logger output, so it does not run in parallel.
 func TestPlaceButtons(t *testing.T) {
+	tiergate.Require(t, 0)
 	const source = "reed.yaml (test)"
 	templateButtons := buttonsNode(t, ConfigTemplate())
 
@@ -105,6 +105,7 @@ func TestPlaceButtons(t *testing.T) {
 
 // TestFillButtonPlaceholders pins the quoting of run values, the literal brace text, and the doubling of confirm values, in both dialects.
 func TestFillButtonPlaceholders(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for name, sh := range map[string]shell.Shell{"posix": shell.Posix(), "pwsh": shell.Pwsh()} {
 		t.Run(name, func(t *testing.T) {

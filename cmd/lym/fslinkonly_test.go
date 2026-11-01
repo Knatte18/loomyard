@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fslinkonly_test.go enforces `PATTERN-fs-links`: no production Go file outside internal/fslink calls `os.Symlink` or `os.Link`.
 // A link is created through fslink.CreateDirLink.
 
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // allowedLinkCalls is the `PATTERN-fs-links` allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.Symlink`.
@@ -73,6 +72,7 @@ func linkCallFailures(t *testing.T, opts scankit.Options, allow *scankit.Allowli
 //
 //lym:guard
 func TestFslinkOnly_NoRawLinkCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	allow := scankit.NewAllowlist(allowedLinkCalls)
 	failures, scanned := linkCallFailures(t, scankit.Options{}, allow)
@@ -84,6 +84,7 @@ func TestFslinkOnly_NoRawLinkCalls(t *testing.T) {
 }
 
 func TestFslinkOnly_FixtureTrees(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const header = "package p\n\nimport \"os\"\n\n"
 	tests := []struct {

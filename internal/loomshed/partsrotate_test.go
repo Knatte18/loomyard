@@ -1,5 +1,3 @@
-//go:build tier0
-
 // partsrotate_test.go exercises the Parts-Write and Parts-Plan-Write fresh-spawn rotations over a temp anchor with a fixed clock.
 
 package loomshed
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/partsparser"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // setupPartsDir writes an earlier attempt's parts directory under a new anchor: the parts file, two part directories each holding an overview, the join record and an earlier archive.
@@ -59,6 +58,7 @@ func requireFiles(t *testing.T, dir string, rels ...string) {
 
 // TestPartsRotators verifies Parts-Write's rotation archives the whole parts directory, Parts-Plan-Write's keeps the parts file and rotates the plan, and a retry after a failed plan rotation still announces the prior plan.
 func TestPartsRotators(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stamp := fixedPlanClock().UTC().Format(archiveTimestampFormat)
 	archiveName := partsparser.ArchivePrefix + stamp

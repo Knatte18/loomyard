@@ -1,5 +1,3 @@
-//go:build tier1
-
 // checkout_anchor_integration_test.go proves Checkout refuses, before it switches anything, a target weft branch anchored elsewhere than the worktree.
 // It refuses a worktree whose own anchor marker is empty too, and forks a target with no weft branch yet instead of refusing it.
 // The target is made by re-anchoring a second pair with hubforge.ReanchorPair and then parking that pair, so its branches are free to check out.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newCheckoutHub builds a "." hub whose prime warp tracks sub/ before any pair is added, so sub is a tracked directory in every pair's warp.
@@ -61,6 +60,7 @@ func requireCheckoutLeftAlone(t *testing.T, h *hubforge.Hub, res fabricengine.Ch
 
 // TestCheckout_RefusesAnotherAnchor covers each way a checkout is refused for an anchor, and the fork that is not.
 func TestCheckout_RefusesAnotherAnchor(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("A target re-anchored at a directory the warp tracks names the anchor change and its cost", func(t *testing.T) {

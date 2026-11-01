@@ -1,5 +1,3 @@
-//go:build tier1
-
 // render_integration_test.go proves a render leaves a hub's prime free of untracked files.
 
 package heddleengine_test
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRender_LeavesNoUntrackedFile renders both file targets into a hub's prime from the event fabric builds, and expects git to see nothing untracked.
 func TestRender_LeavesNoUntrackedFile(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	store := heddleengine.Store{Entries: []heddleengine.Entry{

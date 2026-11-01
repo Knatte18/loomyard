@@ -1,5 +1,3 @@
-//go:build tier0
-
 // resolve_test.go covers statusFindings, table-driven against a small fixture repository built
 // under t.TempDir().
 
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -18,6 +17,7 @@ import (
 const resolveFixture = "package sub\n\nfunc Foo() {}\n\ntype Thing struct{}\n\nfunc (t Thing) Method() {}\n"
 
 func TestStatusFindings(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
 	repo, err := openRepo(root)
 	if err != nil {
@@ -216,6 +216,7 @@ func TestStatusFindings(t *testing.T) {
 // own endpoints twice — and targetCards must still attribute one finding per card, not one per
 // occurrence.
 func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	card := planparser.Card{
 		Number:  1,
 		Slug:    "one",
@@ -237,6 +238,7 @@ func TestTargetCards_IndexesACardOncePerTarget(t *testing.T) {
 // closed rather than fall out of the switch with no finding, so widening that vocabulary can only
 // ever be a deliberate change here.
 func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
+	tiergate.Require(t, 0)
 	plan := &planparser.Plan{Cards: []planparser.Card{{
 		Number: 1, Slug: "one",
 		Targets: []string{"sub#Bar"},
@@ -257,6 +259,7 @@ func TestStatusFindings_UnrecognizedStatusFailsClosed(t *testing.T) {
 // — which share one glyph ID — stay tellable apart by their files (crucible round fable5-high-r2,
 // F-R2-2).
 func TestCandidateList(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		candidates []constrainedCandidate

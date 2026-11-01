@@ -1,5 +1,3 @@
-//go:build tier0
-
 // prober_test.go covers Claude's SessionProber: process liveness over a temp session registry with injected liveness and start-time probes, and the interrupt marker over temp transcripts named by a turn start's payload.
 // It also covers the turn progress reader over the testdata/turnprogress fixtures.
 
@@ -15,9 +13,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestProcessLiveness(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	entry := func(pid int, sessionID, procStart string) string {
@@ -115,6 +115,7 @@ func TestProcessLiveness(t *testing.T) {
 }
 
 func TestTurnStartInterrupt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const (
@@ -175,6 +176,7 @@ func TestTurnStartInterrupt(t *testing.T) {
 }
 
 func TestTurnStartProgress(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

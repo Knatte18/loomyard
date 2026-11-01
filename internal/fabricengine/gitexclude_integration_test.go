@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gitexclude_integration_test.go pins the serialisation and atomicity of `.git/info/exclude` mutation.
 // The file lives in the repo's COMMON gitdir, so every worktree of a hub shares it and two `lym fabric` verbs running side by side mutate the same bytes.
 // Before mutateGitExclude existed, each caller did its own read-modify-write with os.WriteFile, whose truncate-then-write let a concurrent reader observe an EMPTY file and write that emptiness back — destroying the operator's own exclude patterns as well as fabric's junction exclusions.
@@ -18,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // operatorExcludePattern stands in for the exclude entries a repository already carries before
@@ -28,6 +27,7 @@ const operatorExcludePattern = "/operator-build-output"
 // TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent runs many simultaneous mutations
 // against one repository's exclude file and asserts that pre-existing content survives all of them.
 func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)
@@ -87,6 +87,7 @@ func TestMutateGitExclude_ConcurrentMutationsPreserveExistingContent(t *testing.
 // TestMutateGitExclude_ReportsWhetherContentChanged pins the no-op contract a caller relies on to
 // decide whether it actually unwired anything.
 func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)
@@ -110,6 +111,7 @@ func TestMutateGitExclude_ReportsWhetherContentChanged(t *testing.T) {
 
 // TestExcludeAnchoredDir_AppendsAnchoredLineOnce pins the exact bytes written and the idempotent second call.
 func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)
@@ -144,6 +146,7 @@ func TestExcludeAnchoredDir_AppendsAnchoredLineOnce(t *testing.T) {
 
 // TestExcludeAnchoredDir_AnchorsToSubpath pins that the entry covers only the anchor's own directory.
 func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)
@@ -167,6 +170,7 @@ func TestExcludeAnchoredDir_AnchorsToSubpath(t *testing.T) {
 
 // TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing pins the check-ignore short-circuit.
 func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)
@@ -202,6 +206,7 @@ func TestExcludeAnchoredDir_AlreadyIgnoredWritesNothing(t *testing.T) {
 
 // TestExcludeAnchoredDir_HoldsExcludeLock pins that the write waits on the shared exclude lock.
 func TestExcludeAnchoredDir_HoldsExcludeLock(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repoDir := newGitRepoForExcludeTest(t)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rawgitmutation_test.go closes the Fabric Git Invariant's tracked gap by machine-checking that
 // internal/websterengine's production source never constructs a raw
 // gitrepo handle or calls gitexec.Run directly, beyond the one grandfathered read-only exemption
@@ -20,6 +18,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rawGitMutationScanPackages are the module-relative package subtrees this
@@ -59,6 +58,7 @@ const rawGitMutationMinScannedFiles = 4
 //
 //lym:guard
 func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(rawGitMutationAllowlist)
 
 	var scanned int

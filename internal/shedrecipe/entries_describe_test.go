@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_describe_test.go covers describeEntry: its construction-time validation over Config, the
 // three injected Env seams and the told DescriptionPath, plus the happy path that runs one table through the seat runner.
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newDescribeTestEnv returns newTestEnv's Env with the Describe fields filled.
@@ -34,6 +33,7 @@ func newDescribeTestEnv(t *testing.T) Env {
 }
 
 func TestDescribeEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	gated := gatesCfg("description", 3)
 	cases := []struct {
 		name   string
@@ -63,6 +63,7 @@ func TestDescribeEntry_ConstructionFailures(t *testing.T) {
 
 // TestDescribeEntry_HappyPath asserts a fully-filled Env constructs a producer, whose one Call runs the told table through the seat runner under the row's resolved description gate and returns the lead's output.
 func TestDescribeEntry_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newDescribeTestEnv(t)
 	fake := &shedfake.SeatRunner{Results: []seatengine.Result{leadDoneResult(env.DescriptionPath)}}
 	env.Seats = fake

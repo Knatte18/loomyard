@@ -1,5 +1,3 @@
-//go:build tier0
-
 // loop_worktreegone_test.go pins the exit of a beam dobby whose worktree a teardown removed: when the loop tests it, what it writes to the prime's log and which tidy agent it stops.
 
 package dobbyengine
@@ -14,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // goneRig is a loop harness over a worktree on disk, with its raw log writes landing in files and a recording tidy shuttle.
@@ -101,6 +101,7 @@ func (r *goneRig) primeLogText(t *testing.T) string {
 }
 
 func TestRun_WorktreeGoneExits(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const exitLine = "stop: the worktree of beam beam-a is gone"
 	tidy := &TidyState{StrandGUID: "s1"}

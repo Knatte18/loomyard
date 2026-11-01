@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runnotice_test.go pins the run notices over a fake child reading: each condition and its guards, one notice per episode across ticks and a restart, the api-error revive streak, and delivery with its retries.
 
 package dobbyengine
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // noticeFake is the child reading of one run notice test, and what its seams report.
@@ -84,6 +83,7 @@ func (h *passHarness) runNotices() []string {
 }
 
 func TestRunNotice_Conditions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	start := newLoopClock().now()
 	stalled := func(text string) AgentRun {
@@ -355,6 +355,7 @@ func TestRunNotice_Conditions(t *testing.T) {
 }
 
 func TestRunNotice_OncePerEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	h, f := newNoticeHarness(t)
 	f.alive = false
@@ -400,6 +401,7 @@ func TestRunNotice_OncePerEpisode(t *testing.T) {
 }
 
 func TestRunNotice_APIErrorRevive(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// newEpisode stalls an agent at the clock's time and lets the error stand its idle time.
 	newEpisode := func(h *passHarness, f *noticeFake) {
@@ -495,6 +497,7 @@ func TestRunNotice_APIErrorRevive(t *testing.T) {
 }
 
 func TestRunNotice_DeliveryIsRetriedOnProbeTicksThenDropped(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	h, f := newNoticeHarness(t)
 	f.alive = false

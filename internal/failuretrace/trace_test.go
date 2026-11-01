@@ -1,5 +1,3 @@
-//go:build tier0
-
 // trace_test.go covers Trace over fakes of its three quarry seams, with a fixed plan and Webster state, and NewTracer's missing-plan and missing-state errors over temp-dir fixtures.
 
 package failuretrace
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/Knatte18/quarry/quarry"
@@ -59,6 +58,7 @@ func outsideMembers(file string) quarry.EncloseResult {
 }
 
 func TestTrace(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	allFiles := []string{"internal/a/a.go", "internal/b/b.go", "internal/c/c.go", "internal/d/d.go", "internal/e/e.go", "internal/n/n.go", "internal/z/z.go", "internal/r/r.go"}
@@ -246,6 +246,7 @@ func TestTrace(t *testing.T) {
 }
 
 func TestNewTracer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const overview = "---\nformat: 5\napproved: true\n---\n\n# Plan\n\nFraming.\n\n## Card Index\n\n1 — only — a card\n"

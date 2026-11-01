@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cache_test.go pins StatusCache.Poll's file contract: absent, found, unchanged-time skip, and the two-strike unreadable rule.
 
 package statuspane
@@ -12,9 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStatusCache_Poll(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "status.json")

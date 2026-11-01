@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_warmpath_test.go pins the other half of this task's hard boundary: a `reed add` or `reed attach` against a live session holding at least one pane performs no reconcile, no layout apply, no SaveState, and no config validation it did not already perform -- add gains one round trip (list-panes), attach gains two (has-session, list-panes), and nothing else.
 // The scenario boots the session explicitly first, so the self-healing pre-flight under test takes its early return rather than its delegate-to-boot branch.
 // See smoke_test.go for the shared fixture vocabulary this file builds on, and smoke_coldstart_test.go for its cold-path counterpart.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -59,6 +58,7 @@ func writeReedConfigWithOverride(t *testing.T, worktree, key, value string) {
 // The steps run serially in a fixed order: each leaves the session up with the strand's state intact for the next, except the last, which tears the session down.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub and session.
 func TestSmokeWarmPath(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 	lymExe := lymbin.Build(t)

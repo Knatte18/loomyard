@@ -1,5 +1,3 @@
-//go:build tier0
-
 // routing_test.go covers RoutingOf: the projection's routing fields equal those NewShed builds for
 // the same recipe, row for row, and a parse failure surfaces unwrapped.
 
@@ -9,9 +7,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRoutingOf_MatchesNewShedRowForRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const recipeYAML = `
@@ -70,6 +70,7 @@ producers:
 
 // TestRoutingOf_ParseErrorSurfaces asserts a malformed recipe returns Parse's error.
 func TestRoutingOf_ParseErrorSurfaces(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if _, err := RoutingOf([]byte("version: [")); err == nil {

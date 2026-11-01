@@ -1,5 +1,3 @@
-//go:build tier0
-
 // glyphref_test.go covers ParseRef's alphabet choice and planLanguage's mapping
 // from Plan.Language to the glyph package's own Language type.
 
@@ -9,10 +7,13 @@ import (
 	"testing"
 
 	"github.com/Knatte18/quarry/glyph"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep pins ParseRef's alphabet choice per plan language, which TestCardTargetDirs does not assert
 func TestParseRef(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -58,6 +59,7 @@ func TestParseRef(t *testing.T) {
 
 // TestPlanGlyphLanguage asserts Plan.GlyphLanguage reports whether the plan's language selects a glyph alphabet.
 func TestPlanGlyphLanguage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -86,6 +88,7 @@ func TestPlanGlyphLanguage(t *testing.T) {
 
 // TestIsDiskCheckedTarget asserts IsDiskCheckedTarget keeps exactly the path-shaped keys and skips every glyph-spelled one.
 func TestIsDiskCheckedTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

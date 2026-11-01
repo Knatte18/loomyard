@@ -1,5 +1,3 @@
-//go:build tier0
-
 // trailer_test.go — unit tests for the Warp-SHA trailer format/parse helpers.
 
 package fabricengine
@@ -9,11 +7,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAppendParseWarpSHATrailer_RoundTrip covers append-then-parse round trips for a single-line
 // subject and a multi-paragraph message.
 func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		message string
@@ -49,6 +50,7 @@ func TestAppendParseWarpSHATrailer_RoundTrip(t *testing.T) {
 //
 //testtiming:keep a single-line message, even one shaped like a trailer, getting its Warp-SHA trailer in a new paragraph; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		message string
@@ -79,6 +81,7 @@ func TestAppendWarpSHATrailer_SubjectIsNeverATrailerBlock(t *testing.T) {
 // ending in a trailer block (e.g.
 // a prior Co-authored-by:) joins the new line directly, without introducing a stray blank line.
 func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
+	tiergate.Require(t, 0)
 	message := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>"
 	want := "raddle: sync module docs\n\nCo-authored-by: Someone <someone@example.com>\nWarp-SHA: abc123"
 
@@ -93,6 +96,7 @@ func TestAppendWarpSHATrailer_JoinsExistingTrailerBlock(t *testing.T) {
 //
 //testtiming:keep parseWarpSHATrailer returning ok=false when absent, the last trailer winning, and whitespace being tolerated; coverage of its blocks by other tests does not show an assertion of this
 func TestParseWarpSHATrailer(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		message string
@@ -141,6 +145,7 @@ func parseSnapshotTags(message string) []string {
 // paragraph), several tags (one line per tag, all in the same trailer block, parsing back in order)
 // and an empty tags slice (message returned unchanged with a nil error).
 func TestAppendSnapshotTrailers_Tags(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		message string
@@ -180,6 +185,7 @@ func TestAppendSnapshotTrailers_Tags(t *testing.T) {
 //
 //testtiming:keep Snapshot trailers joining an existing Warp-SHA trailer block and both parsing back; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
+	tiergate.Require(t, 0)
 	message := "weft sync"
 	withWarpSHA := appendWarpSHATrailer(message, "abc123")
 	want := "weft sync\n\nWarp-SHA: abc123\nSnapshot: build-42\nSnapshot: release-1.0"
@@ -210,6 +216,7 @@ func TestAppendSnapshotTrailers_CoexistsWithWarpSHATrailer(t *testing.T) {
 //
 //testtiming:keep out-of-charset tags, and a valid tag before an invalid one, being rejected with *ErrInvalidSnapshotTag and an empty message; coverage of its blocks by other tests does not show an assertion of this
 func TestAppendSnapshotTrailers_RejectsInvalidTags(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		tags       []string

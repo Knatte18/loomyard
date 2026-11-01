@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dobby_integration_test.go runs "lym beam dobby" through RunCLIIn over a hubforge hub, on paths dobby cannot place.
 
 package beamcli_test
@@ -16,9 +14,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDobbyCmd_RefusesAPathItCannotPlace(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

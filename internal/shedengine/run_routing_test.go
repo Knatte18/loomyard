@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_routing_test.go covers Run's outcome-routing scenarios: the happy path, the completion
 // terminal values, the unconditional re-call guarantee, Stuck routing and the per-producer,
 // episode-scoped bounce budget, and producer errors and unrecognised outcomes. It drives Run end
@@ -17,9 +15,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRun_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	p1 := fixedOutcomeProducer(Done, "")
@@ -65,6 +66,7 @@ func TestRun_HappyPath(t *testing.T) {
 }
 
 func TestRun_CompletionTerminalValues(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	shed.Producers = linearChain(t, []string{"Preflight", "Plan-Write", "Finalize"}, []ShedProducer{
@@ -97,6 +99,7 @@ func TestRun_CompletionTerminalValues(t *testing.T) {
 }
 
 func TestRun_UnconditionalRecall(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Shed cannot tell a stale output file from a fresh one by existence alone, notably after a
 	// bounce-back, so it never skips a call because OutputPointer.Path already exists on disk --
 	// that three-case respawn discipline is delegated whole to each engine adapter instead.
@@ -121,6 +124,7 @@ func TestRun_UnconditionalRecall(t *testing.T) {
 }
 
 func TestRun_StuckWithOnStuckTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	a := fixedOutcomeProducer(Done, "")
@@ -170,6 +174,7 @@ func TestRun_StuckWithOnStuckTarget(t *testing.T) {
 }
 
 func TestRun_StuckWithNoTarget(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.MaxBounces = 1 // deliberately tiny, so a budget-exhausted reason would already fire here.
 
@@ -219,6 +224,7 @@ func TestRun_StuckWithNoTarget(t *testing.T) {
 }
 
 func TestRun_BounceBudgetExhaustion(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The boundary this test pins is now one producer's own episode budget, not a run-wide
 	// total: a single self-bouncing producer keeps the assertion pinning the boundary
 	// directly. A two-producer A<->B cycle would still terminate, but its aggregate call
@@ -260,6 +266,7 @@ func TestRun_BounceBudgetExhaustion(t *testing.T) {
 }
 
 func TestRun_MaxBouncesZeroResolvesToDefault(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Same single self-bouncing producer as TestRun_BounceBudgetExhaustion, pinning the
 	// default-resolution boundary directly rather than a two-producer aggregate.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
@@ -286,6 +293,7 @@ func TestRun_MaxBouncesZeroResolvesToDefault(t *testing.T) {
 }
 
 func TestRun_ProducerError(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	wantMsg := "plan-write: disk full"
@@ -346,6 +354,7 @@ func TestRun_ProducerError(t *testing.T) {
 }
 
 func TestStep_EmptyCurrentProducerStartsAtTheFirstRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	first := fixedOutcomeProducer(Done, "")
 	second := fixedOutcomeProducer(Done, "")
@@ -372,6 +381,7 @@ func TestStep_EmptyCurrentProducerStartsAtTheFirstRow(t *testing.T) {
 }
 
 func TestStep_EmptyCurrentProducerPausesBeforeTheFirstRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	first := fixedOutcomeProducer(Done, "")
 	shed.Producers = linearChain(t, []string{"Start"}, []ShedProducer{first})
@@ -392,6 +402,7 @@ func TestStep_EmptyCurrentProducerPausesBeforeTheFirstRow(t *testing.T) {
 }
 
 func TestStep_EmptyCurrentProducerOnAGatedFirstRowKeepsTheRowWhenItHalts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	gate := &fakeGate{holds: true}
@@ -411,6 +422,7 @@ func TestStep_EmptyCurrentProducerOnAGatedFirstRowKeepsTheRowWhenItHalts(t *test
 }
 
 func TestRowAt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	producers := []ProducerDef{{Name: "Start"}, {Name: "Next"}}
 	tests := []struct {
@@ -434,6 +446,7 @@ func TestRowAt(t *testing.T) {
 }
 
 func TestStep_NoOutcomeErrorKeepsEmptyHistoryAnArray(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "Preflight", Producer: &funcProducer{fn: func(ctx context.Context) (Outcome, OutputPointer, error) {
 		return "", OutputPointer{}, errors.New("preflight: broken")
@@ -460,6 +473,7 @@ func TestStep_NoOutcomeErrorKeepsEmptyHistoryAnArray(t *testing.T) {
 }
 
 func TestRun_UnrecognisedOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// outcome is what the producer returns, and wantRecorded is whether history keeps an
@@ -525,6 +539,7 @@ func TestRun_UnrecognisedOutcome(t *testing.T) {
 }
 
 func TestRun_EmptyOnDoneFinishesFromNonLastPosition(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A three-row list whose first row has an empty OnDone finishes the whole run on that
 	// row's Done -- the producer list carries no positional meaning once Done routes by
 	// OnDone.
@@ -568,6 +583,7 @@ func TestRun_EmptyOnDoneFinishesFromNonLastPosition(t *testing.T) {
 }
 
 func TestRun_OnDoneSkipsForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A three-row list whose first row's OnDone names the third row skips the middle row
 	// entirely.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
@@ -607,6 +623,7 @@ func TestRun_OnDoneSkipsForward(t *testing.T) {
 }
 
 func TestRun_OnDoneRoutesBackward(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A later row's OnDone names an earlier row, and the run continues from there. A is the
 	// backward re-entry target: counter-driven, it reports Done on its first call so the
 	// chain advances to B, then Stuck (with no OnStuck target) on its second call -- the call
@@ -655,6 +672,7 @@ func TestRun_OnDoneRoutesBackward(t *testing.T) {
 }
 
 func TestRun_EpisodeBudgetIndependenceAcrossProducers(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The property the whole task exists for: one producer's own history does not shrink a
 	// different producer's remaining budget. A already has a history of Stuck entries far
 	// past any plausible budget; B, seeded to run now, must still get its own full budget.
@@ -691,6 +709,7 @@ func TestRun_EpisodeBudgetIndependenceAcrossProducers(t *testing.T) {
 }
 
 func TestRun_MaxBouncesInheritance(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		defMaxBounces  int
@@ -729,6 +748,7 @@ func TestRun_MaxBouncesInheritance(t *testing.T) {
 }
 
 func TestRun_BudgetDerivedFromPreExistingHistoryAcrossInvocations(t *testing.T) {
+	tiergate.Require(t, 0)
 	// This is the direct test of the persisted-count decision: the budget accounts for Stuck
 	// entries that already existed in history before this Run call, not only ones this
 	// invocation appends -- the property that fails under a per-Run-call count.
@@ -764,6 +784,7 @@ func TestRun_BudgetDerivedFromPreExistingHistoryAcrossInvocations(t *testing.T) 
 }
 
 func TestRun_EpisodeResetsOnProducersOwnDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A producer that bounces, later returns Done, and is then re-entered and bounces again
 	// starts from zero on re-entry -- Stuck entries preceding its own last Done do not count.
 	// This is the loom review-segment shape (e.g. Discussion-Bouncer bouncing to Discussion-Burler-Review, Discussion-Burler-Fix and back) that decided episode scoping over all-time counting, so it gets its own named test rather than a table row.
@@ -802,6 +823,7 @@ func TestRun_EpisodeResetsOnProducersOwnDone(t *testing.T) {
 }
 
 func TestRun_EpisodeIgnoresOtherProducersDoneEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A Done entry authored by a different producer does not end this producer's episode.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.MaxBounces = 2
@@ -836,6 +858,7 @@ func TestRun_EpisodeIgnoresOtherProducersDoneEntry(t *testing.T) {
 }
 
 func TestRun_NeverPassingGateAccumulatesAllTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A producer with no Done entry anywhere in history accumulates all-time -- the
 	// anti-crash-loop property episode scoping must not weaken.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
@@ -870,6 +893,7 @@ func TestRun_NeverPassingGateAccumulatesAllTime(t *testing.T) {
 }
 
 func TestRun_FailurePathDoneEntryTerminatesEpisode(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A seeded history containing a "done" entry for a producer that had returned an error
 	// alongside that verdict still ends that producer's episode: this pins the accepted
 	// behavior so a future reader does not rewrite the scan to ignore it.
@@ -925,6 +949,7 @@ func TestRun_FailurePathDoneEntryTerminatesEpisode(t *testing.T) {
 }
 
 func TestRun_StuckAttributionIgnoresOtherProducersEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	// Stuck entries authored by a different producer do not consume this producer's
 	// budget, even when that other producer's OnStuck targets it.
 	shed, statusPath, _, statusLockPath := newTestShed(t)
@@ -960,6 +985,7 @@ func TestRun_StuckAttributionIgnoresOtherProducersEntries(t *testing.T) {
 }
 
 func TestRun_BlockPathArithmetic(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A budget-exhausted block marks its Stuck entry budget_capped, so a resume grants exactly one more budget.
 	// That is budget+1 further calls, then blocked again, whether or not the budget was raised.
 	// A raised budget adds its extra bounces to that grant.
@@ -1014,6 +1040,7 @@ func TestRun_BlockPathArithmetic(t *testing.T) {
 }
 
 func TestRun_StuckReasonReachesResult(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{{Name: "A", Producer: &funcProducer{
 		fn: func(context.Context) (Outcome, OutputPointer, error) {

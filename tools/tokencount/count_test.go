@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -17,9 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunTimeByRole(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	build := func(t *testing.T, sessions ...shuttleengine.SessionRead) RunTally {
 		t.Helper()
@@ -148,6 +148,7 @@ func TestRunTimeByRole(t *testing.T) {
 }
 
 func TestCountRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// The main run is the Claude reader's own reading of its tokencount-run transcripts, served by the fake.
 	const worktree = "/hub/my-task"
@@ -379,6 +380,7 @@ func TestCountRun(t *testing.T) {
 }
 
 func TestCountRunWithoutSessions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const worktree = "/hub/x"
 	tests := []struct {
@@ -434,6 +436,7 @@ func TestCountRunWithoutSessions(t *testing.T) {
 }
 
 func TestRecentRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 1, 2, 12, 0, 0, 0, time.UTC)
 	fake := newFakeTranscripts()
@@ -493,6 +496,7 @@ func TestRecentRuns(t *testing.T) {
 }
 
 func TestArchivedSlugs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	at := func(s string) time.Time {
 		parsed, err := time.Parse(time.RFC3339, s)
@@ -565,6 +569,7 @@ func (f fakeArchiveTrees) FileAtRevision(rev, relPath string) ([]byte, error) {
 }
 
 func TestShedRecordSpanAndProducers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	clock := func(hms string) string { return "2026-01-01T" + hms + "Z" }
 	at := func(hms string) time.Time {

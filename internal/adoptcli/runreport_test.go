@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runreport_test.go pins the states of the per-run report of an adopt over the fake world: one row for each state, the precedence between them, the sort and a read that fails.
 
 package adoptcli
@@ -14,9 +12,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunReports(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	run := boardengine.RunStatus("running", "Code-Write")

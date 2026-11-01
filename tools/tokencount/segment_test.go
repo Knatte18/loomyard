@@ -1,5 +1,3 @@
-//go:build tier0
-
 // segment_test.go drives the segment grouping over fake reads: a role's segment and label, the most expensive parts, the cost per run and the segment tree's order.
 // Tier-1 (no git, no spawn).
 
@@ -14,9 +12,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestPartOf(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		role, segment, label string
@@ -48,6 +48,7 @@ func TestPartOf(t *testing.T) {
 }
 
 func TestSegmentReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// The fake prices model-a at $20 per million tokens, so a role's output in millions times 20 is its cost.
 	type role struct {

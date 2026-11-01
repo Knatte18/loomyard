@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wiring_darn_test.go covers the wiring a darn run adds to wire: the darn seams, the verify source and attempts, the perch's settings taken from loom.yaml's Code-Review keys, the early refusals of a malformed or absent darn.yaml, the routing per recipe, the rename of retired darn rows when a verb arms, and the Darn-Write row's status and failure-record seams.
 // Every test is Tier 1: wire resolves no cwd and spawns no process over a hand-built hub.
 
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantDarnLandingCall is the landing call gateConfigWithTwoTiers renders for the `finalize` key.
@@ -56,6 +55,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestWire_DarnRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "RecordWrite.ReadBody", "RecordWrite.Commit"}
@@ -286,6 +286,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 //lym:seam internal/websterengine#Geometry
 //lym:seam internal/websterengine#RunDeps
 func TestWire_SamplerRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	writeSamplerConfig := func(t *testing.T, hubPath, contents string) {
@@ -385,6 +386,7 @@ func TestWire_SamplerRecipe(t *testing.T) {
 // TestArmAt_RenamesRetiredDarnRows pins that arming any verb over a darn run carries a status file still naming the writer row's former name onto Darn-Write, and leaves a tapestry run's file alone.
 // A live driver holding the run lock keeps the old name, and the verb still arms.
 func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -438,6 +440,7 @@ func TestArmAt_RenamesRetiredDarnRows(t *testing.T) {
 
 // TestRenameRetiredRows pins that renameRetiredRows carries every field of a status file naming a retired row onto its successor, for the loom table and for the darn one, and leaves other rows alone.
 func TestRenameRetiredRows(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -493,6 +496,7 @@ func TestRenameRetiredRows(t *testing.T) {
 }
 
 func TestRecipeRouting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -526,6 +530,7 @@ func TestRecipeRouting(t *testing.T) {
 }
 
 func TestLatestDarnOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -627,6 +632,7 @@ func TestLatestDarnOutcome(t *testing.T) {
 
 // TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile pins that the LatestOutcome seam reads the run's status file and names the findings file Env.GateFindingsFile gives the Darn-Write row.
 func TestDarnDeps_LatestOutcomeNamesTheRowsFindingsFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	loc := hubLocation(t, "pair", ".")

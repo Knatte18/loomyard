@@ -1,5 +1,3 @@
-//go:build tier0
-
 // discussion_test.go — untagged Tier-1 unit tests shared by the loom producers' prompts and the twill fixtures DiscussionTable's tests use.
 // Pure Go over an in-memory Config and a temp-dir modelspec registry;
 // no live hub, reed, or network involved.
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeLensesYAML plants content as the lenses.yaml of layout's anchor, creating its _lym/config/ directory.
@@ -45,6 +44,7 @@ func lensNames(resolved []lenses.Lens) []string {
 // Every row reads the lead's skills and prompt from its table through seatengine.Prompts under a geometry naming the parent.
 // The operator-ban line is absent only for the interactive Discussion.
 func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	worktreeRoot := filepath.Join("home", "user", "repo")

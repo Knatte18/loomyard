@@ -1,5 +1,3 @@
-//go:build tier0
-
 // notepath_test.go covers NotePath against a real t.TempDir() with real files, never a stubbed stat,
 // since the guarantee is about the filesystem.
 // Every test here is in tier 0: it uses only os.WriteFile inside a t.TempDir() and t.TempDir
@@ -11,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // touch creates an empty file at path, failing the test on any error.
@@ -25,6 +25,7 @@ func touch(t *testing.T, path string) {
 // A valid id against an empty directory yields the expected join, and calls with the same id against a directory where the earlier notes now exist yield "id.md", "id-2.md" and "id-3.md" in turn.
 // A gap (id.md and id-3.md present, id-2.md absent) resolves to the first free name, id-2.md, not the highest plus one.
 func TestNotePath_NonClobbering(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("SequentialReinvocationSkipsExisting", func(t *testing.T) {
@@ -57,6 +58,7 @@ func TestNotePath_NonClobbering(t *testing.T) {
 // An empty frictionDir is the off-state guard, so Tier 2's off state composes through NotePath with no boolean anywhere.
 // An empty id, an id containing a path separator, an id containing "..", an id equal to "." or "..", and an id whose id+".md" equals ReportFileName are the id-sanitization rules.
 func TestNotePath_ReturnsEmpty(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	reportStem := ReportFileName[:len(ReportFileName)-len(".md")]

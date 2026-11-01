@@ -1,5 +1,3 @@
-//go:build tier2
-
 // ensuresession_integration_test.go pins EnsureSession's booted return value and AddStrand's own
 // attribution log line against a real, running multiplexer instance, following
 // contract_integration_test.go's pattern: its own scratch socket so it can never collide with a real
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -84,6 +83,7 @@ func newColdScratchEngine(t *testing.T) *Engine {
 // never been created, and false when called again against the live session it just created.
 // It sets an environment variable, process-global state, so it does not run in parallel.
 func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Setenv(scrubProbeEnv, "1")
 	e := newColdScratchEngine(t)
 
@@ -150,6 +150,7 @@ func TestEnsureSession_BootedTrueOnColdSessionFalseOnWarm(t *testing.T) {
 // a second AddStrand against the now-live session must not.
 // It captures the process-global logger, so it does not run in parallel.
 func TestAddStrand_LogsAttributionOnlyOnColdBoot(t *testing.T) {
+	tiergate.Require(t, 2)
 	e := newColdScratchEngine(t)
 	logs := logcapture.CaptureVerbose(t)
 

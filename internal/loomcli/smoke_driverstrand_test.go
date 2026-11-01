@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_driverstrand_test.go covers the one live-substrate property no Tier 1 test can reach: that a
 // real reed session, driven through three successive "loom start" bootstraps of an llm-seeded
 // worktree, ends up with exactly one strand under driverStrandDisplayName every time -- never two.
@@ -57,6 +55,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -163,6 +162,7 @@ func waitDriverStrandDead(t *testing.T, eng *reedengine.Engine, timeout time.Dur
 // After each bootstrap it also asserts exactly one status strand exists: this is the one llm-seeded start whose driver strand really spawns,
 // so it pins that an llm-seeded start leaves exactly one status strand beside its driver strand.
 func TestSmokeDriverStrand_ReentrantAcrossThreeBootstraps(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxPath := tmuxBinaryPath(t)
 	exe := lymbin.Build(t)
 

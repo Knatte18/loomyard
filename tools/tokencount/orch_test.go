@@ -1,5 +1,3 @@
-//go:build tier0
-
 // orch_test.go drives the orchestrator count and the cost estimate over fake reads: the charge by time, a fork naming one run, the window cut-off, the Orch segment of the segment tables, the section order, the fake engine's prices and an unpriced model.
 // The prices are the fake pricer's, not any provider's.
 // Tier-1 (no git, no spawn).
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // timedAssistant is an assistant entry at ts whose usage is output tokens alone.
@@ -34,6 +33,7 @@ func userPrompt(ts, prompt string) shuttleengine.TranscriptEntry {
 }
 
 func TestCountOrch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// model-a is priced at $20 per million tokens by the fake.
 	const model = "model-a"
@@ -167,6 +167,7 @@ func TestCountOrch(t *testing.T) {
 }
 
 func TestEstimatedCost(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name     string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verify_integration_test.go exercises Verify against a real scratch repo and real shell processes, so it carries the integration tag.
 
 package verifytree
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newScratch returns Paths over a fresh one-commit repo whose verify directory lies outside the worktree.
@@ -50,6 +49,7 @@ func fileExists(path string) bool {
 // TestVerify_PerCommandRecord covers the per-command record: a round command's pass leaves the plan-verify entry in place and skips on a repeat, a write drops another command's entry naming a different tree while keeping the base command's and replacing its own, LatestPass returns the pass's commit, and an old-format record reads as none.
 // The steps share one repo and run in order, so the test is parallel as a whole and no step is.
 func TestVerify_PerCommandRecord(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newScratch(t)
@@ -136,6 +136,7 @@ func TestVerify_PerCommandRecord(t *testing.T) {
 // The steps share one repo, so the test is parallel as a whole and no step is.
 // The steps up to the first pass rely on no record existing yet, so they run before it; each step after it relies on the record the one before left, and the last step relies on being last because it dirties the tree.
 func TestVerify_Scenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	p := newScratch(t)
@@ -398,6 +399,7 @@ func TestVerify_Scenario(t *testing.T) {
 // TestVerify_DropsStrandName proves a verify command never sees the strand name or an inherited prebuilt-lym path.
 // It sets both variables with t.Setenv, which is process-global state, so it is not parallel.
 func TestVerify_DropsStrandName(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "verify-test-strand")
 	t.Setenv(gateslot.PrebuiltLymEnv, "/stale/lym")
 
@@ -575,6 +577,7 @@ func (e *pauseEnv) stoppableCommand() string {
 // the hold at entry, the stop at the grace end and the start over after each, a caller's cancel, the parent-lock exemption and the readings that never stop a verify.
 // It is not parallel as a whole because one row captures the process-global logger; its other rows are.
 func TestVerify_PauseHold(t *testing.T) {
+	tiergate.Require(t, 1)
 	stopAndWait := func(t *testing.T, e *pauseEnv) <-chan pauseOutcome {
 		t.Helper()
 		out := e.verifyAsync(context.Background(), e.stoppableCommand())

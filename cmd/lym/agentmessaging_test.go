@@ -1,5 +1,3 @@
-//go:build tier0
-
 // agentmessaging_test.go pins PATTERN-agent-messaging: no stencil, prompt fixture or Go message text names Claude Code's SendMessage tool,
 // so a role that has a parent can run on an engine without that tool.
 
@@ -17,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // engineTool is the name of the engine-specific messaging tool no prompt may name.
@@ -90,6 +89,7 @@ func testdataPromptRoots(t *testing.T, root string) []string {
 }
 
 func TestAgentMessaging_NoEngineTool(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("FixtureRows", func(t *testing.T) {

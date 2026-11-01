@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -52,6 +51,7 @@ func (f *fakeWebsterRunner) run(deps websterengine.RunDeps, opts websterengine.R
 //
 //testtiming:keep pins that a done run returns the summary as pointer carrying its gate count and spans, is never asked for a fresh start, and survives a cancellation during the run
 func TestWebsterProducer_OutcomeDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
 	gate := &shuttleengine.GateOutcome{Passed: true, Attempts: 1, Entries: []shuttleengine.GateEntryOutcome{
 		{Name: "verify", Attempts: 1, Spans: []shuttleengine.GateSpan{{Kind: shuttleengine.GateSpanGate, Start: started, End: started.Add(90 * time.Second)}}},
@@ -139,6 +139,7 @@ func requireWebsterFile(t *testing.T, filePath, want string) {
 // no record is a plain Stuck with the stuck reason, a new conflict is a Reroute, and a repeated one, a record naming no finding or an unreadable or unwritable file is a plain Stuck.
 // Every mapping carries the run's gate count and spans.
 func TestWebsterProducer_OutcomeStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	const stuckReason = "cards ran out"
 	started := time.Date(2026, 8, 16, 15, 0, 0, 0, time.UTC)
 	gate := &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Entries: []shuttleengine.GateEntryOutcome{
@@ -270,6 +271,7 @@ func TestWebsterProducer_OutcomeStuck(t *testing.T) {
 }
 
 func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "WEIRD"}}
@@ -287,6 +289,7 @@ func TestWebsterProducer_UnrecognizedOutcome(t *testing.T) {
 // --- Error mapping table ---
 
 func TestWebsterProducer_OtherEngineErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	autoRebaselineErr := fmt.Errorf("%w: %w; way forward: transient, re-step the loom row", websterengine.ErrAutoRebaseline, errors.New("save the restamped state"))
 	tests := []struct {
 		name string
@@ -340,6 +343,7 @@ func pendingAuditErr() error {
 //
 //testtiming:keep pins the pending-audit refusal's reason, which is the refusal's own text, and the re-entry step the run is handed
 func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		reentryStep     string
@@ -375,6 +379,7 @@ func TestWebsterProducer_PendingAuditFindingsIsStuck(t *testing.T) {
 }
 
 func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.lock")
@@ -421,6 +426,7 @@ func TestWebsterProducer_PendingAuditFindingsBlocksRun(t *testing.T) {
 // --- Context rows ---
 
 func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	deps := websterengine.RunDeps{Geom: websterengine.Geometry{WebsterDir: dir}}
 	fake := &fakeWebsterRunner{result: websterengine.RunResult{Outcome: "done"}}
@@ -442,6 +448,7 @@ func TestWebsterProducer_AlreadyCancelledContext(t *testing.T) {
 }
 
 func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextError(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		result websterengine.RunResult
@@ -481,6 +488,7 @@ func TestWebsterProducer_CancelledDuringRun_StuckPausedAndErrorBecomeContextErro
 // --- No mid-run bridge ---
 
 func TestWebsterProducer_NoBridgeInstalled(t *testing.T) {
+	tiergate.Require(t, 0)
 	deps := websterDepsWithScratch(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := &fakeWebsterRunner{
@@ -504,6 +512,7 @@ func (doneProducer) Call(context.Context) (shedengine.Outcome, shedengine.Output
 // TestWebsterProducer_ConflictRerouteCapThenRepeatHalts proves a new plan conflict that meets shed's reroute cap halts with the told clause and counts as routed.
 // Resuming the halt without the hand edit halts again as a repeat and adds no reroute.
 func TestWebsterProducer_ConflictRerouteCapThenRepeatHalts(t *testing.T) {
+	tiergate.Require(t, 0)
 	const capWayForward = "run \"lym loom resume\" in the task worktree once the cause the halt's reason quotes is cleared: for a Webster plan conflict, once the run's parent has recorded the fix with \"lym loom decision add\" and \"--amends-plan\""
 	deps := websterDepsWithScratch(t)
 	seedWebsterConflictRecord(t, deps, "finding-a")

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go table-drives Load, ResolveFan and CheckLoad, and pins the embedded template.yaml's self-consistency:
 // every fan entry names a defined lens, the seeded fan lengths and orders, each writer fan holding its reviewer fan's lenses but the reviewer-only repo-invariants, and the emphasis-never-exclusion posture (no lens text carries "ignore " phrasing).
 // Untagged unit tier: no process spawns, fixtures written directly via os.WriteFile under t.TempDir.
@@ -20,6 +18,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeLensesYAML writes contents to the lenses.yaml path under baseDir, creating the _lym/config directory tree first.
@@ -76,6 +75,7 @@ func writerFanGaps(orders map[string][]string, writerOf map[string]string, absor
 
 // TestTemplateChecks_FlagBrokenTemplates drives the template checks' helpers over hand-built inputs that must fail, since the template itself holds none.
 func TestTemplateChecks_FlagBrokenTemplates(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("emphasisLineGaps", func(t *testing.T) {
 		t.Parallel()
@@ -135,6 +135,7 @@ func TestTemplateChecks_FlagBrokenTemplates(t *testing.T) {
 // TestLoad covers Load's layer stack: the per-name fill from the template, per-name layer replacement, the local layer's refusal, the strict decode and the expansion of lens prose.
 // Its rows run serially, since logcapture.CaptureVerbose swaps the process-global logger.
 func TestLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("a board default lacking a template lens resolves it with the template's prose", func(t *testing.T) {
 		boardDir, anchor := t.TempDir(), t.TempDir()
 		writeLensesYAML(t, boardDir, "lenses:\n  mine: default prose\nfans:\n  mine: [mine, correctness]\n")
@@ -336,6 +337,7 @@ func TestLoad(t *testing.T) {
 //
 //testtiming:keep pins the seeded lens and fan counts, the defined-lens cross-references and the no-"ignore " phrasing, which the ResolveFan test covering its blocks does not assert, and the per-layer load and superset checks
 func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cfg := loadTemplateConfig(t)
@@ -570,6 +572,7 @@ func TestConfigTemplate_DecodesAndIsSelfConsistent(t *testing.T) {
 }
 
 func TestResolveFan(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	seeded := loadTemplateConfig(t)
@@ -658,6 +661,7 @@ func TestResolveFan(t *testing.T) {
 
 // TestCheckLoad covers CheckLoad's outcomes: the template passes, every failing fan is joined in name order, and a load failure is returned alone with no fan resolved.
 func TestCheckLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("the template passes", func(t *testing.T) {

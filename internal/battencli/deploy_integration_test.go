@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // deploy_integration_test.go covers runDeploy against a real shell, which is why it sits in the integration tier.
 
@@ -13,10 +13,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts runDeploy writes the command's output to the log, reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
 func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -59,6 +61,7 @@ func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 // TestCommandRunners_DropTheStrand asserts runDeploy and runRowCommand run their command without the strand-name variable and with the rest of the environment.
 // It does not run in parallel: it sets the process environment.
 func TestCommandRunners_DropTheStrand(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Setenv(agentname.StrandNameEnv, "sh:slug:implementer")
 	t.Setenv("LYM_STRAND_KEPT", "kept")
 	const command = `test -z "$LYM_STRAND_NAME" && test "$LYM_STRAND_KEPT" = kept`

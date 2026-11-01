@@ -1,5 +1,3 @@
-//go:build tier0
-
 // settle_test.go — tier 0 tests for the Go driver's settle-record file, over a temp file.
 
 package sheddriver
@@ -13,10 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRestepRecorded asserts a record re-steps a status only when it is a restep at that status's own stop key.
 func TestRestepRecorded(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	status := shedengine.Status{CurrentProducer: "Finalize", State: shedengine.StateFailed, History: make([]shedengine.HistoryEntry, 3)}
@@ -46,6 +46,7 @@ func TestRestepRecorded(t *testing.T) {
 
 // TestSettleRecords pins the append-and-read round trip in order, an absent file reading nil, a torn last line skipped, and the verify-retry cap read.
 func TestSettleRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	first := SettleRecord{
 		StopKey: StopKey{CurrentProducer: "Plan-Write", HistoryLength: 2, State: "blocked"},

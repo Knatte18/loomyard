@@ -1,5 +1,3 @@
-//go:build tier1
-
 // clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at the Bolt checkout's .lym, which needs real git repositories.
 
 package fabricengine
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // initTinyRepo initializes a minimal single-commit git repository at dir on branch "main", suitable
@@ -27,6 +26,7 @@ func initTinyRepo(t *testing.T, dir string) {
 
 // TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates HubScratchDir(res.HubPath) (the Bolt checkout's .lym): the hub-wide ephemeral sibling of the Bolt checkout's _lym, created only after the board worktree exists, a real directory rather than a junction.
 func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // clone_explicit_root_subpath_test.go pins the one value that used to escape clone's
 // never-silently-re-anchor rule: an explicit `--subpath .` against a hub whose recorded anchor is a
 // real subpath.
@@ -19,11 +17,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath asserts an explicit "." is refused against
 // a recorded "backend", and that leaving Subpath unset still adopts the record.
 func TestCloneHub_ExplicitRootSubpathRefusesRecordedSubpath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixtures := t.TempDir()

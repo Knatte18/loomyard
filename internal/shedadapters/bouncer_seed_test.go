@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_seed_test.go covers Bouncer.Call's seed call, seed-side harvest, and the re-bounce mode,
 // plus the prompt-shape guarantees shared by both templates: marker completeness against the
 // shipped stencils package bytes and the stamp-leak regression.
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBouncer_SeedCall_HappyPath also pins the spec the seed passes the shuttle: its role and
@@ -34,6 +33,7 @@ import (
 //
 //testtiming:keep pins the seed call's spec, pointer and focus file, and that it writes no verdict or ledger
 func TestBouncer_SeedCall_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	shuttle := &shedfake.Shuttle{
 		Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 	}
@@ -106,6 +106,7 @@ func TestBouncer_SeedCall_HappyPath(t *testing.T) {
 
 //testtiming:keep pins that a present but unparseable focus file is archived and re-seeded rather than treated as a re-bounce
 func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
+	tiergate.Require(t, 0)
 	shuttle := &shedfake.Shuttle{Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}}
 	b, cfg := newBouncerFixture(t, withShuttle(shuttle)).Build()
 
@@ -136,6 +137,7 @@ func TestBouncer_SeedDiscriminator_ParsesRatherThanStats(t *testing.T) {
 }
 
 func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		buildBouncer func(t *testing.T) (*Bouncer, BouncerConfig)
@@ -249,6 +251,7 @@ func TestBouncer_SeedCall_SpawnProducedNothingUsable(t *testing.T) {
 //
 //testtiming:keep pins that a focus file the seed agent wrote survives a late run error or a non-Done outcome byte-identical
 func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		result shuttleengine.Result
@@ -299,6 +302,7 @@ func TestBouncer_SeedSideHarvest_SurvivesALateFailure(t *testing.T) {
 // paid-for agent running behind it. That reproduction contradicted what the pre-rewrite driver
 // instructions told operators; the rewritten driver stencil makes no such claim.
 func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
+	tiergate.Require(t, 0)
 	seeded := "---\nround: 1\nexclude_lenses: []\nfocus: [\"already seeded\"]\n---\n"
 
 	tests := []struct {
@@ -368,6 +372,7 @@ func TestBouncer_ReBounceProbesForALiveSeed(t *testing.T) {
 // liveness question is never read as "nothing is running": the re-bounce degrades rather than
 // silently proceeding, the same rule awaitLiveJudge's caller already follows.
 func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
+	tiergate.Require(t, 0)
 	shuttle := &shedfake.Shuttle{
 		Result:    shuttleengine.Result{Outcome: shuttleengine.OutcomeDone},
 		AttachErr: errors.New("reed state unreadable"),
@@ -393,6 +398,7 @@ func TestBouncer_ReBounceDegradesOnAnUndeterminableProbe(t *testing.T) {
 
 // TestBouncer_MarkerCompleteness_BothTemplates also pins that no stamp banner of the rubric leaks into either filled prompt.
 func TestBouncer_MarkerCompleteness_BothTemplates(t *testing.T) {
+	tiergate.Require(t, 0)
 	rubric := "<!-- lym-stencil: sha256=deadbeef -->\n# Rubric\n\nBe thorough.\n"
 	strippedRubric := stencil.StripLeadingComment(rubric)
 

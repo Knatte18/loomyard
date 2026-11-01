@@ -1,5 +1,3 @@
-//go:build tier0
-
 // startup_test.go covers the startup step (awaitStartup, abandonStartup) that Start, StartGated and RunGated run before ever issuing a run handle.
 // It covers the pending-to-ready path with a trust-gate dismissal recorded, the already-ready and already-satisfied-file-contract fast paths, the not-ready teardown (pane-died and never-clearing-gate refusal, both wrapping ErrNotStarted with the strand removed and the run dir kept), the status-retry-cap paths (transient recovery, exhaustion with and without a satisfied file contract, and the untracked-strand mechanism failure), the tick-count cap, the run-deadline-shorter-than-the-startup-window interaction, RunGated's own not-ready and mechanism-failure mappings, startupTickCap's own boundary arithmetic, and the probe backoff and gate-dismissal spacing.
 // Every case runs on a fake clock; none sleeps on the real one.
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // frozenClock never advances on its own: Now always returns the same fixed instant and Sleep is a
@@ -115,6 +114,7 @@ func runDirsUnder(t *testing.T, root string) []string {
 //
 //testtiming:keep pins trust-gate dismissal through the real Start flow: the Enter key, the capture handed to the engine, the persisted Started and running Outcome, and the logged dismissal
 func TestStartup_TrustPromptThenReady(t *testing.T) {
+	tiergate.Require(t, 0)
 	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
 	reed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
@@ -168,6 +168,7 @@ func TestStartup_TrustPromptThenReady(t *testing.T) {
 // A session start followed by a turn start starts the run whatever the pane shows, and a turn start before the session start, or on a launch that does not record, does not.
 // A missing line and an unreadable events file each time the start out naming themselves and the events path, a gate on screen is dismissed whatever the file holds, and a launch that does not declare the recording starts on the pane alone.
 func TestStartup_NeedsSessionStartLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		records bool
@@ -270,6 +271,7 @@ func TestStartup_NeedsSessionStartLine(t *testing.T) {
 //
 //testtiming:keep pins the ready path's virtual-clock timing: no sleep when ready on the first probe, the base interval while the pane redraws, and the backoff to the dismissal gap while it does not
 func TestStartup_ReadyProbeTiming(t *testing.T) {
+	tiergate.Require(t, 0)
 	probeConfig := Config{PollIntervalMS: 1000, LivenessEveryNPolls: 10, StartupTimeoutS: 60, RunTimeoutMin: 5}
 	tests := []struct {
 		name            string
@@ -348,6 +350,7 @@ func TestStartup_ReadyProbeTiming(t *testing.T) {
 // removed whatever KeepPane says, since KeepPane governs a COMPLETED run's pane retention, not a
 // startup failure's.
 func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
+	tiergate.Require(t, 0)
 	const lastCapture = "still booting..."
 	removeErr := errors.New("tmux: kill-pane failed")
 	tests := []struct {
@@ -448,6 +451,7 @@ func TestStartup_PaneNotLiveMidStartup(t *testing.T) {
 // When every launch fails, the returned error is the last attempt's.
 // The waits run on the run clock: startRetryDelay between launches, and 1 s then 2 s between the removal tries of a strand that will not go.
 func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	removeErr := errors.New("tmux: kill-pane failed")
 	live := reedengine.StatusResult{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}
@@ -556,6 +560,7 @@ func TestStartup_DiedStartLaunchesAgain(t *testing.T) {
 // TestStartupCaptureExcerpt pins the pane lines a not-ready error ends with: a capture that fits one tail is shown whole as the last lines.
 // A longer one shows its first lines, never one the tail repeats, before its last paneTailLines lines.
 func TestStartupCaptureExcerpt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	numbered := func(from, to int) []string {
 		var lines []string
@@ -622,6 +627,7 @@ var _ Engine = (*twoKeyEngine)(nil)
 //
 //testtiming:keep pins a gate that never clears: its dismissals' virtual times, at most one play per dismissal gap, until the window expires
 func TestStartup_GateNeverClearsUntilWindowExpires(t *testing.T) {
+	tiergate.Require(t, 0)
 	startupGateConfig := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, PollIntervalMS: 1000, LivenessEveryNPolls: 10}
 	// distinctCaptures gives every probe its own capture, so the probe backoff stays at the base interval.
 	distinctCaptures := func() []string {
@@ -746,6 +752,7 @@ func TestStartup_GateNeverClearsUntilWindowExpires(t *testing.T) {
 // is never torn down). The output file cannot exist before Start (Spec.validate refuses a
 // pre-existing entry), so a multiStepClock writes it from inside the first Sleep call.
 func TestStartup_HandleReturned(t *testing.T) {
+	tiergate.Require(t, 0)
 	liveStatusQueue := func() []reedengine.StatusResult {
 		return []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}
 	}
@@ -817,6 +824,7 @@ func TestStartup_HandleReturned(t *testing.T) {
 // A spec without Unawaited is refused before any strand is added, and a ResumeSessionID reaches the engine's launch.
 // StopStrand on the started run records it stopped and removes its strand.
 func TestRunner_StartSession(t *testing.T) {
+	tiergate.Require(t, 0)
 	newReed := func() *fakeReed {
 		return &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1", Name: "pr-review"}}
 	}
@@ -905,6 +913,7 @@ func TestRunner_StartSession(t *testing.T) {
 // TestStartup_MechanismFailure covers the startup status-cap paths: the status retry cap exhausted with no output files, and reed never tracking the strand at all.
 // Each returns a non-nil error wrapping both ErrNotStarted and the failure's own sentinel, removes the strand once and finalizes run.json's Outcome to died.
 func TestStartup_MechanismFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	scriptedErr := errors.New("reed status: unavailable")
 	tests := []struct {
 		name string
@@ -990,6 +999,7 @@ func TestStartup_MechanismFailure(t *testing.T) {
 // TestStartup_TickCap covers the tick-count cap under a frozen clock, with a subtest for the
 // file-contract-satisfied variant.
 func TestStartup_TickCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := shortStartupConfig
 
 	t.Run("NoOutputFiles_ErrNotStartedWithTeardown", func(t *testing.T) {
@@ -1069,6 +1079,7 @@ func TestStartup_TickCap(t *testing.T) {
 
 // TestStartupTickCap covers startupTickCap's own boundary arithmetic.
 func TestStartupTickCap(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		timeout  time.Duration
@@ -1095,6 +1106,7 @@ func TestStartupTickCap(t *testing.T) {
 //
 //testtiming:keep pins the not-ready teardown's message and the absent startup capture file when every capture fails
 func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{
 		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
 		StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
@@ -1132,6 +1144,7 @@ func TestStartup_CaptureAlwaysErroringUntilWindowExpires(t *testing.T) {
 // the run's identity, and so is the status-cap exit, which tears the run down and wraps ErrNotStarted beside its own sentinel.
 // Either way the gate closure never runs (its counter stays at zero), since finalize never evaluates a gate for a non-Done outcome.
 func TestStartup_RunGatedMappings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		status         []reedengine.StatusResult
@@ -1210,6 +1223,7 @@ func TestStartup_RunGatedMappings(t *testing.T) {
 // Spec.Timeout far shorter than startup_timeout_s must still expire the run on its OWN schedule,
 // classified OutcomeTimeout, never OutcomeDied from the (much longer) startup window.
 func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
+	tiergate.Require(t, 0)
 	newRig := func(t *testing.T) (*Runner, *fakeReed, time.Time) {
 		reed := &fakeReed{
 			AddStrandResult: reedengine.Strand{GUID: "strand-1"},
@@ -1269,6 +1283,7 @@ func TestStartup_RunDeadlineShorterThanWindow_NeverReady(t *testing.T) {
 // returned from StartGated, and RunGated goes on to classify OutcomeDone through the same run
 // deadline exit.
 func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *testing.T) {
+	tiergate.Require(t, 0)
 	newRig := func(t *testing.T, outputFile string) *Runner {
 		reed := &fakeReed{
 			AddStrandResult: reedengine.Strand{GUID: "strand-1"},
@@ -1317,6 +1332,7 @@ func TestStartup_RunDeadlineShorterThanWindow_OutputFilePresentAtDeadline(t *tes
 //
 //testtiming:keep pins the seam between a not-ready teardown and Attach: the died run.json left behind is respawn-eligible, not attachable, at any directory age
 func TestStartup_FailedStartThenAttach_RespawnEligible(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{
 		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
 		StatusQueue: []reedengine.StatusResult{
@@ -1428,6 +1444,7 @@ func typedTexts(reed *skillReed) []string {
 
 //testtiming:keep pins that a launch with no skills and no deferred prompt line types nothing, which the skill-load table never reaches
 func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	base := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}
 	runner := newFixture(t, base, engine, withConfig(fastConfig)).Runner
@@ -1442,6 +1459,7 @@ func TestStartup_NoSkillsNoPromptLineSendsNothing(t *testing.T) {
 // TestStartup_SkillLoadTurns does not call t.Parallel: it asserts on the logger output,
 // which is process-global.
 func TestStartup_SkillLoadTurns(t *testing.T) {
+	tiergate.Require(t, 0)
 	const (
 		atLeastTimeout = "atLeastTimeout"
 		zero           = "zero"
@@ -1639,6 +1657,7 @@ func TestStartup_SkillLoadTurns(t *testing.T) {
 }
 
 func TestStartup_SkillsRefusedWithoutSkillLoader(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{AddStrandResult: reedengine.Strand{GUID: "strand-1"}, StatusQueue: liveStrandStatus(true)}
 	engine := &fakeEngine{PrepareLaunch: Launch{Cmd: "cmd", SessionID: "s"}, StartupScript: []StartupState{StartupReady}}
 	fx := newFixture(t, reed, engine, withConfig(fastConfig))
@@ -1731,6 +1750,7 @@ func (r *brokenRunRecordReed) SendText(guid, text string, submit bool) error {
 // the error wraps ErrNotStarted and the send's own sentinel, the strand is removed and the record reads died.
 // A prompt that fails ErrSubmissionNotLanded while a turn start lands past the pre-send offset landed late, and start returns the run.
 func TestStartup_SendFailuresTearDown(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const prompt = "do the task"
 	skillMissing := []SkillLoadReport{{Verified: true, Missing: []string{"a"}}}
@@ -1865,6 +1885,7 @@ func TestStartup_SendFailuresTearDown(t *testing.T) {
 // A strand with no run record is accepted through its live provider's engine.
 // A damaged run record, a dead strand and a failing capture each return an error with nothing sent.
 func TestRunner_AcceptStartupGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const gateCapture = "❯ No, exit\n  Yes, I trust this folder"
 	tests := []struct {

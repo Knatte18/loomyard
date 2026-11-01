@@ -1,12 +1,13 @@
-//go:build tier0
-
 // entries_recordwrite_test.go covers recordWriteEntry: its construction-time validation of the three paths and two seams of Env.RecordWrite, and the build over a filled Env.
 
 package shedrecipe
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestRecordWriteEntry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

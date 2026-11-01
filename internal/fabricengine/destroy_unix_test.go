@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // destroy_unix_test.go holds the destroy gate tests that plant symlinks, which Windows creates only with a privilege.
 
@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestGate_ContainmentResolvesSymlinkedAncestors is R2's regression for the symlink-mediated containment bypass:
@@ -16,6 +18,7 @@ import (
 // Each subtest pins one half of the fix — the escape must be refused,
 // and the two shapes that legitimately involve a link (a link AS the target, a real path under a symlinked container) must still pass — so a future simplification back to a bare filepath.Rel fails here rather than silently reopening the hole.
 func TestGate_ContainmentResolvesSymlinkedAncestors(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("SymlinkedParentSegmentEscapesAndIsRefused", func(t *testing.T) {
 		// This mirrors the shape R2's live repro used against removeLaunchers exactly, ownership kind included:
 		// ownedUnderGeometryRoot is declared here deliberately rather than a kind that fails anyway, because a kind that refuses on its own would leave the subtest passing for the wrong reason and prove nothing about containment.

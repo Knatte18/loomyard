@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shape_enforcement_test.go is the requirement-4 capstone: the two AST-based boundary-enforcement
 // scans that prove PATTERN-sole-parsers holds over both packages'
 // production files, not just at the registry's own file boundary.
@@ -32,6 +30,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // bannedRefKindIdentifiers returns the refKind scan's banned identifier set: every constant
@@ -187,6 +186,7 @@ func planOpScanFile(astFile *ast.File) []string {
 // matcher, proving it actually fires before the real-tree assertion below is trusted to mean
 // anything.
 func TestRefKindScan_CatchesSeededViolation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const src = `package fakeplanparser
@@ -217,6 +217,7 @@ func offside(raw string) bool {
 // TestPlanOpScan_CatchesSeededViolation is the plan:-op scan's own seeded self-test: a synthetic
 // source string carrying a deliberate strings.HasPrefix(x, "plan:") call must trip the matcher.
 func TestPlanOpScan_CatchesSeededViolation(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const src = `package fakeplanparser
@@ -245,6 +246,7 @@ func offside(raw string) bool {
 //
 //lym:guard
 func TestRefKindScan_RealTreeClean(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	targets, scanned := scanTargets(t)
@@ -278,6 +280,7 @@ func TestRefKindScan_RealTreeClean(t *testing.T) {
 //
 //lym:guard
 func TestPlanOpScan_RealTreeClean(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	targets, scanned := scanTargets(t)

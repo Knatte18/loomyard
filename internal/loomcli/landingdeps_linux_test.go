@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landingdeps_linux_test.go holds the loop-lock owner test, which needs a process start time only Linux reports.
 
 package loomcli
@@ -12,10 +10,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoopLockOwner asserts the lock's owner process is the run's live loop, and the calling step process for a dead loop, the teardown's mark and no record at all.
 func TestLoopLockOwner(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	parentPID := os.Getppid()

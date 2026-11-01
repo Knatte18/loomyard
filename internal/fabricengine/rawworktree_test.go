@@ -1,10 +1,8 @@
-//go:build tier0
-
 // rawworktree_test.go pins isRawWarpWorktree's anchor-awareness: the _lym management-marker probe
 // must look at the worktree's ANCHORED directory, the only place fabric ever wires the junction —
 // a root-joined probe misclassified every subpath-anchored managed worktree as raw.
-// Untagged deliberately: the probe is pure filesystem inspection, so this regression guard runs in
-// Tier 1 and stays visible to a plain untagged test run.
+// Tier0 deliberately: the probe is pure filesystem inspection.
+// This regression guard stays in the default tier0 run.
 
 package fabricengine
 
@@ -15,9 +13,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIsRawWarpWorktree_ProbesAnchoredDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

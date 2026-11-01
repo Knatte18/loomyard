@@ -1,14 +1,14 @@
-//go:build tier0
-
 package burlerengine
 
 import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRoundModels_Pick(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	review := []shuttleengine.ModelChoice{{Model: "r1"}, {Model: "r2", Effort: "high"}}

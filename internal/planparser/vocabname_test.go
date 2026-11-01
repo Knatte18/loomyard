@@ -1,5 +1,3 @@
-//go:build tier0
-
 // vocabname_test.go covers CheckFabricVocabularyName over in-memory plans.
 
 package planparser_test
@@ -10,11 +8,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricvocab"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCheckFabricVocabularyName covers the names a plan declares that the fabric-vocabulary scan refuses and the ones it admits.
 // Side-token names are built from fabricvocab.SideTokens, since this file sits outside the owner set.
 func TestCheckFabricVocabularyName(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	for _, side := range fabricvocab.SideTokens() {

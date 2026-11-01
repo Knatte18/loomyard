@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ready_test.go covers a beam's ready record: which records flag which beam.
 
 package pawlengine_test
@@ -10,9 +8,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReadyFor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	setAt := time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC)
 

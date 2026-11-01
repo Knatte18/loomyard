@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttleengine
 
 import (
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordSeenReed wraps a fakeReed and notes the outcome run.json holds at the moment a strand is removed.
@@ -29,6 +28,7 @@ func (r *recordSeenReed) RemoveStrand(guid string, recursive bool) (reedengine.R
 
 // TestStop_RecordsTheStopBeforeRemovingTheStrand tables the handle form and the guid form.
 func TestStop_RecordsTheStopBeforeRemovingTheStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	liveStrand := []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}
@@ -103,6 +103,7 @@ func TestStop_RecordsTheStopBeforeRemovingTheStrand(t *testing.T) {
 
 // TestStop_FailedRecordWriteRemovesNothingAndRestoresTheHandle covers a handle whose record cannot be written.
 func TestStop_FailedRecordWriteRemovesNothingAndRestoresTheHandle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}}}
@@ -128,6 +129,7 @@ func TestStop_FailedRecordWriteRemovesNothingAndRestoresTheHandle(t *testing.T) 
 // TestStopStrand_UnrecordableStopRemovesNothing covers the guid form's record that cannot be read or rewritten.
 // The read row calls stopRecorded because FindRun skips an unreadable record, so only a record that turns unreadable after the scan reaches that refusal.
 func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -184,6 +186,7 @@ func TestStopStrand_UnrecordableStopRemovesNothing(t *testing.T) {
 
 // TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone covers the guid form for a strand shuttle never recorded.
 func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	fake := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-9", PaneID: "%9", Live: true}}}}}
@@ -200,6 +203,7 @@ func TestStopStrand_GuidWithNoRunRecordIsRemovedByStrandAlone(t *testing.T) {
 // TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns covers the step form over one run-directory root:
 // only a running run tied to the step whose strand is live or a dead own-window one is stopped, an untied one is listed and left alone, a dead window 0 strand is left alone, and a failed stop is reported and skipped.
 func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tie := StepTie{StepsDir: "/steps", TraceID: "trace-a"}
@@ -276,6 +280,7 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 
 // TestStop_MarkedHandleFinalizesStoppedUnlessDone covers a Wait that sees the strand go after Stop.
 func TestStop_MarkedHandleFinalizesStoppedUnlessDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

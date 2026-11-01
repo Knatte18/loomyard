@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go covers loading the hub-wide gate config over a bare temp directory seeded with just a gate.yaml, with no hub and no git.
 
 package gateslot
@@ -19,6 +17,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var templateDefaults = Config{
@@ -87,6 +86,7 @@ func seedGateConfig(t *testing.T, contents string) string {
 }
 
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -403,6 +403,7 @@ func twoFileWayForward(hub, machine string) string {
 }
 
 func TestTemplateConfigAndLimits(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cfg, err := TemplateConfig()
@@ -436,6 +437,7 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 
 // TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite pins the way forward of a standalone load with no worktree gate.yaml.
 func TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	_, err := LoadConfig(configengine.Dirs{Anchor: seedGateConfig(t, "")})
@@ -454,6 +456,7 @@ func TestLoadConfig_StandaloneAbsentNamesTheWorktreeWrite(t *testing.T) {
 
 // The logger's output is process-global, so this test does not run in parallel.
 func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
+	tiergate.Require(t, 0)
 	const machineStep = `lym config gate --layer machine`
 	tests := []struct {
 		name string
@@ -502,6 +505,7 @@ func TestLoadConfig_DropsTierParallelOfUndeclaredTier(t *testing.T) {
 }
 
 func TestConfig_Inert(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -536,6 +540,7 @@ func TestConfig_Inert(t *testing.T) {
 }
 
 func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	withPublish := "gates:\n  card: {tiers: [0], scope: card}\n  webster-fix: {tiers: [0, 1], scope: diff}\n  publish: [2]\nscoper: none\n"
@@ -630,6 +635,7 @@ func TestMigrateConfig(t *testing.T) {
 }
 
 func TestSeedAdoptGate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const seededLine = "gates.adopt: added with the value of gates.finalize"
@@ -692,6 +698,7 @@ func TestSeedAdoptGate(t *testing.T) {
 }
 
 func TestConfig_TierUse(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	twoTier := Config{

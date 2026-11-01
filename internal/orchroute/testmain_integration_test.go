@@ -1,5 +1,3 @@
-//go:build tier1
-
 // testmain_integration_test.go wires this package's tier1 test binary into the hermetic git test environment, since its hub fixtures spawn git.
 
 package orchroute

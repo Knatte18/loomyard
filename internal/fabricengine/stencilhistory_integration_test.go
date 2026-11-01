@@ -1,5 +1,3 @@
-//go:build tier1
-
 // stencilhistory_integration_test.go covers StencilBaseByStamp against a real hubforge hub whose
 // board has been seeded and re-seeded with a changed default, via CommitSeededStencils exactly as
 // the real seeding pass would drive it.
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedStencil writes content at name's path under hub's stencils directory and commits it via
@@ -40,6 +39,7 @@ func seedStencil(t *testing.T, hub *hubforge.Hub, name string, content []byte, m
 // The steps run in order on the same stencil.
 // Each seeds bodies no earlier step seeded last, and looks up a stamp only its own seeding (or none) produced, so a longer history never changes a step's expectation.
 func TestStencilBaseByStamp(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

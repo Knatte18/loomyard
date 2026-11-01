@@ -1,5 +1,3 @@
-//go:build tier1
-
 // lymbin_integration_linux_test.go holds the lymbin group-kill test, which asserts liveness through /proc.
 
 package lymbin
@@ -15,11 +13,13 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_KillsTheGroupOnTimeout ends the run only once the sleeper has recorded its pids,
 // so the time a scanner holds the freshly built helper before it runs never counts against the timeout.
 func TestRun_KillsTheGroupOnTimeout(t *testing.T) {
+	tiergate.Require(t, 1)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

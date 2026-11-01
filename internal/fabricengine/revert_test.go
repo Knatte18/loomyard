@@ -1,6 +1,4 @@
-//go:build tier0
-
-// revert_test.go — untagged unit tests for classifyCorrespondence, the pure gap-classification core
+// revert_test.go — tier0 unit tests for classifyCorrespondence, the pure gap-classification core
 // resolveRevertTarget's resolution step builds on.
 // No git spawn: every case works against a hand-built *corrIndex.
 
@@ -10,6 +8,8 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // buildIndexFromEntries returns a corrIndex populated with entries, sorted by
@@ -38,6 +38,7 @@ func buildIndexFromEntries(t *testing.T, entries []corrEntry) *corrIndex {
 //
 //testtiming:keep an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
 func TestClassifyCorrespondence(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		entries     []corrEntry

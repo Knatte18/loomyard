@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shuttleengines_test.go verifies the registry builds a set from a shuttle config, refuses an unregistered engine from any layer, and stays equal to modelspec's closed engine names.
 
 package shuttleengines
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -122,6 +121,7 @@ func assertBadClaudeConfigRefusesOnlyARunStart(t *testing.T, set shuttleengine.E
 
 // TestNew pins the set the template config builds and the refusal of an engine name no layer may smuggle in.
 func TestNew(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	templateCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
@@ -194,6 +194,7 @@ func TestNew(t *testing.T) {
 
 // TestNames_EqualModelspecEngineNames pins that the registry and modelspec's closed set name the same engines, and that modelspec hands out a copy.
 func TestNames_EqualModelspecEngineNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if got, want := Names(), modelspec.EngineNames(); !reflect.DeepEqual(got, want) {
@@ -209,6 +210,7 @@ func TestNames_EqualModelspecEngineNames(t *testing.T) {
 
 // TestEnvScrub_MatchesTmuxkitServerEnviron pins the registered engines' scrub against the kit's server-environment filter, and the union over several entries as sorted and deduplicated.
 func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	environ := []string{
@@ -251,6 +253,7 @@ func (namingEngine) RenameText(want string) string { return want }
 // TestSessionNamers pins that the claude tag and the empty tag both map to the claude engine and no other tag is present,
 // and that namersOf maps only the engines that implement a session namer.
 func TestSessionNamers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	namers := SessionNamers()
@@ -293,6 +296,7 @@ func (readingEngine) PriceMessage(model string, u shuttleengine.MessageUsage) (f
 // TestRecordReaders pins that the claude entry carries all three capabilities as adapters that hide the engine,
 // and that readsOf sets exactly the capabilities an engine implements and forwards each to it.
 func TestRecordReaders(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	claude, ok := RecordReaders()["claude"]
@@ -335,6 +339,7 @@ func TestRecordReaders(t *testing.T) {
 
 // TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does and that an unknown name renders none.
 func TestToolBoundaryRenderer(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	renderer, ok := ToolBoundaryRenderer("claude")
@@ -353,6 +358,7 @@ func TestToolBoundaryRenderer(t *testing.T) {
 
 // TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template and refuses a keep-warm cap a run start would refuse.
 func TestConfigModules_ClaudeCheckLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var checkLoad func(configengine.Dirs) error

@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_coldstart_test.go pins the headline scenario this task adds: `lym reed add` and `lym reed attach`, run against a worktree that was never brought up and carries no persisted state file at all, boot the substrate themselves rather than refusing with the friendly no-session error.
 // The scenario drives a real multiplexer against one forged hub, giving each step its own never-brought-up sibling worktree, using the package's existing fixture vocabulary (see smoke_test.go) rather than any new fixture machinery.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -40,6 +39,7 @@ func runReedCLINoFatal(t *testing.T, exe, dir string, timeout time.Duration, arg
 // TestSmokeColdStart runs the cold-start claims against one hub, each step on its own fresh sibling worktree so the worktree is never brought up and carries no state file when the step begins.
 // The steps are independent of each other's results; they run serially because they share the hub's one tmux server, and the scenario calls t.Parallel but no step does for that reason.
 func TestSmokeColdStart(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	tmuxPath := tmuxBinaryPath(t)
 	lymExe := lymbin.Build(t)

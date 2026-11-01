@@ -1,5 +1,3 @@
-//go:build tier0
-
 // scratch_test.go covers scratchSegment over a temp .scratch directory with a fixed clock and board reads.
 
 package cleanupcli
@@ -14,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var scratchNow = time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -41,6 +40,7 @@ func boardTask(brief string, status *string) boardengine.Task {
 }
 
 func TestScratchSegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	old := scratchNow.Add(-scratchMaxAge - 24*time.Hour)

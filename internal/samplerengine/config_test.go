@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — tier 0 unit tests for samplerengine.LoadConfig.
 //
 // Seeds a bare t.TempDir() with just a _lym/config/sampler.yaml file (no real hub, no git spawn).
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedHubConfig creates <board>/_lym/config/sampler.yaml with the given contents.
@@ -44,6 +43,7 @@ func writeLocalConfig(t *testing.T, anchor, contents string) {
 
 // TestLoadConfig covers the template's defaults for a hub with no file, a hub file and a local layer setting code_review, an agent failing the model-spec grammar, and a base directory with no config.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

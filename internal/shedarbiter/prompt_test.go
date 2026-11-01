@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedarbiter
 
 import (
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seededStencils returns a stencils directory seeded with the shipped stencils.
@@ -28,6 +27,7 @@ func seededStencils(t *testing.T) string {
 
 // TestPrompt asserts the shipped stencil renders every marker value, the no-parent and edit directives, the recipe description, the literal none for an absent report, brief, case brief, amendment target, decision record, support log and recipe, no unfilled marker and a verdict example the verdict reader accepts.
 func TestPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const battenRecipe = "This is a batten run; it has no repair verb."
@@ -121,6 +121,7 @@ func TestPrompt(t *testing.T) {
 //
 //testtiming:keep pins every field of the arbiter launch spec: the verdict as its single output file, the resolved model, effort, version and timeout, the role, the empty name override and skill list and the zero-valued fields
 func TestSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const prompt = "settle the stop"

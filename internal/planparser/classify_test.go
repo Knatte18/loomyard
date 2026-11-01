@@ -1,5 +1,3 @@
-//go:build tier0
-
 // classify_test.go table-tests classifyRef's five-rule shape classification directly, pinning both
 // the documented cases and the documented shedrecipe.lookup misclassification-as-path.
 
@@ -7,10 +5,13 @@ package planparser
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestClassifyRef pins classifyRef and the exported IsHandleRef over every ref shape.
 //
 //testtiming:keep pins classifyRef's five-rule shape table and IsHandleRef's agreement with it, which its covering tests reach only after canonicalization
 func TestClassifyRef(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

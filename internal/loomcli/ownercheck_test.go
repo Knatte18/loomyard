@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ownercheck_test.go pins the owner refusal of `lym loom start` and `lym loom resume` over a fake owner verdict.
 
 package loomcli
@@ -22,12 +20,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestStartAndResume_RefuseARunOwnedElsewhere drives both verbs over a receiver with a fake ownerOf:
 // an owner elsewhere refuses with the kind owned_elsewhere, the owner and `lym adopt`, before the bootstrap lock is taken;
 // a verdict error refuses naming its cause and the re-run; a run owned here goes on; and an absent status file never calls the seam.
 func TestStartAndResume_RefuseARunOwnedElsewhere(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

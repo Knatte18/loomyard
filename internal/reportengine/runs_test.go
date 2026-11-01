@@ -1,5 +1,3 @@
-//go:build tier0
-
 // runs_test.go tests run selection and the batten span over a fake records repository.
 
 package reportengine
@@ -12,6 +10,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wantRun is what a row expects of one full run: its tag and ISO week, whether it holds the batten source and the history length of each batten snapshot, oldest first.
@@ -36,6 +35,7 @@ func tagName(slug, sha string) string {
 }
 
 func TestCompute_SelectsRuns(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	create, runShed, land := battenrecipe.NameWorktreeCreate, battenrecipe.NameRunShed, battenrecipe.NameLand
 

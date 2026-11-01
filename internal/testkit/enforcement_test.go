@@ -1,5 +1,3 @@
-//go:build tier0
-
 package testkit
 
 import (
@@ -9,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -41,6 +40,7 @@ func isCLIImport(p string) bool {
 
 //lym:guard
 func TestEnforcement_TestkitInvariant(t *testing.T) {
+	tiergate.Require(t, 0)
 	var importerFailures, cliFailures, spawnFailures []string
 
 	parsed := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd", "tools"}}, func(f *scankit.File) {
@@ -80,5 +80,6 @@ func TestEnforcement_TestkitInvariant(t *testing.T) {
 
 //lym:guard
 func TestEnforcement_ScankitStdlibOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlist(t, "internal/testkit/scankit")
 }

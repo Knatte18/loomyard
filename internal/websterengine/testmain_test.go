@@ -3,8 +3,8 @@
 // (begin-batch's HeadSHA capture, record-batch's ChangedFiles/Dirty, chain rollback's ResetHard)
 // never inherit the operator's global gitconfig (see PATTERN-test-isolation).
 // Every tier0 test in this package still spawns nothing;
-// only the //go:build tier1 files ever reach git,
-// but TestMain must run for the whole test binary regardless of which tests are compiled in.
+// only the tier1 tests ever reach git,
+// but TestMain runs for the whole test binary regardless of which tier a run selects.
 
 package websterengine
 

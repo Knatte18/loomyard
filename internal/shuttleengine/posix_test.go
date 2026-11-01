@@ -1,5 +1,3 @@
-//go:build tier0
-
 // posix_test.go tables PosixPath's conversion and rejection cases: drive root, spaces,
 // forward-slash input, UNC rejection, and relative rejection.
 
@@ -7,7 +5,10 @@ package shuttleengine
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestPosixPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		input   string

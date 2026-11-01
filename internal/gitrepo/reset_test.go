@@ -1,5 +1,3 @@
-//go:build tier1
-
 // reset_test.go covers Repo.ResetHard and Repo.ResetKeep against real git repositories, reusing
 // gitrepo_test.go's fixture helpers (newRepo, writeFile, commitAll, runGit).
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestResetHard covers ResetHard against one repository with two commits.
@@ -20,6 +19,7 @@ import (
 // The steps run serially in that order: the failed reset must leave the repository untouched for the successful one.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestResetHard(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -66,6 +66,7 @@ func TestResetHard(t *testing.T) {
 // validating sha, the result would be a git failure (not a repository) rather than ErrInvalidSHA,
 // so a passing assertion here doubles as proof validation happens first.
 func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	repo := gitrepo.New(t.TempDir())
@@ -96,6 +97,7 @@ func TestResetHard_InvalidSHA_RejectedBeforeGitSpawn(t *testing.T) {
 // The steps run serially in that order, each starting from the one before's state.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestResetKeep(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)

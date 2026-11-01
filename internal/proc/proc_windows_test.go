@@ -1,4 +1,4 @@
-//go:build tier0 && windows
+//go:build windows
 
 package proc
 
@@ -6,9 +6,12 @@ import (
 	"errors"
 	"os/exec"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStatReadsUnsupportedOnWindows(t *testing.T) {
+	tiergate.Require(t, 0)
 	if _, err := ListStats(); !errors.Is(err, errors.ErrUnsupported) {
 		t.Errorf("ListStats() error = %v; want errors.ErrUnsupported", err)
 	}
@@ -21,6 +24,7 @@ func TestStatReadsUnsupportedOnWindows(t *testing.T) {
 }
 
 func TestHideWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	HideWindow(cmd)
 
@@ -36,6 +40,7 @@ func TestHideWindow(t *testing.T) {
 }
 
 func TestDetach(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	Detach(cmd)
 
@@ -51,6 +56,7 @@ func TestDetach(t *testing.T) {
 }
 
 func TestDetachBreakaway(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	DetachBreakaway(cmd)
 
@@ -67,6 +73,7 @@ func TestDetachBreakaway(t *testing.T) {
 }
 
 func TestDetachBreakawayDoesNotAffectDetach(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	Detach(cmd)
 
@@ -82,6 +89,7 @@ func TestDetachBreakawayDoesNotAffectDetach(t *testing.T) {
 }
 
 func TestHideWindowDoesNotSetDetachFlag(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	HideWindow(cmd)
 
@@ -91,6 +99,7 @@ func TestHideWindowDoesNotSetDetachFlag(t *testing.T) {
 }
 
 func TestDetachSetsHideWindow(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := exec.Command("cmd", "/c", "echo", "test")
 	Detach(cmd)
 

@@ -15,11 +15,11 @@ import (
 // testTierUnstatedCheck names the finding testTierFindings appends for a created test file whose naming Intent lines do not state exactly one tier.
 const testTierUnstatedCheck = "test-tier-unstated"
 
-// untaggedWord is the Intent word that states a created test file holds support only and carries no build line.
+// untaggedWord is the Intent word that states a created test file holds support only and names no tier.
 const untaggedWord = "untagged"
 
 // testTierWayForward is the way-forward clause every test-tier-unstated finding carries.
-const testTierWayForward = "way forward: add an Intent line naming the file and its `//go:build` line, such as `//go:build tier0`, or the word `untagged` when the file holds support only (TestMain, helpers) and carries no build line, on a line that names no other test file; where the lines name several tags, join them with || only for a helper several tiers share, else keep one; drop untagged or the tag when both appear"
+const testTierWayForward = "way forward: add an Intent line naming the file and its tier, such as `tier0`, the tier every test function of the file names in its opening tiergate.Require call, or the word `untagged` when the file holds support only (TestMain, helpers), on a line that names no other test file; where the lines name several tiers, keep one; drop untagged or the tier when both appear"
 
 // testTierFindings returns one test-tier-unstated finding per test file that a card of cards creates as a file target and whose naming Intent lines state no valid tier.
 // It returns nothing unless plan is a go plan and tierTags is non-empty.

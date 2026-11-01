@@ -1,5 +1,3 @@
-//go:build tier0
-
 // loop_move_test.go pins the loop's gate on an anchor change: with a move record standing it spawns nothing, and the first tick after the record is gone starts the work it held back.
 
 package dobbyengine
@@ -12,11 +10,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_NoPassWhileAMoveStands drives ticks with a move record present and then removed.
 // While it stands, no pass, no task and no tidy agent starts, though the landing is counted; the next tick starts the due pass, the ready task and the tidy agent.
 func TestRun_NoPassWhileAMoveStands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	h := newLoopHarness(t, 3)

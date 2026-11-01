@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the segment runner over fake segments and the prime's segment list over a synthetic location.
 
 package cleanupcli
@@ -18,9 +16,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestRunSegments(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var ran []string
@@ -54,6 +54,7 @@ func TestRunSegments(t *testing.T) {
 }
 
 func TestPrimeSegments(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	hub := t.TempDir()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rename_test.go — tests for Board.Rename: what a rename keeps, rewrites and reports, and what it refuses.
 
 package boardengine_test
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newRenameBoard returns a board whose clock reads *now, holding other, old, waiter, prose, exact, starts, ends, near and grouping in that store order.
@@ -64,6 +63,7 @@ func newRenameBoard(t *testing.T, now *time.Time) (*boardengine.Board, string) {
 // TestRename_KeepsEntryRewritesDependentsAndReportsMentions pins that a rename changes only the entry's slug, keeping its id, position, dates and kept keys.
 // It also pins that the rename rewrites a run-held dependent's depends_on without revising it, renders under the new slug and reports the whole-slug mentions.
 func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
 	b, boardPath := newRenameBoard(t, &now)
@@ -148,6 +148,7 @@ func TestRename_KeepsEntryRewritesDependentsAndReportsMentions(t *testing.T) {
 
 // TestRename_Refusals pins every refusal of a rename, each leaving the board files as they were.
 func TestRename_Refusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name       string

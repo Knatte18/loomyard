@@ -1,5 +1,3 @@
-//go:build tier0
-
 // gatequiescence_test.go pins the precondition the per-attempt done-signal narrowing rests on:
 // a gate runs at a turn end that is not a wait, so no gate may run while a fork subagent is live.
 // Batch 1's engine_test.go pins that the in-process Agent tool is denied by the shipped shuttle template.
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gateQuiescenceFailureMessage is the shared failure text every case below reports on: a turn end whose Stop payload reports an outstanding fork is a wait, so no gate runs while a fork is live.
@@ -70,6 +69,7 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 //
 //testtiming:keep pins that no gated shipped row authorizes fork subagents outside an ungated BurlerReview reviewer, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
+	tiergate.Require(t, 0)
 	shipped, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
@@ -171,6 +171,7 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 //
 //testtiming:keep pins that the shipped Webster round has no gates key, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
+	tiergate.Require(t, 0)
 	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)

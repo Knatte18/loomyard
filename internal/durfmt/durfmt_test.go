@@ -1,5 +1,3 @@
-//go:build tier0
-
 // durfmt_test.go pins the format boundaries of FormatMinutes and FormatSeconds.
 
 package durfmt
@@ -7,10 +5,13 @@ package durfmt
 import (
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFormat pins the format boundaries of both FormatMinutes and FormatSeconds.
 func TestFormat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

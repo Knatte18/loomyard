@@ -1,5 +1,3 @@
-//go:build tier0
-
 // overviewdobby_test.go pins the dobby's lines: DobbyLines over built views and cells, and the window frame that draws them above the orchs.
 
 package battencli
@@ -17,9 +15,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestDobbyLines(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -104,6 +104,7 @@ func TestDobbyLines(t *testing.T) {
 }
 
 func TestOverviewSource_DrawsTheDobbyAboveTheOrchs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	prime := locationkit.Location(t.TempDir(), "prime", ".")
 	source := newOverviewSource(prime, prime, orchThresholds, func() time.Time { return overviewNow })
@@ -133,6 +134,7 @@ func TestOverviewSource_DrawsTheDobbyAboveTheOrchs(t *testing.T) {
 }
 
 func TestWorktreeHasDobby(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	prime := &lymcwd.Location{WorktreeName: "main"}
 	beams := func() ([]dobbyengine.BeamPair, error) {

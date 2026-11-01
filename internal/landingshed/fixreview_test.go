@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixreview_test.go pins ParseFixReviewReport's verdicts, findings and refusals.
 
 package landingshed
@@ -12,9 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestParseFixReviewReport(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

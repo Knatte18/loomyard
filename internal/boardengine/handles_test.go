@@ -1,5 +1,3 @@
-//go:build tier0
-
 // handles_test.go — tests of entry handles: their assignment on write and load, and the Handle selector.
 
 package boardengine_test
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // handlesOf returns each entry's slug mapped to its handle, as the board reads.
@@ -45,6 +44,7 @@ func sameHandles(got, want map[string]string) bool {
 // It pins that a promote or a type change gives the entry the lowest free number of its new letter.
 // Each step after the first addresses its entry by Handle, so the steps also pin that every selector-taking write finds an entry by handle, its letter in either case.
 func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	b := boardengine.New(boardengine.Config{Path: t.TempDir(), Readme: "Home.md", DesignPrefix: "proposal-", Types: testTypes, Labels: testLabels, SkipGit: true})
 	upsert := func(fields map[string]any) func() error {
@@ -123,6 +123,7 @@ func TestHandles_AssignedLowestFreeAndStable(t *testing.T) {
 // TestHandles_AssignedOnLoad pins that a board.json written before handles reads with them, in id order, keeping a valid stored handle and reassigning a duplicate,
 // and that the first write persists them.
 func TestHandles_AssignedOnLoad(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boardPath := t.TempDir()
 	stored := `{"version":1,"entries":[
@@ -168,6 +169,7 @@ func TestHandles_AssignedOnLoad(t *testing.T) {
 // TestHandles_UndecidedLetterKeepsNoDuplicate pins that a note whose type label is no longer configured keeps its stored handle.
 // It pins that the note loses the handle when an entry of lower id already holds it.
 func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	boardPath := t.TempDir()
 	stored := `{"version":1,"entries":[

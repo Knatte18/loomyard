@@ -1,5 +1,3 @@
-//go:build tier0
-
 // weftpaths_test.go covers the weft-sibling path accessors relocated from internal/lymcwd in this
 // batch — RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor — with both AnchorRel "."
 // (root) and subpath cases, pinning the "-weft" sibling naming across container/base/subpath
@@ -14,12 +12,14 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestWeftPathAccessors covers RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor, verifying AnchorRel-mirroring and junction pairing against the warp-side worktree.
 //
 //testtiming:keep RecordsWorktree, RecordsWorktreePath, WeftLymDir and WeftLymDirFor mirroring AnchorRel and pairing with the warp side; coverage of its blocks by other tests does not show an assertion of this
 func TestWeftPathAccessors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		hub     string
@@ -105,6 +105,7 @@ func TestWeftPathAccessors(t *testing.T) {
 // TestWeftWarpSlug covers WeftWarpSlug's round-trip against a weft sibling directory name,
 // and rejects names that do not carry the weftname.Suffix tail or whose stripped prefix is empty.
 func TestWeftWarpSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		input    string

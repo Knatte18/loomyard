@@ -1,5 +1,3 @@
-//go:build tier1
-
 // suspect_test.go exercises the suspect-path check and AcceptPendingAudit's evidence rule over real scratch git repositories.
 
 package websterengine
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // suspectFixture is a scratch repo with a tracked file, a git-ignored one, and plan and scratch directories outside it.
@@ -57,6 +56,7 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 }
 
 func TestCheckSuspectPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	root := fx.geom.WorktreeRoot
 	tracked := filepath.Join(root, "tracked.txt")
@@ -150,6 +150,7 @@ func reversedOrderFixture(t *testing.T) (fx *suspectFixture, c0, c1, c2 string) 
 // TestCheckRecoveredSuspects_EmptyStartHoldsNothing proves a record with no StartSHA treats every copy of the flagged blob in the head tree as new,
 // rather than reading the index, which holds head's blob once the strand committed.
 func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	root := fx.geom.WorktreeRoot
 	blob := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", fx.head+":tracked.txt"))
@@ -165,6 +166,7 @@ func TestCheckRecoveredSuspects_EmptyStartHoldsNothing(t *testing.T) {
 }
 
 func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx, c0, _, c2 := reversedOrderFixture(t)
 	fx.st.Batches[3] = &BatchState{Slug: "three"}
 
@@ -193,6 +195,7 @@ func TestRunEvidenceBases_PicksByAncestry(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_RefusesMissingCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	missing := "0123456789abcdef0123456789abcdef01234567"
 	fx.st.Batches[1].Digest.HeadSHA = missing
@@ -213,6 +216,7 @@ func TestAcceptPendingAudit_RefusesMissingCommit(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_UsesExecutionOrderHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx, _, _, _ := reversedOrderFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
@@ -226,6 +230,7 @@ func TestAcceptPendingAudit_UsesExecutionOrderHead(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "s1/parent:parent-write:1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}}}
 
@@ -242,6 +247,7 @@ func TestAcceptPendingAudit_ClearsWhenPathsMatchHead(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_RefusesDifferingPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{
 		{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"tracked.txt"}},
@@ -281,6 +287,7 @@ func committedPastHead(t *testing.T, fx *suspectFixture) {
 }
 
 func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	committedPastHead(t, fx)
 
@@ -302,6 +309,7 @@ func TestAcceptPendingAudit_RefusesCommitPastHead(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	committedPastHead(t, fx)
 	gitkit.Git(t, fx.geom.WorktreeRoot, "reset", "--hard", fx.head)
@@ -316,6 +324,7 @@ func TestAcceptPendingAudit_AcceptsAfterHeadReset(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	fx.st.PendingAuditFindings = []PendingAuditFinding{{ID: "f1", Class: "parent-write", Detail: "d", Paths: []string{"ignored.log"}}}
 
@@ -331,6 +340,7 @@ func TestAcceptPendingAudit_RefusesUnverifiablePath(t *testing.T) {
 }
 
 func TestAcceptPendingAudit_PlanPathNamesRestorePlan(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newSuspectFixture(t)
 	card := filepath.Join(fx.geom.PlanDir, "01-card.md")
 	if err := os.WriteFile(card, []byte("edited"), 0o644); err != nil {

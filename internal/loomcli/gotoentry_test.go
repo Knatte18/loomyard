@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -8,11 +6,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestObserveEntry_GotoIsNotACrashResume pins that a run moved by shedengine.Goto reads as an ordinary resume:
 // goto writes paused, never running, so with the run lock free the entry observation carries no crash-resume signature.
 func TestObserveEntry_GotoIsNotACrashResume(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	statusPath := filepath.Join(dir, "status.json")
 	statusLockPath := filepath.Join(dir, "status.json.lock")

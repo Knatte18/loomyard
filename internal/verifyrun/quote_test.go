@@ -1,5 +1,3 @@
-//go:build tier0
-
 // quote_test.go pins QuoteArg's quoting per platform shell.
 
 package verifyrun
@@ -7,9 +5,12 @@ package verifyrun
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestQuoteArg(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

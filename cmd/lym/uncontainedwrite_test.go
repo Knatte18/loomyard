@@ -1,5 +1,3 @@
-//go:build tier0
-
 // uncontainedwrite_test.go is the write-side twin of destructiveguard_test.go: it machine-checks that
 // internal/fabricengine's production source contains no raw filesystem-WRITE primitive
 // (os.MkdirAll/os.Mkdir/os.WriteFile/os.Create/os.OpenFile/os.Symlink/os.Link) outside an explicit
@@ -31,6 +29,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // uncontainedWriteScanPackages is the module-relative package subtree this guard walks: the one package
@@ -103,6 +102,7 @@ const uncontainedWriteMinScannedFiles = 30
 //
 //lym:guard
 func TestNoUncontainedWrite_FabricengineProductionSource(t *testing.T) {
+	tiergate.Require(t, 0)
 	allow := scankit.NewAllowlist(uncontainedWriteAllowlist)
 
 	var scanned int

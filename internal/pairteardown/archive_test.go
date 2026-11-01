@@ -1,5 +1,3 @@
-//go:build tier0
-
 // archive_test.go drives the pair-log archive over temporary directories with an injected clock.
 
 package pairteardown
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
@@ -102,6 +101,7 @@ func posixOnly(run func(t *testing.T)) func(t *testing.T) {
 // TestLogArchive asserts the archive's write, prune and pair-teardown step: what lands in an entry, what is left alone, and what is logged.
 // Rows that capture the process-global logger run serially; the others run in parallel.
 func TestLogArchive(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// serial marks a row that captures the process-global logger.

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // concurrency_test.go — concurrency correctness + read-under-write contention.
 //
 // Verifies that many readers run correctly alongside a writer (reads see a consistent wiki, never a
@@ -18,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestConcurrentReadsDuringUpserts runs many readers concurrently with a single writer and asserts
@@ -32,6 +31,7 @@ import (
 // Therefore, the writes constant is kept small to bound the filesystem operation stream while
 // preserving the race-condition window for concurrent access.
 func TestConcurrentReadsDuringUpserts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cwd := seedWiki(t, 100)
 	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
@@ -128,6 +128,7 @@ func TestConcurrentReadsDuringUpserts(t *testing.T) {
 // if the lock failed to serialize same-process writers, we would see fewer than `writers` tasks or
 // duplicate ids.
 func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	cwd := seedWiki(t, 0)
 	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
@@ -169,6 +170,7 @@ func TestConcurrentUpsertsDoNotLoseWrites(t *testing.T) {
 // Reads take no lock, so this should stay close to the uncontended BenchmarkGet — that gap is the
 // price reads pay for a busy writer.
 func BenchmarkGetDuringUpsert(b *testing.B) {
+	tiergate.Require(b, 0)
 	cwd := seedWiki(b, 100)
 	// seedWiki creates _lym/config/board.yaml with path: board, so the board dir is <cwd>/board
 	cfg := boardengine.Config{Path: filepath.Join(cwd, "board"), Readme: "Home.md", DesignPrefix: "proposal-", Types: []boardengine.Label{{Name: "bug"}, {Name: "enhancement"}}, Labels: []boardengine.Label{{Name: "undecided"}}, SkipGit: true}

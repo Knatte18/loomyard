@@ -1,5 +1,3 @@
-//go:build tier1
-
 // originreconcile_integration_test.go proves the origin reconcile's judgment on hubforge hubs.
 // The other machine is a second clone of the hub's code or records bare repository.
 //
@@ -25,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // The text a stopped dirty, gone or busy branch's line is followed by in a printed summary.
@@ -176,6 +175,7 @@ func writeStatus(t *testing.T, hub *originHub, slug, producer string) {
 // TestReconcileOrigin_Judge covers the origin reconcile's judgment, its network calls and its entry classification.
 // It runs without t.Parallel because it sets the process-global origin call hook.
 func TestReconcileOrigin_Judge(t *testing.T) {
+	tiergate.Require(t, 1)
 	boardkit.InstallReplay(t)
 
 	t.Run("A judge-only reconcile of an origin that moved a records branch, Bolt and the prime's code branch reads fast_forward for each, fetching only moved heads", func(t *testing.T) {

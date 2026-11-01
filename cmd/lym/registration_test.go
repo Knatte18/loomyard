@@ -1,5 +1,3 @@
-//go:build tier0
-
 // registration_test.go is a repo-wide guard that verifies every internal package exposing func
 // Command() *cobra.Command is wired into newRoot() in cmd/lym/main.go.
 // It uses source-level AST analysis so it catches missed registrations at test time without
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // isCommandFunc reports whether fd is func Command() *cobra.Command.
@@ -56,6 +55,7 @@ func isCommandFunc(fd *ast.FuncDecl) bool {
 //
 //lym:guard
 func TestRegistration_AllModulesRegistered(t *testing.T) {
+	tiergate.Require(t, 0)
 	repoRoot := scankit.Root(t)
 
 	// Phase 1: walk internal/ and collect packages with Command().

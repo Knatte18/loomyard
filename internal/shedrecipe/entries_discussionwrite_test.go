@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_discussionwrite_test.go covers discussionWriteEntry: its construction-time validation over Config and the three Env seams it reads,
 // and the Calls proving the told table is evaluated once and carries the row's gate.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // liveSeatLead is a non-nil seatengine.Handle the fake seat runner hands back as a live lead; the producer never calls it.
@@ -66,6 +65,7 @@ func requireNamesFindingsFile(t *testing.T, env Env, row, reason string) {
 
 // TestDiscussionWriteEntry_ConstructionFailures covers the three seams discussionWriteEntry requires and the Config rejection every entry in this package performs first.
 func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -94,6 +94,7 @@ func TestDiscussionWriteEntry_ConstructionFailures(t *testing.T) {
 
 // TestDiscussionWriteEntry_HappyPath asserts a fully-filled Env constructs a non-nil producer with a nil error.
 func TestDiscussionWriteEntry_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	env := newTestEnv(t)
 	producer, err := discussionWriteEntry(RowIdentity{Name: "Row"}, Config{}, env)
@@ -119,6 +120,7 @@ func TestDiscussionWriteEntry_HappyPath(t *testing.T) {
 
 // TestDiscussionWriteEntry_CallDone drives the producer's Call once against a done lead and asserts the told table was evaluated once and reached the seat runner with the row's gate, the returned OutputPointer.Path is the lead's first output, and the commit closure fired exactly once.
 func TestDiscussionWriteEntry_CallDone(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	env := newTestEnv(t)
 	output := filepath.Join(env.WorktreeRoot, "decision-record.md")
@@ -158,6 +160,7 @@ func TestDiscussionWriteEntry_CallDone(t *testing.T) {
 // TestDiscussionWriteEntry_GateConfig covers the "gates" Config key discussionWriteEntry resolves through resolveGateSpec:
 // a "discussion" entry resolves to the discussion validator, an unrecognised name fails loud naming both legal values, and a row carrying no key resolves to the empty shuttleengine.GateSpec -- an ungated producer.
 func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("GateDiscussionResolvesToDiscussionValidator", func(t *testing.T) {
 		t.Parallel()

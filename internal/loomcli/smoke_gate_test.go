@@ -1,5 +1,3 @@
-//go:build tier2
-
 // smoke_gate_test.go is the live-substrate regression guard for the gate re-prompt loop
 // (internal/shuttleengine's Wait, batch 1): the one mechanism no untagged test can exercise, because
 // every hermetic test fake in internal/shedrecipe and internal/shedadapters evaluates a gate closure
@@ -44,6 +42,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gateRepromptReadEngine is a shuttleengine.Engine that launches a plain shell script standing in
@@ -132,6 +131,7 @@ func (e *gateRepromptReadEngine) ComposeSend(text string) []shuttleengine.PaneIn
 // It asserts the run reaches a passed-gate shuttleengine.OutcomeDone, the shape a gated MultiLLMProducer.Call maps onto shedengine.Done.
 // It also asserts that the gate's reported Attempts is at least 1, and that the artifact on disk passes the same gate closure afterwards.
 func TestSmokeGate_RepromptsThroughARealPaneAndFixesTheArtifact(t *testing.T) {
+	tiergate.Require(t, 2)
 	tmuxBinaryPath(t)
 	_, loc, worktree, _ := newWiredPairFixture(t)
 	registerBootstrapTeardown(t, loc, worktree)

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // cleanup_local_integration_test.go covers Cleanup over a local pair's orphan weft branch, which is neither archived nor deleted on origin.
 // The hub's origin URLs point at a path that does not exist, so any origin step fails the call.
 //
@@ -13,10 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCleanup_LocalOrphanPushesNothing removes a local pair's worktrees by hand and asserts a dry run reports its weft branch as Local, and apply deletes it locally with no archive tag and no origin call.
 func TestCleanup_LocalOrphanPushesNothing(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "localorphan"

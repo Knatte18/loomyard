@@ -1,5 +1,3 @@
-//go:build tier0
-
 // beamdescribe_test.go covers NewBeamDescribe over told seams and a temp description path.
 
 package landingshed
@@ -13,10 +11,12 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestBeamDescribe asserts the beam description carries the entry's title, brief, one bullet per commit subject and the project record's added entries, cuts an over-long title, refuses an empty body naming the way out, returns a failed seam, and rewrites the same bytes on a re-run.
 func TestBeamDescribe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const slug = "my-beam"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shape_test.go is the Ref-Shape Registry's own self-enforcement suite. The registry's fail-closed
 // promise rests on TWO independent syncs, and this file proves both, in both directions:
 //
@@ -28,6 +26,8 @@ import (
 	"go/token"
 	"strconv"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRefKindEnumMatchesAllRefKinds is the enum<->slice sync meta-test: it asserts set equality,
@@ -37,6 +37,7 @@ import (
 // a duplicate-plus-omission hand edit of allRefKinds that would otherwise still pass at matching
 // length, and a fifth enum constant with no allRefKinds counterpart fails immediately.
 func TestRefKindEnumMatchesAllRefKinds(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	constNames := refKindConstNamesInDeclarationOrder(t)
@@ -141,6 +142,7 @@ func refGateValuesDeclared(t *testing.T) []refGate {
 // matches no declared constant is a typo'd or stale entry, which leaves the real gate's policy
 // undeclared and produces the identical runtime panic.
 func TestRefGateConstantsMatchLedger(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	declared := refGateValuesDeclared(t)
@@ -175,6 +177,7 @@ func TestRefGateConstantsMatchLedger(t *testing.T) {
 // It says nothing about a gate MISSING from ledger entirely: a map range cannot visit an absent
 // key. TestRefGateConstantsMatchLedger above owns that half.
 func TestLedgerCompleteness(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	want := make(map[refKind]bool, len(allRefKinds))
@@ -205,6 +208,7 @@ func TestLedgerCompleteness(t *testing.T) {
 // skipping a ref whose classified kind carries no declared disposition, and separately proves the
 // happy path returns the classified kind and its declared disposition unchanged.
 func TestLookupFailsClosedOnUndeclaredKind(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("PanicsOnMissingKindInPolicy", func(t *testing.T) {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // window_test.go pins the `window` reed verb against a recording launcher seam; it opens no window.
 
 package reedcli
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 type windowCall struct {
@@ -21,6 +20,7 @@ type windowCall struct {
 }
 
 func TestWindowCmd_OpensATerminalAttachedToTheToldWorktree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	existing := t.TempDir()

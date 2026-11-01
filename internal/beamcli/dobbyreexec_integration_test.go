@@ -1,5 +1,3 @@
-//go:build tier1
-
 // dobbyreexec_integration_test.go runs a real `lym beam dobby` through a re-exec onto a replaced binary and its stop, over a hubforge hub: the acceptance test of the dobby's lock, log and output file.
 
 package beamcli_test

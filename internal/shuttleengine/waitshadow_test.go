@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttleengine
 
 import (
@@ -11,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shadowRun is what one Wait over a scenario returned and logged.
@@ -41,6 +40,7 @@ func stateChanges(log string) []string {
 // the state changes and disagreements are logged by the first run only, and both runs return the same Result and notify the same lines.
 // The log is captured process-wide, so the test does not run in parallel.
 func TestWait_LogsSessionStateBesideItsClassification(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		events         string

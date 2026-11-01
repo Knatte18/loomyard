@@ -1,5 +1,3 @@
-//go:build tier1
-
 // sync_test.go — unit tests for the background pusher (sync.go).
 //
 // Exercises Sync against a LOCAL bare repo (no network, no dummy remote): a commit + push, a burst coalescing into one commit, BOARD_SKIP_PUSH committing without pushing, BOARD_SKIP_GIT doing nothing, lock files staying untracked, and the clean-tree and nothing-pending no-ops.
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newSyncRepo returns an isolated working-tree and helpers that count commits on
@@ -78,6 +77,7 @@ func (f *syncFixture) syncConfig() boardengine.Config {
 // The SkipGit step leaves a dirty tree and the SkipPush step leaves an unpushed commit;
 // every later step's Sync commits and pushes them along with its own change.
 func TestSync(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	work, remoteCommits, localCommits := newSyncRepo(t)
 	fixture := &syncFixture{work: work, remoteCommits: remoteCommits, localCommits: localCommits}

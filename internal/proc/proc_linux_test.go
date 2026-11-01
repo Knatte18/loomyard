@@ -1,5 +1,3 @@
-//go:build tier0
-
 package proc
 
 import (
@@ -11,9 +9,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStartTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -38,6 +39,7 @@ func TestStartTime(t *testing.T) {
 }
 
 func TestIsRunning(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	child := exec.Command("sleep", "30")
@@ -73,6 +75,7 @@ func TestIsRunning(t *testing.T) {
 }
 
 func TestProcessTreeReads(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	child := exec.Command("sleep", "30")
@@ -227,6 +230,7 @@ func TestProcessTreeReads(t *testing.T) {
 }
 
 func TestHideWindowIsNoop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cmd := exec.Command("true")
@@ -238,6 +242,7 @@ func TestHideWindowIsNoop(t *testing.T) {
 }
 
 func TestDetachSetsSetsid(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cmd := exec.Command("true")

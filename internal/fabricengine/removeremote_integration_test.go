@@ -1,5 +1,3 @@
-//go:build tier1
-
 // removeremote_integration_test.go covers Remove's remote branch deletion under --remote: the
 // opt-in deletion of the pair's weft branch on the remote, its default-off regression guard, the
 // non-fatal remote-failure partial-teardown guarantee, and the once-per-verb no-origin pre-check
@@ -20,12 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_RemoteTrueDeletesWeftBranchOnRemote covers case 1: remote true deletes the pair's weft
 // branch on the remote, sets RemoteBranchDeleted, and records exactly one KindRemoteBranchDeleted
 // entry.
 func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-remote-both"
@@ -64,6 +64,7 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 // TestRemove_RemoteFalseLeavesRemoteBranchIntact covers the same case's negative half: remote false
 // does neither.
 func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-remote-off"
@@ -92,6 +93,7 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 // picked up by the teardown's own error accumulation. Induced the same way as Cleanup's own case: a
 // weft origin pointing at an absent path.
 func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-remote-fail"
@@ -120,6 +122,7 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 // populated, RemoteBranchError is empty, and the verb returns a nil error — the identical verdict
 // Cleanup reports for the same configuration state.
 func TestRemove_NoOriginUnderRemoteReportsSkipReasonAndCompletesTeardown(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-no-origin"

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // finalize_merge_test.go drives Finalize's merge of the parent branch into the task and the judgement of that merge, over a fake resolver and the gate fixture.
 
 package landingshed
@@ -15,11 +13,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFinalize_MergeJudgement pins Finalize's merge of the parent branch into the task and the judgement of that merge:
 // every merge runs under the parent lock and proceeds to the gate, a large merge included, what the parent side is measured from, and what the merge record carries afterwards.
 func TestFinalize_MergeJudgement(t *testing.T) {
+	tiergate.Require(t, 0)
 	const earlierTip, newTip, taskBase, aligned = "p1", "p2", "b0", "a1"
 	tests := []struct {
 		name string

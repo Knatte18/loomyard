@@ -1,5 +1,3 @@
-//go:build tier1
-
 // detachfront_integration_test.go drives the capped front of `lym gate test` over hubforge hubs, a stand-in tier command and the runners the front starts, each call in a process of its own:
 // the cap and the phase it answers, the join of a live run, the runs a changed tree supersedes, a run that never started, the lock, the lease and its grace, the signals, and the registration of a pair's runner.
 
@@ -30,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // capStrandEntry is the strand-name entry of a capped call: a name that parses as an agent's.
@@ -311,6 +310,7 @@ func readPIDFile(t *testing.T, path string) int {
 }
 
 func TestGateTest_DetachedRun(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("a run that outlasts the cap answers done false in its phase, the next call after it ended prints its result, and a third call starts a fresh run", func(t *testing.T) {

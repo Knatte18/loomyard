@@ -1,5 +1,3 @@
-//go:build tier0
-
 // narrow_test.go covers the type-name closure, test class selection, project grouping and filter terms of narrow.
 
 package dotnetimpact
@@ -9,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // baseCorpus is a production library with two types and a test project of three fixtures: one naming Circle, one naming Shape, and one naming neither.
@@ -24,6 +24,7 @@ var baseCorpus = map[string]string{
 var baseProjects = []string{"Lib/Lib.csproj", "Lib.Tests/Lib.Tests.csproj"}
 
 func TestNarrow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	circleProject := Scope{Projects: []Project{{
 		Path:  "Lib.Tests/Lib.Tests.csproj",

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // innerrun_respawncap_test.go covers the cap on respawning a running child whose driver keeps dying: the count across passes and the memory record a reader outside the row reads the cap from.
 
 package battenshed
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // respawnHarness drives passes of a running child with no driver at work, one producer per pass over one scratch directory.
@@ -67,6 +66,7 @@ func (h *respawnHarness) pass() {
 // It asserts the pass after spawns nothing and sends no notice, RespawnCapReached reads the cap from the memory record, and a live driver strand between two respawns does not reset the count.
 // It asserts a rewrite of the status file starts the count again.
 func TestInnerRun_RespawnCapStopsWithoutProgress(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	t.Run("TheCapStopsTheRespawnAndIsReadFromTheMemoryRecord", func(t *testing.T) {
 		t.Parallel()

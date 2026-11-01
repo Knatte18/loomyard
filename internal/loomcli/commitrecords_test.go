@@ -1,5 +1,3 @@
-//go:build tier0
-
 // commitrecords_test.go drives commitRecordsVerb over stub commitStatusDeps closures, spawning no git.
 
 package loomcli
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // stubRecordsDeps builds commitStatusDeps counting Commit and Push calls.
@@ -31,6 +30,7 @@ func stubRecordsDeps(active bool, probeErr, commitErr, pushErr error) (commitSta
 
 // TestCommitRecordsVerb_Success asserts a clean tree commits then pushes once each, and a mid-merge tree commits and pushes nothing and reports a skipped reason.
 func TestCommitRecordsVerb_Success(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name                    string
 		midMerge                bool
@@ -60,6 +60,7 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 }
 
 func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	rejected := fmt.Errorf("push side at /wt: %w", gitrepo.ErrPushRejected)
 	const (
@@ -136,6 +137,7 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 }
 
 func TestPRContinueVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const url = "https://github.com/o/r/pull/7"
 	const noRecordWayForward = "way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
@@ -198,6 +200,7 @@ func TestPRContinueVerb(t *testing.T) {
 
 // TestSamplerDoneVerb pins the refusals of the sampler-done verb, each with its way forward and the record left unchanged, the done flag it writes at the row's entry stamp, and the error envelope of a seam that cannot be read.
 func TestSamplerDoneVerb(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const row = "Sampler-Session"

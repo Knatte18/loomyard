@@ -1,5 +1,3 @@
-//go:build tier2
-
 // watchdog_integration_test.go carries the watchdog daemon's live-behaviour assertions as one TestWatchdogDaemon scenario: discovery against a real hub with real tmux sessions, the single-instance lock's two outcomes, the stop a last down writes, departure teardown, and re-entry re-reading a flipped watchdog: config value.
 //
 // It is a separate file from watchdog_test.go, rather than tagged content inside it, because a Go build tag is per-file: tagging watchdog_test.go itself would hide its pure-seam tests from the untagged tier where they belong.
@@ -33,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -136,6 +135,7 @@ func sessionListed(tmuxPath, socket, session string) bool {
 // the last flips the prime worktree's watchdog: key to off across a down and an up.
 // The scenario does not call t.Parallel, because the daemon command points the process-global logger's durable sink at the hub's logs directory.
 func TestWatchdogDaemon(t *testing.T) {
+	tiergate.Require(t, 2)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	const pairSlug = "watchdog-second"
 	hubforge.AddPair(t, h, pairSlug)

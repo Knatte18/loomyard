@@ -1,5 +1,3 @@
-//go:build tier0
-
 // matchparent_test.go covers matchParentBranch, the pure worktree-entry matcher OpenParent's
 // resolution chain builds on — no fixture needed, since the function takes a hand-built
 // []fabricengine.WorktreeEntry slice.
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMatchParentBranch covers matchParentBranch's matching, skipping, and normalization behavior
@@ -18,6 +17,7 @@ import (
 //
 //testtiming:keep matchParentBranch's matching, skipping and normalization over hand-built entries; coverage of its blocks by other tests does not show an assertion of this
 func TestMatchParentBranch(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		entries      []fabricengine.WorktreeEntry

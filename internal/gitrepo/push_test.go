@@ -1,5 +1,3 @@
-//go:build tier1
-
 // push_test.go covers Push, PushRebaseFree and PushCoalesced against real git repositories.
 // Two fixtures are kept deliberately separate, per discussion.md: a bare remote with several clones exercises cross-clone rebase-retry recovery (the single-pusher lock cannot be exercised there, since two clones have two distinct lock files), while a single clone with concurrent goroutines and processes exercises PushCoalesced's lock-blocking/coalescing behavior.
 
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newBareRemote creates a bare git repository at <dir>/remote.git.
@@ -117,6 +116,7 @@ func resetToUpstream(t *testing.T, dir string) {
 // The steps run serially in that order and share the remote and clones A and B: the dirty and diverged steps each start by returning clone A to the remote's tip, and the steps after the first rely on clone A's upstream and on clone B, which the rebase-retry step clones.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPush(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -420,6 +420,7 @@ func TestPush(t *testing.T) {
 // The steps run serially in that order and share the remote; the hook step is last because the hook stays installed.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestUpdateRemoteBranchLeased(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -497,6 +498,7 @@ func TestUpdateRemoteBranchLeased(t *testing.T) {
 // Push and PushCoalesced must not swallow this into a synthetic message: the wrapped error must still carry git's own stderr, matching Push's documented "any other push failure returns an error including git's stderr" contract.
 // PushCoalesced reaches the same path because HasUnpushed treats the missing upstream as "unpushed" regardless of the missing remote, so it proceeds to the same pushWithRebaseRetry and the lock machinery must not mask the error.
 func TestPush_NoRemoteConfigured_SurfacesGitError(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -570,6 +572,7 @@ func lockHolderChild(dir string) int {
 // The steps run serially in that order and share the clone and the remote: each commits locally and leaves everything pushed for the next.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPushCoalesced(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	container := t.TempDir()
@@ -745,6 +748,7 @@ func TestPushCoalesced(t *testing.T) {
 // an upstream that another clone advanced answers false until this clone fetches it, then true;
 // a branch with no upstream answers true.
 func TestHasUnpulled(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {

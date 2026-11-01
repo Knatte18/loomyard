@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rewrite_test.go covers RewriteRefs: substitution across Targets, Uses, and both endpoints of a
 // Pairs entry; substitution finding a surface lexeme that differs from the canonical key; two
 // cards spelling one canonical string differently each being rewritten from their own lexeme;
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // rewriteOverview is a minimal format-5 overview naming one Card Index entry per slug in slugs.
@@ -27,6 +26,7 @@ func rewriteOverview(slugs ...string) string {
 }
 
 func TestRewriteRefs_SubstitutesTargetsUsesAndPairs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := writePlanFiles(t, map[string]string{
@@ -84,6 +84,7 @@ func TestRewriteRefs_SubstitutesTargetsUsesAndPairs(t *testing.T) {
 
 //testtiming:keep pins the per-card surface-lexeme rewrite across two cards, which TestRewriteRefs_SubstitutesTargetsUsesAndPairs does not
 func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := writePlanFiles(t, map[string]string{
@@ -124,6 +125,7 @@ func TestRewriteRefs_TwoCardsSpellOneCanonicalStringDifferently(t *testing.T) {
 
 // TestRewriteRefs_NothingToSubstituteLeavesFileUntouched asserts a substitution map that is empty, or whose keys match nothing the plan carries, leaves a card file byte-identical.
 func TestRewriteRefs_NothingToSubstituteLeavesFileUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -159,6 +161,7 @@ func TestRewriteRefs_NothingToSubstituteLeavesFileUntouched(t *testing.T) {
 }
 
 func TestRewriteRefs_MissingPlanDirIsWrappedError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()

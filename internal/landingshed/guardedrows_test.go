@@ -1,5 +1,3 @@
-//go:build tier0
-
 // guardedrows_test.go drives Finalize, the row that holds the parent lock, against fake tip reads and a real temporary lock store:
 // the lock's release at the edges that end the row's hold, and the halt of a paused lock wait.
 
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // guardedRowFixture is one lock-taking row built over deps, with a report of whether it did any work beyond taking the lock.
@@ -46,6 +45,7 @@ var guardedOwnerOther = parentlock.Owner{Slug: "other", Pair: "/p/other", RunID:
 
 // TestGuardedRows_PausedLockWaitHalts pins that a pause during the wait for a lock another run holds is a halting Stuck at each row, naming the goto back to that row, with no work done.
 func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, row := range guardedRows {
 		t.Run(row.name, func(t *testing.T) {
 			deps := newTestDeps(t)
@@ -73,6 +73,7 @@ func TestGuardedRows_PausedLockWaitHalts(t *testing.T) {
 // TestGuardedRows_LockLifecycle pins when the lock leaves the run.
 // Finalize releases it on Done, whether it landed fresh or found the parent already holding the task's work, and on a Stuck or an error.
 func TestGuardedRows_LockLifecycle(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Finalize releases the lock on every way out: Done, a Stuck and an error", func(t *testing.T) {
 		tests := []struct {
 			name        string

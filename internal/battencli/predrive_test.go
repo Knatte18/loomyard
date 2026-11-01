@@ -1,5 +1,3 @@
-//go:build tier0
-
 // predrive_test.go pins the pre-drive check at its two call sites: the seeding of an absent status, and the shed's run lock for a resume.
 
 package battencli
@@ -18,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newPreDriveReceiver returns a fake receiver whose pre-drive check reads the real cancel marker and seed under its location.
@@ -48,6 +47,7 @@ func requireNoStatus(t *testing.T, c *battenCLI) {
 // TestPreDriveCheck drives the check through both pre-run hooks and the built shed: a seeded run with no marker passes, a marker refuses with the cancel's way forward, and a missing seed refuses naming the fresh start.
 // Each refusal writes no status and clears no run marker.
 func TestPreDriveCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const markerWayForward = "way forward: wait for the cancel"
@@ -168,6 +168,7 @@ func TestPreDriveCheck(t *testing.T) {
 }
 
 func TestBuildShed_TellsTheMachine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name        string

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // awaitbatch_test.go covers AwaitBatch's bounded report-file watch: an already-present report
 // returns immediately, a report appearing mid-wait returns the moment a tick sees it (never
 // sleeping out the rest of the window), an absent report returns ReportPresent: false only once the
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -46,6 +45,7 @@ func awaitTestBatches(dir string) ([]batcher.Batch, string) {
 }
 
 func TestAwaitBatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const report = "status: OK\nhead_sha: deadbeef\n"

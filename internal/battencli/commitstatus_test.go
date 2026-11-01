@@ -1,5 +1,3 @@
-//go:build tier0
-
 // commitstatus_test.go pins batten's per-transition status seam: the on-disk no-op-transition skip added on top of the shared statuscommit core's dispositions, which statuscommit's own tests pin.
 // Every test here drives newCommitStatusSeam against injected commitStatusDeps stub closures and a real temp-file marker path, spawning no git and no process,
 // so the file stays Tier 1 with no hub fixture.
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // runStatusRel is the status file's relative path for runID.
@@ -31,6 +30,7 @@ func runStatusRel(loc *lymcwd.Location, runID string) string {
 //
 // The commit message pins batten's own prefix, which the shared core's tests cannot, since they render whatever prefix they are given.
 func TestNewCommitStatusSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	type transition struct{ producer, state string }
@@ -102,6 +102,7 @@ func TestNewCommitStatusSeam(t *testing.T) {
 // TestStatusPushSpawns_TellTheirLocationAndGateSlug pins what batten's two push spawns ask fabric for: the status seam spawns for its location under the run's slug as gate slug, and cleanup spawns for its location with no gate slug.
 // It swaps the package's spawnStatusPush for a recorder, so it is serial: no parallel test may run while the variable is swapped.
 func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
+	tiergate.Require(t, 0)
 	type spawnRequest struct {
 		location *lymcwd.Location
 		gateSlug string
@@ -137,6 +138,7 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
 func TestBattenRunCommitPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	const runID = "some-slug"
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "code", AnchorRel: "."}
 

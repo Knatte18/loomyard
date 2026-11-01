@@ -1,5 +1,3 @@
-//go:build tier0
-
 // command_test.go table-tests the pane-shell command composition helpers: quoting of paths with
 // spaces and embedded single quotes, model/flag presence per the interactive toggle, the exact
 // resume-command shape, the resolveModelID bare-word-plus-version composition rule, the
@@ -16,6 +14,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // The leading CLAUDE_ENV_FILE assignment, the BASH_MAX_TIMEOUT_MS assignment and the default 5m CLAUDE_CODE_PROMPT_CACHE_TTL assignment every launch and resume line carries, per dialect, for the env file paths the tests below thread through.
@@ -27,6 +26,7 @@ const (
 )
 
 func TestClaudeBinary(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		claude Config
@@ -47,6 +47,7 @@ func TestClaudeBinary(t *testing.T) {
 
 //testtiming:keep pins the exact launch line for every flag combination and both shell dialects, which its covering tests only substring-match
 func TestBuildLaunchCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name             string
 		sh               shell.Shell // nil defaults to shell.Pwsh(), the pre-existing coverage's shell
@@ -345,6 +346,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 
 // TestOpenLaunch pins the open launch: the fresh line with the name reference and optional model flags, the resume line that falls back to the fresh one, and the refusals made before a session id is minted.
 func TestOpenLaunch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	sh := shell.ForGOOS()
 	nameRef := "--name " + sh.EnvRef("LYM_STRAND_NAME")
@@ -476,6 +478,7 @@ func TestOpenLaunch(t *testing.T) {
 //
 //testtiming:keep pins the accepted effort values and the wrong-case rejection, which its covering tests do not assert row by row
 func TestValidateEffort(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		effort  string
@@ -509,6 +512,7 @@ func TestValidateEffort(t *testing.T) {
 // dashed (full id) model with a non-empty version errors (the id already pins its own version —
 // combining it with version is a contradiction).
 func TestResolveModelID(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		model   string
@@ -544,6 +548,7 @@ func TestResolveModelID(t *testing.T) {
 
 //testtiming:keep pins the exact resume line for every mode-bearing flag, which its covering tests only substring-match
 func TestBuildResumeCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	// The resumed process is a fresh claude that inherits nothing from the launch, and reed replays
 	// this string verbatim — so every mode-bearing flag buildLaunchCmd emits must be here too, or a
 	// resumed autonomous run comes back permission-gated (it then stalls at its first tool dialog
@@ -588,6 +593,7 @@ func TestBuildResumeCmd(t *testing.T) {
 //
 //testtiming:keep pins the posix resume line with the prompt file flag inside the fork env wrap, which its covering test only substring-matches
 func TestBuildResumeCmd_NoticePosix(t *testing.T) {
+	tiergate.Require(t, 0)
 	want := posixEnvLead + `CLAUDE_CODE_FORK_SUBAGENT='1' 'claude' --resume 'abc-123' --settings '/run/settings.json' --name "${LYM_STRAND_NAME}" --dangerously-skip-permissions --append-system-prompt-file '/run/append-system-prompt.txt'`
 
 	got := buildResumeCmd(shell.Posix(), "claude", "/run/settings.json", "abc-123", "", "", "/run/append-system-prompt.txt", posixEnvFilePath, "5m", true, true)
@@ -603,6 +609,7 @@ func TestBuildResumeCmd_NoticePosix(t *testing.T) {
 //
 //testtiming:keep pins every mode and interactivity row, including the wrong-case rejection, which its covering tests do not assert
 func TestValidatePermissionMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		mode        string
 		interactive bool

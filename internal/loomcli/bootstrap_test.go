@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestMustSpawnDriver's two mixed rows are the finding the predicate was widened for: a table covering only the two pure rows (both false, both true) passes against the narrow single-argument version that read the run lock alone.
@@ -30,6 +29,7 @@ import (
 //
 //testtiming:keep pins the spawn predicate over the run lock, the driver lock and the live driver strand, including the mixed rows a lock-only predicate fails; its covering tests run the predicate without asserting its table
 func TestMustSpawnDriver(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name             string
 		runLockHeld      bool
@@ -58,6 +58,7 @@ func TestMustSpawnDriver(t *testing.T) {
 //
 //testtiming:keep pins the driver strand action over every strand shape: none, status-only, live, dead, retiring, full-name and legacy-named; its covering tests resolve it without asserting each arm
 func TestResolveDriverStrandAction(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		strands  []reedengine.StrandStatus
@@ -134,6 +135,7 @@ func TestResolveDriverStrandAction(t *testing.T) {
 // TestStartEnvelopeFields_PinsSuccessEnvelope pins the exact key set `lym loom start` prints on success:
 // the driver, slug, run id and status file, with no key describing an attach.
 func TestStartEnvelopeFields_PinsSuccessEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	want := map[string]any{
@@ -157,6 +159,7 @@ func countingWait(count *int) func() {
 
 // TestAwaitRunLock asserts the handshake's poll order and outcomes: lock held wins over everything, then a gone child, then a halted machine, and only an alive child that never takes the lock while the machine keeps running reaches the deadline.
 func TestAwaitRunLock(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		// lockHeldOnCall is the poll on which the lock reads held; zero never.
@@ -229,6 +232,7 @@ func TestAwaitRunLock(t *testing.T) {
 
 //testtiming:keep pins the status strand lookup by exact name and by full agent name, and a name that is only a prefix not matching; its covering tests resolve the strand action without asserting the lookup
 func TestFindStatusStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []reedengine.StrandStatus{
 		{GUID: "g1", Name: "loom-status-extra", PaneID: "%1"},
 		{GUID: "g2", Name: statusStrandDisplayName, PaneID: "%2"},
@@ -265,6 +269,7 @@ func TestFindStatusStrand(t *testing.T) {
 }
 
 func TestStatusStrandCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		sh   shell.Shell
@@ -314,6 +319,7 @@ func containsSubstring(s, substr string) bool {
 // finished but whose process is still running the friction reflection agent is alive with the lock
 // free, which used to land on the refusal below.
 func TestDispositionForHandshake(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		result awaitRunLockResult
@@ -341,6 +347,7 @@ func TestDispositionForHandshake(t *testing.T) {
 // worktree saw the stale "loom-status" entry, reported "already there", and left the operator with
 // no status read-out at all.
 func TestResolveStatusStrandAction(t *testing.T) {
+	tiergate.Require(t, 0)
 	cur := statuspane.BuildIdentity{Path: "/bin/lym", Size: 10, ModTime: 100}
 	matching := &statuspane.Sidecar{GUID: "g0", Build: cur}
 	tests := []struct {
@@ -591,6 +598,7 @@ var driverFieldReadCarveOuts = []scankit.Entry{
 //
 //lym:guard
 func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *testing.T) {
+	tiergate.Require(t, 0)
 	found, scanned := scanRepoForDriverFieldReads(t)
 	scankit.RequireFloor(t, scanned, driverScanMinFiles, "driver-field-read scan")
 
@@ -628,6 +636,7 @@ func TestDriverChoiceSingleSiteInvariant_OnlyLoomcliReadsTheSeedDriverField(t *t
 //
 //testtiming:keep pins the driver-field scan telling two readers in one file apart by enclosing function, which the carve-out key relies on; the repo-wide scan asserts only that no reader sits outside
 func TestScanFileForDriverFieldReads_StampsTheEnclosingFunction(t *testing.T) {
+	tiergate.Require(t, 0)
 	path := filepath.Join(t.TempDir(), "two_readers.go")
 	src := `package fixture
 
@@ -655,6 +664,7 @@ func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverL
 }
 
 func TestStatusStrandAddSpec(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("fields", func(t *testing.T) {
 		got := statusStrandAddSpec("watch-cmd")
 		if got.NameOverride != statusStrandDisplayName {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // pathrules_test.go is the machine half of two invariants over every module's exported path constructor: "every never-tracked file lives under .lym, at the mirrored subpath of the _lym content it relates to" and the anchoring rule that puts every worktree-level path under AnchorPath() rather than WorktreePath().
 // Each row of pathRules names a constructor, a closure calling it on a *lymcwd.Location, and its class;
 // the expectations come from the class rule, never from a path literal on the row.
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/treadleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -108,6 +107,7 @@ func under(path, root string) bool {
 }
 
 func TestPathRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	hub := filepath.Join("home", "user", "repo-LYMHUB")
 
 	fixtures := []struct {

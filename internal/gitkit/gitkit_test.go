@@ -1,5 +1,3 @@
-//go:build tier1
-
 package gitkit
 
 import (
@@ -11,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -23,6 +22,7 @@ func TestMain(m *testing.M) {
 // TestHermeticGitEnv_QuietAndPinned verifies Layer B: a bare git init reads fsmonitor and branch
 // from the hermetic env config, not the operator's config.
 func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -65,6 +65,7 @@ func TestHermeticGitEnv_QuietAndPinned(t *testing.T) {
 // The steps run serially in one order and share the fixture's repository state: the query steps start on the fixture's main branch, and the branches-and-ancestry step switches the checkout to the side branch last.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestCopiedRepoScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	fixture := CopyRepo(t)
@@ -178,6 +179,7 @@ func TestCopiedRepoScenario(t *testing.T) {
 // TestFixtureGitMarker_ReachesHelperChildren verifies that git spawned by Git carries the fixture marker, read back through git's trace2 env-var events.
 // It sets process environment variables through t.Setenv, so it does not call t.Parallel.
 func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
+	tiergate.Require(t, 1)
 	traceDir := t.TempDir()
 	t.Setenv("GIT_TRACE2_EVENT", traceDir)
 	t.Setenv("GIT_TRACE2_ENV_VARS", FixtureGitEnv)
@@ -210,6 +212,7 @@ func TestFixtureGitMarker_ReachesHelperChildren(t *testing.T) {
 // TestMustRun_Failure verifies that MustRun calls tb.Fatalf on failure using the subprocess pattern
 // to confirm non-zero exit.
 func TestMustRun_Failure(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// Subprocess mode: called by the parent test; run the failing command and exit.
@@ -238,6 +241,7 @@ func TestMustRun_Failure(t *testing.T) {
 // TestCopyDirRecursive_RefusesSymlinks verifies that copyDirRecursive returns an error instead of
 // following or copying a symlink planted in the source tree.
 func TestCopyDirRecursive_RefusesSymlinks(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	src := t.TempDir()
@@ -263,6 +267,7 @@ func TestCopyDirRecursive_RefusesSymlinks(t *testing.T) {
 
 // TestSeedConfig verifies that SeedConfig writes config files and commits them.
 func TestSeedConfig(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	// Create a temp git repo to seed

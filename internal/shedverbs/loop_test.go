@@ -1,5 +1,3 @@
-//go:build tier0
-
 // loop_test.go drives step's --until-stop loop through stepCmd over a fake ChildRunner that writes step records, stdout envelopes and status files the way a child would,
 // and a fake trace lister over files in the test's directory.
 // No test in this file calls t.Parallel: the loop logs through the process-global logger.
@@ -32,6 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // loopFixture is one loop run's fake world: a seeded status file, a steps directory and a Runner that plays the scripted children in order.
@@ -229,6 +228,7 @@ func failing(kind, transient, msg string) childScript {
 }
 
 func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	stdoutRefusal := func(fx *loopFixture, _ string, req ChildRequest) error {
 		var line bytes.Buffer
 		output.ErrFields(&line, "arming refused", map[string]any{"kind": KindBootstrap, "trace_file": "/trace/child.log"})
@@ -356,6 +356,7 @@ func TestLoop_RunsUntilStopAndPrintsOneEnvelope(t *testing.T) {
 }
 
 func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("child ends without an envelope", func(t *testing.T) {
 		var hookArgs []string
 		var traceFile string
@@ -675,6 +676,7 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 }
 
 func TestLoop_ChildStartRetriesABusyExecutable(t *testing.T) {
+	tiergate.Require(t, 0)
 	busy := &fs.PathError{Op: "fork/exec", Path: "lym-fake", Err: syscall.ETXTBSY}
 	const busyMeaning = "; the executable was open for writing, as while a deploy replaces it in place"
 	diesWithoutTrace := func(*loopFixture, string, ChildRequest) error { return errors.New("exit status 1") }
@@ -820,6 +822,7 @@ func TestLoop_ChildStartRetriesABusyExecutable(t *testing.T) {
 }
 
 func TestLoop_TransientRestepOnce(t *testing.T) {
+	tiergate.Require(t, 0)
 	const class = string(shedengine.TransientGitTransport)
 	tests := []struct {
 		name       string
@@ -888,6 +891,7 @@ func TestLoop_TransientRestepOnce(t *testing.T) {
 }
 
 func TestLoop_FailureStopLeavesStatusFailedUnlessBusy(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("an error stop writes failed", func(t *testing.T) {
 		fx := newLoopFixture(t, failing(KindProducer, "", "boom"))
 
@@ -922,6 +926,7 @@ func TestLoop_FailureStopLeavesStatusFailedUnlessBusy(t *testing.T) {
 }
 
 func TestLoop_StopDetailAndTraceCopy(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		lines int
@@ -985,6 +990,7 @@ func TestLoop_StopDetailAndTraceCopy(t *testing.T) {
 }
 
 func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
+	tiergate.Require(t, 0)
 	busyErr := fmt.Errorf("%w: run lock held", shedengine.ErrShedBusy)
 	tests := []struct {
 		name      string
@@ -1060,6 +1066,7 @@ func TestLoop_RefusalsBeforeAnyStep(t *testing.T) {
 
 // TestLoop_ArbiterAttemptConsumedByTheWaiter pins the one path no refusal covers: a ConsumeAttempt returning nil runs once with the flag's value before the loop is spawned or any child started, and neither the loop nor its children carry the attempt.
 func TestLoop_ArbiterAttemptConsumedByTheWaiter(t *testing.T) {
+	tiergate.Require(t, 0)
 	w := newWaitWorld(t, halting(shedengine.StateAwaiting, "", 1))
 	w.setStatus("A", shedengine.StateBlocked, 0)
 	w.spec.Caller = "orch"
@@ -1234,6 +1241,7 @@ func (c *hangingChild) recorded() []string {
 }
 
 func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
+	tiergate.Require(t, 0)
 	const window = 10 * time.Minute
 	tests := []struct {
 		name        string
@@ -1361,6 +1369,7 @@ func TestLoop_WatchdogKillsAnIdleChild(t *testing.T) {
 }
 
 func TestLoop_ExitHookRunsOnceAtEveryStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name      string
 		script    childScript
@@ -1397,6 +1406,7 @@ func TestLoop_ExitHookRunsOnceAtEveryStop(t *testing.T) {
 }
 
 func TestLoop_WakeHookRunsOnWatchWakes(t *testing.T) {
+	tiergate.Require(t, 0)
 	const wakesBeforeExit = 4
 	fx := newLoopFixture(t)
 	clock := newFakeClock()
@@ -1452,6 +1462,7 @@ func TestLoop_WakeHookRunsOnWatchWakes(t *testing.T) {
 // TestStderrExcerpt pins the stderr lines an interrupted cause carries when the child wrote no Go crash: the last non-empty lines, or none for an absent file.
 // A Go crash's lines are pinned by the interrupted-child test.
 func TestStderrExcerpt(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := t.TempDir()
 	tail := filepath.Join(dir, "tail.log")
 	if err := os.WriteFile(tail, []byte("one\ntwo\n\nthree\nfour\n\n"), 0o644); err != nil {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // archivereset_test.go covers ArchiveRunAfterReset: the pending-findings guard it runs against HEAD and the in-place archive it performs.
 // Tier 1: the package's fakeGit and a run record under t.TempDir(), no git process.
 
@@ -11,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -83,6 +82,7 @@ func archived(t *testing.T, dir, pattern string) []string {
 // TestArchiveRunAfterReset pins the guard's three refusals, each naming the clearing step and then the reset, with the run record left in place,
 // and the archive a pending finding does not block: state.json and the reports dir renamed, the prompts cleared, one drop warning per finding.
 func TestArchiveRunAfterReset(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

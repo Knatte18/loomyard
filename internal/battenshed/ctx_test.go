@@ -1,5 +1,3 @@
-//go:build tier0
-
 // ctx_test.go covers entryErr and cancelErr over a live context and a cancelled one.
 
 package battenshed
@@ -8,9 +6,12 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEntryErrAndCancelErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	functions := map[string]func(ctx context.Context, producer string) error{

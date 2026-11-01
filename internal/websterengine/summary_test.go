@@ -1,5 +1,3 @@
-//go:build tier0
-
 // summary_test.go exercises the Append* helpers that add sections to the final summary.
 
 package websterengine_test
@@ -13,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -45,6 +44,7 @@ const fixCommitsSectionHead = "\n\n## Verify gate fix commits\n\nThe verify-gate
 // TestAppendSummarySections pins each Append* helper: an empty list leaves the file
 // byte-identical, and a non-empty list appends its section after the existing content in order.
 func TestAppendSummarySections(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

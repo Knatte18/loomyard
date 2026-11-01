@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go — tier0 unit tests for landingshed.LoadConfig.
 //
 // Seeds a bare t.TempDir() with just a _lym/config/landing.yaml file (no real hub, no SeedConfig,
@@ -18,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
@@ -36,6 +35,7 @@ func seedLandingConfig(t *testing.T, baseDir, contents string) {
 
 // TestLoadConfig_TemplateDefaults verifies the template's default values round-trip, including the single-entry base-branch list, the squash default and the three Describe-related keys.
 func TestLoadConfig_TemplateDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseDir := t.TempDir()
@@ -122,6 +122,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 
 // TestConfig_IdleRelease verifies the idle bound is the configured minutes, and that a value below 1 reads as the default.
 func TestConfig_IdleRelease(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -142,6 +143,7 @@ func TestConfig_IdleRelease(t *testing.T) {
 
 // TestConfig_CreditBlock verifies the credit block is the heading, then the LoomYard item, then the item of each engine that ran in name order, each once, and drops an empty or whitespace-only text, an engine with no entry, and the whole block when credit is off or no item remains.
 func TestConfig_CreditBlock(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	engines := map[string]string{"alpha": "Alpha <a@x>\n", "beta": "Beta <b@x>", "blank": "  "}
@@ -180,6 +182,7 @@ func TestConfig_CreditBlock(t *testing.T) {
 
 // TestMigrateConfig verifies a retired require_pr_to_base moves to deploy_branches and a retired merge_fix_attempts to parent_align_fix_attempts keeping their values, the retired co-author and trailer keys are left for reconcile's prune with no value carried into credit_engines, and a migrated document passes unchanged.
 func TestMigrateConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -254,6 +257,7 @@ func TestMigrateConfig(t *testing.T) {
 
 // TestMigrateConfig_InvalidDocument verifies an unparsable document and a non-mapping root return an error marked configengine.ErrInvalid.
 func TestMigrateConfig_InvalidDocument(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -275,6 +279,7 @@ func TestMigrateConfig_InvalidDocument(t *testing.T) {
 
 // TestLoadConfig_InvalidKeys verifies a hand-edited landing.yaml with an ungrammatical model-spec or a credit_engines key naming no engine fails loud at load time, naming the key, rather than being silently carried into the site that reads it.
 func TestLoadConfig_InvalidKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
@@ -365,6 +370,7 @@ func writeLocalLandingConfig(t *testing.T, anchor, contents string) string {
 // config file is an error rather than a degrading default, which is the whole point of adopting the
 // strict loader.
 func TestLoadConfig_NotInitialized(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	baseDir := t.TempDir()
@@ -381,6 +387,7 @@ func TestLoadConfig_NotInitialized(t *testing.T) {
 
 // TestLoadConfig_OptionalStringKeys verifies each optional string landing key loads as written, and that a landing.yaml without it loads the template's empty value.
 func TestLoadConfig_OptionalStringKeys(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const withoutKeys = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +

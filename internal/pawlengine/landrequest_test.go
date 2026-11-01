@@ -1,5 +1,3 @@
-//go:build tier0
-
 // landrequest_test.go covers the land request's file record.
 
 package pawlengine_test
@@ -11,10 +9,12 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLandRequest asserts a request reads back what was written, keeps a key it does not declare across a rewrite, reads an absent file as none and removes cleanly.
 func TestLandRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	w := newWorld(t)
 	requestedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // govalues_test.go pins the Go-declared values the stencils name and the host-neutral ban on the twill stencils.
 // Both tests carry the repository-scan marker, so a card that renames a value outside this package still fails its own card gate.
 
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
@@ -33,6 +32,7 @@ func yamlKey(t *testing.T, field string) string {
 //
 //lym:guard
 func TestStencils_NameGoValues(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -69,6 +69,7 @@ func TestStencils_NameGoValues(t *testing.T) {
 //
 //lym:guard
 func TestTwillStencils_HostNeutral(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	banned := []string{"decision record", "support log", "decision-record.md", "support-log.md", "_lym/discussion", "Step 5", "Step 6", "validate-discussion", "## Interview", "Discussion", "validate-plan", "00-overview.md", "lens-review.md", "Card Index"}
@@ -97,6 +98,7 @@ func TestTwillStencils_HostNeutral(t *testing.T) {
 //
 //lym:guard
 func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	banned := []string{"go build", "go vet", "go test", "-tags tmux", "-tags llm", "go -C"}

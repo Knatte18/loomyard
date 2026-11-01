@@ -1,5 +1,3 @@
-//go:build tier0
-
 // spawn_test.go — tier 0 tests for StartCapture, driven through its spawn and breakaway seams, and for ProbeLock.
 
 package driftengine
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // spawnFixture is a StartCapture request over temp directories with a recording fake child.
@@ -56,6 +55,7 @@ func writeRunning(t *testing.T, p Paths, pid int) {
 
 // TestStartCapture covers the child's argv and run-process record, the wait for the child's own running record, a child that ends or stalls before it, a lock held before the start, and both breakaway branches.
 func TestStartCapture(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("it returns the pid once the child writes running with its pid", func(t *testing.T) {

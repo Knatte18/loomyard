@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watchdogline_test.go covers the CPU watchdog's quit line and the tier timeout line: their rendering and the search a verify gate runs over a log.
 
 package gateslot
@@ -8,9 +6,12 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWatchdogLine(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	line := WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute)

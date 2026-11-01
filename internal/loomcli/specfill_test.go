@@ -1,5 +1,3 @@
-//go:build tier0
-
 // specfill_test.go pins the run-identity fields loom's arming fills onto its Spec: RunID, StepsDir
 // and Routing. It calls specFor and loadRouting on a hand-populated receiver, so it spawns nothing.
 
@@ -18,12 +16,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"gopkg.in/yaml.v3"
 )
 
 // TestSpecFor_FillsRunIdentityForSelf verifies that a spec armed for "self" reports the worktree
 // slug as RunID, a StepsDir under the slug's .lym scratch directory, and the loom routing entry.
 func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
 	c := &loomCLI{
 		location:  loc,
@@ -98,6 +98,7 @@ func TestSpecFor_FillsRunIdentityForSelf(t *testing.T) {
 // TestSpecFor_LegacySelfDirKeepsSlugRunID verifies that with only a legacy _lym/shed/self/ present,
 // RunID stays the slug while StepsDir keeps the legacy "self" segment.
 func TestSpecFor_LegacySelfDirKeepsSlugRunID(t *testing.T) {
+	tiergate.Require(t, 0)
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
 	if err := os.MkdirAll(filepath.Join(loc.AnchorPath(), "_lym", "shed", "self"), 0o755); err != nil {
 		t.Fatal(err)

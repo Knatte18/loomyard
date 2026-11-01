@@ -1,5 +1,3 @@
-//go:build tier0
-
 // check_test.go covers Check, one case per finding kind plus the clean overviews.
 
 package pattern
@@ -9,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func entryLine(name, link string) string {
@@ -24,6 +24,7 @@ func overview(lines ...string) *fstest.MapFile {
 }
 
 func TestCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	bg := &fstest.MapFile{Data: []byte("background\n")}
 	// A long name, "(test)" and a link put this line past the old 360-character whole-line cap while its rule text sits at the cap.
@@ -146,6 +147,7 @@ func TestCheck(t *testing.T) {
 }
 
 func TestEntryRuleText(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string

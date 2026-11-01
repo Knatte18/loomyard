@@ -1,5 +1,3 @@
-//go:build tier0
-
 // watchdog_test.go covers the CPU watchdog's quit decisions over a scripted sampler and a fake clock, and the conditions under which the watchdog runs at all.
 
 package gatecli
@@ -16,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -97,6 +96,7 @@ func runScripted(t *testing.T, window time.Duration, script []scriptedSample) wa
 
 // TestWatchdog carries no t.Parallel: the log capture swaps the process-global logger.
 func TestWatchdog(t *testing.T) {
+	tiergate.Require(t, 0)
 	wantLine := gateslot.WatchdogLine("pkg.test", testBinaryPID, watchdogWindow) + "\n"
 	wantOnce := []int{testBinaryPID}
 	tests := []struct {
@@ -186,6 +186,7 @@ func TestWatchdog(t *testing.T) {
 }
 
 func TestWatchdogApplies(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const ancestorPID = 77

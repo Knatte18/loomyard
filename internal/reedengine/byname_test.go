@@ -1,5 +1,3 @@
-//go:build tier0
-
 // byname_test.go pins guidByName's unknown, ambiguous and unique outcomes over a plain strand list,
 // touching no tmux.
 
@@ -8,9 +6,12 @@ package reedengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestGuidByName(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []StrandStatus{
 		{GUID: "g1", Name: "driver"},
 		{GUID: "g2", Name: "status"},
@@ -30,6 +31,7 @@ func TestGuidByName(t *testing.T) {
 }
 
 func TestGuidByName_RoleSegmentFullNameAndLegacyName(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []StrandStatus{
 		{GUID: "g1", Name: "tc:tslug:driver"},
 		{GUID: "g2", Name: "tc:tslug:orch-2"},

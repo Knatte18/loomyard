@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shuttlefake
 
 import (
@@ -13,9 +11,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestEngine_InertDefaults(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := &Engine{}
 
 	launch, err := e.Prepare("run", shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
@@ -46,6 +46,7 @@ func TestEngine_InertDefaults(t *testing.T) {
 }
 
 func TestSignalEngine_PairsStampsAndHoldsTrailingStamps(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 	stampLine := "@" + stamp.Format(time.RFC3339) + "\n"
@@ -91,6 +92,7 @@ func TestSignalEngine_PairsStampsAndHoldsTrailingStamps(t *testing.T) {
 }
 
 func TestEngine_PrepareRecordsCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := &Engine{}
 	if _, err := e.Prepare("run", shuttleengine.Spec{Prompt: "first"}, shuttleengine.Config{}); err != nil {
 		t.Fatal(err)
@@ -104,6 +106,7 @@ func TestEngine_PrepareRecordsCalls(t *testing.T) {
 }
 
 func TestEngine_Overrides(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 	scripted := &shuttleengine.Launch{Cmd: "c", SessionID: "s"}
 
@@ -217,6 +220,7 @@ func TestEngine_Overrides(t *testing.T) {
 }
 
 func TestReed_StrandLivenessAcrossAddAndRemove(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := &Reed{}
 
 	a, err := r.AddStrand(reedengine.AddSpec{Role: "worker"})
@@ -261,6 +265,7 @@ func TestReed_StrandLivenessAcrossAddAndRemove(t *testing.T) {
 }
 
 func TestReed_StatusReturnsACopy(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := &Reed{}
 	if _, err := r.AddStrand(reedengine.AddSpec{Role: "w"}); err != nil {
 		t.Fatal(err)
@@ -274,6 +279,7 @@ func TestReed_StatusReturnsACopy(t *testing.T) {
 }
 
 func TestReed_Overrides(t *testing.T) {
+	tiergate.Require(t, 0)
 	boom := errors.New("boom")
 
 	t.Run("Errors", func(t *testing.T) {
@@ -343,6 +349,7 @@ func TestReed_Overrides(t *testing.T) {
 }
 
 func TestReed_PaneTransportRecordsCalls(t *testing.T) {
+	tiergate.Require(t, 0)
 	r := &Reed{}
 	if err := r.SendText("g1", "hello", true); err != nil {
 		t.Fatal(err)
@@ -382,6 +389,7 @@ func TestReed_PaneTransportRecordsCalls(t *testing.T) {
 }
 
 func TestReed_ConcurrentAddAndStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	const adders = 16
 	r := &Reed{}
 	var wg sync.WaitGroup

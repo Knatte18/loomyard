@@ -1,5 +1,3 @@
-//go:build tier1
-
 // hookcmd_integration_test.go runs the recording hook commands settings.go builds under `sh` against payloads on standard input, pinning what they append to the events file.
 // It runs rendered shell guard commands the same way, pinning that the rendering greps each pattern as written.
 // The deny pattern tables live with the shell guard rows in shellguard.
@@ -22,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // recordingHookCommands returns the command of each recording hook buildSettings installs for an events file at eventsPath, keyed by hook event name;
@@ -110,6 +109,7 @@ func paddedPayload(t *testing.T, fields map[string]any, size int) string {
 // the four newer hooks exit 0 and Stop and the ask record exit 1 when the events file cannot be written;
 // and no recording hook writes to standard output.
 func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const payloadSize = 20000
@@ -227,6 +227,7 @@ func TestRecordingHooks_AppendStampThenPayload(t *testing.T) {
 // TestShellGuardDenies_RenderedCommandsGrepThePayload runs the rendered shell guard commands under sh against a Bash PreToolUse payload.
 // A row whose pattern holds a single quote and a row of several patterns each echo their deny JSON on a matching command and print nothing otherwise, and every command exits 0.
 func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -269,6 +270,7 @@ func TestShellGuardDenies_RenderedCommandsGrepThePayload(t *testing.T) {
 // The mail hook forms the flag's file name as agentname.FileName does, runs `lym creel hook-read claude` from the session's project directory only while that flag stands, and otherwise exits 0 having printed nothing;
 // the waiter hook runs `lym creel hook-wait claude` from the project directory whether or not a flag stands.
 func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const name = "ly:creel-hook:driver-2"
@@ -336,6 +338,7 @@ func TestCreelMailHook_RunsLymOnlyWhenTheStrandsFlagStands(t *testing.T) {
 // An exit 1 that printed an echo alone records the turn end and leaves the printed output as the hook's.
 // An unwritable events file fails the command as the plain recording command does.
 func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const (

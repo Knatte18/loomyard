@@ -1,5 +1,3 @@
-//go:build tier0
-
 // guards_test.go parses fixture test files written under t.TempDir.
 
 package impactset
@@ -14,6 +12,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writeTestFile writes one fixture file into a package directory of root.
@@ -29,6 +29,7 @@ func writeTestFile(t *testing.T, root, dir, name, content string) {
 }
 
 func TestFindGuardTests(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -105,6 +106,38 @@ func TestFindGuardTests(t *testing.T) {
 			wantLine: 4,
 		},
 		{
+			name: "a guard opening with a tier1 Require is found as tier 1",
+			file: "package p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\ttiergate.Require(t, 1)\n}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name: "a Require under an import alias names the tier",
+			file: "package p\n\nimport tier \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\ttier.Require(t, 1)\n}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name: "a Require with a non-literal tier falls back to the file's tag",
+			file: "//go:build tier1\n\npackage p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\ttiergate.Require(t, tier)\n}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name: "a Require under another qualifier falls back to the file's tag",
+			file: "//go:build tier1\n\npackage p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\tother.Require(t, 0)\n}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name: "a Require with one argument falls back to the file's tag",
+			file: "//go:build tier1\n\npackage p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\ttiergate.Require(0)\n}\n",
+			want: []GuardTest{{Name: "TestA", Tier: 1}},
+		},
+		{
+			name:     "a marker over a test requiring tier2 fails with its line",
+			file:     "package p\n\nimport \"github.com/Knatte18/loomyard/internal/testkit/tiergate\"\n\n//lym:guard\nfunc TestA(t *testing.T) {\n\ttiergate.Require(t, 2)\n}\n",
+			wantErr:  "p_test.go:5",
+			wantKind: GuardWrongTier,
+			wantLine: 5,
+		},
+		{
 			name:     "a marker in a tier2 file fails with its line",
 			file:     "//go:build tier2\n\npackage p\n\n//lym:guard\nfunc TestA(t *testing.T) {}\n",
 			wantErr:  "p_test.go:5",
@@ -151,6 +184,7 @@ func TestFindGuardTests(t *testing.T) {
 }
 
 func TestFindSeamTests(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

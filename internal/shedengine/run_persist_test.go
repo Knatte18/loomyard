@@ -1,5 +1,3 @@
-//go:build tier0
-
 // run_persist_test.go covers the boundary between Shed and disk: the read-modify-write merge against a concurrent external writer, the opaque product passthrough, the unknown keys a persist keeps, the two ways a persist can fail, the five read-gate and lookup hard errors, and the locking rules (already-held run lock, lock-parent creation, and the same-path validation error).
 
 package shedengine
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertZeroResult fails the test unless result is the Result zero value. Result contains a
@@ -68,6 +67,7 @@ func readRawStatus(t *testing.T, statusPath string) map[string]json.RawMessage {
 // producer call was both never observed (step 6 routed to step 2, past step 3's data source) and
 // silently destroyed (a blind rewrite from the in-memory copy read at step 1).
 func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	replacedProduct := json.RawMessage(`{"replaced":true}`)
@@ -126,6 +126,7 @@ func TestRun_ExternalWriteSurvivesPersist(t *testing.T) {
 // json.RawMessage, a type Shed never decodes into anything of its own -- the payload used here is
 // a shape Shed has no type for at all, which is the point.
 func TestRun_ProductPassthrough(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	shed.Producers = []ProducerDef{
@@ -172,6 +173,7 @@ func TestRun_ProductPassthrough(t *testing.T) {
 // a non-error and would otherwise write whatever the mutate returned, silently re-creating the
 // file from a zero value.
 func TestRun_StatusFileDeletedMidRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	p1 := &funcProducer{}
@@ -211,6 +213,7 @@ func TestRun_StatusFileDeletedMidRun(t *testing.T) {
 // the file keeps its last-good contents: this injection necessarily destroys the file that
 // assertion would read; that property is covered by batch 3's crash-recovery scenario instead.
 func TestRun_PersistFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	durableDir := filepath.Dir(statusPath)
 
@@ -242,6 +245,7 @@ func TestRun_PersistFailure(t *testing.T) {
 // directories are asserted present, not absent: acquiring a lock creates the lock file, and only
 // the status file is covered by the never-seed rule.
 func TestRun_MissingStatusFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, lockPath, statusLockPath := newTestShed(t)
 	producer := fixedOutcomeProducer(Done, "")
 	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
@@ -271,6 +275,7 @@ func TestRun_MissingStatusFile(t *testing.T) {
 // guesses, neither restarting from the first producer nor advancing to the nearest match, so the
 // file is left byte-identical.
 func TestRun_CurrentProducerNotFound(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	producer := fixedOutcomeProducer(Done, "")
 	shed.Producers = []ProducerDef{{Name: "A", Producer: producer}}
@@ -301,6 +306,7 @@ func TestRun_CurrentProducerNotFound(t *testing.T) {
 
 // TestRun_MalformedStatusFile covers a status file whose bytes are not valid JSON.
 func TestRun_MalformedStatusFile(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, _ := newTestShed(t)
 	if err := os.WriteFile(statusPath, []byte("{ this is not json"), 0o644); err != nil {
 		t.Fatalf("write malformed status file: %v", err)
@@ -323,6 +329,7 @@ func TestRun_MalformedStatusFile(t *testing.T) {
 // The seeded history holds one entry of another producer carrying an unknown key beside the top-level `unexpected_key`, so the run's own appended entry never folds into it.
 // After the run both keys survive with their exact values and the entry the persist appended carries none.
 func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 
 	raw := map[string]any{
@@ -387,6 +394,7 @@ func TestRun_UnknownTopLevelKeyBeforeRead(t *testing.T) {
 // enum string left empty by a partial seed would otherwise be silently treated as running, or as
 // done.
 func TestRun_UnrecognisedState(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		state State
@@ -420,6 +428,7 @@ func TestRun_UnrecognisedState(t *testing.T) {
 // LockPath. It acquires the lock directly via internal/lock's non-blocking acquire -- no second
 // process is needed -- rather than spawning one, keeping this test hermetic and fast.
 func TestRun_LockAlreadyHeld(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, lockPath, statusLockPath := newTestShed(t)
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		t.Fatalf("create run lock parent dir: %v", err)
@@ -471,6 +480,7 @@ func TestRun_LockAlreadyHeld(t *testing.T) {
 // writing -- that property therefore applies here to LockPath alone, the one directory Run is
 // solely responsible for making usable.
 func TestRun_LockParentCreation(t *testing.T) {
+	tiergate.Require(t, 0)
 	root := t.TempDir()
 	durableDir := filepath.Join(root, "durable")
 	if err := os.MkdirAll(durableDir, 0o755); err != nil {
@@ -515,6 +525,7 @@ func TestRun_LockParentCreation(t *testing.T) {
 // reach the blocking acquire at all, and a wrapper that tolerated a hang would hide the bug
 // rather than catch it.
 func TestRun_SameLockPathIsValidationError(t *testing.T) {
+	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.LockPath = statusLockPath
 	shed.Producers = []ProducerDef{{Name: "A", Producer: fixedOutcomeProducer(Done, "")}}

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // rules_test.go covers the orch rules entry's store change and the refusals writeOrchRules raises before it reaches the store, a cwd outside a hub included.
 
 package orchcli
@@ -16,9 +14,11 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/heddlecli"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestWriteOrchRules_ReportsTheStoreOutcome(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "draft.md"), []byte("rule"), 0o644); err != nil {
@@ -59,6 +59,7 @@ func TestWriteOrchRules_ReportsTheStoreOutcome(t *testing.T) {
 }
 
 func TestApplyOrchRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	otherText, otherOrder := "house rule", 5
 	tests := []struct {
@@ -111,6 +112,7 @@ func TestApplyOrchRules(t *testing.T) {
 }
 
 func TestWriteOrchRules_RefusesBeforeTheStore(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "draft.md"), []byte("rule"), 0o644); err != nil {

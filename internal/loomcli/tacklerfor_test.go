@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tacklerfor_test.go pins tacklerFor's reading of the tackler keys from shed.yaml alone, over temp config layers.
 
 package loomcli
@@ -13,10 +11,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestTacklerFor verifies a darn, a tapestry, a pawl and a sampler run all take shed.yaml's tackler_max_spawns, each with the recipe line its rows select: a Sampler-Session row the interactive line, a Plan-Write row the phased line, none the one-writer line, and pawl its own.
 func TestTacklerFor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {

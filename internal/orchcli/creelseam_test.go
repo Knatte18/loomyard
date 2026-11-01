@@ -1,5 +1,3 @@
-//go:build tier0
-
 // creelseam_test.go covers the folds of creel's journal entries into the watcher's outcome and sent values.
 
 package orchcli
@@ -11,10 +9,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCreelSeam_MapsEachCallOntoTheClient drives Post, Inject, ReadMailbox, Hold, Release and Withdraw and checks the request the client received and the values converted back.
 func TestCreelSeam_MapsEachCallOntoTheClient(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -90,6 +90,7 @@ func TestCreelSeam_MapsEachCallOntoTheClient(t *testing.T) {
 
 // TestCreelSeam_FoldsTheJournal drives InjectOutcome, MailReadAt and Sent over scripted journal entries.
 func TestCreelSeam_FoldsTheJournal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t0 := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // weftskippush_integration_test.go covers the fabric CLI's content-sync verbs ("push", "sync") against one real hub with FABRIC_SKIP_PUSH set, so the detached push child does no network work:
 // the env-to-SyncOptions mapping at the CLI edge, and the sync pathspec still covering _lym when the repo-wide config names only another path.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
@@ -20,12 +18,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunCLI_WeftSkipPushScenario runs the push and sync checks over one hub.
 // It stays serial (no t.Parallel): t.Setenv("FABRIC_SKIP_PUSH", "1") panics under t.Parallel, and the env var is process-global state.
 // Steps run serially in this order, because both rewrite the weft placeholder file and each commit must differ from the last.
 func TestRunCLI_WeftSkipPushScenario(t *testing.T) {
+	tiergate.Require(t, 1)
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	// Prevent the detached push child from doing any real network work;

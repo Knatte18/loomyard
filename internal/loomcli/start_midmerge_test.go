@@ -1,5 +1,3 @@
-//go:build tier0
-
 // start_midmerge_test.go pins runDriverSpawnAndWait's mid-merge check: it refuses a spawn or a resume over an unfinished merge, and leaves a live working driver alone.
 // Fakes only, no git.
 
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // ownLeftoverState is a fabric merge-in of main the Parent-Align and Finalize rows abort and redo themselves.
@@ -121,6 +120,7 @@ func assertNothingPutToWork(t *testing.T, c *loomCLI, starter *fakeDriverStarter
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	fabricMsg := []string{"lym fabric merge-stage", "lym fabric merge --continue", "lym fabric merge --abort", "a session lym refuses the verb from reports status: FAILED and the orch runs it"}
 	tests := []struct {
 		name      string
@@ -219,6 +219,7 @@ func TestRunDriverSpawnAndWait_MidMerge_SpawnRefusals(t *testing.T) {
 
 //testtiming:keep pins a live working driver, running or halted at hand-back, never reaching the mid-merge probe; the covering test never counts probe calls
 func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("running", func(t *testing.T) {
 		c, lockPath, marker := newResumeBranchReceiver(t, &fakeDriverStarter{}, &fakeDriverPaneProbeFull{strandsFn: parkedStrands(true)}, &fakeDriverSender{})
 		_ = os.Remove(marker)
@@ -262,6 +263,7 @@ func TestRunDriverSpawnAndWait_MidMerge_LiveWorkingDriverNotProbed(t *testing.T)
 }
 
 func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		probe func(*lymcwd.Location) (fabricengine.MidMergeState, error)
@@ -321,6 +323,7 @@ func TestRunDriverSpawnAndWait_MidMerge_ProbeErrorRefuses(t *testing.T) {
 
 //testtiming:keep pins the mid-merge probe running exactly once on a clean pair before the starter is reached; its covering test uses a probe that counts nothing
 func TestRunDriverSpawnAndWait_MidMerge_CleanPairProceeds(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		state fabricengine.MidMergeState

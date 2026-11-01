@@ -1,5 +1,3 @@
-//go:build tier0
-
 // tolerantrecords_test.go enforces `PATTERN-tolerant-records`: no production file calls encoding/json's DisallowUnknownFields, so no reader of a Go-written JSON record refuses a key a newer binary added.
 // The scan sees the method name at a call site only; yaml.v3's KnownFields is outside it.
 
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // tolerantRecordsMinScannedFiles is the floor on production files the walk must visit, so a misconfigured walk fails loudly rather than passing on a near-empty scan.
@@ -47,6 +46,7 @@ func strictDecodeFindings(filename string, data []byte) ([]string, error) {
 //
 //lym:guard
 func TestTolerantRecords_NoStrictJSONDecode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("detector", func(t *testing.T) {
 		t.Parallel()
 		tests := []struct {

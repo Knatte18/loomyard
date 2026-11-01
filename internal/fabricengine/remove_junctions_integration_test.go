@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_junctions_integration_test.go proves card 9's fix: Remove tears down
 // every warp junction — not just the worktree-root case
 // fslink.RemoveLinksIn's safety net already covers — including one nested
@@ -27,11 +25,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemove_TearsDownNestedJunction wires a junction nested one level below the worktree root
 // (RelPath "sub") and asserts Remove leaves no junction behind at that nested path.
 func TestRemove_TearsDownNestedJunction(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "remove-nested-junction"
@@ -154,6 +154,7 @@ func TestRemove_TearsDownNestedJunction(t *testing.T) {
 // <worktree>/<anchorRel> — so a root sweep saw nothing, left the links behind, and reported
 // LinksRemoved: 0 while two junctions existed one directory down.
 func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -211,6 +212,7 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 // refuses it, and asserts Remove reports the surviving weft worktree instead of returning success —
 // the silent `_ =` swallow used to leave a half-torn pair behind with an ok verdict.
 func TestRemove_FailedWeftTeardownIsReported(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 

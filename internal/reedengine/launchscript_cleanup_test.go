@@ -1,5 +1,3 @@
-//go:build tier0
-
 // launchscript_cleanup_test.go proves every path that forgets a strand also deletes its launch script, and that no path deletes a script whose strand survives.
 
 package reedengine
@@ -13,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedLaunchScripts writes a placeholder launch script for each guid and returns the paths in order.
@@ -64,6 +63,7 @@ func hiddenStrand(guid, parent string) Strand {
 //
 //testtiming:keep pins every path forgetting a strand deleting exactly that strand's launch script, a recursive remove deleting the subtree's, a replace keeping the survivor's, and a remove without a script succeeding with no launch-script warning; its covering tests run this code without asserting it
 func TestLaunchScriptCleanup(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		strands     []Strand
@@ -142,6 +142,7 @@ func TestLaunchScriptCleanup(t *testing.T) {
 }
 
 func TestDown_RemovesStateAndLaunchDir(t *testing.T) {
+	tiergate.Require(t, 0)
 	e := newCleanupEngine(t, &ReedState{Strands: []Strand{hiddenStrand("a", "")}})
 	// A sibling session keeps Down off the server teardown path.
 	installFakeTmux(t, e).answer("list-sessions", "sibling-session\n", nil)

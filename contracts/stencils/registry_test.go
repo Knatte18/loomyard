@@ -1,5 +1,3 @@
-//go:build tier0
-
 // registry_test.go pins the hand-maintained registry in stencils.go against the on-disk *.md tree: every family subfolder's stencil file must have a matching entries row, and every entries row must have a matching file, in both directions.
 // Without this test a hand-maintained registry could silently omit a file -- invisible to `lym stencil list`, never seeded, never validated.
 
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fixedStencils holds the instruction texts lym renders from embedded bytes alone and never seeds to a board copy, keyed by name.
@@ -78,6 +77,7 @@ func stencilNamesOnDisk(t *testing.T) []string {
 //
 //testtiming:keep pins that the registry and the on-disk stencil tree name the same stencils in both directions, which no other test compares
 func TestRegistry_MatchesOnDiskTree(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	onDisk := stencilNamesOnDisk(t)
@@ -120,6 +120,7 @@ func TestRegistry_MatchesOnDiskTree(t *testing.T) {
 //
 //testtiming:keep pins that RelPath resolves each registered name to its real file and that the Bouncer templates stay registered, which the scans over stencil bodies do not
 func TestRegistry_DefaultsAndRelPathAreConsistent(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	packageDir, err := os.Getwd()

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // parts_test.go — untagged unit tests for PartsTable.
 // Pure Go over an in-memory Config, a temp-dir modelspec registry and a seeded stencils directory;
 // the lead's prompt is composed through seatengine.Prompts, which starts nothing.
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // partsTableConfig returns a config whose parts keys are depth, max and the model-spec parts.
@@ -42,6 +41,7 @@ func fragmentText(t *testing.T, stencilsDir, name string) string {
 //
 //testtiming:keep pins the lead's fields and the depth fragment choice, which no producer-level test asserts
 func TestPartsTable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	reg := discussionTableRegistry(t)
 

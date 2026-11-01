@@ -1,4 +1,4 @@
-//go:build tier0 && !windows
+//go:build !windows
 
 // reflect_unix_test.go holds the reflection tests that rest on directory mode bits, which Windows does not enforce.
 
@@ -8,10 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestReflect_UnwritableRecord_FailedNoSpawn covers a record write that fails before the spawn.
 func TestReflect_UnwritableRecord_FailedNoSpawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("directory permissions do not bar writes to root")

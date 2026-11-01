@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers quarrycli's cobra seam: Command()'s exact child set.
 // Per-verb answer coverage lives in verbs_test.go.
 
@@ -7,11 +5,14 @@ package quarrycli
 
 import (
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommand_ExactChildSet asserts Command()'s child set is exactly the four verbs: toc, glyphs,
 // resolve, and expand -- no more, no fewer.
 func TestCommand_ExactChildSet(t *testing.T) {
+	tiergate.Require(t, 0)
 	cmd := Command()
 
 	want := map[string]bool{"toc": true, "glyphs": true, "resolve": true, "expand": true}

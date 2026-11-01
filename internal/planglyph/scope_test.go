@@ -1,5 +1,3 @@
-//go:build tier0
-
 // scope_test.go covers ScopeGuard against fake deltas, never a real quarry.Repo, since the
 // function's own contract is pure comparison over an already-computed answer.
 
@@ -10,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/quarry/quarry"
 )
 
@@ -17,6 +16,7 @@ import (
 // A symbol is in scope when a member target or handle names it, when a rename has a side named, or when a file or package target covers every file it lives in.
 // Each row is one card's targets and one delta symbol, and asserts the reported findings' files.
 func TestScopeGuard_SymbolCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	sym := func(id, file string) quarry.Symbol { return quarry.Symbol{ID: id, File: file} }
 	created := func(s quarry.Symbol) quarry.DeltaAnswer { return quarry.DeltaAnswer{Created: []quarry.Symbol{s}} }
 	modified := func(beforeFile, afterFile string) quarry.DeltaAnswer {
@@ -75,6 +75,7 @@ func TestScopeGuard_SymbolCoverage(t *testing.T) {
 // TestScopeGuard_FileLevelCoverage covers the file-level pass: a changed file the delta gives no symbols for is reported unless a card target's file or package directory covers it.
 // A file carrying an out-of-target symbol is reported by that symbol's finding alone.
 func TestScopeGuard_FileLevelCoverage(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tc := range []struct {
 		name string
 		// language is the plan's language, "go" when empty.
@@ -123,6 +124,7 @@ func TestScopeGuard_FileLevelCoverage(t *testing.T) {
 // TestScopeGuard_DeletedAndModifiedAlsoChecked covers a Deleted and a Modified symbol outside the
 // union, each producing its own informational finding.
 func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
+	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
 	delta := quarry.GitDeltaAnswer{DeltaAnswer: quarry.DeltaAnswer{
 		Deleted:  []quarry.Symbol{{ID: "sub#Gone", File: "sub/c.go"}},
@@ -138,6 +140,7 @@ func TestScopeGuard_DeletedAndModifiedAlsoChecked(t *testing.T) {
 // TestScopeGuard_EmptyDeltaNoFindingsNoPanic covers the caller's degradation path input: a
 // zero-value delta produces no findings and no panic.
 func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {
+	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
 
 	got := ScopeGuard(&planparser.Plan{Language: "go"}, cards, quarry.GitDeltaAnswer{})
@@ -152,6 +155,7 @@ func TestScopeGuard_EmptyDeltaNoFindingsNoPanic(t *testing.T) {
 // targets was the one kind of touch this guard never reported, and DetectDrift's gate two logs an
 // unreferenced rename at Debug only, so nothing operator-visible named it.
 func TestScopeGuard_RenamedPairOutsideTargetsIsReported(t *testing.T) {
+	tiergate.Require(t, 0)
 	cards := []planparser.Card{{Number: 1, Slug: "one", Targets: []string{"sub#Foo"}}}
 	delta := quarry.GitDeltaAnswer{}
 	delta.Renamed = []quarry.RenamedPair{{
@@ -172,6 +176,7 @@ func TestScopeGuard_RenamedPairOutsideTargetsIsReported(t *testing.T) {
 // whose endpoints the batch declared is the card doing the renaming, or a card that asked for the
 // new name, and is in scope on either side.
 func TestScopeGuard_RenamedPairInsideTargetsIsNotReported(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tc := range []struct {
 		name   string
 		target string

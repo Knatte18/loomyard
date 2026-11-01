@@ -1,5 +1,3 @@
-//go:build tier0
-
 // clusterexcludes_test.go pins the agreement between each Bouncer row's cluster_excludes and its
 // partner BurlerReview row's cluster fan.
 //
@@ -23,6 +21,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // clusterExcludesMismatches returns one message per Bouncer row, partnered with a BurlerReview row
@@ -82,6 +81,7 @@ func clusterExcludesMismatches(r shedbuild.Recipe) []string {
 //
 //testtiming:keep pins that no shipped Bouncer/BurlerReview pair disagrees on cluster_excludes, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {
+	tiergate.Require(t, 0)
 	r, err := shedbuild.Parse(recipes.TapestryRecipe)
 	if err != nil {
 		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
@@ -93,6 +93,7 @@ func TestShippedRecipe_ClusterExcludesAgreesWithPartnerFan(t *testing.T) {
 
 // TestClusterExcludesMismatches_Cases pins the rule function against hand-authored two-row recipes.
 func TestClusterExcludesMismatches_Cases(t *testing.T) {
+	tiergate.Require(t, 0)
 	recipe := func(bouncerOnStuck, bouncerConfig, burlerConfig string) string {
 		return `version: 1
 entry: B

@@ -1,5 +1,3 @@
-//go:build tier2
-
 // cli_integration_test.go holds the reedcli scenario that builds a real fixture hub (hubforge.NewHub) with reed config resolution against a real fixture hub, so this file is integration-tagged per the Test Tier Purity Invariant.
 
 package reedcli
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/testkit/tmuxkit"
 )
 
@@ -52,6 +51,7 @@ func skipWithoutMultiplexer(t *testing.T, h *hubforge.Hub) {
 // A later step relies on the earlier steps leaving the hub cold.
 // The scenario calls t.Parallel but no step does, because every step shares the one hub.
 func TestRunCLI_ColdHub(t *testing.T) {
+	tiergate.Require(t, 2)
 	t.Parallel()
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	worktree := h.PrimeWorktree()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // commit_gating_integration_test.go — integration coverage for
 // Fabric.Commit's commit-side skip-git gating: under opts.SkipGit, the warp
 // side still commits but the weft side no-ops entirely, with no weft lock
@@ -17,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestCommit_SkipGit_TwoSided asserts that under opts.SkipGit, a two-sided Fabric.Commit lands the
@@ -26,6 +26,7 @@ import (
 // ("README"), the lock dir IS created here even though the weft side is skipped;
 // that is the correct, intended behavior, not a weft-scoped-lock regression.
 func TestCommit_SkipGit_TwoSided(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -71,6 +72,7 @@ func TestCommit_SkipGit_TwoSided(t *testing.T) {
 // TestCommit_SkipGit_WarpOnly asserts that a warp-only input under opts.SkipGit still lands its
 // warp commit — SkipGit narrows to the weft side only, never suppressing the warp commit.
 func TestCommit_SkipGit_WarpOnly(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, _ := newCommitFixture(t)
 	swapPushRecorder(t)
@@ -92,6 +94,7 @@ func TestCommit_SkipGit_WarpOnly(t *testing.T) {
 // TestCommit_TwoSided_NormalOpts_ControlCase is the control case for the two SkipGit tests above:
 // under normal (zero-value) opts, a two-sided Fabric.Commit lands both sides.
 func TestCommit_TwoSided_NormalOpts_ControlCase(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: swapPushRecorder sets the package-level spawnDetachedPushFn.
 	f, warpPath, weftPath := newCommitFixture(t)
 	swapPushRecorder(t)

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package orchengine
 
 import (
@@ -11,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -25,6 +24,7 @@ func seedStencils(t *testing.T) string {
 }
 
 func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name   string
 		file   string
@@ -71,6 +71,7 @@ func TestRenderFiles_WriteWithoutLeadingComment(t *testing.T) {
 
 //testtiming:keep its covering test TestRenderPointers_MultiLineOverrideFails reaches the same render paths but asserts only the multi-line refusal, not each stencil's one-line shape and named paths
 func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	dir := seedStencils(t)
 	cases := []struct {
 		name   string
@@ -104,6 +105,7 @@ func TestRenderPointers_OneLineNamingTheirPaths(t *testing.T) {
 
 //testtiming:keep pins the refusal of a multi-line stencil override naming the stencil, a guard its covering tests do not reach
 func TestRenderPointers_MultiLineOverrideFails(t *testing.T) {
+	tiergate.Require(t, 0)
 	cases := []struct {
 		name   string
 		render func(dir string) (string, error)

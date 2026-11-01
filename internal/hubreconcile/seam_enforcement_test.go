@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seam_enforcement_test.go enforces this package's Told-Geometry Invariant membership: production code takes every absolute path from its caller and has no direct production import of internal/lymcwd.
 
 package hubreconcile
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // hubreconcileAllowedImports are the only non-stdlib import paths production code in this package may use.
@@ -25,5 +24,6 @@ var hubreconcileAllowedImports = []string{
 
 // TestToldGeometryInvariant_AllowlistOnly verifies that every non-test .go file imports only stdlib or an entry in hubreconcileAllowedImports.
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {
+	tiergate.Require(t, 0)
 	scankit.AssertImportAllowlistNoStale(t, "internal/hubreconcile", hubreconcileAllowedImports...)
 }

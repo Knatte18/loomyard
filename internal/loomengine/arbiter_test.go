@@ -1,5 +1,3 @@
-//go:build tier0
-
 // arbiter_test.go — untagged Tier-1 tests for the arbiter's record readers and writers, over temp directories.
 
 package loomengine
@@ -14,9 +12,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/sheddriver"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIsArbiterStrand(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name string
@@ -42,6 +42,7 @@ func TestIsArbiterStrand(t *testing.T) {
 
 // TestArbiterAttempts pins attempt write and read (the directory filled in and never serialized), listing in attempt order, an absent directory listing none, and a subdirectory with no attempt.json refused by name.
 func TestArbiterAttempts(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	attempt := func(n int) ArbiterAttempt {
 		return ArbiterAttempt{
@@ -185,6 +186,7 @@ func TestArbiterAttempts(t *testing.T) {
 
 // TestReadArbiterVerdict pins both valid shapes, an absent file, and each refusal.
 func TestReadArbiterVerdict(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -236,6 +238,7 @@ func TestReadArbiterVerdict(t *testing.T) {
 
 // TestArbiterJSONRecords pins the envelope and marker round trip, absence as found false, and an unparseable file as an error.
 func TestArbiterJSONRecords(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	envelope := ArbiterEnvelope{Verdict: "resume", Reason: "r", Goto: "B", Verbs: []string{"v"}, Attempt: 2, AttemptDir: "/d", VerdictPath: "/d/verdict.yaml", Relaunch: "lym loom ..."}
 	marker := ArbiterMarker{Attempt: 2, StrandGUID: "guid", Deadline: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
@@ -283,6 +286,7 @@ func TestArbiterJSONRecords(t *testing.T) {
 
 // TestArbiterAppliedAndMarkerRemoval pins the applied mark's absence and presence, and that removing an absent marker is not an error.
 func TestArbiterAppliedAndMarkerRemoval(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "attempt-1")
 	if applied, err := ArbiterApplied(dir); applied || err != nil {
@@ -312,6 +316,7 @@ func TestArbiterAppliedAndMarkerRemoval(t *testing.T) {
 
 // TestArbiterPaths pins the four file names inside an attempt directory.
 func TestArbiterPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	dir := filepath.Join("a", "attempt-1")
 	for got, want := range map[string]string{

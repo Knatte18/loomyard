@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_local_integration_test.go covers Remove of a local-only pair and the two origin-write checks that guard a marked branch.
 // Every hub here has an origin URL pointing at a path that does not exist, so any origin step fails the call.
 //
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // addLocalPairOnDeadOrigin returns a dead-origin hub holding one AddLocal pair named slug.
@@ -32,6 +31,7 @@ func addLocalPairOnDeadOrigin(t *testing.T, slug string) *hubforge.Hub {
 
 // TestRemove_LocalPair removes AddLocal pairs without force and asserts no origin step runs, nothing is archived and the records go with the sibling branch.
 func TestRemove_LocalPair(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "localpair"
@@ -178,6 +178,7 @@ func TestRemove_LocalPair(t *testing.T) {
 
 // TestOriginWrites_LocalMarkedBranch drives the two origin-write checks over a marked weft branch: the archive returns no tag and the remote-deletion gate refuses.
 func TestOriginWrites_LocalMarkedBranch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "markedpair"

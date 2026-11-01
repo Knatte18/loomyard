@@ -1,5 +1,3 @@
-//go:build tier0
-
 // wakes_test.go tests the wake sources, automatic steps, alignment outcomes, stops and failure classes of a run over a fake records repository.
 
 package reportengine
@@ -15,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/haltnote"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wakeSlug is the slug of the one run each wakes row builds.
@@ -67,6 +66,7 @@ func (w *world) wakeRun(snapshots []shedengine.Status, entries []shedengine.Hist
 func frictionDirRel() string { return filepath.ToSlash(loomengine.LoomFrictionDirRel()) }
 
 func TestCompute_WakesAndStops(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	running, awaiting, blocked, failed := shedengine.StateRunning, shedengine.StateAwaiting, shedengine.StateBlocked, shedengine.StateFailed
 	archiveDir := filepath.Base(frictionDirRel()) + "-20261012T101500Z"

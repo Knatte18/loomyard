@@ -1,8 +1,6 @@
-//go:build tier0
-
 // contractevidence_test.go covers contractFileStatus and AcceptPendingAudit over contract-file
 // paths, without git.
-// Untagged, with a shuttlefake.Engine — no git, no subprocess spawns.
+// Tier0, with a shuttlefake.Engine — no git, no subprocess spawns.
 
 package websterengine
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var evidenceEpoch = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -51,6 +50,7 @@ func succeeded(path string, offset time.Duration) shuttleengine.WriteEvent {
 }
 
 func TestContractFileStatus(t *testing.T) {
+	tiergate.Require(t, 0)
 	geom := evidenceGeom(t)
 	present := writeContractFile(t, geom)
 	absent := summaryparser.Path(geom.WebsterDir)
@@ -143,6 +143,7 @@ func writesEngine(master, fork []shuttleengine.WriteEvent) AuditEngines {
 // or a Master write after the fork's clear the finding, reporting whether the files were absent, and
 // a fork write after Master's refuses, naming the delete route and leaving the finding pending.
 func TestAcceptPendingAudit_ContractFiles(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

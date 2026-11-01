@@ -1,5 +1,3 @@
-//go:build tier0
-
 // cli_test.go covers the orchcli seam without a live session: the prime refusal decision, the shuttle-config override, and the status, cycle and stop verbs over hand-built receivers with a fake strandOps.
 
 package orchcli
@@ -27,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/spf13/cobra"
 )
 
@@ -144,6 +143,7 @@ func runVerb(t *testing.T, cmd *cobra.Command) (int, map[string]any) {
 }
 
 func TestRefuseNonPrime(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	if err := refuseNonPrime("main", "main", nil, false); err != nil {
@@ -165,6 +165,7 @@ func TestRefuseNonPrime(t *testing.T) {
 }
 
 func TestBeamUpRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const move = "a change of the anchor of b from a to c was interrupted; run `lym fabric anchor b --set c` to finish it"
@@ -233,6 +234,7 @@ func pauseHubAt(t *testing.T, c *orchCLI) {
 }
 
 func TestStatus_Envelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const tooShort = "orch pane too short for the idle probe; resize or use the larger client"
@@ -371,6 +373,7 @@ func TestStatus_Envelope(t *testing.T) {
 }
 
 func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	verbs := []struct {
@@ -480,6 +483,7 @@ func TestRefreshAndDistill_RequestTheirOwnMode(t *testing.T) {
 
 // TestWithdraw pins the withdraw verb: a pending request of either mode is removed, and none pending answers the persisted phase and, while a cycle runs, its trigger.
 func TestWithdraw(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -556,6 +560,7 @@ func TestWithdraw(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cases := []struct {
@@ -639,6 +644,7 @@ func TestStop(t *testing.T) {
 // TestStatus_RestartsADeadWatcher pins that status spawns a watcher for a live strand whose watcher is dead, and only then.
 // It is not parallel: logcapture.CaptureVerbose swaps the process-global logger to read the Info line.
 func TestStatus_RestartsADeadWatcher(t *testing.T) {
+	tiergate.Require(t, 0)
 	liveOrch := []reedengine.StrandStatus{{GUID: "g1", Name: "orch", Live: true}}
 	recorded := orchengine.State{Strand: "g1", Phase: orchengine.PhaseIdle, WatcherExit: "strand gone before the reboot"}
 	tests := []struct {
@@ -738,6 +744,7 @@ func TestStatus_RestartsADeadWatcher(t *testing.T) {
 
 // TestOrchStrands_MatchesFullAndLegacyNames pins that the orchestrator lookup finds a full-name strand and a legacy exact-name strand, and nothing else.
 func TestOrchStrands_MatchesFullAndLegacyNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	strands := []reedengine.StrandStatus{
 		{GUID: "g1", Name: "ly:orch"},
 		{GUID: "g2", Name: "orch"},
@@ -751,6 +758,7 @@ func TestOrchStrands_MatchesFullAndLegacyNames(t *testing.T) {
 }
 
 func TestResumeContext_PrintsHookJSONPerPhaseAndFailsWithoutMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

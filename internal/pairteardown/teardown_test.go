@@ -1,5 +1,3 @@
-//go:build tier0
-
 // teardown_test.go drives the teardown sequence through fakes, so it spawns nothing.
 
 package pairteardown
@@ -23,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // fakeSubstrates records the order of substrate calls and answers from scripted values.
@@ -238,6 +237,7 @@ var busy = quietState{driver: "tst:slug:driver"}
 // TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
 // The board-claim rows pin the settlement rule through Run: which reads precede the removal and the write, and what is written.
 func TestTeardown_CallSequence(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	refusal := errors.New("worktree has uncommitted changes")
@@ -899,6 +899,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 // batten's own pause while a registered batten is alive, and batten's cancel once that process is gone.
 // It captures the process-global logger, so it is not parallel.
 func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name        string
 		battenAlive bool
@@ -933,6 +934,7 @@ func TestSettleBoardClaim_RunningBattenRecordWayForward(t *testing.T) {
 
 // TestLoopTeardown_LockMarkAndRunLockWait drives the loop-ending helpers over real lock and pid files in a temporary steps directory, with a fake kill and sleep.
 func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	prior := shedverbs.LoopPIDRecord{
@@ -1123,6 +1125,7 @@ func TestLoopTeardown_LockMarkAndRunLockWait(t *testing.T) {
 
 // TestRegisteredBattenAlive_ReadsADobbyDrivenRun pins that the gap between two batten passes reads as a live lifecycle owner only while a dobby of the run's parent stands and batten's status reads running with no cancel marker.
 func TestRegisteredBattenAlive_ReadsADobbyDrivenRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dobby := []runproc.Record{{PID: 7, Role: runproc.RoleDobby}}
@@ -1203,6 +1206,7 @@ func (a *closeRecordingAPI) Merge(context.Context, int, string, bool, string, st
 // TestCloseOpenPullRequest asserts a torn-down pair's open pull request is closed with the comment, a merged or closed one and an absent record are left alone, and every failure warns and returns.
 // It captures the process-global logger, so it is not parallel.
 func TestCloseOpenPullRequest(t *testing.T) {
+	tiergate.Require(t, 0)
 	const prURL = "https://github.com/acme/widgets/pull/7"
 	const originURL = "https://github.com/acme/widgets.git"
 	const comment = "lym closed this pull request: the run's pair was torn down before it landed"

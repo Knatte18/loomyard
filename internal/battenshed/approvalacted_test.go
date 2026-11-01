@@ -1,10 +1,11 @@
-//go:build tier0
-
 package battenshed
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 func TestParseDecisionActed(t *testing.T) {
+	tiergate.Require(t, 0)
 	id := decisionIdentity(ChildDecision{Kind: DecisionApprove, At: "2026-01-02T03:04:05Z", HeadSHA: "abc123"})
 	tests := []struct {
 		name    string

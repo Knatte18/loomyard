@@ -1,5 +1,3 @@
-//go:build tier1
-
 // auditseverity_test.go exercises ClassifyViolation over a real scratch repo, and the stability of the finding Keys CheckParent assigns.
 
 package websterengine
@@ -13,12 +11,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // readsOnlyCat is a stand-in read-only classifier that accepts a command starting with `cat `.
 func readsOnlyCat(cmd string) bool { return strings.HasPrefix(cmd, "cat ") }
 
 func TestClassifyViolation(t *testing.T) {
+	tiergate.Require(t, 1)
 	root := gitwrapNewScratchRepo(t)
 	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("ignored.log\n_lym/\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -140,6 +140,7 @@ func TestClassifyViolation(t *testing.T) {
 }
 
 func TestCheckParent_KeysDistinctAndStable(t *testing.T) {
+	tiergate.Require(t, 1)
 	audit := shuttleengine.ForkAudit{
 		NamedSpawns:  2,
 		ParentWrites: []string{"/w/a.go", "/w/b.go"},

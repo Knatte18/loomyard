@@ -1,5 +1,3 @@
-//go:build tier1
-
 // gitwrap_test.go exercises headSHA, dirty, otherWorktrees, reconcileReportHead and refuseMidMerge against real scratch git repositories built fresh under t.TempDir() for each test,
 // reusing the package's existing hermetic TestMain (testmain_test.go) so these git spawns never inherit the operator's global gitconfig.
 
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // gitwrapNewScratchRepo is the in-package scratch-repo initialiser; the external test package keeps its own, since the two packages cannot share a helper.
@@ -37,6 +36,7 @@ func gitwrapNewScratchRepo(t *testing.T) string {
 //
 //testtiming:keep pins the real-git head, dirty and worktree-list probes' own return values, an untracked file counting as dirty, and both sides of a worktree pair; the covering verb tests observe them only through verb outcomes
 func TestRepositoryProbes(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := gitwrapNewScratchRepo(t)
@@ -252,6 +252,7 @@ func gitwrapMergeSide(t *testing.T, dir, side string) (mergeSHA, sideTip string)
 }
 
 func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	head := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
@@ -263,6 +264,7 @@ func TestReconcileReportHead_EqualIsFastPath(t *testing.T) {
 }
 
 func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
@@ -290,6 +292,7 @@ func TestReconcileReportHead_MergesOnTopAccepted(t *testing.T) {
 }
 
 func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
@@ -306,6 +309,7 @@ func TestReconcileReportHead_ReportHeadIsMergeCommit(t *testing.T) {
 }
 
 func TestReconcileReportHead_Refusals(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("fast-forward onto side commits", func(t *testing.T) {
@@ -401,6 +405,7 @@ func gitwrapParentCommit(t *testing.T, dir, name, content string) (base string) 
 // TestReconcileReportHead_UncleanParentMergesRefused proves a merge commit is walked over only when it is a clean merge of the run's parent branch:
 // every other two-or-more-parent shape is refused with the parent-merge refusal and its way forward.
 func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	cases := []struct {
@@ -515,6 +520,7 @@ func TestReconcileReportHead_UncleanParentMergesRefused(t *testing.T) {
 
 // TestReconcileReportHead_ParentOnlyOnOrigin proves a merge of the parent branch's origin remote-tracking tip is accepted when no local parent branch exists.
 func TestReconcileReportHead_ParentOnlyOnOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	report := gitkit.CommitFile(t, dir, "a.txt", "one", "first")
@@ -546,6 +552,7 @@ func gitwrapConflictingMerge(t *testing.T, dir string) {
 }
 
 func TestRefuseMidMerge(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	gitkit.CommitFile(t, dir, "a.txt", "one", "first")
@@ -572,6 +579,7 @@ func TestRefuseMidMerge(t *testing.T) {
 }
 
 func TestRefuseMidMerge_LinkedWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	dir := gitwrapNewScratchRepo(t)
 	gitkit.CommitFile(t, dir, "a.txt", "one", "first")

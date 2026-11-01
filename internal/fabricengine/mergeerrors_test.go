@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mergeerrors_test.go asserts the pinned Error() strings, newMergeGuardError's sort/dedup
 // behaviour, and that no closed-set constant or Error() output leaks warp/weft/host vocabulary
 // across the merge error surface's public boundary.
@@ -9,10 +7,13 @@ package fabricengine
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 //testtiming:keep the exact Error() string of each named merge error and of MergeGuardError; coverage of its blocks by other tests does not show an assertion of this
 func TestMergeErrors_PinnedStrings(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
 		err  error
@@ -64,6 +65,7 @@ func TestMergeErrors_PinnedStrings(t *testing.T) {
 }
 
 func TestMergeErrors_NewMergeGuardErrorSortsAndDeduplicates(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		reasons []string
@@ -126,6 +128,7 @@ func assertNoVocabularyLeak(t *testing.T, label, s string) {
 // conventional -- this package's own tier asserts the accessor tracks the constant, and the
 // consumer's own tier asserts it branches on the accessor.
 func TestMergeGuardError_WorktreeDirty(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		reasons    []string

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // derive_integration_test.go drives DeriveTargets over a real repository holding a small Go module.
 
 package impactset
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func writeRepoFile(t *testing.T, dir, name, content string) {
@@ -55,6 +54,7 @@ func packagesOf(targets Targets) string {
 // TestDerive_OverARepository walks one repository through each fallback, a one-package change and the working-tree forms.
 // The steps share the repository and run in order, each against the commit the step before left, so the test is parallel as a whole and no step is.
 func TestDerive_OverARepository(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("no go.mod falls back", func(t *testing.T) {

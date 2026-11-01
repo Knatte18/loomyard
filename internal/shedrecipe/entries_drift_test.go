@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_drift_test.go covers the three Drift entries: their config keys, their required Env seams and the producers they build.
 
 package shedrecipe
@@ -14,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // driftTestEnv returns newTestEnv(t) with every Env.Drift seam filled by a no-op.
@@ -44,6 +43,7 @@ func driftTestEnv(t *testing.T) Env {
 
 // TestDriftEntries asserts each Drift entry builds its producer with the kit's Env, and refuses an unknown key, a bad subject, a wrong gates list and a nil seam, each naming the way forward.
 func TestDriftEntries(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	verifyCfg := func(gates ...any) Config {

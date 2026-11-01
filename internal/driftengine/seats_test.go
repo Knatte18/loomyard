@@ -1,5 +1,3 @@
-//go:build tier0
-
 // seats_test.go — tier 0 tests for the two agents' seat tables, over a seeded stencils directory, a model registry of the built-in aliases and the prompts the seat engine composes without starting anything.
 
 package driftengine
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seatRegistry loads an empty-directory model registry, which still resolves the built-in aliases.
@@ -48,6 +47,7 @@ func seatPrompt(t *testing.T, stencilsDir, worktreeRoot, slug string, table seat
 
 // TestSeatTables covers both builders: each missing required input refused by name, the lead's model, role, output, skills and timeout, the markers each prompt renders, the two subjects and an unparsable model.
 func TestSeatTables(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	cfg := Config{BaselineModel: "sonnet[effort=medium]", VerifyModel: "opus[effort=high]", VerifyMaxRuns: 5}

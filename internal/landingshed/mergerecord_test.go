@@ -1,5 +1,3 @@
-//go:build tier0
-
 // mergerecord_test.go covers the merge record codec and the overlap computation.
 
 package landingshed
@@ -9,6 +7,8 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func sampleMergeRecord() MergeRecord {
@@ -28,6 +28,7 @@ func sampleMergeRecord() MergeRecord {
 }
 
 func TestMergeRecord_RoundTripAndUndecodable(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -70,6 +71,7 @@ func TestMergeRecord_RoundTripAndUndecodable(t *testing.T) {
 }
 
 func TestComputeOverlap(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

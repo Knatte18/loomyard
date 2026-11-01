@@ -1,5 +1,3 @@
-//go:build tier1
-
 // parity_test.go carries the differential-parity harness lifted from internal/gitnativepoc/harness_test.go into package gitrepo_test: fixture builders beyond newRepo/writeFile/commitAll (already defined in gitrepo_test.go and reused directly here), repo-shaping helpers the parity cases need, and comparison helpers that report an oracle-vs-implementation divergence with both values so a failing case is diagnosable without re-running it under a debugger.
 // The parity cases built on this scaffolding follow the helpers; the linked-worktree parity cases live in gogit_test.go.
 
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/gitrepo/internal/gitoracle"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newEmptyRepoFixture builds a repo with an unborn HEAD via `git init -b main`.
@@ -150,6 +149,7 @@ func requireBranchExists(t *testing.T, repo *gitrepo.Repo, branch string) bool {
 // The steps run serially in one order and share the repository's state: the file-list steps each take their own base commit and add commits on main, and the detached-HEAD step runs before the orphan step because both leave HEAD off main.
 // The top-level test calls t.Parallel; no step does, because the steps share the repository.
 func TestParity(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -437,6 +437,7 @@ func TestParity(t *testing.T) {
 // CurrentSHA maps git's ambiguous-HEAD stderr shape to each side's own sentinel (gitoracle.ErrNoCommits and gitrepo.ErrNoCommits), so the cross-target class comparison — never a raw string comparison, since the two sides never produce byte-identical errors — is what proves agreement.
 // CurrentBranch succeeds on an unborn HEAD and prints the branch name even with no commit yet.
 func TestParity_UnbornHEAD(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := newEmptyRepoFixture(t)
@@ -504,6 +505,7 @@ func forcePackIndexFreeze(t *testing.T, repo *gitrepo.Repo) {
 // This is the call-granular boundary's central mixed-backend site: a stale answer here would hand a wrong SHA to any caller that records the return value as the checkout's new baseline.
 // The rows run serially against one repository and one warmed handle.
 func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repo := newRepo(t)
@@ -547,6 +549,7 @@ func TestMixedBackend_PreWarmedHandleSeesCLICommit(t *testing.T) {
 // Every row builds its own repository and Repo: the first row's retry reindexes the handle it uses, so a shared fixture would let every later row pass even if its method bypassed the whole-read retry.
 // SHAExists' failure-swallowing posture means its row would fail silently (report false forever), never loudly.
 func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -636,6 +639,7 @@ func TestMixedBackend_RepackBetweenCommitAndRead(t *testing.T) {
 // This is the case that fails under a counter gate and passes under the fingerprint gate, so it
 // pins the design rather than merely restating it.
 func TestSHAExists_MixedBackend_CrossInstanceReindexSeesWriteFromOtherRepo(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir, repoA := newRepo(t)

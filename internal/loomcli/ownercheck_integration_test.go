@@ -1,5 +1,3 @@
-//go:build tier1
-
 // ownercheck_integration_test.go drives the run owner verdict over a hub forged by hubforge whose Bolt origin records the owners.
 // This package's own testmain_test.go arms the hermetic git test environment for the whole binary,
 // so this file adds no TestMain.
@@ -21,11 +19,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRunOwnerVerdict covers the run owner verdict with a fixed machine name over a hub whose Bolt origin records the owners, with a batten status file at the prime for the run's pair so the reconcile judges it:
 // origin's Bolt recording another machine as the prime's owner reads the run owned elsewhere with that owner, and with both origins unreachable the local board's owner decides.
 func TestRunOwnerVerdict(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 	boardkit.InstallReplay(t)
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // headroom_test.go covers Headroom, one row per growth outcome against the headroom line.
 
 package pattern
@@ -8,9 +6,12 @@ import (
 	"bytes"
 	"fmt"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestHeadroom(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	size := func(n int) []byte { return bytes.Repeat([]byte("x"), n) }
 	finding := func(head, base, cut int) string {

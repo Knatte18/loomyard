@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fixaccept_test.go pins AcceptFixReview: what it writes into the change description and the attempt record, and what it refuses.
 
 package landingshed
@@ -9,9 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestAcceptFixReview(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const description = "# Fix the widget\n\nThe widget now spins.\n"
 	const section = "## Unresolved fix review findings\n\n" +

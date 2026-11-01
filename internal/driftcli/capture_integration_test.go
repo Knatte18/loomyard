@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, its end by the owned-process end of a teardown, and the compare's refusals.
 
@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -107,6 +108,7 @@ func touch(t *testing.T, path string) {
 
 // TestCapture_OutlivesCaller covers a capture that fails, one that passes after its caller exited, one ended by the owned-process end of a teardown, and the compare's refusals.
 func TestCapture_OutlivesCaller(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	bin := lymbin.Build(t)

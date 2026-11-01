@@ -1,5 +1,3 @@
-//go:build tier0
-
 // follow_test.go pins the told-geometry follow jump: the window it selects from tmux facts and the exact commands it issues, through TmuxCmd's execHook seam.
 
 package reedengine
@@ -9,11 +7,14 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestFollowSessionVia pins the commands followSessionVia issues for each session shape, and the error each failed command returns.
 // The listing lines are followTargetFormat lines: window id, window index, own flag, overview flag, pane dead flag.
 func TestFollowSessionVia(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	const session = "tc-session"
 	list := func(session string) []string {

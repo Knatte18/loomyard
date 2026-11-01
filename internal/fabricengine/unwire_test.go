@@ -1,5 +1,3 @@
-//go:build tier1
-
 // unwire_test.go ports initengine/undo_test.go's coverage to
 // fabricengine.Unwire, the new per-worktree teardown verb: full on-disk
 // junction removal (including a stale junction absent from the current
@@ -31,6 +29,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestUnwire_RemovesOnDiskJunctionsIncludingStale proves the on-disk-scan enumeration property:
@@ -41,6 +40,7 @@ import (
 //
 //testtiming:keep Unwire removing every on-disk fabric junction including one absent from the pathspec while the root scratch link stays; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -131,6 +131,7 @@ func TestUnwire_RemovesOnDiskJunctionsIncludingStale(t *testing.T) {
 //
 //testtiming:keep weft-side _lym and .lym surviving Unwire with their content, WeftContent "preserved" and no clear commit in the weft log; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -225,6 +226,7 @@ func TestUnwire_PreservesWeftLymAndOptionalContent(t *testing.T) {
 //
 //testtiming:keep UnwireVerbResult carrying no Gitignore field so the CLI envelope never gains a gitignore key; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	typ := reflect.TypeOf(fabricengine.UnwireVerbResult{})
@@ -242,6 +244,7 @@ func TestUnwireVerbResult_HasNoGitignoreField(t *testing.T) {
 //
 //testtiming:keep a second Unwire call against an already torn-down pair being a clean no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -289,6 +292,7 @@ func TestUnwire_NeverWiredWarpIsIdempotentNoOp(t *testing.T) {
 //
 //testtiming:keep the repo-wide weft:main records surviving a worktree's Unwire so a later reconcile can re-wire; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
 	t.Setenv("FABRIC_SKIP_PUSH", "1")
 
@@ -334,6 +338,7 @@ func TestUnwire_PreservesRepoWideRecords(t *testing.T) {
 // Each row unwires one pair of a hub whose prime is at ".", after the rows' pairs are re-anchored, and asserts which exclude lines the unwire left.
 // A legacy bare line matches at every depth, so it stays while any worktree wires the name at any anchor; an anchored line stays while another worktree links the same anchored path.
 func TestUnwire_LeavesSiblingWorktreeUndirtied(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const keptSlug = "unwire-sibling-kept"

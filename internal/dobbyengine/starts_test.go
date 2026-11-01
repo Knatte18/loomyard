@@ -1,5 +1,3 @@
-//go:build tier0
-
 // starts_test.go pins the start condition of a board task and the start step's cap, task-limit hold, refusal notices and backoff.
 
 package dobbyengine
@@ -12,9 +10,11 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/proc"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestReadyToStart(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	draft := "draft"
 	empty := ""
@@ -51,6 +51,7 @@ func TestReadyToStart(t *testing.T) {
 }
 
 func TestNextStartTry(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	probe := 10 * time.Second
@@ -76,6 +77,7 @@ func readyTask(slug string) TaskView {
 }
 
 func TestStartReady_RefusalsAndBackoff(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	refused := func(text string) PassExit { return PassExit{Code: 1, Error: text} }
 
@@ -338,6 +340,7 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 }
 
 func TestStartReady_TaskLimitHold(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	near := proc.TaskLimit{Current: 2997, Max: 3000, Cgroup: "/user.slice/user-1000.slice"}
 	free := proc.TaskLimit{Current: 1200, Max: 3000, Cgroup: "/user.slice/user-1000.slice"}
@@ -451,6 +454,7 @@ func frontTask(slug string) TaskView {
 }
 
 func TestStartReady_FrontTask(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	halted := func(slug string) RunView { return RunView{Slug: slug, State: "blocked", Producer: producerRunShed} }
 	running := "running · Run-Shed"

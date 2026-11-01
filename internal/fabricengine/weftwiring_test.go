@@ -1,5 +1,3 @@
-//go:build tier0
-
 // weftwiring_test.go unit-tests removeJunctionRecords directly against synthetic WarpJunction
 // slices — no build tag, since it touches only plain directories and fslink, never git.
 // It exists because WarpJunctions(l, slug) still returns exactly one entry in this batch (a second
@@ -13,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRemoveJunctionRecords_ContinuesPastFailure proves the function continues removing junctions
@@ -20,6 +20,7 @@ import (
 //
 //testtiming:keep the removal loop continuing past a per-junction failure and an empty slice being a no-op; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveJunctionRecords_ContinuesPastFailure(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := t.TempDir()

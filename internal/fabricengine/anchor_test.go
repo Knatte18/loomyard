@@ -1,5 +1,3 @@
-//go:build tier0
-
 // anchor_test.go — unit tests for the pure reachableAnchor walk.
 // Every test here drives reachableAnchor against a hand-built []corrEntry slice and a fake
 // in-memory reachable predicate (a map[string]bool closure);
@@ -11,6 +9,8 @@ package fabricengine
 import (
 	"errors"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // mapReachable returns a reachable predicate backed by a map.
@@ -25,6 +25,7 @@ func mapReachable(reachableSHAs map[string]bool) func(string) (bool, error) {
 //
 //testtiming:keep the reachableAnchor walk's outcomes (newest, nearest-older one and several steps back, none, empty index); coverage of its blocks by other tests does not show an assertion of this
 func TestReachableAnchor(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	threeEntries := []corrEntry{
@@ -72,6 +73,7 @@ func TestReachableAnchor(t *testing.T) {
 // TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk asserts that a reachable error aborts
 // the walk immediately.
 func TestReachableAnchor_PredicateErrorPropagatesAndStopsWalk(t *testing.T) {
+	tiergate.Require(t, 0)
 	wantErr := errors.New("boom")
 	entries := []corrEntry{
 		{WarpSHA: "w1", WeftSHA: "f1", WarpSeq: 1},

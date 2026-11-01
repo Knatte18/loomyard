@@ -1,5 +1,3 @@
-//go:build tier0
-
 // fmtverb_test.go covers the `fmt` loom verb over a temporary worktree, with no git repository behind it.
 
 package loomcli
@@ -17,6 +15,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 const (
@@ -26,6 +25,7 @@ const (
 
 // TestFmtCmd drives fmtCmd over a temporary worktree the way the pre-run leaves the receiver: only env.WorktreeRoot and cwd set.
 func TestFmtCmd(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	newWorktree := func(t *testing.T) string {

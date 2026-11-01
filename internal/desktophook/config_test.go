@@ -1,5 +1,3 @@
-//go:build tier0
-
 // config_test.go covers desktophook.LoadConfig over a bare board and anchor, with no hub and no spawn.
 
 package desktophook_test
@@ -13,10 +11,12 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/desktophook"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestLoadConfig covers the template defaults, a machine override setting both keys, a refused negative wait and a local override refused for a machine key.
 func TestLoadConfig(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // outcome_test.go exercises parseOutcome's accept/reject table.
 // Tier 1: no git, only t.TempDir() plus an injected now.
 
@@ -9,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // outcomeWriteFile writes raw content to path, creating its parent
@@ -28,6 +28,7 @@ func outcomeWriteFile(t *testing.T, path, content string) {
 // an unrecognized outcome value (the retired paused included), a stuck file missing stuck_reason, an unknown extra key and a
 // missing file are all rejected loudly rather than guessed at.
 func TestParseOutcome_AcceptReject(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

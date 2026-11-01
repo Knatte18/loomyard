@@ -1,5 +1,3 @@
-//go:build tier0
-
 // entries_bouncer_test.go covers bouncerEntry: the happy path, the run-directory group (this
 // batch's load-bearing assertion, since a missing directory would fail every fresh segment's first
 // call), the pinned report-name behaviour, and every construction failure.
@@ -22,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // assertErrContains fails the test unless err is non-nil and its message contains want.
@@ -63,6 +62,7 @@ func minimalBouncerConfig(t *testing.T, env Env) Config {
 }
 
 func TestBouncerEntry_HappyPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	cfg := minimalBouncerConfig(t, env)
 
@@ -98,6 +98,7 @@ func TestBouncerEntry_HappyPath(t *testing.T) {
 }
 
 func TestBouncerEntry_RunDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("CreatedBeforeAnyCall", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
@@ -164,6 +165,7 @@ func TestBouncerEntry_RunDirectory(t *testing.T) {
 // asserts other BouncerConfig fields it cannot reach directly (TestBouncerEntry_EnvReviewFallback):
 // through the seed template's rendered prompt, captured by the shedfake.Shuttle.
 func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "{{.artifacts}}\n")
 	cfg := minimalBouncerConfig(t, env)
@@ -197,6 +199,7 @@ func TestBouncerEntry_ArtifactPathsResolveUnderAnchorPath(t *testing.T) {
 // the judge branch -- observable via the recorded shuttle spec's Role, which is "bouncer-judge" only
 // past the seed branch and "bouncer-seed" inside it -- rather than the seed branch.
 func TestBouncerEntry_ReportNamePinning(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	cfg := minimalBouncerConfig(t, env)
 	writeStencil(t, env.StencilsDir, "bouncer-template-seed", "seed template, no markers\n")
@@ -235,6 +238,7 @@ func TestBouncerEntry_ReportNamePinning(t *testing.T) {
 // driven against the entry's producer with the shedfake.Shuttle already on newTestEnv's Env, and the
 // recorded shuttleengine.Spec's Model, Effort, and Version are asserted.
 func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
+	tiergate.Require(t, 0)
 	seed := shuttleengine.ModelChoice{Engine: "seed-engine", Model: "seed-model", Effort: "seed-effort", Version: "seed-version"}
 	judge := shuttleengine.ModelChoice{Engine: "judge-engine", Model: "judge-model", Effort: "judge-effort", Version: "judge-version"}
 
@@ -301,6 +305,7 @@ func TestBouncerEntry_EnvJudgeFallback(t *testing.T) {
 }
 
 func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
+	tiergate.Require(t, 0)
 	env := newTestEnv(t)
 	cfg := minimalBouncerConfig(t, env)
 	cfg["report_name"] = "round-%d-review.md"
@@ -310,6 +315,7 @@ func TestBouncerEntry_ReportNameKeyRejected(t *testing.T) {
 }
 
 func TestBouncerEntry_ConstructionFailures(t *testing.T) {
+	tiergate.Require(t, 0)
 	segmentRefusals := []struct {
 		name string
 		row  RowIdentity
@@ -592,6 +598,7 @@ func judgeSeamShuttle() *shedfake.Shuttle {
 // requireSeam enforces on a configured-but-missing Env closure, and the recognised-set edit to
 // configRejectUnknown.
 func TestBouncerEntry_CommitSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PlanResolvesToCommitPlan", func(t *testing.T) {
 		// This subtest also demonstrates commit_seam is accepted by configRejectUnknown rather
 		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
@@ -719,6 +726,7 @@ func TestBouncerEntry_CommitSeam(t *testing.T) {
 
 // TestBouncerEntry_SkipSeam covers skip_seam's absent, accepted and rejected values and the presence guard on a configured-but-missing env.SkipPlanReview.
 func TestBouncerEntry_SkipSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("AbsentConstructsSuccessfully", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.SkipPlanReview = nil
@@ -813,6 +821,7 @@ func TestBouncerEntry_SkipSeam(t *testing.T) {
 // TestBouncerEntry_CarryOver covers the carry_over key: absent leaves the seam unset, a present key with a nil env.CarryOver is a construction error,
 // and a present key reaches the Bouncer, which calls the seam on a CONVERGED settle with that segment and anchor-relative paths.
 func TestBouncerEntry_CarryOver(t *testing.T) {
+	tiergate.Require(t, 0)
 	driveConvergedSettle := func(t *testing.T, cfg Config, env Env) {
 		t.Helper()
 		env.Shuttle = judgeSeamShuttle()
@@ -876,6 +885,7 @@ func TestBouncerEntry_CarryOver(t *testing.T) {
 // through judgeSeamShuttle and counting closure invocations, rather than inventing a second
 // mechanism.
 func TestBouncerEntry_ApproveSeam(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("PlanResolvesToApprovePlan", func(t *testing.T) {
 		// This subtest also demonstrates approve_seam is accepted by configRejectUnknown rather
 		// than rejected as unknown: bouncerEntry returning a nil error below means the key was
@@ -980,6 +990,7 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 // boolean values observed through the judge prompt a Call renders, the type check, and the
 // allowlist entry that admits exactly this spelling.
 func TestBouncerEntry_ClusterExcludes(t *testing.T) {
+	tiergate.Require(t, 0)
 	// A row told fans reads round 1's recorded fan from the usage record, which the review producer writes in a real run and this helper hand-builds because recordRoundFans is unexported in shedadapters.
 	// A non-nil settings map makes the row name reviewer_fan_setting: loom.fan, answered from it.
 	judgePrompt := func(t *testing.T, cfgValue any, set bool, settings map[string]any) string {
@@ -1124,6 +1135,7 @@ func layoutBouncerCirclingRounds(t *testing.T, env Env) {
 
 // TestBouncerEntry_ParentNamePassesToJudgePrompt covers Env.ParentName reaching the Bouncer's judge prompt through the parent directive, and the empty name rendering the no-parent variant.
 func TestBouncerEntry_ParentNamePassesToJudgePrompt(t *testing.T) {
+	tiergate.Require(t, 0)
 	for _, tt := range []struct {
 		name       string
 		parentName string
@@ -1163,6 +1175,7 @@ func TestBouncerEntry_ParentNamePassesToJudgePrompt(t *testing.T) {
 
 // TestBouncerEntry_CirclingReasonSlugAndBudget covers Env.Slug and Env.SegmentBounces reaching the Bouncer's escalation Awaiting Reason, and the row built with neither.
 func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
+	tiergate.Require(t, 0)
 	callReason := func(t *testing.T, env Env) string {
 		t.Helper()
 		env.Shuttle = circlingSeamShuttle()
@@ -1241,6 +1254,7 @@ func TestBouncerEntry_CirclingReasonSlugAndBudget(t *testing.T) {
 // A round-1 judge call writes a CONTINUE verdict over a ledger holding an open BLOCKING entry, with the row's budget spent and its auto-accept set.
 // blocking_escalates turns that auto-accept into an escalation, and color_segment colors the judge's session, the review color where absent.
 func TestBouncerEntry_BlockingEscalatesAndColorSegment(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name       string
 		extra      Config
@@ -1340,6 +1354,7 @@ func withSubjectSeams(env *Env, hash *string) *subjectSeamCounts {
 // A changed subject starts an amendment under the segment's allowance.
 // A named seam the Env does not carry and an unknown value are construction errors, and an absent key keeps no record.
 func TestBouncerEntry_Subject(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	const artifact = "artifact.md"

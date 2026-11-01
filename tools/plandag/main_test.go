@@ -1,5 +1,3 @@
-//go:build tier0
-
 package main
 
 import (
@@ -8,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // writePlan writes a plan directory holding the overview and the cards, each card a file name and its body.
@@ -33,6 +33,7 @@ func writePlanInLanguage(t *testing.T, language, cardIndex string, cards map[str
 }
 
 func TestRun_WritesMatrixLevelsAndReducedGraph(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	planDir := writePlan(t, `1 — type — create type T
 2 — method — edit T.M
@@ -132,6 +133,7 @@ Each card's direct dependencies, ` + "`C`" + ` where both cards change an overla
 }
 
 func TestRun_CSharpMemberGlyphsOverlapByOwnerPrefix(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	planDir := writePlanInLanguage(t, "csharp", `1 — owner — edit Box
 2 — member — edit Box.Size
@@ -163,6 +165,7 @@ func TestRun_CSharpMemberGlyphsOverlapByOwnerPrefix(t *testing.T) {
 }
 
 func TestRun_UnparseablePlanFailsWithoutOutput(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	outDir := filepath.Join(t.TempDir(), "out")
 
@@ -176,6 +179,7 @@ func TestRun_UnparseablePlanFailsWithoutOutput(t *testing.T) {
 }
 
 func TestRun_AdditiveGuessReportsBothCriticalPaths(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// Consecutive cards share one column, alternating a column the guess keeps, an ordinary member, with one it drops, so every dropped link sits beside a kept one:
 	// a guessed class that were kept would join two kept pairs into a longer chain.
@@ -223,6 +227,7 @@ func TestRun_AdditiveGuessReportsBothCriticalPaths(t *testing.T) {
 }
 
 func TestRun_ExtendsCellsDropExtendsEdges(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	planDir := writePlan(t, `1 — ext-a — extend x
 2 — ext-b — extend x

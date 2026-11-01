@@ -1,15 +1,16 @@
-//go:build tier0
-
 // annotations_test.go asserts the exact literal values of this package's cobra-annotation constants, so a rename cannot silently decouple a producer command (e.g. reed switch) from the consumer gate (cmd/lym's skipStencilSeed).
 
 package clihelp
 
 import "testing"
 
+import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
+
 // TestAnnotationLiterals pins the exact string value of each annotation constant.
 //
 //testtiming:keep pins the literal annotation strings that a cross-package consumer matches on, which no covering test asserts
 func TestAnnotationLiterals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

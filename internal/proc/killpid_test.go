@@ -1,5 +1,3 @@
-//go:build tier0
-
 // killpid_test.go covers KillPID, defined identically-named on both platforms, so this file carries no platform constraint.
 // It is the shared home for KillPID, mirroring how isalive_test.go is the shared home for IsAlive.
 // It is allowed under this package's Test Tier Purity Invariant allowlist entry ("process control
@@ -13,12 +11,15 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestKillPID_KillsLiveProcess spawns a child that blocks for several seconds, calls KillPID on its
 // PID, and asserts both that KillPID reports no error and that the child actually terminated
 // (cmd.Wait returns a non-nil error, reflecting the forced termination rather than a normal exit).
 func TestKillPID_KillsLiveProcess(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var cmd *exec.Cmd
@@ -47,6 +48,7 @@ func TestKillPID_KillsLiveProcess(t *testing.T) {
 // TestKillPID_DeadPIDReturnsError takes the PID of a child that has exited and asserts KillPID returns a non-nil error without panicking.
 // This matches the PID-reuse trust KillPID documents: a dead PID has no live process to terminate, so the platform call underneath (FindProcess/Kill) must surface that as an error rather than succeeding silently.
 func TestKillPID_DeadPIDReturnsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	pid := exitedChildPID(t)

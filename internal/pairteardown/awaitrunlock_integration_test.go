@@ -1,5 +1,3 @@
-//go:build tier1
-
 // awaitrunlock_integration_test.go pins awaitRunLockOrPass's holder, waiting-marker and parent-lock reads over a real task worktree and a hub's pause and parent lock files.
 
 package pairteardown
@@ -22,10 +20,12 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestAwaitRunLockOrPass holds a pair's run lock and reads whether the pre-end wait passes its holder, the unfinished step's pid, or refuses with the resume form the pause readings pick.
 func TestAwaitRunLockOrPass(t *testing.T) {
+	tiergate.Require(t, 1)
 	const retry = "the removal"
 	tests := []struct {
 		name string

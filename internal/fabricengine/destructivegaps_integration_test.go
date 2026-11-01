@@ -1,5 +1,3 @@
-//go:build tier1
-
 // destructivegaps_integration_test.go proves the destructive gate closes the three gaps this
 // slice's discussion names as newly-closed by this refactor (not merely re-covering a
 // pre-existing regression), exercises the gate's git-touching ownership predicates directly, proves
@@ -34,6 +32,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // escapeFabricConfigYAML returns a repo-wide fabric.yaml override whose pathspec names exactly
@@ -53,6 +52,7 @@ func escapeFabricConfigYAML(escapeName string) string {
 //
 //testtiming:keep the junction-removal executor refusing a link that escapes the worktree and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -82,6 +82,7 @@ func TestUnwireJunctions_RefusesLinkOutsideItsWorktree(t *testing.T) {
 // A pathspec entry of "../gap1-rollback-escape" makes seedLymJunction materialise its weft-side target AND its warp-side link at the identical hub-level path — the worktree and its weft sibling are both direct children of the hub, so one "../" cancels either segment to the same place — so wiring that junction fails with "already contains a real directory" before a symlink is ever created there.
 // That failure is what triggers Add's rollback, and the directory seedLymJunction's os.MkdirAll left behind along the way is what the rollback must refuse to remove.
 func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "gap1-rollback-owner"
@@ -111,6 +112,7 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 // this refusal can never be triggered end to end through CloneHub itself; TeardownHubForTest drives
 // teardownHub directly to construct the mismatch.
 func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	cwd := t.TempDir()
@@ -148,6 +150,7 @@ func TestTeardownHub_RefusesHubPathOutsideOperatorNamedParent(t *testing.T) {
 //
 //testtiming:keep teardownHub removing a half-built hub on the token it minted though neither side exists yet; coverage of its blocks by other tests does not show an assertion of this
 func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	dir := t.TempDir()
@@ -185,6 +188,7 @@ func TestCloneHub_TeardownSucceedsOnAHalfBuiltHub(t *testing.T) {
 //
 //testtiming:keep the directory-removal fallback refusing a registered worktree with untracked files and leaving it on disk; coverage of its blocks by other tests does not show an assertion of this
 func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFiles(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "gap3-untracked"
@@ -227,6 +231,7 @@ func TestRemoveWarpWorktreeDir_FallbackRefusesRegisteredWorktreeWithUntrackedFil
 // no-force half runs the identical setup and must still refuse, because propagating force must not
 // weaken the guard that keeps the fallback from deleting what git declined to discard.
 func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	tests := []struct {
@@ -287,6 +292,7 @@ func TestRemoveWarpWorktreeDir_FallbackHonoursForce(t *testing.T) {
 // Off Windows, git is made to fail by a read-only subdirectory holding a file committed on the pair's branch, so the pair stays clean (a directory's mode is not tracked) and passes Remove's dirty checks.
 // On Windows, a committed file held open by its writer makes git's delete fail, and the first contained removal fails with a sharing violation.
 func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const lockedDirName = "locked"
@@ -455,6 +461,7 @@ func TestRemoveWarpWorktreeDir_LeftoverRetry(t *testing.T) {
 // ownedRegisteredLinkedWorktree — isRegisteredLinkedWorktreeIn — against every shape its own doc
 // comment names.
 func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "ownership-registered"
@@ -516,6 +523,7 @@ func TestOwnership_RegisteredLinkedWorktreeKind(t *testing.T) {
 // registered-linked kind deliberately excludes, and that single divergence is why the two kinds
 // exist as separate closed-enum members rather than one.
 func TestOwnership_WarpCheckoutKind(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "ownership-warpcheckout"
@@ -559,6 +567,7 @@ func TestOwnership_WarpCheckoutKind(t *testing.T) {
 // every shape resetHub's guard names: either structural mark is enough, and an unreadable directory
 // is refused rather than treated as absent.
 func TestOwnership_FabricHubKind(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	t.Run("AcceptsRealHub", func(t *testing.T) {
@@ -643,6 +652,7 @@ func TestOwnership_FabricHubKind(t *testing.T) {
 // parameter rather than a constant — untracked-only — is proven to actually differ between them,
 // not merely assumed.
 func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -734,6 +744,7 @@ func assertBranchGateRefusesBothForceModes(t *testing.T, l *lymcwd.Location, wef
 // worktree, and a name outside fabric's own scheme — each under both force=false and force=true,
 // plus the positive case that proves the kind is not trivially always-refusing.
 func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -806,6 +817,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 // state the race produces and needs no actual concurrency to construct — which is what makes this
 // test deterministic rather than timing-dependent.
 func TestReconcile_ReportsAPairThatVanishedMidWalkAsSuch(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "vanished-mid-walk"

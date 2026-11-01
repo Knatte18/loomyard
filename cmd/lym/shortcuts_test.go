@@ -1,5 +1,3 @@
-//go:build tier0
-
 // shortcuts_test.go checks the embedded shortcut file against the real root and pins how the mounted shortcuts list in help and in the command index.
 
 package main
@@ -14,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // shortcutProblems returns one problem per defect of shortcuts against root.
@@ -58,6 +57,7 @@ func shortcutProblems(root *cobra.Command, shortcuts []shortcutcli.Shortcut) []s
 }
 
 func TestShortcuts_FileAndRootListing(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	root := newRoot()

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // ownerset_integration_test.go covers SetOwners against a real board repository, a bare origin and a second clone of it:
 // the outcomes of an owner write, the ways it refuses, a competing write that wins at origin, a deferred push and the BOARD_SKIP_GIT bypass.
 
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // unreachableOrigin is an origin URL nothing answers.
@@ -152,6 +151,7 @@ func failOnSleep(t *testing.T) func(time.Duration) {
 }
 
 func TestSetOwners(t *testing.T) {
+	tiergate.Require(t, 1)
 	// Not parallel: the SkipGit row sets the environment, which a parallel ancestor forbids; the rows that can run in parallel say so themselves.
 
 	// A test binary never runs the lym root pre-run that registers the board replayer a rejected push is retried through.

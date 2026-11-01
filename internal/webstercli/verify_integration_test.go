@@ -1,5 +1,3 @@
-//go:build tier1
-
 // verify_integration_test.go drives the `verify` verb against a real scratch repo and real shell processes, so it carries the integration tag.
 // The plan, the verify directory and the webster directories all lie outside the repo, so a verify run never dirties the tree it checks.
 // The verb runs the rendered `final` gate call through the `lym` built from the tree, which each fixture puts first on `PATH`, so every test here is not parallel.
@@ -24,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/envelope"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/plankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
@@ -115,6 +114,7 @@ func (fx *verifyFixture) run(t *testing.T) (int, envelope.Envelope) {
 }
 
 func TestVerifyVerb_PassRecordsTheTree(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newVerifyFixture(t, "exit 0")
 
 	code, env := fx.run(t)
@@ -128,6 +128,7 @@ func TestVerifyVerb_PassRecordsTheTree(t *testing.T) {
 }
 
 func TestVerifyVerb_SecondCallOnTheSameTreeSkips(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newVerifyFixture(t, "exit 0")
 	if code, _ := fx.run(t); code != 0 {
 		t.Fatalf("first verify = %d; want 0", code)
@@ -149,6 +150,7 @@ func TestVerifyVerb_SecondCallOnTheSameTreeSkips(t *testing.T) {
 }
 
 func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newVerifyFixture(t, "exit 3")
 
 	code, env := fx.run(t)
@@ -169,6 +171,7 @@ func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
 }
 
 func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
+	tiergate.Require(t, 1)
 	fx := newVerifyFixture(t, "exit 0")
 	if err := os.WriteFile(filepath.Join(fx.Worktree, "stray.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write stray file: %v", err)
@@ -187,6 +190,7 @@ func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
 
 // TestVerifyVerb_GateConfigRefusalIsTheError pins that a gate.yaml the verb cannot load, or a `final` list naming an undeclared tier, is the verb's error naming `lym config gate`, never a pass.
 func TestVerifyVerb_GateConfigRefusalIsTheError(t *testing.T) {
+	tiergate.Require(t, 1)
 	tests := []struct {
 		name string
 		// breakConfig turns the fixture's committed gate.yaml into the refused shape.

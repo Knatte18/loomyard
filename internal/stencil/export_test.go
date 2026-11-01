@@ -1,5 +1,3 @@
-//go:build tier0
-
 // export_test.go covers the exported StripLeadingComment, TopLevelMarkers and IncludeNames helpers.
 
 package stencil
@@ -7,9 +5,12 @@ package stencil
 import (
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestStripLeadingComment(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -46,6 +47,7 @@ func TestStripLeadingComment(t *testing.T) {
 }
 
 func TestTopLevelMarkers(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {
@@ -95,6 +97,7 @@ func TestTopLevelMarkers(t *testing.T) {
 }
 
 func TestIncludeNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

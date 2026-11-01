@@ -1,5 +1,3 @@
-//go:build tier0
-
 // identity_test.go covers identityBatcher's one-card-per-batch contract: N cards in, N single-card
 // Batches out, in order, including the empty-input and one-card boundary cases.
 // Tier-1 (pure logic, no git, no TestMain), per the go-test-tiers-and-hermetic-git Shared Decision.
@@ -12,9 +10,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestIdentityBatcher_Batch(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -57,6 +57,7 @@ func TestIdentityBatcher_Batch(t *testing.T) {
 }
 
 func TestIdentityBatcher_Name(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if got := (identityBatcher{}).Name(); got != "identity" {
 		t.Errorf("identityBatcher{}.Name() = %q; want %q", got, "identity")

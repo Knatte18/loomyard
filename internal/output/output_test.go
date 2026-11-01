@@ -1,5 +1,3 @@
-//go:build tier0
-
 package output_test
 
 import (
@@ -8,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func decodeEnvelope(t *testing.T, buf *bytes.Buffer) map[string]any {
@@ -21,6 +20,7 @@ func decodeEnvelope(t *testing.T, buf *bytes.Buffer) map[string]any {
 
 // TestOk_EmitsValidJSON asserts that Ok returns exit code 0, emits a JSON line with ok=true and the supplied fields, and adds ok to the caller's map.
 func TestOk_EmitsValidJSON(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	buf := &bytes.Buffer{}
 	fields := map[string]any{"count": 42, "message": "success"}
@@ -51,6 +51,7 @@ func TestOk_EmitsValidJSON(t *testing.T) {
 //
 //testtiming:keep pins ok=false, exit code 1 and the trimmed error field, which TestErrFields_NilFieldsMatchesErr only compares byte-for-byte
 func TestErr_EmitsErrorEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -85,6 +86,7 @@ func TestErr_EmitsErrorEnvelope(t *testing.T) {
 //
 //testtiming:keep pins the supplied fields kept and the reserved keys overridden, which TestErr_EmitsErrorEnvelope does not assert
 func TestErrFields_EmitsEnvelopeWithFields(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -144,6 +146,7 @@ func TestErrFields_EmitsEnvelopeWithFields(t *testing.T) {
 //
 //testtiming:keep pins byte-identical output of ErrFields(nil) and Err, which TestErr_EmitsErrorEnvelope and TestErrFields_EmitsEnvelopeWithFields do not compare
 func TestErrFields_NilFieldsMatchesErr(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	msg := "something went wrong"
 

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package loomcli
 
 import (
@@ -10,6 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // Compile-time assertions that the two production adapters, and shuttleengine.Run itself, satisfy
@@ -24,6 +23,7 @@ var (
 // passes false for the cascade argument: a driver strand is parentless and childless, so the
 // recursive form is never the right one.
 func TestReedDriverPaneProbe_RemoveDriverStrand_PassesFalseCascade(t *testing.T) {
+	tiergate.Require(t, 0)
 	var gotRecursive bool
 	probe := reedDriverPaneProbe{
 		remove: func(guid string, recursive bool) (reedengine.Removed, error) {
@@ -43,6 +43,7 @@ func TestReedDriverPaneProbe_RemoveDriverStrand_PassesFalseCascade(t *testing.T)
 // TestReedDriverPaneProbe_Strands_ReturnsStatusStrands asserts Strands delegates to the engine's own
 // Status and returns its strand slice.
 func TestReedDriverPaneProbe_Strands_ReturnsStatusStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	want := []reedengine.StrandStatus{{GUID: "g0", Name: driverStrandDisplayName, Live: true}}
 	probe := reedDriverPaneProbe{
 		status: func() (reedengine.StatusResult, error) {
@@ -61,6 +62,7 @@ func TestReedDriverPaneProbe_Strands_ReturnsStatusStrands(t *testing.T) {
 
 // TestReedDriverDirectory_DriverRow asserts DriverRow returns the first row of the directory that names a driver strand, reports none for a directory without one, and passes a directory error through.
 func TestReedDriverDirectory_DriverRow(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	boom := errors.New("boom")

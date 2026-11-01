@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bar_test.go pins the status bar's format strings against shapes a live tmux of this host cannot catch.
 
 package reedengine
@@ -11,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // sessionLoopTwoFormats returns the offset of the first top-level comma in the body of the #{S:} loop starting at loopStart, or -1 when the body holds one format.
@@ -41,6 +41,7 @@ func sessionLoopTwoFormats(format string, loopStart int) int {
 // Rendering on a newer tmux cannot catch one, so this untagged check scans the bar's format strings.
 // It also scans every Go string literal of the package outside bar.go, so a session loop declared elsewhere cannot escape it.
 func TestStatusFormats_SessionLoopsTakeOneFormat(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	loops := 0
 	for name, format := range map[string]string{"statusFormatButtons": statusFormatButtons, "statusFormatSessions": statusFormatSessions, "statusFormatActions": statusFormatActions} {

@@ -1,5 +1,3 @@
-//go:build tier0
-
 // bouncer_escalation_test.go covers the Bouncer's escalation of a CIRCLING ruling or a spent bounce budget to the run's parent: the record it writes, the Awaiting it returns, and the way it acts on the recorded decision.
 
 package shedadapters
@@ -19,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // spentBounces is a Bounces seam reporting a budget of three with all three spent.
@@ -116,6 +115,7 @@ func belowBounces() (int, int, bool, error) { return 1, 3, true, nil }
 //
 //testtiming:keep pins the escalation's Awaiting pointer and reason, the record and notice it writes, the cause it picks, the accept-only offer at the hard cap and that a re-call leaves the record untouched
 func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		verdict string
@@ -191,6 +191,7 @@ func TestBouncer_Escalation_AwaitsWithTheRecordAndLeavesItUntouched(t *testing.T
 }
 
 func TestBouncer_Escalation_NoBudgetEscalationReturnsAPlainStuck(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		bounces func() (int, int, bool, error)
@@ -221,6 +222,7 @@ func TestBouncer_Escalation_NoBudgetEscalationReturnsAPlainStuck(t *testing.T) {
 //
 //testtiming:keep pins how a recorded decision settles an escalation of any cause: continue is exempt from the budget for a budget cause or at a spent budget, re-escalates at the hard cap, and accept approves, commits and clears
 func TestBouncer_Escalation_RecordedDecision(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		verdict        string
@@ -316,6 +318,7 @@ func TestBouncer_Escalation_RecordedDecision(t *testing.T) {
 }
 
 func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces }, withoutStencils("bouncer-template-escalation"))
 
 	ptr := shedfake.RequireOutcome(t, b, shedengine.Awaiting)
@@ -333,6 +336,7 @@ func TestBouncer_Escalation_MissingStencilStillAwaitsWithThePlainReason(t *testi
 }
 
 func TestBouncer_Escalation_FailedRecordWriteErrorsNamingTheWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
 	noticePath := parentNoticePath(cfg.RunDir, 2)
 	if err := os.Mkdir(noticePath, 0o755); err != nil {
@@ -351,6 +355,7 @@ func TestBouncer_Escalation_FailedRecordWriteErrorsNamingTheWayForward(t *testin
 }
 
 func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *testing.T) {
+	tiergate.Require(t, 0)
 	b, cfg, _ := escalationBouncer(t, "CONTINUE", func(c *BouncerConfig) { c.Bounces = spentBounces })
 	if err := os.WriteFile(escalationPath(cfg.RunDir, 2), []byte("not frontmatter\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(escalation record) = %v; want nil", err)
@@ -367,6 +372,7 @@ func TestBouncer_Escalation_MalformedRecordHaltsStuckNamingTheWayForward(t *test
 // and a replay and a BlockingEscalates round go to the soft-cap rule.
 // The rule's continue rows run over an untagged MEDIUM entry, which pins that a missing `fix` key reads as design-wrong.
 func TestBouncer_AutoAccept(t *testing.T) {
+	tiergate.Require(t, 0)
 	gating := evidenceEntry{"alpha", "open", "design", "MEDIUM"}
 	tests := []struct {
 		name       string
@@ -556,6 +562,7 @@ type softCapRuleRow struct {
 // TestBouncer_SoftCapRule covers the soft-cap rule's five steps over a spent budget, the hard cap and a new generation's count, on every path that reaches it.
 // Every row Calls a second time, the replay of a rule-settled round, and requires the same result with no further judge run.
 func TestBouncer_SoftCapRule(t *testing.T) {
+	tiergate.Require(t, 0)
 	design := taggedEntry{"alpha", "open", "design", "MEDIUM", "design-wrong"}
 	mechanical := taggedEntry{"mech", "open", "design", "MEDIUM", "mechanical"}
 	atFourOfThree := func() (int, int, bool, error) { return 4, 3, true, nil }

@@ -1,5 +1,3 @@
-//go:build tier1
-
 // remove_finish_integration_test.go covers Remove finishing a half-removed pair: the task worktree removed by hand, both worktrees gone with branches left, a sibling branch only on origin, a stray path at the pair location, and a pair of which nothing remains.
 // Each case converges on one re-run of Remove.
 //
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // removeByHand deletes the directory at path the way an operator's `rm -rf` would, leaving git's worktree registration behind.
@@ -44,6 +43,7 @@ func requireSteps(t *testing.T, got []string, want ...string) {
 
 // TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand removes the task worktree by hand with a pending record in the sibling worktree, and asserts one Remove commits the record into the archive tag and removes the sibling worktree and both branches.
 func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-by-hand"
@@ -96,6 +96,7 @@ func TestRemove_FinishesPairWhoseTaskWorktreeWasRemovedByHand(t *testing.T) {
 
 // TestRemove_FinishesPairWithBothWorktreesGone removes both worktrees by hand and asserts one Remove deletes both leftover branches, the sibling branch only after its archive tag is on origin.
 func TestRemove_FinishesPairWithBothWorktreesGone(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-both-gone"
@@ -146,6 +147,7 @@ func leaveSiblingBranchOnlyOnOrigin(t *testing.T, h *hubforge.Hub, slug string) 
 
 // TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin leaves the sibling branch only on origin and asserts Remove archives it from there and, with remote, deletes it there.
 func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-origin-only"
@@ -176,6 +178,7 @@ func TestRemove_ArchivesAndDeletesSiblingBranchOnlyOnOrigin(t *testing.T) {
 
 // TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote asserts the same state without remote keeps the origin copy, archives it, and says so on the result.
 func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-origin-kept"
@@ -204,6 +207,7 @@ func TestRemove_KeepsOriginOnlySiblingBranchWithoutRemote(t *testing.T) {
 
 // TestRemove_ReportsStrayPathAndFinishesBranchTeardown puts a plain directory at the task worktree's location beside leftover branches, and asserts it is reported in StrayPath and left on disk while the branch teardown completes.
 func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-stray"
@@ -238,6 +242,7 @@ func TestRemove_ReportsStrayPathAndFinishesBranchTeardown(t *testing.T) {
 
 // TestRemove_ReturnsPairNotFoundWhenNothingRemains finishes a pair and asserts a second Remove wraps ErrPairNotFound, also when only a retired portal link remains, and that a bare stray directory is named in the error.
 func TestRemove_ReturnsPairNotFoundWhenNothingRemains(t *testing.T) {
+	tiergate.Require(t, 1)
 	t.Parallel()
 
 	const slug = "finish-nothing-left"

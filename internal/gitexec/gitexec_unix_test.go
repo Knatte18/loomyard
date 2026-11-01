@@ -1,4 +1,4 @@
-//go:build tier1 && !windows
+//go:build !windows
 
 // gitexec_unix_test.go holds the gitexec tests whose ext:: remote is a shell script.
 
@@ -21,11 +21,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
 // Its rows run serially because they set the remote deadline, the stall bound, the kill reporter, the pause network gate and the process environment, which are process-global state.
 func TestRun_RemoteBounds(t *testing.T) {
+	tiergate.Require(t, 1)
 	const deadline = time.Second
 	gitexec.SetRemoteDeadlineForTest(t, deadline)
 

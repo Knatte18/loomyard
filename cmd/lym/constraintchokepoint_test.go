@@ -1,5 +1,3 @@
-//go:build tier0
-
 // constraintchokepoint_test.go enforces the Glyph Conversion Chokepoint Invariant in planparser's package doc:
 // loomyard performs no glyph<->path conversion of its own outside quarry's glyph package.
 // glyph.Self is the only path->glyph call, Glyph.UnitPath is the only glyph->path call, and
@@ -16,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // glyphUnitPathContextTokens are the path-construction call substrings that, appearing on the same
@@ -84,6 +83,7 @@ func glyphChokepointViolation(data []byte) (line int, reason string) {
 //
 //lym:guard
 func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal", "cmd"}}, func(f *scankit.File) {
@@ -103,6 +103,7 @@ func TestGlyphConversionChokepoint_NoLocalConversion(t *testing.T) {
 //
 //testtiming:keep proves the TestGlyphConversionChokepoint_NoLocalConversion guard fires on a synthetic offending source and stays quiet on a compliant one
 func TestGlyphChokepointViolation_FiresOnOffendingStaysQuietOnCompliant(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		src           string

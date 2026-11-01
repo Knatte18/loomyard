@@ -1,5 +1,3 @@
-//go:build tier0
-
 // description_test.go exercises ValidateDescription's finding table and LandingMessage.
 
 package summaryparser_test
@@ -11,9 +9,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/summaryparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidateDescription_Table(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name    string
@@ -55,6 +55,7 @@ func TestValidateDescription_Table(t *testing.T) {
 }
 
 func TestValidateDescription_ReadErrorIsError(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	// A directory at the path is a read failure other than not-exist.
 	if _, err := summaryparser.ValidateDescription(t.TempDir()); err == nil {
@@ -63,6 +64,7 @@ func TestValidateDescription_ReadErrorIsError(t *testing.T) {
 }
 
 func TestFinding_Error(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	if got := (summaryparser.Finding{Check: "a", Detail: "b"}).Error(); got != "a: b" {
 		t.Errorf("Error() = %q", got)
@@ -71,6 +73,7 @@ func TestFinding_Error(t *testing.T) {
 }
 
 func TestLandingMessage(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	withBody := &summaryparser.Summary{Title: "T", Body: "\nbody\n"}
 	titleOnly := &summaryparser.Summary{Title: "T"}

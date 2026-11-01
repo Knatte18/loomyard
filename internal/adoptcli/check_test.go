@@ -1,5 +1,3 @@
-//go:build tier0
-
 // check_test.go pins the adopt check's run over a temp directory: its record, its notices and its lock, with the reconcile, the gate and the orch faked.
 
 package adoptcli
@@ -20,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // scriptedTier is one tier a fake gate reports: it starts, then ends with record.
@@ -96,6 +95,7 @@ func (f *checkFixture) recordPath() string { return filepath.Join(f.dir, checkRe
 func (f *checkFixture) logPath() string    { return filepath.Join(f.dir, suiteLogName) }
 
 func TestRunCheck(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("two green tiers end green and post a line per tier and one end notice", func(t *testing.T) {
@@ -536,6 +536,7 @@ func TestRunCheck(t *testing.T) {
 // TestRunCheckMarks pins the status bar marks of a check run, in order: its start, each tier in flight and ended, and its end.
 // The clock reads once for the check's start, then once as each tier starts, so tier n starts at read n+1 and a mark timed from the check's start instead fails.
 func TestRunCheckMarks(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	timed := func(tier int, outcome string, wall float64) scriptedTier {
 		return scriptedTier{tier, gateslot.RunRecord{Tier: tier, Outcome: outcome, WallSec: wall}}
@@ -603,6 +604,7 @@ func TestRunCheckMarks(t *testing.T) {
 
 // TestPrimeMark pins the prime's mark over a temp adopt directory: the check's own mark, joined with the running checks of the other subjects.
 func TestPrimeMark(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	own := checkMark{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureNow}
 	ownGreen := checkMark{State: checkGreen, Text: "adopt check of alpha green: tier0 40s"}

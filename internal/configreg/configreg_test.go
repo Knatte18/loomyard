@@ -1,5 +1,3 @@
-//go:build tier0
-
 // configreg_test.go — tests for the module registry.
 
 package configreg
@@ -15,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -22,6 +21,7 @@ import (
 // so an out-of-sort or repeated entry is user-visible, and every module carries a template and a load check.
 // Membership is pinned by TestRegistration_MatchesDeclarers.
 func TestNames(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	got := Names()
 	for i := 1; i < len(got); i++ {
@@ -48,6 +48,7 @@ func TestNames(t *testing.T) {
 //
 //testtiming:keep pins which modules carry the SeedOnly and HubWide flags, which the covering TestFill never asserts
 func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	for _, m := range Modules() {
 		wantSeedOnly := m.Name == "models" || m.Name == "profiles"
@@ -72,6 +73,7 @@ func TestModules_SeedOnlyAndHubWideFlags(t *testing.T) {
 // TestModules_EveryTemplateKeyClassified pins that each module's Categories classify every template unit and name only paths the template holds,
 // and that the derived LocalKeys and LocalDenied match the record.
 func TestModules_EveryTemplateKeyClassified(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
 		"darn":    {"verify_attempts", "writer", "writer_timeout_min"},
@@ -185,6 +187,7 @@ func holdsPath(units []string, entry string) bool {
 
 // TestModules_LocalLayerRefusals pins the local-layer verdict of keys no loader card pins through its real load.
 func TestModules_LocalLayerRefusals(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		module  string
@@ -235,6 +238,7 @@ func TestModules_LocalLayerRefusals(t *testing.T) {
 }
 
 func TestTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		module    string
@@ -264,6 +268,7 @@ func TestTemplate(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		module       string
@@ -309,6 +314,7 @@ func TestLookup(t *testing.T) {
 
 // TestFingerprint pins what the registry fingerprint is sensitive to: a module's template, flags, open maps, per-name maps, name and overlay documents, and not its Migrate hook or an empty overlay.
 func TestFingerprint(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	base := func() []Module {
 		return []Module{

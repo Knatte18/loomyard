@@ -1,5 +1,3 @@
-//go:build tier0
-
 // structuraldirs_test.go — pure set-arithmetic coverage over a hand-built Config for the structural
 // directory sets (structuralCommittedDirs, structuralNeverCommittedDirs) and the name-sets built on
 // top of them: the wired name-set, the pathspec/commit-routing set, and the slug-reservation set.
@@ -13,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // wiredNamesFromConfig reproduces junctionNames' pure name-arithmetic (dedupUnion of
@@ -42,6 +41,7 @@ func wiredNamesFromConfig(cfg Config) []string {
 //
 //testtiming:keep _lym always wired and routed, .lym wired but never routed, .lym refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
 func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := Config{Pathspec: "_extra"}
 
 	wired := wiredNamesFromConfig(cfg)
@@ -86,6 +86,7 @@ func TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory(t *testin
 //
 //testtiming:keep a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
 func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
+	tiergate.Require(t, 0)
 	cfg := Config{Pathspec: "_lym _pattern"}
 
 	wired := wiredNamesFromConfig(cfg)
@@ -110,6 +111,7 @@ func TestDeployedLymPathspec_YieldsNoDuplicateLym(t *testing.T) {
 //
 //testtiming:keep HubReservedNames returning exactly the three hub tokens without .lym; coverage of its blocks by other tests does not show an assertion of this
 func TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens(t *testing.T) {
+	tiergate.Require(t, 0)
 	want := []string{BoardDirName, portalsDirName, launchersDirName}
 	got := HubReservedNames()
 	if !stringSlicesEqual(got, want) {

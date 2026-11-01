@@ -1,5 +1,3 @@
-//go:build tier0
-
 // attach_test.go covers Runner.Attach's scan, disposition, combine, and reconstruction, driven over
 // a temp run-dir root with hand-written run.json fixtures and the existing fakeReed/fakeEngine/
 // fakeClock doubles. Reed's own state file is seeded through the exported reedengine.SaveState so
@@ -21,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // seedPresentReedState writes a minimal, valid ReedState via the real SaveState/decoder path,
@@ -132,6 +131,7 @@ func deadStatus(guid, paneID string) reedengine.StatusResult {
 // TestAttach_NoCandidates covers the ordinary first-call case: nothing to attach to, and the reed
 // gate is never consulted — proving the zero-candidates precedence.
 func TestAttach_NoCandidates(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		rootDoesExist bool
@@ -174,6 +174,7 @@ func TestAttach_NoCandidates(t *testing.T) {
 //
 //testtiming:keep pins which persisted Outcome values attach and which are respawn-eligible, with a row each for every terminal, omitted and unrecognized value
 func TestAttach_OutcomeDisposition(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name           string
 		outcome        string
@@ -232,6 +233,7 @@ func TestAttach_OutcomeDisposition(t *testing.T) {
 // an attach or a failed removal never answers not found,
 // and AttachIfLive and AttachIfLiveGated remove nothing.
 func TestAttach_RemovesSupersededStrands(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	live := func(guid string) reedengine.StrandStatus {
@@ -341,6 +343,7 @@ func TestAttach_RemovesSupersededStrands(t *testing.T) {
 // whatever the other candidates say, and two ordinary leftovers (both non-terminal-classified,
 // tracked-live-idle records) must respawn rather than error.
 func TestAttach_Multiplicity(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("TwoTimeoutLeftovers_RespawnsNotError", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{
 			Strands: []reedengine.StrandStatus{
@@ -421,6 +424,7 @@ func TestAttach_Multiplicity(t *testing.T) {
 // TestAttach_OutputFilesMismatch pins that a run dir whose OutputFiles do not match the spec's is
 // never a candidate at all.
 func TestAttach_OutputFilesMismatch(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{}
 	fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
 	runner, runRoot := fx.Runner, fx.RunRoot
@@ -450,6 +454,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 //
 //testtiming:keep pins that a terminal persisted Outcome is respawn-eligible at any directory age for both an untracked strand and a cleared pane binding, which the age-rule rows never reach
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Untracked", func(t *testing.T) {
 		for _, outcome := range []string{"done", "asking", "died", "timeout", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
@@ -505,6 +510,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 // are errors, never found == false, at any directory age, and that Attach does NOT consult Status()
 // for the absent question — the asymmetry LoadState vs ReedOps.Status() exists to preserve.
 func TestAttach_ReedStateGate_AbsentOrUnreadable(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name          string
 		seed          func(t *testing.T, dotLymDir string)
@@ -544,6 +550,7 @@ func TestAttach_ReedStateGate_AbsentOrUnreadable(t *testing.T) {
 // TestAttach_StatusError pins that ReedOps.Status() itself failing is an error, never found ==
 // false, at any directory age, covering both a torn-down session and an unrelated tmux fault.
 func TestAttach_StatusError(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		wantErr error
@@ -575,6 +582,7 @@ func TestAttach_StatusError(t *testing.T) {
 // TestAttach_NegativeTimeout pins that a negative Timeout is rejected before scanning and before any
 // reed read.
 func TestAttach_NegativeTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{}
 	fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
 	runner, runRoot := fx.Runner, fx.RunRoot
@@ -622,6 +630,7 @@ func TestAttach_NegativeTimeout(t *testing.T) {
 // re-refuse identically. Each row drives the reconstructed run all the way to its own Outcome,
 // because harvesting is only correct if Wait can classify OutcomeDone with reed still broken.
 func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		status reedengine.StatusResult
@@ -692,6 +701,7 @@ func TestAttach_RunningRecordSatisfiedFileContract_HarvestsNotRespawn(t *testing
 // neither a terminal Outcome nor a satisfied file contract, so a young directory still cannot be
 // ruled dead.
 func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name   string
 		status reedengine.StatusResult
@@ -762,6 +772,7 @@ func TestAttach_RunningRecordUnsatisfiedFileContract_RespawnsOrErrors(t *testing
 //
 //testtiming:keep pins that Spec.KeepPane suppresses an attached run's done cleanup (run dir kept, no RemoveStrand) and that its absence performs both
 func TestAttach_KeepPane(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name     string
 		keepPane bool
@@ -814,6 +825,7 @@ func TestAttach_KeepPane(t *testing.T) {
 // TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan pins the scan's skip discipline: a corrupt
 // run.json alongside a valid, matching one must not abort the whole scan.
 func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
 	runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
@@ -852,6 +864,7 @@ func TestAttach_UnreadableRunJSONMidScan_DoesNotAbortScan(t *testing.T) {
 // Sleep — so the terminating event is planted only from inside the first Sleep call, which only a
 // correct (fresh, non-zero) deadline ever reaches.
 func TestAttach_DeadlineAtAttachTime(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		dirAge  time.Duration
@@ -907,6 +920,7 @@ func TestAttach_DeadlineAtAttachTime(t *testing.T) {
 // reconstructed handle before any wait has run, that the handle's own Wait then classifies the run,
 // and that a probe over nothing answers not found.
 func TestProbeGated_ReturnsHandleWithoutWaiting(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("live_candidate", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 		fx := newFixture(t, reed, &fakeEngine{StartupScript: []StartupState{StartupReady}}, withConfig(fastConfig), withSeparateRunDir())
@@ -957,6 +971,7 @@ func TestProbeGated_ReturnsHandleWithoutWaiting(t *testing.T) {
 // set: a spec with relative entries matches a run.json written with absolute ones, and a spec naming
 // the same files in a different order still matches.
 func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 	fx := newFixture(t, reed, &fakeEngine{}, withConfig(fastConfig), withSeparateRunDir())
 	runner, dotLymDir, runRoot := fx.Runner, fx.DotLym, fx.RunRoot
@@ -990,6 +1005,7 @@ func TestAttach_OutputFileMatching_ResolvedAbsoluteSet(t *testing.T) {
 //
 //testtiming:keep pins that the whole pre-existing events backlog is replayed on attach and its last event wins, for a completion and for a held Stop
 func TestAttach_OffsetStartsAtZero(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("BacklogEndsInCompletion_ClassifiesDone", func(t *testing.T) {
 		reed := &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}
 		engine := &fakeEngine{StartupScript: []StartupState{StartupReady}}
@@ -1052,6 +1068,7 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 //
 //testtiming:keep pins that a persisted Started: true skips the startup probe on attach, with no engine Startup call and no trust-dismiss Enter played into a live pane
 func TestAttach_StartedSeededTrue(t *testing.T) {
+	tiergate.Require(t, 0)
 	reed := &fakeReed{
 		StatusQueue:  []reedengine.StatusResult{liveStatus("strand-1", "%1")},
 		CaptureQueue: []string{"please trust this folder — mid turn capture"},
@@ -1116,6 +1133,7 @@ func TestAttach_StartedSeededTrue(t *testing.T) {
 //
 //testtiming:keep pins that an attached run keeps liveness coverage after a cleared binding: done with files present, and errStrandPaneBindingCleared once an empty Anchor is defaulted to own-window
 func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name         string
 		createOutput bool
@@ -1171,6 +1189,7 @@ func TestAttach_StrandLaterLosesPaneBinding(t *testing.T) {
 // consulted to pick between them here, so falling through to the gate's own refusal is the honest
 // answer rather than choosing one silently.
 func TestAttach_ReedStateUnavailable_StillRefusesWithoutAFinishedRun(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name            string
 		createOutput    bool

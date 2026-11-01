@@ -1,5 +1,3 @@
-//go:build tier0
-
 // openprheads_test.go covers the head filtering of the open pull request lookup over a stubbed PR list.
 
 package fabriccli
@@ -8,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/go-github/v75/github"
+
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // testPR builds a pull request whose head is ref in the repository fullName.
@@ -19,6 +19,7 @@ func testPR(fullName, ref string) *github.PullRequest {
 }
 
 func TestSameRepoHeads(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 
 	tests := []struct {

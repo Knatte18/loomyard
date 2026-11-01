@@ -1,5 +1,3 @@
-//go:build tier0
-
 // chokepoint_enforcement_test.go pins planglyph's two batched-boundary chokepoints per the overview's Decision: ast-enforcement-idiom:
 // every (*quarry.Repo).Resolve call site must sit inside resolveTargets (repo.go), which owns the ensureResolveCoverage length guard,
 // and every quarry.Name call site must sit inside nameDeclarations (handle.go), which owns the length guard.
@@ -15,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // planglyphScanMinFiles is the plausible floor for how many production .go files internal/planglyph holds;
@@ -74,6 +73,7 @@ func chokepointCallSitesIn(astFile *ast.File) []string {
 // It spawns no process, so it carries no build tag.
 // _test.go files are skipped: the invariant is about production wiring, not test helpers.
 func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
+	tiergate.Require(t, 0)
 	var failures []string
 
 	scanned := scankit.Walk(t, scankit.Options{Roots: []string{"internal/planglyph"}}, func(f *scankit.File) {
@@ -98,6 +98,7 @@ func TestChokepointCallSites_PinnedToTheirGuardedFunctions(t *testing.T) {
 //
 //testtiming:keep a guard self-check: pins that the matcher catches a seeded out-of-place call for each pinned selector, which no covering test asserts
 func TestChokepointCallSitesIn_SeededSelfTest(t *testing.T) {
+	tiergate.Require(t, 0)
 	const src = `package fakeplanglyph
 
 func notResolveTargets(x *fakeRepo) {

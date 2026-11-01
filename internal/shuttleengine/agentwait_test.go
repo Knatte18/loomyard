@@ -1,5 +1,3 @@
-//go:build tier0
-
 // agentwait_test.go covers ReadAgentWaits over run directories written by the test, with the liveness seam replaced and an engine double that parses session signals.
 // Replacing the seam is process-global state,
 // so these tests do not run in parallel.
@@ -17,6 +15,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // waitRun describes one run directory under the run-directory root.
@@ -34,6 +33,7 @@ type waitRun struct {
 }
 
 func TestReadAgentWaits(t *testing.T) {
+	tiergate.Require(t, 0)
 	const livePID = 4343
 	prev := isAlive
 	isAlive = func(pid int) bool { return pid == livePID }

@@ -1,5 +1,3 @@
-//go:build tier0
-
 package shedadapters
 
 import (
@@ -8,9 +6,11 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestNewBouncer_ValidationRules(t *testing.T) {
+	tiergate.Require(t, 0)
 	tests := []struct {
 		name    string
 		mutate  func(cfg *BouncerConfig)
@@ -108,6 +108,7 @@ func TestNewBouncer_ValidationRules(t *testing.T) {
 
 //testtiming:keep pins the config shapes NewBouncer accepts: empty seed and judge pairs, a nil clock that defaults, and an artifact path that does not exist yet
 func TestNewBouncer_AcceptedConfigs(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name   string
@@ -146,6 +147,7 @@ func TestNewBouncer_AcceptedConfigs(t *testing.T) {
 }
 
 func TestNewBouncer_RubricProbe(t *testing.T) {
+	tiergate.Require(t, 0)
 	t.Run("Absent", func(t *testing.T) {
 		cfg := newBouncerFixture(t, withBareConfig(), withRubricName("bouncer-template-rubric-present")).Config
 		cfg.RubricStencil = "bouncer-template-rubric-absent"
