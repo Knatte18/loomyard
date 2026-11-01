@@ -9,7 +9,9 @@ It checks the change set you just made, which no later step of this round review
 1. Read the fix-check rubric at `{{.rubric_path}}`, so every fork you spawn inherits it.
 2. Spawn the lenses below in one message through the Agent tool with `subagent_type: "fork"`, one fork per lens, and never pass a `name`.
    Each fork's prompt is the fork boilerplate below plus its lens text and nothing else: no hint at what you think is wrong, no direction to read code.
-3. Wait for every fork to return; ending your turn while forks are outstanding is allowed.
+3. Wait for every fork to return: in the message after the spawn, run `lym shuttle await-forks` in the foreground with the Bash tool's `timeout` at 300000, and never end your turn while a fork is outstanding, so every fork result reaches you together, in the turn after it answers `ready: true`.
+   While it answers `ready: false`, run it again in a turn that does nothing else, until it has answered `ready: false` five times in a row.
+   When it fails, or has answered `ready: false` five times in a row, end your turn instead, and take each fork's result as it arrives.
    Edit nothing while any fork is outstanding, whatever an early report says: start judging only once the last fork has returned, judge all findings together, and only then edit.
    Once the last fork has returned, and before you judge, save each fork's final message verbatim to `{{.lens_report_path}}`, with its lens name for `<lens>`, in the format `{{.lens_report_spec_path}}` defines; a fork that returned no report gets its file too.
    These lens reports are part of your write surface, beside the fixer-report.

@@ -6,6 +6,7 @@
 // subcommand re-resolves geometry, config, or engine construction itself.
 // The verbs are run, open and the read-only state, which lists the session state of each running run.
 // The read-only await, the capped wait on one or more files, is implemented in await.go.
+// The read-only await-forks, the capped wait until the calling session's forks have finished, is implemented in awaitforks.go.
 // await is the verb that skips the resolution and needs no hub; it reads only the keep-warm config, and only inside a git worktree.
 
 package shuttlecli
@@ -25,11 +26,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// strandResolver resolves a strand name to the guid of the one strand it addresses, refusing an unknown or ambiguous name.
+type strandResolver interface {
+	ResolveStrandGUID(name string) (string, error)
+}
+
 // shuttleCLI is the receiver every shuttle verb hangs off of;
-// runner, cfg, anchorPath and engines are populated by PersistentPreRunE.
+// runner, reed, cfg, anchorPath and engines are populated by PersistentPreRunE.
 // The read-only verbs read through cfg, anchorPath and engines directly.
 type shuttleCLI struct {
-	runner     *shuttleengine.Runner
+	runner *shuttleengine.Runner
+	// reed resolves the calling strand's name to its guid for await-forks.
+	reed       strandResolver
 	cfg        shuttleengine.Config
 	anchorPath string
 	engines    shuttleengine.EngineSet
@@ -113,7 +121,7 @@ provider specifics.`,
 				clihelp.Abort(ctx, 1)
 				return nil
 			}
-			c.cfg, c.anchorPath, c.engines = shuttleCfg, reedGeom.AnchorPath, engines
+			c.cfg, c.anchorPath, c.engines, c.reed = shuttleCfg, reedGeom.AnchorPath, engines, reedEngine
 			c.runner = shuttleengine.NewRunner(reedEngine, c.engines, c.anchorPath, reedGeom.WorktreeRoot, c.cfg)
 			pauseGeom, err := hubgeom.PauseGeometry(layout)
 			if err != nil {
@@ -127,7 +135,7 @@ provider specifics.`,
 		},
 	}
 
-	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd())
+	parent.AddCommand(c.runCmd(), c.openCmd(), c.stateCmd(), c.awaitCmd(), c.awaitForksCmd())
 
 	return parent
 }

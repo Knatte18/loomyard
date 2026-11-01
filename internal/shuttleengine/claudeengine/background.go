@@ -7,6 +7,8 @@
 // Only when the key is absent or its value is not a list does the transcript at transcript_path decide:
 // a background launch that no later completion notification names by the task id the launch's tool result returned is outstanding.
 // Agent and Task launches are forks, Bash and Monitor launches are shells.
+// The same transcript reading answers which forks a session launched are still running, for a session that waits on its own forks;
+// there a fork launch whose tool result is not yet recorded also counts, with an empty ID.
 // A completion notification is a <task-notification> user message, a queue-operation line whose content names the task id, or a queued_command attachment whose prompt names it.
 // An unreadable or missing transcript counts as nothing outstanding:
 // it must never keep a run waiting on a fault.
@@ -15,7 +17,9 @@ package claudeengine
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -24,6 +28,40 @@ import (
 
 // taskNotificationMarker opens the user message Claude Code injects when a background task finishes.
 const taskNotificationMarker = "<task-notification>"
+
+// forkSubagentType is the subagent_type of an Agent launch that forks the session.
+// Claude Code runs every fork in the background, so its input carries no run_in_background flag.
+const forkSubagentType = "fork"
+
+// OutstandingForks implements shuttleengine.OutstandingForkReader for Claude:
+// the forks the session's transcript launched that no later completion notification names.
+// Claude Code records a notification that arrives during a tool call as a queue-operation line at once,
+// so the answer turns empty while the session is still inside the call that waits.
+// A fork launch whose tool result never reached the transcript stays outstanding, since no notification can name it.
+// A missing or unreadable transcript is an error, since an empty answer would end the wait.
+func (c *Claude) OutstandingForks(sessionID, workdir string) ([]shuttleengine.BackgroundTask, error) {
+	projectDir, err := claudeProjectDirFor(workdir)
+	if err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(projectDir, sessionID+".jsonl"))
+	if err != nil {
+		return nil, fmt.Errorf("claudeengine: read the transcript of session %s: %w", sessionID, err)
+	}
+	return unfinishedForks(data), nil
+}
+
+// unfinishedForks returns the fork launches of transcript JSONL that no later completion notification names.
+// A fork launch whose tool result is not yet recorded counts, with an empty ID, since its id is unknown but it is running.
+func unfinishedForks(data []byte) []shuttleengine.BackgroundTask {
+	var forks []shuttleengine.BackgroundTask
+	for _, task := range unmatchedLaunches(data, true) {
+		if task.Kind == shuttleengine.BackgroundFork {
+			forks = append(forks, task)
+		}
+	}
+	return forks
+}
 
 // resultIDKeys are the toolUseResult fields that carry a launched task's id.
 var resultIDKeys = []string{"agentId", "backgroundTaskId", "bash_id", "shellId", "taskId", "task_id"}
@@ -100,6 +138,13 @@ type transcriptLaunch struct {
 // A notification is a task-notification user message, a queue-operation line whose content names the id, or a queued_command attachment whose prompt names it.
 // A launch whose result carries no recoverable id cannot be matched and is not counted.
 func transcriptHasUnmatchedLaunch(data []byte) []shuttleengine.BackgroundTask {
+	return unmatchedLaunches(data, false)
+}
+
+// unmatchedLaunches is transcriptHasUnmatchedLaunch with a choice for a launch whose tool result is not yet in the transcript:
+// countPending true reports it with an empty ID, false skips it like any launch without an id.
+// A launch whose result is present but carries no id is skipped either way, since nothing would ever name it.
+func unmatchedLaunches(data []byte, countPending bool) []shuttleengine.BackgroundTask {
 	lines := strings.Split(string(data), "\n")
 
 	var launches []*transcriptLaunch
@@ -161,6 +206,9 @@ func transcriptHasUnmatchedLaunch(data []byte) []shuttleengine.BackgroundTask {
 	var unmatched []shuttleengine.BackgroundTask
 	for _, l := range launches {
 		if len(l.ids) == 0 {
+			if countPending && l.resultAt == -1 {
+				unmatched = append(unmatched, shuttleengine.BackgroundTask{Kind: l.kind, Label: l.label, Signal: shuttleengine.SignalTranscript})
+			}
 			continue
 		}
 		matched := false
@@ -218,7 +266,7 @@ func launchKindAndLabel(block map[string]any) (shuttleengine.BackgroundKind, str
 }
 
 // isBackgroundLaunch reports whether a tool_use block launches background work: a Bash call with
-// run_in_background, a Monitor call, or an Agent (or Task) call launched asynchronously.
+// run_in_background, a Monitor call, or an Agent (or Task) call launched asynchronously or as a fork.
 func isBackgroundLaunch(block map[string]any) bool {
 	name, _ := block["name"].(string)
 	input, _ := block["input"].(map[string]any)
@@ -226,8 +274,11 @@ func isBackgroundLaunch(block map[string]any) bool {
 	switch name {
 	case "Monitor":
 		return true
-	case "Bash", "Agent", "Task":
+	case "Bash":
 		return background
+	case "Agent", "Task":
+		subagentType, _ := input["subagent_type"].(string)
+		return background || subagentType == forkSubagentType
 	}
 	return false
 }

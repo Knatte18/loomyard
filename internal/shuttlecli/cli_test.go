@@ -20,9 +20,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
@@ -234,12 +236,23 @@ func TestRunCLI_PositionalArgValidation(t *testing.T) {
 		})
 	}
 
+	t.Run("Registers_await-forks", func(t *testing.T) {
+		found := false
+		for _, child := range Command().Commands() {
+			found = found || child.Name() == "await-forks"
+		}
+		if !found {
+			t.Errorf("Command() registers no await-forks child; want one")
+		}
+	})
+
 	tests := []struct {
 		name string
 		args []string
 	}{
 		{"StateStrayArgument", []string{"state", "stray"}},
 		{"AwaitNoArgs", []string{"await"}},
+		{"AwaitForksStrayArgument", []string{"await-forks", "stray"}},
 	}
 
 	for _, tt := range tests {
@@ -365,6 +378,110 @@ func TestAwaitVerb(t *testing.T) {
 			}
 			if strings.Join(got, ",") != strings.Join(tt.wantEntries, ",") {
 				t.Errorf("directory entries = %v; want %v (the verb writes nothing)", got, tt.wantEntries)
+			}
+		})
+	}
+}
+
+// fakeResolver is a strandResolver answering a fixed guid or error.
+type fakeResolver struct {
+	guid string
+	err  error
+}
+
+func (r fakeResolver) ResolveStrandGUID(string) (string, error) { return r.guid, r.err }
+
+// forkListEngine is a shuttlefake.Engine with the OutstandingForkReader capability, answering a fixed fork list.
+type forkListEngine struct {
+	shuttlefake.Engine
+
+	forks []shuttleengine.BackgroundTask
+}
+
+func (e *forkListEngine) OutstandingForks(string, string) ([]shuttleengine.BackgroundTask, error) {
+	return e.forks, nil
+}
+
+// TestAwaitForksVerb pins the await-forks error envelopes for a caller outside a shuttle strand, for a strand reed cannot resolve and for a strand with no run record.
+// It also pins the ok envelope with ready true once no fork runs.
+// It also pins the ok envelope with ready false and the forks still running when the cap elapses.
+// It is not parallel: it sets the strand-name environment variable.
+func TestAwaitForksVerb(t *testing.T) {
+	fork := shuttleengine.BackgroundTask{Kind: shuttleengine.BackgroundFork, ID: "a1", Label: "lens a"}
+
+	tests := []struct {
+		name string
+		// strand is the value of the strand-name environment variable; empty leaves it unset.
+		strand   string
+		resolver fakeResolver
+		forks    []shuttleengine.BackgroundTask
+		// recorded writes a run record for guid-1 before the verb runs.
+		recorded    bool
+		wantErr     string
+		wantReady   bool
+		wantPending []any
+	}{
+		{name: "no strand name is an error", wantErr: "no shuttle strand"},
+		{name: "unresolvable strand is an error", strand: "hub:task:driver", resolver: fakeResolver{err: errors.New("no strand named")}, wantErr: "resolve the calling strand"},
+		{name: "strand without a run record is an error", strand: "hub:task:driver", resolver: fakeResolver{guid: "guid-1"}, wantErr: "guid-1"},
+		{name: "no fork running is ready", strand: "hub:task:driver", resolver: fakeResolver{guid: "guid-1"}, recorded: true, wantReady: true},
+		{
+			name:        "forks still running at the cap are listed",
+			strand:      "hub:task:driver",
+			resolver:    fakeResolver{guid: "guid-1"},
+			forks:       []shuttleengine.BackgroundTask{fork},
+			recorded:    true,
+			wantPending: []any{map[string]any{"kind": "fork", "id": "a1", "label": "lens a"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(agentname.StrandNameEnv, tt.strand)
+
+			anchor := t.TempDir()
+			if tt.recorded {
+				runDir := filepath.Join(anchor, lymdirs.DotLymDirName, "shuttle", "run-1")
+				if err := os.MkdirAll(runDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				record, err := json.Marshal(shuttleengine.RunState{RunID: "run-1", StrandGUID: "guid-1", SessionID: "session-1", Outcome: "running"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(runDir, "run.json"), record, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			engine := &forkListEngine{forks: tt.forks}
+			c := &shuttleCLI{reed: tt.resolver, runner: newFakeClockRunner(nil, engine, anchor, anchor)}
+			cmd := c.awaitForksCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"--cap", "3s"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if tt.wantErr != "" {
+				if got, _ := envelope["error"].(string); envelope["ok"] != false || !strings.Contains(got, tt.wantErr) {
+					t.Errorf("envelope = %v; want ok false with an error containing %q", envelope, tt.wantErr)
+				}
+				return
+			}
+			if envelope["ok"] != true || envelope["ready"] != tt.wantReady {
+				t.Fatalf("envelope = %v; want ok true, ready %v", envelope, tt.wantReady)
+			}
+			if tt.wantReady {
+				return
+			}
+			if diff := cmp.Diff(tt.wantPending, envelope["outstanding"]); diff != "" {
+				t.Errorf("outstanding mismatch (-want +got):\n%s", diff)
+			}
+			if envelope["message"] != "forks are still running; call this command again" {
+				t.Errorf("message = %v; want the call-again message", envelope["message"])
 			}
 		})
 	}

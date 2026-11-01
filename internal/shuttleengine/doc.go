@@ -27,7 +27,7 @@
 // StandingPassages returns the instruction passages a hub's Bolt checkout holds for a session of an engine and a strand role, read through the reader InstallPassageReader installs for the process;
 // it returns none outside a hub, with no reader installed or when the reader fails, which is logged at Warn, so a launch never waits on the store.
 // An engine appends them to the system prompt it launches with, and shuttle itself parses no store.
-// Requirement support, fork audit, resume-context rendering, creel hook delivery (the hook-input parse, the hook output and the wake output) and instruction files are optional capabilities beside Engine, which an engine without them lacks.
+// Requirement support, fork audit, the outstanding-fork reading, resume-context rendering, creel hook delivery (the hook-input parse, the hook output and the wake output) and instruction files are optional capabilities beside Engine, which an engine without them lacks.
 // A ForkSubagents run whose engine cannot audit forks finishes with its classified result, a nil ForkAudit and an error, and keeps its run directory.
 // Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
 // Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.
@@ -135,6 +135,9 @@
 //
 // AwaitAny is the shared wait: it stats the told paths once a second until one exists or the cap elapses, and watches no directory.
 // It is the poll every capped keep-cache-warm wait verb runs on, and DefaultAwaitCap is the fallback of `shuttleengines.KeepWarm`, the resolver of the cap those verbs default to.
+// Runner.AwaitForks is the same capped poll over the forks a run's session launched, read through the engine's optional OutstandingForkReader capability:
+// it answers ready once none is still running.
+// A session that spawns forks and then waits inside that call takes every fork's result in the one turn after the call returns, instead of waking once per fork.
 //
 // # Pending prompt
 //

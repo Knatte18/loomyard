@@ -14,6 +14,7 @@ import (
 var (
 	_ shuttleengine.RequirementSupporter        = (*Claude)(nil)
 	_ shuttleengine.ForkAuditor                 = (*Claude)(nil)
+	_ shuttleengine.OutstandingForkReader       = (*Claude)(nil)
 	_ shuttleengine.ResumeContextRenderer       = (*Claude)(nil)
 	_ shuttleengine.ToolBoundaryContextRenderer = (*Claude)(nil)
 	_ shuttleengine.InstructionFileLister       = (*Claude)(nil)

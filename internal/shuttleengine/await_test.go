@@ -4,8 +4,11 @@ package shuttleengine
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -22,6 +25,157 @@ func (c *awaitClock) Sleep(d time.Duration) {
 	c.sleeps = append(c.sleeps, d)
 	if c.onSleep != nil {
 		c.onSleep(len(c.sleeps))
+	}
+}
+
+// TestAwaitForks pins the capped poll over a run's outstanding forks on a fake clock: when it answers ready, what it answers at the cap, what it returns on a read error or a cancelled context, and that no sleep passes one second or the remaining cap.
+func TestAwaitForks(t *testing.T) {
+	t.Parallel()
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	fork := BackgroundTask{Kind: BackgroundFork, ID: "a1"}
+
+	tests := []struct {
+		name string
+		ctx  context.Context
+		cap  time.Duration
+		// runningReads is how many reads report the fork still running before one reports none.
+		runningReads int
+		readErr      error
+		wantRunning  []BackgroundTask
+		wantReady    bool
+		wantErr      bool
+		wantSleeps   []time.Duration
+	}{
+		{name: "no fork running answers at once", cap: 10 * time.Second, wantReady: true},
+		{
+			name:         "the read after the last fork finishes answers ready",
+			cap:          10 * time.Second,
+			runningReads: 2,
+			wantReady:    true,
+			wantSleeps:   []time.Duration{time.Second, time.Second},
+		},
+		{
+			name:         "cap elapsing answers the forks still running and the last sleep is the remaining cap",
+			cap:          2500 * time.Millisecond,
+			runningReads: 10,
+			wantRunning:  []BackgroundTask{fork},
+			wantSleeps:   []time.Duration{time.Second, time.Second, 500 * time.Millisecond},
+		},
+		{name: "a read error is returned", cap: 10 * time.Second, readErr: errors.New("transcript unreadable"), wantErr: true},
+		{name: "a cancelled context is returned", ctx: cancelled, cap: 10 * time.Second, runningReads: 1, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			clock := &awaitClock{fakeClock: newFakeClock(time.Unix(0, 0))}
+			reads := 0
+			readOutstanding := func() ([]BackgroundTask, error) {
+				reads++
+				if tt.readErr != nil {
+					return nil, tt.readErr
+				}
+				if reads <= tt.runningReads {
+					return []BackgroundTask{fork}, nil
+				}
+				return nil, nil
+			}
+			ctx := tt.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+
+			running, ready, err := awaitForks(ctx, clock, readOutstanding, tt.cap)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("awaitForks() error = %v; want error %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(running, tt.wantRunning) || ready != tt.wantReady {
+				t.Errorf("awaitForks() = (%+v, %v); want (%+v, %v)", running, ready, tt.wantRunning, tt.wantReady)
+			}
+			if !reflect.DeepEqual(clock.sleeps, tt.wantSleeps) {
+				t.Errorf("sleeps = %v; want %v", clock.sleeps, tt.wantSleeps)
+			}
+		})
+	}
+}
+
+// forkReaderEngine is a fakeEngine with the OutstandingForkReader capability: it records the arguments of each read and answers a fixed fork list.
+type forkReaderEngine struct {
+	fakeEngine
+
+	forks    []BackgroundTask
+	sessions []string
+	workdirs []string
+}
+
+func (e *forkReaderEngine) OutstandingForks(sessionID, workdir string) ([]BackgroundTask, error) {
+	e.sessions = append(e.sessions, sessionID)
+	e.workdirs = append(e.workdirs, workdir)
+	return e.forks, nil
+}
+
+// TestRunnerAwaitForks pins the wrapper around the poll: its refusals for an unknown guid and an engine without the OutstandingForkReader capability,
+// and that the reader is handed the run's session id and the pane's cwd.
+func TestRunnerAwaitForks(t *testing.T) {
+	t.Parallel()
+
+	const guid = "strand-1"
+	fork := BackgroundTask{Kind: BackgroundFork, ID: "a1"}
+
+	tests := []struct {
+		name     string
+		capable  bool
+		askGUID  string
+		wantErr  string
+		wantFork []BackgroundTask
+	}{
+		{name: "engine without the capability is refused", askGUID: guid, wantErr: "OutstandingForkReader"},
+		{name: "unknown guid is refused", capable: true, askGUID: "no-such-strand", wantErr: "no-such-strand"},
+		{name: "capable engine is read with the session and pane cwd", capable: true, askGUID: guid, wantFork: []BackgroundTask{fork}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			root := t.TempDir()
+			anchor := filepath.Join(root, "worktree")
+			paneCwd := filepath.Join(root, "pane")
+			runDir := filepath.Join(root, "runs", "run-1")
+			if err := os.MkdirAll(runDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := saveRunState(runDir, RunState{RunID: "run-1", StrandGUID: guid, SessionID: "session-1", Outcome: runOutcomeRunning}); err != nil {
+				t.Fatal(err)
+			}
+
+			var engine Engine = &fakeEngine{}
+			reader := &forkReaderEngine{forks: []BackgroundTask{fork}}
+			if tt.capable {
+				engine = reader
+			}
+			runner := NewDetachedRunner(&fakeReed{}, singleEngineSet(engine), anchor, filepath.Join(root, "standalone-worktree"), paneCwd, Config{RunDir: filepath.Join(root, "runs")})
+			runner.SetClock(&awaitClock{fakeClock: newFakeClock(time.Unix(0, 0))})
+
+			got, ready, err := runner.AwaitForks(context.Background(), tt.askGUID, 0)
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("AwaitForks() error = %v; want one containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || ready || !reflect.DeepEqual(got, tt.wantFork) {
+				t.Errorf("AwaitForks() = (%+v, %v, %v); want (%+v, false, nil)", got, ready, err, tt.wantFork)
+			}
+			if !reflect.DeepEqual(reader.sessions, []string{"session-1"}) || !reflect.DeepEqual(reader.workdirs, []string{paneCwd}) {
+				t.Errorf("reader got sessions %v and workdirs %v; want [session-1] and [%s]", reader.sessions, reader.workdirs, paneCwd)
+			}
+		})
 	}
 }
 

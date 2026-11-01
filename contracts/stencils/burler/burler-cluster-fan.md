@@ -18,6 +18,9 @@ Boilerplate:
 While the forks run, YOU (the handler) do your own HOLISTIC review: what no lens owns, such as the target against its fasit and its board entry, the rubric's leanness and relocation rules, architecture and PATTERN-fit, reading further only where your review needs it.
 Then prepare the ground truths and the severity rubric you will judge every finding against.
 Write nothing to the review file while any fork is outstanding, whatever an early report says: consolidate only once the last fork has returned, with every finding in view.
+Then wait for the forks with `lym shuttle await-forks`, run in the foreground with the Bash tool's `timeout` at 300000, and never end your turn while a fork is outstanding: every fork result reaches you together, in the turn after it answers `ready: true`.
+While it answers `ready: false`, run it again in a turn that does nothing else, until it has answered `ready: false` five times in a row.
+When it fails, or has answered `ready: false` five times in a row, end your turn instead, and take each fork's result as it arrives.
 
 Once the last fork has returned, and before you consolidate, save each fork's final message verbatim to `{{.lens_report_path}}`, with its lens name for `<lens>`, in the format `{{.lens_report_spec_path}}` defines; a fork that returned no report gets its file too.
 These lens reports are part of your write surface, beside the review file, and are the one exception to the "nothing else" and "no other file" of the write-surface rules in your prompt.

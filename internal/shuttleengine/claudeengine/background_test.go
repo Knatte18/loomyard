@@ -166,6 +166,77 @@ func TestTranscriptHasUnmatchedLaunch_BashAndAgentLaunches(t *testing.T) {
 	if len(got) != 1 || got[0] != wantAgent {
 		t.Errorf("async Agent launch with no notification = %+v, want [%+v]", got, wantAgent)
 	}
+
+	fork := strings.Replace(agent, `"run_in_background":true`, `"subagent_type":"fork"`, 1)
+	if got := transcriptHasUnmatchedLaunch([]byte(fork)); len(got) != 1 || got[0] != wantAgent {
+		t.Errorf("fork launch with no notification = %+v, want [%+v]", got, wantAgent)
+	}
+}
+
+// forkLaunchTranscript launches one fork, as Claude Code records it: an Agent call with subagent_type fork and no run_in_background flag.
+const forkLaunchTranscript = `{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_f","name":"Agent","input":{"description":"lens a","subagent_type":"fork"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_f","content":"Async agent launched"}]},"toolUseResult":{"agentId":"a5e3629456cc7489a"}}
+`
+
+// TestOutstandingForks pins which forks the session's transcript reports still running, read from the project directory of the workdir under HOME.
+// It is not parallel: it sets HOME.
+func TestOutstandingForks(t *testing.T) {
+	forkNotification := `{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\n<task-id>a5e3629456cc7489a</task-id>\n</task-notification>"}` + "\n"
+	wantFork := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundFork, ID: "a5e3629456cc7489a", Signal: shuttleengine.SignalTranscript}}
+
+	tests := []struct {
+		name string
+		// transcript is the session transcript's content; absent writes none.
+		transcript string
+		absent     bool
+		want       []shuttleengine.BackgroundTask
+		wantErr    bool
+	}{
+		{name: "fork with no notification is outstanding", transcript: forkLaunchTranscript, want: wantFork},
+		{name: "fork named by a queued notification has finished", transcript: forkLaunchTranscript + forkNotification},
+		{
+			name:       "fork launch with no tool result yet is outstanding",
+			transcript: strings.SplitAfter(forkLaunchTranscript, "\n")[0],
+			want:       []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundFork, Signal: shuttleengine.SignalTranscript}},
+		},
+		{name: "a background shell is no fork", transcript: monitorLaunchTranscript + forkLaunchTranscript + forkNotification},
+		{name: "a missing transcript is an error", absent: true, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			workdir := "/home/op/forks"
+			sessionID := "sess-forks"
+			if !tt.absent {
+				projectDir := filepath.Join(home, ".claude", "projects", encodeForTest(workdir))
+				if err := os.MkdirAll(projectDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(projectDir, sessionID+".jsonl"), []byte(tt.transcript), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			got, err := New().OutstandingForks(sessionID, workdir)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("OutstandingForks() error = %v; want error %v", err, tt.wantErr)
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("OutstandingForks() = %+v; want %+v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting pins that a Stop payload with no background_tasks list reads a fork launched without run_in_background as outstanding work.
+func TestParseEvents_StopWithoutTaskListReadsBareForkLaunchAsWaiting(t *testing.T) {
+	ev := parseOneKind(t, stopLine(t, writeBgTranscript(t, forkLaunchTranscript), nil))
+	want := []shuttleengine.BackgroundTask{{Kind: shuttleengine.BackgroundFork, ID: "a5e3629456cc7489a", Signal: shuttleengine.SignalTranscript}}
+	if ev.Kind != shuttleengine.EventWaiting || !reflect.DeepEqual(ev.Outstanding, want) {
+		t.Errorf("kind = %v, Outstanding = %+v, want EventWaiting with %+v", ev.Kind, ev.Outstanding, want)
+	}
 }
 
 func TestParseEvents_RunningShellEntryYieldsShellTask(t *testing.T) {

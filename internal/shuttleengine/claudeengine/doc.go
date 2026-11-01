@@ -38,6 +38,12 @@
 // a task-notification user message, a queue-operation line or a queued_command attachment.
 // A payload that omits a running task, lists it under another status or changes an entry's shape counts as no outstanding work.
 // Each task carries the signal that reported it.
+// An Agent or Task launch counts as background when its input sets `run_in_background` or names the `fork` subagent type, since Claude Code runs every fork in the background.
+//
+// The outstanding-fork reading (OutstandingForkReader) is that transcript reading over the session's own transcript, narrowed to forks.
+// Claude Code writes a queue-operation line the moment a notification arrives during a tool call,
+// so the reading turns empty while a session that waits on its forks is still inside the waiting call, and the notifications reach the session together when the call returns.
+// A missing or unreadable transcript is an error.
 //
 // Every Bash command an agent runs gets `/dev/null` as its default stdin through Claude Code's `CLAUDE_ENV_FILE`:
 // Prepare writes `bash-env.sh` beside settings.json, and both the launch and the resume line lead with `CLAUDE_ENV_FILE` naming its absolute path,

@@ -211,6 +211,15 @@ type ForkAuditor interface {
 	AuditForksIncremental(sessionID, workdir string, seenTranscripts map[string]bool) (ForkAudit, error)
 }
 
+// OutstandingForkReader is an optional capability beside Engine: the provider's read of which fork subagents a session launched are still running.
+// An engine without it cannot have a session wait on its own forks.
+type OutstandingForkReader interface {
+	// OutstandingForks lists the forks the session identified by sessionID launched whose completion the provider has not yet recorded.
+	// workdir is the pane's process cwd.
+	// An unreadable record is an error, never an empty list, since an empty list ends a wait.
+	OutstandingForks(sessionID, workdir string) ([]BackgroundTask, error)
+}
+
 // ResumeContextRenderer is an optional capability beside Engine: the provider's rendering of resume text as its session-start hook output.
 // An engine without it has no session-start context to render.
 type ResumeContextRenderer interface {

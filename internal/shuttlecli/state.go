@@ -78,15 +78,20 @@ func stateFields(state shuttleengine.SessionState) map[string]any {
 	if !state.Since.IsZero() {
 		since = state.Since.UTC().Format(time.RFC3339)
 	}
-	outstanding := []map[string]any{}
-	for _, task := range state.Outstanding {
-		outstanding = append(outstanding, map[string]any{"kind": string(task.Kind), "id": task.ID, "label": task.Label})
-	}
 	return map[string]any{
 		"state":       string(state.Name),
 		"cause":       state.Cause,
 		"detail":      state.Detail,
-		"outstanding": outstanding,
+		"outstanding": taskFields(state.Outstanding),
 		"since":       since,
 	}
+}
+
+// taskFields renders background tasks as the envelope's list of kind, id and label, an empty list for none.
+func taskFields(tasks []shuttleengine.BackgroundTask) []map[string]any {
+	fields := []map[string]any{}
+	for _, task := range tasks {
+		fields = append(fields, map[string]any{"kind": string(task.Kind), "id": task.ID, "label": task.Label})
+	}
+	return fields
 }
