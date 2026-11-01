@@ -438,7 +438,7 @@ func TestConfigOverRealHub(t *testing.T) {
 			})
 		}
 
-		// A hub-wide orch rules file left uncommitted in Bolt must stay out of the config commit.
+		// An unrelated file left uncommitted in Bolt must stay out of the config commit.
 		const rulesContent = "an uncommitted rule\n"
 		rulesRel := filepath.Join("_lym", "orch", "rules.md")
 		rulesFile := filepath.Join(boardDir, rulesRel)

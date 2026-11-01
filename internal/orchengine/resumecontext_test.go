@@ -87,8 +87,6 @@ func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(t *testing.T, p Paths, stencils string)
-		// wantInError is an optional substring the error carries, built from the case's paths.
-		wantInError func(p Paths) string
 	}{
 		{"missing stencil", func(t *testing.T, p Paths, stencils string) {
 			if err := SaveState(p, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
@@ -97,24 +95,8 @@ func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
 			if err := os.Remove(stencilstore.Path(stencils, reloadStencilName)); err != nil {
 				t.Fatal(err)
 			}
-		}, nil},
-		{"unreadable hub rules", func(t *testing.T, p Paths, stencils string) {
-			if err := SaveState(p, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(p.HubRulesPath, 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}, func(p Paths) string { return p.HubRulesPath }},
-		{"unreadable own rules", func(t *testing.T, p Paths, stencils string) {
-			if err := SaveState(p, State{Strand: "s1", Phase: PhaseIdle}); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.MkdirAll(p.OwnRulesPath, 0o755); err != nil {
-				t.Fatal(err)
-			}
-		}, func(p Paths) string { return p.OwnRulesPath }},
-		{"no state file", func(*testing.T, Paths, string) {}, nil},
+		}},
+		{"no state file", func(*testing.T, Paths, string) {}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -124,9 +106,6 @@ func TestResumeContext_FailureReturnsErrorAndWritesNoMark(t *testing.T) {
 			text, err := ResumeContext(p, stencils, testIndex, time.Now())
 			if err == nil {
 				t.Fatalf("ResumeContext = %q, nil; want an error", text)
-			}
-			if tt.wantInError != nil && !strings.Contains(err.Error(), tt.wantInError(p)) {
-				t.Errorf("ResumeContext error = %v; want it to name %s", err, tt.wantInError(p))
 			}
 			if _, found, err := ReadResumeMark(p); err != nil || found {
 				t.Errorf("mark found = %v, %v; want none", found, err)

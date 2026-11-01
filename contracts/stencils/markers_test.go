@@ -32,7 +32,7 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"burler-fix-self-check", BurlerFixSelfCheck, []string{"lens_list", "lens_report_path", "lens_report_spec_path", "rubric_path"}},
 		{"burler-fix-check-rubric", BurlerFixCheckRubric, nil},
 		{"loom-template-prior-plan", LoomTemplatePriorPlan, []string{"archive_dir", "moved_files"}},
-		{"orch-template-role", OrchTemplateRole, []string{"command_index", "decision_note_title", "hub_rules", "orch_rules"}},
+		{"orch-template-role", OrchTemplateRole, []string{"command_index", "decision_note_title"}},
 		{"loom-block-plan-glyphs", LoomBlockPlanGlyphs, nil},
 		{"loom-block-plan-format", LoomBlockPlanFormat, []string{"specs_dir"}},
 		{"loom-block-plan-overview", LoomBlockPlanOverview, []string{"specs_dir"}},

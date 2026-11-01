@@ -22,7 +22,6 @@
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`, in place of a general handoff skill.
 // `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.
 // The role file's `## Commands` section holds the operator command index.
-// Its `## Hub-wide rules` and `## This orch's rules` sections hold the hub-wide rules file on Bolt and this orch thread's own rules file under its worktree's `_lym/orch/`, re-read at every delivery.
 // `BeamUp` renders it from the `help index` of the binary it runs as, and `resume-context` in-process from the binary it runs as, which the pane names;
 // the watcher outlives a deploy, so it runs `help index` from the `lym` path the orch strand recorded and goes idle with a reason naming `lym orch stop` when that path is missing or gone.
 //
@@ -59,9 +58,9 @@
 //
 // # The orch rules
 //
-// `lym orch rules --from <file>` replaces the hub-wide rules file on Bolt with the file's content, pulling Bolt first and pushing before and after the commit.
-// The verb commits only that one path, and an empty file clears the rules.
-// The orch thread's own rules file is committed through `lym fabric commit`.
+// A repository's orch rules are the heddle entry `orch-rules`, aimed at heddle's `orch-prompt` target, which heddle appends to the system prompt of an orch session alone.
+// `lym orch rules --from <file>` replaces that entry's text with the file's content through heddle's write path, under the Bolt write lock and followed by the board's detached Bolt sync,
+// and an empty file removes the entry, clearing the rules.
 //
 // # The orchestrator acts and fixes
 //

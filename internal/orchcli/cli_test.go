@@ -126,8 +126,6 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 			StartLockPath:    filepath.Join(dir, "start.lock"),
 			CycleRequestPath: filepath.Join(dir, "cycle-request"),
 			PrimeRoot:        filepath.Dir(dir),
-			HubRulesPath:     filepath.Join(filepath.Dir(dir), "board", "rules", "hub.md"),
-			OwnRulesPath:     filepath.Join(filepath.Dir(dir), "own", "rules.md"),
 		},
 	}
 }

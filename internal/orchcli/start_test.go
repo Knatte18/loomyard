@@ -23,7 +23,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -796,18 +795,13 @@ func TestStart_FreshLaunchResetsAbandonedPhase(t *testing.T) {
 
 const recordedTestSessionID = "11111111-2222-3333-4444-555555555555"
 
-func TestPrimePaths_JoinsRuleFilesAndPrimeRoot(t *testing.T) {
+func TestPrimePaths_JoinsPrimeRoot(t *testing.T) {
 	t.Parallel()
 
 	hub := t.TempDir()
 	got := PrimePaths(locationkit.Location(hub, "main", "sub/dir"))
-	want := orchengine.Paths{
-		HubRulesPath: filepath.Join(fabricengine.BoardDir(hub), lymdirs.LymDirName, "orch", "rules.md"),
-		OwnRulesPath: filepath.Join(hub, "main", "sub", "dir", lymdirs.LymDirName, "orch", "rules.md"),
-		PrimeRoot:    filepath.Join(hub, "main"),
-	}
-	if got.HubRulesPath != want.HubRulesPath || got.OwnRulesPath != want.OwnRulesPath || got.PrimeRoot != want.PrimeRoot {
-		t.Errorf("PrimePaths() rules paths and prime root = %q, %q, %q; want %q, %q, %q", got.HubRulesPath, got.OwnRulesPath, got.PrimeRoot, want.HubRulesPath, want.OwnRulesPath, want.PrimeRoot)
+	if want := filepath.Join(hub, "main"); got.PrimeRoot != want {
+		t.Errorf("PrimePaths().PrimeRoot = %q; want %q", got.PrimeRoot, want)
 	}
 }
 
@@ -820,29 +814,9 @@ func TestStart_Refusals(t *testing.T) {
 		wantIn  []string
 		// seed, when set, writes the state file before start runs.
 		seed func(t *testing.T, h *startHarness)
-		// rulesPath, when set, picks the rules path that seed makes unreadable and the refusal must name.
-		rulesPath func(p orchengine.Paths) string
 		// wantNothingStarted asserts the refusal came before the dobby, the runs strand and the orch.
 		wantNothingStarted bool
 	}{
-		{
-			name: "unreadable hub rules",
-			seed: func(t *testing.T, h *startHarness) {
-				if err := os.MkdirAll(h.cli.paths.HubRulesPath, 0o755); err != nil {
-					t.Fatal(err)
-				}
-			},
-			rulesPath: func(p orchengine.Paths) string { return p.HubRulesPath },
-		},
-		{
-			name: "unreadable own rules",
-			seed: func(t *testing.T, h *startHarness) {
-				if err := os.MkdirAll(h.cli.paths.OwnRulesPath, 0o755); err != nil {
-					t.Fatal(err)
-				}
-			},
-			rulesPath: func(p orchengine.Paths) string { return p.OwnRulesPath },
-		},
 		{
 			name: "two orch strands",
 			strands: []reedengine.StrandStatus{
@@ -945,9 +919,6 @@ func TestStart_Refusals(t *testing.T) {
 				if !strings.Contains(msg, want) {
 					t.Errorf("refusal %q missing %q", msg, want)
 				}
-			}
-			if c.rulesPath != nil && !strings.Contains(msg, c.rulesPath(h.cli.paths)) {
-				t.Errorf("refusal %q missing %q", msg, c.rulesPath(h.cli.paths))
 			}
 			if len(h.starter.specs) != 0 || h.spawns != 0 {
 				t.Errorf("starts = %d, spawns = %d; want none", len(h.starter.specs), h.spawns)

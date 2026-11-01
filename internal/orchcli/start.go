@@ -577,7 +577,7 @@ func (c *orchCLI) startOrch(index func() (string, error), note string) (BeamUpRe
 		if err != nil {
 			return report, err
 		}
-		if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, operatorIndex, c.paths.HubRulesPath, c.paths.OwnRulesPath); err != nil {
+		if err := orchengine.RenderRoleFile(c.stencilsDir, c.paths.RolePath, operatorIndex); err != nil {
 			return report, err
 		}
 		started, source, abandoned, err := c.launchOrch(st, note)

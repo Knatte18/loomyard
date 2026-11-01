@@ -1745,16 +1745,12 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 		content string
 		// indexErr makes the index source fail instead of the stencil, which stays as shipped.
 		indexErr error
-		// rulesDir makes a rules file unreadable by creating a directory at the path it returns, and wants the reason to name that path.
-		rulesDir func(Paths) string
 		// wantReason is the abort reason's prefix, which names the failing source.
 		wantReason string
 	}{
 		{name: "role", stencil: roleStencilName, content: "{{.nope}}", wantReason: "role file failed to render: orch: " + roleStencilName},
 		{name: "resume", stencil: resumeStencilName, content: "line one\nline two\n", wantReason: "resume stencil " + resumeStencilName},
 		{name: "index source", stencil: roleStencilName, indexErr: errBoom, wantReason: "command index unavailable: " + errBoom.Error()},
-		{name: "hub rules", rulesDir: func(p Paths) string { return p.HubRulesPath }, wantReason: "role file failed to render: "},
-		{name: "own rules", rulesDir: func(p Paths) string { return p.OwnRulesPath }, wantReason: "role file failed to render: "},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1763,10 +1759,6 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			e.injectHandoff()
 			if c.indexErr != nil {
 				e.indexErr = c.indexErr
-			} else if c.rulesDir != nil {
-				if err := os.MkdirAll(c.rulesDir(e.paths), 0o755); err != nil {
-					t.Fatal(err)
-				}
 			} else if err := os.WriteFile(stencilstore.Path(e.stDir, c.stencil), []byte(c.content), 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -1774,9 +1766,6 @@ func TestWatcher_FailingRenderAbortsWithoutClear(t *testing.T) {
 			st := e.state()
 			if st.Phase != PhaseIdle || e.s.count("clear") != 0 || !strings.HasPrefix(st.LastAbortReason, c.wantReason) {
 				t.Fatalf("state = %+v calls = %v", st, e.s.calls)
-			}
-			if c.rulesDir != nil && !strings.Contains(st.LastAbortReason, c.rulesDir(e.paths)) {
-				t.Errorf("abort reason %q does not name %s", st.LastAbortReason, c.rulesDir(e.paths))
 			}
 		})
 	}

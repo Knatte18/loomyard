@@ -184,13 +184,13 @@ func NewWatcher(session Session, creel Creel, cfg Config, paths Paths, stencilsD
 }
 
 // renderRoleFile fetches the command index and renders the role file with it.
-// Its error is worded as an abort reason naming the failing source, the index, the role stencil or a rules file.
+// Its error is worded as an abort reason naming the failing source, the index or the role stencil.
 func (w *Watcher) renderRoleFile() error {
 	index, err := w.index()
 	if err != nil {
 		return fmt.Errorf("command index unavailable: %w", err)
 	}
-	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath, index, w.paths.HubRulesPath, w.paths.OwnRulesPath); err != nil {
+	if err := RenderRoleFile(w.stencilsDir, w.paths.RolePath, index); err != nil {
 		return fmt.Errorf("role file failed to render: %w", err)
 	}
 	return nil

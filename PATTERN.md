@@ -65,7 +65,7 @@
 - `PATTERN-agent-name` — Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.
 - `PATTERN-wait-mark-display-only` — Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
-- `PATTERN-heddle-instructions` — Rendering heddle entries into a worktree file or a session's system prompt: only from `heddle.json` in the Bolt checkout, through `internal/heddleengine` (new); that file written only by `lym heddle` verbs and heddle's Bolt replayer; fabric names no heddle file. — [background](pattern/PATTERN-heddle-instructions.md)
+- `PATTERN-heddle-instructions` — Rendering heddle entries into a worktree file or a session's system prompt: only from `heddle.json` in the Bolt checkout, through `internal/heddleengine` (new); that file written only by `lym heddle` verbs, their write path and heddle's Bolt replayer; fabric names no heddle file. — [background](pattern/PATTERN-heddle-instructions.md)
 - `PATTERN-lym-instructions-in-code` — Writing lym's own instructions to agents: in lym's code, its stencils and specs, never in heddle, which holds only a repository's own instructions.
 
 ## Processes and waits

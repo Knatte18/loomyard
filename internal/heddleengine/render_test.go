@@ -375,16 +375,49 @@ func TestRender(t *testing.T) {
 		if _, err := r.Show(f.bolt, "nope", f.root); err == nil || !strings.Contains(err.Error(), "claude-file") {
 			t.Errorf("Show(nope) = %v; want an error naming the valid targets", err)
 		}
-		claude, err := r.Passages(f.bolt, "claude")
+		claude, err := r.Passages(f.bolt, "claude", "")
 		if err != nil || !slices.Equal(claude, []string{"prompt one", "prompt two"}) {
 			t.Errorf("Passages(claude) = %v, %v", claude, err)
 		}
-		codex, err := r.Passages(f.bolt, "codex")
+		codex, err := r.Passages(f.bolt, "codex", "")
 		if err != nil || len(codex) != 0 {
 			t.Errorf("Passages(codex) = %v, %v; want none", codex, err)
 		}
 		if f.rootHas("CLAUDE.local.md") || f.rootHas(".heddle") {
 			t.Error("Show or Passages wrote a file")
+		}
+	})
+
+	t.Run("OrchPromptReachesOnlyOrchSessions", func(t *testing.T) {
+		t.Parallel()
+		f := newRenderFixture(t, Store{Entries: []Entry{
+			entryFor("rules", "orch rule", 2, "orch-prompt"),
+			entryFor("both", "shared rule", 3, "claude-prompt", "orch-prompt"),
+			entryFor("house", "house rule", 1, "claude-prompt"),
+		}})
+		r := Renderer{}
+		tests := []struct {
+			name   string
+			engine string
+			role   string
+			want   []string
+		}{
+			{"ClaudeOrch", "claude", "orch", []string{"house rule", "orch rule", "shared rule"}},
+			{"ClaudeNumberedOrch", "claude", "orch-2", []string{"house rule", "orch rule", "shared rule"}},
+			{"CodexOrch", "codex", "orch", []string{"orch rule", "shared rule"}},
+			{"ClaudeWriter", "claude", "writer", []string{"house rule", "shared rule"}},
+			{"ClaudeOrchLookalike", "claude", "orchard", []string{"house rule", "shared rule"}},
+			{"CodexWriter", "codex", "writer", nil},
+		}
+		for _, tt := range tests {
+			got, err := r.Passages(f.bolt, tt.engine, tt.role)
+			if err != nil || !slices.Equal(got, tt.want) {
+				t.Errorf("%s: Passages(%q, %q) = %v, %v; want %v", tt.name, tt.engine, tt.role, got, err, tt.want)
+			}
+		}
+		shown, err := r.Show(f.bolt, "orch-prompt", f.root)
+		if err != nil || shown != "orch rule\n\nshared rule" {
+			t.Errorf("Show(orch-prompt) = %q, %v; want the two orch passages", shown, err)
 		}
 	})
 }

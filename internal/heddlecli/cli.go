@@ -49,7 +49,8 @@ func commandOf(c *heddleCLI) *cobra.Command {
 		Long: `heddle stores the instruction text LoomYard gives its agents in heddle.json
 in the hub's Bolt checkout, and delivers it two ways: it renders file targets
 into git-excluded files at a worktree's root, and it appends prompt targets to
-the system prompt of every Claude session launched in the hub.
+the system prompt of the Claude sessions launched in the hub: claude-prompt to
+every one, orch-prompt to an orch session alone.
 
 set and remove change the store under the Bolt write lock and start the board's
 detached Bolt sync, which commits and pushes the saved file. A worktree takes a
@@ -135,6 +136,25 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 		return clihelp.Execute(Command(), out, args)
 	}
 	return clihelp.ExecuteIn(Command(), cwd, out, args)
+}
+
+// ChangeStore applies change to the store of the hub cwd lies in, the way `lym heddle set` and `remove` write: under the Bolt write lock, followed by the board's detached Bolt sync.
+// It lets another module's verb write heddle entries of its own through heddle's one write path.
+// A cwd that is no drivable worktree of a hub, or a change the store refuses, returns the error and saves nothing;
+// a sync that did not start after the save returns a warning naming `lym board sync`, with no error.
+func ChangeStore(cwd string, change func(*heddleengine.Store) error) (warning string, err error) {
+	return (&heddleCLI{}).changeStore(cwd, change)
+}
+
+// changeStore is ChangeStore over c's seams.
+func (c *heddleCLI) changeStore(cwd string, change func(*heddleengine.Store) error) (warning string, err error) {
+	if err := c.wire(cwd); err != nil {
+		return "", err
+	}
+	if err := c.write(change); err != nil {
+		return "", err
+	}
+	return c.syncWarning, nil
 }
 
 // saveStore writes the store through c's save seam.

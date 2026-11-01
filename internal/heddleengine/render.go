@@ -281,24 +281,25 @@ func (r Renderer) Show(boltDir, target, root string) (string, error) {
 	return text, err
 }
 
-// Passages returns the texts of the entries aimed at engine's prompt target in order, and none for an engine with no prompt target.
-func (r Renderer) Passages(boltDir, engine string) ([]string, error) {
-	named, ok := LookupTarget(engine + "-prompt")
-	if !ok || named.Delivery != DeliveryPrompt {
+// Passages returns, in order, the texts of the entries aimed at a prompt target that reaches a session of engine whose strand role is role.
+// An entry aimed at several such targets gives its text once, and a session no prompt target reaches gets none.
+func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
+	targets := promptTargetsFor(engine, role)
+	if len(targets) == 0 {
 		return nil, nil
 	}
 	store, err := r.read(boltDir)
 	if err != nil {
 		return nil, err
 	}
-	return passagesOf(store, named.Name), nil
+	return passagesOf(store, targets...), nil
 }
 
-// passagesOf returns the texts of the entries that name target, in order.
-func passagesOf(store Store, target string) []string {
+// passagesOf returns the texts of the entries that name one of targets, in order.
+func passagesOf(store Store, targets ...string) []string {
 	var passages []string
 	for _, entry := range store.Ordered() {
-		if slices.Contains(entry.Targets, target) {
+		if slices.ContainsFunc(entry.Targets, func(name string) bool { return slices.Contains(targets, name) }) {
 			passages = append(passages, strings.Trim(entry.Text, "\n"))
 		}
 	}

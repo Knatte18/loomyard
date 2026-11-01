@@ -262,6 +262,48 @@ func TestHeddleCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("ChangeStoreReturnsErrorsAndWarning", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		text, order := "rule", 1
+		set := func(store *heddleengine.Store) error {
+			return store.Set("rules", heddleengine.Patch{Text: &text, Order: &order, Targets: []string{"claude-file"}})
+		}
+
+		outside := &recorder{}
+		if _, err := outside.cli().changeStore(t.TempDir(), set); err == nil || !strings.Contains(err.Error(), "run lym heddle from a code worktree of a hub") {
+			t.Errorf("changeStore outside a hub error = %v; want the hub-resolution refusal", err)
+		}
+		if outside.saves != 0 || len(outside.syncs) != 0 {
+			t.Errorf("saves = %d, syncs = %d; want none outside a hub", outside.saves, len(outside.syncs))
+		}
+
+		refused := &recorder{}
+		refusal := errors.New("store refuses")
+		if _, err := refused.cli().changeStore(primeCwd(h), func(*heddleengine.Store) error { return refusal }); !errors.Is(err, refusal) {
+			t.Errorf("changeStore error = %v; want %v", err, refusal)
+		}
+		if refused.saves != 0 || len(refused.syncs) != 0 {
+			t.Errorf("saves = %d, syncs = %d; want none for a refused change", refused.saves, len(refused.syncs))
+		}
+
+		failing := &recorder{syncError: errors.New("no binary to spawn")}
+		warning, err := failing.cli().changeStore(primeCwd(h), set)
+		if err != nil {
+			t.Fatalf("changeStore with a failed sync start error: %v; want nil", err)
+		}
+		if !strings.Contains(warning, "lym board sync") {
+			t.Errorf("changeStore warning = %q; want it to name lym board sync", warning)
+		}
+		store, err := heddleengine.Load(fabricengine.BoltDir(h.Path))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if _, found := store.Get("rules"); !found {
+			t.Errorf("store after a failed sync start lacks the saved entry")
+		}
+	})
+
 	t.Run("WriteHoldsTheBoltLockAndCommitsNothing", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

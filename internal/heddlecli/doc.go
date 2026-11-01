@@ -11,6 +11,7 @@
 // A refused change saves nothing and starts no sync.
 // A failure to start the sync after the save does not fail the verb: it is logged and printed beside the result, naming `lym board sync` as the way to commit and push the saved file.
 // Neither verb pulls, commits or touches a worktree in the foreground.
+// ChangeStore exposes the same write to another module's verb that keeps a heddle entry of its own, such as `lym orch rules`.
 //
 // `show <target>` prints what the target renders to now for the current worktree and writes nothing.
 //

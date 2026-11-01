@@ -1,57 +1,48 @@
-// rules.go implements the `rules` orch verb: replace the hub-wide orch rules file on Bolt with a draft, committing it and pushing before and after.
+// rules.go implements the `rules` orch verb: store a draft as the repository's orch rules, one heddle entry aimed at the orch-prompt target.
 
 package orchcli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
-	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/heddlecli"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/spf13/cobra"
 )
 
-// hubRulesCommitMessage is the commit message the verb gives the hub-wide rules file.
-const hubRulesCommitMessage = "orch: replace the hub-wide rules"
+// orchRulesSlug is the slug of the heddle entry that holds the repository's orch rules.
+const orchRulesSlug = "orch-rules"
 
-// rulesBolt is the slice of Bolt the verb calls, so untagged tests substitute a fake.
-type rulesBolt interface {
-	Push() error
-	PullThenCommitWritten(write fabricengine.BoltWrite) (fabricengine.BoltWriteResult, error)
-}
-
-// boardRulesBolt adapts *fabricengine.Bolt to rulesBolt.
-type boardRulesBolt struct {
-	bolt *fabricengine.Bolt
-}
-
-// Push pushes Bolt, honoring the FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH bypass variables.
-func (b boardRulesBolt) Push() error {
-	return b.bolt.Push(fabricengine.EnvSyncOptions())
-}
-
-// PullThenCommitWritten brings Bolt up to date, then runs write and commits the path it returns.
-func (b boardRulesBolt) PullThenCommitWritten(write fabricengine.BoltWrite) (fabricengine.BoltWriteResult, error) {
-	return b.bolt.PullThenCommitWritten([]fabricengine.BoltWrite{write}, fabricengine.NewMutations(""))
-}
+// orchRulesOrder is the render order a new orch rules entry takes: late, so the rules follow the passages every session of the engine shares.
+const orchRulesOrder = 1000
 
 // rulesCmd builds the `rules` subcommand.
 func (c *orchCLI) rulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:         "rules --from <file>",
-		Short:       "replace the hub-wide orch rules file on Bolt",
+		Short:       "replace the repository's orch rules, kept in heddle under the orch-prompt target",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: fmt.Sprintf(`rules replaces the whole hub-wide orch rules file, <board>/%s,
-with the content of --from, commits it on Bolt under a pull first, and pushes
-before and after. A draft therefore starts as a copy of the current file at that
-path, and an empty file clears the rules. The envelope carries path, committed
-and unpushed; unpushed true means the commit is made and the next run pushes it.`, filepath.ToSlash(rulesRel())),
+		Long: fmt.Sprintf(`rules replaces the repository's orch rules with the content of --from. The
+rules are the heddle entry %s, aimed at the %s target, whose text is
+appended to the system prompt of every orch session launched afterwards. A
+draft therefore starts as a copy of the current text, which
+"lym heddle get %s" prints, and an empty file clears the rules.
+
+A rules file kept at _lym/orch/rules.md, hub-wide on Bolt or per orch, is no
+longer read. Its content carries over by copying it to a draft file and running
+lym orch rules --from on that draft.
+
+The entry is saved through heddle's write path: under the Bolt write lock,
+followed by the board's detached Bolt sync, which commits and pushes it. A new
+entry takes render order %d; an existing one keeps its order. The envelope
+carries slug and cleared, and a warning when the sync did not start.`, orchRulesSlug, heddleengine.OrchPromptTarget, orchRulesSlug, orchRulesOrder),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -67,20 +58,19 @@ and unpushed; unpushed true means the commit is made and the next run pushes it.
 				clihelp.Abort(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 				return nil
 			}
-			bolt := boardRulesBolt{bolt: fabricengine.NewBolt(fabricengine.BoltDir(c.location.HubPath))}
-			clihelp.Abort(cmd.Context(), writeHubRules(cmd.OutOrStdout(), cwd, from, c.paths.HubRulesPath, bolt))
+			clihelp.Abort(cmd.Context(), writeOrchRules(cmd.OutOrStdout(), cwd, from, heddlecli.ChangeStore))
 			return nil
 		},
 	}
-	cmd.Flags().String("from", "", "file whose content replaces the hub-wide rules file")
+	cmd.Flags().String("from", "", "file whose content replaces the orch rules")
 	_ = cmd.MarkFlagRequired("from")
 	return cmd
 }
 
-// writeHubRules replaces the file at rulesPath, inside Bolt's checkout, with the content of from, resolved against cwd when relative.
-// It pushes Bolt, writes and commits the file under a pull first, and pushes again, returning 0 on success and 1 on any refusal.
-// Every envelope after the draft is read carries path, committed and unpushed.
-func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) int {
+// writeOrchRules stores the content of from, resolved against cwd when relative, as the orch rules entry of the hub cwd lies in.
+// changeStore applies the change to the store of the hub cwd lies in; a test replaces it to reach the sync warning.
+// It returns 0 on success and 1 on any refusal, whose message names the way forward.
+func writeOrchRules(out io.Writer, cwd, from string, changeStore func(cwd string, change func(*heddleengine.Store) error) (string, error)) int {
 	if from == "" {
 		return output.Err(out, "lym orch rules needs --from <file>")
 	}
@@ -90,54 +80,34 @@ func writeHubRules(out io.Writer, cwd, from, rulesPath string, bolt rulesBolt) i
 	}
 	data, err := os.ReadFile(draft)
 	if err != nil {
-		return output.Err(out, fmt.Sprintf("cannot read --from %s: %v", draft, err))
+		return output.Err(out, fmt.Sprintf("cannot read --from %s: %v; way forward: name a readable draft file", draft, err))
 	}
-
-	refuse := func(msg string, committed, unpushed bool) int {
-		return output.ErrFields(out, msg, map[string]any{"path": rulesPath, "committed": committed, "unpushed": unpushed})
+	text := string(data)
+	warning, err := changeStore(cwd, func(store *heddleengine.Store) error { return applyOrchRules(store, text) })
+	if err != nil {
+		return output.Err(out, err.Error())
 	}
-	rerun := fmt.Sprintf("lym orch rules --from %s", from)
-	// A *PushFailedError's text already ends in its class's way forward, so only the re-run follows it.
-	var failedPush *fabricengine.PushFailedError
+	fields := map[string]any{"slug": orchRulesSlug, "cleared": strings.TrimSpace(text) == ""}
+	if warning != "" {
+		fields["warning"] = warning
+	}
+	return output.Ok(out, fields)
+}
 
-	if err := bolt.Push(); err != nil {
-		wayForward := fmt.Sprintf("re-run %s once Bolt pushes", rerun)
-		if errors.As(err, &failedPush) {
-			wayForward = fmt.Sprintf("then re-run %s", rerun)
+// applyOrchRules makes text the orch rules entry's text, aimed at the orch-prompt target alone, or removes the entry when text is blank.
+// A new entry takes orchRulesOrder and an existing one keeps its order.
+func applyOrchRules(store *heddleengine.Store, text string) error {
+	_, exists := store.Get(orchRulesSlug)
+	if strings.TrimSpace(text) == "" {
+		if !exists {
+			return nil
 		}
-		return refuse(fmt.Sprintf("pushing Bolt failed (%v); nothing was written, %s", err, wayForward), false, true)
+		return store.Remove(orchRulesSlug)
 	}
-
-	wrote := false
-	var writeErr error
-	res, err := bolt.PullThenCommitWritten(fabricengine.BoltWrite{
-		Message: hubRulesCommitMessage,
-		Write: func() ([]string, error) {
-			wrote = true
-			if err := fsx.AtomicWriteBytes(rulesPath, data); err != nil {
-				writeErr = err
-				return nil, err
-			}
-			return []string{rulesRel()}, nil
-		},
-	})
-	switch {
-	case err != nil && !wrote:
-		return refuse(fmt.Sprintf("%v; %s unchanged, nothing written", err, rulesPath), false, false)
-	case writeErr != nil:
-		return refuse(fmt.Sprintf("%v; %s unchanged", err, rulesPath), false, false)
-	case err != nil:
-		return refuse(fmt.Sprintf("%v; %s is written but not committed, re-run %s to commit it", err, rulesPath, rerun), false, false)
-	case res.Skipped != "":
-		return refuse(fmt.Sprintf("Bolt was not brought up to date and nothing was written: %s", res.SkipDetail), false, false)
+	patch := heddleengine.Patch{Text: &text, Targets: []string{heddleengine.OrchPromptTarget}}
+	if !exists {
+		order := orchRulesOrder
+		patch.Order = &order
 	}
-
-	if err := bolt.Push(); err != nil {
-		wayForward := fmt.Sprintf("the next run of %s pushes it", rerun)
-		if errors.As(err, &failedPush) {
-			wayForward = fmt.Sprintf("then re-run %s", rerun)
-		}
-		return refuse(fmt.Sprintf("%s is committed on Bolt but pushing failed (%v); %s", rulesPath, err, wayForward), res.Committed, true)
-	}
-	return output.Ok(out, map[string]any{"path": rulesPath, "committed": res.Committed, "unpushed": false})
+	return store.Set(orchRulesSlug, patch)
 }

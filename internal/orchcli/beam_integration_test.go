@@ -40,11 +40,8 @@ func TestOrchInBeam(t *testing.T) {
 	if want := filepath.Join(anchor, lymdirs.DotLymDirName, orchDirName); paths.Dir != want {
 		t.Errorf("orch dir of the beam = %q; want %q", paths.Dir, want)
 	}
-	if want := filepath.Join(anchor, lymdirs.LymDirName, orchDirName, "rules.md"); paths.OwnRulesPath != want {
-		t.Errorf("own rules path of the beam = %q; want %q", paths.OwnRulesPath, want)
-	}
 	primeAnchor := h.Location.AnchorPath()
-	for _, got := range []string{paths.Dir, paths.OwnRulesPath, paths.StatePath} {
+	for _, got := range []string{paths.Dir, paths.StatePath} {
 		if strings.HasPrefix(got, primeAnchor+string(filepath.Separator)) && !strings.HasPrefix(got, anchor+string(filepath.Separator)) {
 			t.Errorf("beam orch path %q lies under the prime's anchor %q", got, primeAnchor)
 		}

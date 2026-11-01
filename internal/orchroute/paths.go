@@ -5,19 +5,13 @@ package orchroute
 import (
 	"path/filepath"
 
-	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
-// DirName is the orch module's own subdirectory name, beneath the anchor's .lym directory and beneath _lym, where the rules files live.
+// DirName is the orch module's own subdirectory name, beneath the anchor's .lym directory.
 const DirName = "orch"
-
-// RulesRel returns the rules file's path relative to the board dir and to the anchor.
-func RulesRel() string {
-	return filepath.Join(lymdirs.LymDirName, DirName, "rules.md")
-}
 
 // Paths returns every path orch operates on, rooted at location's anchor.
 func Paths(location *lymcwd.Location) orchengine.Paths {
@@ -36,8 +30,6 @@ func Paths(location *lymcwd.Location) orchengine.Paths {
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
-		HubRulesPath:     filepath.Join(fabricengine.BoltDir(location.HubPath), RulesRel()),
-		OwnRulesPath:     filepath.Join(location.AnchorPath(), RulesRel()),
 		PrimeRoot:        location.WorktreePath(),
 
 		RetiredNoticeLogPath: filepath.Join(dotLym, "notices.log"),

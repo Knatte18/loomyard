@@ -157,7 +157,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
 				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
 				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
-				// Every Claude session launched in a hub appends the claude-prompt passages heddle stores.
+				// Every Claude session launched in a hub appends the passages heddle stores for its engine and role, an orch session's orch-prompt ones included.
 				shuttleengine.InstallPassageReader(heddleengine.Renderer{}.Passages)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
