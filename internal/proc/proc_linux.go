@@ -28,6 +28,17 @@ func IsAlive(pid int) bool {
 	return process.Signal(syscall.Signal(0)) == nil
 }
 
+// IsRunning reports whether the process identified by pid is alive and not a zombie.
+// A process that exited but was not yet reaped by its parent still answers a signal, so IsAlive reads it as alive while IsRunning reads it as gone.
+// A live pid whose stat cannot be parsed counts as running.
+func IsRunning(pid int) bool {
+	if !IsAlive(pid) {
+		return false
+	}
+	fields, ok := statFieldsAfterName(pid)
+	return !ok || fields[0] != "Z"
+}
+
 // StartTime returns the start time of the process identified by pid, in the form Claude's session registry records as procStart:
 // field 22 of /proc/<pid>/stat (clock ticks since boot).
 // It reports false when the process does not exist or its stat cannot be parsed.

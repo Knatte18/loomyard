@@ -37,6 +37,41 @@ func TestStartTime(t *testing.T) {
 	}
 }
 
+func TestIsRunning(t *testing.T) {
+	t.Parallel()
+
+	child := exec.Command("sleep", "30")
+	if err := child.Start(); err != nil {
+		t.Fatalf("start sleep: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		_ = child.Wait()
+	})
+	childPID := child.Process.Pid
+
+	if !IsRunning(childPID) {
+		t.Errorf("IsRunning(live child %d) = false; want true", childPID)
+	}
+	// Pids above the kernel's pid_max (at most 2^22) never exist.
+	if IsRunning(1 << 30) {
+		t.Errorf("IsRunning(%d) = true; want false", 1<<30)
+	}
+
+	if err := SignalProcess(childPID, true); err != nil {
+		t.Fatalf("SignalProcess(child pid, true): %v", err)
+	}
+	// The signal is delivered asynchronously, so poll until the unwaited child reads as gone.
+	for deadline := time.Now().Add(5 * time.Second); IsRunning(childPID); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("IsRunning never read the killed, unreaped child %d as gone", childPID)
+		}
+	}
+	if !IsAlive(childPID) {
+		t.Errorf("IsAlive(unreaped child %d) = false; want true, as a zombie still answers a signal", childPID)
+	}
+}
+
 func TestProcessTreeReads(t *testing.T) {
 	t.Parallel()
 

@@ -50,6 +50,12 @@ func IsAlive(pid int) bool {
 	return err == nil
 }
 
+// IsRunning reports whether the process identified by pid is alive.
+// Windows has no zombie state to tell apart, so it answers as IsAlive does.
+func IsRunning(pid int) bool {
+	return IsAlive(pid)
+}
+
 // StartTime reports the start time as unreadable on Windows, which keeps the resume check failing closed there.
 func StartTime(pid int) (string, bool) {
 	return "", false

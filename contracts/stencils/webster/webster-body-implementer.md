@@ -40,7 +40,7 @@ For EACH card file listed above, in the order listed:
 Make exactly the changes the card describes, in exactly the targets its type labels name.
    A deviation is a change outside the batch's card targets as the scope guard counts them: a member target covers that member, a file target every member of that file, a package target every member of the files directly in its directory, and a rename is inside when either its old or its new name is a target.
    `**Uses:**` entries add no coverage, so a change to a member a card only reads is a deviation unless a target of some card in the batch covers it.
-   Two deviations are sanctioned, each within its bound: the guard-step fix in step 3, only in a file the guard step's failure names; and a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap.
+   Three deviations are sanctioned, each within its bound: the guard-step fix in step 3, only in a file the guard step's failure names; a fix to a failure the card caused, under the bounded self-fix section's two-pronged test and its attempt cap; and the retired-name sweep edit below, only to a hit that references a name the card retires.
    No other change outside the targets is made.
    The scope guard records every deviation, sanctioned ones included; you list, compare and report none, and a deviation alone never makes the report `FAILED`.
    The plan's glyph names are the contract: keep every name a card gives a symbol, and rename nothing the plan does not declare.
@@ -52,6 +52,12 @@ Make exactly the changes the card describes, in exactly the targets its type lab
 
    Locate them with one `lym quarry resolve <glyph>...` call over the card's target and `Uses:` glyphs: each answer gives the member's `file` and its `start` and `end` lines, so read those spans instead of grepping for them or reading whole files.
    Read every span it names in one message before the card's first edit, put the card's edits that do not depend on each other in one message, and run the card's gate, as step 3 lists it, after the card's last edit rather than after each edit.
+   A card that removes or renames a name, such as a symbol, file, config key or string literal, retires the old name: sweep for it before the card's first hand edit, after any rename tool run.
+   Grep the whole worktree for every retired name in one Bash call, test files, `testdata/` and other fixtures included, never only the card's targets or the non-test files.
+   For a symbol rename this is the same grep the rename paragraph above requires for zero references to the old name, widened to those files, so run one grep rather than two.
+   Read every hit's span in one message, then edit every hit in one message, so no stale reference is left for the gate to find one failure at a time.
+   An edit to a hit outside the card's targets is sanctioned only when the hit references a name the card retires, and stays limited to those references.
+   It is not a fix to a failure, so the attempt cap of the bounded self-fix section does not apply to it, and a hit that matches a retired string by accident, such as a generic literal, is left alone.
    A `plan:` handle names a member the card creates and does not resolve yet.
 3. Run each step of the card's gate from the list below, in order, each as its own foreground Bash call under the gate rule in your system prompt.
    A failure here is the card's own gate — fix it before moving on;

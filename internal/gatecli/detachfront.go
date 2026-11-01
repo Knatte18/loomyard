@@ -555,7 +555,7 @@ func (f *front) startOrJoin(ctx context.Context) (run detachRun, code int, done 
 	identity := f.treeIdentity()
 	current, found := f.currentRun()
 	if found {
-		if joinable(f.readJoinState(current, identity), time.Now(), proc.IsAlive, processReading) {
+		if joinable(f.readJoinState(current, identity), time.Now(), proc.IsRunning, processReading) {
 			if err := current.writeLease(f.deadline.Add(f.seams.grace)); err != nil {
 				logger.Warn("gate test: could not renew the joined run's lease", "dir", current.dir, "cause", err)
 			}
@@ -578,7 +578,7 @@ func endStrayLine(run detachRun) {
 		return
 	}
 	process, claimed := run.readProcessRecord()
-	if runnerLive(process, claimed, proc.IsAlive, processReading) {
+	if runnerLive(process, claimed, proc.IsRunning, processReading) {
 		return
 	}
 	tree, found := readRunFile[proc.TreeRecord](run.path(lineFile))
@@ -732,7 +732,7 @@ func (f *front) pruneOldRuns(keep detachRun) {
 		}
 		old := detachRun{dir: filepath.Join(f.keyDir, entry.Name())}
 		process, claimed := readRunFile[processRecord](old.path(processFile))
-		if runnerLive(process, claimed, proc.IsAlive, processReading) {
+		if runnerLive(process, claimed, proc.IsRunning, processReading) {
 			continue
 		}
 		if err := os.RemoveAll(old.dir); err != nil {

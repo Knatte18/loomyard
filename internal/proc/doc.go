@@ -9,6 +9,9 @@
 // ConfigureGroupTerminate makes it SIGTERM the group instead and SIGKILL it after a delay, and returns the awaitGone a caller runs after the command has been waited for, which returns once the group is empty or the SIGKILL is sent.
 // Windows has no process group to signal here, so both kill the command alone and report ErrNoProcessGroup.
 //
+// IsAlive reports whether a pid answers a signal, which a zombie still does;
+// IsRunning reports whether it is alive and not a zombie, so a process that exited but was not yet reaped counts as gone.
+//
 // TreeCPU samples the user plus system CPU time of a process and each of its descendants.
 // IsAncestor reports whether a pid is one of the calling process's ancestors.
 // ListProcesses lists every process with its start time, exe and cwd links and command line.
