@@ -283,6 +283,7 @@
 //
 // The prose of a cluster round is stencil text read at call time, never composed in Go.
 // The explore step's optional fork_reading marker renders the burler-fork-reading stencil in a fanned round only, so the handler's pre-read is the forks' inherited reading and a solo round's explore step renders the same bytes as without the marker.
+// That stencil has the handler gather its pre-read in a few waves of parallel calls, each wave one message, rather than one item a turn.
 // The review step's cluster_rules marker renders burler-cluster-solo for a solo round and burler-cluster-fan, filled with the round's lens list, for a fanned one;
 // the fanned part carries the spawn mechanics, the fork rules and the consolidation rules.
 //
