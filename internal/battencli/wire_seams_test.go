@@ -358,7 +358,7 @@ func TestWire_BattenStatusSeamsReadBattensOwnStatus(t *testing.T) {
 	}
 }
 
-// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam, the run notices' agent seam and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
+// TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree asserts the watched-marker seams, the stop-report seam, the run notices' agent and agent-end seams and the terminal window seam return an error, rather than reporting not held or not found, when the task worktree their files live in is absent.
 // The run notices read an absent task worktree's child as not found.
 func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -378,6 +378,9 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	notices := DobbyRunNotices(location, filepath.Join(location.HubPath, "pause.json"), time.Minute)
 	if runs, _, err := notices.Agents(context.Background(), "a-slug"); err == nil || runs != nil || !strings.Contains(err.Error(), "a-slug") {
 		t.Errorf("Agents() runs=%v, error=%v; want the absent-worktree refusal naming the slug", runs, err)
+	}
+	if ended, err := notices.NewestAgentEnd(context.Background(), "a-slug"); err == nil || !ended.IsZero() || !strings.Contains(err.Error(), "a-slug") {
+		t.Errorf("NewestAgentEnd() = %v, %v; want the absent-worktree refusal naming the slug", ended, err)
 	}
 	if _, found, err := notices.ReadChild("a-slug"); err != nil || found {
 		t.Errorf("ReadChild() found=%v, error=%v; want an absent task worktree's child not found", found, err)

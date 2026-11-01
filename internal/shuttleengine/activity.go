@@ -1,6 +1,6 @@
 // activity.go declares the provider-neutral reading of what a worktree's running shuttle runs have been doing:
 // when each last showed activity, and whether its newest turn end is an API error.
-// A caller that judges a run quiet, or stalled on an API error, reads it through ReadAgentActivity.
+// A caller that judges a run quiet, or stalled on an API error, reads it through ReadAgentActivity, and when the newest ended run ended through ReadNewestRunEnd.
 // Like ReadWaitMarker it reads files only, so any process may call it.
 
 package shuttleengine
@@ -119,6 +119,46 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 		readings = append(readings, reading)
 	}
 	return readings, nil
+}
+
+// ReadNewestRunEnd returns when the newest ended run under the run-directory root of anchorPath ended: the latest modification time of a run record whose outcome reads anything but running, since a run's finalize is its record's last write.
+// It lets a caller that finds no running run tell a session that has just ended, before its caller records the end, from a worktree whose agents have long been idle.
+// A directory that is not a run directory and a run with no record are skipped, and an undecodable record is skipped and logged once per episode.
+// It returns the zero time when no ended run is found, and no error for an absent root.
+func ReadNewestRunEnd(cfg Config, anchorPath string) (time.Time, error) {
+	root := runDirRoot(cfg, anchorPath)
+	entries, err := os.ReadDir(root)
+	if os.IsNotExist(err) {
+		return time.Time{}, nil
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	var newest time.Time
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		runDir := filepath.Join(root, entry.Name())
+		rs, found, err := loadRunState(runDir)
+		if err != nil {
+			unreadableFiles.Fail(runDir, "shuttle: skipping an unreadable run record", "runDir", runDir, "cause", err)
+			continue
+		}
+		unreadableFiles.Recover(runDir, "shuttle: run record readable again", "runDir", runDir)
+		if !found || rs.Outcome == runOutcomeRunning {
+			continue
+		}
+		// A run directory the orphan sweep removes between the read and the stat has no end to count.
+		info, err := os.Stat(filepath.Join(runDir, runStateFileName))
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(newest) {
+			newest = info.ModTime()
+		}
+	}
+	return newest, nil
 }
 
 // runIsLive reports whether rs names a run still waited on: it reads running and its recorded pid is alive.

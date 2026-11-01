@@ -72,7 +72,7 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 
 	// Both dobbies send the run notices, with the batten recipe's quiet window and the marker in the run's records directory.
 	for name, notices := range map[string]dobbyengine.RunNoticeDeps{"beam": beamDeps.RunNotices, "prime": primeDeps.RunNotices} {
-		if notices.ReadChild == nil || notices.DriverAlive == nil || notices.Agents == nil || notices.Pause == nil || notices.ReviveAPIError == nil || notices.MarkerPath == nil {
+		if notices.ReadChild == nil || notices.DriverAlive == nil || notices.Agents == nil || notices.NewestAgentEnd == nil || notices.Pause == nil || notices.ReviveAPIError == nil || notices.MarkerPath == nil {
 			t.Errorf("%s RunNotices = %+v; want every seam filled", name, notices)
 			continue
 		}

@@ -47,6 +47,13 @@ func DobbyRunNotices(prime *lymcwd.Location, pauseRecordPath string, quiet time.
 			}
 			return readAgentActivity(taskLocation)
 		},
+		NewestAgentEnd: func(_ context.Context, slug string) (time.Time, error) {
+			taskLocation, err := locate(slug)()
+			if err != nil {
+				return time.Time{}, err
+			}
+			return readNewestAgentEnd(taskLocation)
+		},
 		Pause: func(slug string) (pauserecord.Coverage, error) {
 			return pauserecord.ReadCoverage(pauseRecordPath, slug, time.Now())
 		},

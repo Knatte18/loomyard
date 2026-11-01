@@ -670,6 +670,15 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 	return runs, false, nil
 }
 
+// readNewestAgentEnd reads when the task worktree's newest ended shuttle run ended, through the shuttle config, zero when none has.
+func readNewestAgentEnd(taskLocation *lymcwd.Location) (time.Time, error) {
+	cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(taskLocation), "shuttle")
+	if err != nil {
+		return time.Time{}, err
+	}
+	return shuttleengine.ReadNewestRunEnd(cfg, taskLocation.AnchorPath())
+}
+
 // childAtWaitingRow reports whether the child's own status file reads running at a row of loomshed.OperatorWaitRows, which wait with no agent running.
 // The wait is live for as long as the status reads running at such a row.
 // An unreadable child status reads as no such wait, as an absent one does.

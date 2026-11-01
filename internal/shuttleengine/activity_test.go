@@ -441,6 +441,97 @@ func TestReadAgentActivity(t *testing.T) {
 	})
 }
 
+// TestReadNewestRunEnd covers the end-time reading over run directories written by the test.
+// It reads no liveness seam, so it runs in parallel.
+func TestReadNewestRunEnd(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	created := time.Date(2026, 11, 1, 11, 0, 0, 0, time.UTC)
+	type endedRun struct {
+		outcome   string
+		recordAt  time.Time
+		noRecord  bool
+		corrupted bool
+	}
+	tests := []struct {
+		name string
+		runs map[string]endedRun
+		want time.Time
+	}{
+		{
+			name: "NoRunReadsZero",
+		},
+		{
+			name: "OnlyARunningRunReadsZero",
+			runs: map[string]endedRun{"run-a": {outcome: runOutcomeRunning, recordAt: created.Add(time.Hour)}},
+		},
+		{
+			name: "TheNewestEndedRecordWins",
+			runs: map[string]endedRun{
+				"run-a": {outcome: "done", recordAt: created.Add(10 * time.Minute)},
+				"run-b": {outcome: "died", recordAt: created.Add(20 * time.Minute)},
+				"run-c": {outcome: runOutcomeStopped, recordAt: created.Add(15 * time.Minute)},
+			},
+			want: created.Add(20 * time.Minute),
+		},
+		{
+			name: "ANewerRunningRecordIsNoEnd",
+			runs: map[string]endedRun{
+				"run-a": {outcome: "done", recordAt: created.Add(10 * time.Minute)},
+				"run-b": {outcome: runOutcomeRunning, recordAt: created.Add(time.Hour)},
+			},
+			want: created.Add(10 * time.Minute),
+		},
+		{
+			name: "ADirectoryWithNoRecordOrAnUndecodableRecordIsSkipped",
+			runs: map[string]endedRun{
+				"run-a": {outcome: "done", recordAt: created.Add(10 * time.Minute)},
+				"run-b": {noRecord: true},
+				"run-c": {corrupted: true, recordAt: created.Add(time.Hour)},
+			},
+			want: created.Add(10 * time.Minute),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			for name, run := range tt.runs {
+				runDir := filepath.Join(root, name)
+				if err := os.MkdirAll(runDir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if run.noRecord {
+					continue
+				}
+				recordPath := filepath.Join(runDir, runStateFileName)
+				if run.corrupted {
+					if err := os.WriteFile(recordPath, []byte("{not json"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				} else if err := saveRunState(runDir, RunState{RunID: name, Outcome: run.outcome, CreatedAt: created.Format(time.RFC3339)}); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(recordPath, run.recordAt, run.recordAt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := ReadNewestRunEnd(Config{RunDir: root}, t.TempDir())
+			if err != nil || !got.Equal(tt.want) {
+				t.Errorf("ReadNewestRunEnd() = %v, %v; want %v, nil", got, err, tt.want)
+			}
+		})
+	}
+
+	t.Run("AnAbsentRootReadsZero", func(t *testing.T) {
+		t.Parallel()
+		got, err := ReadNewestRunEnd(Config{RunDir: filepath.Join(t.TempDir(), "missing")}, t.TempDir())
+		if err != nil || !got.IsZero() {
+			t.Errorf("ReadNewestRunEnd() = %v, %v; want the zero time, nil", got, err)
+		}
+	})
+}
+
 // writeActivityRun writes the run directory name under root: its run.json, its activity stamp when the run sets one, and its events file stamped with eventsWritten unless the run has none.
 func writeActivityRun(t *testing.T, root, name string, run activityRun, created, eventsWritten time.Time) {
 	t.Helper()

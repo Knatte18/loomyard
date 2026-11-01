@@ -103,6 +103,9 @@ type RunNoticeDeps struct {
 	DriverAlive func(ctx context.Context, slug string) (bool, error)
 	// Agents reads the child's agent runs, and whether a Go-side wait is live, such as a verify, a parent lock wait or a pull request's review.
 	Agents func(ctx context.Context, slug string) (runs []AgentRun, waitLive bool, err error)
+	// NewestAgentEnd reads when the child's newest ended agent run ended, zero when none has; it is read only when Agents reads no run.
+	// A nil NewestAgentEnd reads none.
+	NewestAgentEnd func(ctx context.Context, slug string) (time.Time, error)
 	// Pause reads the pause record's coverage of the slug, with its paused intervals.
 	Pause func(slug string) (pauserecord.Coverage, error)
 	// ReviveAPIError sends the revive line to the child's sessions stalled on an API error.
@@ -263,22 +266,34 @@ func (d *daemon) noticeCondition(ctx context.Context, now time.Time, slug string
 		return noticeFinding{}, activityStamp{}
 	}
 	d.noticeFailures.Recover(slug+"|agents", "dobbyengine: the child's agent activity reads again", "slug", slug)
-	return judgeAgents(now, slug, child, memory.Since, runs, waitLive, seams.Quiet, sleeps, pause.Intervals)
+	var newestEnd time.Time
+	if len(runs) == 0 && seams.NewestAgentEnd != nil {
+		newestEnd, err = seams.NewestAgentEnd(ctx, slug)
+		if err != nil {
+			d.noticeFailures.Fail(slug+"|agent-end", "dobbyengine: the child's ended agent runs are unreadable; no activity notice", "slug", slug, "error", err)
+			return noticeFinding{}, activityStamp{}
+		}
+		d.noticeFailures.Recover(slug+"|agent-end", "dobbyengine: the child's ended agent runs read again", "slug", slug)
+	}
+	return judgeAgents(now, slug, child, memory.Since, runs, newestEnd, waitLive, seams.Quiet, sleeps, pause.Intervals)
 }
 
 // judgeAgents returns the usage-limit, api-error or quiet finding of a running child with a live driver, and the newest agent activity.
 // With several runs read, usage-limit and api-error need any one and quiet needs every run idle.
-// With no run read, quiet falls back to the later of the child's newest history entry and the state episode's since.
+// With no run read, quiet falls back to the latest of the child's newest history entry, newestEnd, when its newest ended agent run ended, and the state episode's since,
+// so a session that has ended before its row writes the history entry is not read as idle since the row began.
 // Both idle clocks measure awake unpaused time: every recorded sleep and every paused interval after an activity is subtracted from the time since it, so a sleep or a pause can delay a notice and never raise one earlier.
-func judgeAgents(now time.Time, slug string, child ChildReading, since time.Time, runs []AgentRun, waitLive bool, quiet time.Duration, sleeps, paused []pauserecord.Interval) (noticeFinding, activityStamp) {
+func judgeAgents(now time.Time, slug string, child ChildReading, since time.Time, runs []AgentRun, newestEnd time.Time, waitLive bool, quiet time.Duration, sleeps, paused []pauserecord.Interval) (noticeFinding, activityStamp) {
 	awakeSince := func(at time.Time) time.Duration {
 		return pauserecord.AwakeSince(at, now, sleeps, paused)
 	}
 
 	if len(runs) == 0 {
 		newest := since
-		if child.NewestHistory.After(newest) {
-			newest = child.NewestHistory
+		for _, at := range []time.Time{child.NewestHistory, newestEnd} {
+			if at.After(newest) {
+				newest = at
+			}
 		}
 		stamp := activityStamp{nanos: newest.UnixNano(), known: true}
 		if idle := awakeSince(newest); quiet > 0 && !waitLive && idle >= quiet {

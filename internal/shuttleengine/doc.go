@@ -462,6 +462,7 @@
 // so a first turn spent in a fork reads active before it ends.
 // An engine without the capability, and a run with no turn end at all, are judged by the events file alone.
 // Like ReadWaitMarker it reads files only, so a process that runs no shuttle may call it.
+// ReadNewestRunEnd returns when the newest run whose record reads anything but running ended, its record's modification time, so a caller that reads no running run still counts a session that has just ended as activity; it reads files only too.
 //
 // Operator instructions carried over: every verified send into a run appends the text it types, as one JSON string line, to the run directory's sent-texts file before typing.
 // A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the turn start of the run's prompt, and without any text the sent-texts file holds.

@@ -1,8 +1,10 @@
-// dobbynotice_test.go pins what the run notices read of a child over a task worktree on disk: the mapping of its status file and respawn memory record into dobby's reading, and the held-lock reading of a child's driver.
+// dobbynotice_test.go pins what the run notices read of a child over a task worktree on disk: the mapping of its status file and respawn memory record into dobby's reading, the held-lock reading of a child's driver, and the end time of its newest ended shuttle run.
 
 package battencli
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +36,51 @@ func noticeTaskWorktree(t *testing.T, slug string) *lymcwd.Location {
 		t.Fatal(err)
 	}
 	return locationkit.Location(hub, "prime", ".")
+}
+
+// TestDobbyRunNotices_NewestAgentEndReadsOnlyTheTaskWorktreesEndedRuns asserts the end-time seam returns the latest end of the ended runs under the slug's task worktree.
+// It ignores a run still running there and an ended run of a sibling worktree, and returns the zero time when the task worktree has none.
+func TestDobbyRunNotices_NewestAgentEndReadsOnlyTheTaskWorktreesEndedRuns(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const slug = "run-a"
+	prime := noticeTaskWorktree(t, slug)
+	notices := DobbyRunNotices(prime, filepath.Join(prime.HubPath, "pause.json"), time.Minute)
+
+	if ended, err := notices.NewestAgentEnd(context.Background(), slug); err != nil || !ended.IsZero() {
+		t.Fatalf("NewestAgentEnd() = %v, %v with no run record; want the zero time, nil", ended, err)
+	}
+
+	writeRun := func(runsRoot, name, outcome string, modified time.Time) {
+		t.Helper()
+		dir := filepath.Join(runsRoot, name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		record := fmt.Sprintf(`{"runId":%q,"strandName":"hub:task:impl","outcome":%q,"pid":1,"createdAt":"2026-01-01T09:00:00Z"}`, name, outcome)
+		recordPath := filepath.Join(dir, "run.json")
+		if err := os.WriteFile(recordPath, []byte(record), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(recordPath, modified, modified); err != nil {
+			t.Fatal(err)
+		}
+	}
+	taskLocation, err := taskWorktreeLocator(prime, slug)()
+	if err != nil {
+		t.Fatalf("locate the task worktree: %v", err)
+	}
+	taskRuns := filepath.Join(taskLocation.AnchorPath(), ".lym", "shuttle")
+	siblingRuns := filepath.Join(prime.HubPath, "sibling", ".lym", "shuttle")
+	taskEnded := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	writeRun(taskRuns, "older", "stopped", taskEnded.Add(-time.Hour))
+	writeRun(taskRuns, "newest", "stopped", taskEnded)
+	writeRun(taskRuns, "live", "running", taskEnded.Add(time.Hour))
+	writeRun(siblingRuns, "elsewhere", "stopped", taskEnded.Add(2*time.Hour))
+
+	if ended, err := notices.NewestAgentEnd(context.Background(), slug); err != nil || !ended.Equal(taskEnded) {
+		t.Errorf("NewestAgentEnd() = %v, %v; want %v, nil, the newest ended run of the task worktree alone", ended, err, taskEnded)
+	}
 }
 
 func TestReadNoticeChild(t *testing.T) {

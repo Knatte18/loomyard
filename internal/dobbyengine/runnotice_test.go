@@ -26,9 +26,12 @@ type noticeFake struct {
 	runs         []AgentRun
 	waitLive     bool
 	agentsErr    error
-	pause        pauserecord.Coverage
-	marker       string
-	revives      int
+	// newestEnd and endErr are what NewestAgentEnd reports.
+	newestEnd time.Time
+	endErr    error
+	pause     pauserecord.Coverage
+	marker    string
+	revives   int
 }
 
 // newNoticeHarness returns a pass harness over one running run, task, whose child is running at Plan-Write with a live driver and no agent run, and the fake its notice seams read.
@@ -46,9 +49,10 @@ func newNoticeHarness(t *testing.T) (*passHarness, *noticeFake) {
 		Agents: func(context.Context, string) ([]AgentRun, bool, error) {
 			return f.runs, f.waitLive, f.agentsErr
 		},
-		Pause:      func(string) (pauserecord.Coverage, error) { return f.pause, nil },
-		MarkerPath: func(string) string { return f.marker },
-		Quiet:      45 * time.Minute,
+		NewestAgentEnd: func(context.Context, string) (time.Time, error) { return f.newestEnd, f.endErr },
+		Pause:          func(string) (pauserecord.Coverage, error) { return f.pause, nil },
+		MarkerPath:     func(string) string { return f.marker },
+		Quiet:          45 * time.Minute,
 	}
 	return h, f
 }
@@ -240,6 +244,48 @@ func TestRunNotice_Conditions(t *testing.T) {
 			act: func(h *passHarness, f *noticeFake) {
 				f.child.NewestHistory = start.Add(30 * time.Minute)
 				h.advance(60 * time.Minute)
+			},
+		},
+		{
+			name: "NoRunReadCountsAnAgentRunThatHasJustEnded",
+			act: func(h *passHarness, f *noticeFake) {
+				f.newestEnd = start.Add(74 * time.Minute)
+				h.advance(75 * time.Minute)
+			},
+		},
+		{
+			name: "NoRunReadFallsBackToTheNewestEndedAgentRun",
+			act: func(h *passHarness, f *noticeFake) {
+				f.child.NewestHistory = start.Add(10 * time.Minute)
+				f.newestEnd = start.Add(30 * time.Minute)
+				h.advance(75 * time.Minute)
+			},
+			want: []string{"running at Plan-Write; no agent activity readable for 45m10s"},
+		},
+		{
+			name: "ARunReadLeavesTheEndedAgentRunsUnread",
+			act: func(h *passHarness, f *noticeFake) {
+				f.runs = []AgentRun{{Producer: "t:task:impl", LastActivity: start}}
+				f.endErr = errors.New("run root unreadable")
+				h.advance(45 * time.Minute)
+			},
+			want: []string{"running at Plan-Write; agents idle for 45m10s"},
+		},
+		{
+			name: "ANilEndedAgentRunSeamFallsBackToTheNewestHistoryEntry",
+			act: func(h *passHarness, f *noticeFake) {
+				h.d.deps.RunNotices.NewestAgentEnd = nil
+				f.newestEnd = start.Add(74 * time.Minute)
+				f.child.NewestHistory = start.Add(30 * time.Minute)
+				h.advance(75 * time.Minute)
+			},
+			want: []string{"running at Plan-Write; no agent activity readable for 45m10s"},
+		},
+		{
+			name: "AnUnreadableEndedAgentRunSendsNothing",
+			act: func(h *passHarness, f *noticeFake) {
+				f.endErr = errors.New("run root unreadable")
+				h.advance(2 * time.Hour)
 			},
 		},
 		{
