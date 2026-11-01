@@ -1,0 +1,5 @@
+role	batching	sessions	turns	calls_per_turn	single_share	serial_strict	serial_class	serial_share	ctx_mean	ctx_peak	cost_usd	forks	fork_turns	fork_cost_usd	total_cost_usd	decision_record_bytes	plan_cards	plan_bytes	cost_per_size_kb
+discussion	before	5	51.20	1.16	0.70	18.80	22.60	0.37	111988.60	187928.60	3.14	7.00	28.40	1.87	5.00	25228.60	10.20	53032.20	0.14
+discussion	after	2	50.00	1.17	0.69	16.00	21.50	0.32	115014.00	197984.00	3.33	6.00	20.00	1.44	4.76	37878.00	18.00	85788.00	0.09
+plan	before	5	84.80	1.29	0.75	34.20	44.00	0.41	191707.60	300639.40	6.35	6.00	58.00	5.65	12.01	25228.60	10.20	53032.20	0.14
+plan	after	2	117.50	1.14	0.83	53.00	64.00	0.44	334209.00	499889.00	13.70	6.00	72.50	10.13	23.83	37878.00	18.00	85788.00	0.16

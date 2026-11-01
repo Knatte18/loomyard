@@ -1,0 +1,17 @@
+slug	role	batching	landed	turns	calls_per_turn	single_share	serial_strict	serial_class	serial_share	ctx_mean	ctx_peak	cost_usd	forks	fork_turns	fork_cost_usd	total_cost_usd	decision_record_bytes	plan_cards	plan_bytes	cost_per_size_kb
+creel-hook-post	discussion	before	yes	53	1.21	0.68	10	14	0.19	127938	217318	3.80	7	25	1.96	5.75	31315	18	80636	0.121
+dobby-and-adopt-hardening	discussion	before	yes	51	1.06	0.76	23	25	0.45	89960	155240	2.43	7	27	1.87	4.30	36071	15	73537	0.067
+landing-settles-in-place	discussion	before	yes	48	1.17	0.69	20	24	0.42	124364	194219	2.99	7	31	1.92	4.90	16811	4	27301	0.178
+review-setup-tuning	discussion	before	yes	47	1.19	0.66	16	21	0.34	103460	168487	2.77	7	31	1.56	4.33	15871	5	22386	0.175
+validator-checks	discussion	before	yes	57	1.16	0.72	25	29	0.44	114221	204379	3.70	7	28	2.02	5.72	26075	9	61301	0.142
+creel-agents	discussion	after	yes	43	1.21	0.63	11	18	0.26	116648	199575	3.14	6	18	1.44	4.58	28351	16	65845	0.111
+interactive-recipe	discussion	after	no	69	1.14	0.78	34	38	0.49	123203	231969	4.43	6	25	1.99	6.42	24611	12	68177	0.180
+run-verbs-shared	discussion	after	yes	57	1.14	0.75	21	25	0.37	113380	196393	3.51	6	22	1.43	4.94	47405	20	105731	0.074
+creel-hook-post	plan	before	yes	89	1.62	0.69	39	48	0.44	203174	335706	7.47	6	82	8.25	15.72	31315	18	80636	0.093
+dobby-and-adopt-hardening	plan	before	yes	101	1.40	0.79	33	49	0.33	210245	327303	7.95	6	73	7.99	15.94	36071	15	73537	0.108
+landing-settles-in-place	plan	before	yes	79	1.15	0.73	30	39	0.38	188977	286592	5.09	6	40	3.45	8.55	16811	4	27301	0.187
+review-setup-tuning	plan	before	yes	66	1.12	0.76	31	37	0.47	152178	235349	3.87	6	34	2.57	6.44	15871	5	22386	0.173
+validator-checks	plan	before	yes	89	1.18	0.78	38	47	0.43	203964	318247	7.37	6	61	6.01	13.38	26075	9	61301	0.120
+creel-agents	plan	after	yes	101	1.23	0.76	32	45	0.32	280252	423572	10.61	6	62	7.92	18.53	28351	16	65845	0.161
+interactive-recipe	plan	after	no	131	1.35	0.76	68	78	0.52	277954	466146	11.26	6	52	6.45	17.71	24611	12	68177	0.165
+run-verbs-shared	plan	after	yes	134	1.04	0.90	74	83	0.55	388166	576206	16.78	6	83	12.35	29.13	47405	20	105731	0.159
