@@ -125,9 +125,7 @@ type RemoveResult struct {
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
 // If force is false, both worktrees must be clean;
 // if force is true, uncommitted changes are forcefully removed.
-// It validates slug through the same validator Add uses (slug.go), so hub geometry — `_board`,
-// `_portals`, `_launchers`, `_lym`, `.lym`, and every weft sibling — can never be handed to a
-// teardown verb as if it were a pair.
+// It validates slug through the same validator Add uses (slug.go), so hub geometry — the Bolt checkout, `_portals`, `_launchers`, `_lym`, `.lym`, and every weft sibling — can never be handed to a teardown verb as if it were a pair.
 // It refuses the hub's prime worktree outright too: the prime is the warp repository itself, not a
 // pair this verb can tear down, and git's own refusal to remove a main working tree is not a
 // licence to delete the clone.
@@ -982,7 +980,7 @@ func refusePrimeSlug(l *lymcwd.Location, slug string) error {
 //
 // The narrow fallback is the whole point of this helper.
 // `git worktree remove` refuses a main working tree, a path that is not a worktree of this repo at all, and a worktree carrying state it will not discard;
-// treating every one of those refusals as licence to delete the directory turned an ordinary typo (`lym fabric remove <prime>`, `lym fabric remove _board`) into the loss of a whole git clone.
+// treating every one of those refusals as licence to delete the directory turned an ordinary typo (`lym fabric remove <prime>`, `lym fabric remove` naming the Bolt checkout) into the loss of a whole git clone.
 // A registered linked worktree is fabric's own pair member and nothing else, so deleting it after a git refusal is recoverable bookkeeping rather than data loss.
 //
 // The fallback is itself gated because it fires on ANY nonzero exit from `git worktree remove`, and

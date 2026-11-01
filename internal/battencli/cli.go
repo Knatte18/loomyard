@@ -334,7 +334,7 @@ processes and strands, leaves its board claim draft and removes its records, and
 
 Every verb runs from the hub's prime worktree and from any beam: they refuse when
 invoked from a task worktree that is not a beam, from the pair's fabric sibling, or
-from _board.
+from ` + fabricengine.BoltDirName + `.
 
 Example:
   lym batten run some-slug

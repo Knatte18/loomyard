@@ -102,10 +102,10 @@ func TestClassifyPaths(t *testing.T) {
 		{
 			name:         "routingNames_with_more_than_two_entries",
 			relPath:      ".",
-			routingNames: []string{"_lym", "_extra", "_board", "_launchers"},
-			files:        []string{"_board/entry.md", "_launchers/run.sh", "cmd/lym/main.go", "_extra/notes.md"},
+			routingNames: []string{"_lym", "_extra", BoltDirName, "_launchers"},
+			files:        []string{BoltDirName + "/entry.md", "_launchers/run.sh", "cmd/lym/main.go", "_extra/notes.md"},
 			wantWarp:     []string{"cmd/lym/main.go"},
-			wantWeft:     []string{"_board/entry.md", "_launchers/run.sh", "_extra/notes.md"},
+			wantWeft:     []string{BoltDirName + "/entry.md", "_launchers/run.sh", "_extra/notes.md"},
 		},
 		{
 			name:                "dotlym_path_lands_in_neither_weft_nor_warp",

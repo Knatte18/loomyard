@@ -127,9 +127,9 @@ var ErrNotAWarpWorktree = errors.New("fabricengine: not a warp worktree")
 // lymcwd resolves coordinates from cwd alone and has no way to tell fabric's own checkouts apart
 // from an ordinary worktree — that distinction is fabric vocabulary, which the Cwd Resolution
 // Invariant keeps out of lymcwd entirely. So standing in a weft sibling, or inside the operator-
-// convenience `_board` link fabric itself installs at every anchor, produces a Location that passes
+// convenience Bolt checkout link fabric itself installs at every anchor, produces a Location that passes
 // the cwd gate and then drives every verb against invented geometry: a `<slug>-weft-weft` sibling
-// that cannot exist, a `_board-weft` pair, a hub whose "warp worktrees" are the weft repo's own
+// that cannot exist, a weft sibling of the Bolt checkout itself, a hub whose "warp worktrees" are the weft repo's own
 // checkouts.
 // Refusing here is what keeps that from reaching a mutating verb.
 func RequireWarpWorktree(l *lymcwd.Location) error {
@@ -139,9 +139,9 @@ func RequireWarpWorktree(l *lymcwd.Location) error {
 		return fmt.Errorf("%w: %s is the records sibling of a pair, not a warp worktree; run lym from the paired warp worktree instead",
 			ErrNotAWarpWorktree, l.WorktreePath())
 	}
-	if name == BoardDirName {
+	if name == BoltDirName {
 		return fmt.Errorf("%w: %s is the hub's %s checkout, not a warp worktree; run lym from a warp worktree instead",
-			ErrNotAWarpWorktree, l.WorktreePath(), BoardDirName)
+			ErrNotAWarpWorktree, l.WorktreePath(), BoltDirName)
 	}
 	return nil
 }

@@ -525,7 +525,7 @@ func pauseCovered(l *lymcwd.Location) func(slug string) bool {
 func parentLockDeps(l *lymcwd.Location, runID, statusPath, statusLockPath string) landingshed.ParentLockDeps {
 	return landingshed.ParentLockDeps{
 		Store: &parentlock.Store{
-			Dir:     parentlock.Dir(fabricengine.BoardDir(l.HubPath)),
+			Dir:     parentlock.Dir(fabricengine.BoltDir(l.HubPath)),
 			Covered: pauseCovered(l),
 		},
 		Owner:    loopLockOwner(l, runID),

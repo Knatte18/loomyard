@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback tests absence-only discrimination: an _lym/ that exists but cannot be stat'd makes LoadOrTemplate return an error rather than falling back to the template.
@@ -32,7 +33,7 @@ func TestLoadOrTemplate_LymDirStatFailure_DoesNotFallback(t *testing.T) {
 		t.Fatalf("failed to chmod tmpDir: %v", err)
 	}
 
-	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: _board\n", nil))
+	resolved, err := configengine.LoadOrTemplate(configengine.Dirs{Anchor: tmpDir}, boardSpec("path: "+fabricengine.BoltDirName+"\n", nil))
 	if err == nil {
 		t.Fatalf("expected error for unstattable _lym/, got nil")
 	}

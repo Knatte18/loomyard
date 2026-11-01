@@ -28,7 +28,7 @@ A key meeting no category is `CategoryNone` and the local layer may hold it.
 - The open set is `configengine.MachineKeys`, the template keys classified `CategoryMachine`.
 - The layer applies only for a hub-wide module with a `machine` key, and only when the told `Dirs` carry both `Board` and `Anchor`.
   A hub-file check loads `Dirs{Board}` and so never stacks it.
-- Its file is `<BoardDir>/.lym/config/<module>.machine.yaml`, never tracked.
+- Its file is `<BoltDir>/.lym/config/<module>.machine.yaml`, never tracked.
 - No reconcile, `hubreconcile.Ensure` included, reads, rewrites or removes the file.
 
 ## Local files

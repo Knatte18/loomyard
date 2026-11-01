@@ -34,7 +34,7 @@
 //
 // Seeding contract: SeedConfig overrides one or more modules' config, writing into the anchor-joined
 // h.WeftBase and committing at the weft worktree root h.PrimeRecords().
-// SeedFabricConfig overrides the repo-wide fabric.yaml, writing into h.BoardDir() and committing
+// SeedFabricConfig overrides the repo-wide fabric.yaml, writing into the Bolt checkout and committing
 // through fabricengine.NewBolt, matching what CloneAndWire itself does after ReconcileHubWideAt.
 // Most former seeding sites need neither: fabriccli.CloneAndWire already ends in the hub walk.
 // A real hub therefore arrives with each per-worktree module's repo default committed on the board, and its prime carries only the per-worktree config files the records repository already held.

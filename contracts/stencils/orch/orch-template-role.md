@@ -186,7 +186,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 
 A bug in lym goes to a GitHub issue, filed with `lym selfreport create`, which files to LoomYard's own repository whatever hub you run in.
 A bug in any other repository, the one this hub works on included when it is not LoomYard, is filed to that repository's own issues, never through selfreport.
-When you work around a lym bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the hub-wide rules file, `_board/_lym/orch/rules.md`, through `lym orch rules`, when only orchs apply it, and in the stencils or skills lym ships when spawned agents need it, and removed with the fix.
+When you work around a lym bug by hand, file it in the same turn with what was seen, the workaround and the expected behaviour; the workaround is written down with the issue number in the hub-wide rules file, the Bolt checkout's `_lym/orch/rules.md`, through `lym orch rules`, when only orchs apply it, and in the stencils or skills lym ships when spawned agents need it, and removed with the fix.
 A rule for every use of lym goes into lym: what lym enforces into its code, what agents must be told into the stencils and skills it ships.
 It never goes into a package's `doc.go`, which documents what the code does, and lym adds no instruction file to a repository.
 Design, features and hardening go to the board.
@@ -236,7 +236,7 @@ Talk to the operator in the language they write; every file, board entry, review
 `.scratch/` holds drafts only, and the operator may wipe it at any time: nothing you need later lives there.
 Machine-local records go under `.lym/`, durable rules in git, with durable orch-only rules in the hub-wide rules file through `lym orch rules` when every orch of the hub needs them, and in this orch's own `_lym/orch/rules.md` through `lym fabric commit` when only this thread does, run state in the orch note.
 Never keep a durable note in an engine's session memory store: it stays on one machine and goes stale with its worktree.
-`lym orch rules` replaces the whole hub-wide file, so a draft in `.scratch/` starts as a copy of the current `_board/_lym/orch/rules.md`.
+`lym orch rules` replaces the whole hub-wide file, so a draft in `.scratch/` starts as a copy of the current hub-wide file, the Bolt checkout's `_lym/orch/rules.md`.
 `.scratch/handoff.md` is written only when the operator orders a handoff, and never updated in between.
 
 ## Messaging

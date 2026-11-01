@@ -34,6 +34,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
 	"github.com/Knatte18/loomyard/internal/gitexec"
+	"github.com/Knatte18/loomyard/internal/heddlecli"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/helpcli"
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/idecli"
@@ -48,6 +50,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedcli"
 	"github.com/Knatte18/loomyard/internal/shortcutcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
@@ -128,7 +131,7 @@ all modules are discoverable via "lym --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
-Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, help.
+Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, heddle, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lym --help.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -148,8 +151,14 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				orchcli.InstallPushNotifier(cmd.Context())
 				// lym beam start pauses a run another machine owns through tender, which imports orchcli.
 				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
-				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine.
-				fabricengine.InstallBoardReplay(boardengine.FabricReplay{})
+				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine's Bolt replayer.
+				fabricengine.RegisterBoltReplayer(boardengine.FabricReplay{})
+				// A worktree fabric makes or moves reaches heddle through the worktree seam, to render its files.
+				fabricengine.InstallWorktreeSeam(heddleengine.Seam{})
+				// A records replay merges heddle.json by entry through heddle's Bolt replayer.
+				fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
+				// Every Claude session launched in a hub appends the claude-prompt passages heddle stores.
+				shuttleengine.InstallPassageReader(heddleengine.Renderer{}.Passages)
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
@@ -188,6 +197,7 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 		quarrycli.Command(),
 		gatecli.Command(),
 		creelcli.Command(),
+		heddlecli.Command(),
 	)
 
 	// SetHelpCommand replaces cobra's built-in help command; InitDefaultHelpCmd adds it now, because cobra would add it only at execution and the tree walks read root.Commands() before that.

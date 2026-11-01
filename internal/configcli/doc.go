@@ -1,18 +1,18 @@
 // Package configcli is the `lym config` command: it edits or sets a module's configuration under `_lym/config/` and syncs fabric on success.
 //
-// A hub-wide module (`configreg.Module.HubWide`, named by the registry) is edited at `<BoardDir>/_lym/config/` instead, and its edit is committed in `_board` through `fabricengine.Bolt.CommitWritten` and pushed, where a per-worktree module syncs fabric.
+// A hub-wide module (`configreg.Module.HubWide`, named by the registry) is edited at the Bolt checkout's `_lym/config/` instead, and its edit is committed in the Bolt checkout through `fabricengine.Bolt.CommitWritten` and pushed, where a per-worktree module syncs fabric.
 // `--set` writes the hub file under the board write lock, validates it with the strict `configengine.Load` and restores the previous bytes when that fails.
 // An editor edit works on a staging copy under the worktree's `.lym`, so the editor never holds the lock;
-// only the copy into `_board`, its validation and its commit run under it, and the copy is refused when the hub file changed while the editor was open.
-// `--print` and `lym config menu` read a hub-wide module at the board dir too.
+// only the copy into the Bolt checkout, its validation and its commit run under it, and the copy is refused when the hub file changed while the editor was open.
+// `--print` and `lym config menu` read a hub-wide module in the Bolt checkout too.
 //
 // # Layers
 //
-// A module's config resolves through layers: the embedded template, the repo default under the board dir, the worktree's own file, an untracked machine override under the board dir's `.lym` and an untracked local override under the worktree's `.lym`.
+// A module's config resolves through layers: the embedded template, the repo default in the Bolt checkout, the worktree's own file, an untracked machine override under the Bolt checkout's `.lym` and an untracked local override under the worktree's `.lym`.
 // `--layer default|worktree|machine|local` selects the file a verb addresses; no flag selects the module's own file, the worktree file of a per-worktree module and the hub file of a hub-wide one.
-// `--layer default` writes `<BoardDir>/_lym/config/<module>.yaml` of any module through the board write path above, guard, lock, strict validation and commit included.
+// `--layer default` writes the Bolt checkout's `_lym/config/<module>.yaml` of any module through the board write path above, guard, lock, strict validation and commit included.
 // `--layer worktree` writes the worktree file and syncs fabric; the hub-wide module has none, so it is refused with `--layer default` from the prime and `--layer local` as the ways forward.
-// `--layer machine` addresses `configengine.MachineFile` of the board dir for a hub-wide module with `machine` keys (`configengine.MachineKeys`), a never-tracked file that bounds a resource every worktree of the hub on this machine shares.
+// `--layer machine` addresses `configengine.MachineFile` of the Bolt checkout for a hub-wide module with `machine` keys (`configengine.MachineKeys`), a never-tracked file that bounds a resource every worktree of the hub on this machine shares.
 // It passes the default layer's write guard below, never commits and runs no fabric sync, refuses a key the machine layer closes before writing anything, checks that the stack still loads over the prime's worktree and puts the file back when it does not.
 // It is refused on a per-worktree module, with `--layer local` as the way forward, and on a hub-wide module with no machine key, with `lym config <module>` from the prime as the way forward; both refusals touch no file.
 // `--layer local` writes `configengine.LocalFile` of the anchor, never commits and runs no fabric sync, and refuses a key the local layer closes (`configengine.ValidateLocal`), leaving the file as it was.
@@ -25,7 +25,7 @@
 // A write to the default or the machine layer, by `--set`, by an editor edit or through the menu, is refused from any worktree that is not the hub's prime and from a session whose `LYM_STRAND_NAME` parses as a name carrying a slug, wherever its worktree resolves.
 // The refusal names the way forward, the operator or the hub orch running the write from the prime, and leaves the file unchanged with no editor opened.
 // The hub orch's slug-free name and an unset name pass; a print, a worktree write and a local write never consult the guard.
-// The bound: it guards a mistaken write, not a determined agent, so a direct file write to the board dir's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
+// The bound: it guards a mistaken write, not a determined agent, so a direct file write to the Bolt checkout's config, an environment cleared without naming the variable, and an unset hidden behind a script still pass.
 //
 // With a module name, `lym config <module>` opens the file in the editor ($VISUAL, then $EDITOR, then `code --wait` when `code` is on PATH, then notepad on Windows or nano and then vi elsewhere) through `configengine.Edit`.
 // An editor result that is empty or whitespace-only aborts the edit and leaves the layer, or the hub file, unchanged: the report is `aborted: <path> unchanged`, with no commit and no sync.
@@ -64,7 +64,7 @@
 // A module with a template overlay picks its layer through a selector key only the base file may hold, so a hub worktree write picking a layer the base does not pick is refused, naming `--layer default` from the prime worktree.
 //
 // Every `--set` write, on any layer, and every hub-wide editor save is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
-// A board-dir write loads the board file alone, and any other write loads the worktree's stack.
+// A Bolt-checkout write loads the board file alone, and any other write loads the worktree's stack.
 // The refusal names the module and carries the loader's error, which names the key, so `--set 'plan=["opus[medium]", "sonnet[high]"]'` on loom's single-model `plan` key is refused rather than stored as a string.
 // The bound: the load also runs before the write, and a write is refused only when the load then fails with a different error, so a stack already failing to load, such as one with no base layer, still takes a write that leaves that failure as it was.
 // A refused hub-wide editor save keeps the staging copy and answers with its own way forward in place of the `--set` one: it names the loader's error, says the hub file is unchanged and names the staging copy's path.
@@ -78,15 +78,15 @@
 // A module that retires keys or floors a value declares a migration, which reconcile runs over its present file first;
 // the dry run lists each rewrite under the module's `migrated` key, and applying writes the migrated file, even when the reconcile itself adds, removes and drops nothing.
 // With no `--layer` it reconciles the worktree's own and local files.
-// `lym config reconcile --layer default` reconciles every file under `<BoardDir>/_lym/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
+// `lym config reconcile --layer default` reconciles every file under the Bolt checkout's `_lym/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
 // renamed keys are migrated, keys the template lacks are pruned, an absent file is seeded sparse, and each entry carries the `seed` it started from.
 // It never fills a base, and its dry run and apply list the one-time base strip under `stripped` as pending, which only the hub reconcile of a start verb performs;
 // the envelope then carries a top-level `base_strip` field saying so, and `--apply` writes no board marker.
-// `--apply` with it passes the default-layer write guard above, then under the board write lock runs a dry run, so a file that fails to parse or migrate leaves every file unwritten, then writes, commits the written files in `_board` and pushes.
-// A write that fails part-way is undone by restoring the board dir's config files.
+// `--apply` with it passes the default-layer write guard above, then under the board write lock runs a dry run, so a file that fails to parse or migrate leaves every file unwritten, then writes, commits the written files in the Bolt checkout and pushes.
+// A write that fails part-way is undone by restoring the Bolt checkout's config files.
 // A write that is made but not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
 // A dry run is never guarded.
 // A reconcile never reads or writes a machine file.
-// Any other `--layer` value is refused, and so is any reconcile whose worktree is the board dir itself, which would strip the hub's files as a sparse worktree layer;
+// Any other `--layer` value is refused, and so is any reconcile whose worktree is the Bolt checkout itself, which would strip the hub's files as a sparse worktree layer;
 // both refusals name the way forward.
 package configcli

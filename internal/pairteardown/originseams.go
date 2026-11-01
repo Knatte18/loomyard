@@ -61,7 +61,7 @@ func HubSeamOptions(prime *lymcwd.Location) SeamOptions {
 			if err != nil {
 				return false, fmt.Errorf("read the prime's branch: %w", err)
 			}
-			store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(prime.HubPath))}
+			store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
 			entries, err := store.List()
 			if err != nil {
 				return false, err

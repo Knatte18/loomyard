@@ -166,7 +166,7 @@ func TestAssertRecordMatchesDiff(t *testing.T) {
 		},
 		{
 			name:       "GitStateKind_CommitCreated_NoDiffPasses",
-			rec:        buildRecord(mutation(fabricengine.KindCommitCreated, "_board")),
+			rec:        buildRecord(mutation(fabricengine.KindCommitCreated, fabricengine.BoltDirName)),
 			unfiltered: nil,
 			wantFail:   false,
 		},

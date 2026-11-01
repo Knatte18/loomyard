@@ -1,5 +1,5 @@
-// bolt.go defines Bolt, the handle over the unpaired weft:main area (today consumed only by
-// _board): it names that area as a self-contained unit through Commit/CommitWritten/Push/Sync,
+// bolt.go defines Bolt, the handle over the unpaired weft:main area (today consumed only by the Bolt checkout).
+// It names that area as a self-contained unit through Commit/CommitWritten/Push/Sync,
 // so a caller outside this package never has to spell "weft" to reach it.
 
 package fabricengine
@@ -330,10 +330,10 @@ func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
 	}
 }
 
-// endedByOrigin reads which of the entries the local commits ahead of upstream change origin has ended, and the hub location the replay reads this machine's landing state through.
+// endedByOrigin reads which of the runs the local commits ahead of upstream change origin has ended, and the hub location the replay reads this machine's landing state through.
 // It returns no location and an empty set when none is ended, and when the hub's location cannot be resolved, since a doubt never sets aside this machine's own commits.
 func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []string) (*lymcwd.Location, EndedSet, error) {
-	slugs, created, err := localBoardEntries(repo, head, ahead)
+	slugs, created, err := localLedgerRuns(repo, head, ahead)
 	if err != nil || len(slugs) == 0 {
 		return nil, nil, err
 	}
@@ -341,9 +341,9 @@ func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []
 	if err != nil || len(ended) == 0 {
 		return nil, nil, err
 	}
-	location, err := hubLocationOfBoard(b.path)
+	location, err := hubLocationOfBolt(b.path)
 	if err != nil {
-		logger.Warn("fabricengine: the hub of the board could not be resolved, so no entry origin ended is set aside", "path", b.path, "error", err)
+		logger.Warn("fabricengine: the hub of the Bolt checkout could not be resolved, so no run origin ended is set aside", "path", b.path, "error", err)
 		return nil, nil, nil
 	}
 	return location, ended, nil
@@ -352,16 +352,16 @@ func (b *Bolt) endedByOrigin(repo *gitrepo.Repo, head, upstream string, ahead []
 // logReplay logs what a replay dropped, set aside or lost, naming each set-aside tag, so no caller repeats the text.
 func (b *Bolt) logReplay(outcome ReplayOutcome) {
 	if len(outcome.Dropped) > 0 {
-		logger.Info("fabricengine: dropped commits from the board", "path", b.path, "commits", strings.Join(outcome.Dropped, " "))
+		logger.Info("fabricengine: dropped commits from the Bolt checkout", "path", b.path, "commits", strings.Join(outcome.Dropped, " "))
 	}
 	for _, aside := range outcome.SetAside {
-		logger.Warn("fabricengine: a local board commit was set aside under a tag", "path", b.path, "commit", aside.Commit, "tag", aside.Tag)
+		logger.Warn("fabricengine: a local Bolt commit was set aside under a tag", "path", b.path, "commit", aside.Commit, "tag", aside.Tag)
 	}
 	for _, lost := range outcome.Lost {
-		logger.Warn("fabricengine: a local board value lost to origin's", "path", b.path, "entry", lost.Entry, "field", lost.Field, "value", lost.Local, "reason", lost.Reason)
+		logger.Warn("fabricengine: a local Bolt value lost to origin's", "path", b.path, "entry", lost.Entry, "field", lost.Field, "value", lost.Local, "reason", lost.Reason)
 	}
 	for _, refused := range outcome.Refused {
-		logger.Warn("fabricengine: a local board change was refused", "path", b.path, "entry", refused.Entry, "field", refused.Field, "reason", refused.Reason)
+		logger.Warn("fabricengine: a local Bolt change was refused", "path", b.path, "entry", refused.Entry, "field", refused.Field, "reason", refused.Reason)
 	}
 }
 

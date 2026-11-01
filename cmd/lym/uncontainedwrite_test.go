@@ -67,13 +67,13 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 	{Key: "internal/fabricengine/gitexclude.go", Why: "mutateGitExclude's os.MkdirAll(excludeDir) creates the git-owned .git/info directory " +
 		"resolved by git rev-parse --git-path info/exclude; the file replacement itself is a same-directory CreateTemp+Rename under " +
 		"a repo-wide flock, never a caller-derived path"},
-	{Key: "internal/fabricengine/clone.go", Why: "the hub scratch directory (<hub>/_board/.lym) is created in " +
-		"the _board worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, in this " +
+	{Key: "internal/fabricengine/clone.go", Why: "the hub scratch directory (in the Bolt checkout's .lym) is created in " +
+		"the Bolt checkout worktree containedWorktreeAdd just added, not the bare hub createExclusiveDir (os.Root) minted, in this " +
 		"same CloneHub call — race-only, not statically pre-plantable"},
-	{Key: "internal/fabricengine/codebinding.go", Why: "the code-side binding writer writes the code-side binding file into the _board records worktree fabric created via " +
+	{Key: "internal/fabricengine/codebinding.go", Why: "the code-side binding writer writes the code-side binding file into the Bolt checkout records worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto the records main branch by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path"},
-	{Key: "internal/fabricengine/shortnamebinding.go", Why: "WriteShortname writes .lym-shortname into the _board records worktree fabric created via " +
+	{Key: "internal/fabricengine/shortnamebinding.go", Why: "WriteShortname writes .lym-shortname into the Bolt checkout records worktree fabric created via " +
 		"containedWorktreeAdd; it is committed onto the records main branch by the caller, and the board directory is fabric-owned, never a " +
 		"caller-derived slug path"},
 	{Key: "internal/fabricengine/recordsgit.go", Why: "the lock-directory helper's os.MkdirAll creates the lock directory inside the records worktree " +

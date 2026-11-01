@@ -128,8 +128,8 @@ func TestCloneHub_DerivesWarpFromBinding(t *testing.T) {
 	if res.Anchor != "." {
 		t.Errorf("res.Anchor = %q; want %q", res.Anchor, ".")
 	}
-	if filepath.Base(res.BoardDir) != "_board" {
-		t.Errorf("res.BoardDir = %q; want it to end in _board", res.BoardDir)
+	if filepath.Base(res.BoardDir) != fabricengine.BoltDirName {
+		t.Errorf("res.BoardDir = %q; want it to end in %s", res.BoardDir, fabricengine.BoltDirName)
 	}
 	if res.WeftBase == "" {
 		t.Errorf("res.WeftBase is empty; want a resolved weft-side base directory")

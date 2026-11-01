@@ -5,11 +5,11 @@
 //
 // # Stamp, lock and key
 //
-// The build stamp is <BoardDir>/.lym/config/build-stamp.json and the hub lock <BoardDir>/.lym/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
+// The build stamp is the Bolt checkout's .lym/config/build-stamp.json and the hub lock its .lym/config/reconcile.lock, both in the never-tracked mirror of the hub-wide config dir.
 // The stamp holds a build key, the hex SHA-256 of the binary's VCS revision, its modified flag and the config registry's fingerprint, with the revision and the flag in readable form for the log.
 // A stamp naming the running key makes Ensure return after one file read, one stat per per-worktree module and one for the board marker, with no lock and no git; an absent or unreadable stamp counts as stale.
-// A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent under the board dir, so a default deleted after a walk is reseeded by the next start verb.
-// It counts as stale as well while the board marker `<BoardDir>/_lym/config/base-sparse` is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
+// A stamp naming the running key also counts as stale when any per-worktree module's repo default is absent in the Bolt checkout, so a default deleted after a walk is reseeded by the next start verb.
+// It counts as stale as well while the board marker `_lym/config/base-sparse` in the Bolt checkout is absent, so a board not yet stripped to sparse base files is walked, and a marker removed by hand with a board commit makes the next start verb's walk strip the base files again.
 // The lock wait defaults to DefaultLockWait and is an Options field; a lock still held when it runs out returns *LockTimeoutError and touches nothing.
 // The holder's own per-worktree commits wait on each pair's write lock as a plain commit does, unbounded.
 //

@@ -331,8 +331,8 @@ func TestInstallNetworkGate_TellsThePairsSlugAndInstallsNothingOutsideAHub(t *te
 	if ops, err := pauserecord.ListNetOps(sentinel.RecordPath, allAlive); err != nil || len(ops) != 1 || ops[0].Op != "left-in-flight" {
 		t.Fatalf("operations under the sentinel gate = %+v, %v; want the one left in flight, since nothing was installed outside a hub", ops, err)
 	}
-	if _, err := os.Stat(filepath.Join(agentWorktrees, "_board")); !os.IsNotExist(err) {
-		t.Errorf("Stat(agent worktree's sibling _board) error = %v; want it absent", err)
+	if _, err := os.Stat(filepath.Join(agentWorktrees, fabricengine.BoltDirName)); !os.IsNotExist(err) {
+		t.Errorf("Stat(agent worktree's sibling Bolt checkout) error = %v; want it absent", err)
 	}
 
 	InstallNetworkGate(lymcwd.WithCwd(t.Context(), h.PairCodeWorktree(pairSlug)), nil, DetachedChild{})

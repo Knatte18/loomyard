@@ -86,7 +86,7 @@ func TestAddRollback_RefusesJunctionRemovalOutsideItsWorktree(t *testing.T) {
 
 	const slug = "gap1-rollback-owner"
 	// hubforge.NewHub's CloneAndWire already checks the weft primary out on its suffixed branch and
-	// materializes a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read
+	// materializes a real Bolt checkout worktree the gate's ownedManagedBranch/primaryWeftBranch read
 	// succeeds against, so only the escape-specific pathspec override is seeded here.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	hubforge.SeedFabricConfig(t, h, escapeFabricConfigYAML("../gap1-rollback-escape"))

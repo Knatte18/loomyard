@@ -116,7 +116,7 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   ├── <prime>-<records>/            (records Prime worktree; git repo root)
   ├── <slug>/                       (additional code worktree; git repo root)
   ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
-  ├── _board/                       (records main-branch worktree; holds board.json)
+  ├── _board/                       (the Bolt checkout, records main-branch worktree; holds board.json)
   │     └── .lym/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
   └── _launchers/<anchor>/          (anchor-mirrored)
@@ -140,7 +140,7 @@ This separation keeps code commits focused on project code and delegates lym inf
 | `_lym/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lym config reconcile`; a module resolves key by key through a layer stack, see [internal/configengine](../internal/configengine/doc.go) |
 | `.env` | Records worktree | Records | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_lym/raddle/` | Records worktree | Records | Raddle documentation (the raddle nav-doc overlay), reached through the `_lym` junction like every other `_lym` subtree |
-| `_board/` | Hub | Board | A second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
+| `_board/` | Hub | Board | The Bolt checkout, a second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
 | Source | Code worktree | Code | Project source code |
 
 ### Durable vs ephemeral state (`_lym/` vs `.lym/`)
@@ -169,8 +169,8 @@ Worktrees are wired eagerly at `lym fabric clone`/`lym fabric add` time — ther
 The wired junction set is not hardcoded,
 and it is not purely the repo-wide `pathspec` list either: it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets — `_lym` and `.lym` — are injected in code, never read from `fabric.yaml`;
-only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoardDir>/_lym/config/fabric.yaml` (read from the records main branch, via `fabricengine.BoardDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board`, `_portals`, `_launchers` — that can never be a per-worktree junction).
-`board.yaml` is hub-wide like it: read and written at `<BoardDir>/_lym/config/board.yaml` and never in a worktree's `_lym/config/`.
+only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoltDir>/_lym/config/fabric.yaml` (read from the records main branch in the Bolt checkout, via `fabricengine.BoltDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board` (the Bolt checkout), `_portals`, `_launchers` — that can never be a per-worktree junction).
+`board.yaml` is hub-wide like it: read and written at `<BoltDir>/_lym/config/board.yaml` and never in a worktree's `_lym/config/`.
 A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.
 Because the pathspec is repo-wide, `lym fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
 and no-op'ing one already correct — rather than each worktree carrying its own drift-prone copy. `lymcwd` itself stays config-blind;
@@ -179,7 +179,7 @@ This produces the two concrete junctions this repo ships with today, both placed
 - `<anchor>/_lym` → `<hub>/<slug>-<records>/<anchor>/_lym` (config junction, structural)
 - `<anchor>/.lym` → `<hub>/<slug>-<records>/<anchor>/.lym` (machine-local scratch junction, structural)
 
-[PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that forbids re-adding a junction into `<hub>/_board`: no hub-level container is ever junctioned into a worktree.
+[PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that forbids re-adding a junction into the Bolt checkout (`<hub>/_board`): no hub-level container is ever junctioned into a worktree.
 
 The optional `pathspec` default is empty today.
 A future records-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lymcwd` code change needed — but that mechanism now applies to *optional* directories only;
@@ -367,13 +367,13 @@ User-facing modules each get one `lym <module>` namespace:
   ✅ Implemented.
 - **config** — bare `lym config` lists modules and verbs, `lym config menu` picks a module to edit interactively, and `lym config <module>` edits that module's config;
   `lym config reconcile` reconciles all module config files against their live templates (dry-run by default, `--apply` writes atomically) except seed-only modules (today: `models`), which are materialized once when absent and never rewritten again since the file is operator-owned;
-  `lym config reconcile --layer default` seeds absent board files sparse, prunes but never fills a present one, and lists the one-time base strip as pending, which only a start verb's hub reconcile performs; with `--apply`, run from the prime, it commits them in `_board`;
+  `lym config reconcile --layer default` seeds absent board files sparse, prunes but never fills a present one, and lists the one-time base strip as pending, which only a start verb's hub reconcile performs; with `--apply`, run from the prime, it commits them in the Bolt checkout;
   `lym config <module> --set key=value` (repeatable) writes one or more config values directly with no editor invocation, for scripts/agents that need a non-interactive path.
   A key under a module's declared open map adds or rewrites one entry, e.g. `lym config board --set labels.quarry="glyphs and the quarry index"`.
   A key that takes one value or a per-round list, such as loom's `reviewer_model` and tapestry's `plan_reviewer_model`, is written as a list when its value starts with `[`, e.g. `lym config tapestry --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`, and a bracketed value that is not a list of scalars is refused.
   Every `--set` write is then loaded through the module's own loader, and a value it refuses, such as a list given to loom's single-model `plan`, is refused naming the key with the file left as it was.
-  A module resolves key by key through the embedded template, the repo default at `<BoardDir>/_lym/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lym/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
-  A hub-wide module's machine keys, such as gate's `slots` and `tier_parallel`, also take a never-tracked machine override at `<BoardDir>/.lym/config/<module>.machine.yaml`, written from the prime beside the local override.
+  A module resolves key by key through the embedded template, the repo default at `<BoltDir>/_lym/config/<module>.yaml`, the worktree's sparse file and the untracked local override at `<anchor>/.lym/config/<module>.local.yaml`; see [internal/configengine](../internal/configengine/doc.go).
+  A hub-wide module's machine keys, such as gate's `slots` and `tier_parallel`, also take a never-tracked machine override at `<BoltDir>/.lym/config/<module>.machine.yaml`, written from the prime beside the local override.
   `lym config --layer default|worktree|machine|local` picks the layer a verb addresses, and `lym config <module> --resolved` prints the merged result with each unit annotated by its layer.
   A board task's `run_settings` reach the pair's local layer at batten's Seed-Child, bounded by `configreg`'s `LocalKeys` and `LocalDenied`.
   A task's `profile` names a run profile in the hub-wide, seed-only `profiles.yaml`, whose block for the task's recipe Seed-Child writes under the task's `run_settings`, and a task naming none takes its recipe's default profile;

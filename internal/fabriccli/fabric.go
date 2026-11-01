@@ -63,7 +63,7 @@ Example:
 		Short:       "bootstrap a new hub, wiring the entire topology in one shot",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `clone creates a new hub directory, <warp-name>-LYMHUB, holding the warp
-prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the _board worktree,
+prime (<warp-name>), the weft prime (<warp-name>` + weftname.Suffix + `) and the ` + fabricengine.BoltDirName + ` worktree,
 and wires the junctions and configs; no follow-up step is needed.
 
 Reach for it to start working on a repository pair on this machine, or with
@@ -305,7 +305,7 @@ has run.
 
 It also heals every hub-wide config file, such as fabric.yaml or gate.yaml, at
 the hub's board dir: an absent board.yaml is seeded from the prime worktree's copy
-when it has one, and the written files are committed in _board and pushed. The
+when it has one, and the written files are committed in ` + fabricengine.BoltDirName + ` and pushed. The
 board is pulled first; when it cannot be brought up to date nothing is written
 and the reason is reported under hub_config_detail without failing the verb.
 The envelope reports each module under hub_config, a commit or push failure of
@@ -487,7 +487,7 @@ func RunCLIIn(cwd string, out io.Writer, args []string) int {
 // cwd otherwise — into the acting Location, refusing any cwd that resolves onto something other
 // than a warp worktree.
 //
-// Every topology verb goes through it rather than calling lymcwd.Resolve directly, because lymcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a weft sibling, or inside the hub's own `_board` worktree, otherwise resolves cleanly and drives the verb against geometry that does not exist.
+// Every topology verb goes through it rather than calling lymcwd.Resolve directly, because lymcwd cannot make that distinction itself (see fabricengine.RequireWarpWorktree): a cwd inside a weft sibling, or inside the hub's own Bolt checkout, otherwise resolves cleanly and drives the verb against geometry that does not exist.
 // It returns cwd alongside the Location for the verbs that pass cwd straight to a git invocation.
 func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, err error) {
 	cwd, err = lymcwd.CwdFrom(ctx)
@@ -702,8 +702,8 @@ func runPairs(ctx context.Context, out io.Writer, _ []string) int {
 // previously committed-but-unpushed record is retried on every subsequent reconcile. Either step
 // failing downgrades the reported outcome to WarpBindingOutcomeRecordFailed — a CLI-only value
 // Topology.Reconcile itself never returns — and fails the verb with the envelope kept, as does a commit or push failure of the hub-wide config.
-// A heal skipped because the board could not be brought up to date is reported under hub_config_detail and is no failure.
-// The verdict on the hub-wide anchor marker, when the board holds one, is reported under bolt_anchor.
+// A heal skipped because the Bolt checkout could not be brought up to date is reported under hub_config_detail and is no failure.
+// The verdict on the hub-wide anchor marker, when the Bolt checkout holds one, is reported under bolt_anchor.
 // A pair failure takes precedence over these as the error the verb returns.
 func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
@@ -725,7 +725,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	// without this, the "run \"lym fabric reconcile\"" remedy of a strict config loader was circular when reconcile itself emitted it.
 	// ReconcileHubWideAt seeds absent hub files sparse, prunes keys the template lacks and never rewrites a recorded pathspec; it strips no present base file.
 	// A PrimeName failure means no prime is resolvable, not an error: the seed falls back to the template.
-	boardDir := fabricengine.BoardDir(l.HubPath)
+	boltDir := fabricengine.BoltDir(l.HubPath)
 	primeBaseDir := ""
 	if primeName, primeErr := fabricengine.PrimeName(l); primeErr == nil {
 		primeLoc, err := lymcwd.NamedWorktree(l.HubPath, primeName)
@@ -735,17 +735,17 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		primeBaseDir = filepath.Join(l.HubPath, primeName, primeLoc.AnchorRel)
 	}
 
-	// The board is pulled first, and the files are written and committed in _board under the board write lock.
+	// The Bolt checkout is pulled first, and the files are written and committed there under the board write lock.
 	// A skipped heal writes nothing and is reported under hub_config_detail without failing the verb.
 	// A commit or push failure leaves the file for the next board sync and fails the verb once the envelope is built.
 	var hubWideResults []configsync.Result
 	var reconcileErr error
 	var firstFailure error
-	hubConfigBolt := fabricengine.NewBolt(boardDir)
+	hubConfigBolt := fabricengine.NewBolt(boltDir)
 	healed, commitErr := hubConfigBolt.PullThenCommitWritten([]fabricengine.BoltWrite{{
 		Message: "fabric reconcile: hub-wide config",
 		Write: func() ([]string, error) {
-			results, err := configsync.ReconcileHubWideAt(boardDir, primeBaseDir, configsync.HubWideOptions{Apply: true})
+			results, err := configsync.ReconcileHubWideAt(boltDir, primeBaseDir, configsync.HubWideOptions{Apply: true})
 			if err != nil {
 				reconcileErr = err
 				return nil, err
@@ -776,13 +776,13 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		return errWithRecord(out, rec.Snapshot(), commitErr)
 	case commitErr != nil:
 		hubConfigDetail = commitErr.Error()
-		firstFailure = hubConfigFailure(hubConfigDetail, commitErr, boardDir)
+		firstFailure = hubConfigFailure(hubConfigDetail, commitErr, boltDir)
 	case healed.Skipped != "":
 		hubConfigDetail = healed.SkipDetail
 	default:
 		if pushErr := hubConfigBolt.PushRecorded(fabricengine.SyncOptions{}, rec); pushErr != nil {
 			hubConfigDetail = fmt.Sprintf("hub-wide config committed but push failed: %v", pushErr)
-			firstFailure = hubConfigFailure(hubConfigDetail, pushErr, boardDir)
+			firstFailure = hubConfigFailure(hubConfigDetail, pushErr, boltDir)
 		}
 	}
 
@@ -794,7 +794,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		if module.HubWide && len(module.OpenMaps) > 0 && result.Seed == configsync.SeedTemplate {
 			warnings = append(warnings, fmt.Sprintf(
 				"%s: the prime held no copy, so custom types and labels were not carried; add them by editing that file",
-				configengine.ConfigFile(boardDir, result.Module),
+				configengine.ConfigFile(boltDir, result.Module),
 			))
 		}
 	}
@@ -822,7 +822,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 	detail := r.WarpBindingDetail
 
 	if binding == fabricengine.WarpBindingOutcomeRecorded || binding == fabricengine.WarpBindingOutcomePresent {
-		b := fabricengine.NewBolt(fabricengine.BoardDir(l.HubPath))
+		b := fabricengine.NewBolt(fabricengine.BoltDir(l.HubPath))
 
 		if binding == fabricengine.WarpBindingOutcomeRecorded {
 			sha, committed, commitErr := b.Commit("fabric reconcile: record warp binding", fabricengine.SyncOptions{})
@@ -830,10 +830,10 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 				binding = fabricengine.WarpBindingOutcomeRecordFailed
 				detail = commitErr.Error()
 				if firstFailure == nil {
-					firstFailure = warpBindingFailure(detail, commitErr, fabricengine.BoardDir(l.HubPath))
+					firstFailure = warpBindingFailure(detail, commitErr, fabricengine.BoltDir(l.HubPath))
 				}
 			} else if committed {
-				rec.Append(fabricengine.KindCommitCreated, fabricengine.BoardDir(l.HubPath), sha)
+				rec.Append(fabricengine.KindCommitCreated, fabricengine.BoltDir(l.HubPath), sha)
 			}
 		}
 
@@ -845,10 +845,10 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 		// Bolt's push checks HasUnpushed (a purely local
 		// rev-list) and returns nil without contacting the remote when HEAD is already in sync, so
 		// this costs nothing when there is nothing to push. Caveat: HasUnpushed treats *no configured
-		// upstream* as unpushed, so a board worktree with no upstream attempts a network push on
-		// every reconcile. That is the adopt path's non-case — a board on an already-existing default
+		// upstream* as unpushed, so a Bolt checkout with no upstream attempts a network push on
+		// every reconcile. That is the adopt path's non-case — a Bolt checkout on an already-existing default
 		// branch carries its upstream from the initial clone — but it IS the steady state for a hub
-		// bootstrapped against a genuinely empty weft remote, whose board branch is orphan-created
+		// bootstrapped against a genuinely empty weft remote, whose Bolt checkout branch is orphan-created
 		// with no upstream at all. The attempt is harmless: it either succeeds or yields
 		// record_failed with the error in the detail.
 		//
@@ -866,7 +866,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 					detail = fmt.Sprintf("commit succeeded but push failed: %v", pushErr)
 				}
 				if firstFailure == nil {
-					firstFailure = warpBindingFailure(detail, pushErr, fabricengine.BoardDir(l.HubPath))
+					firstFailure = warpBindingFailure(detail, pushErr, fabricengine.BoltDir(l.HubPath))
 				}
 			}
 		}

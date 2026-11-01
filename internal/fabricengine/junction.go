@@ -110,9 +110,15 @@ func WireJunctionsWith(rec *Mutations, l *lymcwd.Location, slug string, names []
 	return nil
 }
 
-// wireJunctionSet creates the warp junctions for names, seeds the weft-side exclude and appends the junction names to the warp git-exclude.
+// wireJunctionSet creates the warp junctions for names, seeds the weft-side exclude, appends the junction names to the warp git-exclude and seeds the warp exclude list.
+// It loads the fabric config first, so a load failure fails the wiring before anything is written.
 // It records every change into rec.
 func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []string) error {
+	cfg, err := LoadConfig(ConfigDirs(l))
+	if err != nil {
+		return fmt.Errorf("load fabric config for wiring %s: %w", slug, err)
+	}
+
 	// Create or verify warp junctions
 	if err := seedLymJunction(rec, l, slug, names); err != nil {
 		return err
@@ -135,7 +141,11 @@ func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []st
 	}
 
 	// Append junction names to git-exclude
-	return seedGitExclude(rec, l, slug, names)
+	if err := seedGitExclude(rec, l, slug, names); err != nil {
+		return err
+	}
+
+	return seedWarpExcludeLines(rec, WorktreePath(l, slug), cfg.WarpExcludePaths())
 }
 
 // WireJunctions is WireJunctionsWith's nil-recorder delegation, kept only because roughly fifty

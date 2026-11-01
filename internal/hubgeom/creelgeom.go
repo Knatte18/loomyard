@@ -16,10 +16,10 @@ import (
 // It takes the temp root path rather than opening the root, so its caller owns the lymtemp root.
 // A hub with no recorded shortname is an error naming the shortname record and the hub.
 func CreelGeometry(hubPath, tempRoot string) (creelengine.Geometry, error) {
-	boardDir := fabricengine.BoardDir(hubPath)
-	shortname, found := fabricengine.ReadShortname(boardDir)
+	boltDir := fabricengine.BoltDir(hubPath)
+	shortname, found := fabricengine.ReadShortname(boltDir)
 	if !found {
-		return creelengine.Geometry{}, fmt.Errorf("hub %q has no usable shortname record %s", hubPath, filepath.Join(boardDir, fabricengine.ShortnameFileName))
+		return creelengine.Geometry{}, fmt.Errorf("hub %q has no usable shortname record %s", hubPath, filepath.Join(boltDir, fabricengine.ShortnameFileName))
 	}
 	stateDir := filepath.Join(fabricengine.HubScratchDir(hubPath), lymdirs.CreelDirName)
 	return creelengine.Geometry{

@@ -4,7 +4,7 @@
 // A record holds the pid, the process group when the process leads it, the start time, the role (`RoleDriver`, `RoleLoop`, `RoleBatten`, `RolePush`, `RoleSync`, `RoleDobby`, `RoleCapture` or `RoleSession`), the command line and the registration time.
 // Register writes `<dir>/<owner>/<pid>-<start time>.json` through `internal/state`, so a key the record does not declare survives a rewrite by an older binary.
 // The package is told its directory and derives no path.
-// `HubOwner` is `_board`, a name the fabric slug check refuses as reserved hub geometry, so no slug can take it.
+// `HubOwner` is the Bolt checkout's directory name, which the fabric slug check refuses as reserved hub geometry, so no slug can take it.
 //
 // No process removes its own record.
 // List prunes on read: it drops every record whose pid is dead or now carries another start time, with its lock file, and skips a file that does not decode.
@@ -25,5 +25,5 @@
 //
 // On Windows no start time can be read and no group can be signalled, so End, EndSparing, EndRole and EndProcess signal nothing.
 //
-// The package imports the standard library, `internal/proc`, `internal/state` and `internal/logger` only.
+// The package imports the standard library, `internal/proc`, `internal/state`, `internal/logger` and `internal/lymcwd` only.
 package runproc

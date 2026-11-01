@@ -67,6 +67,9 @@ type PullResult struct {
 	// NewWarpHEAD via its Warp-SHA trailer. Populated only when Reconciled is
 	// true.
 	ReanchorWeftSHA string
+	// SeamWarning is the warning text of a failed worktree event fired for the commits warp took in, empty when none failed or no seam is installed.
+	// The pull itself is unaffected: a seam failure never fails it.
+	SeamWarning string
 }
 
 // PartialPullError reports a Fabric.Pull call whose warp-side work did not complete — mirroring
@@ -500,10 +503,11 @@ func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 	}, nil
 }
 
-// weftEndedByOrigin reads which of the runs the local weft commits ahead touch origin has ended, from the board's origin tip as last fetched.
-// It returns an empty set for a hub with no board or a board with no upstream, and reads no network.
+// weftEndedByOrigin reads which of the runs the local weft commits ahead touch origin has ended, from the Bolt checkout's origin tip as last fetched.
+// It returns an empty set for a hub with no Bolt checkout or one with no upstream, and reads no network.
+// It returns ErrReplayerMissing when a local commit touches a run and no run ledger is registered.
 func (f *Fabric) weftEndedByOrigin(l *lymcwd.Location, ahead []string) (EndedSet, error) {
-	boardDir := filepath.Join(l.HubPath, BoardDirName)
+	boardDir := filepath.Join(l.HubPath, BoltDirName)
 	if _, err := os.Stat(boardDir); err != nil {
 		return nil, nil
 	}
@@ -533,7 +537,7 @@ func (f *Fabric) weftEndedByOrigin(l *lymcwd.Location, ahead []string) (EndedSet
 		return nil, nil
 	}
 
-	replay, err := InstalledBoardReplay()
+	ledger, _, err := runLedger()
 	if err != nil {
 		return nil, err
 	}
@@ -541,18 +545,14 @@ func (f *Fabric) weftEndedByOrigin(l *lymcwd.Location, ahead []string) (EndedSet
 	if err != nil {
 		return nil, err
 	}
-	data, err := blobAt(boardRepo, head, boardFileName)
+	runs, err := ledgerRunsAt(boardRepo, ledger, head)
 	if err != nil {
-		return nil, err
-	}
-	entries, err := replay.Entries(data)
-	if err != nil {
-		return nil, fmt.Errorf("%s at %s: %w", boardFileName, head, err)
+		return nil, fmt.Errorf("%s at %s: %w", ledger.File(), head, err)
 	}
 	created := map[string]string{}
-	for _, entry := range entries {
-		if slices.Contains(slugs, entry.Slug) && !entry.Created.IsZero() {
-			created[entry.Slug] = entry.Created.UTC().Format(time.RFC3339)
+	for _, run := range runs {
+		if slices.Contains(slugs, run.Slug) && !run.Created.IsZero() {
+			created[run.Slug] = run.Created.UTC().Format(time.RFC3339)
 		}
 	}
 	return readEndedSet(boardDir, boltTip, slugs, created)
@@ -622,6 +622,7 @@ func (f *Fabric) pullWarpArm(rec *Mutations, result *PullResult) error {
 		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
 		result.NewWarpHEAD = upstreamSHA
+		result.SeamWarning = f.fireTookIn(localHEAD, upstreamSHA)
 		return nil
 	}
 
@@ -721,6 +722,7 @@ func (f *Fabric) reanchorAfterRewrite(rec *Mutations, result *PullResult, localH
 		f.recordWarpAdvance(rec, localHEAD)
 		result.WarpAdvanced = true
 		result.NewWarpHEAD = upstreamSHA
+		result.SeamWarning = f.fireTookIn(localHEAD, upstreamSHA)
 		return nil
 	}
 
@@ -742,6 +744,7 @@ func (f *Fabric) reanchorAfterRewrite(rec *Mutations, result *PullResult, localH
 	result.NewWarpHEAD = upstreamSHA
 	result.AnchorWarpSHA = anchor.WarpSHA
 	result.AnchorWeftSHA = anchor.WeftSHA
+	result.SeamWarning = f.fireTookIn(localHEAD, upstreamSHA)
 
 	lockDir, err := f.ensureWeftLockDir()
 	if err != nil {

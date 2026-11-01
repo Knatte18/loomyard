@@ -1,7 +1,7 @@
 //go:build tier0
 
 // leaf_enforcement_test.go enforces the Runproc Leaf Invariant.
-// Production code in internal/runproc imports only the standard library, internal/proc, internal/state and internal/logger.
+// Production code in internal/runproc imports only the standard library, internal/proc, internal/state, internal/logger and internal/lymcwd.
 
 package runproc
 
@@ -11,9 +11,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 )
 
-// allowedImports admits the process primitives, the tolerant record writer and the logger the leaf uses.
+// allowedImports admits the process primitives, the tolerant record writer, the logger and the Bolt directory name the leaf uses.
 var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/logger",
+	"github.com/Knatte18/loomyard/internal/lymcwd",
 	"github.com/Knatte18/loomyard/internal/proc",
 	"github.com/Knatte18/loomyard/internal/state",
 }

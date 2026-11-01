@@ -8,13 +8,15 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 func TestBuildWorkspace(t *testing.T) {
 	t.Parallel()
 
-	folders := []WorkspaceFolder{{Name: "prime", Path: "../prime"}, {Name: "board", Path: "../_board"}}
-	const head = "{\n  \"folders\": [\n    {\n      \"name\": \"prime\",\n      \"path\": \"../prime\"\n    },\n    {\n      \"name\": \"board\",\n      \"path\": \"../_board\"\n    }\n  ],\n  \"settings\": "
+	folders := []WorkspaceFolder{{Name: "prime", Path: "../prime"}, {Name: "board", Path: "../" + lymcwd.BoltDirName}}
+	const head = "{\n  \"folders\": [\n    {\n      \"name\": \"prime\",\n      \"path\": \"../prime\"\n    },\n    {\n      \"name\": \"board\",\n      \"path\": \"../" + lymcwd.BoltDirName + "\"\n    }\n  ],\n  \"settings\": "
 
 	escapedFolders := []WorkspaceFolder{{Name: `a"b`, Path: `c\d`}}
 	const escapedHead = "{\n  \"folders\": [\n    {\n      \"name\": \"a\\\"b\",\n      \"path\": \"c\\\\d\"\n    }\n  ],\n  \"settings\": "

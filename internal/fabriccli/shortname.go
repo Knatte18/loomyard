@@ -15,15 +15,15 @@ import (
 
 // runShortname executes the fabric shortname subcommand.
 // With no argument it prints the recorded shortname; with one it validates it and records it when the hub has none.
-// The hub's shortname is repo-wide, so the verb reads and writes the board root, reached from any worktree of the hub.
+// The hub's shortname is repo-wide, so the verb reads and writes the Bolt checkout, reached from any worktree of the hub.
 func runShortname(ctx context.Context, out io.Writer, args []string) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
 		return output.Err(out, err.Error())
 	}
-	boardDir := fabricengine.BoardDir(l.HubPath)
-	recorded, found := fabricengine.ReadShortname(boardDir)
+	boltDir := fabricengine.BoltDir(l.HubPath)
+	recorded, found := fabricengine.ReadShortname(boltDir)
 
 	if len(args) == 0 {
 		if !found {
@@ -50,7 +50,7 @@ func runShortname(ctx context.Context, out io.Writer, args []string) int {
 		return errWithRecord(out, rec.Snapshot(), err)
 	}
 	// The push records no branch_pushed entry, for the reason CloneAndWire spells out, but a seed-commit drop behind it is recorded in rec.
-	if err := fabricengine.NewBolt(boardDir).PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
+	if err := fabricengine.NewBolt(boltDir).PushRecorded(fabricengine.SyncOptions{}, rec); err != nil {
 		return errWithRecord(out, rec.Snapshot(), err)
 	}
 	return okWithRecord(out, rec.Snapshot(), map[string]any{"shortname": shortname})

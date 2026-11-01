@@ -679,6 +679,13 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
+	// The pair is complete, so the worktree seam hears of it last; a seam failure is logged by the call and never fails the add.
+	if pair, locateErr := lymcwd.ResolveWorktree(target); locateErr != nil {
+		logger.Warn("fabricengine: locating the new worktree for the worktree seam failed (non-fatal)", "verb", "add", "slug", slug, "error", locateErr)
+	} else {
+		NotifyWorktreeMade(pair)
+	}
+
 	return AddResult{
 		Slug:             slug,
 		Branch:           warpBranch,

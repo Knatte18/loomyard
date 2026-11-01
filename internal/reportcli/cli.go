@@ -187,15 +187,15 @@ func primeGeometry(location *lymcwd.Location) (reportengine.Geometry, error) {
 	if err != nil {
 		return reportengine.Geometry{}, err
 	}
-	boardRepo := fabricengine.BoardDir(location.HubPath)
-	boardBranch, err := gitrepo.New(boardRepo).CurrentBranch()
+	boltRepo := fabricengine.BoltDir(location.HubPath)
+	boardBranch, err := gitrepo.New(boltRepo).CurrentBranch()
 	if err != nil {
 		return reportengine.Geometry{}, fmt.Errorf("report: read the board's branch: %w", err)
 	}
 	return reportengine.Geometry{
 		CodeRepo:      codeRepo,
 		RecordsRepo:   recordsRepo,
-		BoardRepo:     boardRepo,
+		BoardRepo:     boltRepo,
 		ParentBranch:  parentBranch,
 		RecordsBranch: fabricengine.RecordsBranchName(parentBranch),
 		BoardBranch:   boardBranch,

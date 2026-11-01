@@ -1,5 +1,5 @@
 <!-- This is the darn writer's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/darn/
+     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/darn/`
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that darnengine's DarnTable builds, then hands it to
      shuttle as the writer's whole prompt.
      Every marker below is a top-level {{.X}} substitution;

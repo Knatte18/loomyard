@@ -6,8 +6,7 @@
 // junction missing on disk (already-existing add-missing behavior) AND
 // removing an on-disk junction absent from the repo-wide set
 // (applyStaleRemoval, new this batch) — with a fail-closed guard when the
-// repo-wide config cannot be loaded, and hub-reserved names (_board,
-// _portals, _launchers) permanently excluded from the sweep.
+// repo-wide config cannot be loaded, and hub-reserved names (the Bolt checkout, _portals, _launchers) permanently excluded from the sweep.
 //
 // It also proves the repo-wide-base regression: the sites card 7 migrated to
 // RepoWiredNames (Healthy, Topology.Checkout, Topology.Remove, and
@@ -354,8 +353,8 @@ func TestReconcile_NeverRemovesReservedHubName(t *testing.T) {
 	// the warp worktree root — never wired via WireJunctions (which never
 	// takes a reserved name), matching how a hub-reserved passenger like
 	// _portals would actually appear on disk. _raddle is no longer reserved
-	// (card 19), so _portals stands in as the still-reserved exemplar; _board
-	// itself is unusable here because Add already wires a real per-worktree
+	// (card 19), so _portals stands in as the still-reserved exemplar;
+	// the Bolt checkout itself is unusable here because Add already wires a real per-worktree
 	// board junction at this same path (see junction.go), which would collide
 	// with a hand-seeded link of the same name.
 	reservedLink := filepath.Join(warpLayout.WorktreePath(), warpLayout.AnchorRel, "_portals")

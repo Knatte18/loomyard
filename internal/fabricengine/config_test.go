@@ -112,29 +112,34 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("a local pathspec is refused naming the local file and the key", func(t *testing.T) {
-		board, anchor := t.TempDir(), t.TempDir()
-		for _, dir := range []string{configengine.ConfigDir(board), configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
-			if err := os.MkdirAll(dir, 0755); err != nil {
-				t.Fatalf("failed to create %s: %v", dir, err)
+	for _, tt := range []struct{ key, line string }{
+		{"pathspec", "pathspec: docs\n"},
+		{"warp_exclude", "warp_exclude: x\n"},
+	} {
+		t.Run("a local "+tt.key+" is refused naming the local file and the key", func(t *testing.T) {
+			board, anchor := t.TempDir(), t.TempDir()
+			for _, dir := range []string{configengine.ConfigDir(board), configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatalf("failed to create %s: %v", dir, err)
+				}
 			}
-		}
-		if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte(fabricengine.ConfigTemplate()), 0644); err != nil {
-			t.Fatalf("failed to write config: %v", err)
-		}
-		localPath := configengine.LocalFile(anchor, "fabric")
-		if err := os.WriteFile(localPath, []byte("pathspec: docs\n"), 0644); err != nil {
-			t.Fatalf("failed to write local config: %v", err)
-		}
+			if err := os.WriteFile(configengine.ConfigFile(board, "fabric"), []byte(fabricengine.ConfigTemplate()), 0644); err != nil {
+				t.Fatalf("failed to write config: %v", err)
+			}
+			localPath := configengine.LocalFile(anchor, "fabric")
+			if err := os.WriteFile(localPath, []byte(tt.line), 0644); err != nil {
+				t.Fatalf("failed to write local config: %v", err)
+			}
 
-		_, err := fabricengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
-		if !errors.Is(err, configengine.ErrInvalid) {
-			t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
-		}
-		for _, want := range []string{localPath, "pathspec"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+			_, err := fabricengine.LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+			if !errors.Is(err, configengine.ErrInvalid) {
+				t.Fatalf("LoadConfig() error = %v; want ErrInvalid", err)
 			}
-		}
-	})
+			for _, want := range []string{localPath, tt.key} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("LoadConfig() error = %q; want it to contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
 }

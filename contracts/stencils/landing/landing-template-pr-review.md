@@ -1,6 +1,6 @@
 <!-- This is the PR-Review session's entire instruction set. It is shipped as an embedded
      default in the top-level stencils package (stencils/stencils.go), seeded to
-     <hub>/_board/_lym/stencils/landing/, and read from there at call time through internal/stencilstore,
+     the Bolt checkout's `_lym/stencils/landing/`, and read from there at call time through internal/stencilstore,
      which landingshed's PR-Review row fills and hands to shuttle as the session's first prompt, for the tapestry, darn, pawl and sampler recipes alike.
      Every marker below is a top-level {{.X}} substitution and stencil.FillWith requires every marker non-empty:
      slug, pr_url, task_worktree, task_branch, parent_branch, description_path, run_material (the paths the run has among the decision record and the plan directory, one per line),

@@ -262,7 +262,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		aside := filepath.Join(t.TempDir(), "board")
 		if err := os.Rename(h.BoardDir(), aside); err != nil {
-			t.Fatalf("move _board aside: %v", err)
+			t.Fatalf("move the Bolt checkout aside: %v", err)
 		}
 		t.Cleanup(func() { _ = os.Rename(aside, h.BoardDir()) })
 
@@ -270,7 +270,7 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 
 		assertFolders(t, h, path, primeBranch(t, h))
 		if _, err := os.Lstat(h.BoardDir()); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("_board exists after the call (stat err = %v); want absent", err)
+			t.Errorf("the Bolt checkout exists after the call (stat err = %v); want absent", err)
 		}
 	})
 

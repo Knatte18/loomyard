@@ -318,7 +318,7 @@ var SeedFabricConfigForTest = seedFabricConfig
 
 // seedFabricConfig materializes the repo-wide fabric.yaml Fabric.Commit's classify step now reads via RepoWiredNames — the `weft:main` base at BoardDir(Hub) — so its resolved pathspec is what Fabric.Commit's classifier needs.
 // warpPath is a bare t.TempDir() plain-git checkout (newPlainWarpRepo or a sibling unborn-warp fixture, not a real hub tree), so lymcwd.ResolveWorktree(warpPath)'s HubPath — warpPath's parent directory — stands in for the hub;
-// _board is not itself a git repository, so the file is written directly with no git add/commit step.
+// The Bolt checkout is not itself a git repository, so the file is written directly with no git add/commit step.
 func seedFabricConfig(t *testing.T, warpPath string) {
 	t.Helper()
 
@@ -792,6 +792,13 @@ func ReplayBoltForTest(l *lymcwd.Location, boardDir string, ended map[string]str
 		return ReplayOutcome{}, err
 	}
 	return replayBolt(NewMutations(l.HubPath), l, boardDir, upstream, EndedSet(ended))
+}
+
+// WithoutBoltReplayersForTest empties the registry of Bolt replayers and returns the function that puts back the set it held.
+// It changes process-global state, so the calling test must not be parallel.
+func WithoutBoltReplayersForTest() (restore func()) {
+	previous := boltReplayerSet.Swap(&[]BoltReplayer{})
+	return func() { boltReplayerSet.Store(previous) }
 }
 
 // ReadEndedSetForTest re-exports readEndedSet with its result as a plain map.

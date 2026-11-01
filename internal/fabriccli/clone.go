@@ -109,6 +109,8 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 	if err := fabricengine.WireJunctionsWith(rec, l, filepath.Base(l.WorktreePath()), names); err != nil {
 		return fabricengine.CloneResult{}, err
 	}
+	// The prime is wired, its exclude lines seeded and the Bolt checkout present; a seam failure is logged by the call and never fails the clone.
+	fabricengine.NotifyWorktreeMade(l)
 
 	// .lym is excluded through the warp's .git/info/exclude by WireJunctions above,
 	// not through a tracked .gitignore entry in the user's own repo: a committed

@@ -88,18 +88,20 @@ func PathspecNames(dirs configengine.Dirs) ([]string, error) {
 // the literal a second time.
 const BoardWriteLockFile = "board.lock"
 
-// BoardWriteLockPath returns the absolute path to the board write lock file inside hub.
+// BoardWriteLockPath returns the absolute path to the Bolt write lock file inside hub.
 func BoardWriteLockPath(hub string) string {
-	return filepath.Join(BoardDir(hub), BoardWriteLockFile)
+	return filepath.Join(BoltDir(hub), BoardWriteLockFile)
 }
 
-// BoardDirName is the name of the board data directory inside the hub (i.e. <hub>/_board).
-// It is the single exported source of this literal;
-// use BoardDir(hub) to obtain the full path.
-// internal/lymcwd retains a private second declarer (boardDirName in anchor.go) purely to find the
-// recorded- anchor marker;
-// see that const's comment for why the duplication is sanctioned rather than a leak.
-const BoardDirName = "_board"
+// BoltDirName is the name of the Bolt checkout inside a hub, re-exported from lymcwd.
+// It is the name every package outside lymcwd and runproc uses;
+// use BoltDir(hub) to obtain the full path.
+const BoltDirName = lymcwd.BoltDirName
+
+// BoardDirName is the name of the directory holding the board's own data inside the hub.
+// It is set from BoltDirName, since the board lives in the Bolt checkout.
+// Use BoardDir(hub) to obtain the full path.
+const BoardDirName = BoltDirName
 
 // HubSuffix is the suffix appended to a repo name to form the hub container directory (e.g.
 // "loomyard" → "loomyard-LYMHUB").
@@ -107,68 +109,74 @@ const BoardDirName = "_board"
 // internal/lymcwd keeps its own private copy because Location.RepoName derives from it.
 const HubSuffix = "-LYMHUB"
 
-// BoardDir returns the absolute path to the board data directory inside hub.
+// BoltDir returns the absolute path to the Bolt checkout inside hub.
+func BoltDir(hub string) string {
+	return filepath.Join(hub, BoltDirName)
+}
+
+// BoardDir returns the absolute path to the board's own data (board.json, its overview and design files) inside hub.
+// Everything else the Bolt checkout holds lives under BoltDir.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)
 }
 
 // ConfigDirs returns the told geometry of a layered config load for the location:
-// its anchor, and the hub's board dir when that exists as a directory.
-// A git checkout that is not a hub has no board dir, so it gets Board empty and loads the standalone stack.
+// its anchor, and the hub's Bolt checkout when that exists as a directory.
+// A git checkout that is not a hub has no Bolt checkout, so it gets Board empty and loads the standalone stack.
 // A stat failure other than absence is treated as absence and logged, since a loader then degrades or refuses on its own base-layer rule.
 func ConfigDirs(l *lymcwd.Location) configengine.Dirs {
 	dirs := configengine.Dirs{Anchor: l.AnchorPath()}
-	board := BoardDir(l.HubPath)
+	board := BoltDir(l.HubPath)
 	info, err := os.Stat(board)
 	switch {
 	case err == nil && info.IsDir():
 		dirs.Board = board
 	case err != nil && !os.IsNotExist(err):
-		logger.Warn("fabricengine: board dir not statable, loading the standalone config stack", "path", board, "error", err)
+		logger.Warn("fabricengine: Bolt checkout not statable, loading the standalone config stack", "path", board, "error", err)
 	}
 	return dirs
 }
 
-// stencilsDirName is the name of the stencils directory nested under BoardDir's `_lym` component.
+// stencilsDirName is the name of the stencils directory nested under the Bolt checkout's `_lym` component.
 // It is unexported because "stencils" is not a policed geometry token — it needs no
-// geometryTokenOwners row, unlike BoardDirName or lymdirs.LymDirName.
+// geometryTokenOwners row, unlike BoltDirName or lymdirs.LymDirName.
 const stencilsDirName = "stencils"
 
-// StencilsDir returns the hub-wide stencils directory shared by every worktree in the hub: <hub>/_board/_lym/stencils.
-// internal/stencilstore receives this value as its baseDir and never joins `_board` or `_lym` itself — see the told-never-derives Shared Decision.
+// StencilsDir returns the hub-wide stencils directory shared by every worktree in the hub, under the Bolt checkout's `_lym`.
+// internal/stencilstore receives this value as its baseDir and never joins the Bolt directory name or `_lym` itself — see the told-never-derives Shared Decision.
 func StencilsDir(hub string) string {
-	return filepath.Join(BoardDir(hub), lymdirs.LymDirName, stencilsDirName)
+	return filepath.Join(BoltDir(hub), lymdirs.LymDirName, stencilsDirName)
 }
 
-// specsDirName is the name of the deployed-specs directory nested under BoardDir's `_lym` component.
+// specsDirName is the name of the deployed-specs directory nested under the Bolt checkout's `_lym` component.
 // It is unexported because "specs" is not a policed geometry token — it needs no
-// geometryTokenOwners row, unlike BoardDirName or lymdirs.LymDirName.
+// geometryTokenOwners row, unlike BoltDirName or lymdirs.LymDirName.
 const specsDirName = "specs"
 
-// SpecsDir returns the hub-wide deployed-specs directory shared by every worktree in the hub: <hub>/_board/_lym/specs.
+// SpecsDir returns the hub-wide deployed-specs directory shared by every worktree in the hub, under the Bolt checkout's `_lym`.
 // internal/stencilstore receives this value as its baseDir and never joins the intermediate components itself.
 // It deliberately mirrors StencilsDir — the two are siblings under the same `_lym` tree, one holding producer prompts, the other the normative docs those prompts point at.
 func SpecsDir(hub string) string {
-	return filepath.Join(BoardDir(hub), lymdirs.LymDirName, specsDirName)
+	return filepath.Join(BoltDir(hub), lymdirs.LymDirName, specsDirName)
 }
 
 // HubScratchDir returns the hub-wide, machine-local scratch tree shared by every worktree in the hub:
-// <hub>/_board/.lym.
-// It is the ephemeral sibling of StencilsDir's durable <hub>/_board/_lym tree, is always a real
+// the Bolt checkout's `.lym`.
+// It is the ephemeral sibling of StencilsDir's durable `_lym` tree in the Bolt checkout, is always a real
 // directory and never a junction, and is the sole constructor of this path — see StencilsDir's own
 // told-never-derives comment for the pattern this follows.
 func HubScratchDir(hub string) string {
-	return filepath.Join(BoardDir(hub), lymdirs.DotLymDirName)
+	return filepath.Join(BoltDir(hub), lymdirs.DotLymDirName)
 }
 
 // AdoptScratchDir returns the directory that holds the adopt check's record, output and lock beside the log of the test suite an adopt starts:
-// <hub>/_board/.lym/adopt.
+// the Bolt checkout's `.lym/adopt`.
 func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)
 }
 
 // HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its
-// runtime log: <hub>/_board/.lym/logs.
+// runtime log: `logs` in the Bolt checkout's `.lym`.
 // It is hub-anchored so one server per hub resolves to one deterministic place, and it lives
 // beside HubScratchDir so the derivation is named once here rather than re-joined at each caller.
 func HubLogsDir(hub string) string {
@@ -176,7 +184,7 @@ func HubLogsDir(hub string) string {
 }
 
 // LogArchiveDir returns the hub-level directory where a torn-down pair's logs are archived and pruned:
-// <hub>/_board/.lym/log-archive.
+// `log-archive` in the Bolt checkout's `.lym`.
 // The pair teardown's copy and its prune both resolve the root through it.
 // It is never tracked, so it lives beside HubLogsDir under HubScratchDir.
 func LogArchiveDir(hub string) string {
@@ -184,7 +192,7 @@ func LogArchiveDir(hub string) string {
 }
 
 // RunProcDir returns the hub-level directory holding the owner record of the processes a run starts:
-// <hub>/_board/.lym/runproc.
+// `runproc` in the Bolt checkout's `.lym`.
 // It is handed to internal/runproc, which derives no path of its own, and is never tracked.
 func RunProcDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.RunProcDirName)
@@ -197,7 +205,7 @@ func HubPath(parent, name string) string {
 }
 
 // HubReservedNames returns the junction-wiring block set: the hub-structural names that must never
-// wire a per-worktree junction, _board, _portals, _launchers.
+// wire a per-worktree junction: the Bolt checkout, `_portals` and `_launchers`.
 // `_portals` is retired but stays reserved.
 // It is consumed by filterHubReserved and by scanOnDiskJunctionNames, and its exact current value
 // and role are unchanged by this batch's structural-directory work — neither call site's behaviour
@@ -211,7 +219,7 @@ func HubPath(parent, name string) string {
 // The junctionNames parameter IsReservedHubName takes folds in whatever a repo's pathspec names —
 // which is nothing by default now that template.yaml's pathspec is empty.
 func HubReservedNames() []string {
-	return []string{BoardDirName, portalsDirName, launchersDirName}
+	return []string{BoltDirName, portalsDirName, launchersDirName}
 }
 
 // IsReservedHubName reports whether name is one of the hub-level entry names a worktree slug must never claim: HubReservedNames() UNION structuralCommittedDirs UNION structuralNeverCommittedDirs UNION the caller-supplied junctionNames (the weft-backed junction name-set injected from fabric config).
@@ -241,12 +249,8 @@ func IsReservedHubName(name string, junctionNames []string) bool {
 	return false
 }
 
-// filterHubReserved drops every name in names that is also present in
-// HubReservedNames(), preserving the input order of the
-// remaining names. This is the wiring guard: a hub-structural name
-// (_board, _portals, _launchers) mis-added to fabric.yaml's
-// pathspec must never wire a per-worktree junction that would collide with
-// the hub-level path of the same name.
+// filterHubReserved drops every name in names that is also present in HubReservedNames(), preserving the input order of the remaining names.
+// This is the wiring guard: a hub-structural name (the Bolt directory, _portals, _launchers) mis-added to fabric.yaml's pathspec must never wire a per-worktree junction that would collide with the hub-level path of the same name.
 func filterHubReserved(names []string) []string {
 	reserved := make(map[string]bool)
 	for _, r := range HubReservedNames() {

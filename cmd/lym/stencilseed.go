@@ -85,7 +85,7 @@ func skipStencilSeed(cmd *cobra.Command) bool {
 // The gate is preflight.HubPresent, never preflight.Wired: the write this pass performs targets the
 // hub-level stencils directory, so the honest precondition is that the hub-level directory exists.
 // preflight.Wired probes this worktree's own pairing instead, and would stop seeding in three real-hub
-// situations that seed correctly today -- an ordinary worktree at <hub>/_board, an unpaired sibling,
+// situations that seed correctly today -- an ordinary worktree at the Bolt checkout, an unpaired sibling,
 // and a worktree whose paired sibling has been removed. Narrowing this gate to Wired is a regression,
 // not a tightening.
 func stencilSeedTarget(ctx context.Context) (hub, worktree string, ok bool) {
@@ -143,7 +143,7 @@ func seedStencilsAt(hub, worktree string, mode stencilstore.Mode, running buildv
 		return
 	}
 
-	res, err := fabricengine.NewBolt(fabricengine.BoardDir(hub)).PullThenCommitWritten(writes, fabricengine.NewMutations(hub))
+	res, err := fabricengine.NewBolt(fabricengine.BoltDir(hub)).PullThenCommitWritten(writes, fabricengine.NewMutations(hub))
 	if err != nil {
 		logger.Warn("stencilseed: seeding the board failed", "error", err)
 		return

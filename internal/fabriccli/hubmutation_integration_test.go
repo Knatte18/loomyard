@@ -197,7 +197,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 			}
 		}},
 		{"Reconcile_HealsMissingRepoWideConfig", func(t *testing.T) {
-			// reconcile self-heals the hub-wide fabric.yaml and board.yaml: on a hub that has none, it used to fail with "not initialized here; run \"lym fabric reconcile\"" — prescribing the command that just failed — and must instead materialize the configs, commit them in _board and proceed. board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
+			// reconcile self-heals the hub-wide fabric.yaml and board.yaml: on a hub that has none, it used to fail with "not initialized here; run \"lym fabric reconcile\"" — prescribing the command that just failed — and must instead materialize the configs, commit them in the Bolt checkout and proceed. board.yaml is seeded from the prime's copy when it has one, else from the template with a warning.
 			// Rows run in this order on the one hub: each row deletes the configs again, which are committed by the previous row's heal.
 			const primeBoard = "types:\n  spike: A time-boxed investigation\n"
 
@@ -260,7 +260,7 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 					}
 
 					if status := strings.TrimSpace(gitOutputCLI(t, h.BoardDir(), "status", "--porcelain")); status != "" {
-						t.Errorf("_board is dirty after reconcile; want the hub-wide configs committed:\n%s", status)
+						t.Errorf("Bolt checkout is dirty after reconcile; want the hub-wide configs committed:\n%s", status)
 					}
 				}) {
 					return

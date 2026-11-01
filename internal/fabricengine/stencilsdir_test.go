@@ -10,11 +10,11 @@ import (
 	"testing"
 )
 
-//testtiming:keep StencilsDir deriving _board/_lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep StencilsDir deriving the Bolt checkout's _lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
 func TestStencilsDir(t *testing.T) {
 	hub := "/h"
 	got := StencilsDir(hub)
-	want := filepath.Join(hub, "_board", "_lym", "stencils")
+	want := filepath.Join(hub, BoltDirName, "_lym", "stencils")
 	if got != want {
 		t.Errorf("StencilsDir(%q) = %q; want %q", hub, got, want)
 	}

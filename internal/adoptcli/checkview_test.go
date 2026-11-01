@@ -9,12 +9,14 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 func TestCheckView(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join("hub", "_board", ".lym", "adopt")
+	dir := filepath.Join("hub", fabricengine.BoltDirName, ".lym", "adopt")
 	logPath, outPath := filepath.Join(dir, suiteLogName), filepath.Join(dir, checkOutName)
 	one, two := 1, 2
 	ended := time.Date(2026, 10, 27, 12, 30, 0, 0, time.UTC)

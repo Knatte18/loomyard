@@ -225,7 +225,7 @@ func foreignFlagRequest(lockDir, side string, flag PushSpawn) (req PushSpawn, re
 		PauseSlug:    flag.PauseSlug,
 		TeardownSlug: flag.TeardownSlug,
 		ParentLocked: flag.ParentLocked,
-		WorkDir:      BoardDir(filepath.Dir(recordsWorktree)),
+		WorkDir:      BoltDir(filepath.Dir(recordsWorktree)),
 	}
 	switch side {
 	case pushSideRecords:

@@ -1,7 +1,7 @@
 // anchor.go implements the recorded lym-anchor subpath marker.
 // The marker is the plain single-line ".lym-anchor" file that records the subpath lym anchors at (e.g. "backend" or ".").
-// A worktree's own marker sits at the root of its records sibling, and the legacy hub-wide marker sits at the board root.
-// The read order is the own marker, then the board marker, then ".".
+// A worktree's own marker sits at the root of its records sibling, and the legacy hub-wide marker sits at the root of the Bolt checkout.
+// The read order is the own marker, then the Bolt checkout's marker, then ".".
 // It is read here, never written: only fabricengine writes the marker or reads it from git.
 // This file imports the standard library and internal/weftname only, so lymcwd never gains a YAML dependency.
 
@@ -19,22 +19,20 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// boardDirName is the name of the board data directory inside the hub (i.e.
-// <hub>/_board). It stays private to lymcwd: the exported BoardDir(hub)
-// constructor moved to internal/fabricengine, which declares its own copy
-// of this literal; readRecordedAnchor below is the sole reason lymcwd still
-// needs the name itself, to find the recorded-anchor marker.
-const boardDirName = "_board"
+// BoltDirName is the name of the Bolt checkout inside a hub.
+// It lives here because lymcwd reads the hub-wide anchor marker in the Bolt checkout.
+// fabricengine and runproc take the name from here, since lymcwd cannot import either.
+const BoltDirName = "_board"
 
-// boardDir returns the absolute path to the board data directory inside hub.
-// Private: see boardDirName's comment for why lymcwd retains this one reader.
+// boardDir returns the absolute path to the Bolt checkout inside hub.
+// It is the one reader of BoltDirName in lymcwd, to find the recorded-anchor marker.
 func boardDir(hub string) string {
-	return filepath.Join(hub, boardDirName)
+	return filepath.Join(hub, BoltDirName)
 }
 
 // AnchorFileName is the filename of the recorded lym-anchor subpath marker.
 // It sits at the root of a worktree's records sibling for that worktree's own anchor.
-// It sits at the board root (<boardDir(hub)>/.lym-anchor) for the legacy hub-wide fallback the own marker overrides.
+// It sits at the root of the Bolt checkout for the legacy hub-wide fallback the own marker overrides.
 // It holds only the subpath string (e.g. "backend" or ".").
 // This is a structural geometry artifact recorded when the worktree is created or moved, never a config/env override;
 // per the Cwd Resolution Invariant, only lymcwd constructs and reads this path.
@@ -52,7 +50,7 @@ const AnchorFileName = ".lym-anchor"
 // does, rather than each declaring its own copy.
 const StaleAnchorFileName = ".fabric-anchor"
 
-// ErrStaleAnchorMarker is the hard-error sentinel returned when a hub's board directory carries the
+// ErrStaleAnchorMarker is the hard-error sentinel returned when a hub's Bolt checkout carries the
 // pre-rename StaleAnchorFileName marker with no AnchorFileName beside it.
 // Resolving such a hub at all would mean re-anchoring it at ".", so every resolver refuses instead
 // of guessing.
@@ -146,9 +144,9 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 // readRecordedAnchor reads the recorded lym-anchor subpath marker of the worktree named worktreeName in hub.
 // It reports whether a usable anchor was found.
 // It reads the worktree's own marker at the root of its records sibling first.
-// It reads the legacy hub-wide marker at <BoardDir(hub)>/.lym-anchor second.
+// It reads the legacy hub-wide marker at the root of the Bolt checkout second.
 // An own marker that fails ValidateAnchorRel is an error naming the file;
-// an empty or whitespace-only own marker counts as absent and the read falls through to the board marker.
+// an empty or whitespace-only own marker counts as absent and the read falls through to the Bolt checkout's marker.
 // An own marker that exists but cannot be read is an error naming the file, as an invalid one is.
 // It returns ("", false, nil) when neither marker is usable:
 // an absent directory, an absent file or an empty one each mean the caller must fall back to "."
@@ -156,7 +154,7 @@ func checkCwdAnchorGate(cwd, anchorRel, worktreePath string) error {
 // An anchor must never resolve to an empty subpath.
 // This helper spawns no git.
 //
-// The one absence that is NOT a fallback is a hub whose board still carries the pre-rename StaleAnchorFileName marker, no renamed one and no own marker.
+// The one absence that is NOT a fallback is a hub whose Bolt checkout still carries the pre-rename StaleAnchorFileName marker, no renamed one and no own marker.
 // That hub did record a subpath under the old name.
 // Answering "." for it re-anchors the whole repo at its root, after which `lym fabric reconcile` wires a second junction set there.
 // That case returns ErrStaleAnchorMarker so every resolver refuses rather than guessing.
@@ -182,7 +180,7 @@ func readRecordedAnchor(hub, worktreeName string) (anchor string, found bool, er
 	if readErr != nil {
 		if _, staleErr := os.Stat(filepath.Join(board, StaleAnchorFileName)); staleErr == nil {
 			return "", false, fmt.Errorf("%w: rename %s to %s in the hub's %s worktree and commit it (at %s)",
-				ErrStaleAnchorMarker, StaleAnchorFileName, AnchorFileName, boardDirName, board)
+				ErrStaleAnchorMarker, StaleAnchorFileName, AnchorFileName, BoltDirName, board)
 		}
 		return "", false, nil
 	}

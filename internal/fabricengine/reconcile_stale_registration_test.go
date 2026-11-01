@@ -134,15 +134,11 @@ func TestReconcile_MissingWeftRepoIsDiagnosedByName(t *testing.T) {
 	}
 }
 
-// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at
-// fabricengine.BoardDir(hub) — <hub>/_board/_lym/config/fabric.yaml — the
-// base card 7's RepoWiredNames-migrated sites (checkJunctionHealth,
-// Healthy, Reconcile, Topology.Checkout, Topology.Remove,
-// junctionRepointedDetail) now read from. A real hub built by hubforge.NewHub
-// materializes _board via CloneAndWire, but not this repo-wide fabric.yaml, so this creates the file
-// (and its _lym/config/) first; unlike gitkit.SeedConfig, _board is not a git repository, so the
-// file is written directly with no git add/commit step. Shared by every
-// fabricengine_test fixture that exercises a migrated read.
+// seedRepoWideFabricConfig materializes the repo-wide fabric.yaml at fabricengine.BoltDir(hub), the Bolt checkout's _lym/config/fabric.yaml.
+// It is the base card 7's RepoWiredNames-migrated sites (checkJunctionHealth, Healthy, Reconcile, Topology.Checkout, Topology.Remove, junctionRepointedDetail) now read from.
+// A real hub built by hubforge.NewHub materializes the Bolt checkout via CloneAndWire, but not this repo-wide fabric.yaml, so this creates the file (and its _lym/config/) first.
+// Unlike gitkit.SeedConfig, the Bolt checkout is not a git repository, so the file is written directly with no git add/commit step.
+// Shared by every fabricengine_test fixture that exercises a migrated read.
 func seedRepoWideFabricConfig(t testing.TB, hub string) {
 	t.Helper()
 

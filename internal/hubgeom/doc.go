@@ -5,7 +5,7 @@
 // converting a Location into a reedengine.Geometry, a burlerengine.Geometry, and a
 // websterengine.Geometry respectively.
 // ReconcileGeometry converts a Location into the hubreconcile.Geometry the start verbs and the Preflight row hand to hubreconcile.EnsureOrWarn, and reports false for a repository with no hub-level board lym dir, which never reconciles.
-// GateSlots is the one constructor of a hub's gate-slot pool, over the board dir's slot directory, with its limits read from the board dir's gate.yaml and this machine's override at each acquire;
+// GateSlots is the one constructor of a hub's gate-slot pool, over the Bolt checkout's slot directory, with its limits read from the Bolt checkout's gate.yaml and this machine's override at each acquire;
 // WebsterGeometry hands that pool to webster.
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.

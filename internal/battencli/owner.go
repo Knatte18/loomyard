@@ -37,16 +37,17 @@ type ownerSeams struct {
 }
 
 // hubOwnerSeams builds the owner seams over the Bolt of the hub location sits in.
-// A hub with no board directory has no owners, so it gets the zero seams.
+// A hub with no Bolt checkout has no owners, so it gets the zero seams.
 func hubOwnerSeams(location *lymcwd.Location) ownerSeams {
+	boltDir := fabricengine.BoltDir(location.HubPath)
 	boardDir := fabricengine.BoardDir(location.HubPath)
-	if _, err := os.Stat(boardDir); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(boltDir); errors.Is(err, fs.ErrNotExist) {
 		return ownerSeams{}
 	}
 	parentOf := func(slug string) (string, error) { return hubgeom.ParentOf(location, slug) }
 	return ownerSeams{
 		Machine:  machinename.Name,
-		Pull:     func() error { return pullBolt(boardDir) },
+		Pull:     func() error { return pullBolt(boltDir) },
 		Read:     func() (boardengine.Owners, error) { return boardengine.ReadOwners(boardDir) },
 		ParentOf: parentOf,
 		Set: func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error) {

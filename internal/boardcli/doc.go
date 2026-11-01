@@ -9,7 +9,7 @@
 // Each prints the fields an applied run prints, filled with what it would change, plus `"applied": false`;
 // `prune` prints `removed` and `retire-legacy` prints `legacy_files`.
 //
-// A `PersistentPreRunE` resolves configuration once: it loads the hub's `<hub>/_board/_lym/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
+// A `PersistentPreRunE` resolves configuration once: it loads the Bolt checkout's `_lym/config/board.yaml` through `boardengine.LoadConfig`, whatever worktree the verb runs in, and derives the board data dir from the worktree layout.
 // The hidden `--board-path` flag overrides the data dir for the detached sync child and skips both,
 // so the config is path-only.
 // `sync` takes the hidden `--deferrable` flag the detached sync child carries:

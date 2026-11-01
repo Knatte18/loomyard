@@ -266,10 +266,10 @@ func assertRealHub(t *testing.T, h *Hub) {
 
 	boardInfo, err := os.Stat(h.BoardDir())
 	if err != nil {
-		t.Fatalf("_board missing at %s: %v", h.BoardDir(), err)
+		t.Fatalf("%s missing at %s: %v", fabricengine.BoltDirName, h.BoardDir(), err)
 	}
 	if !boardInfo.IsDir() {
-		t.Errorf("_board at %s: want a real directory, got mode %v", h.BoardDir(), boardInfo.Mode())
+		t.Errorf("%s at %s: want a real directory, got mode %v", fabricengine.BoltDirName, h.BoardDir(), boardInfo.Mode())
 	}
 
 	anchorMarker := filepath.Join(h.PrimeRecords(), lymcwd.AnchorFileName)
@@ -277,7 +277,7 @@ func assertRealHub(t *testing.T, h *Hub) {
 		t.Errorf("%s marker missing at %s: %v", lymcwd.AnchorFileName, anchorMarker, err)
 	}
 
-	// The hub's scratch directory lives under _board, not at hub level, and its path is sourced from
+	// The hub's scratch directory lives under the Bolt checkout, not at hub level, and its path is sourced from
 	// fabricengine.HubScratchDir — the same constructor CloneHub materialises it through — so this
 	// assertion cannot drift from the geometry it is checking.
 	hubScratch := fabricengine.HubScratchDir(h.Path)

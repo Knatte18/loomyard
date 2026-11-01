@@ -59,6 +59,10 @@ var excludedModules = []scankit.Entry{
 		Key: "beam",
 		Why: "makes, promotes and lands beams over a board project entry and a pair that a scenario would have to build; exercised by internal/beamcli's own hubforge tests instead",
 	},
+	{
+		Key: "heddle",
+		Why: "set and remove start the board's detached Bolt sync and render writes into a worktree root; exercised by internal/heddlecli's own hubforge tests instead",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

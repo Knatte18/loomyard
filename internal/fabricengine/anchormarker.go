@@ -172,7 +172,7 @@ func recordAdoptedWeftAnchor(rec *Mutations, hubPath, slug, weftPath string, nam
 // a weft the census finds without a committed marker, or a board write that was skipped.
 // A board commit that landed but could not be pushed is reported "removed" with the push failure after it.
 func retireBoltAnchorMarker(rec *Mutations, l *lymcwd.Location) (string, error) {
-	boardDir := BoardDir(l.HubPath)
+	boardDir := BoltDir(l.HubPath)
 	if _, err := os.Stat(filepath.Join(boardDir, lymcwd.AnchorFileName)); errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	} else if err != nil {

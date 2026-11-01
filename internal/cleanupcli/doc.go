@@ -34,7 +34,7 @@
 //   - board: `lym board prune`'s behavior over the hub board.
 //   - orch: `orchengine.CleanupHandoffs` over the prime's orch and each beam's, which removes nothing outside the idle phase; the listing carries one entry per worktree with its kept and removed handoffs.
 //   - scratch: this package's own segment, below.
-//   - logs: `logger.SweepDir` over the prime's anchor and the board directory, with the bounds the exit sweep picks.
+//   - logs: `logger.SweepDir` over the prime's anchor and the Bolt checkout, with the bounds the exit sweep picks.
 //   - temp: `lymtemp`'s sweep of the dead owners' run directories, failing when the root fails its checks or the sweep reports a failure.
 //
 // # The scratch segment

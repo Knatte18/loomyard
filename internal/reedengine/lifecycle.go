@@ -964,7 +964,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// list-sessions means the socket-holder is unreachable — a zombie
 		// server cannot be hosting healthy sibling sessions, so it is torn
 		// down too rather than left squatting on the socket (the server's
-		// own cwd is the hub's _board/.lym/logs dir, not this worktree, since the
+		// own cwd is the Bolt checkout's .lym/logs dir, not this worktree, since the
 		// debug-logging batch — the same sessionless-holder reasoning the
 		// pre-boot check applies regardless).
 		var serverErr error
@@ -996,7 +996,7 @@ func (e *Engine) Down() (DownResult, error) {
 		// timeout and aborted down BEFORE this reap under CPU saturation,
 		// leaking pane children that kept the worktree directory busy (the
 		// server itself no longer holds a worktree busy since the
-		// debug-logging batch — its own cwd is now the hub's _board/.lym/logs dir,
+		// debug-logging batch — its own cwd is now the Bolt checkout's .lym/logs dir,
 		// not this worktree — though a lingering server process is still its
 		// own leak worth reaping). kill-session / kill-server terminate pane
 		// children asynchronously, so force-kill any that outlive the

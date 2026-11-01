@@ -1,7 +1,7 @@
 // config.go — configuration for the fabric module.
 //
-// Defines the Config type carrying the warp branch prefix (BranchPrefix) and the weft-sync pathspec
-// (Pathspec) in one fabric.yaml file, unified from fabric's two predecessor config schemas into one
+// Defines the Config type carrying the warp branch prefix (BranchPrefix), the weft-sync pathspec
+// (Pathspec) and the warp exclude list (WarpExclude) in one fabric.yaml file, unified from fabric's two predecessor config schemas into one
 // file, plus LoadConfig.
 // LoadConfig uses internal/configengine.Load with ConfigTemplate() to strictly validate and resolve
 // the fabric config file;
@@ -17,10 +17,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the fabric configuration: warp branch prefix and weft-sync pathspec.
+// Config represents the fabric configuration: warp branch prefix, weft-sync pathspec and the warp exclude list.
 type Config struct {
 	BranchPrefix string `yaml:"branch_prefix"`
 	Pathspec     string `yaml:"pathspec"`
+	WarpExclude  string `yaml:"warp_exclude"`
 }
 
 // Dirs returns the pathspec as a slice of directory names, split on whitespace.
@@ -28,8 +29,14 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
+// WarpExcludePaths returns the warp exclude list as a slice of paths relative to a warp worktree's root, split on whitespace.
+// They are excluded through the warp repository's info/exclude and are never wired as junctions.
+func (c Config) WarpExcludePaths() []string {
+	return strings.Fields(c.WarpExclude)
+}
+
 // ConfigSpec returns fabric's layered-load spec.
-// Both keys shape a pair at creation and are the one repo-wide fact every pair converges to, so neither may be set in the local layer.
+// Each key shapes a pair at creation, or reaches every worktree of the repository through the repository-wide exclude file, and is the one repo-wide fact every pair converges to, so none may be set in the local layer.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     "fabric",
@@ -38,6 +45,7 @@ func ConfigSpec() configengine.Spec {
 		Categories: map[string]configengine.Category{
 			"branch_prefix": configengine.CategoryCrossPair,
 			"pathspec":      configengine.CategoryCrossPair,
+			"warp_exclude":  configengine.CategoryCrossPair,
 		},
 	}
 }

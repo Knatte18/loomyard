@@ -75,7 +75,7 @@ func lockStore(ctx context.Context) (*parentlock.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(prime.HubPath))}, nil
+	return &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}, nil
 }
 
 // runLockList prints one entry per parent lock record.

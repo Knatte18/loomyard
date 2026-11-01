@@ -13,7 +13,7 @@
 // fabric sibling is a repository of its own whose prime is itself, so standing in that sibling the
 // comparison passes while every path fabric would then derive is invented -- a sibling of the
 // sibling. armAt (arm.go) therefore calls fabricengine.RequireDrivableWorktree first, which is the
-// one place fabric's own vocabulary can tell the side batten drives from the sibling and the _board
+// one place fabric's own vocabulary can tell the side batten drives from the sibling and the Bolt
 // checkout.
 //
 // This is also why refuseNonPrime treats a non-nil primeNameErr as a refusal rather than passing it

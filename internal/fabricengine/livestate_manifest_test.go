@@ -25,7 +25,7 @@ import (
 )
 
 // gitDirName is the base name a manifest walk treats specially: every ".git" entry, file or directory, gets the narrow allowlisted treatment gitDirRule describes, rather than the ordinary walk rules.
-// It is not a fabric geometry token, so it is spelled here directly rather than routed through an accessor — the geometry-through-accessors rule governs `_board`, `-weft`, `_portals`, `_launchers`, `_lym` and `.lym`, not git's own directory name.
+// It is not a fabric geometry token, so it is spelled here directly rather than routed through an accessor — the geometry-through-accessors rule governs the Bolt checkout, `-weft`, `_portals`, `_launchers`, `_lym` and `.lym`, not git's own directory name.
 const gitDirName = ".git"
 
 // Kind enumerates the closed set of filesystem entry shapes a Manifest records: a regular file, a

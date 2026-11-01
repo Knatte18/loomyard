@@ -1046,7 +1046,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				}
 				return awakeReading(time.Now(), sleeps)
 			},
-			ParentLock: childParentLock(slug, locateTask, fabricengine.BoardDir(location.HubPath), lockIdleBound(location)),
+			ParentLock: childParentLock(slug, locateTask, fabricengine.BoltDir(location.HubPath), lockIdleBound(location)),
 			// OwnerCheck judges, without moving a ref, the slug's run-scope reconcile from the prime and reads its owner verdict.
 			OwnerCheck: func(ctx context.Context) (battenshed.OwnerVerdict, error) {
 				teardown, err := pairteardown.New(location)
@@ -1333,7 +1333,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			// PrepareRunSettings reads the named profile from the hub's profiles.yaml and lays the task's settings over it through configreg;
 			// an unknown profile or a refusal of the settings is wrapped in battenshed.ErrInvalidRunSettings so Seed-Child routes it to Stuck.
 			PrepareRunSettings: func(settings battenshed.RunSettings) (map[string][]byte, error) {
-				return prepareRunSettings(configengine.Dirs{Board: fabricengine.BoardDir(location.HubPath)}, settings)
+				return prepareRunSettings(configengine.Dirs{Board: fabricengine.BoltDir(location.HubPath)}, settings)
 			},
 			// WriteLocalOverride writes one module's local file in the task worktree, creating its directory.
 			WriteLocalOverride: func(ctx context.Context, module string, document []byte) error {

@@ -221,6 +221,10 @@
 //
 // The engine also announces each standing tool deny to the session, tells it to trust and answer creel mail, and tells it to request every call whose arguments it already knows in one message, through the run directory's append-system-prompt.txt, named by --append-system-prompt-file on both the launch and the resume line.
 // The file holds the deny notice, the creel trust sentence and the batching sentence, space-separated, with the notice left out when no deny is installed.
+// The standing passages the hub's Bolt checkout holds for the claude engine follow it, each after a blank line and in order, read through the process-wide passage reader shuttleengine installs a seam for.
+// The one-line rule applies to lym's own sentences alone, since passages may span lines and the file reaches Claude Code through --append-system-prompt-file and is echoed nowhere.
+// A resume through the launch's resume line reuses the file its launch wrote, so its passages stay;
+// a Prepare that runs again, as an adopted session's does, reads the passages afresh.
 // It is a file because the sentence holds a double quote, which an argument passed through pwsh's Legacy mode (an npm claude.cmd shim) would drop.
 // A session opened with `lym shuttle open` writes no run directory and carries no file.
 // Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:

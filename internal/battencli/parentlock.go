@@ -22,11 +22,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
-// childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boardDir.
+// childParentLock builds the parent lock seams of the task pair for slug, over the lock store under boltDir.
 // bound is landing's idle bound for the lock.
 // The task pair is located at call time, so a pair that is not there yet fails the seam and not the wiring.
-func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), boardDir string, bound time.Duration) *battenshed.ChildParentLock {
-	store := &parentlock.Store{Dir: parentlock.Dir(boardDir)}
+func childParentLock(slug string, locateTask func() (*lymcwd.Location, error), boltDir string, bound time.Duration) *battenshed.ChildParentLock {
+	store := &parentlock.Store{Dir: parentlock.Dir(boltDir)}
 	return &battenshed.ChildParentLock{
 		Read: func() (parentlock.Record, bool, error) {
 			taskLocation, err := locateTask()

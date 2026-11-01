@@ -174,7 +174,7 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 	gitkit.Git(t, worktree, "config", "user.name", "Test User")
 	gitkit.Git(t, worktree, "config", "user.email", "test@example.com")
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
-	// A hub-level board directory -- with no records sibling anywhere near it -- is what selects hub mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats <hub>/_board/_lym.
+	// A hub-level board directory -- with no records sibling anywhere near it -- is what selects hub mode here without wiring a real, fully-paired fabric hub: preflight.HubPresent only stats the Bolt checkout's _lym.
 	if err := os.MkdirAll(filepath.Join(fabricengine.BoardDir(container), "_lym"), 0o755); err != nil {
 		t.Fatalf("mkdir hub board dir: %v", err)
 	}

@@ -469,8 +469,9 @@ func changeEntriesMap(entries []fabricengine.ChangeEntry) []map[string]any {
 // weft_pulled is false inside a SUCCESS envelope only when the weft's origin could not be reached, so the warp side pulled while the weft did not.
 // Re-running the pull once origin is reachable settles it.
 // A weft that a conflict or an uncommitted change keeps from being brought level is an error envelope naming the way forward, never a false field.
+// seam_warning is present only when a worktree event failed for the commits warp took in.
 func pullResultMap(result fabricengine.PullResult) map[string]any {
-	return map[string]any{
+	out := map[string]any{
 		"weft_pulled":       result.WeftPulled,
 		"warp_fetched":      result.WarpFetched,
 		"warp_advanced":     result.WarpAdvanced,
@@ -481,4 +482,8 @@ func pullResultMap(result fabricengine.PullResult) map[string]any {
 		"anchor_weft_sha":   result.AnchorWeftSHA,
 		"reanchor_weft_sha": result.ReanchorWeftSHA,
 	}
+	if result.SeamWarning != "" {
+		out["seam_warning"] = result.SeamWarning
+	}
+	return out
 }

@@ -37,7 +37,7 @@ func StrandOf(worktree *lymcwd.Location) (name string, recorded bool, err error)
 			}
 		}
 	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(worktree.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(worktree.HubPath))
 	if !found {
 		return "", false, fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`", worktree.WorktreePath())
 	}

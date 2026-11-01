@@ -71,7 +71,7 @@ func PullHub(prime *lymcwd.Location, opts SyncOptions, lockPair PairLock) (res H
 	rec := NewMutations(prime.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	boardDir := BoardDir(prime.HubPath)
+	boardDir := BoltDir(prime.HubPath)
 	res.Sides = append(res.Sides, pullBoardSide(boardDir, opts, rec))
 	res.Sides = append(res.Sides, pullPairSide(HubPullPrime, prime, opts, lockPair, rec))
 
@@ -140,15 +140,26 @@ func pullPairSide(kind HubPullSideKind, pair *lymcwd.Location, opts SyncOptions,
 	before := rec.Len()
 	pullRes, pullErr := fab.Pull(opts)
 	rec.Extend(pullRes.Mutated())
+	// A failed worktree event is a warning on the pair's line, whatever else the line says.
+	withWarning := func(side HubPullSide) HubPullSide {
+		if pullRes.SeamWarning == "" {
+			return side
+		}
+		if side.Detail != "" {
+			side.Detail += "; "
+		}
+		side.Detail += pullRes.SeamWarning
+		return side
+	}
 	if pullErr != nil {
-		return stop(pullErr)
+		return withWarning(stop(pullErr))
 	}
 	if !pullRes.WeftPulled {
 		side.Outcome, side.Detail = HubPullStopped, "the records side's origin could not be reached; re-run the pull once it is reachable"
-		return side
+		return withWarning(side)
 	}
 	side.Outcome = movedOrCurrent(rec, before)
-	return side
+	return withWarning(side)
 }
 
 // movedOrCurrent reports a side as moved when rec grew past before while the side was pulled, and as up to date otherwise.

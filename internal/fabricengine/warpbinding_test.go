@@ -154,7 +154,7 @@ func TestResolveEffectiveWarpURL(t *testing.T) {
 			wantWrite:    false,
 			wantErr:      true,
 			wantErrIs:    ErrWarpBindingMismatch,
-			wantErrParts: []string{"edit " + WarpBindingFileName + " in the hub's _board worktree and commit", "https://github.com/u/r", "git@github.com:u/r.git"},
+			wantErrParts: []string{"edit " + WarpBindingFileName + " in the hub's " + BoltDirName + " worktree and commit", "https://github.com/u/r", "git@github.com:u/r.git"},
 		},
 		{
 			name:         "present_and_supplied_different_repo_conflicts",

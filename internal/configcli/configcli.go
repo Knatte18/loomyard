@@ -1,6 +1,6 @@
 // configcli.go — configuration CLI command.
 //
-// Implements the lym config command, which edits module configurations, committing a hub-wide module in _board and syncing fabric for any other.
+// Implements the lym config command, which edits module configurations, committing a hub-wide module in the Bolt checkout and syncing fabric for any other.
 
 package configcli
 
@@ -122,7 +122,7 @@ func printAll(dirs configDirs, out io.Writer) int {
 }
 
 // editOne edits a single config module's selected layer.
-// On success it commits a default-layer file in _board, leaves a local override uncommitted, or syncs fabric for a worktree file.
+// On success it commits a default-layer file in the Bolt checkout, leaves a local override uncommitted, or syncs fabric for a worktree file.
 func editOne(dirs configDirs, out io.Writer, module string, edit configengine.EditorFunc, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the template for this module.
 	mod, ok := configreg.Lookup(module)
@@ -204,7 +204,7 @@ func parseSetFlags(raw []string) ([]yamlengine.KV, error) {
 // setModule writes pairs into a single config module's file and optionally
 // syncs on success. Like editOne, but with no editor: configengine.Set performs
 // the write non-interactively in one call.
-// A default-layer file is written at the board dir and committed in _board, a local override is written uncommitted, and a worktree file syncs fabric.
+// A default-layer file is written at the board dir and committed in the Bolt checkout, a local override is written uncommitted, and a worktree file syncs fabric.
 // A value the module's loader refuses leaves the file as it was.
 func setModule(dirs configDirs, out io.Writer, module string, pairs []yamlengine.KV, sync syncFunc, commit hubCommitFunc) int {
 	// Look up the module;
@@ -465,7 +465,7 @@ func buildConfigLong() string {
 	}
 	return "config edits a module's configuration in _lym/config/ and syncs fabric on\n" +
 		"success. A hub-wide module (" + strings.Join(hubWide, ", ") + ") is edited instead at the\n" +
-		"hub's board dir and committed in _board. With no argument it lists the known\n" +
+		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
 		"name it edits that module directly; `lym config menu` is the interactive\n" +
 		"picker, which lists the modules and edits the one you choose. The editor is\n" +
@@ -524,8 +524,8 @@ func runResolved(ctx context.Context, out io.Writer, module string) int {
 // runReconcile is the package-private handler for the lym config reconcile subcommand.
 //
 // With no layer it reconciles the worktree's own and local config files against their templates via configsync.ReconcileAll;
-// with layer default it reconciles every file under the hub's board dir instead, guarded and committed in _board on apply.
-// Any other layer is refused, and so is a run whose worktree is the board dir itself, which would reconcile the hub's files as a worktree's.
+// with layer default it reconciles every file under the Bolt checkout instead, guarded and committed there on apply.
+// Any other layer is refused, and so is a run whose worktree is the Bolt checkout itself, which would reconcile the hub's files as a worktree's.
 // It emits a JSON envelope. When apply is false (dry-run) no files are written. Returns exit code 0 on success,
 // 1 on any error.
 func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) int {
@@ -542,9 +542,9 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 		return output.Err(out, err.Error())
 	}
 
-	boardDir := fabricengine.BoardDir(l.HubPath)
-	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boardDir) {
-		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lym config reconcile --layer default\" from the hub's prime worktree", boardDir))
+	boltDir := fabricengine.BoltDir(l.HubPath)
+	if filepath.Clean(l.WorktreePath()) == filepath.Clean(boltDir) {
+		return output.Err(out, fmt.Sprintf("reconcile is refused in the board dir %s, whose files are the hub's, not a worktree's; way forward: run \"lym config reconcile --layer default\" from the hub's prime worktree", boltDir))
 	}
 	if layer != "" && layer != string(configengine.LayerDefault) {
 		return output.Err(out, fmt.Sprintf("reconcile takes --layer %s alone, for the files under the hub's board dir; way forward: run it with no --layer to reconcile this worktree's own and local files", configengine.LayerDefault))
@@ -557,7 +557,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, boardDir, configsync.Options{Apply: apply})
+	results, err := configsync.ReconcileAll(baseDir, boltDir, configsync.Options{Apply: apply})
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
@@ -720,7 +720,7 @@ per-worktree copy is "retired" when the hub file holds everything it holds
 hub-wide modules' files and each per-worktree module's repo default, seeding
 an absent one from the prime. Renamed keys are migrated and keys the template
 lacks are removed. --apply with it runs only from the hub's prime worktree,
-outside a task session, and commits the files in _board and pushes.
+outside a task session, and commits the files in ` + fabricengine.BoltDirName + ` and pushes.
 Reconcile is refused in the board dir itself.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
@@ -818,7 +818,7 @@ func runMenu(ctx context.Context, in io.Reader, out io.Writer) int {
 // The sync is fabriccli.RunCLIIn with "sync", carrying the already-resolved cwd
 // rather than letting the nested call re-derive it from process state;
 // doing so is precisely the bug this seam removes.
-// The hub commit is newHubCommit over the hub's board dir.
+// The hub commit is newHubCommit over the Bolt checkout.
 func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc, error) {
 	cwd, err := lymcwd.CwdFrom(ctx)
 	if err != nil {
@@ -831,5 +831,5 @@ func resolveReal(ctx context.Context) (*lymcwd.Location, syncFunc, hubCommitFunc
 	realSync := func(w io.Writer) int {
 		return fabriccli.RunCLIIn(cwd, w, []string{"sync"})
 	}
-	return l, realSync, newHubCommit(fabricengine.BoardDir(l.HubPath)), nil
+	return l, realSync, newHubCommit(fabricengine.BoltDir(l.HubPath)), nil
 }

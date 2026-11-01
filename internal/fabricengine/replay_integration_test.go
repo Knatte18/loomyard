@@ -15,12 +15,14 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
+	"github.com/Knatte18/loomyard/internal/heddleengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 )
@@ -34,7 +36,47 @@ type recordsFixture struct {
 func newRecordsFixture(t *testing.T) *recordsFixture {
 	t.Helper()
 	boardkit.InstallReplay(t)
+	registerHeddleReplayer()
 	return &recordsFixture{t: t, hub: hubforge.NewHub(t, ".")}
+}
+
+var registerHeddleReplayerOnce sync.Once
+
+// registerHeddleReplayer registers heddle's Bolt replayer once per process.
+// The registration is never restored, so parallel tests share the one registration of the same value, which claims only the heddle store file.
+func registerHeddleReplayer() {
+	registerHeddleReplayerOnce.Do(func() {
+		fabricengine.RegisterBoltReplayer(heddleengine.Replayer{})
+	})
+}
+
+// heddleFileOf encodes entries as a heddle.json, each aimed at claude-file.
+func heddleFileOf(t *testing.T, texts map[string]string) string {
+	t.Helper()
+	slugs := slices.Sorted(maps.Keys(texts))
+	var entries []heddleengine.Entry
+	for order, slug := range slugs {
+		entries = append(entries, heddleengine.Entry{Slug: slug, Text: texts[slug], Order: order, Targets: []string{"claude-file"}})
+	}
+	data, err := json.MarshalIndent(heddleengine.Store{Entries: entries}, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal heddle.json: %v", err)
+	}
+	return string(data) + "\n"
+}
+
+// heddleTexts reads the heddle.json in dir as a slug to text map.
+func heddleTexts(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	store, err := heddleengine.Load(dir)
+	if err != nil {
+		t.Fatalf("load heddle.json: %v", err)
+	}
+	texts := map[string]string{}
+	for _, entry := range store.Entries {
+		texts[entry.Slug] = entry.Text
+	}
+	return texts
 }
 
 // primeWeft publishes the prime weft branch with an upstream, as a machine that pushed it earlier holds it, and returns the worktree and its branch.
@@ -66,14 +108,22 @@ type scribbleThenFailReplay struct {
 	boardDir string
 }
 
-func (r scribbleThenFailReplay) Apply(req fabricengine.BoardReplayRequest) (fabricengine.BoardReplayResult, error) {
-	if req.BoardDir != r.boardDir {
+func (r scribbleThenFailReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayResult, error) {
+	if req.Dir != r.boardDir {
 		return r.FabricReplay.Apply(req)
 	}
-	if err := os.WriteFile(filepath.Join(req.BoardDir, "board.json"), []byte("{}\n"), 0o644); err != nil {
-		return fabricengine.BoardReplayResult{}, err
+	if err := os.WriteFile(filepath.Join(req.Dir, "board.json"), []byte("{}\n"), 0o644); err != nil {
+		return fabricengine.ReplayResult{}, err
 	}
-	return fabricengine.BoardReplayResult{}, errors.New("apply died after writing board.json")
+	return fabricengine.ReplayResult{}, errors.New("apply died after writing board.json")
+}
+
+// writeBoltFile writes content to rel in the Bolt checkout dir without committing it.
+func writeBoltFile(t *testing.T, dir, rel, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, rel), []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
 }
 
 func requireClean(t *testing.T, dir string) {
@@ -587,6 +637,137 @@ func TestRecordsReplay(t *testing.T) {
 			}
 		})
 
+		// pushHeddleBase commits a heddle.json of texts, and the board.json of entries when given, in one commit and pushes it, so both sides share it as the merge base.
+		pushHeddleBase := func(t *testing.T, board, branch string, texts map[string]string, entries ...boardengine.Task) {
+			t.Helper()
+			writeBoltFile(t, board, "heddle.json", heddleFileOf(t, texts))
+			if len(entries) > 0 {
+				writeBoltFile(t, board, "board.json", boardFileOf(t, entries...))
+			}
+			gitkit.Git(t, board, "add", "--all")
+			gitkit.Git(t, board, "commit", "--message", "base files")
+			gitkit.Git(t, board, "push", "origin", branch)
+		}
+
+		t.Run("Heddle entries changed on each side replay by entry with no conflict", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushHeddleBase(t, board, branch, map[string]string{"x": "X", "y": "Y"})
+			local := gitkit.CommitFile(t, board, "heddle.json", heddleFileOf(t, map[string]string{"x": "X local", "y": "Y"}), "edit x")
+			upstream := f.originCommit(branch, "heddle.json", heddleFileOf(t, map[string]string{"x": "X", "y": "Y origin"}), "edit y")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
+			if err != nil {
+				t.Fatalf("ReplayBoltForTest: %v", err)
+			}
+			if !slices.Equal(outcome.Replayed, []string{local}) || len(outcome.Lost) != 0 || len(outcome.Refused) != 0 {
+				t.Errorf("outcome = %+v, want only %s replayed", outcome, local)
+			}
+			if got := heddleTexts(t, board); got["x"] != "X local" || got["y"] != "Y origin" {
+				t.Errorf("heddle texts = %v, want both changes on the tip", got)
+			}
+			if !gitkit.IsAncestor(t, board, upstream, "HEAD") {
+				t.Errorf("upstream %s is not under HEAD", upstream)
+			}
+			requireClean(t, board)
+		})
+
+		t.Run("One commit touching board.json and heddle.json is applied by both replayers into one replayed commit", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushHeddleBase(t, board, branch, map[string]string{"x": "X"}, boardEntry("a", withBoardTitle("A")), boardEntry("b", withBoardTitle("B")))
+			writeBoltFile(t, board, "board.json", boardFileOf(t, boardEntry("a", withBoardTitle("A")), boardEntry("b", withBoardTitle("B2"))))
+			writeBoltFile(t, board, "heddle.json", heddleFileOf(t, map[string]string{"x": "X local"}))
+			gitkit.Git(t, board, "add", "--all")
+			gitkit.Git(t, board, "commit", "--message", "edit both")
+			local := gitkit.RevParse(t, board, "HEAD")
+			upstream := f.originCommit(branch, "board.json", boardFileOf(t, boardEntry("a", withBoardTitle("A2")), boardEntry("b", withBoardTitle("B"))), "retitle a")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
+			if err != nil {
+				t.Fatalf("ReplayBoltForTest: %v", err)
+			}
+			if !slices.Equal(outcome.Replayed, []string{local}) || len(outcome.Lost) != 0 || len(outcome.Refused) != 0 {
+				t.Errorf("outcome = %+v, want only %s replayed", outcome, local)
+			}
+			if got := boardTitles(t, board); got["a"] != "A2" || got["b"] != "B2" {
+				t.Errorf("board titles = %v, want a=A2 and b=B2", got)
+			}
+			if got := heddleTexts(t, board); got["x"] != "X local" {
+				t.Errorf("heddle texts = %v, want the local text", got)
+			}
+			if got := gitkit.RevListCount(t, board, upstream+"..HEAD"); got != 1 {
+				t.Errorf("HEAD is %d commits past upstream, want one replayed commit carrying both changes", got)
+			}
+			requireClean(t, board)
+		})
+
+		t.Run("A commit whose board change belongs to an ended entry keeps its heddle.json change and tags the original", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushHeddleBase(t, board, branch, map[string]string{"x": "X"}, boardEntry("neve"))
+			writeBoltFile(t, board, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus(boardengine.RunStatus("running", "Implementer")))))
+			writeBoltFile(t, board, "heddle.json", heddleFileOf(t, map[string]string{"x": "X local"}))
+			gitkit.Git(t, board, "add", "--all")
+			gitkit.Git(t, board, "commit", "--message", "neve runs and edit x")
+			local := gitkit.RevParse(t, board, "HEAD")
+			f.originCommit(branch, "board.json", boardFileOf(t, boardEntry("neve", withBoardStatus("done"))), "neve done")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, map[string]string{"neve": "done"})
+			if err != nil {
+				t.Fatalf("ReplayBoltForTest: %v", err)
+			}
+			wantTag := "set-aside/neve/" + local[:12]
+			if len(outcome.SetAside) != 1 || outcome.SetAside[0].Tag != wantTag {
+				t.Errorf("set aside = %+v, want %s under %s", outcome.SetAside, local, wantTag)
+			}
+			if got := gitkit.RevParse(t, board, wantTag+"^{commit}"); got != local {
+				t.Errorf("tag %s names %s, want %s", wantTag, got, local)
+			}
+			if got := heddleTexts(t, board); got["x"] != "X local" {
+				t.Errorf("heddle texts = %v, want the heddle.json change on the tip", got)
+			}
+			requireClean(t, board)
+		})
+
+		t.Run("A heddle.json field changed on both sides keeps origin's value and tags the original under the replayer", func(t *testing.T) {
+			t.Parallel()
+			f := newRecordsFixture(t)
+			board := f.hub.BoardDir()
+			branch := gitkit.CurrentBranch(t, board)
+			pushHeddleBase(t, board, branch, map[string]string{"x": "X"})
+			local := gitkit.CommitFile(t, board, "heddle.json", heddleFileOf(t, map[string]string{"x": "X local"}), "edit x locally")
+			upstream := f.originCommit(branch, "heddle.json", heddleFileOf(t, map[string]string{"x": "X origin"}), "edit x on origin")
+			gitkit.Git(t, board, "fetch")
+
+			outcome, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
+			if err != nil {
+				t.Fatalf("ReplayBoltForTest: %v", err)
+			}
+			if len(outcome.Lost) != 1 || outcome.Lost[0].Entry != "x" || outcome.Lost[0].Field != "text" {
+				t.Errorf("lost = %+v, want the local text of x", outcome.Lost)
+			}
+			wantTag := "set-aside/replayer/heddle/" + local[:12]
+			if len(outcome.SetAside) != 1 || outcome.SetAside[0].Tag != wantTag {
+				t.Errorf("set aside = %+v, want %s under %s", outcome.SetAside, local, wantTag)
+			}
+			if got := heddleTexts(t, board); got["x"] != "X origin" {
+				t.Errorf("heddle texts = %v, want origin's text", got)
+			}
+			if got := gitkit.RevParse(t, board, "HEAD"); got != upstream {
+				t.Errorf("HEAD = %s, want upstream %s, since nothing of the commit survived", got, upstream)
+			}
+		})
+
 		t.Run("A commit touching a stencil file origin left alone is replayed by cherry-pick", func(t *testing.T) {
 			t.Parallel()
 			f := newRecordsFixture(t)
@@ -690,7 +871,7 @@ func TestRecordsReplay(t *testing.T) {
 			tip := gitkit.CommitFile(t, board, "board.json", boardFileOf(t, boardEntry("neve"), boardEntry("other", withBoardTitle("O2"))), "retitle other")
 			upstream := f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
 			gitkit.Git(t, board, "fetch")
-			t.Cleanup(fabricengine.InstallBoardReplay(scribbleThenFailReplay{boardDir: board}))
+			t.Cleanup(fabricengine.RegisterBoltReplayer(scribbleThenFailReplay{boardDir: board}))
 
 			_, err := fabricengine.ReplayBoltForTest(f.hub.Location, board, nil)
 			wantTag := "set-aside/restore-failed/" + tip[:12]

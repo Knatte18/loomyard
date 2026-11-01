@@ -281,6 +281,8 @@ func (f *Fabric) FastForwardPair(opts SyncOptions) (res FastForwardResult, err e
 		return FastForwardResult{}, err
 	}
 	f.recordWarpAdvance(rec, localHEAD)
+	// The pair took in origin's commits; the worktree seam hears of them, and a failure is logged by the call and never fails the move.
+	f.fireTookIn(localHEAD, upstreamSHA)
 	return FastForwardResult{NewHead: upstreamSHA}, nil
 }
 

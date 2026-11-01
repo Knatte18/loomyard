@@ -1,6 +1,6 @@
 //go:build tier1
 
-// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at <hub>/_board/.lym, which needs real git repositories.
+// clone_hubscratch_integration_test.go — CloneHub's hub-scratch materialisation at the Bolt checkout's .lym, which needs real git repositories.
 
 package fabricengine
 
@@ -25,7 +25,7 @@ func initTinyRepo(t *testing.T, dir string) {
 	gitkit.CommitFile(t, dir, "README.md", "# "+filepath.Base(dir), "init")
 }
 
-// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates HubScratchDir(res.HubPath) (<hub>/_board/.lym): the hub-wide ephemeral sibling of <hub>/_board/_lym, created only after the board worktree exists, a real directory rather than a junction.
+// TestCloneHub_CreatesHubScratchDir asserts that CloneHub's hub-materialisation step creates HubScratchDir(res.HubPath) (the Bolt checkout's .lym): the hub-wide ephemeral sibling of the Bolt checkout's _lym, created only after the board worktree exists, a real directory rather than a junction.
 func TestCloneHub_CreatesHubScratchDir(t *testing.T) {
 	t.Parallel()
 

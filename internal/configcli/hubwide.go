@@ -1,6 +1,6 @@
 // hubwide.go — the board-dir branch of the config verbs.
 //
-// A hub-wide module's file, and any module's repo default (--layer default), is read and written at the board dir and its edits are committed in _board through a commit seam, where a worktree-layer write syncs fabric.
+// A hub-wide module's file, and any module's repo default (--layer default), is read and written at the board dir and its edits are committed in the Bolt checkout through a commit seam, where a worktree-layer write syncs fabric.
 
 package configcli
 
@@ -128,7 +128,7 @@ func (d configDirs) layerFile(module configreg.Module) (string, configengine.Lay
 	return path, layer, nil
 }
 
-// hubCommitFunc runs write under the board write lock and commits the one module file it wrote in _board.
+// hubCommitFunc runs write under the board write lock and commits the one module file it wrote in the Bolt checkout.
 // It returns write's own error unwrapped when write fails, and any commit or push failure otherwise.
 type hubCommitFunc func(module string, write func() error) error
 
@@ -163,7 +163,7 @@ func newHubCommit(boardDir string) hubCommitFunc {
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
 // Otherwise it holds the board write lock and runs a dry run first, so a file that fails to parse or migrate leaves every file unwritten.
-// Then the reconcile writes, its files are committed in _board and the commit is pushed.
+// Then the reconcile writes, its files are committed in the Bolt checkout and the commit is pushed.
 // A write that fails part-way is undone, restoring every config file of the board dir.
 // A write that succeeded but was not committed, or committed but not pushed, is reported as an error naming the files left for the next board sync.
 func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard func() (string, error)) int {
@@ -236,7 +236,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 	}
 	if committed {
 		if pushErr := bolt.Push(syncOpts); pushErr != nil {
-			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in _board but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, pushErr))
+			return output.Err(out, fmt.Sprintf("reconciled %s in %s and committed them in %s but did not push: %v; the next board push carries them", strings.Join(written, ", "), board, fabricengine.BoltDirName, pushErr))
 		}
 	}
 	return output.Ok(out, reconcileEnvelope(true, results))
@@ -314,7 +314,7 @@ func rollBack(path string, snap fileSnapshot, cause error) error {
 	return cause
 }
 
-// validateHubFile loads module's board file strictly, alone, so a malformed edit never reaches _board.
+// validateHubFile loads module's board file strictly, alone, so a malformed edit never reaches the Bolt checkout.
 func validateHubFile(boardDir string, module configreg.Module) error {
 	_, err := configengine.Load(configengine.Dirs{Board: boardDir}, module.Spec())
 	return err
@@ -331,7 +331,7 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	}
 	fields := map[string]any{
 		"module":  module,
-		"message": fmt.Sprintf("edited and committed %s in _board", path),
+		"message": fmt.Sprintf("edited and committed %s in %s", path, fabricengine.BoltDirName),
 	}
 	for key, value := range extra {
 		fields[key] = value
@@ -339,7 +339,7 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 	return output.Ok(out, fields)
 }
 
-// setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in _board.
+// setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in the Bolt checkout.
 // The file is validated strictly before the commit, then loaded alone through the module's own loader, and restored on any failure.
 // The loader refuses the write only with a failure the file did not already load with.
 func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {

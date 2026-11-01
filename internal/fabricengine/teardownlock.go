@@ -154,7 +154,7 @@ func respawnPairPush(l *lymcwd.Location, slug string, local bool) {
 			logger.Warn("fabricengine: respawning the pair's push after a failed remove failed", "slug", slug, "error", err)
 		}
 	case pathPresent(recordsWorktree) && !local:
-		req := PushSpawn{WeftPath: recordsWorktree, PauseSlug: slug, TeardownSlug: slug, WorkDir: BoardDir(l.HubPath)}
+		req := PushSpawn{WeftPath: recordsWorktree, PauseSlug: slug, TeardownSlug: slug, WorkDir: BoltDir(l.HubPath)}
 		if err := spawnDetachedPushFn(req); err != nil {
 			logger.Warn("fabricengine: respawning the pair's records push after a failed remove failed", "slug", slug, "error", err)
 		}

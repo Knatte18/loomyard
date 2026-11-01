@@ -21,7 +21,7 @@ import (
 
 // TestLoadConfig_ScalarKeysAndTemplateDefaults asserts LoadConfig reads the scalar keys and resolves absent types and labels keys to the template defaults.
 // A path: key of any shape is ignored because Config.Path has yaml:"-":
-// the board data dir is geometry owned by fabricengine.BoardDir, with no relative-path resolution and no env override.
+// the board data dir is geometry owned by fabricengine.BoltDir, with no relative-path resolution and no env override.
 // It sets an environment variable, so it runs serially.
 func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 	t.Setenv("TEST_BOARD_PATH", t.TempDir())

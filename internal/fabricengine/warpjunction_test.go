@@ -192,7 +192,7 @@ func TestWarpJunctions(t *testing.T) {
 	// filtering of its own; TestFilterHubReserved and TestIsReservedHubName in
 	// junctionnames_test.go own the reservation property. This asserts the narrower, still-true
 	// claim: WarpJunctions returns exactly the caller-supplied names and never augments them
-	// with a hub-structural entry of its own, using "_board" (still reserved via
+	// with a hub-structural entry of its own, using the Bolt directory name (still reserved via
 	// HubReservedNames() after this batch) as the name that must NOT appear unless the caller
 	// actually supplied it.
 	t.Run("no_unsupplied_hub_structural_names", func(t *testing.T) {
@@ -204,8 +204,8 @@ func TestWarpJunctions(t *testing.T) {
 
 		junctions := WarpJunctions(loc, "slug", []string{"_lym", "_extra"})
 		for _, j := range junctions {
-			if j.Name == "_board" {
-				t.Errorf("WarpJunctions augmented the caller-supplied names with an unsupplied %q entry", "_board")
+			if j.Name == BoltDirName {
+				t.Errorf("WarpJunctions augmented the caller-supplied names with an unsupplied %q entry", BoltDirName)
 			}
 		}
 	})

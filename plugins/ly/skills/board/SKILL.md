@@ -1,6 +1,6 @@
 ---
 name: board
-description: Read or write the board — create or promote an entry, find or list entries, prune done ones, take in the hub repository's GitHub issues — always through `lym board`, never by touching `_board/*.json`.
+description: Read or write the board — create or promote an entry, find or list entries, prune done ones, take in the hub repository's GitHub issues — always through `lym board`, never by touching the board's JSON files in the Bolt checkout.
 ---
 
 # board
@@ -9,7 +9,7 @@ description: Read or write the board — create or promote an entry, find or lis
 
 The board is the tracker: one entry per piece of work or idea, each with a kind and labels.
 It is read and written only through `lym board`.
-Never read, grep or edit `_board/*.json` or the rendered README directly.
+Never read, grep or edit the board's JSON files in the Bolt checkout or the rendered README directly.
 Every verb prints JSON, except where `--text` asks for the compact listing.
 
 ## Kinds

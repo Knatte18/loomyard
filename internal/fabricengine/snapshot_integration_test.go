@@ -177,7 +177,7 @@ func TestSnapshotWarpSHA_PerBranchScoping(t *testing.T) {
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// The weft worktree's original branch is fabricengine.RecordsBranchName("main") ("main-weft"), never bare "main".
-	// A real hub's own weft:main is a SEPARATE worktree (_board), so this file's own branch stays suffixed.
+	// A real hub's own weft:main is a SEPARATE worktree (the Bolt checkout), so this file's own branch stays suffixed.
 	// Fork "tagged" off it and record the Snapshot tag there, so the mainline
 	// branch itself never advances past the fixture's initial commit.
 	mainlineBranch := fabricengine.RecordsBranchName("main")
@@ -284,7 +284,7 @@ func TestSnapshotWarpSHA_TopologicalOrderBeatsCommitDate(t *testing.T) {
 	f := fabricengine.NewFabricForTest(t, warpPath, weftFixture.PrimeRecords())
 
 	// A real hub's weft primary checks out the suffixed branch (fabricengine.RecordsBranchName("main")), never bare "main".
-	// "main" itself is already checked out by the hub's own _board worktree (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
+	// "main" itself is already checked out by the hub's own Bolt checkout worktree (the repo-wide weft:main checkout), so switching this worktree onto literal "main" would
 	// collide with that second worktree rather than reaching the primary's own mainline.
 	mainlineBranch := fabricengine.RecordsBranchName("main")
 	warpSHAMainline, _ := commitWeftTagged(t, f, warpPath, weftFixture.PrimeRecords(), "mainline tagged", "raddle")

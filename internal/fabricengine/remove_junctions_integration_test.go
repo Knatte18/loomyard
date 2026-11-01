@@ -192,9 +192,8 @@ func TestRemove_SweepsAnchoredLinksOnSubpathHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	// Exactly the two wired junctions (_lym, .lym) — an exact count, not merely non-zero: with the
-	// _board special case gone, the anchored sweep is the sole contributor to LinksRemoved, so an
-	// exact count is what proves the sweep ran at all.
+	// Exactly the two wired junctions (_lym, .lym) — an exact count, not merely non-zero.
+	// With the Bolt checkout special case gone, the anchored sweep is the sole contributor to LinksRemoved, so an exact count is what proves the sweep ran at all.
 	if result.LinksRemoved != 2 {
 		t.Errorf("LinksRemoved = %d; want 2 (_lym, .lym at the anchored directory)", result.LinksRemoved)
 	}

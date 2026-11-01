@@ -160,7 +160,7 @@ func CopyHub(tb testing.TB, shape Shape) *Hub {
 		tb.Fatalf("CopyHub: fixture %q: %v", template.name, err)
 	}
 	hub := hubAt(tb, root, shape)
-	commitRelocatedBinding(tb, hub.BoardDir())
+	commitRelocatedBinding(tb, fabricengine.BoltDir(hub.Path))
 	return hub
 }
 

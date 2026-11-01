@@ -5,7 +5,7 @@
 // Drives RunCLI in-process and asserts the JSON + exit-code contract for each subcommand: JSON envelope shape (ok=true/false), exit codes (0 for success, 1 for error), and each verb's distinctive field (task, tasks[], Home.md written).
 //
 // Board data dir strategy: TestCLI seeds one git repo (git init) as its cwd so that PersistentPreRunE can call lymcwd.Resolve without error.
-// The board data dir is then Hub/_board where Hub = filepath.Dir(cwd).
+// The board data dir is then the Bolt checkout under Hub, where Hub = filepath.Dir(cwd).
 // This is the production code path; no --board-path injection is used for operational tests.
 //
 // seedCwd spawns "git init" and every RunCLI call spawns "git rev-parse" via lymcwd.Resolve, so this file is integration-tagged per the Test Tier Purity Invariant; spawn-free CLI tests live in cli_unit_test.go.
@@ -28,7 +28,7 @@ import (
 const defaultHubBoardConfig = "readme: Home.md\ndesign_prefix: proposal-\n"
 
 // seedCwd creates a temp directory with the default hub board.yaml, initialises a git repo there (so lymcwd.Resolve succeeds), changes to that directory, and returns the cwd path.
-// The board data dir is Hub/_board where Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
+// The board data dir is the Bolt checkout under Hub, where Hub = filepath.Dir(cwd); callers can compute it as fabricengine.BoardDir(filepath.Dir(cwd)).
 func seedCwd(t *testing.T) string {
 	t.Helper()
 
@@ -311,7 +311,7 @@ func stepContract(t *testing.T, f *cliFixture) {
 			wantFieldExist: "ok",
 			assertFieldExists: func(t *testing.T, result map[string]any, cwd string) {
 				// The fixture initialised a git repo at cwd; Hub = filepath.Dir(cwd);
-				// lymcwd.Resolve derives Hub from the git root, so board renders at Hub/_board.
+				// lymcwd.Resolve derives Hub from the git root, so board renders in the Bolt checkout under Hub.
 				homePath := filepath.Join(fabricengine.BoardDir(filepath.Dir(cwd)), "Home.md")
 				if _, err := os.Stat(homePath); err != nil {
 					t.Fatalf("Home.md not created at %q: %v", homePath, err)
@@ -1198,7 +1198,7 @@ func stepLoadsHubBoardConfig(t *testing.T, f *cliFixture) {
 // The fixture's real git repo lets lymcwd.Resolve succeed.
 func stepBoardPathResolution(t *testing.T, f *cliFixture) {
 	// The fixture's repository is the worktree and its parent is the hub:
-	// lymcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, "_board").
+	// lymcwd.Resolve(worktree) derives Hub = topDir, so fabricengine.BoardDir(Hub) = filepath.Join(topDir, fabricengine.BoltDirName).
 	topDir := filepath.Dir(f.cwd)
 
 	expectedBoardDir := fabricengine.BoardDir(topDir)

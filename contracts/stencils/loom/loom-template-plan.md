@@ -1,5 +1,5 @@
 <!-- This is the loom Plan producer's autonomous prompt. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/loom/
+     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/loom/`
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
      gate_tiers is a required marker filled by loomengine.PlanTable from the hub's gate.yaml; a hub declaring no tier renders it as none.

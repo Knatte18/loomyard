@@ -389,6 +389,10 @@ func (m *originMover) move(i int, busy string) error {
 	}
 
 	if target.side == failedPushSideCode {
+		headBefore, err := gitrepo.New(target.worktree).CurrentSHA()
+		if err != nil {
+			return err
+		}
 		state, dirty, err := ffWorktree(m.rec, target.worktree, outcome.OriginHead)
 		if err != nil {
 			return err
@@ -397,6 +401,9 @@ func (m *originMover) move(i int, busy string) error {
 		outcome.Paths = dirty
 		outcome.Moved = state == BranchLevel
 		outcome.WayForward = outcome.stopWayForward()
+		if outcome.Moved {
+			outcome.Warning = fireTookInAt(target.worktree, headBefore, outcome.OriginHead)
+		}
 		return nil
 	}
 
@@ -534,7 +541,7 @@ func readOriginEnded(l *lymcwd.Location, targets []originTarget, outcomes []Bran
 			return nil, err
 		}
 		if target.side == failedPushSideBolt {
-			slugs, stamps, err := localBoardEntries(repo, head, ahead)
+			slugs, stamps, err := localLedgerRuns(repo, head, ahead)
 			if err != nil {
 				return nil, err
 			}
@@ -577,10 +584,10 @@ func readOriginEnded(l *lymcwd.Location, targets []originTarget, outcomes []Bran
 	return withoutFinalizeEntered(l, ended), nil
 }
 
-// addLocalCreatedStamps adds to created the stamp the local board holds for each of slugs that has none yet.
-// A slug the local board does not hold gets none.
+// addLocalCreatedStamps adds to created the stamp the local run ledger holds for each of slugs that has none yet.
+// A slug the local ledger does not hold gets none.
 func addLocalCreatedStamps(board *gitrepo.Repo, slugs []string, created map[string]string) error {
-	replay, err := InstalledBoardReplay()
+	ledger, _, err := runLedger()
 	if err != nil {
 		return err
 	}
@@ -588,19 +595,15 @@ func addLocalCreatedStamps(board *gitrepo.Repo, slugs []string, created map[stri
 	if err != nil {
 		return err
 	}
-	data, err := blobAt(board, head, boardFileName)
-	if err != nil || len(data) == 0 {
-		return err
-	}
-	entries, err := replay.Entries(data)
+	runs, err := ledgerRunsAt(board, ledger, head)
 	if err != nil {
-		return fmt.Errorf("%s at %s: %w", boardFileName, head, err)
+		return fmt.Errorf("%s at %s: %w", ledger.File(), head, err)
 	}
-	for _, entry := range entries {
-		if _, stamped := created[entry.Slug]; stamped || entry.Created.IsZero() || !slices.Contains(slugs, entry.Slug) {
+	for _, run := range runs {
+		if _, stamped := created[run.Slug]; stamped || run.Created.IsZero() || !slices.Contains(slugs, run.Slug) {
 			continue
 		}
-		created[entry.Slug] = entry.Created.UTC().Format(time.RFC3339)
+		created[run.Slug] = run.Created.UTC().Format(time.RFC3339)
 	}
 	return nil
 }

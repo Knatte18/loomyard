@@ -304,7 +304,7 @@ func TestRefusedBefore(t *testing.T) {
 			t.Fatalf("mkdir %s: %v", hubPath, err)
 		}
 
-		// A plain directory at the derived hub path has no _board entry and no weft sibling, so
+		// A plain directory at the derived hub path has no Bolt checkout entry and no weft sibling, so
 		// resetHub's own looksLikeHub pre-flight (clone.go:573-577) refuses before CloneHub ever
 		// touches the network.
 		_, err := fabricengine.CloneHub(cwd, fabricengine.CloneOptions{

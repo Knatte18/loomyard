@@ -14,7 +14,7 @@
 // a supplied warp URL that disagrees with a recorded binding is refused.
 // The shortname is recorded the same way (`fabricengine.ShortnameFileName`): a recorded shortname is adopted, a differing `--shortname` is refused, and a bound weft with no record clones with a warning.
 //
-// `--reset` tears down only a real fabric hub, one holding a `_board` entry or a weft sibling.
+// `--reset` tears down only a real fabric hub, one holding a Bolt checkout entry or a weft sibling.
 // The hub name is derived rather than typed, so a directory that merely carries a `<name>-LYMHUB` name is reported and left alone.
 // `--subpath` must stay inside the warp repo: an absolute path, or one escaping through `..`, is refused before anything is cloned, and a value that disagrees with the subpath recorded in the main-weft marker, or in the Bolt marker when main-weft carries none, is refused on a re-clone.
 // A fresh bind commits the `.lym-anchor` marker at the root of the prime's weft branch and writes none on the board.
@@ -23,7 +23,7 @@
 //
 // The weft prime is checked out at once on its suffixed branch, adopted as a tracking branch when the weft remote carries it and created at the cloned HEAD otherwise;
 // the cloned default branch stays, unclaimed.
-// `_board` is a second weft worktree on the warp's unsuffixed default branch, adopted when the remote carries board history and orphan-created otherwise.
+// The Bolt checkout is a second weft worktree on the warp's unsuffixed default branch, adopted when the remote carries board history and orphan-created otherwise.
 //
 // # Add
 //
@@ -69,8 +69,8 @@
 //
 // # Cleanup
 //
-// The primary weft branch, the weft pairing of the branch `_board` is on, stays protected however the prime is checked out, so a coordinated checkout cannot turn it into a deletable orphan.
-// When it cannot be determined, as in a hub with no readable `_board` worktree, cleanup refuses to enumerate orphans rather than sweep on a guess.
+// The primary weft branch, the weft pairing of the branch the Bolt checkout is on, stays protected however the prime is checked out, so a coordinated checkout cannot turn it into a deletable orphan.
+// When it cannot be determined, as in a hub with no readable Bolt checkout, cleanup refuses to enumerate orphans rather than sweep on a guess.
 //
 // The weft sweep's dry run makes no network call and reports no remote verdict.
 // A weft repo with no origin reports `remote_skipped_reason` once and exits 0, and a failed remote deletion exits non-zero with the reason in `entries[].remote_error`.

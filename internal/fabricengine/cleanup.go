@@ -266,7 +266,7 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 // primaryWeftBranch returns the weft branch paired with the repo's primary warp branch — the one
 // weft line Cleanup must never enumerate as an orphan.
 //
-// The source is the branch `<Hub>/_board` is checked out on: ensureBoardWorktree materialises that
+// The source is the branch the Bolt checkout is checked out on: ensureBoardWorktree materialises that
 // worktree on the warp's own unsuffixed default branch and nothing moves it afterwards, so it is the
 // hub's durable record of which warp branch is primary.
 // Branch-space liveness cannot answer this on its own, and the difference is a data-loss bug rather
@@ -277,18 +277,18 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 // A hub whose board branch cannot be read is refused rather than swept: Cleanup's deletions are
 // irreversible, so an unreadable primary is the one direction that must fail closed.
 func primaryWeftBranch(l *lymcwd.Location) (string, error) {
-	boardDir := BoardDir(l.HubPath)
+	boardDir := BoltDir(l.HubPath)
 	boardBranch, err := readBranch(boardDir)
 	if err != nil {
 		return "", fmt.Errorf(
 			"cannot determine the repo's primary weft branch from the %s worktree at %s (%w); refusing to enumerate orphan weft branches",
-			BoardDirName, boardDir, err)
+			BoltDirName, boardDir, err)
 	}
 	boardBranch = strings.TrimSpace(boardBranch)
 	if boardBranch == "" || boardBranch == "HEAD" {
 		return "", fmt.Errorf(
 			"the %s worktree at %s is not on a named branch; refusing to enumerate orphan weft branches",
-			BoardDirName, boardDir)
+			BoltDirName, boardDir)
 	}
 	return RecordsBranchName(boardBranch), nil
 }

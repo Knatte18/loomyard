@@ -1,5 +1,5 @@
 <!-- This is the drift baseline agent's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/drift/
+     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/drift/`
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that driftengine's BaselineTable builds, then hands it to
      shuttle as the agent's whole prompt.
      Every marker below is a top-level substitution;

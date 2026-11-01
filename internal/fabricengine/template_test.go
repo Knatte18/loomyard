@@ -2,7 +2,7 @@
 
 // template_test.go — tests for the fabric ConfigTemplate generator.
 //
-// Covers: ConfigTemplate returns valid YAML with both expected keys and resolves to the correct
+// Covers: ConfigTemplate returns valid YAML with its three expected keys and resolves to the correct
 // defaults when the environment is empty.
 
 package fabricengine
@@ -17,7 +17,7 @@ import (
 )
 
 // TestConfigTemplate covers the generated template, resolved against an empty environment:
-// it is valid YAML carrying both the branch_prefix and pathspec keys;
+// it is valid YAML carrying the branch_prefix, pathspec and warp_exclude keys;
 // branch_prefix resolves to an empty string;
 // pathspec resolves to an empty set, regardless of environment: _lym and .lym are structural and
 // injected in code by internal/fabricengine, and are never read from the pathspec key at all, so an
@@ -25,11 +25,12 @@ import (
 // operator adds explicitly — the resolved value is whitespace-split (mirroring Config.Dirs, the
 // consumer that actually splits it) rather than compared as one whole string, since a splitting bug
 // there would otherwise be silent;
+// warp_exclude resolves to exactly CLAUDE.local.md, AGENTS.override.md and .heddle;
 // and an empty pathspec yields an empty Config.Dirs() and pathspecNames (the routing set) and the
 // dedupUnion formula junctionNames applies over cfg.Dirs() (the wired-name set) both degrade to
 // their structural sets alone over it, with no config-supplied name in either union.
 //
-//testtiming:keep the config template being valid YAML with both keys, resolving to an empty branch prefix and an empty pathspec, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the config template being valid YAML with its three keys, resolving to an empty branch prefix, an empty pathspec and the three default warp exclude paths, and degrading to the structural sets alone; coverage of its blocks by other tests does not show an assertion of this
 func TestConfigTemplate(t *testing.T) {
 	t.Parallel()
 
@@ -39,7 +40,7 @@ func TestConfigTemplate(t *testing.T) {
 	if err := yaml.Unmarshal([]byte(got), &template); err != nil {
 		t.Fatalf("ConfigTemplate() is not valid YAML: %v", err)
 	}
-	for _, key := range []string{"branch_prefix", "pathspec"} {
+	for _, key := range []string{"branch_prefix", "pathspec", "warp_exclude"} {
 		if _, ok := template[key]; !ok {
 			t.Errorf("ConfigTemplate() missing expected key: %s", key)
 		}
@@ -78,6 +79,10 @@ func TestConfigTemplate(t *testing.T) {
 	var cfg Config
 	if err := yaml.Unmarshal(resolved, &cfg); err != nil {
 		t.Fatalf("resolved YAML does not unmarshal into Config: %v", err)
+	}
+
+	if got, want := cfg.WarpExcludePaths(), []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("cfg.WarpExcludePaths() = %v; want %v", got, want)
 	}
 
 	if len(cfg.Dirs()) != 0 {

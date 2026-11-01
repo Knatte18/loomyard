@@ -6,7 +6,7 @@
 //
 // `git checkout -b <branch>` on an unborn HEAD succeeds but writes no ref, so a clone against a
 // genuinely empty weft remote used to leave the weft primary sitting on a branch that did not
-// exist. Nothing later filled it in — the clone-time commit lands on _board's own unsuffixed branch
+// exist. Nothing later filled it in — the clone-time commit lands on the Bolt checkout's own unsuffixed branch
 // — so every verb that forks a new pair from the primary died on
 // `fatal: invalid reference: <branch>-weft`, `lym fabric add` included, which is the example both
 // the parent command and `add` document.

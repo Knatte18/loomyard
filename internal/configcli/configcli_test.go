@@ -702,7 +702,7 @@ func TestDispatchHubWideBoard(t *testing.T) {
 				if !strings.Contains(hubFile, "x: desc") || !strings.Contains(hubFile, "old: kept") {
 					t.Errorf("hub file lacks the new and the existing label; got %q", hubFile)
 				}
-				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in _board"})
+				assertJSONOkContains(t, out, map[string]any{"module": "board", "message": "edited and committed " + configengine.ConfigFile(fx.board, "board") + " in " + fabricengine.BoltDirName})
 			},
 		},
 		{

@@ -74,7 +74,7 @@ type CloneResult struct {
 	MutationRecord
 	HubPath  string // HubPath is the created <name>-LYMHUB container directory.
 	Anchor   string // Anchor is the resolved lym-anchor subpath (e.g. "backend" or ".").
-	BoardDir string // BoardDir is the package-level BoardDir(HubPath) result, the weft:main checkout.
+	BoardDir string // BoardDir is the package-level BoltDir(HubPath) result, the weft:main checkout.
 	WeftBase string // WeftBase is the weft-side directory paired with PrimeCwd.
 	PrimeCwd string // PrimeCwd is the resolved prime warp worktree path at Anchor.
 	// WarpURL is the effective warp URL actually cloned, whether supplied in opts or derived from
@@ -92,7 +92,7 @@ type CloneResult struct {
 }
 
 // CloneHub orchestrates the cloning of warp and weft repositories, then
-// materializes <Hub>/_board as a second weft worktree, into a Hub directory.
+// materializes the Bolt checkout as a second weft worktree, into a Hub directory.
 // It clones + checks out + materializes the board worktree + resolves/records
 // the lym-anchor subpath, and returns the resolved geometry for the CLI layer
 // to drive config materialization and wiring — CloneHub deliberately does NOT
@@ -121,7 +121,7 @@ type CloneResult struct {
 //     3b. Read the weft primary's checked-out branch and check out its
 //     RecordsBranchName-suffixed pairing at the same HEAD, capturing the warp
 //     branch name it read; on failure, teardown and return the error.
-//  4. Materialize <Hub>/_board as a second weft worktree via ensureBoardWorktree,
+//  4. Materialize the Bolt checkout as a second weft worktree via ensureBoardWorktree,
 //     adopted onto the captured warp branch if it already exists locally from
 //     step 3's clone, freshly orphan-created otherwise; on failure, teardown
 //     and return the error.
@@ -305,7 +305,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 	// scheme. warpBranch is read from the warp clone, never from the weft clone: `lym fabric add`
 	// forks every new pair's weft branch from RecordsBranchName(<warp branch>), so a weft primary named
 	// after the weft remote's own HEAD (an empty bare created with a different default branch)
-	// leaves a hub on which no pair can ever be created. Step 7's _board worktree-add reuses the
+	// leaves a hub on which no pair can ever be created. Step 7's Bolt checkout worktree-add reuses the
 	// same value.
 	warpBranch, err := checkedOutBranch(warpWorktreePath, "warp prime")
 	if err != nil {
@@ -315,20 +315,20 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 
-	// Step 7: Materialize <Hub>/_board as a second weft worktree, checked out
+	// Step 7: Materialize the Bolt checkout as a second weft worktree, checked out
 	// on warpBranch — adopted if that branch already exists locally from
 	// step 6's clone, freshly orphan-created otherwise (a genuinely empty
 	// weft remote).
-	boardDir := BoardDir(hubPath)
+	boardDir := BoltDir(hubPath)
 	if err := ensureBoardWorktree(weftPath, warpBranch, boardDir); err != nil {
 		return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, err)
 	}
 	rec.Append(KindWorktreeCreated, boardDir, "")
 
-	// The hub-wide never-tracked tree is <hub>/_board/.lym, the mirrored ephemeral sibling of <hub>/_board/_lym.
-	// It is created here, rather than at old step 4, because _board does not exist until ensureBoardWorktree above has run.
+	// The hub-wide never-tracked tree is the Bolt checkout's .lym, the mirrored ephemeral sibling of its _lym.
+	// It is created here, rather than at old step 4, because the Bolt checkout does not exist until ensureBoardWorktree above has run.
 	//
-	// The excludes are seeded first so _board/.lym never shows as untracked dirt in the board worktree from the hub's birth on;
+	// The excludes are seeded first so the Bolt checkout's .lym never shows as untracked dirt in the board worktree from the hub's birth on;
 	// the board's stage-all commit seeds them again before staging.
 	//
 	// The seed failure is fatal, routed through teardownHub like every other step-7 failure:
@@ -375,7 +375,7 @@ func CloneHub(cwd string, opts CloneOptions) (res CloneResult, err error) {
 			return CloneResult{}, teardownHub(rec, cwd, hubPath, hubTok, fmt.Errorf(
 				"found stale %s marker with no %s beside it at %s; in an existing hub's %s worktree run `git mv %s %s` and commit, then retry this clone",
 				staleFabricAnchorName, lymcwd.AnchorFileName, boardDir,
-				BoardDirName, staleFabricAnchorName, lymcwd.AnchorFileName))
+				BoltDirName, staleFabricAnchorName, lymcwd.AnchorFileName))
 		}
 
 		// Create path: first-ever clone of this weft, no marker committed yet.
@@ -508,7 +508,7 @@ func suffixWeftPrimaryBranch(weftPath, warpBranch string) error {
 // it UNBORN, so refs/heads/<suffixed> resolves the moment CloneHub returns.
 //
 // Against a genuinely empty weft remote — the documented first-ever-setup path probeWeftBinding's unborn-HEAD check and ensureBoardWorktree's orphan branch both exist to serve — `git checkout -b <branch>` on an unborn HEAD succeeds but creates another unborn branch: no ref is written.
-// Nothing later fills it in either, because the clone-time commit the CLI lands through Bolt goes to the _board worktree's own unsuffixed branch, not to this one.
+// Nothing later fills it in either, because the clone-time commit the CLI lands through Bolt goes to the Bolt checkout's own unsuffixed branch, not to this one.
 // The hub therefore came out of clone with its weft primary sitting on a branch that does not exist, and every verb that forks a new pair from it died on `fatal: invalid reference: <branch>-weft` — `lym fabric add` included, which is the example both the parent command and `add` itself document.
 //
 // A branch that already resolves is left untouched, so the ordinary non-empty-remote clone and the
@@ -614,9 +614,9 @@ func refuseUncheckedOutWarpClone(warpWorktreePath, warpURL string) error {
 //
 // cwd is the operator-named parent CloneHub normalised at its top: resetHub has no *lymcwd.Location to contain against (it runs before any resolution), so cwd is the only containment anchor available, and it is what R4's `clone --reset` defect needed and did not have.
 //
-// The hub predicate is structural and cheap: a fabric hub always holds `<hub>/_board`, and always
+// The hub predicate is structural and cheap: a fabric hub always holds the Bolt checkout, and always
 // holds at least one `*-weft` sibling.
-// Either is enough — a hub whose `_board` worktree was hand-deleted is still recognisably a hub, and
+// Either is enough — a hub whose Bolt checkout was hand-deleted is still recognisably a hub, and
 // so is one mid-clone whose board has not been materialised yet.
 // An absent path stays a silent no-op, so --reset remains idempotent.
 // rec is CloneHub's own recorder, already non-nil at both call sites (see this function's callers'
@@ -636,7 +636,7 @@ func resetHub(rec *Mutations, cwd, hubPath string) error {
 	if !looksLikeHub(hubPath) {
 		return fmt.Errorf(
 			"reset: refusing to remove %s: it has no %s and no %q sibling, so it is not a fabric hub — remove it yourself if that is really what you meant",
-			hubPath, BoardDirName, "*"+weftname.Suffix)
+			hubPath, BoltDirName, "*"+weftname.Suffix)
 	}
 
 	req := pathRequest{
@@ -654,12 +654,12 @@ func resetHub(rec *Mutations, cwd, hubPath string) error {
 	return nil
 }
 
-// looksLikeHub reports whether hubPath carries the structural marks of a fabric hub: a `_board`
-// entry, or at least one weft sibling directory.
+// looksLikeHub reports whether hubPath carries the structural marks of a fabric hub:
+// the Bolt checkout entry, or at least one weft sibling directory.
 // An unreadable directory answers false, the conservative direction — a directory fabric cannot
 // enumerate is exactly where an unconditional recursive removal is least defensible.
 func looksLikeHub(hubPath string) bool {
-	if _, err := os.Stat(filepath.Join(hubPath, BoardDirName)); err == nil {
+	if _, err := os.Stat(filepath.Join(hubPath, BoltDirName)); err == nil {
 		return true
 	}
 

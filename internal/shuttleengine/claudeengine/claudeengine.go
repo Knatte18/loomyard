@@ -229,7 +229,9 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, fmt.Errorf("resolve append system prompt path: %w", err)
 	}
 	notice := buildDenyNotice(spec.Interactive, cfg, claude, spec.ForkSubagents, spec.AllowAgentTool, spec.DenyPublish)
-	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice)), 0o644); err != nil {
+	// The told Board dir is the hub's Bolt checkout, empty outside a hub.
+	passages := shuttleengine.StandingPassages(c.dirs.Board, "claude")
+	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText(notice, passages)), 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write append system prompt: %w", err)
 	}
 

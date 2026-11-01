@@ -37,7 +37,7 @@ func ResolveParent(l *lymcwd.Location) (Parent, error) {
 	if err != nil {
 		return Parent{}, fmt.Errorf("hubgeom: read origin record for %q: %w", l.WorktreeName, err)
 	}
-	shortname, shortnameFound := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath))
+	shortname, shortnameFound := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	if !shortnameFound {
 		logger.Warn("hubgeom: hub has no recorded shortname; the run gets no parent", "worktree", l.WorktreeName)
 		return Parent{}, nil

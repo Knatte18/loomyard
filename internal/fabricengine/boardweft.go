@@ -1,9 +1,9 @@
-// boardweft.go materializes <Hub>/_board as a second worktree of the weft repo on the warp
+// boardweft.go materializes the Bolt checkout as a second worktree of the weft repo on the warp
 // prime's unsuffixed branch, never the RecordsBranchName-suffixed pairing every other weft worktree
 // uses.
 // It never derives a branch name itself (warpBranch always arrives pre-computed by CloneHub, which
 // read it from the warp prime's freshly-cloned checkout), mirroring weftwiring.go's own stated rule for
-// pre-suffixed branch names — _board's deliberately-unsuffixed branch is exactly the case that rule
+// pre-suffixed branch names — the Bolt checkout's deliberately-unsuffixed branch is exactly the case that rule
 // exists to keep out of that file.
 
 package fabricengine
@@ -27,14 +27,14 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 	}
 
 	// Both worktree-add forms route through containedWorktreeAdd so a symlink standing at boardPath
-	// cannot carry the _board worktree outside the hub — the same create-side containment binding
-	// R5's review added for the slug worktrees. boardPath is <hub>/_board, a direct child of the hub.
+	// cannot carry the Bolt checkout worktree outside the hub — the same create-side containment binding
+	// R5's review added for the slug worktrees. boardPath is the Bolt checkout, a direct child of the hub.
 	boardContainer := filepath.Dir(boardPath)
 	if branchExistsLocally {
 		if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
 			return []string{"worktree", "add", worktreePath, warpBranch}
 		}); err != nil {
-			return fmt.Errorf("add _board worktree on existing branch %q: %w", warpBranch, err)
+			return fmt.Errorf("add %s worktree on existing branch %q: %w", BoltDirName, warpBranch, err)
 		}
 		return nil
 	}
@@ -42,7 +42,7 @@ func ensureBoardWorktree(weftRepoRoot, warpBranch, boardPath string) error {
 	if err := containedWorktreeAdd(weftRepoRoot, boardContainer, boardPath, func(worktreePath string) []string {
 		return []string{"worktree", "add", "--orphan", "-b", warpBranch, worktreePath}
 	}); err != nil {
-		return fmt.Errorf("add orphan _board worktree on branch %q: %w", warpBranch, err)
+		return fmt.Errorf("add orphan %s worktree on branch %q: %w", BoltDirName, warpBranch, err)
 	}
 	return nil
 }

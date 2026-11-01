@@ -30,7 +30,7 @@ import (
 // tuple rather than embedding MutationRecord.
 func StencilBaseByStamp(hub, name, stampHash string) (base []byte, rev string, found bool, err error) {
 	relPath := path.Join(lymdirs.LymDirName, stencilsDirName, stencilstore.RelPath(name))
-	repo := gitrepo.New(BoardDir(hub))
+	repo := gitrepo.New(BoltDir(hub))
 
 	revisions, err := repo.PathRevisions(relPath, 0)
 	if err != nil {

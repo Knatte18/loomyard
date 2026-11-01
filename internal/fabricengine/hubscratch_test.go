@@ -23,7 +23,7 @@ import (
 // TestHubScratchAndLogsDir covers the hub scratch geometry:
 // HubScratchDir(hub) equals filepath.Join(BoardDir(hub), lymdirs.DotLymDirName) and is a sibling of
 // StencilsDir(hub)'s `_lym` component rather than nested under it — the ephemeral `.lym` tree and
-// the durable `_lym` tree sit side by side inside `_board`, never one inside the other;
+// the durable `_lym` tree sit side by side inside the Bolt checkout, never one inside the other;
 // HubScratchDir's value is byte-identical for a subpath-anchored hub, because it takes a bare hub
 // string and must never pick up AnchorRel, the board's `_lym`/`.lym` trees being flat;
 // and HubLogsDir(hub) equals filepath.Join(HubScratchDir(hub), "logs") — the derivation HubLogsDir's
@@ -75,7 +75,7 @@ func TestHubScratchAndLogsDir(t *testing.T) {
 // hub-scratch-move batch's coverage: reed's boot path's idempotent
 // os.MkdirAll(fabricengine.HubLogsDir(...)) call still succeeds, twice in a row, when
 // fabricengine.HubScratchDir(hubPath) already exists as a real directory — the shape CloneHub now
-// produces at <hub>/_board/.lym.
+// produces at the Bolt checkout's .lym.
 // Moved verbatim from clone_test.go except that the pre-created directory is
 // fabricengine.HubScratchDir(hubPath) instead of the old bare <hub>/.lym join.
 //

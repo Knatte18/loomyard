@@ -36,7 +36,7 @@ func Paths(location *lymcwd.Location) orchengine.Paths {
 		WatchLogPath:     filepath.Join(dir, "watch.log"),
 		RolePath:         filepath.Join(dir, "role.md"),
 		NoteTemplatePath: filepath.Join(dir, "note-template.md"),
-		HubRulesPath:     filepath.Join(fabricengine.BoardDir(location.HubPath), RulesRel()),
+		HubRulesPath:     filepath.Join(fabricengine.BoltDir(location.HubPath), RulesRel()),
 		OwnRulesPath:     filepath.Join(location.AnchorPath(), RulesRel()),
 		PrimeRoot:        location.WorktreePath(),
 

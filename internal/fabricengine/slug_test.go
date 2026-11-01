@@ -28,7 +28,7 @@ func TestValidateWorktreeSlug(t *testing.T) {
 		{"forward slash", "sub/dir", nil, "single path component"},
 		{"backslash", `sub\dir`, nil, "single path component"},
 		{"weft suffix", "zed-weft", nil, "reserved for weft worktrees"},
-		{"board", "_board", nil, "reserved for lym hub geometry"},
+		{"board", BoltDirName, nil, "reserved for lym hub geometry"},
 		{"portals", "_portals", nil, "reserved for lym hub geometry"},
 		{"launchers", "_launchers", nil, "reserved for lym hub geometry"},
 		{"durable structural dir", "_lym", nil, "reserved for lym hub geometry"},

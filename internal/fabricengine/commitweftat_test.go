@@ -38,7 +38,7 @@ func gitStatusPorcelain(t *testing.T, dir string) string {
 
 // TestCommitWeftAt_CommitsDirtyWorktree asserts that commitWeftAt commits an untracked file via a
 // real wildcard-stage commit, with the exact message passed through verbatim — no Warp-SHA trailer,
-// unlike Fabric.CommitWeft, since commitWeftAt's caller (_board's weft:main checkout) has no
+// unlike Fabric.CommitWeft, since commitWeftAt's caller (the Bolt checkout's weft:main checkout) has no
 // corresponding warp branch to trailer against.
 //
 //testtiming:keep commitWeftAt committing an untracked file with the message passed through verbatim and no Warp-SHA trailer; coverage of its blocks by other tests does not show an assertion of this

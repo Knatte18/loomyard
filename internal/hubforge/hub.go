@@ -224,7 +224,7 @@ func (h *Hub) PrimeRecords() string {
 	return fabricengine.RecordsWorktree(h.Location)
 }
 
-// BoardDir returns the path to this hub's _board data directory, the repo-wide weft:main checkout.
+// BoardDir returns the path to this hub's Bolt checkout directory, the repo-wide weft:main checkout.
 func (h *Hub) BoardDir() string {
 	return fabricengine.BoardDir(h.Path)
 }
@@ -412,7 +412,7 @@ func registerTeardown(tb testing.TB, hubPath string) {
 			// SkipDir from a non-directory callback means "stop visiting siblings in this
 			// directory", not "don't descend into this entry". That would leave every sibling
 			// junction wired: abandoning <hub>/<slug2> onward after removing
-			// <slug1>, and leaving _lym and _board behind after removing <worktree>/.lym.
+			// <slug1>, and leaving _lym and the Bolt checkout behind after removing <worktree>/.lym.
 			// This is the single most reversible mistake in this file, so it is spelled out
 			// here rather than left to be rediscovered.
 			return nil

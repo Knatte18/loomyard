@@ -175,7 +175,7 @@
 // It runs in the prime only for a parent branch in `deploy_branches` when the row runs.
 // An empty value runs nothing, and `lym config` refuses a write to it from a pair, as for every hub-wide key, as a guard against a mistaken write rather than a determined agent.
 // Landing config is hub-wide: Parent-Align and Finalize read it from the board dir, never from a task worktree's `_lym/config/`, and `lym config` refuses a write to it from a pair, so a task cannot weaken the key, or set `deploy_branches` or `squash`, through its own tree.
-// A landing change is an operator or hub-orch `lym config landing` run from the prime, committed in `_board` and effective for every pair at once.
+// A landing change is an operator or hub-orch `lym config landing` run from the prime, committed in the Bolt checkout and effective for every pair at once.
 //
 // Parent-Align and Finalize persist their verify failure.
 // When a row's gate call fails with a non-zero exit, Parent-Align or Finalize writes the verifytree landing failure record with the row's gate key as its kind, the failing tier, the failing tests the told Deps.FailingTests parses from the log, HEAD, the write time in whole-second UTC, and the merge-in commit.

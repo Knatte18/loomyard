@@ -50,7 +50,7 @@ func TestRemove_RefusesPrimeWorktreeAndLeavesItIntact(t *testing.T) {
 }
 
 // TestRemove_RefusesForeignWorktreeWithoutDeletingIt drives the other half of the same data-loss path: a hub directory that is a clean git worktree of the WEFT repo, not of warp.
-// `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the exact shape `<hub>/_board` has — and the old fallback deleted the directory anyway, taking .lym-anchor, .lym-warp and the repo-wide fabric.yaml with it while reporting success.
+// `git worktree remove` run against the warp repo refuses it ("not a working tree"), which is the exact shape the hub's Bolt checkout has — and the old fallback deleted the directory anyway, taking .lym-anchor, .lym-warp and the repo-wide fabric.yaml with it while reporting success.
 // The slug is deliberately NOT a reserved name, so this test exercises removeWarpWorktreeDir's registered-linked-worktree rule rather than the slug guard in front of it.
 func TestRemove_RefusesForeignWorktreeWithoutDeletingIt(t *testing.T) {
 	t.Parallel()

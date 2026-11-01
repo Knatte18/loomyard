@@ -99,7 +99,7 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 		executable = ""
 	}
 
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
 	deps := tenderengine.Deps{
 		RecordPath: geometry.RecordPath,
 		Pairs:      pairs,
@@ -148,9 +148,9 @@ func HubDeps(location *lymcwd.Location, strand string) (tenderengine.Deps, []str
 			return err
 		},
 		SyncBoardIfOwed: func() error {
-			boardDir := fabricengine.BoardDir(location.HubPath)
-			bolt := fabricengine.NewBolt(boardDir)
-			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boardDir) })
+			boltDir := fabricengine.BoltDir(location.HubPath)
+			bolt := fabricengine.NewBolt(boltDir)
+			return syncBoardIfOwed(bolt.HasUnpushed, bolt.HasUncommitted, func() error { return boardengine.SpawnSync(boltDir) })
 		},
 		Caller: strand,
 		Now:    time.Now,

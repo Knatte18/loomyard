@@ -53,7 +53,7 @@ func readWarpBinding(boardDir string) (warpURL string, found bool) {
 // The binding wins when both exist, since it is the hub's recorded pairing.
 // It returns an error naming both sources when neither yields a URL.
 func HubRepoURL(l *lymcwd.Location) (string, error) {
-	if recorded, found := readWarpBinding(BoardDir(l.HubPath)); found {
+	if recorded, found := readWarpBinding(BoltDir(l.HubPath)); found {
 		return recorded, nil
 	}
 	origin, err := gitrepo.New(l.WorktreePath()).RemoteURL("origin")
@@ -155,7 +155,7 @@ func resolveEffectiveWarpURL(recorded string, found bool, supplied string) (effe
 	}
 	return "", false, &sentinelError{
 		sentinel: ErrWarpBindingMismatch,
-		msg: fmt.Sprintf("recorded warp binding %s does not match %s; refusing to re-point. If the warp repo moved, edit %s in the hub's _board worktree and commit.",
-			recorded, supplied, WarpBindingFileName),
+		msg: fmt.Sprintf("recorded warp binding %s does not match %s; refusing to re-point. If the warp repo moved, edit %s in the hub's %s worktree and commit.",
+			recorded, supplied, WarpBindingFileName, BoltDirName),
 	}
 }

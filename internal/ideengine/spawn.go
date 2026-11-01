@@ -156,7 +156,7 @@ func resolveSpawnTarget(l, own *lymcwd.Location, slug string) (worktreeDir strin
 // An empty primeName, an unreadable board or an unresolvable parent reads slug as a task under the prime, logged at Warn.
 func lookFor(l, own *lymcwd.Location, slug, primeName string) vscode.Look {
 	title := slug
-	if shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath)); found {
+	if shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath)); found {
 		title = strings.ToUpper(shortname) + ": " + slug
 	}
 	if primeName != "" && slug == primeName {

@@ -187,7 +187,7 @@ func (c *orchCLI) orchReceiver(listed reedengine.StrandStatus, hasStrand bool) (
 	if hasStrand {
 		return orchStrandFullName(listed, true, ""), nil
 	}
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
 	if !found {
 		return "", fmt.Errorf("orch: the hub of %s has no usable shortname record to name the orch strand; way forward: run `lym fabric shortname <shortname>`, then run `lym beam start` again", c.location.WorktreePath())
 	}

@@ -131,7 +131,7 @@ func TestHealthyHub(t *testing.T) {
 		return
 	}
 
-	// Pins why both predicates ship: with cwd at <hub>/_board, HubPresent returns true (the hub-level lym directory exists there) but Wired returns false (fabricengine.Ready probes the paired sibling of the current worktree, not the hub, and _board has none).
+	// Pins why both predicates ship: with cwd at the hub's Bolt checkout, HubPresent returns true (the hub-level lym directory exists there) but Wired returns false (fabricengine.Ready probes the paired sibling of the current worktree, not the hub, and the Bolt checkout has none).
 	if !t.Run("only HubPresent holds at the board", func(t *testing.T) {
 		board := h.BoardDir()
 
@@ -589,7 +589,7 @@ func TestResolveMode(t *testing.T) {
 		}
 	})
 
-	// A hub whose <hub>/_board/_lym is missing is the design's recorded residual, not a bug: at
+	// A hub whose Bolt checkout has no _lym is the design's recorded residual, not a bug: at
 	// that point nothing on disk distinguishes it from a plain git repo, so it degrades to
 	// standalone rather than refusing.
 	t.Run("HubMissingBoardLym", func(t *testing.T) {

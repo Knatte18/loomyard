@@ -71,7 +71,7 @@ func TestPushSpawnCommand(t *testing.T) {
 
 	warp := filepath.Join(t.TempDir(), "warp")
 	weft := filepath.Join(t.TempDir(), "weft")
-	board := filepath.Join(t.TempDir(), "_board")
+	board := filepath.Join(t.TempDir(), BoltDirName)
 
 	tests := []struct {
 		name      string

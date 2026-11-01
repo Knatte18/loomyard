@@ -148,7 +148,7 @@ const researchType = "research"
 const researchHeading = "Research"
 
 // projectFilePrefix starts the file name of a project's own board file, which its slug and .md complete.
-// It must equal the project file prefix the records replay in internal/fabricengine recognises.
+// The board's Bolt replayer recognises the same prefix as its own.
 const projectFilePrefix = "project-"
 
 // rootTitle is the H1 of the root project's board file and the text of a link up to it.

@@ -25,7 +25,7 @@
 // # The geometry
 //
 // The code checkout is the prime's worktree and its parent branch is the branch that worktree has checked out.
-// The records checkout is the prime's records-side sibling, on the branch paired with the parent branch, and the board checkout is the hub's board directory on the branch it has checked out.
+// The records checkout is the prime's records-side sibling, on the branch paired with the parent branch, and the board checkout is the hub's Bolt checkout on the branch it has checked out.
 // `timing` also lists the hub's live pairs, the base names of its code worktrees other than the main one, so the engine can tell a pair records branch whose pair is gone from one in flight.
 //
 // # The sleep

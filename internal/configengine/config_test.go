@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 )
@@ -151,20 +152,20 @@ func TestLoad(t *testing.T) {
 	tests := []loadCase{
 		{
 			name:     "file values round-trip",
-			template: "path: _board\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: custom_path\nhome: Index.md\n",
 			contains: []string{"path: custom_path", "home: Index.md"},
 		},
 		{
 			name:     "missing key loads at its template default",
-			template: "path: _board\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: custom_path\n",
 			wantFill: "home",
 			contains: []string{"path: custom_path", "home: Home.md"},
 		},
 		{
 			name:     "complete file logs no fill",
-			template: "path: _board\nhome: Home.md\n",
+			template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 			content:  "path: a\nhome: b\n",
 			contains: []string{"path: a", "home: b"},
 		},
@@ -177,7 +178,7 @@ func TestLoad(t *testing.T) {
 		},
 		{
 			name:     "extra key is tolerated",
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			content:  "path: custom_path\nextra_key: extra_value\n",
 			contains: []string{"path: custom_path", "extra_key: extra_value"},
 		},
@@ -271,19 +272,19 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:     "uninitialized base directory",
 			state:    baseNone,
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"not initialized"},
 		},
 		{
 			name:     "absent config file",
 			state:    baseConfigDir,
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"not found", "lym config reconcile"},
 		},
 		{
 			name:     "absent hub-wide board-dir base",
 			state:    baseConfigDir,
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			boardDir: true,
 			hubWide:  true,
 			wantErr:  []string{"not found", "lym fabric reconcile", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
@@ -291,14 +292,14 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:     "absent per-worktree board-dir base",
 			state:    baseConfigDir,
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			boardDir: true,
 			wantErr:  []string{"not found", "lym loom resume", "hub reconcile seeds the default from the prime", "a session lym refuses the verb from reports status: FAILED and the orch runs it"},
 		},
 		{
 			name:     "config file that cannot be read",
 			state:    baseUnreadable,
-			template: "path: _board\n",
+			template: "path: " + fabricengine.BoltDirName + "\n",
 			wantErr:  []string{"read config file"},
 		},
 		{
@@ -331,7 +332,7 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:        "unparseable file",
 			state:       baseWithFile,
-			template:    "path: _board\n",
+			template:    "path: " + fabricengine.BoltDirName + "\n",
 			content:     "path: [unclosed\n",
 			wantErr:     []string{"board.yaml"},
 			wantNotErr:  []string{"lym config reconcile"},
@@ -340,7 +341,7 @@ func TestLoad_Refusals(t *testing.T) {
 		{
 			name:        "filled env marker whose variable is unset",
 			state:       baseWithFile,
-			template:    "path: _board\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
+			template:    "path: " + fabricengine.BoltDirName + "\ntoken: ${env:TEST_FILL_UNSET_VAR}\n",
 			content:     "path: custom\n",
 			wantErr:     []string{"TEST_FILL_UNSET_VAR"},
 			wantNotErr:  []string{"lym config reconcile"},
@@ -430,15 +431,15 @@ func TestLoadOrTemplate(t *testing.T) {
 		state baseState
 	}{
 		{
-			loadCase{name: "absent _lym resolves the template", template: "path: _board\nhome: Home.md\n", contains: []string{"path: _board", "home: Home.md"}},
+			loadCase{name: "absent _lym resolves the template", template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n", contains: []string{"path: " + fabricengine.BoltDirName, "home: Home.md"}},
 			baseNone,
 		},
 		{
-			loadCase{name: "absent config file resolves the template", template: "path: _board\n", contains: []string{"path: _board"}},
+			loadCase{name: "absent config file resolves the template", template: "path: " + fabricengine.BoltDirName + "\n", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseConfigDir,
 		},
 		{
-			loadCase{name: "base directory that does not exist resolves the template", template: "path: _board\n", contains: []string{"path: _board"}},
+			loadCase{name: "base directory that does not exist resolves the template", template: "path: " + fabricengine.BoltDirName + "\n", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseAbsent,
 		},
 		{
@@ -453,7 +454,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		{
 			loadCase{
 				name:     "present file loads like the strict loader",
-				template: "path: _board\nhome: Home.md\n",
+				template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 				content:  "path: custom_path\nhome: Index.md\n",
 				contains: []string{"path: custom_path", "home: Index.md"},
 			},
@@ -462,7 +463,7 @@ func TestLoadOrTemplate(t *testing.T) {
 		{
 			loadCase{
 				name:     "present file missing a key loads it at its template default",
-				template: "path: _board\nhome: Home.md\n",
+				template: "path: " + fabricengine.BoltDirName + "\nhome: Home.md\n",
 				content:  "path: custom_path\n",
 				wantFill: "home",
 				contains: []string{"path: custom_path", "home: Home.md"},
@@ -470,16 +471,16 @@ func TestLoadOrTemplate(t *testing.T) {
 			baseWithFile,
 		},
 		{
-			loadCase{name: "present empty file loads as the template", template: "path: _board\n", wantFill: "path", contains: []string{"path: _board"}},
+			loadCase{name: "present empty file loads as the template", template: "path: " + fabricengine.BoltDirName + "\n", wantFill: "path", contains: []string{"path: " + fabricengine.BoltDirName}},
 			baseWithFile,
 		},
 		{
 			loadCase{
 				name:     "present comments-only file loads as the template",
-				template: "path: _board\n",
+				template: "path: " + fabricengine.BoltDirName + "\n",
 				content:  "# just a comment\n",
 				wantFill: "path",
-				contains: []string{"path: _board"},
+				contains: []string{"path: " + fabricengine.BoltDirName},
 			},
 			baseWithFile,
 		},

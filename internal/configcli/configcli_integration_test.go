@@ -30,7 +30,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runprofile"
 )
 
-// TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in _board with no per-worktree copy written.
+// TestConfigOverRealHub drives configuration edits through a real hub with one pair: a per-worktree module edit is synced into the pair's fabric worktree while the code side stays pristine, and a hub-wide module `--set` changes the hub file and commits it in the Bolt checkout with no per-worktree copy written.
 // Its steps run in this order on one hub and pair, so the scenario builds the hub once.
 // It does not call t.Parallel: it sets FABRIC_SKIP_GIT and FABRIC_SKIP_PUSH below, and t.Setenv panics under t.Parallel.
 func TestConfigOverRealHub(t *testing.T) {
@@ -199,7 +199,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		})
 	}
 
-	t.Run("machine layer write from the prime writes the machine file and leaves _board untouched", func(t *testing.T) {
+	t.Run("machine layer write from the prime writes the machine file and leaves the Bolt checkout untouched", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		headBefore := boardHead(t, boardDir)
 
@@ -211,16 +211,16 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Errorf("machine gate file = %q, %v; want tier_parallel.tier0: 8", data, err)
 		}
 		if head := boardHead(t, boardDir); head != headBefore {
-			t.Errorf("_board HEAD = %s after a machine write; want %s", head, headBefore)
+			t.Errorf("Bolt checkout HEAD = %s after a machine write; want %s", head, headBefore)
 		}
 		status := exec.Command("git", "status", "--porcelain")
 		status.Dir = boardDir
 		statusOut, err := status.Output()
 		if err != nil {
-			t.Fatalf("git status in _board: %v", err)
+			t.Fatalf("git status in the Bolt checkout: %v", err)
 		}
 		if strings.TrimSpace(string(statusOut)) != "" {
-			t.Errorf("_board status = %q after a machine write; want it empty", statusOut)
+			t.Errorf("Bolt checkout status = %q after a machine write; want it empty", statusOut)
 		}
 	})
 
@@ -292,7 +292,7 @@ func TestConfigOverRealHub(t *testing.T) {
 	})
 
 	for _, row := range rows {
-		t.Run("hub-wide "+row.module+" --set commits in _board", func(t *testing.T) {
+		t.Run("hub-wide "+row.module+" --set commits in the Bolt checkout", func(t *testing.T) {
 			var out bytes.Buffer
 			if code := RunCLIIn(primeWorktreePath, &out, []string{row.module, "--set", row.set}); code != 0 {
 				t.Fatalf("lym config %s --set %s = %d; output: %s", row.module, row.set, code, out.String())
@@ -311,21 +311,21 @@ func TestConfigOverRealHub(t *testing.T) {
 			status.Dir = boardDir
 			statusOut, err := status.Output()
 			if err != nil {
-				t.Fatalf("git status in _board: %v", err)
+				t.Fatalf("git status in the Bolt checkout: %v", err)
 			}
 			if strings.TrimSpace(string(statusOut)) != "" {
-				t.Errorf("_board is dirty after the edit: %q", statusOut)
+				t.Errorf("Bolt checkout is dirty after the edit: %q", statusOut)
 			}
 
 			show := exec.Command("git", "show", "--name-only", "--pretty=format:", "HEAD")
 			show.Dir = boardDir
 			showOut, err := show.Output()
 			if err != nil {
-				t.Fatalf("git show in _board: %v", err)
+				t.Fatalf("git show in the Bolt checkout: %v", err)
 			}
 			wantRel := strings.ReplaceAll(configengine.ConfigFileRel(row.module), "\\", "/")
 			if strings.TrimSpace(string(showOut)) != wantRel {
-				t.Errorf("HEAD in _board touches %q; want only %q", showOut, wantRel)
+				t.Errorf("HEAD in the Bolt checkout touches %q; want only %q", showOut, wantRel)
 			}
 
 			if _, err := os.Stat(configengine.ConfigFile(fabricWorktreePath, row.module)); !os.IsNotExist(err) {
@@ -334,7 +334,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		})
 	}
 
-	t.Run("reconcile --layer default migrates renamed keys in _board and commits them", func(t *testing.T) {
+	t.Run("reconcile --layer default migrates renamed keys in the Bolt checkout and commits them", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		loomFile := configengine.ConfigFile(boardDir, "loom")
 		current, err := os.ReadFile(loomFile)
@@ -433,7 +433,7 @@ func TestConfigOverRealHub(t *testing.T) {
 					t.Errorf("board loom.yaml = %q, %v after a failed apply; want it unchanged", after, err)
 				}
 				if head := boardHead(t, boardDir); head != headBefore {
-					t.Errorf("_board HEAD = %s after a failed apply; want %s", head, headBefore)
+					t.Errorf("Bolt checkout HEAD = %s after a failed apply; want %s", head, headBefore)
 				}
 			})
 		}
@@ -478,25 +478,25 @@ func TestConfigOverRealHub(t *testing.T) {
 		show.Dir = boardDir
 		showOut, err := show.Output()
 		if err != nil {
-			t.Fatalf("git show in _board: %v", err)
+			t.Fatalf("git show in the Bolt checkout: %v", err)
 		}
 		wantShow := "config: reconcile the board dir's files"
 		for _, module := range []string{"lenses", "loom", "tapestry"} {
 			wantShow += "\n" + strings.ReplaceAll(configengine.ConfigFileRel(module), "\\", "/")
 		}
 		if strings.TrimSpace(string(showOut)) != wantShow {
-			t.Errorf("HEAD in _board = %q; want %q", showOut, wantShow)
+			t.Errorf("HEAD in the Bolt checkout = %q; want %q", showOut, wantShow)
 		}
 
 		status := exec.Command("git", "status", "--porcelain", "--untracked-files=all")
 		status.Dir = boardDir
 		statusOut, err := status.Output()
 		if err != nil {
-			t.Fatalf("git status in _board: %v", err)
+			t.Fatalf("git status in the Bolt checkout: %v", err)
 		}
 		wantStatus := "?? " + strings.ReplaceAll(rulesRel, "\\", "/")
 		if strings.TrimSpace(string(statusOut)) != wantStatus {
-			t.Errorf("_board status = %q after the apply; want only %q untracked", statusOut, wantStatus)
+			t.Errorf("Bolt checkout status = %q after the apply; want only %q untracked", statusOut, wantStatus)
 		}
 		if kept, err := os.ReadFile(rulesFile); err != nil || string(kept) != rulesContent {
 			t.Errorf("rules file = %q, %v after the apply; want it unchanged", kept, err)
@@ -631,7 +631,7 @@ func boardHead(t *testing.T, boardDir string) string {
 	revParse.Dir = boardDir
 	out, err := revParse.Output()
 	if err != nil {
-		t.Fatalf("git rev-parse HEAD in _board: %v", err)
+		t.Fatalf("git rev-parse HEAD in the Bolt checkout: %v", err)
 	}
 	return strings.TrimSpace(string(out))
 }

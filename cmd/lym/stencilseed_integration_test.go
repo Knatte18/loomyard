@@ -31,7 +31,7 @@ import (
 
 // TestStencilSeedTarget_PlainRepoHasNoHub is the negative row and the defect this task exists to
 // close: a plain git repository with no hub-level sibling beside it must not be treated as a seed
-// target, and stencilSeedTarget must not have caused any hub-level _board directory to spring into
+// target, and stencilSeedTarget must not have caused any hub-level Bolt checkout to spring into
 // existence beside it.
 func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 	t.Parallel()
@@ -46,10 +46,10 @@ func TestStencilSeedTarget_PlainRepoHasNoHub(t *testing.T) {
 	}
 
 	// The absent path is pinned via fabricengine.BoardDir applied to the repository's parent
-	// directory, not a joined "_board" literal, per the geometry-literal enforcement walk.
+	// directory, not a joined Bolt directory literal, per the geometry-literal enforcement walk.
 	wantAbsent := fabricengine.BoardDir(filepath.Dir(repoDir))
 	if _, err := os.Stat(wantAbsent); !os.IsNotExist(err) {
-		t.Errorf("stat %s after stencilSeedTarget(plain repo) = %v; want it still absent -- a plain repo with no hub-level sibling must never cause a hub-level _board directory to be created", wantAbsent, err)
+		t.Errorf("stat %s after stencilSeedTarget(plain repo) = %v; want it still absent -- a plain repo with no hub-level sibling must never cause a hub-level Bolt checkout to be created", wantAbsent, err)
 	}
 }
 

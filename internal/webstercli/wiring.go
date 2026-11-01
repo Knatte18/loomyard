@@ -75,7 +75,7 @@ var wireModule = cliwire.Module{
 //
 // preflight.Wired is deliberately never consulted: Wired is a per-worktree question ("is fabric wired
 // for the worktree at this exact cwd"), not a mode-selection one, and it is false in three healthy hub
-// locations that run webster verbs today -- an ordinary worktree at <hub>/_board, an unpaired sibling,
+// locations that run webster verbs today -- an ordinary worktree at the Bolt checkout, an unpaired sibling,
 // and a worktree whose paired sibling has been removed. Keying mode selection on Wired would either
 // refuse those three (no fabric-sync path exists for standalone to fall back to `run`'s pre-flight
 // against) or, worse, relocate a live hub's state into the standalone state directory. HubPresent asks

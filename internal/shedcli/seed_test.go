@@ -247,7 +247,7 @@ func TestWriteSeed_RefusesFabricsOwnCheckouts(t *testing.T) {
 		name         string
 		worktreeName string
 	}{
-		{name: "BoardCheckout", worktreeName: "_board"},
+		{name: "BoardCheckout", worktreeName: fabricengine.BoltDirName},
 		{name: "PairSibling", worktreeName: siblingName},
 	}
 	for _, tt := range tests {

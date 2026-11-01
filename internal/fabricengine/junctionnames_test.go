@@ -81,7 +81,7 @@ func TestFilterHubReserved(t *testing.T) {
 	// hub-structural tokens this test's "MixedDropsReservedKeepsOrder" case
 	// relies on being dropped -- the junction-wiring block set, unchanged by
 	// this batch's structural-directory work.
-	for _, want := range []string{"_board", "_portals", "_launchers"} {
+	for _, want := range []string{BoltDirName, "_portals", "_launchers"} {
 		found := false
 		for _, r := range reserved {
 			if r == want {
@@ -105,34 +105,46 @@ func TestFilterHubReserved(t *testing.T) {
 	}
 }
 
-// TestBoardDir verifies that BoardDir joins hub with BoardDirName.
+// TestBoardDir verifies that BoardDir and BoltDir join hub with the Bolt directory name.
 //
-//testtiming:keep BoardDir joining the hub with BoardDirName; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep BoardDir and BoltDir joining the hub with the Bolt directory name; coverage of their blocks by other tests does not show an assertion of this
 func TestBoardDir(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
+		dir  func(string) string
 		hub  string
 		want string
 	}{
 		{
 			name: "simple hub",
+			dir:  BoardDir,
 			hub:  "/h",
 			want: filepath.Join("/h", BoardDirName),
 		},
 		{
 			name: "nested hub",
+			dir:  BoardDir,
 			hub:  "/repos/loomyard-LYMHUB",
 			want: filepath.Join("/repos/loomyard-LYMHUB", BoardDirName),
+		},
+		{
+			name: "Bolt directory equals the lymcwd name and the board directory",
+			dir:  BoltDir,
+			hub:  "/h",
+			want: filepath.Join("/h", lymcwd.BoltDirName),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BoardDir(tt.hub)
+			got := tt.dir(tt.hub)
 			if got != tt.want {
-				t.Errorf("BoardDir(%q) = %q; want %q", tt.hub, got, tt.want)
+				t.Errorf("dir(%q) = %q; want %q", tt.hub, got, tt.want)
+			}
+			if board := BoardDir(tt.hub); got != board {
+				t.Errorf("dir(%q) = %q; want it equal to BoardDir(%q) = %q", tt.hub, got, tt.hub, board)
 			}
 		})
 	}
@@ -192,7 +204,7 @@ func TestIsReservedHubName(t *testing.T) {
 	}{
 		{"lym dir", "_lym", true},
 		{"raddle dir", "_raddle", false},
-		{"board dir", "_board", true},
+		{"board dir", BoltDirName, true},
 		{"portals dir", "_portals", true},
 		{"launchers dir", "_launchers", true},
 		{"ordinary slug", "my-task", false},
@@ -210,8 +222,8 @@ func TestIsReservedHubName(t *testing.T) {
 	}
 
 	// Regression (r1-review): the hub-structural tokens must stay reserved even
-	// when junctionNames is empty -- a worktree slug must never claim _board,
-	// _portals, or _launchers regardless of the caller's pathspec.
+	// when junctionNames is empty.
+	// A worktree slug must never claim the Bolt checkout, _portals, or _launchers, regardless of the caller's pathspec.
 	// This is now the sole coverage of that invariant for an empty junctionNames
 	// (exactly the configuration this batch's empty pathspec default creates),
 	// making it more load-bearing than before -- _raddle dropped out of the set
@@ -219,7 +231,7 @@ func TestIsReservedHubName(t *testing.T) {
 	t.Run("hub-structural tokens reserved for empty junctionNames", func(t *testing.T) {
 		t.Parallel()
 
-		for _, hubStructural := range []string{"_board", "_portals", "_launchers"} {
+		for _, hubStructural := range []string{BoltDirName, "_portals", "_launchers"} {
 			if got := IsReservedHubName(hubStructural, []string{}); !got {
 				t.Errorf("IsReservedHubName(%q, []) = %v; want true", hubStructural, got)
 			}
@@ -255,7 +267,7 @@ func TestIsReservedHubName(t *testing.T) {
 	// name for a default-configured repo to inject).
 	// With junctionNames now empty, the four survivors no longer share one
 	// source: _lym is reserved via structuralCommittedDirs (never the config
-	// arm), while _board, _portals, and _launchers are reserved via
+	// arm), while the Bolt checkout, _portals, and _launchers are reserved via
 	// HubReservedNames().
 	// `.lym` is reserved too, via structuralNeverCommittedDirs, but was never a
 	// member of this list and still is not -- this is a positive "these are
@@ -263,7 +275,7 @@ func TestIsReservedHubName(t *testing.T) {
 	t.Run("default pathspec union reserves exactly four names", func(t *testing.T) {
 		t.Parallel()
 
-		wantReserved := []string{"_lym", "_board", "_portals", "_launchers"}
+		wantReserved := []string{"_lym", BoltDirName, "_portals", "_launchers"}
 		for _, name := range wantReserved {
 			if got := IsReservedHubName(name, junctionNames); !got {
 				t.Errorf("IsReservedHubName(%q, %v) = %v; want true", name, junctionNames, got)

@@ -39,7 +39,7 @@ A `shuttleengine` runner whose anchor is deliberately outside its worktree root 
 ## Hub containment
 
 No hub-level container is ever junctioned into a worktree.
-`_board` and `_launchers` are reachable from the hub only.
+The Bolt checkout and `_launchers` are reachable from the hub only.
 
 - `_launchers` links point hub-inward only; a per-worktree link to it is banned.
 - `_portals` is retired and stays reserved; `lym fabric reconcile` sweeps what a hub still holds.

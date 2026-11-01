@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -239,6 +240,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 	t.Parallel()
 	const eventsPath = "/c/run/events.jsonl"
 	quotedEventsPath := shQuote(eventsPath)
+	quotedFlagDir := `'/c/hub'\''s/` + fabricengine.BoltDirName + `/.lym/creel/flags'`
 	type stopHook struct {
 		command       string
 		asyncRewake   bool
@@ -253,10 +255,10 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 		wantStop []stopHook
 	}{
 		{
-			"InAHub", `/c/hub's/_board/.lym/creel/flags`,
-			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`)},
+			"InAHub", `/c/hub's/` + fabricengine.BoltDirName + `/.lym/creel/flags`,
+			[]string{"touch '/c/run/activity-stamp'; true", creelMailHookCommand(quotedFlagDir)},
 			[]stopHook{
-				{command: creelStopHookCommand(`'/c/hub'\''s/_board/.lym/creel/flags'`, quotedEventsPath)},
+				{command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)},
 				{command: creelWaitHookCommand(), asyncRewake: true, timeout: 86400, rewakeMessage: creelRewakeMessage, rewakeSummary: creelRewakeSummary},
 			},
 		},

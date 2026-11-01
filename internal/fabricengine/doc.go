@@ -81,7 +81,7 @@
 // An anchor_stopped branch stops its entry, and one on the prime's records branch stops every entry.
 // `classifyEntry` turns the verdicts on an entry's branches into active, ended, owned_elsewhere or stopped, in that precedence.
 //
-// After judging and before the ended set, `readOriginOwners` reads `board.json` at origin's fetched Bolt tip and asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
+// After judging and before the ended set, `readOriginOwners` reads the run ledger's file at origin's fetched Bolt tip and asks `OriginSeams.OwnerOf`, an `OwnerReader`, once per recorded pair whether another machine owns it.
 // A judge-only scope reads owners too, since the tip's objects are fetched by SHA, and moves nothing.
 // A hub with no Bolt target or no origin head asks nothing, and a nil `OwnerOf` reads every entry as owned here.
 // A seam error, an empty machine name included, is the reconcile's error, so no verdict is compared with an empty name.
@@ -130,7 +130,7 @@
 // pathspec.
 // The one exception is the package-level `commitWeftAt` function (not a `Fabric` method), which
 // wraps board's wildcard-stage commit on its behalf — see `commitWeftAt`'s own doc comment.
-// It seeds the weft artifact excludes before every stage, so a file under `_board/.lym`, such as a stray trace log, never reaches Bolt.
+// It seeds the weft artifact excludes before every stage, so a file under the Bolt checkout's `.lym`, such as a stray trace log, never reaches Bolt.
 //
 // The default weft-staging pathspec (template.yaml's `pathspec:` key) is empty, so no optional
 // directory is staged by default; `_lym` itself arrives from `structuralCommittedDirs`, not from
@@ -157,7 +157,7 @@
 // operate over whatever name-set their caller passes them (see junctionnames.go's
 // `junctionNames`/`WiredNames`), and every one of those callers builds that name-set as
 // `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the pair's `pathspec` filtered against
-// `HubReservedNames()` — the three hub-structural tokens (`_board`, the retired `_portals` and `_launchers`) that
+// `HubReservedNames()` — the three hub-structural tokens (the Bolt checkout, the retired `_portals` and `_launchers`) that
 // can never be a per-worktree junction.
 // The two structural sets (`_lym`, `.lym`) are injected in code and never read from `pathspec` at
 // all; only the third piece — empty today — comes from config.
@@ -230,7 +230,7 @@
 // `SpawnStatusPush(l, gateSlug)` is the one entry point for a status push, building its request from the location alone so no caller names a records path or pushes the prime's code branch.
 // In the prime the request holds the records side, `PauseSlug` the caller's gate slug and no `TeardownSlug`;
 // in a task pair it holds both sides with `PauseSlug` and `TeardownSlug` both the pair's own slug.
-// The child starts in the hub's `_board` worktree, outside both of the pair's worktrees, and resolves its hub from there through `lymcwd.ResolveWorktree`.
+// The child starts in the hub's Bolt checkout, outside both of the pair's worktrees, and resolves its hub from there through `lymcwd.ResolveWorktree`.
 // It reads the local-only mark of each side's branch first: a marked side is left out and named in `SpawnResult.LocalSkipped`, and with no side left, or with the records side left out, nothing is spawned.
 // `SpawnDetachedPush` returns `ErrSpawnUnderTest` in a test binary, so no test forks a real push child.
 //
@@ -448,7 +448,7 @@
 // Slice 5 (the `fabric-clone-subpath` task) landed clone-does-everything, a subpath-in-weft anchor,
 // and the dissolution of `lym init`, replacing the earlier two-step "clone, then `lym init`" flow
 // with a single command that leaves a worktree fully wired. `CloneHub` (clone.go) drives warp+weft
-// clone, `_board` worktree materialization, and lym-anchor resolution in one call;
+// clone, Bolt checkout materialization, and lym-anchor resolution in one call;
 // the CLI layer (`internal/fabriccli`) then records the repo-wide `fabric.yaml` onto
 // `weft:main`, creates every warp junction (`_lym`, `.lym`), and runs
 // `configsync.ReconcileAll` — so a fresh clone or `worktree add` leaves every junction wired and
@@ -463,11 +463,26 @@
 // repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
 // a concurrent reader sees either the whole old file or the whole new one.
 //
+// The warp exclude list, fabric.yaml's `warp_exclude` key, names paths at a warp worktree's root that lym's instruction files occupy.
+// Wiring seeds each as an anchored `/<path>` line into the same `info/exclude` and never removes one, since the file is shared by every worktree;
+// `SeedWarpExclude` seeds it on demand, and `ExcludeWayForward` is the refusal text for a path off the list.
+// The list is separate from `pathspec` and is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
+//
+// The worktree seam (`worktreeseam.go`) is how code that renders files into a worktree learns of it.
+// `InstallWorktreeSeam` stores one process-wide `WorktreeSeam`, and with none installed every event is no event.
+// "Made" fires once a worktree is wired, its exclude lines seeded and the Bolt checkout present:
+// from `Topology.add` last, and from the clone's wiring sequence right after the prime's junctions, through `NotifyWorktreeMade`.
+// "Took in commits" fires with the paths that differ between the old and new head, from a warp pull's fast-forward and its re-anchor resets, from the parent-pair fast-forward, and from the origin reconcile's fast-forward of a pair's code branch;
+// the weft arm and every records or Bolt move fire nothing.
+// `EventFor` seeds the exclude list before it builds an event, so every writer of the listed files writes only after their lines are in place.
+// A seam failure never fails a verb: it is logged at Warn and returned as warning text, which `PullResult.SeamWarning`, `BranchOutcome.Warning` and a hub pull's line carry.
+// Events fire with no Bolt write lock held, since the seam's render takes it.
+//
 // The lym-anchor subpath (e.g. `backend` or `.`)
 // is recorded per worktree, as the plain `.lym-anchor` marker at the root of that worktree's own weft branch (see `internal/lymcwd/anchor.go`);
 // `lymcwd.Resolve` is the reader.
 // `CloneHub` records the prime's marker first, committing it on the prime's weft branch (`commitAnchorMarker`, anchormarker.go) on a fresh bind and adopting it from there on a re-clone.
-// The Bolt marker at `BoardDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lym fabric reconcile` migrates it.
+// The Bolt marker at `BoltDir(Hub)` is read only as the fallback of a hub whose prime weft is still markerless, until `lym fabric reconcile` migrates it.
 // `Resolve` treats the record as truth once present — it sets `AnchorRel` from the marker, then hard-errors if cwd does not equal the anchored directory exactly — and falls back to `AnchorRel` `"."`
 // only when no marker is recorded yet (mid-clone, a gitkit synthetic hub, or a non-fabric git repo).
 // A hub still carrying the pre-rename marker spelling (`lymcwd.StaleAnchorFileName`) with no renamed marker beside it is NOT such a fallback case: it recorded a real subpath under the old name, so every resolver returns `lymcwd.ErrStaleAnchorMarker` rather than answering `"."`
@@ -493,11 +508,11 @@
 // the prime's weft and every local pair's weft carry a non-blank committed marker at `HEAD`, and every weft branch, local or fetched, whose warp sibling is on origin carries one on its already-fetched remote-tracking ref.
 // A weft branch with no warp sibling on origin is an orphan and is not counted.
 // A branch whose ref is not fetched, a marker commit not yet pushed or a blank committed marker keeps the Bolt marker for a later reconcile.
-// When the census holds, `_board/.lym-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
+// When the census holds, the Bolt checkout's `.lym-anchor` and a leftover `.fabric-anchor` beside it are deleted through an `os.Root` in one board commit written by `Bolt.PullThenCommitWritten`, so it never writes over a stale board, and then pushed.
 // `ReconcileResult.BoltAnchor` carries the verdict (`removed`, or `kept: <reason>` with the first branch that keeps it or the skip's detail), `lym fabric reconcile` reports it as `bolt_anchor`, and a hub with no Bolt marker reports nothing.
 // `lym fabric unwire` keeps leaving every marker.
 //
-// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config, held as a plain single-line file, `.lym-warp`, at the board root (`<BoardDir>/.lym-warp`, see codebinding.go), containing the warp URL only.
+// The warp binding is a repo-wide record beside the repo-wide `fabric.yaml` config, held as a plain single-line file, `.lym-warp`, at the board root (`BoltDir(hub)/.lym-warp`, see codebinding.go), containing the warp URL only.
 // `CloneHub` resolves the effective warp URL from that record when the caller supplies no warp URL, and writes the record when none exists yet and a warp URL is supplied;
 // a supplied URL that disagrees with the recorded one is a hard error, never a silent re-point.
 // That resolution runs through a throwaway pre-hub probe clone of the weft remote (recordsprobe.go), because the hub is named after the warp repo and therefore has no path to resolve into until the warp URL is known.
@@ -517,7 +532,7 @@
 // `Unwire` leaves all three untouched.
 //
 // The wired junction set is likewise a **repo-wide** fact, not a per-worktree one: the `pathspec`
-// key lives in the repo-wide `fabric.yaml` at `<BoardDir>/_lym/config/fabric.yaml`, so every
+// key lives in the repo-wide `fabric.yaml` at the Bolt checkout's `_lym/config/fabric.yaml`, so every
 // worktree in the repo reconciles against the one recorded name-set rather than each carrying its
 // own.
 // Reconcile (reconcile.go) is declarative convergence to that pathspec — add what's missing,
@@ -563,7 +578,7 @@
 // `Remove` (remove.go) is the paired teardown, and it never deletes a directory git itself declined
 // to remove unless that directory is a registered LINKED worktree of the warp repo.
 // The rule is load-bearing rather than defensive: `git worktree remove` refuses a main working
-// tree, a path belonging to another repo (`<Hub>/_board` is a worktree of the WEFT repo), and a
+// tree, a path belonging to another repo (the Bolt checkout is a worktree of the WEFT repo), and a
 // worktree carrying state it will not discard — and treating every one of those refusals as licence
 // to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
 // included, reported as success.
@@ -896,13 +911,13 @@
 // `opts.SkipPush` skips the remote half; `opts.SkipGit` does not, so the remote update is the one push-shaped step that ignores `SkipGit`.
 // The bound is that it rewrites only the pair's own task branch, only to `sha`, only when every commit it drops is reachable from HEAD, and under a lease on the tip the ancestry read saw.
 //
-// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own `_board` checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick` that skips a change upstream already carries and refuses a commit empty from the start, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
+// **The board seed-commit drop.** `dropSeedCommits(rec, req, repo, upstream, ahead)` resets the hub's own Bolt checkout to its upstream with `reset --keep` and replays the commits of `ahead` that are not seed commits, oldest first, through a plain `cherry-pick` that skips a change upstream already carries and refuses a commit empty from the start, so Bolt can be brought up to date when seed commits sit ahead of a moved upstream.
 // Its request, built by `boardDropRequest`, declares the board dir's parent as container and the board dir as target;
-// ownership `ownedBoardWorktree`, which holds only when the target is named `_board` and a weft repo of the same hub, a sibling whose name `WeftWarpSlug` admits, registers it as a linked worktree, so no other directory named `_board` can be reset;
+// ownership `ownedBoardWorktree`, which holds only when the target is named by `BoltDirName` and a weft repo of the same hub, a sibling whose name `WeftWarpSlug` admits, registers it as a linked worktree, so no other directory with that name can be reset;
 // dirtiness `dirtyTrackedOn(touched)`, which refuses only on a tracked change on a path the ahead commits changed, so a pending board write elsewhere is carried across;
 // and force always false.
 // A replay that fails aborts the cherry-pick and restores the tip the drop started from.
-// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own `_board`; a non-seed commit is replayed or, when its replay fails, kept at its original tip.
+// The bound is that only commits `IsSeedCommit` admits are dropped, only in a hub's own Bolt checkout; a non-seed commit is replayed or, when its replay fails, kept at its original tip.
 // It appends `commits_dropped` once HEAD observably moved.
 //
 // **Pull-first.** `Bolt.PullThenCommitWritten(writes, rec)` brings Bolt up to date with its upstream before running an ordered list of writes, and commits each write's paths as its own commit.
@@ -1197,7 +1212,7 @@
 // # The records replay
 //
 // A records branch that both this machine and origin moved is brought level by replaying the local commits origin lacks onto origin's tip, never by a merge or a rebase.
-// `replayWeft` does it for a weft worktree and `replayBolt` for the board, both under their caller's locks, and both report a `ReplayOutcome`.
+// `replayWeft` does it for a weft worktree and `replayBolt` for the Bolt checkout, both under their caller's locks, and both report a `ReplayOutcome`.
 //
 // **Weft.** Local commits are cherry-picked onto upstream oldest first through `cherryPickOnto`, which lives in `destroy.go` beside the seed-commit drop.
 // A commit that becomes empty is dropped.
@@ -1206,14 +1221,18 @@
 // The set-aside commits are tagged before the branch moves, so a stop leaves a tag on a commit still on the branch.
 // A Bolt failure after the pick restores the starting tip, and a restore git refuses is joined into the error.
 //
-// **Bolt.** A commit touching only `board.json`, `README.md`, `project-<slug>.md` files and design files is re-applied by entry through the installed `BoardReplay`, so an entry only one side changed never conflicts and no entry change stops the replay.
-// A change that lost a value to origin or met a board refusal is committed for what was kept, and its original is set aside.
+// **Bolt.** A commit whose every path some registered `BoltReplayer` claims is re-applied by entry through the claiming replayers, so an entry only one side changed never conflicts and no entry change stops the replay.
+// A replayer lives in the package owning its files and is registered with `RegisterBoltReplayer`; one of them also implements `RunLedger`, naming the Bolt file that holds the runs.
+// Each replayer gets one `ReplayRequest` holding its files' bytes at the merge base, before the commit and after it, and the replays are committed together as one commit with the original message.
+// The run ledger is read only once a commit is claimed, and none registered returns `ErrReplayerMissing` before the branch moves; a path no registered replayer claims is cherry-picked.
+// A change that lost a value to origin or met a replayer's refusal is committed for what was kept, and its original is set aside.
 // Seed commits are dropped, and any other commit is cherry-picked as on a weft.
 // `Bolt.pullFirst` replays through it: a conflict skips as diverged, naming the conflicting paths and the two ways to settle them, and an uncommitted change on a touched path skips as dirty.
 //
-// **The ended set.** `readEndedSet` reads which runs origin has ended: an entry `done` on origin's Bolt tip, or one that tip's history held and the tip pruned.
-// A created stamp keeps a reused slug from matching a pruned entry.
+// **The ended set.** `readEndedSet` reads which runs origin has ended through the run ledger: a run the ledger marks ended on origin's Bolt tip, or one that tip's history held and the tip pruned; none registered returns `ErrReplayerMissing`.
+// A created stamp keeps a reused slug from matching a pruned run.
 // A replay sets aside, under a local `set-aside/<slug>/<sha>` tag, each local commit whose every path belongs to an ended run, since replaying it would resurrect the run.
+// A commit that also touches another replayer's path skips only the ledger's part and is tagged the same way, and a loss or refusal from a replayer other than the run ledger tags the original `set-aside/replayer/<name>/<sha>`, as does a ledger loss that names no run.
 // The prefix is one no archive reader matches, so a set-aside commit shows as no run.
 // `finalizeEntered` exempts a run this machine's own landing has reached past the parent-side merge of Finalize, read from the pair's loom status, the local parent branch and the prime's batten status, and treats an unreadable state as reached.
 //

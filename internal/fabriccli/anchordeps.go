@@ -68,6 +68,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 	}
 	hub := acting.HubPath
 	boardDir := fabricengine.BoardDir(hub)
+	boltDir := fabricengine.BoltDir(hub)
 	runProcDir := fabricengine.RunProcDir(hub)
 	prime := func() (*lymcwd.Location, error) { return lymcwd.NamedWorktree(hub, primeName) }
 	// dobbyOwner is the owner a worktree's dobby registers its process under.
@@ -232,7 +233,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 		},
 		Note: func(line string) { fmt.Fprintln(os.Stderr, "lym fabric anchor: "+line) },
 		AcquireParentLock: func(ctx context.Context, location *lymcwd.Location) (func(), error) {
-			return acquireBranchLock(ctx, location, boardDir, "anchor")
+			return acquireBranchLock(ctx, location, boltDir, "anchor")
 		},
 		EndDobbies: func(worktrees []string, spare ...string) ([]string, error) {
 			var ended []string
@@ -456,12 +457,12 @@ func dobbyPassInFlight(acting *lymcwd.Location, primeName, runProcDir, owner, wo
 
 // acquireBranchLock takes the parent lock of the branch checked out in location's code worktree as the calling process, queuing behind a holder, and returns the release.
 // The lock owner's run id is "fabric-" and verb, and the wait notice on stderr names `lym fabric <verb>` and the holder.
-func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boardDir, verb string) (func(), error) {
+func acquireBranchLock(ctx context.Context, location *lymcwd.Location, boltDir, verb string) (func(), error) {
 	branch, err := gitrepo.New(fabricengine.WorktreePath(location, location.WorktreeName)).CurrentBranch()
 	if err != nil {
 		return nil, fmt.Errorf("read the branch of %s to lock it: %w", location.WorktreeName, err)
 	}
-	store := &parentlock.Store{Dir: parentlock.Dir(boardDir)}
+	store := &parentlock.Store{Dir: parentlock.Dir(boltDir)}
 	startTime, _ := proc.StartTime(os.Getpid())
 	owner := parentlock.Owner{
 		Slug:      location.WorktreeName,

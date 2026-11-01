@@ -81,7 +81,8 @@ Imports only the standard library.
 
 ## `internal/runproc`
 
-Imports only the standard library, `internal/proc`, `internal/state` and `internal/logger`.
+Imports only the standard library, `internal/proc`, `internal/state`, `internal/logger` and `internal/lymcwd`.
+`internal/lymcwd` is admitted for the one Bolt directory name `runproc.HubOwner` takes from it.
 It is told the record directory and derives no path.
 
 ## `internal/sleepjournal`

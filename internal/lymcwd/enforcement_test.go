@@ -12,6 +12,7 @@ import (
 	"go/scanner"
 	"go/token"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -215,14 +216,12 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryTokenOwners maps each policed geometry token to the set of directories permitted to declare or construct it in path-construction context: the finished per-token ownership map, converged batch by batch from a single allowlisted directory (internal/hubgeometry, then internal/lymcwd) to this map, each token's row landing in the same batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_board" and "-LYMHUB" are dual-owned: internal/lymcwd keeps a private
-		// boardDir/boardDirName pair (readRecordedAnchor's sole remaining
-		// reason to know the name) and a private hubSuffix const
+		// "_board" is declared once, as lymcwd.BoltDirName; fabricengine and runproc take the name from it.
+		// "-LYMHUB" is dual-owned: internal/lymcwd keeps a private hubSuffix const
 		// (Location.RepoName derives from it), while internal/fabricengine
-		// owns the exported BoardDir/HubPath constructors every other
-		// caller uses. The duplication is sanctioned by this map, not a leak.
-		// internal/runproc also declares it, as the hub-scope owner of its record directories.
-		"_board":  {"internal/lymcwd", "internal/fabricengine", "internal/runproc"},
+		// owns the exported HubPath constructor every other caller uses.
+		// The duplication is sanctioned by this map, not a leak.
+		"_board":  {"internal/lymcwd"},
 		"-weft":   {"internal/weftname"},
 		"-LYMHUB": {"internal/lymcwd", "internal/fabricengine"},
 		// "_portals" and "_launchers" are fabric's own illusion-maintenance
@@ -507,6 +506,61 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			t.Errorf("geometry-literal construction found outside its registered owner directory in:\n%v", failures)
 		}
 	})
+}
+
+// TestEnforcement_BoltDirNameDeclaredOnce keeps the value of BoltDirName to its one declaration:
+// no other Go file, stencil, spec or skill spells it as a whole token.
+// internal/lymcwd/anchor.go holds exactly one occurrence, and this file spells the token its geometry test polices.
+//
+//lym:guard
+func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
+	pattern := regexp.MustCompile(`(^|[^A-Za-z0-9_])` + regexp.QuoteMeta(BoltDirName) + `($|[^A-Za-z0-9_])`)
+
+	t.Run("matcher", func(t *testing.T) {
+		if !pattern.MatchString("x/" + BoltDirName + "/y") {
+			t.Errorf("pattern misses the token inside a path")
+		}
+		if pattern.MatchString(BoltDirName + "room") {
+			t.Errorf("pattern matches the token inside a longer name")
+		}
+	})
+
+	const declarationFile = "internal/lymcwd/anchor.go"
+	const policingFile = "internal/lymcwd/enforcement_test.go"
+
+	var findings []string
+	declarations := 0
+	visit := func(f *scankit.File) {
+		if f.Rel == policingFile || strings.HasPrefix(f.Rel, "vendor/") || strings.Contains(f.Rel, "/vendor/") {
+			return
+		}
+		for i, line := range strings.Split(string(f.Data), "\n") {
+			if !pattern.MatchString(line) {
+				continue
+			}
+			if f.Rel == declarationFile {
+				declarations++
+				continue
+			}
+			findings = append(findings, f.Rel+":"+strconv.Itoa(i+1))
+		}
+	}
+
+	goFiles := scankit.Walk(t, scankit.Options{Filter: scankit.All}, visit)
+	docFiles := scankit.Walk(t, scankit.Options{
+		Roots:  []string{"contracts/stencils", "contracts/specs", "plugins"},
+		Filter: scankit.All,
+		Exts:   []string{".md"},
+	}, visit)
+
+	scankit.RequireFloor(t, goFiles, 1, "Bolt directory name Go walk")
+	scankit.RequireFloor(t, docFiles, 1, "Bolt directory name document walk")
+	if declarations != 1 {
+		t.Errorf("%s spells the Bolt directory name %d times; want exactly 1, its declaration", declarationFile, declarations)
+	}
+	if len(findings) > 0 {
+		t.Errorf("the Bolt directory name is spelled outside its declaration at:\n%s", strings.Join(findings, "\n"))
+	}
 }
 
 // weftnameImportOwners is the set of directories permitted to import internal/weftname: the

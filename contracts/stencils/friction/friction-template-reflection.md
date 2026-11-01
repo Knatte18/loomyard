@@ -1,5 +1,5 @@
 <!-- This is the reflection agent's own prompt.
-     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/friction/ and read from there at call time by internal/frictionengine,
+     It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/friction/` and read from there at call time by internal/frictionengine,
      which fills it through stencil.Fill and hands it to shuttle as the reflection agent's entire instruction set.
      Every marker below is a top-level {{.X}} substitution;
      stencil.Fill requires every marker (friction_dir, report_path, note_list, task_slug, parent_directive, edit_directive) non-empty, parent_directive being rendered by internal/parentdirective and edit_directive by internal/editdirective,

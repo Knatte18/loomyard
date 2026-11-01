@@ -12,13 +12,14 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
 // HubOwner is the owner of the processes that belong to the hub rather than to one run.
-// It is a name the fabric slug check refuses as reserved hub geometry, so no slug can take it.
-const HubOwner = "_board"
+// It is the Bolt checkout's directory name, which the fabric slug check refuses as reserved hub geometry, so no slug can take it.
+const HubOwner = lymcwd.BoltDirName
 
 // The roles a registered process plays for its owner.
 const (

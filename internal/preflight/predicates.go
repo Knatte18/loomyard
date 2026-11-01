@@ -24,7 +24,7 @@ type Mode int
 const (
 	// ModeHub is the verdict for a cwd whose resolved hub has a board-level lym directory.
 	ModeHub Mode = iota + 1
-	// ModeStandalone is the verdict for a cwd with no reachable hub geometry: not a git repository, a plain git repo (root or subdirectory), or a hub damaged precisely at <hub>/_board/_lym.
+	// ModeStandalone is the verdict for a cwd with no reachable hub geometry: not a git repository, a plain git repo (root or subdirectory), or a hub damaged precisely at the Bolt checkout's _lym.
 	ModeStandalone
 )
 
@@ -34,8 +34,8 @@ const (
 // explicitly not the mode trigger a standalone-capable CLI's pre-run consults to choose hub mode
 // over standalone mode — see HubPresent for that.
 //
-// Wired probes the paired sibling of the current worktree, not the hub, so it is false at
-// <hub>/_board, false in an unpaired sibling, and false in a worktree whose pair was removed —
+// Wired probes the paired sibling of the current worktree, not the hub,
+// so it is false at the Bolt checkout, false in an unpaired sibling, and false in a worktree whose pair was removed —
 // all three of which are real, healthy hub situations that HubPresent still answers true for.
 //
 // It returns (nil, false) on any error rather than surfacing one, because it is consumed by a CLI pre-run that must never block a command;
@@ -74,10 +74,10 @@ func HubPresent(cwd string) (*lymcwd.Location, bool) {
 	return l, true
 }
 
-// BoardLymPresent reports whether l's hub carries a board-level lym directory (<hub>/_board/_lym).
+// BoardLymPresent reports whether l's hub carries a board-level lym directory (the Bolt checkout's _lym).
 // It is the single implementation of that stat, shared by HubPresent and ResolveMode, so the two never drift into two copies of the same check.
 func BoardLymPresent(l *lymcwd.Location) bool {
-	_, err := os.Stat(filepath.Join(fabricengine.BoardDir(l.HubPath), lymdirs.LymDirName))
+	_, err := os.Stat(filepath.Join(fabricengine.BoltDir(l.HubPath), lymdirs.LymDirName))
 	return err == nil
 }
 
@@ -97,7 +97,7 @@ func BoardLymPresent(l *lymcwd.Location) bool {
 // they already needed.
 //
 // The one residual class this function cannot separate from a plain repo is a hub damaged
-// precisely at <hub>/_board/_lym: at that point nothing distinguishes it from a plain repo, so it
+// precisely at the Bolt checkout's _lym: at that point nothing distinguishes it from a plain repo, so it
 // degrades to standalone.
 func ResolveMode(cwd string) (*lymcwd.Location, Mode, error) {
 	l, err := lymcwd.Resolve(cwd)

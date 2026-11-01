@@ -84,7 +84,7 @@ func makeCLICloneWarpBare(t *testing.T, dir, name string) string {
 
 // makeCLICloneWeftBare creates a genuinely empty (no commits) bare weft
 // remote at <dir>/<name>.git — the state a brand-new weft repo is in before
-// its first clone, exercising CloneHub's orphan _board path end-to-end
+// its first clone, exercising CloneHub's orphan Bolt checkout path end-to-end
 // through the CLI.
 func makeCLICloneWeftBare(t *testing.T, dir, name string) string {
 	t.Helper()

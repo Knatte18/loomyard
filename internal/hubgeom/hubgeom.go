@@ -17,13 +17,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 )
 
-// ReconcileGeometry builds the hubreconcile.Geometry for l: the hub's board dir and l's worktree root.
+// ReconcileGeometry builds the hubreconcile.Geometry for l: the hub's Bolt checkout and l's worktree root.
 // It reports false, with the zero Geometry, when the hub has no board-level lym dir, so a standalone repository never reconciles.
 func ReconcileGeometry(l *lymcwd.Location) (hubreconcile.Geometry, bool) {
 	if !preflight.BoardLymPresent(l) {
 		return hubreconcile.Geometry{}, false
 	}
-	return hubreconcile.Geometry{BoardDir: fabricengine.BoardDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
+	return hubreconcile.Geometry{BoardDir: fabricengine.BoltDir(l.HubPath), WorktreePath: l.WorktreePath()}, true
 }
 
 // ReedGeometry builds a reedengine.Geometry for l: the resolved Location's paths, read off its accessors and passed through untouched, plus the name prefix and parent reed forms strand names from.
@@ -76,7 +76,7 @@ func isPrimeWorktree(worktreeRoot string) (bool, error) {
 
 // reedGeometry is ReedGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
 func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
-	shortname, _ := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug, parent string
 	if !prime {
 		slug = l.WorktreeName
@@ -120,7 +120,7 @@ func BurlerGeometry(l *lymcwd.Location) (burlerengine.Geometry, error) {
 
 // burlerGeometry is BurlerGeometry once the prime is told from a task worktree, split out so the unit test can tell either without a .git entry.
 func burlerGeometry(l *lymcwd.Location, prime bool) burlerengine.Geometry {
-	shortname, _ := fabricengine.ReadShortname(fabricengine.BoardDir(l.HubPath))
+	shortname, _ := fabricengine.ReadShortname(fabricengine.BoltDir(l.HubPath))
 	var slug string
 	if !prime {
 		slug = l.WorktreeName

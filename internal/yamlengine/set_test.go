@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
 const (
@@ -113,9 +115,9 @@ func TestSetValues(t *testing.T) {
 		{
 			name:          "unknown existing key is preserved after every template key",
 			template:      "key1: default1\nkey2: default2\n",
-			existing:      "key1: user_val1\nkey2: user_val2\npath: ../_board\n",
+			existing:      "key1: user_val1\nkey2: user_val2\npath: ../" + lymcwd.BoltDirName + "\n",
 			pairs:         []KV{{Key: "key1", Value: "new_val1"}},
-			wantValues:    map[string]string{"path": "../_board"},
+			wantValues:    map[string]string{"path": "../" + lymcwd.BoltDirName},
 			wantPreserved: []string{"path"},
 			inOrder:       []string{"key1: ", "key2: ", "path: "},
 		},

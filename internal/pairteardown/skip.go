@@ -164,7 +164,7 @@ func (t *Teardown) awaitRunLockOrPass(ctx context.Context, slug string, paused, 
 	if err != nil {
 		return err
 	}
-	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(t.prime.HubPath))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(t.prime.HubPath))}
 	parentLocked, err := store.HeldBy(slug)
 	if err != nil {
 		return err

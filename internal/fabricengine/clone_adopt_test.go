@@ -179,22 +179,22 @@ func resolveGitCommonDir(t *testing.T, repoDir string) string {
 	return filepath.Clean(abs)
 }
 
-// assertBoardIsWeftWorktree asserts that _board (resolved via
-// fabricengine.BoardDir(hubPath)) shares its git-common-dir with weftPrime —
-// proving _board is a linked worktree of the same weft repo, not a separate
-// clone — and that _board is checked out on wantBranch.
+// assertBoardIsWeftWorktree asserts that the Bolt checkout shares its git-common-dir with weftPrime.
+// The checkout is resolved via fabricengine.BoltDir(hubPath).
+// Sharing proves it is a linked worktree of the same weft repo and not a separate clone.
+// It also asserts the checkout is on wantBranch.
 func assertBoardIsWeftWorktree(t *testing.T, hubPath, weftPrime, wantBranch string) {
 	t.Helper()
-	boardPath := fabricengine.BoardDir(hubPath)
+	boardPath := fabricengine.BoltDir(hubPath)
 
 	boardCommonDir := resolveGitCommonDir(t, boardPath)
 	weftCommonDir := resolveGitCommonDir(t, weftPrime)
 	if boardCommonDir != weftCommonDir {
-		t.Errorf("_board git-common-dir = %q; want %q (same weft repo as weft prime)", boardCommonDir, weftCommonDir)
+		t.Errorf("Bolt checkout git-common-dir = %q; want %q (same weft repo as weft prime)", boardCommonDir, weftCommonDir)
 	}
 
 	if got := gitkit.Git(t, boardPath, "branch", "--show-current"); got != wantBranch {
-		t.Errorf("_board branch = %q; want %q", got, wantBranch)
+		t.Errorf("Bolt checkout branch = %q; want %q", got, wantBranch)
 	}
 }
 
@@ -280,9 +280,9 @@ func TestCloneHub_AdoptsExistingRemoteWeftPrimaryBranch(t *testing.T) {
 		t.Errorf("weft prime upstream = %q; want %q", upstream, "origin/main-weft")
 	}
 
-	// _board must be a second worktree of the same weft repo, checked out on
+	// The Bolt checkout must be a second worktree of the same weft repo, checked out on
 	// the unsuffixed warp branch "main" — adopted from the local ref
-	// cloneRepo already created, proving _board is not a separate clone.
+	// cloneRepo already created, proving the Bolt checkout is not a separate clone.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
 }
 
@@ -323,7 +323,7 @@ func TestCloneHub_CreatesFreshWeftPrimaryBranch(t *testing.T) {
 		t.Fatalf("weft prime branch = %q; want %q (freshly created, no remote suffixed branch to adopt)", got, want)
 	}
 
-	// _board must be a second worktree of the same weft repo, checked out on
+	// The Bolt checkout must be a second worktree of the same weft repo, checked out on
 	// the unsuffixed warp branch "main" — a linked worktree, not a separate
 	// clone (a plain ".git" file existing would no longer distinguish the two).
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
@@ -375,7 +375,7 @@ func TestCloneHub_StrictAbortRemovesHubOnFailure(t *testing.T) {
 
 // TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote asserts that when the weft remote is
 // genuinely empty (no commits, so cloneRepo leaves no local warpBranch ref to adopt),
-// ensureBoardWorktree's orphan path fires: _board is materialized as a second weft worktree on a
+// ensureBoardWorktree's orphan path fires: the Bolt checkout is materialized as a second weft worktree on a
 // freshly orphan- created "main" branch that shares no history with the weft primary's "main-weft"
 // branch — both end up with no commits at all.
 func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
@@ -418,20 +418,20 @@ func TestCloneHub_BoardWorktreeOrphanBranchOnEmptyWeftRemote(t *testing.T) {
 		t.Errorf("weft prime at %s has an unborn HEAD; want its suffixed branch born so a pair can fork from it", weftPrime)
 	}
 
-	// _board must still be a linked worktree of the same weft repo, checked
+	// The Bolt checkout must still be a linked worktree of the same weft repo, checked
 	// out on "main", and itself carry no commits — it is orphan-created, so it
 	// gains nothing from the weft primary's initialising commit.
 	assertBoardIsWeftWorktree(t, hubPath, weftPrime, "main")
-	boardPath := fabricengine.BoardDir(hubPath)
+	boardPath := fabricengine.BoltDir(hubPath)
 	if !hasNoCommits(t, boardPath) {
-		t.Errorf("_board at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
+		t.Errorf("Bolt checkout at %s has commits; want an unborn HEAD (fresh orphan branch)", boardPath)
 	}
 }
 
-// TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch asserts that the weft primary and _board are
+// TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch asserts that the weft primary and the Bolt checkout are
 // named after the warp prime's branch, not after the empty weft remote's own unborn HEAD: a weft
 // bare created by `git init --bare` on a host whose default branch is "master" must still yield
-// "main-weft" and a _board on "main" for a warp on "main", or `lym fabric add` can never fork a pair.
+// "main-weft" and a Bolt checkout on "main" for a warp on "main", or `lym fabric add` can never fork a pair.
 func TestCloneHub_EmptyWeftRemoteWithForeignDefaultBranch(t *testing.T) {
 	t.Parallel()
 
@@ -491,8 +491,8 @@ func TestCloneHub_AnchorCreatePath(t *testing.T) {
 	if res.Anchor != "backend" {
 		t.Errorf("res.Anchor = %q; want %q", res.Anchor, "backend")
 	}
-	if filepath.Base(res.BoardDir) != "_board" {
-		t.Errorf("res.BoardDir = %q; want it to end in _board", res.BoardDir)
+	if filepath.Base(res.BoardDir) != fabricengine.BoltDirName {
+		t.Errorf("res.BoardDir = %q; want it to end in %s", res.BoardDir, fabricengine.BoltDirName)
 	}
 	if filepath.Base(res.PrimeCwd) != "backend" {
 		t.Errorf("res.PrimeCwd = %q; want it to end in .../backend", res.PrimeCwd)
@@ -716,7 +716,7 @@ func TestCloneHub_StaleFabricAnchorHardErrors(t *testing.T) {
 
 	// Seed the weft remote's main branch with a committed .fabric-anchor
 	// under the pre-rename name only — no .lym-anchor beside it — mirroring
-	// what an old clone's _board checkout would carry.
+	// what an old clone's Bolt checkout would carry.
 	commitFileOnBranch(t, fixtures, weftBare, "main", ".fabric-anchor", "backend\n")
 
 	cloneParent := t.TempDir()

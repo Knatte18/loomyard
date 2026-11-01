@@ -4,7 +4,7 @@
 
 - `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `internal/lymcwd`, from the worktree's own weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lym-temp-root` — Creating temp file or dir: under `internal/lymtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lym-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered instruction files and their `.heddle` temporary directory at a warp root; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 - `PATTERN-fs-links` — Creating a filesystem link: only `internal/fslink`'s `CreateDirLink`; no `os.Symlink` or `os.Link` outside `internal/fslink`. (test) — [background](pattern/PATTERN-fs-links.md)
 
@@ -54,6 +54,7 @@
 - `PATTERN-agent-name` — Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.
 - `PATTERN-wait-mark-display-only` — Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
+- `PATTERN-heddle-instructions` — Rendering heddle entries into a worktree file or a session's system prompt: only from `heddle.json` in the Bolt checkout, through `internal/heddleengine` (new); that file written only by `lym heddle` verbs and heddle's Bolt replayer; fabric names no heddle file. — [background](pattern/PATTERN-heddle-instructions.md)
 
 ## Processes and waits
 

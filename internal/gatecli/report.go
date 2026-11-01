@@ -82,10 +82,10 @@ func runReportVerb(ctx context.Context, out io.Writer, slug string, since time.T
 	return runReport(out, records, slug, since)
 }
 
-// runLogDirOf returns the directory the tier run records of location go in: the board's gate directory inside a hub, the worktree's own outside every hub.
+// runLogDirOf returns the directory the tier run records of location go in: the Bolt checkout's gate directory inside a hub, the worktree's own outside every hub.
 func runLogDirOf(location *lymcwd.Location, inHub bool) string {
 	if inHub {
-		return gateslot.RunLogDir(gateslot.Dir(fabricengine.BoardDir(location.HubPath)))
+		return gateslot.RunLogDir(gateslot.Dir(fabricengine.BoltDir(location.HubPath)))
 	}
 	return gateslot.RunLogDir(gateslot.WaitDir(location.WorktreePath()))
 }

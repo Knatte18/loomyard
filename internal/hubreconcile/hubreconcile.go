@@ -17,7 +17,7 @@ const DefaultLockWait = 2 * time.Minute
 
 // Geometry is the told geometry of one hub: the paths the walk works on.
 type Geometry struct {
-	// BoardDir is the hub's board dir, where the hub-wide config lives at _lym/config/ and the stamp and lock live at .lym/config/.
+	// BoardDir is the hub's Bolt checkout, where the hub-wide config lives at _lym/config/ and the stamp and lock live at .lym/config/.
 	BoardDir string
 	// WorktreePath is the caller's code worktree root, from which the walk lists the hub's code worktrees.
 	WorktreePath string

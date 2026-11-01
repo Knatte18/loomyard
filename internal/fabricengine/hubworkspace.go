@@ -82,7 +82,7 @@ func beamWorkspaceSettings(l *lymcwd.Location, beam string, primeSettings []byte
 // "<SHORTNAME>: <name> workspace", or "<name> workspace" when the board at the hub records no shortname.
 func workspaceWindowTitle(hubPath, name string) string {
 	title := name + " workspace"
-	if shortname, found := ReadShortname(BoardDir(hubPath)); found {
+	if shortname, found := ReadShortname(BoltDir(hubPath)); found {
 		return strings.ToUpper(shortname) + ": " + title
 	}
 	return title
@@ -119,7 +119,7 @@ func regenerateHubWorkspace(rec *Mutations, l *lymcwd.Location, lockWait time.Du
 		logger.Warn("prime settings hold relative paths that now resolve against the hub directory, where the workspace file sits", "keys", keys)
 	}
 
-	if pathPresent(BoardDir(l.HubPath)) {
+	if pathPresent(BoltDir(l.HubPath)) {
 		release, err := lockHubWorkspace(rec, l.HubPath, lockWait)
 		if err != nil {
 			return "", err
@@ -296,12 +296,12 @@ func hubWorkspaceFolders(l *lymcwd.Location, primeName string) (workspaceLayout,
 		primeFolder = &folder
 	}
 
-	boardPresent, err := dirPresent(BoardDir(l.HubPath))
+	boardPresent, err := dirPresent(BoltDir(l.HubPath))
 	if err != nil {
 		return workspaceLayout{}, err
 	}
 	if boardPresent {
-		folder, err := hubWorkspaceFolder(l.HubPath, "Bolt", BoardDir(l.HubPath))
+		folder, err := hubWorkspaceFolder(l.HubPath, "Bolt", BoltDir(l.HubPath))
 		if err != nil {
 			return workspaceLayout{}, err
 		}

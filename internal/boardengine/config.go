@@ -213,12 +213,13 @@ func decodeLabels(key string, node *yaml.Node) ([]Label, error) {
 }
 
 // OpenHub opens the board of the hub at hubPath.
-// It reads the config from the hub's own board directory and points Path at it, so no worktree link is followed,
+// It reads the config from the hub's own Bolt checkout and points Path at its board directory, so no worktree link is followed,
 // and applies ApplySkipEnv so render and sync behave as they do for `lym board`.
 // It is told only a hub path, so it loads with no anchor and therefore no local layer.
 func OpenHub(hubPath string) (*Board, error) {
+	boltDir := fabricengine.BoltDir(hubPath)
 	boardDir := fabricengine.BoardDir(hubPath)
-	cfg, err := LoadConfig(configengine.Dirs{Board: boardDir}, "board")
+	cfg, err := LoadConfig(configengine.Dirs{Board: boltDir}, "board")
 	if err != nil {
 		return nil, err
 	}

@@ -36,8 +36,8 @@ import (
 func seedWikiRepo(tb testing.TB, n int) string {
 	tb.Helper()
 	dir := seedWiki(tb, n)
-	// The CLI reads the board from <hub>/_board, and the hub is the repo root's parent.
-	if err := os.Rename(filepath.Join(dir, "board"), filepath.Join(filepath.Dir(dir), fabricengine.BoardDirName)); err != nil {
+	// The CLI reads the board from the hub's Bolt checkout, and the hub is the repo root's parent.
+	if err := os.Rename(filepath.Join(dir, "board"), filepath.Join(filepath.Dir(dir), fabricengine.BoltDirName)); err != nil {
 		tb.Fatalf("move board to hub: %v", err)
 	}
 	for _, args := range [][]string{

@@ -6,7 +6,7 @@
 // The intake group (list, import, close) comes from intakeCommand in intake.go, over the hub repository the hubRepo closure opens from the resolved location.
 // list and find take --text to print the compact listing from text.go instead of JSON.
 // Configuration resolution happens once in a PersistentPreRunE.
-// The config file (readme, design_prefix) is loaded from the hub's <hub>/_board/_lym/config/board.yaml, whatever worktree the verb runs in,
+// The config file (readme, design_prefix) is loaded from the Bolt checkout's _lym/config/board.yaml, whatever worktree the verb runs in,
 // and the board data dir is resolved as fabricengine.BoardDir(layout.HubPath) via lymcwd.Resolve.
 // The hidden --board-path persistent flag overrides the data dir for the detached sync child
 // process launched by spawn.go, bypassing both config and path resolution.
@@ -86,11 +86,11 @@ one type label, a note exactly one, and every label must be configured in board.
 carries a handle the board assigns, T and a number for a task, P and a number for a project, a
 note's type letter and a number for a note, such as T4 or B2. The README renders tasks split into dependency layers and notes grouped by
 type, each table sorted by handle. Agents read and write the
-board through "lym board", never through the JSON files under _board.
+board through "lym board", never through the JSON files under ` + fabricengine.BoltDirName + `.
 
-The config file is the hub's <hub>/_board/_lym/config/board.yaml, read whatever worktree the verb runs in.
+The config file is the hub's <hub>/` + fabricengine.BoltDirName + `/_lym/config/board.yaml, read whatever worktree the verb runs in.
 It controls non-geometry settings: readme
-and design_prefix filenames and the types and labels lists. The board data dir (<hub>/_board) is
+and design_prefix filenames and the types and labels lists. The board data dir (<hub>/` + fabricengine.BoltDirName + `) is
 derived from the worktree layout via lymcwd and is not config- or
 env-overridable. The hidden --board-path flag overrides the data dir for the
 detached sync child process. Running "lym board" with no subcommand lists

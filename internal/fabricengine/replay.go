@@ -1,10 +1,9 @@
 // replay.go holds the records replay: bringing a records branch level with a moved origin by replaying the local commits origin lacks, and the ended-set rule that decides which of those commits a run's end on origin has made obsolete.
-// A weft worktree is replayed commit by commit; the board is replayed by entry through the installed board replay.
+// A weft worktree is replayed commit by commit; the Bolt checkout is replayed by entry through the registered Bolt replayers.
 
 package fabricengine
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,18 +20,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
-)
-
-// The board's file names a replay recognises: the entry store, the rendered overview, the per-project overview files and the per-entry design files.
-// boardProjectPrefix must equal the project file prefix the board renders, which this package cannot import.
-const (
-	boardFileName      = "board.json"
-	boardOverviewFile  = "README.md"
-	boardProjectPrefix = "project-"
-	boardDesignPrefix  = "design-"
-	boardDesignSuffix  = ".md"
-	// boardEntryDone is the status an entry carries once its run has landed.
-	boardEntryDone = "done"
 )
 
 // The two ways an entry ends on origin.
@@ -85,24 +72,33 @@ type SetAsideCommit struct {
 
 // ReplayOutcome reports what a records replay did with the local commits origin lacked.
 // Replayed holds the commits re-applied, Dropped those that became empty or were seed commits, and SetAside those kept only under a tag.
-// Conflicts names the paths a stop conflicted on, and Lost and Refused the board changes a by-entry replay did not apply.
+// Conflicts names the paths a stop conflicted on, and Lost and Refused the changes a by-entry replay did not apply.
 type ReplayOutcome struct {
 	Replayed  []string
 	Dropped   []string
 	SetAside  []SetAsideCommit
 	Conflicts []string
-	Lost      []BoardReplayFinding
-	Refused   []BoardReplayFinding
+	Lost      []ReplayFinding
+	Refused   []ReplayFinding
+}
+
+// ledgerRunsAt reads the runs the ledger's file holds at rev, none when the file is absent there.
+func ledgerRunsAt(repo *gitrepo.Repo, ledger RunLedger, rev string) ([]LedgerRun, error) {
+	data, err := blobAt(repo, rev, ledger.File())
+	if err != nil {
+		return nil, err
+	}
+	return ledger.Runs(data)
 }
 
 // readEndedSet reads which of slugs origin has ended, from the records repository at recordsRoot and its ref boltRef, origin's Bolt tip as last fetched.
-// A slug is ended when its entry is `done` on that tip, or is absent from the tip and present in a commit of the tip's history: a pruned entry.
-// Where localCreated holds a created stamp for the slug, the entry on the tip or in the history must carry the same stamp,
-// so a pruned slug reused by an entry only the local board holds is never ended.
-// A slug only the local board ever held matches nothing.
-// It runs no network call, and reads each `board.json` through the installed board replay.
+// A slug is ended when the run ledger marks its run ended on that tip, or when its run is absent from the tip and present in a commit of the tip's history: a pruned run.
+// Where localCreated holds a created stamp for the slug, the run on the tip or in the history must carry the same stamp,
+// so a pruned slug reused by a run only the local ledger holds is never ended.
+// A slug only the local ledger ever held matches nothing.
+// It runs no network call, reads the ledger's file through the registered run ledger, and returns ErrReplayerMissing when none is registered.
 func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[string]string) (EndedSet, error) {
-	replay, err := InstalledBoardReplay()
+	ledger, _, err := runLedger()
 	if err != nil {
 		return nil, err
 	}
@@ -111,37 +107,27 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 	if err != nil {
 		return nil, fmt.Errorf("read the ended set: %w", err)
 	}
-	entriesAt := func(sha string) ([]BoardEntry, error) {
-		data, err := repo.FileAtRevision(sha, boardFileName)
-		if errors.Is(err, gitrepo.ErrPathNotAtRevision) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		return replay.Entries(data)
-	}
-	findEntry := func(entries []BoardEntry, slug string) (BoardEntry, bool) {
-		for _, entry := range entries {
-			if entry.Slug == slug {
-				return entry, true
+	findRun := func(runs []LedgerRun, slug string) (LedgerRun, bool) {
+		for _, run := range runs {
+			if run.Slug == slug {
+				return run, true
 			}
 		}
-		return BoardEntry{}, false
+		return LedgerRun{}, false
 	}
 
-	tipEntries, err := entriesAt(tip)
+	tipRuns, err := ledgerRunsAt(repo, ledger, tip)
 	if err != nil {
-		return nil, fmt.Errorf("read the ended set: %s at %s: %w", boardFileName, tip, err)
+		return nil, fmt.Errorf("read the ended set: %s at %s: %w", ledger.File(), tip, err)
 	}
 	ended := EndedSet{}
 	var absent []string
 	for _, slug := range slugs {
-		entry, held := findEntry(tipEntries, slug)
+		run, held := findRun(tipRuns, slug)
 		switch {
 		case !held:
 			absent = append(absent, slug)
-		case entry.Status == boardEntryDone && createdStampMatches(entry, localCreated[slug]):
+		case run.Ended && createdStampMatches(run, localCreated[slug]):
 			ended[slug] = endedDone
 		}
 	}
@@ -149,21 +135,21 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 		return ended, nil
 	}
 
-	history, err := repo.Log(tip, gitrepo.LogQuery{PathPrefix: boardFileName})
+	history, err := repo.Log(tip, gitrepo.LogQuery{PathPrefix: ledger.File()})
 	if err != nil {
-		return nil, fmt.Errorf("read the ended set: history of %s at %s: %w", boardFileName, tip, err)
+		return nil, fmt.Errorf("read the ended set: history of %s at %s: %w", ledger.File(), tip, err)
 	}
 	for _, commit := range history {
 		if len(absent) == 0 {
 			break
 		}
-		entries, err := entriesAt(commit.SHA)
+		runs, err := ledgerRunsAt(repo, ledger, commit.SHA)
 		if err != nil {
-			return nil, fmt.Errorf("read the ended set: %s at %s: %w", boardFileName, commit.SHA, err)
+			return nil, fmt.Errorf("read the ended set: %s at %s: %w", ledger.File(), commit.SHA, err)
 		}
 		absent = slices.DeleteFunc(absent, func(slug string) bool {
-			entry, held := findEntry(entries, slug)
-			if !held || !createdStampMatches(entry, localCreated[slug]) {
+			run, held := findRun(runs, slug)
+			if !held || !createdStampMatches(run, localCreated[slug]) {
 				return false
 			}
 			ended[slug] = endedRemoved
@@ -173,14 +159,14 @@ func readEndedSet(recordsRoot, boltRef string, slugs []string, localCreated map[
 	return ended, nil
 }
 
-// createdStampMatches reports whether entry carries the created stamp, an RFC 3339 time as board.json stores it.
-// An empty stamp matches every entry.
-func createdStampMatches(entry BoardEntry, stamp string) bool {
+// createdStampMatches reports whether run carries the created stamp, an RFC 3339 time as the ledger stores it.
+// An empty stamp matches every run.
+func createdStampMatches(run LedgerRun, stamp string) bool {
 	if stamp == "" {
 		return true
 	}
 	parsed, err := time.Parse(time.RFC3339Nano, stamp)
-	return err == nil && !entry.Created.IsZero() && parsed.Equal(entry.Created)
+	return err == nil && !run.Created.IsZero() && parsed.Equal(run.Created)
 }
 
 // runStatusRows is the part of a run's status.json the finalize test reads.
@@ -483,10 +469,15 @@ func tagSetAside(rec *Mutations, repo *gitrepo.Repo, asides []SetAsideCommit) er
 // setAsideTag puts the local tag `set-aside/<slug>/<short sha>` on sha, and returns its name.
 // The tag prefix is one no archive reader matches, so a set-aside commit shows as no run.
 // A tag already on sha is kept.
+// An empty slug is a set-aside of the run ledger with no run to name, which takes `replayer/<ledger name>` in the slug's place.
 // It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
 func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
 	if slug == "" {
-		slug = "board"
+		_, ledgerName, err := runLedger()
+		if err != nil {
+			return "", fmt.Errorf("tag set-aside commit %s: %w", sha, err)
+		}
+		slug = "replayer/" + ledgerName
 	}
 	tag := setAsideTagPrefix + slug + "/" + sha[:archiveTagSHALen]
 	commonDir, err := repo.CommonDir()
@@ -509,67 +500,6 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 	return tag, nil
 }
 
-// boardDesignSlug returns the slug of the entry a design file belongs to, and reports whether path is a design file:
-// `design-<slug>.md` at the board's root.
-func boardDesignSlug(path string) (string, bool) {
-	name, found := strings.CutPrefix(path, boardDesignPrefix)
-	if !found || strings.Contains(path, "/") {
-		return "", false
-	}
-	slug, found := strings.CutSuffix(name, boardDesignSuffix)
-	return slug, found && slug != ""
-}
-
-// isBoardOverview reports whether path is a rendered overview file at the board's root: `README.md` or a project's `project-<slug>.md`.
-// The board re-renders every overview after a replay, so none names an entry change.
-func isBoardOverview(path string) bool {
-	if path == boardOverviewFile {
-		return true
-	}
-	name, found := strings.CutPrefix(path, boardProjectPrefix)
-	slug, isMarkdown := strings.CutSuffix(name, boardDesignSuffix)
-	return found && isMarkdown && slug != "" && !strings.Contains(path, "/")
-}
-
-// isBoardPath reports whether path is one a board commit changes: the entry store, a rendered overview file or a design file.
-func isBoardPath(path string) bool {
-	if path == boardFileName || isBoardOverview(path) {
-		return true
-	}
-	_, design := boardDesignSlug(path)
-	return design
-}
-
-// boardEntriesBySlug decodes the raw entries of a `board.json`, keyed by slug and compacted so two writes of the same entry compare equal.
-// An absent or empty file holds none.
-// It reads only the entries' slugs, never their meaning, which belongs to the board.
-func boardEntriesBySlug(data []byte) (map[string]string, error) {
-	entries := map[string]string{}
-	if len(bytes.TrimSpace(data)) == 0 {
-		return entries, nil
-	}
-	var file struct {
-		Entries []json.RawMessage `json:"entries"`
-	}
-	if err := json.Unmarshal(data, &file); err != nil {
-		return nil, err
-	}
-	for _, raw := range file.Entries {
-		var key struct {
-			Slug string `json:"slug"`
-		}
-		if err := json.Unmarshal(raw, &key); err != nil {
-			return nil, err
-		}
-		var compact bytes.Buffer
-		if err := json.Compact(&compact, raw); err != nil {
-			return nil, err
-		}
-		entries[key.Slug] = compact.String()
-	}
-	return entries, nil
-}
-
 // blobAt returns the bytes of rel at rev, nil when the file is absent there, and nil for an empty rev.
 func blobAt(repo *gitrepo.Repo, rev, rel string) ([]byte, error) {
 	if rev == "" {
@@ -582,72 +512,58 @@ func blobAt(repo *gitrepo.Repo, rev, rel string) ([]byte, error) {
 	return data, err
 }
 
-// boardCommitSlugs returns the slugs of the entries a board-only commit changes: each entry of `board.json` that differs from the commit's parent, and each design file's entry.
-func boardCommitSlugs(repo *gitrepo.Repo, sha, parent string, paths []string) ([]string, error) {
-	slugs := map[string]bool{}
-	for _, path := range paths {
-		if slug, design := boardDesignSlug(path); design {
-			slugs[slug] = true
-		}
+// firstParent returns the first parent of sha, empty for a root commit.
+func firstParent(repo *gitrepo.Repo, sha string) (string, error) {
+	parents, err := repo.CommitParents(sha)
+	if err != nil || len(parents) == 0 {
+		return "", err
 	}
-	if slices.Contains(paths, boardFileName) {
-		before, err := blobAt(repo, parent, boardFileName)
-		if err != nil {
-			return nil, err
-		}
-		after, err := blobAt(repo, sha, boardFileName)
-		if err != nil {
-			return nil, err
-		}
-		beforeEntries, err := boardEntriesBySlug(before)
-		if err != nil {
-			return nil, fmt.Errorf("parent %s of %s: %w", boardFileName, sha, err)
-		}
-		afterEntries, err := boardEntriesBySlug(after)
-		if err != nil {
-			return nil, fmt.Errorf("%s of %s: %w", boardFileName, sha, err)
-		}
-		for slug, entry := range afterEntries {
-			if beforeEntries[slug] != entry {
-				slugs[slug] = true
-			}
-		}
-		for slug := range beforeEntries {
-			if _, kept := afterEntries[slug]; !kept {
-				slugs[slug] = true
-			}
-		}
-	}
-	result := make([]string, 0, len(slugs))
-	for slug := range slugs {
-		result = append(result, slug)
-	}
-	sort.Strings(result)
-	return result, nil
+	return parents[0], nil
 }
 
-// localBoardEntries returns the slugs of the entries the local commits ahead change, sorted, and the created stamp each carries at head.
-// A commit's overview file is not an entry, and a slug absent at head carries no stamp.
-func localBoardEntries(repo *gitrepo.Repo, head string, ahead []string) (slugs []string, created map[string]string, err error) {
+// commitLedgerRuns returns the slugs of the runs a commit of paths touches, as the run ledger judges them.
+// The ledger sees its file as the commit's parent and the commit hold it, and nil for both when paths leaves the file alone.
+func commitLedgerRuns(repo *gitrepo.Repo, ledger RunLedger, sha, parent string, paths []string) ([]string, error) {
+	var before, after []byte
+	if slices.Contains(paths, ledger.File()) {
+		var err error
+		if before, err = blobAt(repo, parent, ledger.File()); err != nil {
+			return nil, err
+		}
+		if after, err = blobAt(repo, sha, ledger.File()); err != nil {
+			return nil, err
+		}
+	}
+	slugs, err := ledger.CommitRuns(before, after, paths)
+	if err != nil {
+		return nil, fmt.Errorf("runs of commit %s: %w", sha, err)
+	}
+	return slugs, nil
+}
+
+// localLedgerRuns returns the slugs of the runs the local commits ahead change, sorted, and the created stamp each carries at head.
+// A slug absent at head carries no stamp.
+// With no run ledger registered, a commit that touches no path a registered replayer claims changes no run, and one that does returns ErrReplayerMissing.
+func localLedgerRuns(repo *gitrepo.Repo, head string, ahead []string) (slugs []string, created map[string]string, err error) {
+	ledger, _, ledgerErr := runLedger()
 	seen := map[string]bool{}
 	for _, sha := range ahead {
 		detail, err := repo.CommitDetail(sha)
 		if err != nil {
 			return nil, nil, err
 		}
-		entryPaths := slices.DeleteFunc(slices.Clone(detail.Paths), func(path string) bool { return !isBoardPath(path) || isBoardOverview(path) })
-		if len(entryPaths) == 0 {
+		claimed := slices.DeleteFunc(slices.Clone(detail.Paths), func(path string) bool { _, held := claimantOf(path); return !held })
+		if len(claimed) == 0 {
 			continue
 		}
-		parents, err := repo.CommitParents(sha)
+		if ledgerErr != nil {
+			return nil, nil, ledgerErr
+		}
+		parent, err := firstParent(repo, sha)
 		if err != nil {
 			return nil, nil, err
 		}
-		parent := ""
-		if len(parents) > 0 {
-			parent = parents[0]
-		}
-		changed, err := boardCommitSlugs(repo, sha, parent, entryPaths)
+		changed, err := commitLedgerRuns(repo, ledger, sha, parent, claimed)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -663,31 +579,23 @@ func localBoardEntries(repo *gitrepo.Repo, head string, ahead []string) (slugs [
 		return nil, nil, nil
 	}
 
-	replay, err := InstalledBoardReplay()
+	runs, err := ledgerRunsAt(repo, ledger, head)
 	if err != nil {
-		return nil, nil, err
-	}
-	data, err := blobAt(repo, head, boardFileName)
-	if err != nil {
-		return nil, nil, err
-	}
-	entries, err := replay.Entries(data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%s at %s: %w", boardFileName, head, err)
+		return nil, nil, fmt.Errorf("%s at %s: %w", ledger.File(), head, err)
 	}
 	created = map[string]string{}
-	for _, entry := range entries {
-		if seen[entry.Slug] && !entry.Created.IsZero() {
-			created[entry.Slug] = entry.Created.UTC().Format(time.RFC3339)
+	for _, run := range runs {
+		if seen[run.Slug] && !run.Created.IsZero() {
+			created[run.Slug] = run.Created.UTC().Format(time.RFC3339)
 		}
 	}
 	return slugs, created, nil
 }
 
-// hubLocationOfBoard resolves the location of the hub prime worktree whose board checkout is boardDir.
+// hubLocationOfBolt resolves the location of the hub prime worktree whose Bolt checkout is boltDir.
 // The prime is the warp slug of the records repository's main worktree.
-func hubLocationOfBoard(boardDir string) (*lymcwd.Location, error) {
-	entries, err := List(boardDir)
+func hubLocationOfBolt(boltDir string) (*lymcwd.Location, error) {
+	entries, err := List(boltDir)
 	if err != nil {
 		return nil, err
 	}
@@ -699,32 +607,41 @@ func hubLocationOfBoard(boardDir string) (*lymcwd.Location, error) {
 		if !ok {
 			return nil, fmt.Errorf("the main worktree %s of the records repository is no weft sibling", entry.Path)
 		}
-		return lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(boardDir), slug))
+		return lymcwd.ResolveWorktree(filepath.Join(filepath.Dir(boltDir), slug))
 	}
-	return nil, fmt.Errorf("the records repository of %s lists no main worktree", boardDir)
+	return nil, fmt.Errorf("the records repository of %s lists no main worktree", boltDir)
 }
 
-// boardStep is one local board commit a replay re-applies, by entry or by cherry-pick.
-type boardStep struct {
+// boltStep is one local Bolt commit a replay re-applies, by entry or by cherry-pick.
+// runs holds the slugs of the runs the run ledger says a by-entry commit touches.
+type boltStep struct {
 	sha     string
 	message string
 	paths   []string
 	parent  string
 	byEntry bool
+	runs    []string
 }
 
-// replayBolt brings the board checkout level with upstream when both moved, as replayWeft does for a weft, under its caller's locks.
-// A local commit is set aside under a tag when every entry and design file it changes belongs to an ended entry, the overview file not counted.
+// runsAllEnded reports whether runs is non-empty and every run in it is in ended.
+func runsAllEnded(runs []string, ended EndedSet) bool {
+	return len(runs) > 0 && !slices.ContainsFunc(runs, func(slug string) bool { _, isEnded := ended[slug]; return !isEnded })
+}
+
+// replayBolt brings the Bolt checkout level with upstream when both moved, as replayWeft does for a weft, under its caller's locks.
 // A seed commit is dropped, as the seed-commit drop does.
-// A commit that touches only the board's own files is re-applied by entry through the installed board replay onto upstream,
-// so the overview and an entry only one side changed never conflict, and no entry change stops the replay.
+// A commit whose every path some registered replayer claims is re-applied by entry through the claiming replayers onto upstream,
+// so a file only one side changed never conflicts, and no entry change stops the replay.
+// A by-entry commit is set aside under a tag when every run the run ledger says it touches is ended, unless it also touches a path another replayer claims:
+// then only the ledger's part is skipped, its original is tagged, and the other replayers still apply theirs.
 // A commit that lost a value or met a refusal is committed for what was kept, and its original kept under a set-aside tag.
 // Any other commit is replayed by cherry-pick, and its conflict returns ErrReplayConflict with the starting tip restored.
+// The run ledger is read only once some commit is by-entry, and none registered then returns ErrReplayerMissing before the branch moves.
 // Every set-aside commit is tagged before the branch moves or as its replay reports it, and a later failure restores the starting tip;
 // a restore git refuses, as over a file the failed replay had already written, is joined into the returned error.
 // The ended set is first narrowed to the runs this machine's own landing has not reached.
-func replayBolt(rec *Mutations, l *lymcwd.Location, boardDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
-	repo := gitrepo.New(boardDir)
+func replayBolt(rec *Mutations, l *lymcwd.Location, boltDir, upstream string, ended EndedSet) (ReplayOutcome, error) {
+	repo := gitrepo.New(boltDir)
 	upstreamSHA, err := repo.ResolveSHA(upstream)
 	if err != nil {
 		return ReplayOutcome{}, err
@@ -741,8 +658,10 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boardDir, upstream string, e
 	live := withoutFinalizeEntered(l, ended)
 	var outcome ReplayOutcome
 	var picks []string
-	var steps []boardStep
+	var steps []boltStep
 	var seed, touched []string
+	var ledger RunLedger
+	var ledgerName string
 	for _, sha := range ahead {
 		detail, err := repo.CommitDetail(sha)
 		if err != nil {
@@ -753,35 +672,40 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boardDir, upstream string, e
 			seed = append(seed, sha)
 			continue
 		}
-		if !slices.ContainsFunc(detail.Paths, func(path string) bool { return !isBoardPath(path) }) && len(detail.Paths) > 0 {
-			parents, err := repo.CommitParents(sha)
+		if len(detail.Paths) > 0 && !slices.ContainsFunc(detail.Paths, func(path string) bool { _, claimed := claimantOf(path); return !claimed }) {
+			if ledger == nil {
+				if ledger, ledgerName, err = runLedger(); err != nil {
+					return ReplayOutcome{}, err
+				}
+			}
+			parent, err := firstParent(repo, sha)
 			if err != nil {
 				return ReplayOutcome{}, err
 			}
-			parent := ""
-			if len(parents) > 0 {
-				parent = parents[0]
-			}
-			slugs, err := boardCommitSlugs(repo, sha, parent, detail.Paths)
+			runs, err := commitLedgerRuns(repo, ledger, sha, parent, detail.Paths)
 			if err != nil {
 				return ReplayOutcome{}, err
 			}
-			if len(slugs) > 0 && !slices.ContainsFunc(slugs, func(slug string) bool { _, ended := live[slug]; return !ended }) {
-				outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: sha, Slug: slugs[0]})
+			touchesOtherReplayer := slices.ContainsFunc(detail.Paths, func(path string) bool {
+				claimant, _ := claimantOf(path)
+				return claimant.Name() != ledgerName
+			})
+			if runsAllEnded(runs, live) && !touchesOtherReplayer {
+				outcome.SetAside = append(outcome.SetAside, SetAsideCommit{Commit: sha, Slug: runs[0]})
 				continue
 			}
-			steps = append(steps, boardStep{sha: sha, message: detail.Message, paths: detail.Paths, parent: parent, byEntry: true})
+			steps = append(steps, boltStep{sha: sha, message: detail.Message, paths: detail.Paths, parent: parent, byEntry: true, runs: runs})
 			continue
 		}
 		picks = append(picks, sha)
-		steps = append(steps, boardStep{sha: sha})
+		steps = append(steps, boltStep{sha: sha})
 	}
 
 	// The commits classification set aside are tagged before the branch moves, so a later stop never leaves one reachable only through the reflog.
 	if err := tagSetAside(rec, repo, outcome.SetAside); err != nil {
 		return outcome, err
 	}
-	req := replayRequest(boardDir, ownedBoardWorktree(), touched)
+	req := replayRequest(boltDir, ownedBoardWorktree(), touched)
 	dropped, err := cherryPickOnto(rec, req, repo, upstreamSHA, picks)
 	if err != nil {
 		return replayStop(outcome, err)
@@ -811,50 +735,50 @@ func replayBolt(rec *Mutations, l *lymcwd.Location, boardDir, upstream string, e
 			}
 			continue
 		}
-		replay, err := InstalledBoardReplay()
-		if err != nil {
-			return restoreOnFailure(err)
-		}
-		if err := replayBoardCommit(rec, replay, repo, boardDir, mergeBase, baseline, step, &outcome); err != nil {
+		if err := replayClaimedCommit(rec, repo, boltDir, mergeBase, baseline, step, live, &outcome); err != nil {
 			return restoreOnFailure(err)
 		}
 	}
 
 	if len(seed) > 0 {
-		rec.Append(KindCommitsDropped, boardDir, strings.Join(seed, " "))
+		rec.Append(KindCommitsDropped, boltDir, strings.Join(seed, " "))
 	}
 	endTip, err := repo.CurrentSHA()
 	if err != nil {
 		return restoreOnFailure(err)
 	}
 	if endTip != afterPicks {
-		rec.Append(KindRepoAdvanced, boardDir, endTip)
+		rec.Append(KindRepoAdvanced, boltDir, endTip)
 	}
 	return outcome, nil
 }
 
-// replayBoardCommit re-applies one board-only commit by entry onto the board checked out at upstream, and records what it did in outcome.
-// A commit the replay reports empty writes nothing, and is dropped unless it lost a value or met a refusal.
-// A commit that lost a value or met a refusal is committed for what was kept, and its original is set aside.
-// The original is tagged as soon as the replay reports it, before anything is committed.
-// baseline is the board's uncommitted files before the replay, which are never staged.
-func replayBoardCommit(rec *Mutations, replay BoardReplay, repo *gitrepo.Repo, boardDir, mergeBase string, baseline []string, step boardStep, outcome *ReplayOutcome) error {
-	request := BoardReplayRequest{BoardDir: boardDir}
-	var err error
-	if request.BaseBoardJSON, err = blobAt(repo, mergeBase, boardFileName); err != nil {
+// replayClaimedCommit re-applies one commit whose every path a registered replayer claims, by entry onto the Bolt checkout at upstream, and records what it did in outcome.
+// Each claiming replayer applies its own files, and what they kept is committed as one commit with the original message.
+// When every run the commit touches is in live, the run ledger's own files are left out and the original is set aside under the first such run's slug.
+// A commit no replayer changes anything for writes nothing, and is dropped unless it lost a value or met a refusal.
+// A commit that lost a value or met a refusal is committed for what was kept, and its original is set aside:
+// under the run's slug when the finding comes from the run ledger, and under `replayer/<name>` when another replayer reports it.
+// The original is tagged as soon as the replayers report, before anything is committed.
+// baseline is the Bolt checkout's uncommitted files before the replay, which are never staged.
+func replayClaimedCommit(rec *Mutations, repo *gitrepo.Repo, boltDir, mergeBase string, baseline []string, step boltStep, live EndedSet, outcome *ReplayOutcome) error {
+	_, ledgerName, err := runLedger()
+	if err != nil {
 		return err
 	}
-	if request.ParentBoardJSON, err = blobAt(repo, step.parent, boardFileName); err != nil {
-		return err
+	skipLedger := runsAllEnded(step.runs, live)
+
+	type replayerFiles struct {
+		replayer BoltReplayer
+		files    []ReplayFile
 	}
-	if request.CommitBoardJSON, err = blobAt(repo, step.sha, boardFileName); err != nil {
-		return err
-	}
+	var groups []*replayerFiles
 	for _, path := range step.paths {
-		if _, design := boardDesignSlug(path); !design {
+		replayer, _ := claimantOf(path)
+		if skipLedger && replayer.Name() == ledgerName {
 			continue
 		}
-		file := BoardDesignFile{Name: path}
+		file := ReplayFile{Path: path}
 		if file.Base, err = blobAt(repo, mergeBase, path); err != nil {
 			return err
 		}
@@ -864,21 +788,43 @@ func replayBoardCommit(rec *Mutations, replay BoardReplay, repo *gitrepo.Repo, b
 		if file.After, err = blobAt(repo, step.sha, path); err != nil {
 			return err
 		}
-		request.DesignFiles = append(request.DesignFiles, file)
+		index := slices.IndexFunc(groups, func(group *replayerFiles) bool { return group.replayer.Name() == replayer.Name() })
+		if index < 0 {
+			groups = append(groups, &replayerFiles{replayer: replayer})
+			index = len(groups) - 1
+		}
+		groups[index].files = append(groups[index].files, file)
 	}
 
-	result, err := replay.Apply(request)
-	if err != nil {
-		return fmt.Errorf("replay board commit %s by entry: %w", step.sha, err)
-	}
-	outcome.Lost = append(outcome.Lost, result.Lost...)
-	outcome.Refused = append(outcome.Refused, result.Refused...)
 	var aside *SetAsideCommit
-	switch {
-	case len(result.Lost) > 0:
-		aside = &SetAsideCommit{Commit: step.sha, Slug: result.Lost[0].Entry}
-	case len(result.Refused) > 0:
-		aside = &SetAsideCommit{Commit: step.sha, Slug: result.Refused[0].Entry}
+	if skipLedger {
+		aside = &SetAsideCommit{Commit: step.sha, Slug: step.runs[0]}
+	}
+	asideFor := func(name string, finding ReplayFinding) {
+		if aside != nil {
+			return
+		}
+		slug := "replayer/" + name
+		if name == ledgerName {
+			slug = finding.Entry
+		}
+		aside = &SetAsideCommit{Commit: step.sha, Slug: slug}
+	}
+	allEmpty := true
+	for _, group := range groups {
+		result, err := group.replayer.Apply(ReplayRequest{Dir: boltDir, Files: group.files})
+		if err != nil {
+			return fmt.Errorf("replay Bolt commit %s by entry with %s: %w", step.sha, group.replayer.Name(), err)
+		}
+		outcome.Lost = append(outcome.Lost, result.Lost...)
+		outcome.Refused = append(outcome.Refused, result.Refused...)
+		allEmpty = allEmpty && result.Empty
+		switch {
+		case len(result.Lost) > 0:
+			asideFor(group.replayer.Name(), result.Lost[0])
+		case len(result.Refused) > 0:
+			asideFor(group.replayer.Name(), result.Refused[0])
+		}
 	}
 	if aside != nil {
 		tag, err := setAsideTag(rec, repo, aside.Slug, aside.Commit)
@@ -887,21 +833,21 @@ func replayBoardCommit(rec *Mutations, replay BoardReplay, repo *gitrepo.Repo, b
 		}
 		aside.Tag = tag
 	}
-	if !result.Empty {
+	if !allEmpty {
 		changed, err := repo.WorktreeChangedFiles()
 		if err != nil {
 			return err
 		}
 		changed = slices.DeleteFunc(changed, func(path string) bool { return slices.Contains(baseline, path) })
 		if _, _, err := repo.StageAndCommit(step.message, changed); err != nil {
-			return fmt.Errorf("commit the replay of board commit %s: %w", step.sha, err)
+			return fmt.Errorf("commit the replay of Bolt commit %s: %w", step.sha, err)
 		}
 		outcome.Replayed = append(outcome.Replayed, step.sha)
 	}
 	switch {
 	case aside != nil:
 		outcome.SetAside = append(outcome.SetAside, *aside)
-	case result.Empty:
+	case allEmpty:
 		outcome.Dropped = append(outcome.Dropped, step.sha)
 	}
 	return nil

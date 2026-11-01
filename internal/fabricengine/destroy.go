@@ -348,9 +348,9 @@ func ownedPairWarpCheckout(repoDir, weftDir, parentBranch string) pathOwnership 
 	return pathOwnership{kind: pathOwnershipPairWarpCheckout, repoDir: repoDir, weftDir: weftDir, parentBranch: parentBranch}
 }
 
-// ownedBoardWorktree declares target as owned when its base name is BoardDirName and a weft repo of the same hub registers it as a linked worktree:
+// ownedBoardWorktree declares target as owned when its base name is BoltDirName and a weft repo of the same hub registers it as a linked worktree:
 // some directory directly in target's parent, whose name WeftWarpSlug admits, lists target among its linked worktrees.
-// A directory that merely shares the name, or a `_board` of another hub, fails the predicate.
+// A directory that merely shares the name, or the Bolt checkout of another hub, fails the predicate.
 func ownedBoardWorktree() pathOwnership {
 	return pathOwnership{kind: pathOwnershipBoardWorktree}
 }
@@ -361,8 +361,8 @@ func ownedMovePathspecs(weftPath string, pathspecs []string) pathOwnership {
 	return pathOwnership{kind: pathOwnershipMovePathspecs, root: weftPath, pathspecs: pathspecs}
 }
 
-// ownedFabricHub declares target as owned when it structurally looks like a fabric hub — a `_board`
-// entry, or at least one weft sibling — per looksLikeHub.
+// ownedFabricHub declares target as owned when it structurally looks like a fabric hub:
+// the Bolt checkout entry, or at least one weft sibling, per looksLikeHub.
 func ownedFabricHub() pathOwnership {
 	return pathOwnership{kind: pathOwnershipFabricHub}
 }
@@ -620,7 +620,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 
 	case pathOwnershipBoardWorktree:
 		if !isHubBoardWorktree(target) {
-			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, BoardDirName)
+			return false, fmt.Sprintf("%s is not the %s worktree of a weft repo in its hub", target, BoltDirName)
 		}
 		return true, ""
 
@@ -640,7 +640,7 @@ func resolvePathOwnership(own pathOwnership, target string) (ok bool, reason str
 
 	case pathOwnershipFabricHub:
 		if !looksLikeHub(target) {
-			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoardDirName)
+			return false, fmt.Sprintf("%s does not look like a fabric hub (no %s entry and no weft sibling)", target, BoltDirName)
 		}
 		return true, ""
 
@@ -740,7 +740,7 @@ func resolvePairWarpCheckout(own pathOwnership, target string) (bool, string) {
 // isHubBoardWorktree implements ownedBoardWorktree's predicate.
 // An unreadable parent directory answers false, the conservative direction.
 func isHubBoardWorktree(target string) bool {
-	if filepath.Base(target) != BoardDirName {
+	if filepath.Base(target) != BoltDirName {
 		return false
 	}
 	hub := filepath.Dir(target)
@@ -1642,7 +1642,7 @@ func createGitWorktree(rec *Mutations, repoDir, container, target, createdBranch
 // symlink — it fails closed.
 //
 // target must be a direct child of container (every fabric worktree target — a hub-sibling slug worktree
-// or `<hub>/_board` — is), which is what lets the single-component rename land it in place. buildArgs
+// or the Bolt checkout — is), which is what lets the single-component rename land it in place. buildArgs
 // returns the full argument slice given the path git should write to; every caller embeds exactly the
 // staging path this function hands it, never target, so no caller can reintroduce the followed-symlink write.
 func containedWorktreeAdd(repoDir, container, target string, buildArgs func(worktreePath string) []string) error {

@@ -67,7 +67,7 @@ and unpushed; unpushed true means the commit is made and the next run pushes it.
 				clihelp.Abort(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 				return nil
 			}
-			bolt := boardRulesBolt{bolt: fabricengine.NewBolt(fabricengine.BoardDir(c.location.HubPath))}
+			bolt := boardRulesBolt{bolt: fabricengine.NewBolt(fabricengine.BoltDir(c.location.HubPath))}
 			clihelp.Abort(cmd.Context(), writeHubRules(cmd.OutOrStdout(), cwd, from, c.paths.HubRulesPath, bolt))
 			return nil
 		},

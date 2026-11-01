@@ -25,7 +25,7 @@ import (
 const unreachableOrigin = "http://127.0.0.1:1/board.git"
 
 // ownerFixture is a board seeded with a few entries and pushed to a bare origin, beside a second clone of that origin.
-// The board is the hub's _board worktree of a weft repository, the shape a rejected push's replay requires.
+// The board is the hub's Bolt checkout worktree of a weft repository, the shape a rejected push's replay requires.
 // The seed holds alpha and beta, root tasks; boxed, a beam project owned by box, with away and held, run-held, as its members.
 // It also holds grouping, a project, and beamer, an unowned beam project.
 type ownerFixture struct {
@@ -41,7 +41,7 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	hub := t.TempDir()
 	side := t.TempDir()
 	bare := newBareRemote(t, side)
-	// The hub's records repository sits beside _board under a name that pairs with a warp branch; fabric alone composes that name.
+	// The hub's records repository sits beside the Bolt checkout under a name that pairs with a warp branch; fabric alone composes that name.
 	weftDir := newBoardRepo(t, hub, fabricengine.RecordsBranchName("hub"), bare)
 
 	store := NewStore(weftDir)
@@ -92,8 +92,8 @@ func newOwnerFixture(t *testing.T, primeOwner string) *ownerFixture {
 	gitkit.Git(t, weftDir, "commit", "-m", "seed board")
 	gitkit.Git(t, weftDir, "push", "-u", "origin", "main")
 
-	// The weft repository's own checkout moves off main, which the hub's _board worktree then holds.
-	boardDir := filepath.Join(hub, fabricengine.BoardDirName)
+	// The weft repository's own checkout moves off main, which the hub's Bolt checkout worktree then holds.
+	boardDir := fabricengine.BoltDir(hub)
 	gitkit.Git(t, weftDir, "checkout", "-b", "home")
 	gitkit.Git(t, weftDir, "worktree", "add", boardDir, "main")
 	gitkit.MustRun(t, side, "git", "clone", bare, "other")
@@ -154,8 +154,8 @@ func failOnSleep(t *testing.T) func(time.Duration) {
 func TestSetOwners(t *testing.T) {
 	// Not parallel: the SkipGit row sets the environment, which a parallel ancestor forbids; the rows that can run in parallel say so themselves.
 
-	// A test binary never runs the lym root pre-run that installs the board replay a rejected push is retried through.
-	fabricengine.InstallBoardReplay(FabricReplay{})
+	// A test binary never runs the lym root pre-run that registers the board replayer a rejected push is retried through.
+	fabricengine.RegisterBoltReplayer(FabricReplay{})
 
 	outcomes := []struct {
 		name         string

@@ -72,7 +72,7 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 
 	pathspec := ScopedPathspec(subtreeRel, writtenRelPaths)
 
-	sha, committed, err := gitrepo.New(BoardDir(hub)).StageAndCommit(message, pathspec)
+	sha, committed, err := gitrepo.New(BoltDir(hub)).StageAndCommit(message, pathspec)
 	if err != nil {
 		return StencilSeedResult{}, fmt.Errorf("fabricengine: commit seeded stencils: %w", err)
 	}
@@ -81,7 +81,7 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 		rec.Append(KindFileWritten, filepath.Join(subtreeDir, relPath), "")
 	}
 	if committed {
-		rec.Append(KindCommitCreated, BoardDir(hub), sha)
+		rec.Append(KindCommitCreated, BoltDir(hub), sha)
 	}
 
 	return StencilSeedResult{SHA: sha, Committed: committed}, nil

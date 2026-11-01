@@ -22,7 +22,7 @@ func CommitShortname(hub, shortname, message string, rec *Mutations) (sha string
 	}
 	defer func() { _ = l.Release() }()
 
-	boardDir := BoardDir(hub)
+	boardDir := BoltDir(hub)
 	if err := WriteShortname(boardDir, shortname); err != nil {
 		return "", false, err
 	}

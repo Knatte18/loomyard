@@ -5,7 +5,7 @@
 // asserts they actually produce the same Location for the same worktree rather than one branch
 // quietly omitting a field.
 //
-// Against a real hub, the prime warp worktree's own directory level also carries _board, _portals and
+// Against a real hub, the prime warp worktree's own directory level also carries the Bolt checkout, _portals and
 // _launchers — every name fabricengine.HubReservedNames() returns — a level the old plain-repo
 // fixture never populated with anything else at all.
 // This additionally pins that the fast path resolves the prime worktree's own name, not one of those
@@ -45,7 +45,7 @@ func TestWarpLayoutFor_FastPathMatchesResolveWorktree(t *testing.T) {
 	// On the old plain-repo fixture the hub-sibling directory level held nothing else, so
 	// fast.WorktreeName being "the one repo dir" proved nothing about the fast path actually
 	// distinguishing a warp worktree from anything else at that level. On a real hub,
-	// fabricengine.HubReservedNames() (_board, _portals, _launchers) sit at that same level, so pin
+	// fabricengine.HubReservedNames() (the Bolt checkout, _portals, _launchers) sit at that same level, so pin
 	// that the fast path resolved the prime warp worktree's own name, not one of those reserved
 	// siblings.
 	for _, reserved := range fabricengine.HubReservedNames() {

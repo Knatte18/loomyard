@@ -96,7 +96,7 @@ func seedStandalonePlanDir(t *testing.T, dir string) {
 }
 
 // TestWire_ModeHubSelectsHubMode covers the three healthy-but-unwired locations that run
-// webster verbs today under hub mode: an ordinary worktree standing in for <hub>/_board, an unpaired
+// webster verbs today under hub mode: an ordinary worktree standing in for the hub's Bolt checkout, an unpaired
 // sibling, and a worktree whose paired sibling has been removed. A Wired-keyed implementation would
 // silently send every one of these to standalone mode; none of them may be refused, and none of them
 // may land in standalone.
@@ -105,7 +105,7 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 		name         string
 		worktreeName string
 	}{
-		{"BoardLevelWorktree", "_board"},
+		{"BoardLevelWorktree", fabricengine.BoltDirName},
 		{"UnpairedSibling", "orphan-code"},
 		{"WorktreeWhosePairWasRemoved", "was-paired-code"},
 	}

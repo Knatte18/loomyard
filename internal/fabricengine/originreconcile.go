@@ -114,9 +114,9 @@ type OriginSeams struct {
 	OwnerOf             OwnerReader
 }
 
-// OwnerReader answers the owner question over one `board.json` of the hub at hubPath: the effective owner of slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
+// OwnerReader answers the owner question over the run ledger's file of the hub at hubPath: the effective owner of slug, the subject `lym adopt` takes to move it, and whether that owner is another machine.
 // An error, including this machine having no name, is returned to the reconcile asking it, so no owner is ever compared with an empty name.
-type OwnerReader func(hubPath string, boardJSON []byte, slug string) (owner, subject string, elsewhere bool, err error)
+type OwnerReader func(hubPath string, ledger []byte, slug string) (owner, subject string, elsewhere bool, err error)
 
 // BranchState is the verdict on one local branch against origin's head for it.
 type BranchState string
@@ -167,6 +167,7 @@ func (s BranchState) stops() bool {
 // Anchor is the anchor the way forward of an anchor_stopped branch names, empty when the stop is the weft's own empty marker.
 // MoveWayForward is the way forward of an anchor_stopped branch whose weft carries a move record, and replaces the one the anchor would name.
 // Moved is set by a moving reconcile once it brought the branch up to origin's head, State then reading level, or ahead when replayed commits sit on it.
+// Warning is the text of a failed worktree event fired for a code branch the reconcile moved, empty otherwise.
 type BranchOutcome struct {
 	Branch         string
 	Repo           string
@@ -184,6 +185,7 @@ type BranchOutcome struct {
 	Anchor         string
 	MoveWayForward string
 	Moved          bool
+	Warning        string
 }
 
 // EntryState is the verdict on one entry, the run a pair carries.
@@ -257,6 +259,12 @@ func (r OriginReport) Summary() string {
 	}
 	if len(moved) > 0 {
 		lines = append(lines, "moved: "+strings.Join(moved, ", "))
+	}
+
+	for _, branch := range r.Branches {
+		if branch.Warning != "" {
+			lines = append(lines, fmt.Sprintf("warning: %s: %s", branch.Branch, branch.Warning))
+		}
 	}
 
 	for _, branch := range r.Branches {
@@ -639,7 +647,7 @@ func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTa
 		}
 	}
 
-	board := BoardDir(l.HubPath)
+	board := BoltDir(l.HubPath)
 	if i := slices.IndexFunc(recordsEntries, func(candidate WorktreeEntry) bool { return samePath(candidate.Path, board) }); i >= 0 && recordsEntries[i].Branch != "" {
 		targets = append(targets, originTarget{side: failedPushSideBolt, branch: recordsEntries[i].Branch, worktree: board})
 	}
@@ -816,8 +824,9 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 	return entries
 }
 
-// readOriginOwners asks seams.OwnerOf, once per slug of slugs, whether another machine owns the entry, over the `board.json` at origin's fetched Bolt tip.
+// readOriginOwners asks seams.OwnerOf, once per slug of slugs, whether another machine owns the entry, over the run ledger's file at origin's fetched Bolt tip.
 // It returns the owner and the adopt subject of each slug read as owned elsewhere, and nothing for a hub with no Bolt target, no origin head or no OwnerOf seam.
+// It returns ErrReplayerMissing when it would read the ledger and none is registered.
 // The tip's objects are present even for a judge-only scope, which fetches them by SHA, so a dry run reads owners too and moves nothing.
 // A seam error is returned, so no verdict is ever compared with an empty machine name.
 func readOriginOwners(l *lymcwd.Location, seams OriginSeams, targets []originTarget, outcomes []BranchOutcome, slugs []string) (owners, subjects map[string]string, err error) {
@@ -825,15 +834,19 @@ func readOriginOwners(l *lymcwd.Location, seams OriginSeams, targets []originTar
 	if seams.OwnerOf == nil || len(slugs) == 0 || boltIndex < 0 || outcomes[boltIndex].OriginHead == "" {
 		return nil, nil, nil
 	}
-	board, err := blobAt(gitrepo.New(targets[boltIndex].worktree), outcomes[boltIndex].OriginHead, boardFileName)
+	ledger, _, err := runLedger()
 	if err != nil {
-		return nil, nil, fmt.Errorf("fabricengine: read %s at origin's Bolt tip: %w", boardFileName, err)
+		return nil, nil, err
+	}
+	ledgerBytes, err := blobAt(gitrepo.New(targets[boltIndex].worktree), outcomes[boltIndex].OriginHead, ledger.File())
+	if err != nil {
+		return nil, nil, fmt.Errorf("fabricengine: read %s at origin's Bolt tip: %w", ledger.File(), err)
 	}
 
 	owners = map[string]string{}
 	subjects = map[string]string{}
 	for _, slug := range slugs {
-		owner, subject, elsewhere, err := seams.OwnerOf(l.HubPath, board, slug)
+		owner, subject, elsewhere, err := seams.OwnerOf(l.HubPath, ledgerBytes, slug)
 		if err != nil {
 			return nil, nil, fmt.Errorf("fabricengine: read the owner of %s: %w", slug, err)
 		}

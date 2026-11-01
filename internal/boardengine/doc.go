@@ -321,8 +321,10 @@
 //
 // # Replay
 //
-// FabricReplay implements the board seam fabricengine declares for a records replay, installed process-wide by the lym root pre-run.
-// Apply re-applies a local board commit onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
+// FabricReplay is the board's Bolt replayer, named `board`, and the run ledger fabricengine reads the ended set and the owners through; the lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
+// It claims `board.json`, `README.md`, the `project-<slug>.md` files and the `design-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
+// The by-entry merge of fields is `internal/entrymerge`'s.
+// Apply re-applies a local board commit, read out of the files the request holds by path, onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
 // a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
@@ -331,7 +333,7 @@
 //
 // # loomyard's own area labels
 //
-// Before deploying the landed binary, write this list into the hub's live <hub>/_board/_lym/config/board.yaml, then delete this paragraph.
+// Before deploying the landed binary, write this list into the hub's live `_lym/config/board.yaml` in the Bolt checkout, then delete this paragraph.
 // The migration turns every bracketed brief prefix on loomyard's live board that is not a type into a label, and the board refuses writes until board.yaml lists them.
 // The PR description must quote this snippet verbatim, because the hub copies the list from the PR description, not from the diff.
 //

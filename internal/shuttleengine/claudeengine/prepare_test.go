@@ -5,6 +5,7 @@
 package claudeengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -436,5 +437,89 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("captured log = %q; want it to contain %q", got, want)
 		}
+	}
+}
+
+// TestPrepare_AppendsStandingPassages proves the append-system-prompt file carries the hub's standing passages after lym's own sentences, each after a blank line and in order.
+// With no reader installed, or outside a hub, the file holds lym's sentences only and the reader is never called;
+// a reader error leaves the launch succeeded with lym's sentences only and logs the way to inspect the store.
+// It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
+func TestPrepare_AppendsStandingPassages(t *testing.T) {
+	sentences := creelTrustSentence + " " + batchingSentence
+	tests := []struct {
+		name string
+		// board is the told Bolt checkout; empty means a session outside a hub.
+		board string
+		// reader is nil when no reader is installed.
+		reader      shuttleengine.PassageReader
+		want        string
+		wantLogged  string
+		wantNoCalls bool
+	}{
+		{
+			name:  "two_passages",
+			board: "bolt",
+			reader: func(string, string) ([]string, error) {
+				return []string{"first passage", "second\nspans lines"}, nil
+			},
+			want: sentences + "\n\nfirst passage\n\nsecond\nspans lines",
+		},
+		{name: "no_reader", board: "bolt", want: sentences},
+		{
+			name:  "outside_hub",
+			board: "",
+			reader: func(string, string) ([]string, error) {
+				return []string{"never read"}, nil
+			},
+			want:        sentences,
+			wantNoCalls: true,
+		},
+		{
+			name:  "reader_error",
+			board: "bolt",
+			reader: func(string, string) ([]string, error) {
+				return nil, errors.New("heddle.json does not decode")
+			},
+			want:       sentences,
+			wantLogged: "lym heddle list",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := logcapture.Capture(t)
+			calls := 0
+			if tt.reader != nil {
+				reader := tt.reader
+				t.Cleanup(shuttleengine.InstallPassageReader(func(boltDir, engine string) ([]string, error) {
+					calls++
+					return reader(boltDir, engine)
+				}))
+			}
+			engine := engineWith(t, templateConfig(t))
+			if tt.board != "" {
+				engine.dirs.Board = t.TempDir()
+			}
+			runDir := t.TempDir()
+			claude := templateConfig(t)
+			spec := shuttleengine.Spec{Prompt: "do the thing"}
+			notice := buildDenyNotice(spec.Interactive, shuttleengine.Config{}, claude, false, false, false)
+			if _, err := engine.Prepare(runDir, spec, shuttleengine.Config{}); err != nil {
+				t.Fatalf("Prepare() error: %v; want nil", err)
+			}
+			want := tt.want
+			if notice != "" {
+				want = notice + " " + want
+			}
+			got, err := os.ReadFile(filepath.Join(runDir, "append-system-prompt.txt"))
+			if err != nil || string(got) != want {
+				t.Errorf("append-system-prompt.txt = %q, %v; want %q", got, err, want)
+			}
+			if tt.wantNoCalls && calls != 0 {
+				t.Errorf("reader called %d times outside a hub; want none", calls)
+			}
+			if !strings.Contains(logs.String(), tt.wantLogged) {
+				t.Errorf("log = %q; want it to name %q", logs.String(), tt.wantLogged)
+			}
+		})
 	}
 }

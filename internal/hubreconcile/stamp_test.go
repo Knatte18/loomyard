@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/buildvcs"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
 
 // TestBuildKey_DiffersOnEveryInput verifies each input moves the key and equal inputs agree.
@@ -61,11 +62,11 @@ func TestStamp_ReadWrite(t *testing.T) {
 func TestGeometry_Paths(t *testing.T) {
 	t.Parallel()
 
-	geom := Geometry{BoardDir: filepath.Join("hub", "_board")}
-	if got, want := geom.StampPath(), filepath.Join("hub", "_board", ".lym", "config", "build-stamp.json"); got != want {
+	geom := Geometry{BoardDir: filepath.Join("hub", fabricengine.BoltDirName)}
+	if got, want := geom.StampPath(), filepath.Join("hub", fabricengine.BoltDirName, ".lym", "config", "build-stamp.json"); got != want {
 		t.Errorf("StampPath = %q, want %q", got, want)
 	}
-	if got, want := geom.LockPath(), filepath.Join("hub", "_board", ".lym", "config", "reconcile.lock"); got != want {
+	if got, want := geom.LockPath(), filepath.Join("hub", fabricengine.BoltDirName, ".lym", "config", "reconcile.lock"); got != want {
 		t.Errorf("LockPath = %q, want %q", got, want)
 	}
 }

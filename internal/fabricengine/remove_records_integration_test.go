@@ -197,8 +197,8 @@ func TestRemoveRefusal_ProbeLeavesPairUntouched(t *testing.T) {
 		t.Errorf("RemoveRefusal on a clean pair = %v; want nil", err)
 	}
 
-	if err := h.Topology.RemoveRefusal(l, "_board", false); err == nil {
-		t.Errorf("RemoveRefusal(%q) = nil; want the slug refusal", "_board")
+	if err := h.Topology.RemoveRefusal(l, fabricengine.BoltDirName, false); err == nil {
+		t.Errorf("RemoveRefusal(%q) = nil; want the slug refusal", fabricengine.BoltDirName)
 	}
 
 	primeName, err := fabricengine.PrimeName(l)

@@ -24,7 +24,7 @@ func ReleaseRunParentLock(prime *lymcwd.Location, slug string) error {
 	if err != nil || keeps {
 		return err
 	}
-	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(prime.HubPath))}
+	store := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(prime.HubPath))}
 	record, found, err := runLockRecord(store, slug, taskLocation.WorktreePath())
 	if err != nil || !found {
 		return err

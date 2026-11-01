@@ -47,7 +47,7 @@
 //
 // Wired is a considered override of an earlier design for this package, not a doc catching up to
 // code: fabricengine.Ready, which Wired calls, probes the paired sibling of the current
-// worktree rather than the hub, so Wired is false at <hub>/_board, false in an unpaired sibling,
+// worktree rather than the hub, so Wired is false at the Bolt checkout, false in an unpaired sibling,
 // and false in a worktree whose pair was removed — three real, healthy hub situations that run
 // producer verbs today. Keying mode selection on Wired would route all three to standalone mode,
 // which would silently relocate a live hub's state to the per-OS standalone state directory —
@@ -58,8 +58,8 @@
 // which was the hazard the predicate split was built for.
 //
 // Gating the stencil seed on Wired instead would be wrong for the same reason: fabricengine.Ready
-// probes the paired sibling of the current worktree, not the hub, so it is false at <hub>/_board,
-// false in an unpaired sibling, and false in a worktree whose pair was removed — three real,
-// healthy hub situations that the stencil seed correctly seeds into today.
+// probes the paired sibling of the current worktree, not the hub,
+// so it is false at the Bolt checkout, false in an unpaired sibling, and false in a worktree whose pair was removed;
+// these are three real, healthy hub situations that the stencil seed correctly seeds into today.
 // Narrowing the seed gate to Wired would regress every one of those three, not fix anything.
 package preflight

@@ -1,8 +1,8 @@
 //go:build tier1
 
 // hubcontainment_integration_test.go gives the Hub Containment Invariant teeth: no hub-level
-// container is ever junctioned into a worktree, so <worktree>/<anchorRel>/_board must not exist
-// after any verb. One case per verb that used to wire the deleted _board junction — clone, add, and
+// container is ever junctioned into a worktree, so <worktree>/<anchorRel>/<Bolt directory> must not exist
+// after any verb. One case per verb that used to wire the deleted Bolt checkout junction — clone, add, and
 // reconcile — asserts absence, never removal: nothing in this task sweeps a pre-existing junction, so
 // a case that wires one by hand and expects it gone would be testing behaviour the plan deliberately
 // does not build.
@@ -23,7 +23,7 @@ import (
 )
 
 // TestHubContainment_CloneWiresNoBoardJunction drives fabricengine.CloneHub and asserts the resolved
-// prime worktree carries no _board junction and no _board line in the warp repo's
+// prime worktree carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
 // .git/info/exclude — the clone-time call this batch deleted used to wire both.
 func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 	t.Parallel()
@@ -47,7 +47,7 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(res.HubPath) })
 
-	boardLink := filepath.Join(res.PrimeCwd, fabricengine.BoardDirName)
+	boardLink := filepath.Join(res.PrimeCwd, fabricengine.BoltDirName)
 	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
 		t.Errorf("board link %s exists after CloneHub; want absent (stat err: %v)", boardLink, statErr)
 	}
@@ -57,16 +57,16 @@ func TestHubContainment_CloneWiresNoBoardJunction(t *testing.T) {
 		t.Fatalf("lymcwd.Resolve(PrimeCwd): %v", err)
 	}
 	slug := filepath.Base(l.WorktreePath())
-	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
+	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoltDirName)
 	for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)) {
 		if line == boardPattern {
-			t.Errorf(".git/info/exclude carries %q after CloneHub; want no _board exclude line", boardPattern)
+			t.Errorf(".git/info/exclude carries %q after CloneHub; want no Bolt checkout exclude line", boardPattern)
 		}
 	}
 }
 
 // TestHubContainment_AddWiresNoBoardJunction drives Topology.Add on a fixture and asserts the new
-// pair's anchored directory carries no _board junction and no _board line in the warp repo's
+// pair's anchored directory carries no Bolt checkout junction and no Bolt checkout line in the warp repo's
 // .git/info/exclude — the add-time call this batch deleted used to wire both.
 func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 	// Serial: t.Setenv("FABRIC_SKIP_PUSH") sets a process-global variable.
@@ -81,21 +81,21 @@ func TestHubContainment_AddWiresNoBoardJunction(t *testing.T) {
 		t.Fatalf("Add: %v", err)
 	}
 
-	boardLink := filepath.Join(res.Path, l.AnchorRel, fabricengine.BoardDirName)
+	boardLink := filepath.Join(res.Path, l.AnchorRel, fabricengine.BoltDirName)
 	if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
 		t.Errorf("board link %s exists after Add; want absent (stat err: %v)", boardLink, statErr)
 	}
 
-	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
+	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoltDirName)
 	for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug)) {
 		if line == boardPattern {
-			t.Errorf(".git/info/exclude carries %q after Add; want no _board exclude line", boardPattern)
+			t.Errorf(".git/info/exclude carries %q after Add; want no Bolt checkout exclude line", boardPattern)
 		}
 	}
 }
 
 // TestHubContainment_ReconcileWiresNoBoardJunction drives Topology.Reconcile and asserts every pair
-// it converges carries no _board junction and no _board line in its warp repo's
+// it converges carries no Bolt checkout junction and no Bolt checkout line in its warp repo's
 // .git/info/exclude — reconcile is the verb that used to re-wire the link unconditionally on every
 // pass, regardless of junction health.
 func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
@@ -116,10 +116,10 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 		t.Fatalf("Reconcile returned no pairs; want at least the one just added")
 	}
 
-	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoardDirName)
+	boardPattern := fabricengine.ExcludePatternForTest(l.AnchorRel, fabricengine.BoltDirName)
 	for _, pair := range result.Pairs {
 		warpPath := filepath.FromSlash(pair.CodeWorktree)
-		boardLink := filepath.Join(warpPath, l.AnchorRel, fabricengine.BoardDirName)
+		boardLink := filepath.Join(warpPath, l.AnchorRel, fabricengine.BoltDirName)
 		if _, statErr := os.Lstat(boardLink); !os.IsNotExist(statErr) {
 			t.Errorf("board link %s exists after Reconcile; want absent (stat err: %v)", boardLink, statErr)
 		}
@@ -127,7 +127,7 @@ func TestHubContainment_ReconcileWiresNoBoardJunction(t *testing.T) {
 		pairSlug := filepath.Base(warpPath)
 		for _, line := range gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, pairSlug)) {
 			if line == boardPattern {
-				t.Errorf("%s .git/info/exclude carries %q after Reconcile; want no _board exclude line", warpPath, boardPattern)
+				t.Errorf("%s .git/info/exclude carries %q after Reconcile; want no Bolt checkout exclude line", warpPath, boardPattern)
 			}
 		}
 	}

@@ -1,5 +1,5 @@
 <!-- This is the sampler agent's entire instruction set. It is shipped as an embedded default in the
-     top-level stencils package (stencils/stencils.go), seeded to <hub>/_board/_lym/stencils/sampler/
+     top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/sampler/`
      and read from there at call time through internal/stencilstore, which samplerengine's SessionSpec fills and hands to shuttle as the interactive session's first prompt.
      Every marker below is a top-level {{.X}} substitution and stencil.Fill requires every marker non-empty:
      slug, task_worktree, decision_record_path,

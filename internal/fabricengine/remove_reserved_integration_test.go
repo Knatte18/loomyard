@@ -2,7 +2,7 @@
 
 // remove_reserved_integration_test.go proves Remove refuses the same reserved slugs Add refuses,
 // against a real hub with those directories actually present on disk.
-// Before the shared validator, `lym fabric remove _board` and `lym fabric remove <prime>-weft`
+// Before the shared validator, `lym fabric remove` of the Bolt checkout and `lym fabric remove <prime>-weft`
 // reached the teardown path and destroyed the hub's weft:main records worktree and the entire weft
 // prime respectively, both reported as success.
 //

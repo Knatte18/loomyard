@@ -269,7 +269,7 @@ func forkTemplateMarkerValues() map[string]string {
 		"self_fix_cap":       "2",
 		"worktree_root":      "/worktree",
 		"prev_digest":        "01-json-flag: done head_sha=abc123",
-		"specs_dir":          "/hub/repo/_board/_lym/specs",
+		"specs_dir":          "/hub/repo/" + fabricengine.BoltDirName + "/_lym/specs",
 		"gate_tiers":         "- tier1: unit tests of `x`",
 		"rename_tools":       "- rename `y` through the language server",
 		"outcome_path":       testOutcomePath,

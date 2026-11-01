@@ -172,6 +172,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		return cancelDeps{}, err
 	}
 	boardDir := fabricengine.BoardDir(location.HubPath)
+	boltDir := fabricengine.BoltDir(location.HubPath)
 	driverLock, runLock := shedrun.DriverLock(location, slug), shedrun.RunLock(location, slug)
 	runProcDir := fabricengine.RunProcDir(location.HubPath)
 	board := func() (*boardengine.Board, error) { return boardengine.OpenHub(location.HubPath) }
@@ -185,7 +186,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 		ExemptGate:          func() (func(), error) { return pauserecord.SetGateExemptAll(), nil },
 		TaskWorktreePresent: func() (bool, error) { return taskWorktreePresent(location, slug) },
 		Reconcile:           func() (fabricengine.OriginReport, error) { return reconcileRun(location, slug, true) },
-		PullBolt:            func() error { return pullBolt(boardDir) },
+		PullBolt:            func() error { return pullBolt(boltDir) },
 		Owner: func() (string, string, string, error) {
 			machine, err := machinename.Name()
 			if err != nil {

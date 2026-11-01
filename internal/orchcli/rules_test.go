@@ -89,7 +89,7 @@ func TestWriteHubRules(t *testing.T) {
 
 	str := func(s string) *string { return &s }
 	conflictRecord := fabricengine.FailedPush{
-		Repo: "bolt", RepoPath: "/hub/_board", Branch: "main",
+		Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main",
 		Class: fabricengine.PushFailureNotFastForward, Paths: []string{"board.json"}, Commits: []string{"abc1234"},
 	}
 	rebaseFailed := &fabricengine.PushFailedError{Record: conflictRecord, Err: fmt.Errorf("push: %w", gitrepo.ErrPushRejected)}

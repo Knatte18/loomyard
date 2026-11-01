@@ -1,6 +1,6 @@
 <!-- This is the fixer's instruction: fix every finding, the write-surface/git discipline for the fix, the fixer-report, and the never-push/never-touch-`_lym` rule.
      It is shipped as an embedded default in the top-level stencils package (stencils/stencils.go),
-     seeded to <hub>/_board/_lym/stencils/burler/ and read from there at call time by composeFixPrompt
+     seeded to the Bolt checkout's `_lym/stencils/burler/` and read from there at call time by composeFixPrompt
      (prompt.go) via internal/stencil, then read by the fixer only when the fixer stencil
      (burler-template-fixer.md) directs it here.
      The friction_directive marker is optional and renders as nothing when the round has no note.

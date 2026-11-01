@@ -612,10 +612,10 @@ func pruneCase() VerbCase {
 // Arrange produces an orphan managed branch: a pair is created, then its warp side (worktree and
 // branch) is torn down by hand, leaving the weft branch with no live warp sibling.
 // Arrange also moves the prime pair off the hub's default branch, exactly as
-// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout (cleanup_primary_integration_test.go) does: the
-// <Hub>/_board worktree stays on the original branch, which is what fabricengine.primaryWeftBranch
-// reads to determine the repo's primary weft line (cleanup.go:206), so it alone still records the
-// primary after the move. Without this, branch-space liveness alone would still protect the primary
+// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout (cleanup_primary_integration_test.go) does:
+// the hub's Bolt checkout stays on the original branch, which is what fabricengine.primaryWeftBranch
+// reads to determine the repo's primary weft line (cleanup.go:206), so it alone still records the primary after the move.
+// Without this, branch-space liveness alone would still protect the primary
 // weft branch (some warp worktree is checked out on it), leaving this cell unable to independently
 // exercise cleanup.go's own primaryWeft carve-out or the gate's primaryWeftBranch check -- both of
 // which only matter once liveness alone stops protecting the primary line.
@@ -644,7 +644,7 @@ func cleanupCase() VerbCase {
 			// still on it after only the warp side is torn down.
 			mustGit(h.PrimeRecords(), "worktree", "remove", "--force", h.PairRecordsSibling(slug))
 
-			// Move the prime pair off the default branch. The _board worktree (never touched here)
+			// Move the prime pair off the default branch. The Bolt checkout (never touched here)
 			// keeps recording "original" as the primary warp branch, so the primary weft branch is
 			// now neither the checked-out weft worktree's own branch nor named by any live pair --
 			// exactly the condition that makes Cleanup's primaryWeft carve-out load-bearing.

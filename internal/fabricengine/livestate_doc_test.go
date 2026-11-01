@@ -186,7 +186,7 @@
 //     guard, short-circuited to never fire). Ran `-run 'TestCloneHubReset/\./CloneHubReset/NonHubTarget$'`:
 //     the cell failed with "expected pre-flight refusal containing \"is not a fabric hub\"; got err =
 //     reset: remove hub at ...: refusing to reset hub: ownership check failed for ...: ... does not look
-//     like a fabric hub (no _board entry and no weft sibling)" -- the gate's own ownedFabricHub check
+//     like a fabric hub (no <Bolt directory> entry and no weft sibling)" -- the gate's own ownedFabricHub check
 //     caught what the pre-flight was neutered out of catching, so the operator-content sentinel survived
 //     this particular run, but the cell still failed on the Kind mismatch (a gate refusal, not the
 //     pre-flight's), proving the pre-flight itself is load-bearing rather than redundant with the gate.

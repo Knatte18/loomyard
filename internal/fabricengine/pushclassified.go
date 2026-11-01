@@ -514,12 +514,12 @@ func branchGoneOnOrigin(path string) (gone bool, err error) {
 	return !found, err
 }
 
-// goneEntryEnded reports whether the board entry of a branch origin no longer has is ended on origin, done or removed.
+// goneEntryEnded reports whether the run of a branch origin no longer has is ended on origin, done or removed.
 // It fetches origin's Bolt branch once, and reads the ended set from that tip.
-// The entry's slug is the branch's last path segment, without the records suffix.
-// A hub with no board, or a board with no upstream, ends no entry.
+// The run's slug is the branch's last path segment, without the records suffix.
+// A hub with no Bolt checkout, or one with no upstream, ends no run.
 func goneEntryEnded(hubPath, branch string) (bool, error) {
-	boardDir := BoardDir(hubPath)
+	boardDir := BoltDir(hubPath)
 	if _, err := os.Stat(boardDir); err != nil {
 		return false, nil
 	}
@@ -537,7 +537,7 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 
 	name := strings.TrimSuffix(branch, weftname.Suffix)
 	slug := name[strings.LastIndex(name, "/")+1:]
-	replay, err := InstalledBoardReplay()
+	ledger, _, err := runLedger()
 	if err != nil {
 		return false, err
 	}
@@ -545,18 +545,14 @@ func goneEntryEnded(hubPath, branch string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	data, err := blobAt(board, head, boardFileName)
+	runs, err := ledgerRunsAt(board, ledger, head)
 	if err != nil {
-		return false, err
-	}
-	entries, err := replay.Entries(data)
-	if err != nil {
-		return false, fmt.Errorf("%s at %s: %w", boardFileName, head, err)
+		return false, fmt.Errorf("%s at %s: %w", ledger.File(), head, err)
 	}
 	created := map[string]string{}
-	for _, entry := range entries {
-		if entry.Slug == slug && !entry.Created.IsZero() {
-			created[slug] = entry.Created.UTC().Format(time.RFC3339)
+	for _, run := range runs {
+		if run.Slug == slug && !run.Created.IsZero() {
+			created[slug] = run.Created.UTC().Format(time.RFC3339)
 		}
 	}
 	ended, err := readEndedSet(boardDir, upstream, []string{slug}, created)
@@ -656,7 +652,7 @@ func retryWeftPush(rec *Mutations, hubPath, weftPath string) (deferred bool, err
 
 // fetchBoltBranch fetches origin's Bolt branch into the hub's board checkout, and does nothing for a hub with no board or a board with no upstream.
 func fetchBoltBranch(hubPath string) error {
-	boardDir := BoardDir(hubPath)
+	boardDir := BoltDir(hubPath)
 	if _, err := os.Stat(boardDir); err != nil {
 		return nil
 	}

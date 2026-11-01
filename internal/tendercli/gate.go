@@ -67,7 +67,7 @@ func InstallNetworkGate(ctx context.Context, pauseSlug *string, child DetachedCh
 	}
 	pid := os.Getpid()
 	startTime, _ := proc.StartTime(pid)
-	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoardDir(location.HubPath))}
+	locks := &parentlock.Store{Dir: parentlock.Dir(fabricengine.BoltDir(location.HubPath))}
 	pauserecord.InstallGate(pauserecord.Gate{
 		Geometry:         geometry,
 		Strand:           os.Getenv(agentname.StrandNameEnv),

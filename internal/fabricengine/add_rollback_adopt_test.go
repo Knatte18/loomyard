@@ -80,7 +80,7 @@ func TestAddRollback_AdoptedWeftBranchSurvives(t *testing.T) {
 	const slug = "adopt-rollback-keep"
 	// hubforge.NewHub's CloneAndWire already produces exactly the real-hub shape the old fixture
 	// used to hand-assemble here: the weft primary checked out on the suffixed sibling of the warp's
-	// branch, a real _board worktree the gate's ownedManagedBranch/primaryWeftBranch read succeeds
+	// branch, a real Bolt checkout worktree the gate's ownedManagedBranch/primaryWeftBranch read succeeds
 	// against, and the repo-wide fabric.yaml Add's eager RepoWiredNames load needs — so none of that
 	// scaffolding is seeded by hand any more.
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

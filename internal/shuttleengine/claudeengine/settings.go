@@ -444,12 +444,16 @@ const batchingSentence = "Request every call whose arguments you already know in
 const appendPromptFileName = "append-system-prompt.txt"
 
 // appendPromptText returns the appended system prompt: the deny notice, the creel trust sentence and the batching sentence, space-separated, with the notice left out when it is empty.
-func appendPromptText(notice string) string {
-	sentences := creelTrustSentence + " " + batchingSentence
-	if notice == "" {
-		return sentences
+// Each passage follows after a blank line, in order.
+func appendPromptText(notice string, passages []string) string {
+	text := creelTrustSentence + " " + batchingSentence
+	if notice != "" {
+		text = notice + " " + text
 	}
-	return notice + " " + sentences
+	for _, passage := range passages {
+		text += "\n\n" + passage
+	}
+	return text
 }
 
 // init panics if any steer constant contains a forbidden character (checked at package load).

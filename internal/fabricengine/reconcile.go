@@ -9,7 +9,7 @@
 // they live here because Reconcile needs them first and both verbs share the same package.
 //
 // The junction name-set checkJunctionHealth/Reconcile/junctionRepointedDetail consult is sourced
-// from the repo-wide fabric.yaml at BoardDir(l.HubPath) — via RepoWiredNames — not from any
+// from the repo-wide fabric.yaml at BoltDir(l.HubPath) — via RepoWiredNames — not from any
 // individual pair's own weft base, so reconcile converges every worktree to the same repo-wide
 // pathspec.
 
@@ -362,7 +362,7 @@ func migrateWeftMarker(rec *Mutations, hubPath, weftPath, slug string, pr *Recon
 // without it a reconcile-driven backfill is an uncovered hub-visible addition batch 7's omission
 // direction would catch.
 func (t *Topology) reconcileWarpBinding(rec *Mutations, l *lymcwd.Location) (WarpBindingOutcome, string) {
-	boardDir := BoardDir(l.HubPath)
+	boardDir := BoltDir(l.HubPath)
 
 	// Re-seed the weft repo's operational excludes on every reconcile pass. The seeding is
 	// idempotent and otherwise only runs from a weft-git verb or a wiring call, so a hub wired by an
@@ -767,7 +767,7 @@ func junctionRepointedDetail(warpLayout *lymcwd.Location) string {
 }
 
 // scanOnDiskJunctionNames lists the names of the fabric-owned link entries directly under the slug
-// worktree's anchored directory, excluding hub-reserved names (_board/_portals/_launchers).
+// worktree's anchored directory, excluding hub-reserved names (the Bolt checkout, _portals and _launchers).
 // Returns (nil, err) if the directory cannot be read;
 // callers must treat a scan error as "skip removal", not as "the on-disk set is empty".
 //
@@ -816,10 +816,8 @@ func scanOnDiskJunctionNames(l *lymcwd.Location, slug string) ([]string, error) 
 // It returns (false, nil) — never an error — for a link whose target does not resolve, so an
 // unreadable or dangling link is left alone rather than swept.
 //
-// The Hub Containment Invariant is why the weft worktree is the only root considered: with no
-// fabric junction pointing at the board any more, claiming a link that resolves onto
-// BoardDir(l.HubPath) would let the sweep remove an operator hand-made link pointing at
-// <hub>/_board, which is exactly what the invariant says is never fabric's to claim.
+// The Hub Containment Invariant is why the weft worktree is the only root considered.
+// With no fabric junction pointing at the board any more, claiming a link that resolves onto BoltDir(l.HubPath) would let the sweep remove an operator hand-made link pointing at the Bolt checkout, which is exactly what the invariant says is never fabric's to claim.
 func linkIsFabricOwned(l *lymcwd.Location, slug, linkPath string) (bool, error) {
 	resolved, err := fslink.PointsTo(linkPath)
 	if err != nil {

@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubforge"
 )
 
-// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real _board worktree on the
+// TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout materialises a real Bolt checkout worktree on the
 // warp's default branch, moves the prime pair onto another branch, and asserts cleanup reports the
 // primary weft branch protected and leaves it on disk even under --apply --force.
 func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
@@ -31,7 +31,7 @@ func TestCleanup_ProtectsPrimaryWeftBranchAfterCheckout(t *testing.T) {
 	primaryWeftBranch := fabricengine.RecordsBranchName("main")
 
 	// Move the prime pair off the default branch, exactly as `lym fabric checkout` does.
-	// The fixture's <Hub>/_board worktree stays on "main", which is what records the repo's
+	// The fixture's hub's Bolt checkout stays on "main", which is what records the repo's
 	// primary warp branch.
 	gitkit.MustRun(t, l.WorktreePath(), "git", "checkout", "-b", "alt")
 	gitkit.MustRun(t, h.PrimeRecords(), "git", "checkout", "-b", fabricengine.RecordsBranchName("alt"))

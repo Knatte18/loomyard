@@ -32,7 +32,7 @@ func (realClock) Now() time.Time { return time.Now() }
 // orchAgentName returns the agent name of the orch this receiver's worktree hosts: `<shortname>:orch` in the prime and `<shortname>:<slug>:orch` in a beam.
 // A hub with no recorded shortname yields the empty name, which the watcher reads as the prime's orch.
 func (c *orchCLI) orchAgentName() (string, error) {
-	shortname, found := fabricengine.ReadShortname(fabricengine.BoardDir(c.location.HubPath))
+	shortname, found := fabricengine.ReadShortname(fabricengine.BoltDir(c.location.HubPath))
 	if !found {
 		return "", nil
 	}

@@ -219,7 +219,7 @@ func TestFailedPushRecord(t *testing.T) {
 		},
 		{
 			"BoltDeferred",
-			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureDeferred},
+			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureDeferred},
 			"run `lym board sync` from the prime worktree to retry the push",
 		},
 		{
@@ -239,7 +239,7 @@ func TestFailedPushRecord(t *testing.T) {
 		},
 		{
 			"BoltTransport",
-			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureTransport},
+			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureTransport},
 			"run `lym board sync` from the prime worktree to retry the push",
 		},
 		{
@@ -254,7 +254,7 @@ func TestFailedPushRecord(t *testing.T) {
 		},
 		{
 			"BoltAuth",
-			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureAuth},
+			fabricengine.FailedPush{Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureAuth},
 			"fix this machine's permission to push main on origin, then run `lym board sync` from the prime worktree",
 		},
 		{
@@ -295,12 +295,12 @@ func TestFailedPushRecord(t *testing.T) {
 		{
 			"BoltNotFastForward",
 			fabricengine.FailedPush{
-				Repo: "bolt", RepoPath: "/hub/_board", Branch: "main", Class: fabricengine.PushFailureNotFastForward,
+				Repo: "bolt", RepoPath: "/hub/" + fabricengine.BoltDirName, Branch: "main", Class: fabricengine.PushFailureNotFastForward,
 				Paths: []string{"board.json"}, Commits: []string{"def456"},
 			},
 			"origin/main holds commits that change the same paths as this branch's (paths: board.json; local commits: def456); " +
-				"to keep origin's side, run `git reset --keep origin/main` in /hub/_board, which drops the local commits; " +
-				"to keep this machine's, run `git merge origin/main` in /hub/_board, settle the named paths and commit, then run `lym board sync` from the prime worktree, whose push is then a fast-forward and meets no replay",
+				"to keep origin's side, run `git reset --keep origin/main` in /hub/" + fabricengine.BoltDirName + ", which drops the local commits; " +
+				"to keep this machine's, run `git merge origin/main` in /hub/" + fabricengine.BoltDirName + ", settle the named paths and commit, then run `lym board sync` from the prime worktree, whose push is then a fast-forward and meets no replay",
 		},
 		{
 			"CodeGone",

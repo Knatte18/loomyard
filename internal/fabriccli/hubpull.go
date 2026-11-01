@@ -25,9 +25,9 @@ func runHubPull(ctx context.Context, out io.Writer, l *lymcwd.Location) int {
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("read the anchor of the prime %q: %v", primeName, err))
 	}
-	boardDir := fabricengine.BoardDir(l.HubPath)
+	boltDir := fabricengine.BoltDir(l.HubPath)
 	lockPair := func(pair *lymcwd.Location) (func(), error) {
-		return acquireBranchLock(ctx, pair, boardDir, "pull")
+		return acquireBranchLock(ctx, pair, boltDir, "pull")
 	}
 
 	result, err := fabricengine.PullHub(prime, fabricengine.EnvSyncOptions(), lockPair)

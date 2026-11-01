@@ -125,7 +125,7 @@ func segmentsOver(location *lymcwd.Location, hubOrchs func(*lymcwd.Location) ([]
 		}},
 		{name: "logs", run: func(apply bool) (any, error) {
 			removed := []string{}
-			for _, dirs := range []configengine.Dirs{fabricengine.ConfigDirs(location), {Anchor: fabricengine.BoardDir(location.HubPath)}} {
+			for _, dirs := range []configengine.Dirs{fabricengine.ConfigDirs(location), {Anchor: fabricengine.BoltDir(location.HubPath)}} {
 				paths, err := logger.SweepDir(logger.LogsDirAt(dirs.Anchor), loggerconfig.LoadOrDefault(dirs), apply)
 				if err != nil {
 					return nil, err

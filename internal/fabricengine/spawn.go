@@ -168,7 +168,7 @@ func statusPushRequest(l *lymcwd.Location, gateSlug string) (req PushSpawn, loca
 	if err != nil {
 		return PushSpawn{}, nil, err
 	}
-	req = PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoardDir(l.HubPath)}
+	req = PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoltDir(l.HubPath)}
 	if !isPrime {
 		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
@@ -195,7 +195,7 @@ func statusPushRequest(l *lymcwd.Location, gateSlug string) (req PushSpawn, loca
 // parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
 // A failed read is logged and reads as not held.
 func parentLockHeldBy(l *lymcwd.Location) bool {
-	store := parentlock.Store{Dir: parentlock.Dir(BoardDir(l.HubPath))}
+	store := parentlock.Store{Dir: parentlock.Dir(BoltDir(l.HubPath))}
 	held, err := store.HeldBy(l.WorktreeName)
 	if err != nil {
 		logger.Warn("fabricengine: parent lock records unreadable; the push is spawned without the parent-locked mark", "slug", l.WorktreeName, "error", err)

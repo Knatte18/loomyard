@@ -18,12 +18,12 @@ func withRecordsSuffix(base string) string {
 	return fabricengine.RecordsBranchName(base)
 }
 
-// refusingSlugRule refuses a slug ending in the records suffix and the name _board, as the pair slug rule does.
+// refusingSlugRule refuses a slug ending in the records suffix and the Bolt directory name, as the pair slug rule does.
 func refusingSlugRule(slug string) error {
 	if _, suffixed := fabricengine.WeftWarpSlug(slug); suffixed {
 		return fmt.Errorf("slug %q ends in the records suffix", slug)
 	}
-	if slug == "_board" {
+	if slug == fabricengine.BoltDirName {
 		return fmt.Errorf("slug %q is reserved", slug)
 	}
 	return nil
@@ -70,9 +70,9 @@ func TestSlugRule(t *testing.T) {
 			return err
 		}, []string{"ends in the records suffix", `use the slug "r"`}, false},
 		{"ReservedName", func(b *boardengine.Board) error {
-			_, err := b.UpsertTask(map[string]any{"slug": "_board", "kind": "task", "labels": bugLabels})
+			_, err := b.UpsertTask(map[string]any{"slug": fabricengine.BoltDirName, "kind": "task", "labels": bugLabels})
 			return err
-		}, []string{"is reserved", `use the slug "_board-task"`}, false},
+		}, []string{"is reserved", `use the slug "` + fabricengine.BoltDirName + `-task"`}, false},
 		{"SuggestionNamingAnExistingEntry", func(b *boardengine.Board) error {
 			_, err := b.UpsertTask(map[string]any{"slug": withRecordsSuffix("taken"), "kind": "task", "labels": bugLabels})
 			return err

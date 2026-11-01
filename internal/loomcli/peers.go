@@ -276,7 +276,7 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 			return names
 		},
 		board: func() ([]boardengine.Task, bool, error) {
-			info, err := os.Stat(fabricengine.BoardDir(location.HubPath))
+			info, err := os.Stat(fabricengine.BoltDir(location.HubPath))
 			if errors.Is(err, fs.ErrNotExist) || (err == nil && !info.IsDir()) {
 				return nil, false, nil
 			}
