@@ -3,7 +3,6 @@
 package loomcli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -116,7 +115,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			if err != nil {
 				return err
 			}
-			return startBeamDobbyAlone(hub, slug)
+			return orchcli.BeamUpWorktree(hub, slug)
 		},
 		DobbyLive: func() (bool, error) {
 			hub, err := prime()
@@ -274,22 +273,6 @@ func stopBeamDobby(prime *lymcwd.Location, slug string) error {
 	}
 	_, err = runproc.EndRole(fabricengine.RunProcDir(prime.HubPath), slug, runproc.RoleDobby, os.Getpid())
 	return err
-}
-
-// startBeamDobbyAlone starts the dobby of the beam slug unless it is live, naming no other worktree.
-// A refusal, such as a beam another machine owns, is returned as an error carrying its detail.
-func startBeamDobbyAlone(prime *lymcwd.Location, slug string) error {
-	report, err := dobbyengine.EnsureLive(hubgeom.DobbyStart(prime), []string{slug})
-	if err != nil {
-		return err
-	}
-	var refusals []error
-	for _, entry := range report.Entries {
-		if entry.Outcome == dobbyengine.OutcomeRefused {
-			refusals = append(refusals, fmt.Errorf("the dobby of %s was not started: %s", entry.Worktree, entry.Detail))
-		}
-	}
-	return errors.Join(refusals...)
 }
 
 // beamParentWorktree returns the name of the parent worktree the beam slug records in its origin record, the prime's name when the record names none.

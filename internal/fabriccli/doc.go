@@ -109,7 +109,7 @@
 // with the record gone the dobbies it ended start again and the error is returned;
 // with it standing nothing starts and the error names the re-run of the same `--set`, which recovers the record.
 // A `Finish` error after it removed the record fails nothing: the envelope reports it as `push_error` and the dobby start goes on.
-// The dobbies the move ends then start through `EnsureLive`, named one by one, the prime's move naming the prime and every local beam and a beam's move that beam alone, so a beam this machine does not own or whose landing hold stands is refused there; a move that fails restarts only the dobbies it ended, and a start that fails is `dobby_start_error` with the way forward `lym beam start`, the verb exiting 0.
+// Once the parent lock is released and the change closed, the dobbies the move ends start again with their orchs through a `lym beam start` child per worktree, `root` for the prime, waited for one by one, the prime's move naming the prime and every local beam and a beam's move that beam alone, so a beam this machine does not own or whose landing hold stands is refused there and reported in `dobby_start_error`; a move that fails restarts only the dobbies it ended, and a start that fails is `dobby_start_error` with the way forward `lym beam start`, the verb exiting 0.
 // The verb holds no lock against a session, a hand pass or a hidden `lym beam dobby` started meanwhile, and its help says so.
 //
 // # Hub pull

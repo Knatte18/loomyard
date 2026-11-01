@@ -5,10 +5,12 @@
 package orchcli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -94,6 +96,55 @@ func BeamUp(location *lymcwd.Location, opts BeamUpOptions) (BeamUpReport, error)
 		return BeamUpReport{}, err
 	}
 	return c.beamUp(opts)
+}
+
+// ErrBeamUpUnderTest is returned by BeamUpWorktree in a test binary, where bringing a worktree up would start a real dobby, tmux session and agent.
+var ErrBeamUpUnderTest = errors.New("orch: no worktree brought up under test")
+
+// BeamUpWorktree brings up the worktree named worktree of the hub whose prime is prime, the prime's own name naming the prime, as `lym beam start` does without its reconcile:
+// its dobby, its runs strand and its orch with the watcher bound to it.
+// It is the one way a verb that needs a worktree's dobby live starts it, so a dobby never comes up without its orch.
+// BeamUp's refusal or failure is returned, and so is a dobby that was refused or failed to start, carrying its detail.
+// It returns ErrBeamUpUnderTest, starting nothing, in a test binary.
+func BeamUpWorktree(prime *lymcwd.Location, worktree string) error {
+	if testing.Testing() {
+		return ErrBeamUpUnderTest
+	}
+	location, err := bringUpLocation(prime, worktree, lymcwd.ResolveWorktree)
+	if err != nil {
+		return err
+	}
+	report, err := BeamUp(location, BeamUpOptions{})
+	if err != nil {
+		return err
+	}
+	return dobbyStartError(worktree, report)
+}
+
+// bringUpLocation returns the location to bring up for the worktree named worktree: prime itself when worktree is the prime's name, else the location resolve gives for the worktree's directory in the prime's hub.
+func bringUpLocation(prime *lymcwd.Location, worktree string, resolve func(worktreeRoot string) (*lymcwd.Location, error)) (*lymcwd.Location, error) {
+	if worktree == prime.WorktreeName {
+		return prime, nil
+	}
+	resolved, err := resolve(fabricengine.WorktreePath(prime, worktree))
+	if err != nil {
+		return nil, fmt.Errorf("orch: resolve the worktree of %s: %w", worktree, err)
+	}
+	return resolved, nil
+}
+
+// dobbyStartError returns an error naming worktree and the detail of report's dobby outcome when the dobby was neither started nor found live, and nil otherwise.
+// A start that never reported an outcome carries the report's warnings as its detail.
+func dobbyStartError(worktree string, report BeamUpReport) error {
+	switch report.Dobby {
+	case dobbyengine.OutcomeStarted, dobbyengine.OutcomeLive:
+		return nil
+	}
+	detail := report.DobbyDetail
+	if detail == "" {
+		detail = strings.Join(report.Warnings, "; ")
+	}
+	return fmt.Errorf("orch: the dobby of %s was not started: %s", worktree, detail)
 }
 
 // startedSession is what a started orchestrator run reports back.

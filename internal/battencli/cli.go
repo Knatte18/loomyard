@@ -41,7 +41,7 @@
 // dobbyreads.go holds the reads of what a worktree's dobby drives, exported for the dobby's own wiring and for the overview: `DobbyRuns`, `DobbyLandings` and `DobbyTasks` over a `DobbyParents` cache, and `DobbyViewReader`, which builds the dobby's view from outside its process.
 //
 // "lym batten run <slug>" is one pass: it runs the run to its next halt or yield and exits, started by its parent worktree's dobby or by hand.
-// After the pass it makes sure the parent worktree's dobby is live.
+// After the pass it makes sure the parent worktree's dobby is live, bringing a dobby that is down up with its orch through `orchcli.BeamUpWorktree`, as `lym beam start` does, never alone.
 // `StartFirstPass` is the in-process start of a first pass for the verbs that take a run over or start a beam project's:
 // it runs the status check, the pause refusal and the owner pre-flight of a plain run, refuses a done slug, a covered one or one another machine owns before starting anything, then starts the pass detached.
 // Its `FirstPassOptions.Anchor` is recorded as the seed's `anchor` param on the first pass only, so it rides in the run record and a resume keeps it.
@@ -89,6 +89,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
@@ -151,8 +152,8 @@ type battenCLI struct {
 	passSpawn func(dir string, args []string) (int, error)
 	// dobbyLive reports whether the dobby described by the geometry is running; nil selects dobbyengine.Live.
 	dobbyLive func(dobbyengine.Geometry) (bool, error)
-	// dobbySpawn starts the dobby described by the geometry as a detached process; nil selects dobbyengine.SpawnDetached.
-	dobbySpawn func(dobbyengine.Geometry) error
+	// pairStart brings up the worktree named parent, its dobby with its orch; nil selects orchcli.BeamUpWorktree over this receiver's prime.
+	pairStart func(parent string) error
 	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
 	// continuePass carries "run"'s hidden --continue-pass value: the pass is one dobby schedules into a run it already drives, so the pre-run skips the resume's origin reconcile, the Open-Window re-run and the pause refusal.
@@ -518,13 +519,14 @@ func parentWorktree(prime *lymcwd.Location, slug string) (string, error) {
 }
 
 // ensureParentDobby makes sure the dobby of slug's parent worktree is running, so a run started by hand or in a first pass is driven on.
+// A dobby that is down is brought up with its orch, never alone, so its notices have a reader.
 // ownerElsewhere names the other machine that owns the parent worktree on the board's owners, or is empty;
 // when another machine owns it, nothing is spawned and the error names `lym adopt <parent>`, or `lym adopt root` for the prime, since that dobby would exit at once on its owner read and leave the run undriven.
 // landingHeld reports whether the parent beam's landing hold stands;
 // when it does, nothing is spawned and the error names `lym batten status <parent>`.
-// Otherwise live reads whether the dobby runs and spawn starts it when it does not;
-// a failed geometry, read or spawn is returned naming `lym beam start <parent>`, or `lym beam start root` for the prime.
-func ensureParentDobby(prime *lymcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), landingHeld func(parent string) (bool, error), live func(dobbyengine.Geometry) (bool, error), spawn func(dobbyengine.Geometry) error) error {
+// Otherwise live reads whether the dobby runs, and start brings the parent worktree up, its dobby with its orch, when it does not;
+// a failed geometry, read or start is returned naming `lym beam start <parent>`, or `lym beam start root` for the prime.
+func ensureParentDobby(prime *lymcwd.Location, slug string, ownerElsewhere func(parent string) (string, error), landingHeld func(parent string) (bool, error), live func(dobbyengine.Geometry) (bool, error), start func(parent string) error) error {
 	parent, err := parentWorktree(prime, slug)
 	if err != nil {
 		return fmt.Errorf("battencli: resolve the parent worktree of %q: %w; way forward: fix the cause, then run `lym batten run %s` again", slug, err, slug)
@@ -562,13 +564,13 @@ func ensureParentDobby(prime *lymcwd.Location, slug string, ownerElsewhere func(
 	if running {
 		return nil
 	}
-	if err := spawn(geometry); err != nil {
-		return fmt.Errorf("battencli: start the dobby of %q: %w; way forward: %s", parent, err, startWay)
+	if err := start(parent); err != nil {
+		return fmt.Errorf("battencli: start the dobby and orch of %q: %w; way forward: %s", parent, err, startWay)
 	}
 	return nil
 }
 
-// ensureDobby is ensureParentDobby over this receiver's seams, the board's owners and landing hold and dobbyengine's liveness read and detached spawn where a seam is nil.
+// ensureDobby is ensureParentDobby over this receiver's seams, the board's owners and landing hold, dobbyengine's liveness read and orchcli's worktree bring-up where a seam is nil.
 func (c *battenCLI) ensureDobby() error {
 	ownerElsewhere := c.parentOwner
 	if ownerElsewhere == nil {
@@ -582,11 +584,11 @@ func (c *battenCLI) ensureDobby() error {
 	if live == nil {
 		live = dobbyengine.Live
 	}
-	spawn := c.dobbySpawn
-	if spawn == nil {
-		spawn = dobbyengine.SpawnDetached
+	start := c.pairStart
+	if start == nil {
+		start = func(parent string) error { return orchcli.BeamUpWorktree(c.location, parent) }
 	}
-	return ensureParentDobby(c.location, c.slug, ownerElsewhere, landingHeld, live, spawn)
+	return ensureParentDobby(c.location, c.slug, ownerElsewhere, landingHeld, live, start)
 }
 
 // otherMachineOwning names the machine other than this one that owns the worktree parent on the local board, the prime's name reading the prime owner.

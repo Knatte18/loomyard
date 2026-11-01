@@ -41,7 +41,7 @@ type Deps struct {
 	Steps []Step
 	// StopDobby stops the beam's dobby so it starts no new member.
 	StopDobby func() error
-	// StartDobby starts the beam's dobby again.
+	// StartDobby starts the beam's dobby again, with its orch.
 	StartDobby func() error
 	// DobbyLive reports whether the beam's dobby runs.
 	DobbyLive func() (bool, error)

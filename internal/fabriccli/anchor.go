@@ -137,7 +137,7 @@ type anchorDeps struct {
 	AcquireParentLock func(ctx context.Context, location *lymcwd.Location) (release func(), err error)
 	// EndDobbies ends the dobbies of the worktrees, leaving alone the processes registered with a role in spare, and returns the ones it ended.
 	EndDobbies func(worktrees []string, spare ...string) (ended []string, err error)
-	// EnsureDobbies starts the dobby of each worktree named that is not live, refusing one this machine does not own or whose landing hold stands.
+	// EnsureDobbies brings up each worktree named, its dobby with its orch, as `lym beam start` does, and returns every refusal and failure.
 	EnsureDobbies func(worktrees []string) error
 	// Begin begins the change of the worktree's anchor in the engine.
 	Begin func(location *lymcwd.Location, target string) (anchorChange, error)
@@ -441,12 +441,12 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 		result.PushError = finishErr.Error()
 	}
 	result.From, result.Anchor, result.Changed = change.From(), change.To(), true
-	if startErr := startDobbies(deps, dobbies); startErr != nil {
-		result.DobbyStartError = startErr.Error()
-	}
 	releaseParentLock()
 	releaseParentLock = nil
 	change.Close()
+	if startErr := startDobbies(deps, dobbies); startErr != nil {
+		result.DobbyStartError = startErr.Error()
+	}
 	result.Mutations = rec.Snapshot()
 	return result, nil
 }

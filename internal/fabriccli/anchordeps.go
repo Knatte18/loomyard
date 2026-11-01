@@ -1,4 +1,4 @@
-// anchordeps.go fills the verb's anchorDeps over a hub: the board's owners, the reed, run, gate and hibernate readers, the parent lock, the dobby end and start, and the engine's change.
+// anchordeps.go fills the verb's anchorDeps over a hub: the board's owners, the reed, run, gate and hibernate readers, the parent lock, the dobby end, the dobby and orch start through `lym beam start`, and the engine's change.
 // Every dobby, reed and run reader goes through the same internal package the rest of lym reads that state with.
 
 package fabriccli
@@ -10,14 +10,16 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
+	"testing"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
-	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -256,8 +258,7 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 			if err != nil {
 				return err
 			}
-			_, err = dobbyengine.EnsureLive(hubgeom.DobbyStart(primeLocation), worktrees)
-			return err
+			return startDobbiesThroughBeamStart(primeLocation.WorktreeName, worktrees, beamStartChild(primeLocation))
 		},
 		Begin: func(location *lymcwd.Location, target string) (anchorChange, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
@@ -275,6 +276,44 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 			return nil
 		},
 	}, nil
+}
+
+// startDobbiesThroughBeamStart starts each of worktrees by running `lym beam start` through run, so each dobby comes up with its orch.
+// run takes the verb's argument, `root` for the prime named primeName and the worktree's name otherwise, and returns the verb's output with its failure.
+// A worktree whose start fails does not stop the others; the returned error joins every failure, each naming its argument and carrying the verb's output.
+func startDobbiesThroughBeamStart(primeName string, worktrees []string, run func(label string) ([]byte, error)) error {
+	var failures []error
+	for _, worktree := range worktrees {
+		label := worktree
+		if worktree == primeName {
+			label = "root"
+		}
+		output, err := run(label)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("`lym beam start %s` failed: %w: %s", label, err, strings.TrimSpace(string(output))))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// beamStartChild returns the run function that executes `lym beam start <label>` as a child process from the prime's anchor and waits for it.
+// The verb is run as a child process because this package cannot import the orch bring-up: a test fixture imports this package from the orch packages' own tests.
+// The returned function fails, starting nothing, in a test binary, where the executable is the test binary.
+func beamStartChild(prime *lymcwd.Location) func(label string) ([]byte, error) {
+	return func(label string) ([]byte, error) {
+		if testing.Testing() {
+			return nil, errors.New("fabriccli: `lym beam start` not run under test")
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("locate the lym executable: %w", err)
+		}
+		args := []string{"beam", "start", label}
+		cmd := exec.Command(executable, args...)
+		cmd.Dir = prime.AnchorPath()
+		logger.Info("fabriccli: running beam start", "exe", executable, "args", args, "dir", cmd.Dir)
+		return cmd.Output()
+	}
 }
 
 // pairPresent reports whether the hub holds a pair called slug on this machine: a registered, unpruned worktree whose directory exists.

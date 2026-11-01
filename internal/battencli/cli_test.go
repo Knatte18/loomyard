@@ -164,10 +164,10 @@ func TestCommand_HelpCarriesNoTeardownGotoExample(t *testing.T) {
 	walk(Command())
 }
 
-// TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, dobby-spawn and parent-owner seams:
+// TestStartFirstPass covers the detached first pass over a hand-populated receiver with fake pass, dobby-liveness, pair-start and parent-owner seams:
 // a done slug and a slug a pause covers return an envelope whose ok is false naming their way forward and start nothing;
-// a startable slug starts one pass with the prime's anchor as its working directory and starts its parent's dobby once when that reads not live and never when it reads live;
-// a failed dobby spawn still returns the started pass's envelope with a warning naming `lym beam start` for the parent;
+// a startable slug starts one pass with the prime's anchor as its working directory and brings its parent worktree up once, its dobby with its orch, when that dobby reads not live and never when it reads live;
+// a failed pair start still returns the started pass's envelope with a warning naming `lym beam start` for the parent;
 // a parent another machine owns starts no dobby and warns naming `lym adopt` for the parent, or `lym adopt root` for the prime;
 // a parent beam whose landing hold stands starts no dobby and warns naming `lym batten status`.
 func TestStartFirstPass(t *testing.T) {
@@ -178,28 +178,28 @@ func TestStartFirstPass(t *testing.T) {
 		otherHost = "elsewhere"
 	)
 	tests := []struct {
-		name          string
-		status        shedengine.State
-		pauseCovers   bool
-		driverSet     bool
-		childSet      bool
-		beamParent    bool
-		dobbyLive     bool
-		dobbySpawnErr error
-		parentOwner   string
-		landingHeld   bool
+		name         string
+		status       shedengine.State
+		pauseCovers  bool
+		driverSet    bool
+		childSet     bool
+		beamParent   bool
+		dobbyLive    bool
+		pairStartErr error
+		parentOwner  string
+		landingHeld  bool
 		// anchor is the first pass's anchor option, which the seed the pass arms records as its anchor param.
 		anchor         string
 		wantRefusal    []string
 		wantPassArgs   []string
-		wantDobbySpawn int
+		wantPairStarts int
 		wantWarning    []string
 		wantParent     string
 	}{
 		{
 			name:           "StartableSlugStartsItsPassAndTheDobbyOnce",
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantParent:     "hub-repo",
 		},
 		{
@@ -213,35 +213,35 @@ func TestStartFirstPass(t *testing.T) {
 			driverSet:      true,
 			childSet:       true,
 			wantPassArgs:   []string{"batten", "run", "some-slug", "--driver", "go", "--child-driver", "go"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantParent:     "hub-repo",
 		},
 		{
 			name:           "AnchorOptionIsRecordedAsTheSeedsAnchorParam",
 			anchor:         "sub/dir",
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantParent:     "hub-repo",
 		},
 		{
 			name:           "BlockedStatusResumesAsAPass",
 			status:         shedengine.StateBlocked,
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantParent:     "hub-repo",
 		},
 		{
 			name:           "BeamParentGetsItsOwnDobby",
 			beamParent:     true,
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantParent:     beam,
 		},
 		{
-			name:           "FailedDobbySpawnWarnsAndKeepsThePass",
-			dobbySpawnErr:  errors.New("exec failed"),
+			name:           "FailedPairStartWarnsAndKeepsThePass",
+			pairStartErr:   errors.New("exec failed"),
 			wantPassArgs:   []string{"batten", "run", "some-slug"},
-			wantDobbySpawn: 1,
+			wantPairStarts: 1,
 			wantWarning:    []string{"exec failed", "lym beam start root"},
 			wantParent:     "hub-repo",
 		},
@@ -330,7 +330,7 @@ func TestStartFirstPass(t *testing.T) {
 
 			var passDir string
 			var passArgs []string
-			dobbySpawns := 0
+			var pairStarts []string
 			c.passSpawn = func(dir string, args []string) (int, error) {
 				passDir, passArgs = dir, args
 				return 4242, nil
@@ -338,9 +338,9 @@ func TestStartFirstPass(t *testing.T) {
 			c.parentOwner = func(string) (string, error) { return tt.parentOwner, nil }
 			c.landingHeld = func(string) (bool, error) { return tt.landingHeld, nil }
 			c.dobbyLive = func(dobbyengine.Geometry) (bool, error) { return tt.dobbyLive, nil }
-			c.dobbySpawn = func(dobbyengine.Geometry) error {
-				dobbySpawns++
-				return tt.dobbySpawnErr
+			c.pairStart = func(parent string) error {
+				pairStarts = append(pairStarts, parent)
+				return tt.pairStartErr
 			}
 
 			cmd := &cobra.Command{Use: "run", RunE: func(cmd *cobra.Command, args []string) error { return c.startFirstPass(cmd) }}
@@ -360,8 +360,8 @@ func TestStartFirstPass(t *testing.T) {
 						t.Errorf("error %q does not name its way forward %q", msg, want)
 					}
 				}
-				if passArgs != nil || dobbySpawns != 0 {
-					t.Errorf("a refused slug started a pass %v and %d dobbies; want nothing started", passArgs, dobbySpawns)
+				if passArgs != nil || pairStarts != nil {
+					t.Errorf("a refused slug started a pass %v and brought up %v; want nothing started", passArgs, pairStarts)
 				}
 				return
 			}
@@ -374,8 +374,13 @@ func TestStartFirstPass(t *testing.T) {
 			if envelope["pid"] != float64(4242) || envelope["parent_worktree"] != tt.wantParent {
 				t.Errorf("envelope %v; want pid 4242 and parent_worktree %q", envelope, tt.wantParent)
 			}
-			if dobbySpawns != tt.wantDobbySpawn {
-				t.Errorf("dobby spawns = %d; want %d", dobbySpawns, tt.wantDobbySpawn)
+			if len(pairStarts) != tt.wantPairStarts {
+				t.Errorf("pair starts = %v; want %d", pairStarts, tt.wantPairStarts)
+			}
+			for _, started := range pairStarts {
+				if started != tt.wantParent {
+					t.Errorf("pair start brought up %q; want the parent worktree %q", started, tt.wantParent)
+				}
 			}
 			seed, seeded, err := shedrun.ReadSeed(c.location, c.slug)
 			if err != nil {

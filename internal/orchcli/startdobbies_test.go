@@ -1,16 +1,19 @@
 //go:build tier0
 
-// startdobbies_test.go pins that `lym beam start` starts the worktree's dobby once, before it touches a strand, and that a dobby that does not start only warns.
+// startdobbies_test.go pins that `lym beam start` starts the worktree's dobby once, before it touches a strand, that a dobby that does not start only warns, and that a bring-up for another verb reads a dobby that did not start as an error.
 
 package orchcli
 
 import (
 	"errors"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 )
 
@@ -85,6 +88,85 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 			}
 			if len(tt.wantWarning) == 0 && warning != "" {
 				t.Errorf("warning = %q; want none", warning)
+			}
+		})
+	}
+}
+
+// TestBringUpLocation pins that the prime's name brings up the prime without resolving anything, and that any other name brings up the location resolved from that worktree's directory.
+func TestBringUpLocation(t *testing.T) {
+	t.Parallel()
+
+	prime := &lymcwd.Location{HubPath: filepath.Join("hubs", "app.hub"), WorktreeName: "main", AnchorRel: "."}
+	beam := &lymcwd.Location{HubPath: prime.HubPath, WorktreeName: "some-beam", AnchorRel: "."}
+	tests := []struct {
+		name       string
+		worktree   string
+		resolveErr error
+		want       *lymcwd.Location
+		// wantResolved is the directory resolve was asked for, empty when it was not called.
+		wantResolved string
+		wantErr      string
+	}{
+		{name: "Prime", worktree: "main", want: prime},
+		{name: "Beam", worktree: "some-beam", want: beam, wantResolved: fabricengine.WorktreePath(prime, "some-beam")},
+		{name: "BeamResolveFails", worktree: "some-beam", resolveErr: errors.New("no such worktree"), wantResolved: fabricengine.WorktreePath(prime, "some-beam"), wantErr: "orch: resolve the worktree of some-beam: no such worktree"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			resolved := ""
+			resolve := func(worktreeRoot string) (*lymcwd.Location, error) {
+				resolved = worktreeRoot
+				return beam, tt.resolveErr
+			}
+
+			got, err := bringUpLocation(prime, tt.worktree, resolve)
+
+			gotErr := ""
+			if err != nil {
+				gotErr = err.Error()
+			}
+			if gotErr != tt.wantErr {
+				t.Errorf("bringUpLocation(%s) error = %q; want %q", tt.worktree, gotErr, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("bringUpLocation(%s) = %+v; want %+v", tt.worktree, got, tt.want)
+			}
+			if resolved != tt.wantResolved {
+				t.Errorf("bringUpLocation(%s) resolved %q; want %q", tt.worktree, resolved, tt.wantResolved)
+			}
+		})
+	}
+}
+
+// TestDobbyStartError pins that a bring-up whose dobby started or was live passes, and that a refused, failed or unreported dobby start is an error naming the worktree and its cause.
+func TestDobbyStartError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		report BeamUpReport
+		// wantErr is the error's text, empty for no error.
+		wantErr string
+	}{
+		{"Started", BeamUpReport{Dobby: dobbyengine.OutcomeStarted}, ""},
+		{"Live", BeamUpReport{Dobby: dobbyengine.OutcomeLive}, ""},
+		{"Refused", BeamUpReport{Dobby: dobbyengine.OutcomeRefused, DobbyDetail: "owned by elsewhere"}, "orch: the dobby of some-beam was not started: owned by elsewhere"},
+		{"Failed", BeamUpReport{Dobby: dobbyengine.OutcomeFailed, DobbyDetail: "exec failed"}, "orch: the dobby of some-beam was not started: exec failed"},
+		{"Unreported_CarriesTheWarnings", BeamUpReport{Warnings: []string{"first", "second"}}, "orch: the dobby of some-beam was not started: first; second"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := dobbyStartError("some-beam", tt.report)
+			got := ""
+			if err != nil {
+				got = err.Error()
+			}
+			if got != tt.wantErr {
+				t.Errorf("dobbyStartError(some-beam, %+v) = %q; want %q", tt.report, got, tt.wantErr)
 			}
 		})
 	}

@@ -508,9 +508,9 @@ func TestChangeAnchor(t *testing.T) {
 			"apply",
 			"reopen-log " + f.logsDir("beam1", "sub"),
 			"finish",
-			"ensure-dobbies beam1",
 			"release-parent-lock",
 			"close",
+			"ensure-dobbies beam1",
 		}
 		if !slices.Equal(f.calls, want) {
 			t.Errorf("calls =\n%s\nwant\n%s", strings.Join(f.calls, "\n"), strings.Join(want, "\n"))
@@ -780,4 +780,56 @@ func TestChangeAnchor(t *testing.T) {
 			t.Errorf("fields = %v; want the way forward `lym beam start` beside the start failure", fields)
 		}
 	})
+}
+
+// TestStartDobbiesThroughBeamStart pins that the prime is started under the argument `root` and any other worktree under its name, that a failed start does not stop the others, and that the joined error names each failed argument with the verb's output.
+func TestStartDobbiesThroughBeamStart(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		worktrees []string
+		// failing maps an argument to the output its start fails with.
+		failing   map[string]string
+		wantRuns  []string
+		wantErr   []string
+		wantNoErr bool
+	}{
+		{name: "PrimeIsRootAndBeamIsItsSlug", worktrees: []string{"main", "some-beam"}, wantRuns: []string{"root", "some-beam"}, wantNoErr: true},
+		{
+			name: "AFailureDoesNotStopTheOthers", worktrees: []string{"main", "first", "second"},
+			failing:  map[string]string{"first": "refused by owner", "second": "no orch"},
+			wantRuns: []string{"root", "first", "second"},
+			wantErr:  []string{"`lym beam start first` failed", "refused by owner", "`lym beam start second` failed", "no orch"},
+		},
+		{name: "NoWorktreesStartsNothing", wantNoErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var runs []string
+			run := func(label string) ([]byte, error) {
+				runs = append(runs, label)
+				if output, failed := tt.failing[label]; failed {
+					return []byte(output + "\n"), errors.New("exit status 1")
+				}
+				return nil, nil
+			}
+
+			err := startDobbiesThroughBeamStart("main", tt.worktrees, run)
+
+			if !slices.Equal(runs, tt.wantRuns) {
+				t.Errorf("startDobbiesThroughBeamStart(main, %v) ran %v; want %v", tt.worktrees, runs, tt.wantRuns)
+			}
+			if tt.wantNoErr && err != nil {
+				t.Errorf("startDobbiesThroughBeamStart(main, %v) = %v; want no error", tt.worktrees, err)
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("startDobbiesThroughBeamStart(main, %v) = %v; want it to contain %q", tt.worktrees, err, want)
+				}
+			}
+		})
+	}
 }
