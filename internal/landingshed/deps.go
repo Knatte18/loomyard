@@ -360,6 +360,9 @@ type PullRequestDeps struct {
 	// Now reads the clock the wait's poll spacing runs on, and Sleep waits d or returns the context's error once ctx ends first.
 	Now   func() time.Time
 	Sleep func(ctx context.Context, d time.Duration) error
+	// RecordChanges opens a watch on the record file and returns a channel that delivers a value after a change to it, with the function that ends the watch.
+	// A nil channel, as when no watch can be opened, leaves the wait on its timer.
+	RecordChanges func() (changes <-chan struct{}, stop func())
 	// Sessions starts and stops the interactive session the operator discusses the pull request with, which `*shuttleengine.Runner` satisfies.
 	Sessions prSessions
 	// SessionLive reports whether the strand guid names is live.

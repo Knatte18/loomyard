@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
+	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -361,7 +362,37 @@ func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, 
 		PauseCovered: func() (bool, error) { return pauseCovered(l)(slug), nil },
 		Now:          time.Now,
 		Sleep:        sleepContext,
+		RecordChanges: func() (<-chan struct{}, func()) {
+			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
+		},
 	}
+}
+
+// watchFileChanges returns a channel that delivers a value whenever the file at path is created, written, renamed or removed, with the function that ends the watch.
+// A change that lands while an earlier one is still undelivered is merged into it.
+// When no watch can be opened it logs a Warn naming waiter and returns a nil channel, which leaves waiter on its timer.
+func watchFileChanges(path, waiter string) (<-chan struct{}, func()) {
+	dir := filepath.Dir(path)
+	watcher, err := fswatch.Watch(dir, filepath.Base(path))
+	if err != nil {
+		logger.Warn("loom: a directory could not be watched, so its waiter polls", "waiter", waiter, "dir", dir, "error", err)
+		return nil, func() {}
+	}
+	changed := make(chan struct{}, 1)
+	go func() {
+		for range watcher.Events() {
+			select {
+			case changed <- struct{}{}:
+			default:
+			}
+		}
+	}()
+	stop := func() {
+		if err := watcher.Close(); err != nil {
+			logger.Debug("loom: closing a file watch failed", "waiter", waiter, "dir", dir, "error", err)
+		}
+	}
+	return changed, stop
 }
 
 // parentPullRequestMode returns the seam that reads the pull_request mode of the branch the run lands on.

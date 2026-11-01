@@ -129,6 +129,8 @@ func (p *PRReview) checkWiring() error {
 		missing = "PullRequest.Now"
 	case pr.Sleep == nil:
 		missing = "PullRequest.Sleep"
+	case pr.RecordChanges == nil:
+		missing = "PullRequest.RecordChanges"
 	case pr.Sessions == nil:
 		missing = "PullRequest.Sessions"
 	case pr.SessionLive == nil:
@@ -365,6 +367,8 @@ func (p *PRReview) holdWhileCovered(ctx context.Context) error {
 type prWaitState struct {
 	// interval is the time slept after the last wake.
 	interval time.Duration
+	// wokeAt is when the last wake began.
+	wokeAt time.Time
 	// head is the task head the last wake read, empty before the first.
 	head string
 	// continueSeen is the continue flag the last wake read, or the starting record's before the first.
@@ -380,12 +384,15 @@ type prWaitState struct {
 // wait holds the call on the pull request until the review ends.
 // Each wake reads the pull request's status at most once a minute, gates and pushes the agent's new commits unless the pull request is merged, and judges the status: merged, closed, approved or continued by the operator is Done or Stuck, anything else keeps waiting.
 // A wake with a head to gate reads the status whatever the minute says.
+// A change to the record ends the sleep between two wakes early, so a continue flag the agent writes is read within a second.
 // rec is the record the wait starts from, and entryStatus and entryReadAt are the status Call read and its time, nil and zero when Call read none.
 // A cancelled context is an error.
 func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
+	changes, stopWatch := p.deps.PullRequest.RecordChanges()
+	defer stopWatch()
 
 	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt}
 	for {
@@ -393,12 +400,33 @@ func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullreques
 		if err != nil || ended {
 			return outcome, pointer, err
 		}
-		if err := p.deps.PullRequest.Sleep(ctx, state.interval); err != nil {
+		if err := p.pause(ctx, state.interval, state.wokeAt, changes); err != nil {
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
 				return "", shedengine.OutputPointer{}, cerr
 			}
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: sleep between wakes: %w", p.name, err)
 		}
+	}
+}
+
+// pause sleeps interval, or until changes delivers a change to the record.
+// A change still waits out the rest of prWaitFloor since wokeAt, so no wake follows another by less than a second.
+func (p *PRReview) pause(ctx context.Context, interval time.Duration, wokeAt time.Time, changes <-chan struct{}) error {
+	pr := p.deps.PullRequest
+	sleepCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	slept := make(chan error, 1)
+	go func() { slept <- pr.Sleep(sleepCtx, interval) }()
+	select {
+	case err := <-slept:
+		return err
+	case <-changes:
+		cancel()
+		<-slept
+		if rest := prWaitFloor - pr.Now().Sub(wokeAt); rest > 0 {
+			return pr.Sleep(ctx, rest)
+		}
+		return nil
 	}
 }
 
@@ -408,6 +436,7 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	end := func(outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 		return outcome, pointer, true, err
 	}
+	state.wokeAt = pr.Now()
 	if err := cancelErr(ctx, p.name); err != nil {
 		return end("", shedengine.OutputPointer{}, err)
 	}

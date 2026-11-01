@@ -9,6 +9,7 @@
 //
 // The wait has no timeout and wakes at least a second apart, doubling to a minute while nothing changes and back to a second when the task head moves.
 // Each wake re-reads the record, which the agent's `lym loom pr-continue` writes the continue flag into; a record write goes through the record's update so a flag written meanwhile survives.
+// A change to the record file, seen through the PullRequest.RecordChanges watch, ends the sleep between two wakes early, still a second after the last wake began, so a continue flag is acted on at once and not after up to a minute.
 // A clean tree whose head the record has not gated runs the `pr-review` gate key; a pass pushes the head and records it as gated, and a failure pushes nothing and mails the reason, naming the failing tier and log, to the PR-Review session once per head.
 // A head moved or a tree dirtied during the gate discards its verdict, and a dirty tree is the agent at work and is not gated.
 // The pull request's status is read at most once a minute, the entry's own read counting as the first, and at once on the first wake that sees the continue flag.

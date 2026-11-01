@@ -361,6 +361,7 @@ func TestPRReview_Call(t *testing.T) {
 			"PullRequest.PauseCovered":    func(d *Deps) { d.PullRequest.PauseCovered = nil },
 			"PullRequest.Now":             func(d *Deps) { d.PullRequest.Now = nil },
 			"PullRequest.Sleep":           func(d *Deps) { d.PullRequest.Sleep = nil },
+			"PullRequest.RecordChanges":   func(d *Deps) { d.PullRequest.RecordChanges = nil },
 			"PullRequest.Sessions":        func(d *Deps) { d.PullRequest.Sessions = nil },
 			"PullRequest.SessionLive":     func(d *Deps) { d.PullRequest.SessionLive = nil },
 			"PullRequest.RegisterSession": func(d *Deps) { d.PullRequest.RegisterSession = nil },
@@ -498,6 +499,7 @@ func prReviewTestDeps(t *testing.T, api *fakePullRequestAPI) Deps {
 				now = now.Add(d)
 				return nil
 			},
+			RecordChanges: func() (<-chan struct{}, func()) { return nil, func() {} },
 		},
 	}
 }

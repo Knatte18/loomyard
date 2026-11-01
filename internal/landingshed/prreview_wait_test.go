@@ -45,6 +45,9 @@ type waitWorld struct {
 	// coveredAt answers whether a pause covers the run at the n-th (1-based) read of the pause record; nil covers nothing.
 	coveredAt func(n int) bool
 	onSleep   func(w *waitWorld, n int)
+	// changes is the channel the record watch delivers on, nil for a wait left on its timer, and watchStops counts the ends of the watch.
+	changes    chan struct{}
+	watchStops int
 }
 
 // newWaitWorld builds a world over scripts, with the task head "h1", a clean tree and no gate command.
@@ -90,6 +93,9 @@ func newWaitWorld(t *testing.T, scripts map[string][]scriptedCall) (*waitWorld, 
 			w.onSleep(w, len(w.sleeps))
 		}
 		return ctx.Err()
+	}
+	pr.RecordChanges = func() (<-chan struct{}, func()) {
+		return w.changes, func() { w.watchStops++ }
 	}
 	return w, ctx
 }
@@ -161,6 +167,30 @@ func TestPRReview_Wait(t *testing.T) {
 			t.Errorf("write the continue flag: %v", err)
 		}
 	}
+	// changeDuringFirstSleep returns a setup in which the first sleep lets elapsed pass on the clock, writes the continue flag, signals the record change and then ends only when the wait cancels it; the guard fails a wait that never does.
+	changeDuringFirstSleep := func(elapsed time.Duration) func(w *waitWorld) {
+		return func(w *waitWorld) {
+			w.changes = make(chan struct{}, 1)
+			sleep := w.deps.PullRequest.Sleep
+			w.deps.PullRequest.Sleep = func(ctx context.Context, d time.Duration) error {
+				if len(w.sleeps) > 0 {
+					return sleep(ctx, d)
+				}
+				w.sleeps = append(w.sleeps, d)
+				w.now = w.now.Add(elapsed)
+				writeContinue(w)
+				w.changes <- struct{}{}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(10 * time.Second):
+					t.Errorf("the record change did not end the sleep")
+					w.cancel()
+					return context.Canceled
+				}
+			}
+		}
+	}
 	failingGate := func(w *waitWorld) {
 		w.withGateCommand()
 		w.tree.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1, Log: "/logs/gate.log"}
@@ -182,7 +212,9 @@ func TestPRReview_Wait(t *testing.T) {
 		wantRecord  *pullrequest.Record
 		// gatePushes counts the pushes the wait makes after Call's own.
 		gatePushes int
-		check      func(t *testing.T, w *waitWorld, logs string)
+		// restsFloorRemainder allows a sleep under a second, the part of the floor a change to the record leaves.
+		restsFloorRemainder bool
+		check               func(t *testing.T, w *waitWorld, logs string)
 	}{
 		{
 			name: "MergedAtTheGatedHeadOnACleanTreeIsDone", record: seed("h1"), scripts: statusScript(mergedAt("h1")),
@@ -504,6 +536,50 @@ func TestPRReview_Wait(t *testing.T) {
 			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
 		},
 		{
+			name: "AChangeToTheRecordEndsTheSleepEarlyAndTheContinueFlagClosesThePullRequestAfterTheFloor", record: seed("h1"), scripts: statusScript(open),
+			setup:       changeDuringFirstSleep(0),
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7", continueClose},
+			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				// The clock stands still in the cut sleep, so the rest of the floor is a whole second.
+				want := []time.Duration{time.Second, time.Second}
+				if diff := cmp.Diff(want, w.sleeps); diff != "" {
+					t.Errorf("sleeps mismatch (-want +got):\n%s", diff)
+				}
+				if w.watchStops != 1 {
+					t.Errorf("the record watch ended %d times; want once", w.watchStops)
+				}
+			},
+		},
+		{
+			name: "AChangeAfterPartOfTheFloorHasPassedRestsOnlyTheRemainder", record: seed("h1"), scripts: statusScript(open),
+			setup:               changeDuringFirstSleep(400 * time.Millisecond),
+			restsFloorRemainder: true,
+			wantOutcome:         shedengine.Done,
+			wantCalls:           []string{"Status 7", editSeven, "Status 7", continueClose},
+			wantRecord:          recorded("h1", withContinue, withClosedForContinue),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				want := []time.Duration{time.Second, 600 * time.Millisecond}
+				if diff := cmp.Diff(want, w.sleeps); diff != "" {
+					t.Errorf("sleeps mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
+			name: "AChangeAfterTheFloorHasPassedWakesAtOnceWithoutAnotherSleep", record: seed("h1"), scripts: statusScript(open),
+			setup:       changeDuringFirstSleep(time.Second),
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7", continueClose},
+			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				want := []time.Duration{time.Second}
+				if diff := cmp.Diff(want, w.sleeps); diff != "" {
+					t.Errorf("sleeps mismatch (-want +got):\n%s", diff)
+				}
+			},
+		},
+		{
 			name: "TheContinueFlagWrittenOnADirtyTreeKeepsWaitingWithOneExtraStatusCall", record: seed("h1"), scripts: statusScript(open), dirty: []string{"wip.go"},
 			setup: func(w *waitWorld) {
 				w.onSleep = func(w *waitWorld, n int) {
@@ -589,7 +665,7 @@ func TestPRReview_Wait(t *testing.T) {
 			}
 
 			for _, d := range w.sleeps {
-				if d < time.Second || d > time.Minute {
+				if (d < time.Second && !tt.restsFloorRemainder) || d <= 0 || d > time.Minute {
 					t.Errorf("slept %v; want every wait between a second and a minute", d)
 				}
 			}

@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/fswatch"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -144,7 +143,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	}, nil
 }
 
-// openLandRequestWatch returns a channel that delivers a value whenever the land request's directory changes, or nil when no watch can be opened, which leaves Beam-Await on its timer.
+// openLandRequestWatch returns a channel that delivers a value whenever the land request changes, or nil when no watch can be opened, which leaves Beam-Await on its timer.
 // The directory is created when absent, since Beam-Await may start before the beam's dobby has made it.
 // The watcher lives until the process ends.
 func openLandRequestWatch(paths pawlengine.Paths) <-chan struct{} {
@@ -153,20 +152,7 @@ func openLandRequestWatch(paths pawlengine.Paths) <-chan struct{} {
 		logger.Warn("loom: the land request directory could not be created, so Beam-Await polls", "dir", dir, "error", err)
 		return nil
 	}
-	watcher, err := fswatch.Watch(dir, filepath.Base(paths.LandRequest))
-	if err != nil {
-		logger.Warn("loom: the land request directory could not be watched, so Beam-Await polls", "dir", dir, "error", err)
-		return nil
-	}
-	changed := make(chan struct{}, 1)
-	go func() {
-		for range watcher.Events() {
-			select {
-			case changed <- struct{}{}:
-			default:
-			}
-		}
-	}()
+	changed, _ := watchFileChanges(paths.LandRequest, "Beam-Await")
 	return changed
 }
 

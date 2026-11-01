@@ -212,6 +212,7 @@ func LandingDeps(dir string) landingshed.Deps {
 			PauseCovered:    func() (bool, error) { return false, nil },
 			Now:             time.Now,
 			Sleep:           func(context.Context, time.Duration) error { return nil },
+			RecordChanges:   func() (<-chan struct{}, func()) { return nil, func() {} },
 			Sessions:        noopSessions{},
 			SessionLive:     func(string) (bool, error) { return false, nil },
 			RegisterSession: func(string) error { return nil },

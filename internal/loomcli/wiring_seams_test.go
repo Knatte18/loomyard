@@ -47,6 +47,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.PauseCovered":    "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.Now":             "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.Sleep":           "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.PullRequest.RecordChanges":   "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.Sessions":        "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.SessionLive":     "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.RegisterSession": "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",

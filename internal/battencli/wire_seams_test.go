@@ -104,6 +104,7 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.PauseCovered":    "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Now":             "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Sleep":           "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.RecordChanges":   "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.Sessions":        "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.SessionLive":     "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.RegisterSession": "loom-only seam, batten lands no branch",
