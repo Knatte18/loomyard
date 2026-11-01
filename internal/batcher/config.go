@@ -81,7 +81,7 @@ func ConfigSpec() configengine.Spec {
 // Active loads batcher.yaml through the layer stack under dirs and builds the batchifier its active: profile names.
 // An empty active: and active: identity resolve to the identity batchifier even when no profile of that name is configured;
 // a configured profile named identity wins over that default.
-// An absent base layer resolves the embedded ConfigTemplate(), whose active: names the cautious profile, instead of erroring;
+// An absent base layer resolves the embedded ConfigTemplate(), whose active: names the wide profile, instead of erroring;
 // a layer file that exists but is invalid still errors, and so does an active: naming no profile, a profile of an unknown batchifier kind, or a cost profile with a missing or invalid parameter, or a retired alone_above, master_base or startup_context in any layer, each marked configengine.ErrInvalid.
 // A retired-key error names the layer file that carries the key and the way forward that file calls for.
 // dirs must already be told by the caller — Active never resolves cwd itself (see

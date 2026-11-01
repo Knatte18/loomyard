@@ -1417,7 +1417,7 @@ func seedPersistentPreRunConfig(t *testing.T, h *hubforge.Hub, batcherConfig str
 }
 
 // TestPersistentPreRunE_BatcherSelection proves the load-time batcher selection (batcher.Active(baseDir), wired into PersistentPreRunE) through the `status` verb, which never itself touches the batcher, over one hub whose batcher.yaml each step rewrites:
-// an active: naming no profile is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming batcher.yaml and the bad key, a rebaseline under a profile with a negative coefficient is refused the same way and leaves state.json byte-identical, and the template's default active: key resolves its cautious profile, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
+// an active: naming no profile is a true fail-fast gate that aborts before any verb's RunE ever runs, with an output.Err envelope naming batcher.yaml and the bad key, a rebaseline under a profile with a negative coefficient is refused the same way and leaves state.json byte-identical, and the template's default active: key resolves its wide profile, so the command proceeds normally through the rest of PersistentPreRunE and into the verb's own RunE.
 // A last step drives the config-load refusals of batcher.yaml and webster.yaml: broken content (including a retired key, whose way forward is the reconcile) carries `config_invalid: true`, an unreadable file and a broken shuttle.yaml carry none, and state.json stays byte-identical.
 // The steps share one hub and each rewrites its own config, so none relies on another's result.
 // The scenario calls t.Parallel as a whole and no step does, since the steps share the one hub.
@@ -1427,7 +1427,7 @@ func TestPersistentPreRunE_BatcherSelection(t *testing.T) {
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 
 	if !t.Run("unknown batcher fails fast", func(t *testing.T) {
-		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: "cautious"`, `active: "bogus"`, 1))
+		seedPersistentPreRunConfig(t, h, strings.Replace(batcher.ConfigTemplate(), `active: "wide"`, `active: "bogus"`, 1))
 
 		var out strings.Builder
 		exitCode := RunCLIIn(h.PrimeWorktree(), &out, []string{"status"})

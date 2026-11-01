@@ -49,7 +49,10 @@ var formerTemplateValues = map[string]map[string]string{
 		"soft_threshold_tokens": "300000",
 		"threshold_tokens":      "400000",
 	},
-	"batcher": {"profiles": "cautious:\n  budget: 450000\n"},
+	"batcher": {
+		"active":   `"cautious"`,
+		"profiles": "cautious:\n  budget: 450000\n",
+	},
 }
 
 // formerLoomValues returns loom's former template values.

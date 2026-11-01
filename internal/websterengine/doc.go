@@ -18,7 +18,7 @@
 // A plan's flat, unordered Cards list is grouped into the execution units
 // Master actually forks by internal/batcher: a name-keyed registry of
 // Batcher implementations, selected once at config-load time via
-// batcher.yaml's `active:` key (template default: the cautious profile,
+// batcher.yaml's `active:` key (template default: the wide profile,
 // the cost batchifier; an empty value resolves to the identity batcher —
 // one card, one batch), resolved by internal/webstercli and handed to Run via
 // RunDeps.Batcher — this package loads no batcher config itself. Batching

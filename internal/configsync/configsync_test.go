@@ -158,7 +158,7 @@ func TestReconcileAll(t *testing.T) {
 	modelsTemplate := modelspec.ConfigTemplate()
 	batcherTemplate := batcher.ConfigTemplate()
 	retiredBatcher := strings.Replace(batcherTemplate, "orientation: 31400", "master_base: 52000", 1)
-	masterBaseRewrites := []string{"profiles.cautious.weights.master_base: removed", "profiles.cautious.weights.orientation: added 31400"}
+	masterBaseRewrites := []string{"profiles.wide.weights.master_base: removed", "profiles.wide.weights.orientation: added 31400"}
 	lensesLacksSecurity := lensesFixture(t, func(cfg *lenses.Config) {
 		delete(cfg.Lenses, "security")
 		cfg.Lenses["hub-lens"] = "Hub emphasis.\n"
@@ -1546,10 +1546,23 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 			wantStripped: []string{
 				"active", "profiles.cautious.batchifier", "profiles.cautious.budget", "profiles.cautious.max_cards",
 				"profiles.cautious.weights.batch_growth", "profiles.cautious.weights.context_per_line", "profiles.cautious.weights.fork_messages",
-				"profiles.cautious.weights.message_context", "profiles.cautious.weights.package_context", "profiles.cautious.weights.target_messages",
-				"profiles.cautious.weights.test_file_messages", "profiles.cautious.weights.uses_messages", "profiles.cautious.weights.write_per_card_line",
+				"profiles.cautious.weights.message_context", "profiles.cautious.weights.orientation", "profiles.cautious.weights.package_context",
+				"profiles.cautious.weights.target_messages", "profiles.cautious.weights.test_file_messages", "profiles.cautious.weights.uses_messages",
+				"profiles.cautious.weights.write_per_card_line",
 				"profiles.identity.batchifier",
+				"profiles.wide.batchifier", "profiles.wide.budget", "profiles.wide.max_cards",
+				"profiles.wide.weights.batch_growth", "profiles.wide.weights.context_per_line", "profiles.wide.weights.fork_messages",
+				"profiles.wide.weights.message_context", "profiles.wide.weights.package_context", "profiles.wide.weights.target_messages",
+				"profiles.wide.weights.test_file_messages", "profiles.wide.weights.uses_messages", "profiles.wide.weights.write_per_card_line",
 			},
+		},
+		{
+			name: "the former batcher default active cautious is stripped so the worktree resolves to wide", module: "batcher", opts: migrate,
+			worktreeFile: "active: \"cautious\"\n", wantStripped: []string{"active"}, wantDeleted: true, wantMarker: true, resolutionChanges: true,
+		},
+		{
+			name: "a marked worktree keeps active cautious as a pin", module: "batcher", opts: migrate, marked: true,
+			worktreeFile: "active: \"cautious\"\n", wantFile: ptr("active: \"cautious\"\n"),
 		},
 		{
 			name: "a literal equal to the expansion of a marker below is kept", module: "loom", opts: migrate,

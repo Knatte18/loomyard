@@ -1,11 +1,11 @@
-active: "cautious"  # name of the active profile under profiles: (internal/batcher.Active); the template default is the cautious profile, and an empty value resolves to the identity batchifier (one card, one batch)
+active: "wide"  # name of the active profile under profiles: (internal/batcher.Active); the template default is the wide profile, and an empty value resolves to the identity batchifier (one card, one batch)
 profiles:   # named batchifier settings, each chosen by active:; the operator may add profiles of their own
   identity:   # one card, one batch
     batchifier: identity
-  cautious:   # the cost batchifier: the fewest contiguous batches whose estimated peak fork context fits the budget
+  wide:   # the cost batchifier: the fewest contiguous batches whose estimated peak fork context fits the budget
     batchifier: cost
     max_cards: 6   # most cards one batch holds, at least 2
-    budget: 200000  # a batch of two or more cards never exceeds this peak context, in tokens; a card over it runs alone
+    budget: 300000  # a batch of two or more cards never exceeds this peak context, in tokens; a card over it runs alone
     weights:   # the estimator's coefficients, in context tokens or messages
       orientation: 31400   # context Merriam gains between loading its start base and spawning its first fork; the start base itself is computed from what Merriam loads
       batch_growth: 7000   # context Merriam gains per finished batch, so a fork at position k starts at the start base + orientation + (k-1) * batch_growth
@@ -17,3 +17,18 @@ profiles:   # named batchifier settings, each chosen by active:; the operator ma
       context_per_line: 12   # context a read file adds per line
       package_context: 2000   # context a target directory adds, once for its package and once for its tests
       write_per_card_line: 12   # context a card's output adds per line of its card text, which carries the code the fork writes
+  cautious:   # the cost batchifier with the wide profile's estimator at a tighter budget
+    batchifier: cost
+    max_cards: 6
+    budget: 200000
+    weights:
+      orientation: 31400
+      batch_growth: 7000
+      fork_messages: 4
+      message_context: 300
+      target_messages: 6
+      test_file_messages: 0.5
+      uses_messages: 2
+      context_per_line: 12
+      package_context: 2000
+      write_per_card_line: 12

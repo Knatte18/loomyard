@@ -9,7 +9,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 )
 
-// DefaultName is the profile an empty active: key resolves to; the template's own active: names the cautious profile instead.
+// DefaultName is the profile an empty active: key resolves to; the template's own active: names the wide profile instead.
 const DefaultName = "identity"
 
 // constructors maps a profile's batchifier kind to the constructor that builds it, given the profile's name and settings.

@@ -9,7 +9,7 @@
 // batcher.yaml holds named profiles under profiles:, each a batchifier kind (identity or cost) with that kind's parameters;
 // its active: key names the profile in force (see contracts/specs/loom-plan-spec.md).
 // profiles: is a per-name map, keyed by names the operator chooses:
-// a layer's profiles add to or override the template's identity and cautious by name, each profile merging key by key, so a layer holds only the profiles and keys it tunes.
+// a layer's profiles add to or override the template's by name, each profile merging key by key, so a layer holds only the profiles and keys it tunes.
 // `lym config batcher --set profiles.<name>.<key>=<value>` sets one key of any profile.
 // Active resolves the active profile at config-load time and builds it through the registry.
 // An empty active: and active: identity resolve to the identity batcher even when no profile of that name is configured, so a batcher.yaml without profiles: keeps working;
@@ -23,8 +23,10 @@
 // Every load error is marked configengine.ErrInvalid, so a caller tells a file's content from an unreadable file.
 // MigrateConfig is that migration: a pure rewrite of a batcher.yaml document that drops the retired keys from every profile and adds weights.orientation at the template's value where a retired weights key stood and the profile had none.
 // It touches only those keys, carries every other entry and comment through yaml node editing, and is never called by the loader.
-// The template ships active: cautious, so a fresh repo groups cards with the cost batchifier without configuring it;
+// The template ships active: wide, so a fresh repo groups cards with the cost batchifier without configuring it;
 // across 14 measured runs, card batching cost about 60% less Webster weight per card than identity.
+// Its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it;
+// in the 2026-11-01 budget trial, wide cost no more per card than cautious and showed no quality loss (docs/research/batch-budget-trial-2026-11-01).
 // An operator who wants one card per batch sets active: to identity or to an empty value.
 //
 // The identity batcher (identity.go) — one card, one batch — is one library entry among future
@@ -48,7 +50,7 @@
 // A card's own estimate is the PeakContext of its one-card segment.
 // The coefficients are a Weights value, read by ProfileWeights from a profile's weights: map in batcher.yaml.
 //
-// The template's cautious start coefficients are measured, the in-fork coefficients are not.
+// The template's cost profiles share their coefficients: the start coefficients are measured, the in-fork coefficients are not.
 // orientation is 31400: the measured 52000 first-fork start minus the measured 20.6K Merriam session start, the context Merriam gains reading the codebase and plan before its first fork.
 // batch_growth is 7000, the mean measured growth per batch (2.5K to 13.0K), over three cautious runs and twelve forks with each start measured, one of them in a resumed Merriam session.
 // Growth counts batches, not cards: Merriam gains context per fork it spawns and records, whatever the fork's size.

@@ -50,13 +50,13 @@ func seedConfig(t *testing.T, baseDir, module, content string) {
 }
 
 // TestActive asserts Active resolves the configured profile from batcher.yaml:
-// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its cautious profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lym/ degrades to the embedded template's cautious batchifier rather than erroring, and every load error names batcher.yaml.
+// the template verbatim (which must itself parse as plain YAML) builds a cost batcher named after its wide profile, an empty active: resolves identity both on the template's profiles and without a profiles: block, an identity active: resolves identity without a profiles: block, an absent batcher.yaml or an absent _lym/ degrades to the embedded template's wide batchifier rather than erroring, and every load error names batcher.yaml.
 // A layer's profiles add to the template's by name, each merging key by key, so the error rows tune a profile the template lacks.
 func TestActive(t *testing.T) {
 	t.Parallel()
 	template := batcher.ConfigTemplate()
-	if !strings.HasPrefix(template, `active: "cautious"`) {
-		t.Fatalf("ConfigTemplate() does not open with active: \"cautious\":\n%s", template)
+	if !strings.HasPrefix(template, `active: "wide"`) {
+		t.Fatalf("ConfigTemplate() does not open with active: \"wide\":\n%s", template)
 	}
 	tests := []struct {
 		name string
@@ -68,7 +68,7 @@ func TestActive(t *testing.T) {
 		wantRetired bool
 	}{
 		{
-			name: "templateDefaultResolvesCautious",
+			name: "templateDefaultResolvesWide",
 			seed: func(t *testing.T, baseDir string) {
 				var out map[string]any
 				if err := yaml.Unmarshal([]byte(template), &out); err != nil {
@@ -76,12 +76,12 @@ func TestActive(t *testing.T) {
 				}
 				seedConfig(t, baseDir, "batcher", template)
 			},
-			wantName: "cautious",
+			wantName: "wide",
 		},
 		{
 			name: "emptyActiveOnTemplateResolvesIdentity",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(template, `active: "cautious"`, `active: ""`, 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, `active: "wide"`, `active: ""`, 1))
 			},
 			wantName: batcher.DefaultName,
 		},
@@ -106,11 +106,11 @@ func TestActive(t *testing.T) {
 					t.Fatalf("mkdir _lym: %v", err)
 				}
 			},
-			wantName: "cautious",
+			wantName: "wide",
 		},
 		{
 			name:     "absentLymDirResolvesTemplate",
-			wantName: "cautious",
+			wantName: "wide",
 		},
 		{
 			name: "noSuchProfileErrors",
@@ -143,7 +143,7 @@ func TestActive(t *testing.T) {
 		{
 			name: "missingThresholdErrors",
 			seed: func(t *testing.T, baseDir string) {
-				operatorCopy := strings.NewReplacer(`active: "cautious"`, `active: "mine"`, "  cautious:", "  mine:", "    budget: ", "    renamed_budget: ").Replace(template)
+				operatorCopy := strings.NewReplacer(`active: "wide"`, `active: "mine"`, "  wide:", "  mine:", "    budget: ", "    renamed_budget: ").Replace(template)
 				seedConfig(t, baseDir, "batcher", operatorCopy)
 			},
 			wantErrWith: []string{"batcher.yaml", "mine", "budget"},
@@ -151,16 +151,16 @@ func TestActive(t *testing.T) {
 		{
 			name: "nonPositiveBudgetErrors",
 			seed: func(t *testing.T, baseDir string) {
-				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 200000", "budget: 0", 1))
+				seedConfig(t, baseDir, "batcher", strings.Replace(template, "budget: 300000", "budget: 0", 1))
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious", "budget"},
+			wantErrWith: []string{"batcher.yaml", "wide", "budget"},
 		},
 		{
 			name: "retiredAloneAboveErrors",
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "    budget: ", "    alone_above: 1200000\n    budget: ", 1))
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious", "alone_above"},
+			wantErrWith: []string{"batcher.yaml", "wide", "alone_above"},
 			wantRetired: true,
 		},
 		{
@@ -168,7 +168,7 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "orientation: 31400", "master_base: 52000", 1))
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious", "master_base"},
+			wantErrWith: []string{"batcher.yaml", "wide", "master_base"},
 			wantRetired: true,
 		},
 		{
@@ -176,7 +176,7 @@ func TestActive(t *testing.T) {
 			seed: func(t *testing.T, baseDir string) {
 				seedConfig(t, baseDir, "batcher", strings.Replace(template, "max_cards: 6", "max_cards: 1", 1))
 			},
-			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
+			wantErrWith: []string{"batcher.yaml", "wide", "max_cards"},
 		},
 	}
 	for _, tt := range tests {
@@ -231,17 +231,17 @@ func TestActive(t *testing.T) {
 			name:         "worktreeProfilesAddToTheDefaults",
 			repoDefault:  template,
 			worktreeFile: "profiles:\n  mine:\n    batchifier: identity\n",
-			wantName:     "cautious",
+			wantName:     "wide",
 		},
 		{
 			name:        "repoDefaultTuningOneKeyKeepsTheTemplatesOthers",
-			repoDefault: "profiles:\n  cautious:\n    budget: 300000\n",
-			wantName:    "cautious",
+			repoDefault: "profiles:\n  wide:\n    budget: 250000\n",
+			wantName:    "wide",
 		},
 		{
 			name:        "repoDefaultTunedKeyReachesTheProfile",
-			repoDefault: "profiles:\n  cautious:\n    max_cards: 1\n",
-			wantErrWith: []string{"batcher.yaml", "cautious", "max_cards"},
+			repoDefault: "profiles:\n  wide:\n    max_cards: 1\n",
+			wantErrWith: []string{"batcher.yaml", "wide", "max_cards"},
 		},
 		{
 			name:                   "retiredKeyInRepoDefaultNamesDefaultFileAndFabricReconcile",
@@ -290,7 +290,8 @@ func TestActive(t *testing.T) {
 	}
 }
 
-// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key.
+// TestProfileWeights asserts ProfileWeights returns a valid profile's coefficients and errors naming batcher.yaml for an absent profile, a missing coefficient, a negative one and an unknown key,
+// and that the template's wide and cautious profiles carry the same measured weights.
 func TestProfileWeights(t *testing.T) {
 	t.Parallel()
 	const valid = `profiles:
@@ -402,14 +403,43 @@ func TestProfileWeights(t *testing.T) {
 			}
 		})
 	}
-	t.Run("templateCautiousCarriesTheMeasuredStart", func(t *testing.T) {
+	t.Run("templateProfilesShareTheMeasuredWeights", func(t *testing.T) {
 		t.Parallel()
-		got, err := batcher.ProfileWeights(configengine.Dirs{Anchor: t.TempDir()}, "cautious")
+		dirs := configengine.Dirs{Anchor: t.TempDir()}
+		wide, err := batcher.ProfileWeights(dirs, "wide")
 		if err != nil {
-			t.Fatalf("ProfileWeights = _, %v; want nil error", err)
+			t.Fatalf("ProfileWeights(wide) = _, %v; want nil error", err)
 		}
-		if got.Orientation != 31400 || got.BatchGrowth != 7000 || got.RetiredMasterBase != 0 || got.RetiredStartupContext != 0 {
-			t.Errorf("template cautious start = orientation %v, batch_growth %v, master_base %v, startup_context %v; want 31400, 7000, 0, 0", got.Orientation, got.BatchGrowth, got.RetiredMasterBase, got.RetiredStartupContext)
+		cautious, err := batcher.ProfileWeights(dirs, "cautious")
+		if err != nil {
+			t.Fatalf("ProfileWeights(cautious) = _, %v; want nil error", err)
+		}
+		if wide != cautious {
+			t.Errorf("template wide weights = %+v; want cautious's %+v", wide, cautious)
+		}
+		if wide.Orientation != 31400 || wide.BatchGrowth != 7000 || wide.RetiredMasterBase != 0 || wide.RetiredStartupContext != 0 {
+			t.Errorf("template wide start = orientation %v, batch_growth %v, master_base %v, startup_context %v; want 31400, 7000, 0, 0", wide.Orientation, wide.BatchGrowth, wide.RetiredMasterBase, wide.RetiredStartupContext)
+		}
+	})
+	// No accessor exposes a profile's budget or max_cards, so the template is decoded directly.
+	t.Run("templateWideDiffersFromCautiousOnlyByBudget", func(t *testing.T) {
+		t.Parallel()
+		var template struct {
+			Profiles map[string]struct {
+				Batchifier string `yaml:"batchifier"`
+				MaxCards   int    `yaml:"max_cards"`
+				Budget     int    `yaml:"budget"`
+			} `yaml:"profiles"`
+		}
+		if err := yaml.Unmarshal([]byte(batcher.ConfigTemplate()), &template); err != nil {
+			t.Fatalf("unmarshal template: %v", err)
+		}
+		wide, cautious := template.Profiles["wide"], template.Profiles["cautious"]
+		if wide.Budget != 300000 || cautious.Budget != 200000 {
+			t.Errorf("template budgets = wide %d, cautious %d; want 300000, 200000", wide.Budget, cautious.Budget)
+		}
+		if wide.MaxCards != cautious.MaxCards || wide.Batchifier != cautious.Batchifier {
+			t.Errorf("template wide = batchifier %q, max_cards %d; want cautious's %q, %d", wide.Batchifier, wide.MaxCards, cautious.Batchifier, cautious.MaxCards)
 		}
 	})
 }
