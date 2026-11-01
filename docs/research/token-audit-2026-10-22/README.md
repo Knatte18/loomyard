@@ -231,7 +231,7 @@ The orch's sub-agents: 273 forks that inherit its context $82, benches and gradi
 - **Role.** The strand name in the transcript's `custom-title` line, minus any `-N` and `-chair` suffix; a sub-agent counts under its parent's role as that role's forks.
 - **Run.** A session maps to the weft archive tag whose window (seed `started_at` to the last history entry) holds its start; 99.7% of task-pair spend mapped.
 - **Phase.** Strand names carry the phase since 2026-10-15; for older names, the producer whose history interval holds the session's start.
-- **Recipe, outcome and profile.** Recipe from `seed.json`; landed means Merge-In done or Finalize recorded; profile from the board entry's `profile` field in `_board` git history (only 22 slugs ever had one, every other run counts as default).
+- **Recipe, outcome and profile.** Recipe from `seed.json`; landed means Merge-In done or Finalize recorded; profile from the board entry's `profile` field in `_bolt` git history (only 22 slugs ever had one, every other run counts as default).
 - **Size.** Changed lines are added plus deleted lines of the `main` squash commit whose subject matches the first line of the run's landing summary; 252 runs matched.
 - **Rounds.** Counted at each reviewer session, in order, per run and perch.
 - **Orientation.** A Webster fork's turns before its first `Edit`/`Write`.

@@ -4,7 +4,7 @@ Pair: `lyx fabric add twb-fan-rv` from the prime, then `git -C /home/knatte/Code
 
 Reference inputs: weft `f078e6da6` (`_lyx/discussion/decision-record.md`, `support-log.md`: round 1's target), weft tag `archive/reed-view/e3737041815f` (rounds 1-5), Bolt `6fcfd0d7d` (`design-reed-view.md`: the board entry at round 1).
 
-Per arm, in the pair, `.scratch/fan/arm/` holds fresh copies of the two target files, `profile.yaml` (`profile-solo.yaml` or `profile-fan.yaml`) and `stencils/`: a full copy of `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/stencils` with the arm's overlay (`solo-explore.diff`; or `iter1/burler-step-1-explore.md` and `iter1/burler-step-review.md`).
+Per arm, in the pair, `.scratch/fan/arm/` holds fresh copies of the two target files, `profile.yaml` (`profile-solo.yaml` or `profile-fan.yaml`) and `stencils/`: a full copy of `/home/knatte/Code/loomyard-LYXHUB/_bolt/_lyx/stencils` with the arm's overlay (`solo-explore.diff`; or `iter1/burler-step-1-explore.md` and `iter1/burler-step-review.md`).
 The pair-layer `_lyx/config/burler.yaml` (`iter1/burler.yaml`) defines the fan `fan-bench`; no hub file was changed.
 Shared inputs in `.scratch/fan/inputs/`: `board-entry.md`, `focus.md` (round 1's focus file).
 

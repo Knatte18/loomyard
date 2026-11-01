@@ -36,7 +36,7 @@ So the area has to make bypass safe, never replace it with prompts.
 | creel daemon | one per hub, socket `creel-<shortname>-<h>.sock` in lym's temp root `/tmp/lym-<uid>` (`internal/creelengine/doc.go`, `internal/lymtemp/doc.go`) | its socket inside the area; it identifies a strand by `SO_PEERCRED` and the process ancestry, which a shared PID namespace keeps true |
 | dobby | one per beam worktree, spawned detached (`internal/dobbyengine/doc.go`) | the hub's worktrees and `.lym` state |
 | Gate runs | `lym gate test`, Go builds with cgo, tmux-tier tests | the Go toolchain, a module cache, a build cache, `gcc`, `proxy.golang.org` and `sum.golang.org` |
-| Fabric | in-process git on both sides of each pair (`internal/fabricengine`) | the whole hub: worktrees, records worktrees, the prime's `.git`, `_board`; pushes and fetches to GitHub |
+| Fabric | in-process git on both sides of each pair (`internal/fabricengine`) | the whole hub: worktrees, records worktrees, the prime's `.git`, `_bolt`; pushes and fetches to GitHub |
 | GitHub API | `internal/githubclient` resolves `GH_TOKEN`, `GITHUB_TOKEN`, a cache, then `gh auth token` | a token and `api.github.com` |
 
 lym also reaches the host desktop and system from inside its tree today:
@@ -253,7 +253,7 @@ It also cannot confine lym's agents usefully:
 
 - The loom driver drives a run through Bash, with `lym shed step`, which spawns panes on the hub's tmux server, so the driver's Bash must reach that server's socket; any agent that can reach it can open a window outside the sandbox, which is the escape this report exists to close.
 - On Linux the sandbox's Unix-socket control is all or nothing, and creel and tmux need sockets.
-- Writes outside the working directory need `allowWrite` for the hub, the records worktree, `_board/.lym` and the prime's `.git`, and the sandbox's mandatory deny on `.git/config` breaks `internal/gitrepo/branchmark.go`.
+- Writes outside the working directory need `allowWrite` for the hub, the records worktree, `_bolt/.lym` and the prime's `.git`, and the sandbox's mandatory deny on `.git/config` breaks `internal/gitrepo/branchmark.go`.
 - `allowedDomains` does not limit WebFetch, so in bypass mode WebFetch can carry data to any host unless it is denied outright.
 - Auto mode, the documented middle ground between prompts and bypass, falls back to prompting after three blocks in a row or twenty in total, and a prompt with nobody to answer stalls an autonomous run.
 

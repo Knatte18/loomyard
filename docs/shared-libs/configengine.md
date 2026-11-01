@@ -16,7 +16,7 @@ This is the one place that knows the `_lym/` layout and enforces strict validati
 │   └── reviews/        lym code reviews (artifact directory)
 ├── .env                git-IGNORED — local env values (KEY=value)
 
-<hub>/_board/_lym/config/
+<hub>/_bolt/_lym/config/
 ├── board.yaml          hub-wide: one per hub (must match board module template)
 └── fabric.yaml         hub-wide: one per hub (must match fabric module template)
 ```
@@ -88,7 +88,7 @@ Config values use POSIX-style brace-delimited env markers:
 **Interpolation:** Markers may appear inside a larger string:
 
 ```yaml
-path: ${env:LYM_EXAMPLE_PATH:-../_board}/sub
+path: ${env:LYM_EXAMPLE_PATH:-../_bolt}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 

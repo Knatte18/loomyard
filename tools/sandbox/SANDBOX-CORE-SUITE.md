@@ -153,7 +153,7 @@ The absence of a lym-owned warp-commit command is an intentional design choice, 
 
 **Covers:** board
 
-**Storage note:** `_board` is a second weft worktree checked out on the warp's own unsuffixed default branch (`weft:main` in the common case), never a separate clone with its own `board-url` — the scenario below is pure CRUD and needs no awareness of that beyond this note.
+**Storage note:** `_bolt` is a second weft worktree checked out on the warp's own unsuffixed default branch (`weft:main` in the common case), never a separate clone with its own `board-url` — the scenario below is pure CRUD and needs no awareness of that beyond this note.
 
 **Note:** When passing JSON in PowerShell, use single-quoted strings with literal inner double quotes — see the PowerShell JSON-quoting note in Pre-conditions.
 
@@ -231,7 +231,7 @@ Does `lym fabric unwire --apply` cleanly remove the junctions, clear the weft `_
 
 **Covers:** stencil
 
-**Durability note:** Like `_board` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lym` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
+**Durability note:** Like `_bolt` itself, the board's stencils tree is seeded on first run and persists across sessions -- it is not reseeded or rewritten by an ordinary `lym` invocation once every registered stencil is present and untouched. Do not assume a fresh seed on this run.
 
 **Watch:** Does `lym stencil list` name all eighteen registered stencils, each with a board-copy path and an edit state (`absent`/`untouched`/`edited`)? Does `lym stencil validate` report a clean tree (no `error`-severity findings) against an unmodified board copy? Is the JSON output for both sane -- a well-formed envelope, no raw tool output leaking through?
 This scenario is deliberately read-only: `promote` and `sync` both mutate the operator's tree and are exercised by `internal/stencilcli`'s own integration tests, not by hand here.

@@ -39,7 +39,7 @@ The raw evidence is in the git-ignored `.scratch/twill-discussion-fork0-bench/`:
   | `claimed-scope-edit` | s | `e2366eca7` | 3 | KS1–KS12 (3 B, 6 M) |
 
   - The base is main at the moment each reference pair was created, taken from the main reflog against the records' "fabric: record parent branch" commit.
-  - Each board body is taken from `_board` history at the Discussion-Write start, and was unchanged through that row.
+  - Each board body is taken from `_bolt` history at the Discussion-Write start, and was unchanged through that row.
 - **Pairs:**
   - Nine pairs `twb-d0-{h,g,s}{a,c,f}`, each with a board note carrying the reference body, created by `lyx fabric add` and reset to the base.
   - Pair `loom.yaml`: `discussion: opus[medium]`, `discussion_producer: twill`, `parent_review_wait_min: 2`, `alignment_timeout_min: 1`, `skip_alignment: true`.

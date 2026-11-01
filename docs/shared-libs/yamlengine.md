@@ -36,7 +36,7 @@ Spaces, newlines (via `(?s)` in the regex), and all other text are preserved ver
 Markers may appear inside a larger string for composition and interpolation:
 
 ```yaml
-path: ${env:LYM_EXAMPLE_PATH:-../_board}/sub
+path: ${env:LYM_EXAMPLE_PATH:-../_bolt}/sub
 url: https://${env:HOST:-localhost}:${env:PORT:-8080}
 ```
 

@@ -160,7 +160,7 @@ includes: compile time of the whole module and the standard library, since every
 
 Each run was `/usr/bin/time -v lym gate test --tags integration ./... -- -count=1 -ldflags=-B=0x<id>` from the prime, with `GOCACHE` set to the run's own empty directory, which `lym gate test` passes through to go test.
 `go_parallel` changed between runs through `lym config gate --layer default --set go_parallel=<n>`, and was set back to 4 afterwards.
-The local layer refuses the key, since every gate key is cross-pair, and gate has no worktree layer, so the hub default, committed and pushed in `_board`, is the only layer a gate run reads, and the change reached Neve's hub too for the length of the sweep.
+The local layer refuses the key, since every gate key is cross-pair, and gate has no worktree layer, so the hub default, committed and pushed in `_bolt`, is the only layer a gate run reads, and the change reached Neve's hub too for the length of the sweep.
 No batten run was live before any run, and each run started once the 1-minute load average had fallen below 4.
 
 A first run at 4 with the empty `GOCACHE` alone ran every package uncached but held almost nothing: with `-trimpath` the build is reproducible, so a fresh cache links byte-identical binaries whose hashes XDR has seen.

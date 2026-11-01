@@ -640,8 +640,8 @@ Kept:
 - `TestClassifyCorrespondence`: an exact index hit, a gap falling back to the nearest older entry with Exact false, and the ErrNoCorrespondence cases; coverage of its blocks by other tests does not show an assertion of this
 - `TestShortnameRecord_RoundTrip`: the shortname record round-tripping through its file; coverage of its blocks by other tests does not show an assertion of this
 - `TestValidateWorktreeSlug`: every slug validation rule over a table of accepted and refused slugs; coverage of its blocks by other tests does not show an assertion of this
-- `TestSpecsDir`: SpecsDir deriving _board/_lym/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
-- `TestStencilsDir`: StencilsDir deriving _board/_lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestSpecsDir`: SpecsDir deriving _bolt/_lym/specs, being a child of BoardDir and a sibling of StencilsDir; coverage of its blocks by other tests does not show an assertion of this
+- `TestStencilsDir`: StencilsDir deriving _bolt/_lym/stencils and being a child of BoardDir; coverage of its blocks by other tests does not show an assertion of this
 - `TestStructuralNameSets_ForAConfigNamingNeitherStructuralDirectory`: _lym always wired and routed, .lym wired but never routed, .lym refused as a slug and counted once in the reserved set; coverage of its blocks by other tests does not show an assertion of this
 - `TestDeployedLymPathspec_YieldsNoDuplicateLym`: a deployed "_lym _pattern" pathspec yielding exactly one _lym in the wired, routing and slug-reserved sets; coverage of its blocks by other tests does not show an assertion of this
 - `TestHubReservedNames_StillReturnsExactlyTheThreeHubStructuralTokens`: HubReservedNames returning exactly the three hub tokens without .lym; coverage of its blocks by other tests does not show an assertion of this
@@ -691,7 +691,7 @@ Kept:
 - `TestInstallPostCheckoutHook_WeftResolution_Child`: the installed hook resolving the <slug>-weft sibling for a child worktree, in sync and diverged; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 - `TestInstallPostCheckoutHook_ChainedWrapperIsExecutable`: the chained wrapper carrying the executable bit so git runs both hooks; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
 - `TestInstallPostCheckoutHook_HonoursCoreHooksPath`: the hook landing where core.hooksPath points; it installs the post-checkout hook script that git runs on checkout, so coverage of its blocks cannot stand in for the assertion
-- `TestHubReserved_BoardExcludedFromPathspecRoutes`: _board appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
+- `TestHubReserved_BoardExcludedFromPathspecRoutes`: _bolt appearing in neither WiredNames nor ScopedPathspec over a loaded config, guarding the wiring guard's live surface; coverage of its blocks by other tests does not show an assertion of this
 - `TestHubScratchAndLogsDir`: HubScratchDir being board-anchored, a sibling of the stencils _lym tree, ignoring AnchorRel, and HubLogsDir deriving from it; coverage of its blocks by other tests does not show an assertion of this
 - `TestHubLogsDir_MkdirAllIdempotentAgainstFabricCreatedDotLym`: the logs directory's MkdirAll succeeding twice over an existing scratch directory; coverage of its blocks by other tests does not show an assertion of this
 - `TestWireJunctions_MaterialisesMissingWeftTarget`: WireJunctions creating a missing weft target so the junction resolves at once and a second call succeeds; coverage of its blocks by other tests does not show an assertion of this

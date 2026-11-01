@@ -116,14 +116,14 @@ The two-sided design is documented in `internal/fabricengine`'s package doc.
   ├── <prime>-<records>/            (records Prime worktree; git repo root)
   ├── <slug>/                       (additional code worktree; git repo root)
   ├── <slug>-<records>/             (records worktree for <slug>; git repo root)
-  ├── _board/                       (the Bolt checkout, records main-branch worktree; holds board.json)
+  ├── _bolt/                       (the Bolt checkout, records main-branch worktree; holds board.json)
   │     └── .lym/                   (hub-wide machine-local scratch; a real dir, never a junction)
   ├── <RepoName>.code-workspace     (the hub's VS Code workspace; lym-owned)
   └── _launchers/<anchor>/          (anchor-mirrored)
         └── <slug>                  (per-worktree launcher scripts)
 ```
 
-`_board`, `_launchers` and the retired `_portals` are hub geometry, so none of them can be claimed as a worktree slug
+`_bolt`, `_launchers` and the retired `_portals` are hub geometry, so none of them can be claimed as a worktree slug
 (`fabricengine.IsReservedHubName`); `.lym` stays slug-reserved too, but via `structuralNeverCommittedDirs`
 rather than as hub geometry, since it no longer has a hub-level presence of its own.
 
@@ -140,7 +140,7 @@ This separation keeps code commits focused on project code and delegates lym inf
 | `_lym/config/` | Records worktree | Records | Live YAML configuration files for all modules (board, fabric); reconciled via `lym config reconcile`; a module resolves key by key through a layer stack, see [internal/configengine](../internal/configengine/doc.go) |
 | `.env` | Records worktree | Records | Git-ignored per-machine environment variable overrides (KEY=value format) |
 | `_lym/raddle/` | Records worktree | Records | Raddle documentation (the raddle nav-doc overlay), reached through the `_lym` junction like every other `_lym` subtree |
-| `_board/` | Hub | Board | The Bolt checkout, a second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
+| `_bolt/` | Hub | Board | The Bolt checkout, a second records worktree, checked out on the code repo's own unsuffixed default branch (the records main branch in the common case) — never a separate clone, never a per-task records branch |
 | Source | Code worktree | Code | Project source code |
 
 ### Durable vs ephemeral state (`_lym/` vs `.lym/`)
@@ -169,7 +169,7 @@ Worktrees are wired eagerly at `lym fabric clone`/`lym fabric add` time — ther
 The wired junction set is not hardcoded,
 and it is not purely the repo-wide `pathspec` list either: it is `structuralCommittedDirs` ∪ `structuralNeverCommittedDirs` ∪ the hub-reserved-filtered config names, deduplicated.
 The two structural sets — `_lym` and `.lym` — are injected in code, never read from `fabric.yaml`;
-only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoltDir>/_lym/config/fabric.yaml` (read from the records main branch in the Bolt checkout, via `fabricengine.BoltDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_board` (the Bolt checkout), `_portals`, `_launchers` — that can never be a per-worktree junction).
+only the third piece comes from the **repo-wide** `pathspec` list recorded once at `<BoltDir>/_lym/config/fabric.yaml` (read from the records main branch in the Bolt checkout, via `fabricengine.BoltDir`), filtered against `fabricengine.HubReservedNames()` (the hub-structural tokens — `_bolt` (the Bolt checkout), `_portals`, `_launchers` — that can never be a per-worktree junction).
 `board.yaml` is hub-wide like it: read and written at `<BoltDir>/_lym/config/board.yaml` and never in a worktree's `_lym/config/`.
 A hub-wide module skips the worktree file in its layer stack, which [internal/configengine](../internal/configengine/doc.go) describes.
 Because the pathspec is repo-wide, `lym fabric reconcile` declaratively converges **every** worktree to the same recorded set — adding a junction missing on disk, removing one absent from the wired set,
@@ -179,7 +179,7 @@ This produces the two concrete junctions this repo ships with today, both placed
 - `<anchor>/_lym` → `<hub>/<slug>-<records>/<anchor>/_lym` (config junction, structural)
 - `<anchor>/.lym` → `<hub>/<slug>-<records>/<anchor>/.lym` (machine-local scratch junction, structural)
 
-[PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that forbids re-adding a junction into the Bolt checkout (`<hub>/_board`): no hub-level container is ever junctioned into a worktree.
+[PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) holds the rule that forbids re-adding a junction into the Bolt checkout (`<hub>/_bolt`): no hub-level container is ever junctioned into a worktree.
 
 The optional `pathspec` default is empty today.
 A future records-backed module is wired by appending its directory name to `pathspec`'s template default — no `fabric`/`lymcwd` code change needed — but that mechanism now applies to *optional* directories only;

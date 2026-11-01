@@ -131,4 +131,4 @@ Sonnet forks report more findings than round 2's opus forks (21-33 against 14-23
 - The grading is one grader's reading against round 2's keys; P marks a key a plan addresses with a gap the key's finding still names.
 - Torn down: all four pairs with `lyx fabric remove --remote` (no worktree or branch left locally or on either origin; records under `archive/twb-son-*` tags in the weft repository), all four notes, no reed strand left.
   Plans, lens-review files, the directive and the wrapper are under `round-sonnet/`, the token report in `twill-plan-bench/tokens-sonnet.md`.
-- Afterwards `lyx stencil list` showed all 72 stencils and specs `untouched`; the `_board` stencil and spec commits since 20:20 are the two landings' `lyx: seed` commits, not this arm's; the prime's working tree is clean and `twill-plan-bench.md` and `round-3/` were not touched.
+- Afterwards `lyx stencil list` showed all 72 stencils and specs `untouched`; the `_bolt` stencil and spec commits since 20:20 are the two landings' `lyx: seed` commits, not this arm's; the prime's working tree is clean and `twill-plan-bench.md` and `round-3/` were not touched.

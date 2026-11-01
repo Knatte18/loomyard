@@ -11,7 +11,7 @@ sources:
   - internal/twilldirective/doc.go, internal/loomengine/twill.go, internal/loomengine/config.go
   - contracts/stencils/webster/webster-prefix-fork.md, internal/websterengine/doc.go
   - internal/shuttleengine/doc.go, requires.go, claudeengine/pricing.go
-  - _board/_lyx/config/loom.yaml (hub)
+  - _bolt/_lyx/config/loom.yaml (hub)
   - docs/research/session-fork-spike.md, twill-fixer-bench.md, twill-fork-timing-bench.md, twill-fork-timing-plan-bench.md, twill-fork0-bench.md, twill-discussion-fork0-bench.md, twill-rationale-bench.md, lens-fan-cost-analysis.md, codex-feasibility.md
   - board notes burler-fixer-fork, perch-review-analysis, fan-prompt-tuning (read only)
   - git log 572ab84e8, edb4e6984, b2e4cf913

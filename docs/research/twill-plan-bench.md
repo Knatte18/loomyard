@@ -103,7 +103,7 @@ The findings that touched the key: tw-1 decision-coverage on K1's retry exit (re
 ## Deviations
 
 - The twill directive reaches the writer through `--append-system-prompt` (merged into Claude's own deny-notice argument by the wrapper) instead of a `{{.twill_directive}}` marker inside the plan stencil; no stencil was edited, so nothing could leak to Bolt.
-  Afterwards `lyx stencil list` showed all 71 stencils and specs `untouched`, and `_board` had no stencil or spec commit since the bench began.
+  Afterwards `lyx stencil list` showed all 71 stencils and specs `untouched`, and `_bolt` had no stencil or spec commit since the bench began.
 - The fork env and the Agent tool came from the pair-local wrapper and `claude_deny_agent_tool: false`, as in the Discussion bench's round 4, so no Go change was needed; with that setting the writer's Agent tool was unrestricted, and it spawned only forks.
 - The run reached Plan-Write through a hand-written `status.json`, not through Discussion-Write and Discussion-Review.
 - The two new lens texts were written after reading the grading key; they cite rubric sections rather than the key's defects, but `edit-targets`' "package and file the Intent puts it in" sits close to K6.
@@ -295,7 +295,7 @@ None of the rejections dropped a key defect, unlike round 1, where tw-1 rejected
 - The single arm's second reference-1 run is round 1's `oh-1`, run the day's same binary and mechanics, under round 1's notice.
 - Torn down: all seven pairs with `lyx fabric remove --remote` (no worktree or branch left locally or on either origin; records under `archive/twb-p2*` tags in the weft repository), all seven notes, no reed strand left.
   Plans, lens-review files, the directive and the wrapper are copied under `round-2/`, the token report in `twill-plan-bench/tokens-round-2.md`.
-- Afterwards `lyx stencil list` showed all 71 stencils and specs `untouched`, and `_board` had no stencil or spec commit since the round began.
+- Afterwards `lyx stencil list` showed all 71 stencils and specs `untouched`, and `_bolt` had no stencil or spec commit since the round began.
 
 # Round 3: twill opus[high]
 
@@ -403,10 +403,10 @@ The p3s-th-1 rejection keeps K2: cited and accurate, but the reference's Plan-Re
 
 - Production `lyx` moved during the round: wave 1 started on `86982fa43`, the binary installed at 19:43, which also ran round 2 (its waves began at 19:44, so round 2's "`c279a38ba`" understates it); the operator's landing installed `b2e4cf913` at 20:30 and `3a627c00d` at 20:37.
   Wave 2's `lyx loom step` ran on `b2e4cf913`, and every `lyx` the writers and forks called after 20:37 (`validate-plan`, `shuttle await`) on `3a627c00d`.
-  That landing re-seeded `_board`'s `loom-rubric-plan-review.md` and `loom-plan-spec.md` at 20:30; both diffs only rename the review rows (`Plan-Burler` to `Plan-Burler-Fix` or `-Review`, `**Fix:**` line to `fix` key), so wave 1 and wave 2 writers read the same rubric content, and the plan stencil was untouched.
+  That landing re-seeded `_bolt`'s `loom-rubric-plan-review.md` and `loom-plan-spec.md` at 20:30; both diffs only rename the review rows (`Plan-Burler` to `Plan-Burler-Fix` or `-Review`, `**Fix:**` line to `fix` key), so wave 1 and wave 2 writers read the same rubric content, and the plan stencil was untouched.
 - Wave 2 started 17 minutes after wave 1 instead of all pairs in one wave.
 - Grading is one grader's reading against round 2's keys; J9's P, a judgment on prescribed wording, is explained above.
 - Torn down: all four pairs with `lyx fabric remove --remote` (no worktree or branch left locally; records under `archive/twb-p3*` tags in the weft repository), all four notes, no reed strand of these pairs left.
   The `twb-son-*` pairs and strands present at the end are not this round's.
   Plans, lens-review files and the wrapper are under `round-3/`, the token report in `twill-plan-bench/tokens-round-3.md`.
-- Afterwards `lyx stencil list` showed all 72 stencils and specs `untouched` (the landing added one); `_board`'s only stencil or spec commits since the round began are the landing's three `lyx: seed` commits, none by the bench.
+- Afterwards `lyx stencil list` showed all 72 stencils and specs `untouched` (the landing added one); `_bolt`'s only stencil or spec commits since the round began are the landing's three `lyx: seed` commits, none by the bench.

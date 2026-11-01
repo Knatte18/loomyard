@@ -38,7 +38,7 @@ The two repositories branch together, which is why a task's whole state is versi
   ├── <project>-<records>/   its records sibling
   ├── <task>/                a task's worktree, on the task's branch
   ├── <task>-<records>/      its records sibling
-  └── _board/                the task board
+  └── _bolt/                the task board
 ```
 
 The first worktree, on your main branch, is the **prime**.

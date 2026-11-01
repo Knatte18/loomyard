@@ -209,7 +209,7 @@ func TestIsReservedHubName(t *testing.T) {
 		{"launchers dir", "_launchers", true},
 		{"ordinary slug", "my-task", false},
 		{"underscore-prefixed but unreserved", "_mytask", false},
-		{"compound near-miss", "_boardroom", false},
+		{"compound near-miss", "_boltroom", false},
 		{"empty", "", false},
 	}
 

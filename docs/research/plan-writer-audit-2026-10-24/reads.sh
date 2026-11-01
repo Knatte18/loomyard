@@ -29,7 +29,7 @@ grep -E '^- ' $out/$slug.relevant.md | grep -oE '^- `[^`]+`' | sed -E 's/^- `//;
   grep -P '^READ\t' $out/$slug.calls | cut -f2 | sed "s#^$wt##"
   grep -P '^BASH\t' $out/$slug.calls | cut -f2 | grep -E '(^|[ ;|&(])(cat|sed|grep|rg|head|tail|awk|wc|nl|less|diff)( |$)' \
     | grep -oE '[A-Za-z0-9_./-]+\.(go|md|yaml|yml|json|sh|cmd|scm|txt|toml|mod)\b' | sed "s#^$wt##"
-} | grep -vE '^(/|_lyx/|\.lyx/|\.scratch|_board|\.\./)' | grep -E '/|^(PATTERN|CLAUDE)\.md$' | sort -u > $out/$slug.read
+} | grep -vE '^(/|_lyx/|\.lyx/|\.scratch|_bolt|\.\./)' | grep -E '/|^(PATTERN|CLAUDE)\.md$' | sort -u > $out/$slug.read
 nr=$(wc -l < $out/$slug.read); nn=$(wc -l < $out/$slug.named)
 # a named entry is read if a read file equals it or lies under it; a read file is named if it equals or lies under a named entry
 rn=0; while read -r f; do grep -qxF -e "$f" $out/$slug.named || awk -v f="$f" 'index(f,$0"/")==1{h=1} END{exit !h}' $out/$slug.named && rn=$((rn+1)); done < $out/$slug.read

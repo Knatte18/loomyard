@@ -2,11 +2,11 @@
 
 ## Method and caveats
 
-- Sources: trace logs in `_board`, `loomyard`, `go-driver-assistant`, `run-window-bugs`, `fan-lab-weft` (`.lyx/logs/*.log`).
+- Sources: trace logs in `_bolt`, `loomyard`, `go-driver-assistant`, `run-window-bugs`, `fan-lab-weft` (`.lyx/logs/*.log`).
 - The `*-weft/.lyx/logs` dirs of loomyard, go-driver-assistant and run-window-bugs hold the same files as their pair dirs (identical line counts), so they were counted once.
   Naive glob total is 34194 lines; deduplicated it is 30758 lines, of which 30111 carry `level=` (the rest are the `command=` header lines, 647 trace files).
 - Volume is 8.8 MB. WARN 26897 (89.3%), INFO 3214 (10.7%), DEBUG 0, ERROR 0.
-- One file dominates: `_board/.lyx/logs/trace-20261008T181526Z-f2e3f7df172f3d30-3854.log` has 26486 lines, 7.7 MB (a `reed watchdog` process).
+- One file dominates: `_bolt/.lyx/logs/trace-20261008T181526Z-f2e3f7df172f3d30-3854.log` has 26486 lines, 7.7 MB (a `reed watchdog` process).
 
 ## 1. Top 30 by count (share of 30111 level lines)
 
@@ -107,5 +107,5 @@ Also seen at lower counts: `configengine: degrading to embedded template` (15, `
 ## Estimated removal
 
 - Fixing items 1 (once per distinct error), 2, 4, 5, 6, 7 removes about 27450 of 30111 level lines, roughly 91% (1: ~25200, 2: ~1100, 4: ~400, 5: ~300, 6: 324, 7: 189, less a few dozen kept).
-- Excluding the single 26486-line `_board` file, 4877 level lines remain across the other 646 traces; the same fixes remove about 2200 of them, roughly 45%. The bytes share is larger because the resize lines are long.
+- Excluding the single 26486-line `_bolt` file, 4877 level lines remain across the other 646 traces; the same fixes remove about 2200 of them, roughly 45%. The bytes share is larger because the resize lines are long.
 - Adding the Debug demotions (items 8-11, 14, 20) would take out another 400 or so (about 1.5% of all, about 10% of the remainder).

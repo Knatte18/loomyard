@@ -114,7 +114,7 @@ Is each description accurate and useful?
 
 **Goal:** "Confirm the Hub the launcher just materialized (or reused) looks the way `lym fabric clone` promises."
 
-**Watch:** `_board` is a linked worktree of the same weft repo as the weft prime, never a separate clone -- confirm `git -C <weft-prime> rev-parse --git-common-dir` and `git -C _board rev-parse --git-common-dir` resolve to the same path. `_board` is checked out on the warp's own dynamically-derived unsuffixed default branch (**never hardcoded to `main`** -- whatever the warp repo's actual default branch is), which `git -C _board branch --show-current` should confirm directly;
+**Watch:** `_bolt` is a linked worktree of the same weft repo as the weft prime, never a separate clone -- confirm `git -C <weft-prime> rev-parse --git-common-dir` and `git -C _bolt rev-parse --git-common-dir` resolve to the same path. `_bolt` is checked out on the warp's own dynamically-derived unsuffixed default branch (**never hardcoded to `main`** -- whatever the warp repo's actual default branch is), which `git -C _bolt branch --show-current` should confirm directly;
 this mirrors the assertion shape `internal/fabricengine/clone_adopt_test.go`'s `assertBoardIsWeftWorktree` already makes in code.
 The weft prime's checked-out branch is **`main-weft`**, not `main` -- fabric's uniform branch-suffix scheme applies from the very first pair, unlike the pre-fabric mirrored (identical) branch-naming convention.
 Use `lym fabric pairs` and plain git (`git -C <weft-prime> branch --show-current`) to confirm;
@@ -212,7 +212,7 @@ Before any of that, dirty the warp worktree with an uncommitted edit to a tracke
 Delete the hub directory outright, then re-clone it supplying only the weft URL, and confirm the warp side is derived rather than asked for."
 
 **Watch:** Confirm the re-clone succeeds with no warp URL on the command line at all -- the warp URL must be derived from the binding recorded on the weft side, not prompted for or defaulted some other way.
-Confirm the hub comes up at the same path and identically wired: the same `_board`-is-a-weft-worktree check and the same `main-weft` branch check F1 already makes both hold here too.
+Confirm the hub comes up at the same path and identically wired: the same `_bolt`-is-a-weft-worktree check and the same `main-weft` branch check F1 already makes both hold here too.
 Confirm the success envelope reports the derived warp URL, and reports that the binding was **not** re-written on this re-clone -- it already existed from the earlier two-URL clone.
 Confirm the binding record itself is present and tracked at the board root;
 the record's filename is the one the fabric module documents (`.lym-warp`), so confirm that exact name rather than guessing at it.
@@ -228,7 +228,7 @@ the record's filename is the one the fabric module documents (`.lym-warp`), so c
 **Goal:** "Clone a hub anchored at a subdirectory of the warp repo rather than its root, and confirm the whole verb surface works from the anchored directory and nowhere else."
 
 **Watch:** Clone with `lym fabric clone --subpath <dir> <weft-url> <warp-url>`, where `<dir>` is a directory that really exists in the warp repo.
-Confirm `_lym` and `.lym` land as links inside `<warp>/<dir>/`, that `<warp>/<dir>/` has no `_board` entry at all, and that the warp repo ROOT has none of `_lym`/`.lym` either — `ls -la` both.
+Confirm `_lym` and `.lym` land as links inside `<warp>/<dir>/`, that `<warp>/<dir>/` has no `_bolt` entry at all, and that the warp repo ROOT has none of `_lym`/`.lym` either — `ls -la` both.
 Confirm every verb runs from `<warp>/<dir>` (`status`, `pairs`, `list`, `reconcile`, `prune`, `cleanup`, `sync`), and that running any of them from the warp repo root, from a subdirectory of `<dir>`, or from a sibling directory is REFUSED with an error naming both cwd and the anchored directory — not a confusing downstream failure.
 Confirm `lym fabric add <slug>` produces a second pair anchored identically (`<hub>/<slug>/<dir>/_lym`), and that `lym fabric commit` after editing `<dir>/_lym/...` commits to the weft at `<dir>/_lym/...` while leaving the warp side untouched (`git -C <warp> status`).
 Confirm a bad `--subpath` is refused before anything is created and leaves no hub behind: an absolute path (`--subpath /<dir>`), one escaping the repo (`--subpath ../..`), one naming a file, and one naming a directory that does not exist.
@@ -246,7 +246,7 @@ Confirm a bad `--subpath` is refused before anything is created and leaves no hu
 **Watch:** In a wired worktree, commit a real symlink of your own beside the junctions at the anchored directory — e.g. `ln -s <existing-dir> latest && git add latest && git commit`.
 Run `lym fabric reconcile`.
 The symlink must still be there afterwards, and `git status` must be clean: fabric owns only the links it created (those pointing into the paired weft worktree), and a link pointing anywhere else is the operator's, never a "stale junction" to sweep.
-Then check the anchor-marker migration guard: rename `<hub>/_board/.lym-anchor` to `.fabric-anchor` and run any verb.
+Then check the anchor-marker migration guard: rename `<hub>/_bolt/.lym-anchor` to `.fabric-anchor` and run any verb.
 Every verb must hard-error naming both marker names and the rename remedy — it must NOT fall back to treating the repo as root-anchored, which on a subpath hub would wire a second junction set at the warp repo root.
 Rename it back and confirm normal operation resumes.
 
@@ -262,8 +262,8 @@ Rename it back and confirm normal operation resumes.
 
 **Watch:** Run `lym fabric remove <prime-slug>` -- the hub's own warp worktree directory name, the one every operator can reach by tab-completion.
 It must be **refused**, naming the prime worktree, and `<hub>/<prime>` must still be there afterwards WITH its `.git` directory: git declines to remove a main working tree, and fabric must report that rather than deleting the clone. (Historical: this deleted the entire warp repository, gitdir included, on a clean hub with no `--force`, while the JSON envelope claimed "warp worktree removed".)
-Then run `lym fabric remove _board` and `lym fabric remove <prime>-weft`.
-Both must be refused with an `invalid slug` error and both directories must survive intact -- `_board` holds `.lym-anchor`, `.lym-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lym` store. `lym fabric add` already refuses exactly this name set;
+Then run `lym fabric remove _bolt` and `lym fabric remove <prime>-weft`.
+Both must be refused with an `invalid slug` error and both directories must survive intact -- `_bolt` holds `.lym-anchor`, `.lym-warp` and the repo-wide `fabric.yaml`, and `<prime>-weft` is the entire durable `_lym` store. `lym fabric add` already refuses exactly this name set;
 `remove` must refuse the same one.
 Then the cleanup half: with the prime pair on the default branch, `lym fabric checkout <other-branch>` to move it off, then run `lym fabric cleanup --apply --force` and confirm `main-weft` is reported `protected: true` and still exists (`git -C <hub>/<prime>-weft branch`).
 The primary weft branch is the durable weft line whatever the prime happens to be checked out on;
@@ -337,9 +337,9 @@ Repeat the whole scenario with `--subpath backend`, since the anchor and the bra
 **Goal:** "Hand every teardown verb a slug that is a relative path element rather than a name, and confirm nothing outside the named pair is touched."
 
 **Watch:** On a hub with one added pair, run `lym fabric remove ..`, then `lym fabric remove .`, then `lym fabric remove ../evil`, `lym fabric remove a/b`, and `lym fabric remove ""`.
-Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_board _launchers <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
+Every one must be refused BEFORE any teardown runs, and after all five the hub must still list `_bolt _launchers <RepoName>.code-workspace <prime> <prime>-weft <slug> <slug>-weft` exactly as before, with `_launchers` still holding `ide-menu.sh` and the pair's directory.
 Then confirm an ordinary `lym fabric remove <slug>` still works.
-(Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_board`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
+(Historical: `.` and `..` passed every rule in the shared slug validator -- not empty, no separator, no weft suffix, no reserved hub name -- and `<hub>/_launchers/<anchor>/<slug>` then resolved to `<hub>` itself, whose `os.RemoveAll` deleted the warp clone, the weft clone, `_bolt`, every pair and all uncommitted work, after which the verb returned `"failed to check worktree status"` -- an error claiming nothing had happened.)
 Repeat on a `--subpath backend` hub, where the anchor segment absorbs one `..` and the damage lands one level lower.
 
 **Verdict:** `OK` / `WARN` / `FAIL`
@@ -543,7 +543,7 @@ Then hand-write a `.lym/shed/<slug>/Worktree-Create-stuck.md` beside a fixture w
 Set the fixture's `state` to `done` and confirm both `lym batten run <slug>` and `lym batten step <slug>` refuse, naming the per-slug directory to delete to run it again.
 Hold `.lym/shed/<slug>/run.lock` yourself (any advisory-lock-compatible hold) and confirm both `lym batten run <slug>` and `lym batten step <slug>` refuse, naming that lock path.
 Run `lym batten run <slug>`, `lym batten step <slug>`, and `lym batten status <slug>` from a task worktree rather than the hub's prime, and confirm each refuses naming both worktree names and telling the operator to re-run it from the prime.
-Run the same three verbs from the weft prime (`<hub>/<warp>-weft`) and from `_board`, and confirm each refuses naming the records sibling or the `_board` checkout -- the weft prime is a repository of its own whose prime is itself, so a name comparison alone would let batten's bookend rows drive fabric against the weft repository.
+Run the same three verbs from the weft prime (`<hub>/<warp>-weft`) and from `_bolt`, and confirm each refuses naming the records sibling or the `_bolt` checkout -- the weft prime is a repository of its own whose prime is itself, so a name comparison alone would let batten's bookend rows drive fabric against the weft repository.
 With a slug's durable `_lym/shed/<slug>/status.json` in place, delete its ephemeral `.lym/shed/<slug>/` directory (what a fresh clone on another machine has) and confirm `lym batten status <slug>` and `lym batten pause <slug>` answer from the durable file rather than failing to open a lock.
 Follow the `done`-slug refusal's remedy verbatim and confirm it names the durable `_lym/shed/<slug>/` run directory AND the branches the torn-down pair left behind, local and remote -- removing the run directory alone lands the re-run on the create row's leftover-branch refusal -- and that removing all of them does let the slug run again.
 Upsert a Board task with `"type":"batten"` and confirm `lym batten step <slug>` halts `blocked` at `Seed-Child` with a `stuck_reason` naming the Board type, with no seed written in the task worktree and nothing committed on its branch.
@@ -559,7 +559,7 @@ Step another slug to `Worktree-Teardown` the same way, then remove only its warp
 Step a third slug to `Worktree-Teardown`, point the weft prime's `origin` at a missing path, and confirm `lym batten step <slug>` removes the pair but halts `blocked` naming the other-side branch's remote copy; restore `origin` and confirm the next step reports `done` with that branch gone from the remote.
 From prime, create only a fresh slug's task worktree (`git worktree add -b <branch_prefix><slug> <hub>/<slug>`, the state a create killed right after its first step leaves) and confirm `lym batten step <slug>` halts `blocked` at `Worktree-Create` naming `lym fabric remove --force <slug>` and `git branch -D <branch_prefix><slug>`; run both verbatim from prime and confirm the next step creates the pair.
 Step a fresh slug to `Run-Shed` and run that one step with `LYM_REED_TMUX` pointed at a nonexistent path, so the child's bootstrap fails after seeding its status: confirm a named spawn error, then that the next plain `lym batten step <slug>` spawns the bootstrap again (a `lym loom run` driver appears) rather than reporting "still running" over a child with no driver.
-Run `lym shed seed <run-id> --recipe tapestry` from `_board` and from the weft prime, and confirm each refuses and leaves no `_lym/shed/` behind in that checkout.
+Run `lym shed seed <run-id> --recipe tapestry` from `_bolt` and from the weft prime, and confirm each refuses and leaves no `_lym/shed/` behind in that checkout.
 Run `lym shed seed <run-id> --recipe batten` from a task worktree and confirm it refuses with batten's own prime-only wording and leaves no `_lym/shed/<run-id>/` in that pair, while the same command with `--recipe tapestry` there succeeds.
 
 Say in the report that **no automated test drives a real child bootstrap at all**: the `integration`-tagged end-to-end test walks all four rows against a real hub, but it replaces `Env.InnerRun.Spawn` with a no-op and `Env.InnerRun.ReadStatus` with an in-memory stub, so the tapestry run itself is exactly the part it does not drive.

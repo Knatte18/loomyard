@@ -28,7 +28,7 @@ The Hub directory structure mirrors the lym topology model:
 C:\Code\lym-test-LYMHUB/
   ├── lym-test/           (code repo worktree)
   ├── lym-test-<records>/ (records repo worktree)
-  └── _board/             (board repo with task store)
+  └── _bolt/             (board repo with task store)
 ```
 
 ### Disposing of a pre-rename container

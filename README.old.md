@@ -139,7 +139,7 @@ pick the task up on another machine and it resumes where it stopped, and two tas
   ├── <slug>/             a task worktree               ┐ likewise, on
   ├── <slug>-<records>/   its records side              ┘ the task branch
   ├── <RepoName>.code-workspace  the VS Code workspace of the hub
-  ├── _board/             the task store
+  ├── _bolt/             the task store
   └── _launchers/         per-worktree launcher scripts
 ```
 

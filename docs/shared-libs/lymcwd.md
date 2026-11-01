@@ -125,14 +125,14 @@ That follow-up pulls `logger` initialization rework in with it and is out of sco
 **`TestEnforcement` (cwd/root primitives ban):** Raw `os.Getwd` and `git rev-parse --show-toplevel` are banned outside `internal/lymcwd` and `cmd/lym/main.go`.
 The scan uses a substring check on the raw file bytes (after blanking comments) and fails the build if either token appears in any non-test `.go` file outside the allowlist.
 
-**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_board`, the records-sibling suffix, `-LYMHUB`, `_portals`, `_launchers`, `_lym`, `.lym`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
+**`TestEnforcement_GeometryLiterals` (geometry-literal construction ban):** The policed geometry path tokens (`_bolt`, the records-sibling suffix, `-LYMHUB`, `_portals`, `_launchers`, `_lym`, `.lym`) may not appear as string literals in a **path-construction context** in any production file outside that token's registered owner directory (or directories, for a sanctioned dual-owner token).
 Path-construction contexts are:
 
 - An argument to a `filepath.Join(...)` call.
 - An operand of a binary `+` (`token.ADD`) expression.
 - The value of a string `const` declaration.
 
-Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boardroom` or a suffix-extended name are not flagged.
+Matching is **whole-token** (exact equality after `strconv.Unquote`, not substring), so compound names like `_boltroom` or a suffix-extended name are not flagged.
 Test files (`*_test.go`) are excluded from the scan — test geometry is a code-review obligation, not machine-enforced.
 A `scanned_non_empty` sub-test guards against a misconfigured walk that would silently produce a vacuous pass.
 

@@ -11,7 +11,7 @@ All under `/home/knatte/Code/loomyard-LYXHUB/loomyard/.scratch/burler-fan-tuning
 - `round-N-review.md`, `round-N-fixer-report.md`, `round-N-focus.md` for N = 1..5: the five original review rounds of this task, the fixer's report after each, and each round's focus file.
 - `final-decision-record.md`: the record after round 5's fix.
 - `board-entry-reed-view.md`: the task's board entry at round 1.
-- The rubric the reviewers applied: `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/stencils/loom/loom-rubric-discussion-review.md` (respect its `Do not flag` list).
+- The rubric the reviewers applied: `/home/knatte/Code/loomyard-LYXHUB/_bolt/_lyx/stencils/loom/loom-rubric-discussion-review.md` (respect its `Do not flag` list).
 
 The code the record describes is the worktree `/home/knatte/Code/loomyard-LYXHUB/twb-fan-rv` at its HEAD (`fd5b0f58e`, the code at the time of round 1). Check premises against it with grep, cat, sed -n and `lyx quarry`. Do not read anything under any `.scratch/` directory other than the originals folder above and your output file.
 

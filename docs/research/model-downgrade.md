@@ -1,6 +1,6 @@
 # Model downgrade candidates
 
-Analysis of where lyx can run a role on a cheaper model, from the model-spec resolution, the config templates, the hub config in `_board/_lyx/config/` and the 6-run report in `docs/research/token-usage-by-role.md`.
+Analysis of where lyx can run a role on a cheaper model, from the model-spec resolution, the config templates, the hub config in `_bolt/_lyx/config/` and the 6-run report in `docs/research/token-usage-by-role.md`.
 Cost shares are of the $237 role cost of those 6 runs (the orch adds $34 on top, 12.5% of $271).
 
 ## Findings that shape the answer
@@ -16,7 +16,7 @@ Cost shares are of the $237 role cost of those 6 runs (the orch adds $34 on top,
 
 ## Inventory and proposals
 
-Hub config is `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/config/` (called hub below); template defaults are under `internal/*/template.yaml`.
+Hub config is `/home/knatte/Code/loomyard-LYXHUB/_bolt/_lyx/config/` (called hub below); template defaults are under `internal/*/template.yaml`.
 "Settable" means a config key sets that role's model alone.
 
 | role | today's model/effort | where set | settable | share of cost | proposal | risk |

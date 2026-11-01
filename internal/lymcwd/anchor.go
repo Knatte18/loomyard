@@ -22,7 +22,7 @@ import (
 // BoltDirName is the name of the Bolt checkout inside a hub.
 // It lives here because lymcwd reads the hub-wide anchor marker in the Bolt checkout.
 // fabricengine and runproc take the name from here, since lymcwd cannot import either.
-const BoltDirName = "_board"
+const BoltDirName = "_bolt"
 
 // boardDir returns the absolute path to the Bolt checkout inside hub.
 // It is the one reader of BoltDirName in lymcwd, to find the recorded-anchor marker.

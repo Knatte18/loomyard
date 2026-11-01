@@ -7,7 +7,7 @@ Never edit any other file, never run a git command that changes anything, never 
 
 Bench folder `B` = `/home/knatte/Code/loomyard-LYXHUB/loomyard/.scratch/burler-fan-tuning-bench/`.
 
-- The target every review below reviewed: `B/key/originals/round1-target-decision-record.md` and `B/key/originals/round1-target-support-log.md`; the task's board entry `B/key/originals/board-entry-reed-view.md`; the rubric `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/stencils/loom/loom-rubric-discussion-review.md` (respect its `Do not flag` list).
+- The target every review below reviewed: `B/key/originals/round1-target-decision-record.md` and `B/key/originals/round1-target-support-log.md`; the task's board entry `B/key/originals/board-entry-reed-view.md`; the rubric `/home/knatte/Code/loomyard-LYXHUB/_bolt/_lyx/stencils/loom/loom-rubric-discussion-review.md` (respect its `Do not flag` list).
 - The key: `B/key/key.md`, the distinct real defects of this target found by the five original review rounds (ids `K1`, `K2`, ...).
 - The pool so far: `POOL` (if it says `none`, there is no pool yet). It lists the distinct real defects found by earlier bench arms that are not in the key, with ids `N1`, `N2`, .... Reuse those ids for the same defect; give new ones the next free `N` id.
 - The reviews to grade, with neutral labels: LIST.

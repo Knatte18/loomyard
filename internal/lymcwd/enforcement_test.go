@@ -196,7 +196,7 @@ func TestEnforcement(t *testing.T) {
 // co-ownership window) constructs a geometry path token as a string literal in a path-construction
 // context: a filepath.Join argument, a binary + operand, or a string const declaration value.
 // Whole-token matching (exact equality, not substring) avoids false positives on compound names
-// such as "_boardroom" or "-weft-bare".
+// such as "_boltroom" or "-weft-bare".
 // Test files (*_test.go) are excluded because test geometry is a review rule, not a
 // machine-enforced invariant.
 //
@@ -207,7 +207,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// path-construction context.
 	geometryToken := func(s string) bool {
 		switch s {
-		case "_board", "-weft", "-LYMHUB", "_portals", "_launchers", "_lym", ".lym":
+		case "_bolt", "-weft", "-LYMHUB", "_portals", "_launchers", "_lym", ".lym":
 			return true
 		}
 		return false
@@ -216,12 +216,12 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryTokenOwners maps each policed geometry token to the set of directories permitted to declare or construct it in path-construction context: the finished per-token ownership map, converged batch by batch from a single allowlisted directory (internal/hubgeometry, then internal/lymcwd) to this map, each token's row landing in the same batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_board" is declared once, as lymcwd.BoltDirName; fabricengine and runproc take the name from it.
+		// "_bolt" is declared once, as lymcwd.BoltDirName; fabricengine and runproc take the name from it.
 		// "-LYMHUB" is dual-owned: internal/lymcwd keeps a private hubSuffix const
 		// (Location.RepoName derives from it), while internal/fabricengine
 		// owns the exported HubPath constructor every other caller uses.
 		// The duplication is sanctioned by this map, not a leak.
-		"_board":  {"internal/lymcwd"},
+		"_bolt":   {"internal/lymcwd"},
 		"-weft":   {"internal/weftname"},
 		"-LYMHUB": {"internal/lymcwd", "internal/fabricengine"},
 		// "_portals" and "_launchers" are fabric's own illusion-maintenance
@@ -408,8 +408,8 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 			src  string
 		}{
 			{
-				name: "filepath.Join_arg_board",
-				src:  `package p; import "path/filepath"; var _ = filepath.Join(x, "_board")`,
+				name: "filepath.Join_arg_bolt",
+				src:  `package p; import "path/filepath"; var _ = filepath.Join(x, "_bolt")`,
 			},
 			{
 				name: "add_operand_weft",
@@ -458,9 +458,9 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 				src: `package p; var _ = slug + "-weft-bare"`,
 			},
 			{
-				name: "filepath.Join_near_token_boardroom",
-				// "_boardroom" ≠ "_board"; whole-token matching must reject the compound name.
-				src: `package p; import "path/filepath"; var _ = filepath.Join(x, "_boardroom")`,
+				name: "filepath.Join_near_token_boltroom",
+				// "_boltroom" ≠ "_bolt"; whole-token matching must reject the compound name.
+				src: `package p; import "path/filepath"; var _ = filepath.Join(x, "_boltroom")`,
 			},
 		}
 		for _, tt := range negatives {

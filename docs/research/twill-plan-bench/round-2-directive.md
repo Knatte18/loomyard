@@ -6,7 +6,7 @@ This step sits between Step 2 and Step 3, and its spawn is the first thing you d
 Your first Write of any file under `PAIRDIR/_lyx/plan/` comes after the Agent call in item 2 below, never before it.
 Do not draft a card, the overview or any part of the plan in a file before that call; the forks wait for the plan, so spawning first costs you nothing.
 
-1. When Step 2's reading is done, read the rubric at `/home/knatte/Code/loomyard-LYXHUB/_board/_lyx/stencils/loom/loom-rubric-plan-review.md`, then state the cards you will write in a text reply, one line each: number, slug, the decisions it carries.
+1. When Step 2's reading is done, read the rubric at `/home/knatte/Code/loomyard-LYXHUB/_bolt/_lyx/stencils/loom/loom-rubric-plan-review.md`, then state the cards you will write in a text reply, one line each: number, slug, the decisions it carries.
 2. In the same turn, spawn every lens below in one message through the Agent tool with `subagent_type: "fork"`, one fork per lens, and never pass a `name`.
    Each fork's prompt is the fork boilerplate below plus its lens text and nothing else: no design hint, no direction to read code.
 3. Now do Step 3, Step 4 and Step 5: write the plan, and run `lyx loom validate-plan` until it passes.
