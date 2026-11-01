@@ -2998,6 +2998,9 @@ func TestScheduler_Chases(t *testing.T) {
 			e.readBodies(t, strand(alpha), "")
 			e.tickToUnanswered(t, id)
 			notice := creelPostTo(e, creel, beta)
+			// Stopping waits for beta's delivery worker to journal its typing of the notice,
+			// so the journal count below moves only by what the refused reply writes.
+			e.scheduler.Stop()
 			before := len(e.store.Log(creelengine.LogFilter{}))
 			_, err := e.store.Reply(strand(beta), notice, "thanks")
 			wantErr(t, err, fmt.Sprintf("message #%d is a creel notice and takes no reply", notice), "way forward: post to the strand it names with lym creel post <strand>")

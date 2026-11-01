@@ -13,8 +13,8 @@ The subject under review is the current plan: `_lym/plan/00-overview.md` and the
 The plan directory may also hold `archive-*/` subdirectories, which are rotations of superseded plans;
 they are out of scope, and a finding raised against one is never legitimate.
 
-The format contract, and the Card model it implements, are both `{{.specs_dir}}/loom/loom-plan-spec.md`.
-This rubric points at both and restates neither.
+The format contract, and the Card model it implements, are both `{{.specs_dir}}/loom/loom-plan-spec.md`, and `{{.specs_dir}}/loom/loom-plan-checks-spec.md` lists the contract's validation checks.
+This rubric points at them and restates neither.
 The mechanical checks over that contract are already enforced by this round's own gate over this round's own output — every check but `plan-unapproved` and `delete-target-gone` — while `plan-unapproved` is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil, and `delete-target-gone` fires only at Webster's dispatch, after this round.
 
 `Plan-Review` is the LLM producer, not the mechanical one — over-flagging is a judgment failure mode a mechanical producer, which has only checks and never judgment, cannot exhibit.
@@ -38,7 +38,7 @@ A fix inserts or removes a card only with `lym loom insert-card` or `lym loom re
 Do not flag any of the following as a finding:
 
 - **Anything this round's own gate already checks.**
-  Every check ID `{{.specs_dir}}/loom/loom-plan-spec.md`'s own validation-checks section lists is enforced deterministically by this round's own gate over this round's own output, except `plan-unapproved`, which is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil, and `delete-target-gone`.
+  Every check ID `{{.specs_dir}}/loom/loom-plan-checks-spec.md` lists is enforced deterministically by this round's own gate over this round's own output, except `plan-unapproved`, which is enforced at no row at all, resting on the review segment's own approve seam failing loudly if ever wired nil, and `delete-target-gone`.
   `delete-target-gone` fires only at Webster's dispatch, after this round, so no plan this round reviews can carry it.
   Re-deriving any of them here is duplicated work whose only possible outcome is disagreement with the gate.
 - **A missing `DependsOn`/`Produces` field, or an incomplete dependency list.**
@@ -46,7 +46,7 @@ Do not flag any of the following as a finding:
   Plan-time completeness of that intersection is explicitly not provable;
   the real gate is the post-merge build and test.
 - **A `Rename`, `Move`, `Prosa`, or `Custom` card carrying no `ImpactSummary`.**
-  It is required for `Edit` and `Delete` only, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md`.
+  It is required for `Edit`, `Extends` and `Delete` only, per the per-type table in `{{.specs_dir}}/loom/loom-plan-spec.md`.
   For `Rename` the reason is specific: a correctly executed AST-aware rename is binary, with no graded blast radius to summarise.
 
 ## Also flag
@@ -123,7 +123,7 @@ Do not flag any of the following as a finding:
 
 ## Proposed fixes
 
-A finding whose fix adds, drops, moves or pairs targets, or changes a verify command, proposes only a fix that every check in the validation-checks section of `{{.specs_dir}}/loom/loom-plan-spec.md` admits.
+A finding whose fix adds, drops, moves or pairs targets, or changes a verify command, proposes only a fix that every check in `{{.specs_dir}}/loom/loom-plan-checks-spec.md` admits.
 A fix that adds or pairs targets must pass `redundant-package-target` and `redundant-file-target` there, since a file or a package listed beside a member of it on one card is refused, and the spec says what counts and the way forward.
 When the reviewer sees no admissible fix, it still reports the defect and names the check that constrains the fix.
 A finding's `fix` key is a proposal: the fixer may apply any other fix the checks admit, and when none exists it defers the finding with the constraining check as the reason.

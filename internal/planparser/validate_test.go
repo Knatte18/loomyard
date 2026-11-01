@@ -1,5 +1,5 @@
 // validate_test.go covers all seventeen of Validate's format-4 checks, each with at least one
-// triggering and one clean case, per contracts/specs/loom-plan-spec.md's distinct
+// triggering and one clean case, per contracts/specs/loom-plan-checks-spec.md's distinct
 // ValidationError.Check IDs — sixteen of which ValidateFormat also emits, everything but
 // plan-unapproved.
 // The golden happy-path test reuses the format-4 seven-card golden fixture (testdata/goodplan,
@@ -133,7 +133,7 @@ func TestValidate_GoldenFixture_ZeroFindings(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter and contracts/specs/loom-plan-spec.md checks them as a pair; ValidateFormat reports the same format-unrecognized but never plan-unapproved, whether approved: is true, false, or (Go's zero value) absent.
+// TestValidate_FormatAndApproval covers format-unrecognized and plan-unapproved together, since both stem from the same overview frontmatter; ValidateFormat reports the same format-unrecognized but never plan-unapproved, whether approved: is true, false, or (Go's zero value) absent.
 func TestValidate_FormatAndApproval(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -179,7 +179,7 @@ func TestValidate_FormatAndApproval(t *testing.T) {
 	}
 }
 
-// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches contracts/specs/loom-plan-spec.md's fixed order when a plan trips both format-unrecognized and plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining findings after them.
+// TestValidate_FormatAndApprovalOrder asserts Validate's finding order still matches the fixed order validate.go's file comment lists when a plan trips both format-unrecognized and plan-unapproved at once: format-unrecognized first, plan-unapproved second, any remaining findings after them.
 //
 //testtiming:keep pins the fixed finding order of format-unrecognized then plan-unapproved, which TestValidate_FormatAndApproval counts but does not order
 func TestValidate_FormatAndApprovalOrder(t *testing.T) {

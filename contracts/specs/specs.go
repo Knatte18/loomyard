@@ -20,6 +20,16 @@ import (
 //go:embed loom-plan-spec.md
 var LoomPlanSpec []byte
 
+// LoomPlanChecksSpec is the catalogue of the plan gate's validation checks, read when a check's printed finding does not settle it.
+//
+//go:embed loom-plan-checks-spec.md
+var LoomPlanChecksSpec []byte
+
+// LoomPlanCSharpSpec is what the plan format adds for a plan under `language: csharp`.
+//
+//go:embed loom-plan-csharp-spec.md
+var LoomPlanCSharpSpec []byte
+
 // LoomPartsSpec is the parts file format contract's shipped-default content.
 // Parts-Write writes the parts file against its format and checks, and internal/partsparser parses it.
 //
@@ -66,6 +76,8 @@ type registryEntry struct {
 // A registered name starts with its owning product's name because stencilstore.RelPath derives the family directory from the substring up to the first "-".
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
+	{"loom-plan-checks-spec", &LoomPlanChecksSpec},
+	{"loom-plan-csharp-spec", &LoomPlanCSharpSpec},
 	{"loom-parts-spec", &LoomPartsSpec},
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},
 	{"loom-discussion-spec", &LoomDiscussionSpec},

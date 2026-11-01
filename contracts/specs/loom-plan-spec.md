@@ -1,47 +1,39 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the plan-format blocks `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md`, which `contracts/stencils/loom/loom-template-plan.md` includes, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan `Plan-Write` writes and webster reads through its sole parser, `internal/planparser`. It is the parser's as-built contract, kept under `contracts/specs/`. The plan writer's prompt carries the LLM-facing subset in the plan-format blocks `contracts/stencils/loom/loom-block-plan-*.md`, which `contracts/stencils/loom/loom-template-plan.md` includes.
+
+## Files of this contract
+
+The contract is split by need; read the file that covers what you are doing.
+
+- `loom-plan-spec.md`, this file — the card format: layout, fields, types, refs, handles, numbering, the verify model and granularity.
+- `loom-plan-checks-spec.md` — the catalogue of the plan gate's validation checks.
+  `lym loom validate-plan` names each failing check and its way forward, so a check's entry is read only when the finding does not settle it.
+- `loom-plan-csharp-spec.md` — what a plan under `language: csharp` adds.
+- `loom-parts-spec.md` — a split task: its parts, the part scope a part's plan is checked under, and the join of the parts' plans.
 
 ## Producer and contract
 
-This format is produced by `Plan-Write` (stencil: `contracts/stencils/loom/loom-template-plan.md`, whose plan format is pinned in the plan-format blocks it includes: `loom-block-plan-format`, `loom-block-plan-overview` and `loom-block-plan-cards`).
-It is validated by `Plan-Write`'s and `Plan-Burler-Fix`'s own gates over `internal/planparser` — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below, this file's own validation-checks section.
-It is reviewed by `Plan-Review`.
-
-- **Output** — the shape below, per [Card fields and order](#card-fields-and-order).
-  Consumed as Input by `Webster`, the implementer row (via `internal/planparser`, webster's sole parser).
+`Plan-Write` produces the plan, the gates of `Plan-Write` and `Plan-Burler-Fix` validate it, `Plan-Review` reviews it, and `Webster` executes it.
 
 ## What a card is
 
 The smallest change that:
 
-1. **Compiles/builds on its own** — the whole module builds immediately after the card's commit.
-   No broken syntax, no reference to a symbol that doesn't yet exist.
+1. **Builds on its own** — the whole module builds immediately after the card's commit, so no card references a symbol no earlier card creates.
 2. **Is independently committable** — a meaningful, revertible git commit on its own.
 3. **Carries the coverage for any new behavior it introduces**; the card's own targets include the test that covers it.
-   Pure refactors/renames may rely on existing tests instead.
+   Pure refactors and renames may rely on existing tests.
    A stencil's static prose is not behavior a test covers; a stencil card carries a test only when it changes a marker, a value Go fills, reads or names, a fragment Go chooses, or a rule a scan across stencils checks.
 
-**Key insight,
-and the reason the schema is shaped this way:** criterion 1 is not just a post-hoc check — it's *why the dependency graph exists at all*.
-A card that references a symbol which doesn't exist yet cannot compile, so it structurally cannot be valid until whatever card creates that symbol has already landed.
-The DAG is a **consequence** of the compile-validity requirement, not a separate constraint bolted on top.
-
-## Batch is gone / the card is the unit
-
-**Batching is a step outside the plan schema, not a plan-schema concept.**
-The plan's unit is always the individual **card** — the smallest, most precise, independently verifiable unit.
-Any later grouping of cards (e.g. by webster, for read-cost reasons — same file/module, per the cards' declared targets) is a later, measured decision made outside the plan format, not something the plan format needs to express or `Plan-Write` needs to decide.
-
-There is no batch-level "declared ownership" `## Scope` concept.
-A card's own type-label target list *is* its declared footprint;
-there is no wider unit left to declare a footprint for.
+The card is the plan's unit.
+How webster groups cards into batches is no card property; `internal/batcher`'s package doc describes it.
 
 ## Plan vs. schedule
 
 A valid plan is executable strictly in card-number order: a card never depends on anything a later card does.
-Webster runs the cards in that order as written and never sorts them, so a card that needs a symbol, file or fixture a later card creates is a defect of the plan, not something the executor repairs.
-`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs can show; every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
+Webster runs the cards in that order and never sorts them, so a card that needs a symbol, file or fixture a later card creates is a defect of the plan.
+`uses-later-target` and `delete-before-reference` refuse the cases a card's own refs show; every other dependency on a later card is the writer's to avoid and the plan reviewer's to flag.
 
 ## On-disk layout
 
@@ -50,186 +42,137 @@ _lym/plan/
   00-overview.md       # frontmatter + Card Index + task framing + optional plan-level sections
   NN-<card-slug>.md    # one file per card (NN = zero-padded card order)
   amendments.md        # optional; append-only handle-substitution log, see Plan: handles below
-  ...
 ```
 
-`00-overview.md` frontmatter carries **scalar-only** keys:
+`00-overview.md` frontmatter carries scalar keys only:
 
 ```yaml
 format: 5
 approved: true
-root: <optional worktree-relative dir>   # optional; see Card path resolution below
-language: go                             # optional; "go" (default), "csharp" or "none" — see The shape classifier below
-first_card: 1                            # optional positive integer, default 1; see Numbering and commit subject below
+root: <optional worktree-relative dir>   # see Card path resolution below
+language: go                             # optional; "go" (default), "csharp" or "none"
+first_card: 1                            # optional positive integer, default 1; see Numbering below
 ```
 
 The body carries a short task-framing paragraph, an ordered **Card Index** whose entries read `N — <card-slug> — <one-line intent>`,
-and the optional plan-level body sections `## Shared Decisions`, `## Rename mechanic` and `## PATTERN changes`; a `## verify:` section is accepted and ignored.
+and the optional sections `## Shared Decisions`, `## Rename mechanic` and `## PATTERN changes`; a `## verify:` section is accepted and ignored.
 
 `## PATTERN changes` carries the decision record's `## PATTERN changes` entries, one bullet each, in the bullet shape `loom-discussion-spec.md` defines, without the record's added-after-Discussion suffix.
 
-`NN-<card-slug>.md` — one file per card (`NN` = zero-padded card order);
-the file *is* the card.
-Card Index ↔ card files are cross-checked mechanically (the `index-file-mismatch` check, below): numbering, slugs, no gaps, no orphaned file on disk.
+Each `NN-<card-slug>.md` is one card.
+The Card Index and the card files must agree on numbering and slugs, with no gap and no orphaned file (`index-file-mismatch`).
 
 ## Card fields and order
 
-Each card lives in its own file, and the file's content is:
+A card file holds, in this order:
 
-1. **Title heading** — `# Card N — <name>`, where `N` is the card's own flat number (see [Numbering and commit subject](#numbering-and-commit-subject) below).
-2. **One or more bold type labels** from the set `**Create:**`, `**Edit:**`, `**Extends:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**` — the type name is the key, and there is no separate `Type:` field.
-   Each label's own indented, backtick-wrapped sub-bullets are that label's own targets:
+1. **Title heading** — `# Card N — <name>`, `N` the card's flat number.
+2. **One or more bold type labels** from `**Create:**`, `**Edit:**`, `**Extends:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`.
+   Each label's indented, backtick-wrapped sub-bullets are that label's targets:
 
    ```markdown
    **Edit:**
    - `internal/boardcli#newListCmd`
    - `internal/boardcli#TestList`
-   ```
-
-   A card whose targets span two labels carries both groups, one after the other, each with its own sub-bullets:
-
-   ```markdown
-   **Edit:**
-   - `list.go`
 
    **Create:**
    - `list_json_test.go`
    ```
 
-   A new test file is named as a `**Create:**` file target, and the card's Intent states its tier, such as `tier0`, the tier its test functions name in their opening `tiergate.Require` call, on a line that names no other test file; `test-tier-unstated` reads that statement.
-   A card that touches a struct a `//lym:seam` test marks lists that test, by its member glyph under `Edit` when it changes it and under `Uses` when it stays as is; `seam-test-unlisted` refuses the card otherwise.
-   A card that changes a package's non-test Go code covers the package's `doc.go`: under `Edit` when it changes what the doc says, under `Extends` when it only adds to it, under `Uses` when it stays as is; `doc-go-unlisted` refuses the card otherwise.
-   An `Edit` bullet may carry the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, which marks a signature change and states the new head, parsed like a `Create` declaration head.
-   The left token stays an ordinary `Edit` target, and it must name a member glyph: a file, a package or a handle has no prior signature to re-sign (`resign-not-member`).
-   Under `language: csharp` the head is C# source, and a re-sign obeys these bounds:
-   the head must declare the same member, with the same namespace, owner chain and name, and change only its parameter list;
-   a member with a parameter list stays one with a parameter list and a member without one stays without, so a change of kind goes through a `Delete` and a `Create`;
-   the head must not mint the id of an overload that already exists or that another card declares (`resign-overload-collision`);
-   and a later card names the re-signed member by its old glyph, the glyph left of the arrow, until the batch that re-signs it is recorded, after which webster rewrites that old glyph to the new one plan-wide.
-   A later card that names the member by its old glyph therefore runs in a later batch, and a re-sign whose edit the tree does not hold fails its batch as `resign-not-done`.
+3. Optionally **`**Uses:**`** — what the card reads but does not change, in the same bullet shape.
+4. A required, multi-line **`**Intent:**`** — what, and why.
+5. **`**ImpactSummary:**`**, required when any group is `Edit`, `Extends` or `Delete`, its value inline on the label line: a one-line blast-radius conclusion, such as "3 callers, all local to the billing package, no cross-module effects", never a restatement of `Intent`.
+6. Optionally **`**Commit:**`** and **`**Verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model).
 
-   A card carrying a `**Custom:**` group may carry no group of a different type — `Custom` groups may repeat, but never combine with any of the other seven.
-   An `Extends` group holds existing refs the card only adds to, changing nothing already there, and its refs read as `Edit` targets everywhere else: `ImpactSummary` is required, `path-missing` and `edit-test-file` check them, and the glyph resolve pass sees them unchanged.
-   The same ref under `Extends` and any other type label of one card is `extends-overlap`, and an arrow bullet under `Extends` is `extends-resign`, since a re-sign changes what is already there.
-   A `Rename` label's sub-bullets instead carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move) below.
-3. Optionally, **`**Uses:**`** — what the card reads or depends on but does not change, in the same backtick-wrapped-bullet shape as a target list.
-4. A required, multi-line **`**Intent:**`** — what, and why (prose, may span multiple lines until the next field label).
-5. **`**ImpactSummary:**`**, required for `Edit`, `Extends` and `Delete` cards only, taking its value inline on the label line — a hard-capped one-line blast-radius conclusion, never the card's main content.
-6. Optionally, **`**Commit:**`** and **`**Verify:**`** — see [Numbering and commit subject](#numbering-and-commit-subject) and [verify model](#verify-model) below.
+A field with no content is omitted; the format has no `none` sentinel.
+A missing required field is `card-missing-field`, and a present label with nothing under it is `card-field-empty`.
 
-**A field with no content is omitted entirely** — this format admits no `none` sentinel on any field.
-An optional field a card has nothing to say under simply does not appear in that card's file;
-a required field a card omits — every type label (a card must carry at least one), `Intent:`, or `ImpactSummary:` when any of the card's own groups is `Edit`, `Extends` or `Delete` — is a `card-missing-field` finding, and a label that is present but carries no bullets/prose under it is the distinct `card-field-empty` finding.
+Rules on targets:
 
-**Uses:** names what the card reads but does not change — never a target.
-An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read? — flagged by the `card-field-overlap` check.
-This is strictly **per-card**: across two cards of the same plan, one card's `Create` target followed by a later card's `Edit` of the same target is legitimate sequencing.
+- A new test file is a `**Create:**` file target, and the card's Intent states its tier, such as `tier0`, the tier its test functions name in their opening `tiergate.Require` call, on a line that names no other test file (`test-tier-unstated`).
+- A card that touches a struct a `//lym:seam` test marks lists that test by its member glyph, under `Edit` when it changes it and under `Uses` when it stays as is (`seam-test-unlisted`).
+- A card that changes a package's non-test Go code covers the package's `doc.go`: under `Edit` when it changes what the doc says, under `Extends` when it only adds to it, under `Uses` when it stays as is (`doc-go-unlisted`).
+- An `Edit` bullet may carry the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, which marks a signature change and states the new head, written like a `Create` declaration head.
+  The left token is an ordinary `Edit` target and must be a member glyph (`resign-not-member`).
+- A `Custom` group combines with no group of another type; `Custom` groups may repeat.
+- An `Extends` group holds existing refs the card only adds to, changing nothing already there; everywhere else its refs read as `Edit` targets.
+  The same ref under `Extends` and another label of one card is `extends-overlap`, and an arrow under `Extends` is `extends-resign`.
+- A `Rename` label's sub-bullets carry `` `old` -> `new` `` pairs — see [Rename and Move](#rename-and-move).
 
-There is no `DependsOn`/`Produces` field.
-Dependency edges are derived, never authored: a card's `Uses:` intersected against every other card's target list in the same plan is the dependency graph.
+**Uses:** names what the card reads, never a target.
+One entry in both a card's targets and its `Uses:` is `card-field-overlap`.
+The rule is per card: one card's `Create` of a target and a later card's `Edit` of it is ordinary sequencing.
+
+There is no `DependsOn` or `Produces` field.
+Dependency edges are derived: a card's `Uses:` against every other card's targets.
 Two `Extends` on one ref make no edge unless both cards fence a verbatim `PATTERN.md` line for one entry ID; an `Extends` against any other label, and a `Uses` against an `Extends` target, make one.
-A symbol no card in the plan touches needs no edge — its state never changes during the plan's execution.
 
 ## Card types
 
 | Type | Target list holds | Mechanical check | `ImpactSummary` |
 |---|---|---|---|
 | Create | new symbol(s)/file(s) | none — check nothing equivalent exists first | not required |
-| Edit | existing symbol(s) | impact/blast-radius on the symbol being changed; `caller-uncovered` for a re-signed member, resolved by type where a type load answers and by import path elsewhere | required |
-| Extends | existing symbol(s) or file(s) the card only adds to | `extends-overlap` and `extends-resign`: the card changes nothing already there | required |
-| Delete | existing symbol(s) OR whole file(s) | assert-no-callers (necessary, not sufficient), mechanically `caller-uncovered` for a member, resolved by type where a type load answers and by import path elsewhere | required |
+| Edit | existing symbol(s) | impact on the symbol changed; `caller-uncovered` for a re-signed member | required |
+| Extends | existing symbol(s) or file(s) the card only adds to | `extends-overlap`, `extends-resign` | required |
+| Delete | existing symbol(s) or whole file(s) | assert-no-callers, mechanically `caller-uncovered` for a member | required |
 | Rename | existing symbol(s), `old -> new` pairs | the hub's structure-aware rename tool (`language.yaml` `rename_tools`) + grep verify, never text or regex replace | not required |
-| Move | existing symbol relocated to a file, OR a whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
+| Move | existing symbol or whole file relocated | `git mv` + import fixup; destination stated in `Intent`, not the target list | not required |
 | Prosa | file(s), no symbol target | none | not required |
 | Custom | either | none — explicit escape hatch | as applicable |
 
+A card with several labels runs every group's mechanical check against that group's own targets, `Create`'s obligation included, and carries one `ImpactSummary` across all its `Edit`, `Extends` and `Delete` groups.
+
+Assert-no-callers is necessary, not sufficient: interface satisfaction, dispatch-table registration, reflection and prose references survive a delete or a rename without failing the build.
+A rename also rewrites the symbol's own doc-comment opening to the new name, and the same grep pass verifies it.
+
 A `Create` target under the repository root's git-ignored `.scratch/` is a transient draft: the card may remove it once read, and Webster's `create-not-done` check skips it.
 A target no glyph spells, such as a path whose directory holds a space, stays a plain path, and Webster's done-checks judge it by whether the path exists.
-How cards group into execution batches is not a card property; `internal/batcher`'s package doc describes it.
 A card that renames or deletes what an earlier card targets never shares that card's batch.
-
-`ImpactSummary` is required for `Edit` and `Delete` only — a `Create` card has no existing callers to have a blast radius over, which is why this spec resolves the design doc's table in favour of the design doc's own prose rather than its table row, a drafting slip the doc's prose does not carry.
-
-A multi-label card composes this table's three rule columns as follows, one rule per column:
-
-- **Target list holds** — per group, no composition: each label's own sub-bullets hold only that label's own kind of target, exactly as the table row states for that label alone.
-- **Mechanical check** — the union across the card's own groups: every group's own mechanical check runs, each against that group's own targets, never against another group's targets.
-  `Create`'s "none — check nothing equivalent exists first" cell is a real obligation that joins this union like any other, not a no-op that a multi-label card can skip past.
-- **`ImpactSummary`** — required whenever any of the card's own groups is `Edit` or `Delete`, and stays exactly one per card even when several of its groups require it: it states the blast radius across every `Edit`/`Delete` group's targets together, never a separate summary per group.
-
-`Intent` versus `ImpactSummary`: `Intent` is what and why, the card's main content.
-`ImpactSummary` is a separate, hard-capped one-line blast-radius conclusion ("3 callers, all local to the billing package, no cross-module effects") — its own field specifically so it stays terse, since folding it into `Intent` lets it balloon into unbounded reasoning.
-
-**`Rename` requires no `ImpactSummary`, and that is a property of the operation, not an oversight.**
-A correctly executed structure-aware rename is binary — every reference updates and the build passes, or a leftover reference fails the build immediately — so there is no graded blast radius to summarize.
-The blind spot `assert-no-callers` has for `Delete` still applies: string- and reflection-based references (a registry keyed by name) survive a rename without failing the build.
-A rename must also rewrite the target symbol's own leading self-reference in its doc comment, which Go convention opens with the symbol's name; the card's own `old -> new` pair names exactly what changed, so this is safe to do mechanically and is verified by the same grep pass.
 
 ## The shape classifier
 
-A card's own target/`Uses`/`Rename`-pair entries mix **glyphs**, `plan:` handles, file paths, and bare symbols in one flat list, distinguished by shape alone, in this fixed five-rule order:
+A card's target, `Uses` and `Rename` entries are classified by shape alone, in this order:
 
-1. A ref beginning with the literal prefix `plan:` is a **handle**.
-2. Otherwise, a ref containing `#` is a **glyph** — the unit-then-member string `internal/foo#Bar` names, per quarry's `glyph` package (`docs/glyph.md`). This rule must precede the path rules below, because every Go glyph's unit half contains a `/`, so a slash-based path rule reached first would misclassify every glyph as a path.
-3. Otherwise, a separator (`/`) present anywhere in the entry makes it a **path** — this also covers the `//` worktree-root escape, since it always contains a slash — and so does an all-lowercase-ASCII-alphanumeric final dot-segment (a bare filename with a lowercase extension, e.g. `list.go`).
-4. Otherwise, an entry with no `.` and no `/` at all is a **path** too: an extensionless repository-root filename such as `Makefile`, `LICENSE`, or `Dockerfile`. Without this rule such a filename would have no legal spelling left under the `bare-symbol-target` hard rule below, since the `//` worktree-root escape does not rescue it.
-   Canonicalization carries the rule the rest of the way: a slash-free path-shaped entry is canonicalized to its self glyph even without a file extension (see the "Card path resolution" section below), so the spelling this rule admits is one every glyph-backed layer downstream can act on rather than a bare token `quarry` rejects before resolution.
-5. Otherwise, it is a **bare symbol** — the explicit default for an entry whose final dot-segment is not all-lowercase-alphanumeric (`shedrecipe.Lookup`).
+1. A ref beginning `plan:` is a **handle**.
+2. Otherwise a ref containing `#` is a **glyph**, the `unit#member` string quarry's `glyph` package defines (`docs/glyph.md`).
+3. Otherwise a ref holding `/`, or whose final dot-segment is all-lowercase ASCII alphanumeric (`list.go`), is a **path**.
+4. Otherwise a ref with no `.` and no `/` is a **path**: an extensionless repository-root file such as `Makefile`.
+5. Otherwise it is a **bare symbol** (`shedrecipe.Lookup`).
 
-The overview frontmatter's optional `language:` key gates this alphabet: `"go"` (the default when the key is absent) enables `glyph.Go`'s grammar for rules 1-2 and the two hard rules below; `"csharp"` enables `glyph.CSharp`'s grammar for the same rules; `"none"` opts a plan out of the glyph alphabet entirely, keeping a bare-symbol entry legal exactly as it was before this alphabet existed.
-The planner sets `language: csharp` when the code the cards change is C#, read from the extension of the files the cards name, and leaves the default for Go code.
+`language:` sets the glyph alphabet: `go`, the default, reads refs in Go's glyph grammar; `csharp` in C#'s, per `loom-plan-csharp-spec.md`; `none` opts out of the alphabet and skips every glyph check.
+The writer sets `csharp` when the code the cards change is C#.
 
-**The alphabet under `language: csharp`.**
-Each ref of the plan, and each `plan:` handle's body, is read in the C# alphabet.
-A ref both alphabets parse is C#.
-A ref only the Go alphabet parses is accepted only when it is a self glyph, since a path is always spelled as a self glyph in the Go unit alphabet; any other such ref is a `glyph-malformed` finding.
-A C# member glyph has the shape `<namespace>#<owner.member>`, and a method's, constructor's or indexer's carries its parameter list, as in `Glyphchain.Sharp#Renderer.Draw(int)`.
-Copy a member glyph from a quarry answer with its parameter list, since a spelling without the list names a member that has none.
-A `.cs` file is written as a plain path such as `src/Renderer.cs`, which the parser canonicalizes to its file self glyph as it does a `.go` file.
-A slash-free self glyph such as `Glyphchain.Sharp#` names a namespace, never a path.
-A plan that names a repository-root file or directory without a slash is therefore not checked against the disk under `csharp`; spell it as a slashed path or a member.
-A ref that more than one alphabet matches is not guessed at: quarry answers it ambiguous with the matching languages, and the way forward the finding names is a slashed path self glyph for the file or a member glyph.
+Two hard rules hold under `go` and `csharp`:
 
-**Two hard rules, both skipped under `language: none`:**
+- `bare-symbol-target` — a bare symbol is refused under every card type; spell it as a glyph, copied from a quarry answer.
+- `directory-target` — a slashed path with no extension names a directory; spell a package as its unit glyph (`internal/foo#`), and list a non-code directory's files.
+  An extensionless file under a `root:` other than `.` is spelled as its repository-root-relative file self glyph (`internal/foo/Makefile#`).
 
-- `bare-symbol-target` — any bare-symbol-shaped entry is a hard finding, under any card type. A bare package-qualified symbol is the one spelling that cannot have come verbatim from a quarry answer — not because the form is uglier, but because quarry never emits one. The fix is always to spell it as a glyph.
-- `directory-target` — a path-shaped entry containing a `/` with no file extension names a directory rather than a file; spell it as a unit glyph (e.g. `internal/foo#`) if it is a package, or list the files instead if it is not code. The `/` condition keeps rule 4's extensionless repository-root filenames out of this finding; a slash-free extensionless entry at the repository root is not caught here — it is canonicalized to its own self glyph instead, which is the legal spelling for both a root file (`LICENSE#`) and a whole root directory (`docs#`), so there is nothing left for this check to say about it. A bare extensionless filename under a non-`"."` `root:` DOES land here — `root:`-joining makes it slashed, and no lexical rule can tell `internal/foo/Makefile` the file from a directory — so rule 4's spelling is repository-root-only; the legal spelling for a `root:`-scoped extensionless file is its repository-root-relative file self glyph (`internal/foo/Makefile#`), which the finding's detail names.
+`internal/planparser` never resolves a ref: existence of a path or self glyph is checked on disk at validation (`path-missing`), and a member glyph's existence is `internal/planglyph`'s resolve pass.
 
-This is a deliberate, partial deviation from the design doc's own classification clause.
-The design doc resolves ambiguity "against ground truth (`go doc` for a symbol, file existence for a path)";
-this spec takes that clause in its **shape half only** — a process spawn (`go doc`) is barred from tier1 by the Test Tier Purity Invariant and would stop the parser being a leaf (the Planparser Sole-Parser Invariant).
-The **file-existence half survives**, but at validation time rather than classification time, as the `path-missing` check below — existence never decides an entry's shape, only whether a path- or self-glyph-shaped entry's target is satisfied. `internal/planparser` itself never calls `quarry.Resolve` or any other `quarry.Repo` method — that belongs to `internal/planglyph`, the resolve-backed layer above it — and it performs exactly one glyph conversion in each direction: `glyph.Self` (path -> glyph, at canonicalization time) and `Glyph.UnitPath` (glyph -> path; the disk-existence checks `card-path-malformed` and `path-missing` below skip a member glyph, since member existence is `internal/planglyph`'s resolve-backed business, not this package's), plus two sanctioned adjustments of a Go unit string: `goPackageDir` maps quarry's external-test pseudo-unit `<dir>_test` to its package directory, so no derived gate argument names a `_test` directory, and `GoPackageCounterpart` maps a member glyph between `<dir>` and `<dir>_test`, so a done-check or handle binding finds a test written into the package its plan did not name.
-
-**Known limitation:** an unexported symbol reference whose final dot-segment happens to be all-lowercase (e.g. `shedrecipe.lookup`) misclassifies as a path under rule 3, and surfaces as a loud `path-missing` finding rather than a silent misparse.
-The author resolves it by writing the exported name (as a glyph), or by `//`-escaping the entry so it is unambiguously a path.
+**Known limitation:** an unexported symbol whose final dot-segment is all-lowercase (`shedrecipe.lookup`) classifies as a path and surfaces as `path-missing`.
+Write it as a glyph, or `//`-escape it when it is a path.
 
 ## Card path resolution: `root:` and `//`
 
-`00-overview.md`'s frontmatter may carry an optional **plan-level** `root: <worktree-relative-dir>`.
-When set, every path-shaped card entry in the plan resolves as `<root>/<path>` **unless** the path starts with `//`, which is *always* worktree-root-relative (root set or not — one rule, no special cases): that is how a card names a file outside the shared root, e.g. `//cmd/lym/main.go`.
-This is purely a token-economy shorthand for a plan whose cards repeat the same directory prefix over and over.
-The degenerate `root: "."` case (the worktree root itself) resolves a card path to the raw path unchanged, rather than the unclean `"./<raw>"` a literal string join would produce.
+The overview's optional `root: <worktree-relative-dir>` prefixes every path-shaped entry as `<root>/<path>`, unless the path starts with `//`, which is always worktree-root-relative: `//cmd/lym/main.go`.
+`root: "."` leaves a path unchanged.
+Glyphs, handles and bare symbols are never `root:`-joined.
 
-Normalization applies to **path-shaped entries only**: the parser normalizes every card path to a plain worktree-relative, forward-slash path exactly once, at parse time.
-A **glyph- or bare-symbol-shaped entry passes through verbatim, regardless of `root:`** — the shape classifier gates normalization, so `root:` never gets prepended onto one.
-
-**Ordering is load-bearing: `root:`/`//` resolution runs first, while a ref is still path-shaped; canonicalization to a glyph runs strictly after, on the same ref.** Immediately after normalization, and only under a glyph-enabled `language:`, the parser canonicalizes a path-shaped entry into its glyph string via `glyph.Self` — the one path-to-glyph call this package makes — whenever that entry carries a file extension **or** carries no `/` at all.
-A *slashed* extensionless entry (a bare directory such as `internal/foo`) is the one case left as a plain path, so the `directory-target` check above still has something to classify.
-The slash-free half of the rule is what keeps rule 4's repository-root filenames usable end to end: left as the bare token `LICENSE`, such an entry validates clean through every check and is then handed verbatim to `quarry`, which rejects it *before* resolution — so `internal/planglyph`'s own `DoneChecks` read the rejection as "did not resolve" and blocked the creating card with a permanent `create-not-done`, while `prosa-symbol-target` reported it as not-a-self-glyph.
-Canonicalized to `LICENSE#` it resolves `found`, which is the spelling `quarry`'s own rejection message recommends. **A surface glyph is always repository-root-relative and is never `root:`-joined** — canonicalization only ever touches a ref classified as a path in the first place, and a glyph is never that shape.
-The parser records each canonicalized entry's pre-canonicalization surface lexeme in `Plan.SurfaceRefs`, keyed by the owning card's own identity and the resulting canonical string, so a later rewrite of the underlying files can restore the exact byte-form the card's own file carried.
-
-The validator and any future consumer never see `root:` or `//` again, only normalized-then-canonicalized paths (or verbatim glyphs/symbols).
-A single-`/` prefix or a `..` segment in a card path is malformed and is flagged by the `card-path-malformed` check — now applied, per the shape classifier's disk-mapping rule above, to a path- or self-glyph-shaped entry alike.
+The parser normalizes each path once at parse time to a clean, worktree-relative, forward-slash path.
+Then, under `go` or `csharp`, it canonicalizes a path that carries an extension or holds no `/` into its self glyph (`list.go` → `internal/boardcli/list.go#`, `LICENSE` → `LICENSE#`); a slashed extensionless path stays a path, for `directory-target` to judge.
+The parser records each canonicalized entry's surface spelling in `Plan.SurfaceRefs`, so a rewrite of the card files restores the bytes the card carried.
+A single `/` prefix or a `..` segment is `card-path-malformed`.
 
 ## Rename and Move
 
-A `Rename` card's sub-bullets are `` `old` -> `new` `` pairs on the ASCII arrow grammar (backtick-wrapped on both sides, exactly one arrow), and both endpoints of every pair project into the card's own target list, in pair order (`Old` then `New`).
+A `Rename` card's sub-bullets are `` `old` -> `new` `` pairs, backtick-wrapped on both sides with one arrow; both sides join the card's target list, `Old` then `New`.
+A symbol pair's `Old` side is a glyph and its `New` side a `plan:` handle; a file pair has a self glyph or path on both sides.
 
-A `Move` card states its destination in `**Intent:**` prose rather than in its target list — the target list holds only the symbol or file being relocated, never its new location.
+A `Move` card states its destination in `**Intent:**`; its target list holds only what is relocated.
+Since the plan records no `Move` destination, a later card naming the moved file at its new path gets a false `path-missing`: reorder the cards, or name the pre-move path.
 
-**`## Rename mechanic` is a plan-level section**, one section in `00-overview.md`, **required when any card in the plan is type `Rename`** — the `rename-mechanic-missing` check (plan-level) flags a plan that declares a `Rename` card but omits it.
-The section's text is CANONICAL — reproduce it verbatim (adjusted only for the specific paths involved):
+A plan with any `Rename` group carries `## Rename mechanic` in `00-overview.md` (`rename-mechanic-missing`), reproduced verbatim:
 
 ```markdown
 ## Rename mechanic
@@ -244,69 +187,46 @@ The section's text is CANONICAL — reproduce it verbatim (adjusted only for the
 5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
 ```
 
-Step 3 names a separate `Create` card rather than the removed `Creates:` field — this format has no typed file-op fields, so "genuinely new content" is always its own card under the `Create` label, never a bullet folded into another card's field.
-
-This is the repo's own `git mv` + surgical-edits convention made declarable in a plan and mechanically checkable, rather than an unstated expectation an implementer might miss.
-The section is required by `rename-mechanic-missing`, whose condition is unchanged, and a hub with an empty `rename_tools` list cannot run a symbol pair.
-
-**Accepted false positive:** because a `Move` card's destination lives in `Intent` prose rather than in its own target list, there is no third union (parallel to the `Create`/`Rename` target unions below) for `path-missing` to check a `Move` destination against.
-A later card naming a file an earlier `Move` card relocated into place therefore produces a false-positive `path-missing` finding — the earlier `Move`'s destination is real on disk by the time the later card runs, but nothing in the plan model records that.
-The author resolves it by reordering the cards, or by naming the file's pre-move path in the later card instead.
+A hub with an empty `rename_tools` list cannot run a symbol pair (`rename-tool-missing`).
 
 ## Plan: handles
 
-A `plan:` handle (shape rule 1 of [The shape classifier](#the-shape-classifier) above) is a draft, plan-local placeholder spelling for a symbol or file that does not exist yet, so no quarry answer could ever have named it.
-Letting the planner invent a handle's *draft* spelling is safe in a way that letting it invent a real glyph is not, because a handle carries no reality to point at — it only has to be internally consistent within the plan, which is fully mechanically checkable, and `quarry` never sees one.
+A `plan:` handle is a plan-local draft spelling for a symbol that does not exist yet, so no quarry answer can name it.
+It only has to be consistent within the plan, and quarry never sees it.
 
-A `Create:` label's sub-bullet may take either the plain single-ref form every other type label admits, or the two-field declaration grammar:
+A `Create:` sub-bullet takes either a plain ref or the declaration form:
 
 ```markdown
 **Create:**
-- `plan:<draft-handle>` -> `<declaration head>`
+- `plan:internal/boardcli#RowJSON` -> `type RowJSON struct`
+- `plan:internal/boardcli#newRowJSON` -> `func newRowJSON(r Row) RowJSON`
 ```
 
-The left-hand token is the handle itself — `plan:<unit>#<member>`-shaped, the unit half being an ordinary repository-relative path — and the right-hand token is the declaration head: the symbol's own spelling and kind (e.g. a function signature), the text `internal/planglyph`'s resolve-backed layer hands to `quarry.Name` as a `{Unit, Decl}` pair once the handle is bound to a real glyph. Reusing the `` `old` -> `new` `` arrow grammar `Rename` already carries means a handle declaration needs no new punctuation, only a `plan:`-prefixed left-hand token.
+The left token is the handle, `plan:<unit>#<member>`, its unit the package directory, never a `.go` file (`handle-malformed`).
+The right token is the declaration head, parsed as source and declaring exactly one symbol: `type RowJSON struct`, `type Reader interface`, `func (c *Cache) Get(k string) (Row, bool)` with its receiver.
+A placeholder body such as `struct{...}`, or a head declaring several symbols, is `handle-name-failed`.
+Once bound, the bullet collapses to the plain `` - `<glyph>` `` form.
 
-**The declaration head is parsed as source, not read as prose, and must declare exactly one symbol.**
-`quarry.Name` wraps it in a synthetic file and parses it with the same grammar the walk uses, so a placeholder body (`type RowJSON struct{...}` — `...` is not Go) fails to parse and is the blocking finding `handle-name-failed`, and a head declaring several symbols (`const A, B = 1, 2`, an interface written out with its methods) is rejected for that instead.
-A bare head is complete and is the form to write: `type RowJSON struct`, `func newRowJSON(r Row) RowJSON`, `type Reader interface`, and — for a method, receiver included — `func (c *Cache) Get(k string) (Row, bool)`.
+A symbol `Rename` pair's `New` side is a handle whose declaration is derived from the resolved `Old` side, so it needs no head.
+The `Old` side must resolve against the tree before any card runs, so a plan cannot rename a symbol it creates: give the `Create` target its final name (`rename-old-unresolved`).
 
-Under `language: csharp` a handle is `plan:<namespace>#<owner.member>`, and its declaration head is C# source with the same one-symbol rule, such as `public void Draw(int width)` for `plan:Glyphchain.Sharp#Renderer.Draw(int)`.
-The handle's owner chain names the types that hold the member, and a head that declares the member through an explicit interface writes the interface as a qualifier before the member's name.
-The qualifier is the trailing owner components, which the head writes itself, so the handle `plan:Glyphchain.Sharp#Renderer.IPair<string,int>.First` has the head `int IPair<string,int>.First { get; }`.
-A head, a handle's or a re-sign arrow's, spells the qualifier in the canonical C# spelling of its type arguments, with no space after a comma and the keyword for a built-in type, and a head with another spelling, such as `IPair<string, int>.`, is refused with the canonical one named.
-A body the C# alphabet rejects is `handle-name-failed`.
-A `Rename` pair under `csharp` has a handle `New` side like any symbol pair: its declaration is derived from the resolved old symbol with the declared name replaced by the new handle's name, and a member no identifier names, an operator, an indexer, a finalizer or a constructor, cannot be renamed this way.
+Every handle a card references is declared once, by a `Create` bullet or a `Rename` `New` side (`handle-dangling`, `handle-collision`); a declared handle no card references is valid.
+The handle checks run under every `language:`, `none` included.
 
-Once bound, a `Create` declaration bullet collapses to the plain `` - `<glyph>` `` ref form every other `Create` target uses: the declaration head existed only to compute the glyph that has now been computed, and keeping the arrow beside a non-handle left token would fail `handle-malformed`.
-
-A `Rename` group's two sides carry different obligations under this alphabet: the `Old` side must be a glyph — it names something real that will be resolved — and the `New` side must be a `plan:` handle, whose content a later binding step computes and overwrites at the validation boundary rather than trusting the planner's draft spelling. A `Rename` card therefore needs no declaration head of its own, unlike a `Create` card, because the declaration is derived from the resolved old side. A file-rename pair — both sides self glyphs — is exempt from this rule, since it has no declaration head to name and belongs in the same group as a plain path pair.
-
-**A `Rename`'s `Old` side can never be a symbol the same plan creates.** Both plan gate sites — `Plan-Write`'s and `Plan-Burler-Fix`'s own gates — resolve the whole plan against the tree as it stands before any card has run, so a `Create` card's own not-yet-real symbol has nothing to resolve against yet — the `Old` side of a later card renaming it reads `not_found`, and the declaration-derivation step described above has no resolved signature to derive from (`rename-old-unresolved`), regardless of how the plan sequences its cards. This is a limit on what one plan can express, not a defect: a symbol renamed in the very plan that creates it gains nothing a correctly-named `Create` does not already give it, so the fix is to spell the `Create` target with its final name to begin with.
-
-The checks that keep this mechanism internally consistent are `handle-dangling`, `handle-collision` and `handle-malformed` (all keeping a declared handle consistent with where it is referenced), and `rename-to-not-handle`/`rename-from-not-glyph` (keeping a `Rename` pair's two sides on their correct side of the handle/glyph line) — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below for each check's own row.
-The handle checks do not all read the same source set, and the split is deliberate: `handle-dangling` and `handle-collision` read **both** declaring sources (a `Create` sub-bullet and a `Rename` to-side), and `handle-malformed`'s file-unit rule reads `Create` declarations alone, since a `Rename` to-side's unit is derived from its resolved old side rather than from the draft handle's own unit half.
-A declared handle no other card references is valid: the card still binds it at record-batch and done-checks it.
-All of these checks run under every `language:`, including `"none"`, since a handle is loomyard's own grammar, not glyph grammar, and its consistency is checkable without any alphabet.
-
-A plan carrying at least one `plan:` handle also gains a companion write path once that handle is bound to a real glyph: `internal/planparser.RewriteRefs` substitutes the handle for its resolved glyph string, in place, across every card file that referenced it, and `internal/planparser.AppendAmendment` appends a record of that substitution to the plan directory's own append-only `amendments.md` log (a known non-card file, exempt from `index-file-mismatch` the same way `00-overview.md` is). Neither write path is part of the plan-format grammar itself — a card author never writes to either — but both exist because this format admits a handle in the first place, so a reader of a plan carrying handles should expect an `amendments.md` file to appear beside it once review resolves them.
+Once a handle binds to a real glyph, `planparser.RewriteRefs` rewrites it across every card file, and `planparser.AppendAmendment` logs the substitution in `amendments.md`, which `index-file-mismatch` exempts like `00-overview.md`.
+No card author writes either.
 
 ## Numbering and commit subject
 
-Cards are numbered flat across the whole plan — no batch-scoped restart, no `NN.C` compound numbering.
-Numbers run from the overview's `first_card:` (default `1`) upward with no gap, so a rework generation can continue the numbering of the generation it retires.
-The per-card file prefix `NN` (zero-padded) must equal the heading `N`.
+Cards are numbered flat across the plan, from the overview's `first_card:` (default `1`) upward with no gap, so a rework generation can continue the numbering of the one it retires.
+The file prefix `NN` (zero-padded) equals the heading `N`.
 
-A card is inserted or removed with `lym loom insert-card` or `lym loom remove-card`, which move every later card by one in file name prefix, heading number, explicit `Commit:` prefix and Card Index number.
-They rewrite every card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, to the new number, so a card that refers to another card names it by its card id.
-They report lines that name a moved number bare in prose, and never rewrite them.
+A card is inserted or removed with `lym loom insert-card` or `lym loom remove-card`, which move every later card by one in file prefix, heading, explicit `Commit:` prefix and Card Index number.
+They rewrite every card id naming a moved card, `<N>-<slug>` or `<NN>-<slug>`, so a card refers to another card by its card id.
+They report, and never rewrite, lines that name a moved number bare in prose.
 
-The **default commit subject is `N: <name>`** — the card heading's `<name>`;
-there is no separate `<short what>` seed.
-An explicit `**Commit:**` overrides the default but must start with the card's own `N: ` prefix — the `commit-subject-mismatch` check enforces this, because a pinned message that breaks the `N:` shape would corrupt the git-log resume trail the numbering scheme exists to give.
-
-Commit-per-card is the **resume mechanism**: a fresh session sees from `git log` exactly which card the previous session reached,
-and a half-done card is resumed by discarding uncommitted changes and restarting that card.
+The default commit subject is `N: <name>`, from the heading.
+An explicit `**Commit:**` must start with the card's `N: ` (`commit-subject-mismatch`), since the `N:` subjects are the resume trail: a fresh session reads from `git log` which card the last one reached, and a half-done card restarts from a clean tree.
 
 ## Pattern-Departure trailer
 
@@ -317,398 +237,39 @@ A departure from an entry the task declares changed in the overview's `## PATTER
 ## verify model
 
 The hub's tests run through `lym gate test`, which runs the numbered tiers `gate.yaml` declares over a scope lym computes.
-A gate key names a site's tiers and its scope, `card`, `diff` or `all`, and a Go site runs `lym gate test --wait --gate <key>`, while an agent's card, batch and `webster-fix` calls carry no `--wait`:
-the `card` key runs per card and the `batch` key per batch, both over the cards' packages, `webster-fix` in Webster's verify fixers, `webster` once for the whole plan, and `parent-align` and `finalize` at Parent-Align and Finalize.
-The hub's tiers and gate keys reach the plan writer and the plan reviewer in their prompts, rendered from `gate.yaml`.
-A plan author names no gate, tier list or target list, because the Go-rendered prompts and the gates carry them.
+A gate key names a site's tiers and scope, `card`, `diff` or `all`.
+A Go site runs `lym gate test --wait --gate <key>`; an agent's card, batch and `webster-fix` calls carry no `--wait`.
+The `card` key runs per card and the `batch` key per batch, both over the cards' packages; `webster-fix` in Webster's verify fixers; `webster` once for the whole plan; `parent-align` and `finalize` at Parent-Align and Finalize.
+The plan writer and reviewer get the hub's tiers and gate keys in their prompts, so a plan names no gate, tier list or target list.
 
-The per-card **`**Verify:**`** field stays the optional, rare escape hatch for what no gate expresses — a cheap, targeted check where it is useful.
-A `**Verify:**` line that tests is one `lym gate test --wait` call with a gate key or a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`, and never a raw test command or a target list.
-The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `webster` gate key has replaced it.
+- **Per card.** The fork runs `lym gate test --gate card --card <card id>`, which computes the card's packages from the plan, runs the `//lym:guard` tests and the lints the key lists.
+  It does not test the rest of the module or the tiers the key leaves out, and a passing call names the declared tiers it did not run.
+- **Per batch.** The fork runs `lym gate test --gate batch` with one `--card <card id>` per card of the batch, after its last card.
+- **Per plan.** The `webster` gate runs once, a must-pass gate on Merriam that sends a failure back to Merriam.
+- Tier 3 tests drive a real LLM; no gate runs them.
 
-Parent-Align and Finalize run their own gate keys, `parent-align` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
-and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent, a Parent-Align fixer change is over the caps, or Finalize's fix reviews run out of rounds.
-Both also halt Stuck on a dirty tree, so only committed content is ever verified or landed.
+Parent-Align and Finalize run their own gate keys whenever the tree differs from the last verified tree, which `internal/verifytree` records, and run the merge fixer on a failure before anything lands.
+Both halt Stuck on a dirty tree.
 
-The tiers below match this repo's own test-tier discipline:
-
-- **Tier 1 (per card, automatic, no author action).**
-  Implemented as the Go-rendered per-card gate: the hub's `card` key call, `lym gate test --gate card --card <card id>` without `--wait`, which also runs the comment line-break lint and the PATTERN headroom lint the key lists.
-  The gate call computes the card's packages per module from the plan and runs the guard step over the `//lym:guard` tests itself, so the prompt names no package.
-  The card gate does not build or test the rest of the module; a card that breaks a package outside its targets passes it unless the break is in a `//lym:guard` test, and the batch gate or the `webster` gate catches that.
-  It runs only the tiers the `card` key lists, so a card that breaks a higher-tier test passes it too, and a passing call closes with a line naming the declared tiers it did not run, so its pass is never read as green for them.
-  Tier0 tests are fast by construction, per the Test Tier Purity Invariant's own discipline — no cwd resolution, no process spawn.
-  Fully mechanical — no author enumerates a file list, which is what made V1-style `verify:` lists grow long in practice.
-- **Tier 2 (per batch for its own packages, plan-level for the whole suite).**
-  Real git-against-remote tests, built via `internal/hubforge` with real repository creation and a real clone, are genuinely slower.
-  The batch gate is the hub's `batch` key call, `lym gate test --gate batch` without `--wait`, with one `--card <card id>` per card of the batch, run once per batch by the fork after its last card; Go never runs it, and the `webster` gate catches a fork that skips it;
-  the `webster` gate stays the once-per-plan run, a must-pass gate on Merriam that sends a failure back to Merriam to fix.
-  The Concurrency section's post-merge backstop assumes the same gate.
-- **Tier 3 (rare, explicit only, never automatic).**
-  Tests that drive a real LLM, opening with `tiergate.Require(t, 3)` — expensive in both wall-clock and tokens.
-  Never swept into an automatic per-card or per-plan gate under any circumstance; every test binary compiles them, and no gate runs them.
-  `tier2` is a separate, token-free tmux tier; a gate key runs it when its tier list names it.
-  A card's `Verify:` line selects no tier, so it runs the `tier0` tests it names and skips every other.
-  A card that genuinely needs one is exactly what the optional `Verify:` field is for: an explicit, author-named exception, never something inferred.
-
-The optional per-card `Verify:` field exists for what tier 1's automatic gate cannot catch on its own — a specific CLI smoke test, a targeted tier 2 scenario, or, rarely, a tier 3 case.
-It stays genuinely exceptional; the default automatic tier 1 run is what most cards rely on, which is what keeps `Verify:` from becoming the long, hand-maintained list it was in millhouse's own equivalent.
+The per-card **`**Verify:**`** field is the rare escape hatch for a check no gate expresses, such as a CLI smoke test or a targeted higher-tier scenario.
+A `**Verify:**` line that tests is one `lym gate test --wait` call with a gate key or a tier list and a scope form, such as `lym gate test --wait --tier 1 --card <card id>`, never a raw test command or a target list.
+The overview's `## verify:` section is accepted and ignored (`plan-verify-retired`).
 
 ## Card granularity
 
-One card per independently reviewable unit, never one card per literal symbol.
-A symbol with no independent meaning apart from another symbol in the same card — a private supporting type, a constructor inseparable from its type — is bundled into that other symbol's card.
-A symbol that is part of a module's public surface, or reused across packages, gets its own card even when one card happens to be its first consumer.
-A helper serving one surface is bundled into that surface's card.
+One card per independently reviewable unit, never one card per symbol.
+A private supporting type or a constructor inseparable from its type goes on the card of the symbol it serves, and so does a helper serving one surface.
+A symbol of a module's public surface, or one reused across packages, gets its own card.
 
-Removing the last caller of a symbol and deleting the symbol are two cards, not one: a symbol can have N callers, each requiring its own `Edit` card, and only one final `Delete` card once all are gone.
+Removing a symbol's last caller and deleting the symbol are separate cards: each caller's `Edit` card, then one `Delete`.
 
-A docstring is never a separate card.
-A symbol's own doc comment is written or updated as part of whichever `Create`/`Edit`/`Rename` card touches that symbol, per `docs/code-comment-conventions.md` — which is the actual rule, Go only for now.
-This format adds one Card-specific requirement on top of it: a `Rename` card's execution must also fix the target symbol's own self-referencing comment opening, per the `Rename` carve-out above.
-`Prosa` is reserved for documentation with no single-symbol owner — design docs, `docs/overview.md`, module-level `doc.go` headers not triggered by a code change, repo-wide comment-convention sweeps.
-
-## Quarry integration — degraded mode is the default, not a fallback
-
-Every mechanical check above works without quarry, and no card type is defined in terms of quarry's presence:
-
-- **Impact and references** — `go doc <pkg> <Symbol>` for existence and definition, `grep -rn` scoped to the right package for call sites, manual read.
-  Quarry replaces this with a symbol-impact query, which must also return each caller's full enclosing function and its own doc comment, not just file:line.
-  Neither the Card format nor `ImpactSummary`'s output shape changes either way.
-- **Rename** — the hub's structure-aware rename tool that `language.yaml`'s `rename_tools` names, then a grep pass confirming zero remaining old-name references and that the symbol's own doc comment was updated.
-  Quarry replaces the script-writing step with a mechanical rename primitive; the grep-verify step stays as the same backstop either way.
-- **Delete** — a grep for zero remaining callers, with the same caveat as `assert-no-callers`: necessary, not sufficient, since interface satisfaction, dispatch-table registration, and prose references are not caught.
-
-When quarry is present it only makes an already-defined mechanical step faster and more reliable — it never changes what a card contains or how it is reviewed.
-
-## Concurrency — worktree-per-card, not concurrent forks in one checkout
-
-The dependency graph derived from target lists against `Uses:` determines what can execute in parallel: two cards with no shared symbol are independent.
-Each independently-executable card or batch runs in its own git worktree, spawned by webster — never as concurrent forks sharing one checkout's git index, for the shared-index-lock race that produces.
-Separate worktrees each hold their own index, so that race does not apply.
-
-Sequencing for cards that DO share a symbol is settled by plan order.
-If card 8 has `Uses: X`, card 5's target list includes `X`, and card 5 precedes card 8, then card 8 depends on X's state after card 5 lands — no further bookkeeping, since a sequentially-ordered plan has exactly one current state of any touched symbol at any point in its sequence.
-
-Dependency-list completeness cannot be proven mechanically at plan time — the same class of gap as `assert-no-callers`, catching what it can see rather than what requires understanding intent.
-The real gate is post-merge: once a concurrently-executed batch's worktrees merge back, the `final` gate's whole run against the merged result is what actually catches a missed dependency, surfacing an incomplete plan-time `Uses:` list as a build or test failure.
-
-## Deferred / forward-compat
-
-The **`changes-files`/deviation union** — the artifact webster's fork-return contract compares actual changed files against (a fork reports `OK` and a SHA, while record-batch's mechanical guard produces the file list; a file-list mismatch against this union is always informational, never blocking on its own) — is what the guard compares the batch's changes against.
-`Uses:` is excluded from the comparison because it names what a card reads, not what it changes.
-`planglyph.ScopeGuard` defines what counts as inside a batch's targets, and `internal/websterengine`'s package documentation covers the verification semantics.
-
-Symbol/path matching of the cards' `Targets`/`Uses` refs asserts that the batches run in card order, and webster refuses a backward dependency between them — see `internal/websterengine`'s package documentation under its "Batches run in the batchifier's order, asserted not derived" section.
-What remains deferred is continuous DAG update across waves and any parallel execution, both of which belong to the roadmap's Someday `webster: worktree-per-card parallel execution` item.
-
-A parked, more aggressive parallel-execution idea also exists — see the `internal/websterengine` package documentation.
-
-## Validation checks (as implemented by `internal/planparser`)
-
-Machine checks this format is designed to support, in this fixed order, one row per distinct `Check:` ID — never one row per presentation row, so the table below is itself the authoritative list and no count of it is pinned anywhere in prose.
-The IDs are split across two entry points, `ValidateFormat` and `Validate`: every one but `plan-unapproved` (row 3 below) is in the format-only set `ValidateFormat` runs, and `plan-unapproved` is additionally checked by `Validate`, the full entry point.
-The rows that name `internal/planglyph` as their emitter are an exception: that package's resolve pass adds them on top of both entry points.
-`glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
-`card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
-`done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
-`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom`, `pattern-line-unprescribed`, `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` join it, appended by `loomshed` outside the `planparser` entry points in every mode but `--require-approved` (default, `--lens-review`, `--overlay`, `--rework` and `--part`, and the Plan-Write, Plan-Burler-Fix, PR-Rework and part plan gates, and a part writer's Accept).
-The part modes append them without the decision record, so `pattern-changes-mismatch` and `pattern-line-unprescribed` are left to the joined plan's `plan` gate.
-`rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lym config language` from the prime, or recast the card.
-A file pair raises none.
-`pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
-It runs only on a tapestry run, and an absent record adds nothing; a record whose section is malformed is a returned error naming `lym loom validate-discussion`, since the plan writer cannot fix the record.
-The four PATTERN checks run only in a worktree holding a `PATTERN.md` and with a base overview told to the gate, and read the overview at the task branch's merge base with its parent, or at `HEAD` with no parent recorded.
-`pattern-removes-prescribed` is one blocking finding per `removes` entry of the overview's `## PATTERN changes` section that a card not recorded done fences a line for; its way forward is to drop the fenced line from the card.
-`pattern-headroom` is one blocking finding when the overview projected from every card's fenced entry lines and the `removes` entries grows past the headroom line; its way forward is to shorten the prescribed lines or move detail into background files, and when that is not enough to record a `changes` decision that shortens other entries with `lym loom decision add`, passing `--amends-plan` once the plan is approved.
-`pattern-card-headroom` is one blocking finding per card not recorded done whose own step grows the projected overview past the headroom line, the bound that card's gate applies in its pattern lint against the commit before it, so a plan whose final size passes still fails when an intermediate card does not.
-The projection starts at the worktree's overview and takes those cards in plan order; a card's step applies its fenced entry lines, then drops each `removes` entry whose backticked ID it is the first such card to name, and a `removes` entry no such card names is dropped before the first card.
-Its way forward is `pattern-headroom`'s.
-`pattern-line-unprescribed` runs only on a tapestry run: it is one blocking finding per `adds` or `changes` entry that no card fences a line for and whose overview bullet still equals the base's; its way forward is to prescribe the entry's whole overview line in a fenced block on a pending card that edits `PATTERN.md`, or on a card inserted with `lym loom insert-card` when that card is done.
-`fabric-vocabulary-name` is the fourth: it is a `planparser` function outside both entry points, which the plan index appends to its format, rework and dispatch validation.
-`edit-test-file` is the fifth: it is a `planparser` function outside both entry points, which the plan index appends to its format and rework validation.
-The rows below stay in one fixed order regardless of which entry point runs them, and `plan-unapproved` keeps its position-three slot in that order even though it alone belongs to the wider entry point:
-
-1. `format-unrecognized` — `format:` is a recognized version (currently only `5`); else refuse to run.
-2. `plan-language-unrecognized` — `language:` (when present) is `"go"`, `"csharp"` or `"none"`; else flagged, naming the offending value and the three legal ones. Absent defaults to `"go"` and is never flagged.
-3. `plan-unapproved` — `approved: true`; else refuse to run.
-   This is a consumer guard, and its "else refuse to run" is deliberately not enforced by every caller: both plan gate sites — `Plan-Write`'s and `Plan-Burler-Fix`'s own gates — run only the format-only set, `ValidateFormat`, strictly before the review segment's approve seam ever writes the flag, so neither one re-checks it. Every standalone plan consumer (`internal/websterengine`, `internal/webstercli`, `internal/batcher`) still enforces it through `Validate`, the full entry point — the plan writer is forbidden from setting the flag, and the review segment (`Plan-Bouncer`'s approved settle) is what writes it, so a pre-review gate demanding it would be demanding something only review itself can produce, and no row in the recipe re-checks it once written.
-4. `index-file-mismatch` — Card Index ↔ card files consistent (numbering from `first_card` upward, slugs, no gaps, no orphaned file on disk).
-   A `first_card:` that is not a positive integer is a finding of its own naming the value, and the numbering half then checks against `1`.
-   This check covers the card count because there is no separate `(C cards)` segment to cross-check;
-   the index itself IS the card list.
-5. `card-type-missing` — every card carries at least one recognized type label; zero is flagged.
-6. `card-custom-not-alone` — a card carrying a `Custom` group alongside a group whose `Type` differs from `Custom` is flagged, once per offending card regardless of how many differently-typed groups it carries.
-   Two `Custom` groups on one card, with nothing else, stays legal.
-7. `card-retired-label` — a card body carries a format-3 label (`**What:**`, `**Context:**`, `**Edits:**`, `**Creates:**`, `**Deletes:**`, `**Moves:**`, `**Depends-on:**`, or the lowercase `**verify:**`); each occurrence is its own finding.
-8. `card-path-malformed` — this check is card-generic, not group-scoped.
-   Every path- or self-glyph-shaped entry in a card's own flat `Targets`/`Uses`, once normalized (`root:`/`//` resolution applied) and mapped to its disk path (a self glyph via `Glyph.UnitPath`), is non-empty, relative, clean, and free of `..` escapes, regardless of which group contributed it. A member glyph is skipped.
-9. `bare-symbol-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
-10. `directory-target` — see [The shape classifier](#the-shape-classifier) above. Skipped entirely under `language: none`.
-11. `glyph-malformed` — a `#`-containing entry (shape rule 2, [The shape classifier](#the-shape-classifier) above) that fails `glyph.Parse` — a doubled `#`, an empty unit, a member carrying a paren, a keyword, or any other grammar violation — regardless of whether the entry's own group is otherwise exempt from existence/resolve checks.
-    Card-generic over `Targets`/`Uses`, including a `Prosa` group's own targets, which `prosa-symbol-target` (row 26 below) also separately flags for the same entry as "not a self glyph" — the two checks answering the same defect from two angles is the same shape `bare-symbol-target` and `prosa-symbol-target` already share for a `Prosa` group's bare-symbol target.
-    Skipped entirely under `language: none`, for the same reason `bare-symbol-target` is: without a glyph-enabled `language:` no ref is ever glyph-shaped by grammar, only by the shape classifier's own literal `#` rule, and validating a grammar this alphabet has not opted into would be meaningless.
-    Without this check, an entry classified `refKindGlyph` by shape alone but rejected by `glyph.Parse` is invisible to every other check outside a `Prosa` group: `bare-symbol-target`/`directory-target` skip it (wrong shape), `card-path-malformed`/`path-missing` skip it (their own disk-path mapping fails closed rather than flagging), and it never even enters the batched glyph-resolve pass that would otherwise report `glyph-not-found`/`glyph-ambiguous`/`glyph-rejected` — so a plan carrying one validates clean while carrying a target no execution engine can ever act on.
-12. `rename-format` — every non-well-formed `Rename:` sub-bullet fails the `` `old` -> `new` `` grammar, checked per `Rename` group.
-13. `handle-dangling` — a `plan:` handle appearing in some card's `Targets` or `Uses` with no matching `Create`-group declaration on any card and no matching `Rename`-group to-side. See [Plan: handles](#plan-handles) below.
-14. `handle-collision` — the same `plan:` handle claimed more than once across the plan: by two `Create` sub-bullets, by two `Rename` to-sides, or by one of each; one finding per colliding handle, not per claiming card.
-    The format has **two** sources that bring a handle into existence and `handle-dangling` (row 13) already accepts either, so counting only `Create` declarations let a handle claimed by both pass validation clean and then be resolved by silent overwrite during canonicalization — a `Create` declaration's unit comes from the handle itself while a `Rename` to-side's comes from the resolved old side, so the two produce two different canonical glyphs for one draft spelling and the later one rewrites the `Create` card's own declaration bullet.
-15. `handle-malformed` — a `Create:` sub-bullet whose payload carries the `` -> `` arrow but fails the two-field `` `plan:<draft-handle>` -> `<declaration head>` `` grammar, or a handle-shaped entry whose text after the `plan:` prefix carries no `#` and therefore names no unit, or — under a glyph-enabled `language:` only — a handle whose unit half names a `.go` file rather than a package directory (quarry's `Name` echoes a file-unit member ID that its `Resolve` then never answers, so the spelling validates clean and wedges the creating card's own record-batch done-check instead; the unit is always the package directory).
-    The file-unit rule binds a handle whose unit half is actually read — a `Create` declaration's — and is skipped for a handle claimed **only** as a `Rename` pair's to-side, whose derived declaration takes its unit from the resolved `Old` side rather than from the draft spelling, so the rule's own stated consequence cannot arise for it.
-16. `resign-not-member` — an `Edit` bullet's re-sign arrow whose target is not a member glyph: a file path, a bare symbol, a `plan:` handle, or a file or package self glyph; the finding names the target's shape, with `Ref` the target.
-    The way forward is to put the arrow on the member glyph whose signature changes.
-    A target `glyph.Parse` rejects is left to `glyph-malformed`; skipped entirely under `language: none`.
-17. `rename-to-not-handle` — a symbol `Rename` pair's `New` side classifies as anything other than a `plan:` handle; the finding names the shape it actually is (a glyph, a bare symbol, or a file path). A file-rename pair (both sides self glyphs) is exempt.
-18. `rename-from-not-glyph` — a symbol `Rename` pair's `Old` side classifies as anything other than a glyph, named the same way — and also an `Old` side that parses as a SELF glyph while the `New` side is a `plan:` handle: that pair is a glyph on the left and a handle on the right yet names a file/unit where a symbol rename must name the symbol being renamed, so it is neither admitted shape. A file-rename pair is exempt.
-    Both rows are the negation of the one admitted shape rather than an enumeration of the forbidden ones, so no shape the classifier can return escapes them.
-19. `rename-mechanic-missing` — the plan has at least one card carrying a `Rename` group but `00-overview.md` has no `## Rename mechanic` section (plan-level);
-   a `Rename` group on an otherwise multi-label card still counts.
-20. `card-missing-field` — a card lacks `Intent:` (card-generic), or lacks `ImpactSummary:` when any of its own groups is `Edit` or `Delete` (group-triggered, but the missing field itself is still one card-level field).
-21. `card-field-empty` — a label present with no content under it: an empty target list is checked per group, so a card carrying a populated group alongside an empty one is still flagged for the empty group, while an empty `Uses:`, blank `Intent:` prose, or a blank `ImpactSummary:` value are each card-generic.
-22. `card-field-overlap` — the same entry appears in both a card's own flat target list and its own `Uses:` field; card-generic, per-card mutual exclusivity only — the legitimate cross-card `Create`-then-`Edit` sequencing is never flagged.
-23. `uses-later-target` — a card's `Uses:` entry that appears in the target list (every type label, `Delete:` included) of a card with a higher number; a plan runs in card-number order, so the entry is read before it is produced.
-    Entries match by exact string equality after trimming whitespace, an entry that trims to empty is ignored, and the ref kind is not consulted.
-    The finding is attributed to the consuming card, one per (consumer, producer, entry).
-24. `redundant-package-target` — a card's own target list holds a package self glyph beside a member glyph, a file self glyph or a `plan:` handle that belongs to that package; one finding per contained target, attributed to the card, with `Ref` the contained target.
-    A package self glyph is a self glyph whose unit carries no file extension; a member belongs to its glyph's unit, a file self glyph to its directory, and a handle to its own unit half, except a handle some `Rename` pair claims as its to-side, which belongs to that pair's old glyph's unit, the unit canonicalization writes into it.
-    The target list is the card's flat one (every group, both sides of a `Rename` pair); `Uses:` is never read, and a package self glyph on one card beside a member on another is clean.
-    The way forward is to keep the member glyphs and drop the package self glyph, or keep the package self glyph when the card changes the whole package.
-    Skipped entirely under `language: none`; the verdict reads plan text alone, so it is the same before and after a handle is bound, and `ValidateDispatch` reports it too.
-25. `impact-summary-multiline` — an `ImpactSummary:` field followed by trailing non-label lines; `ImpactSummary` must stay a single line.
-    Card-generic, since `ImpactSummary` is one field per card regardless of how many groups require it.
-26. `prosa-symbol-target` — under a glyph-enabled `language:`, a `Prosa` group's own target list holds an entry that is not a self glyph (a member glyph, or anything that fails to parse as a glyph at all — a plain path or a bare symbol); under `language: none`, a symbol-shaped entry, exactly as before this alphabet. Group-scoped, so an offending entry in the same card's non-`Prosa` group is never flagged by this rule.
-27. `card-numbering` — a card file's heading number must equal the Card Index number assigned to it.
-    Card-generic.
-28. `path-missing` — a path- or self-glyph-shaped entry that does not exist on disk (mapped via `Glyph.UnitPath` for a self glyph) and is not satisfied by any card's `Create`-group target or `Rename`-group destination (mapped the same way) in the same plan. A member glyph is skipped, not resolved — member existence is `internal/planglyph`'s resolve-backed business.
-    A card's `Uses:` entries are checked card-generically, and within a card, its own groups are then walked one at a time, and a group's own path-/self-glyph-shaped targets are checked only when that group's own `Type` is `Edit`, `Extends`, `Delete`, `Move`, or `Prosa`.
-    A `Rename` group's own `Pairs.Old` entries are checked instead of its `Refs`, and its `Pairs.New` side is never checked.
-    `Custom` stays exempt on its own targets — and from the `prosa-symbol-target` rule above, restated in group terms: a `Custom` group's own targets are exempt from both rules — and from nothing else, since every other group and every card-generic check still binds it.
-29. `commit-subject-mismatch` — a present `Commit:` value that does not start with the card's own `N: ` prefix. Card-generic.
-30. `verify-nested-module` — a `go` command in a card's `**Verify:**` value whose relative package argument lies in a nested module other than the one the command runs in, so the go tool cannot resolve it from there.
-    It joins a backslash-newline continuation into one line, then splits a chain at `&&`, `||`, `;`, `|` and a newline, reading `||` as one separator and a separator inside a quoted span as text.
-    It follows a literal `cd <dir>` and a `go -C <dir>`, and ends the scan of a chain at a `cd` or `-C` to an absolute path or out of the worktree root, or at a `cd` in a pipeline stage or after `||`, which may not have run.
-    A field after the subcommand that opens with `-` is a flag, taking the next field when the flag takes a value; a package argument is `.`, `..` or a field opening with `./` or `../`, with a trailing `/...` dropped.
-    A nested module is a directory below the root holding a `go.mod`, on disk or created by a card's `Create` (or the New side of a `Rename`) at or below the card, minus those a `Delete` or a `Rename` Old side removes; the overview's `## verify:` section is never read, since no gate runs it.
-    So `./...` from the root, which the go tool limits to the root module, is silent.
-    One finding per command, attributed to the card, or empty for the overview; its way forward is to run the command as `go -C <module>` with module-relative package paths.
-    Runs under any `language:`, since it reads `go` commands rather than glyphs; reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
-    It only refuses and removes no guard: it misses a command built from a variable, inside `bash -c`, after a subshell, or with an import-path package argument, and webster's gates still catch those at run time.
-    A `Move` of a `go.mod` is not counted, so its verdict on a later card can differ between the plan gate and dispatch.
-31. `resign-head-mismatch` — an `Edit` re-sign arrow whose head `quarry.Name` cannot name, or names as a member other than the arrow's own glyph; a changed receiver type names another member, while a value-to-pointer receiver change keeps the member path and matches.
-    The finding names the head, the glyph and what `Name` answered; the way forward is to write the member's new declaration head, receiver included for a method.
-    Under `language: csharp` an arrow is accepted when `Name` answers the glyph's own namespace, owner chain and name, with the parameter list free to change, and the way forward depends on how the head failed: correct the head to one `Name` accepts under the owner chain, naming the canonical spelling of an explicit-interface qualifier when that is what `Name` refused; keep the member's parameter list in the head, or change the member's kind through a `Delete` and a `Create`; or use a `Rename` pair for a name change.
-    Emitted by `internal/planglyph`'s resolve pass at every gate, `ValidateDispatch` included, since it reads plan text alone; skipped entirely under `language: "none"`.
-32. `delete-before-reference` — a `Delete:` target that is a member glyph or a package self glyph, while a card with a higher number still references it in its `Edit:` code (a member glyph's resolved span, or the whole file of a path or file self glyph).
-    A reference is found through the computation of `caller-uncovered` (row 35), typed where its load answers and by the import-path scan elsewhere, never textually, and only in `.go` files outside the directories the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`); a comment, a string literal and a non-Go `Edit:` target never match.
-    A resolved reference inside a later card's `Edit:` code is blocking, one finding per line.
-    A method matched by name alone is one informational finding per deleted method, naming every file with its lines and each later card, and stating that the receiver could not be resolved.
-    A package self glyph `Delete:` keeps its quoted import-path match, searched only in `.go` regions, and is blocking.
-    Emitted by `internal/planglyph`'s plan-gate pass, not by `internal/planparser`, at `ValidateFormat`, `Validate`, `ValidateRework` and `ValidateFormatAfter` over its pending cards, and scan-only at `ValidateDispatch`, which runs no type load, so a method match there is informational; never under `language: "none"`.
-    The finding is attributed to the deleting card; the fix is to move the delete to a card after the editing one.
-    Bound: a method call in a later card's code is only informational where no type information exists (a failed or timed-out load, a file with a parse error, a nested module, an untyped identifier, or dispatch), and the later card's verify build catches a real call there; a prose mention in a non-Go target and a reference in a directory the go tool ignores are no longer flagged, and neither breaks a build.
-33. `redundant-file-target` — a card's own target list holds a file self glyph beside a member glyph that resolves into that file; one finding per file and member, attributed to the card, with `Ref` the member.
-    A member that resolves `not_found`, ambiguous without being partitioned by build constraints, or unreadably is skipped, since the resolve status policy already reports it.
-    The way forward is to keep the member glyphs and drop the file, or keep the file when the card changes the whole file; for a `_test.go` file it is to keep the member glyphs and drop the file, since `edit-test-file` refuses a test file under `Edit`.
-    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch` and never under `language: "none"`: the verdict depends on a member's resolved file, which the run itself changes once record-batch binds a handle into a member glyph.
-34. `resign-interface-method` — an `Edit` re-sign arrow on a member glyph that resolves to a method whose signature does not open with `func`, which is how an interface method answers; its own spec is no declaration a head can re-sign.
-    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because it reads the tree; the way forward is to drop the arrow and state the signature change in the card's `Intent`.
-35. `caller-uncovered` — a member a card deletes (a `Delete:` group's member glyph) or re-signs (an `Edit:` arrow's target) that Go code still references, where no admissible card's target covers the reference.
-    A reference is resolved by type where a load of the root module's packages answers: `go/packages` over the directories holding a file that names the member, run offline (`GOPROXY=off`, `-mod=readonly`) with test variants and the `tier0` through `tier3` tags, under a timeout, and logged.
-    A typed reference is an identifier whose used object is the member, so a call on another type, through an interface or on a same-named function of another package is no reference, and a promoted call or a method value is.
-    The load is skipped when the worktree root holds no `go.mod`, and covers no directory inside a nested module; a failed or timed-out load is logged and leaves every file to the scan below, never an error.
-    In a hub the load first waits for a gate slot, and a slot that cannot be acquired, as over an absent or invalid `gate.yaml` or an invalid machine override of it, is a failed load.
-    The scan tokenizes every `.go` file under the worktree root, `_test.go` and build-tagged files included, and skipping directories named `testdata` or `vendor` and directories whose name starts with `.` or `_`; comments and string literals never match.
-    It runs over every file the load did not check (a nested module, a file built only for another GOOS, a file that does not parse, a file in a directory the load did not reach) and, in a checked file, only on lines where an identifier named like the member has no type information.
-    A package-level member is referenced inside its own package (the files of its declaring file's directory sharing its package clause) by its bare identifier not preceded by `.`, and elsewhere, an external test package of that directory and every nested module included, by an import of the member's import path (from the `go.mod` covering its directory) under the name that import binds, a `.` and the identifier, or by the bare identifier when the import is a dot import; an import's name is its alias, else the package clause or the last path element without a `/vN` suffix.
-    A method is referenced by `.` and its identifier anywhere, except when the identifier left of the `.` is a name the file imports; that exclusion also drops a method call on a local variable or parameter that shadows an imported package's name, which is then not matched even informationally; the bound holds for the scan only, since a type-checked call resolves through its receiver's type.
-    An occurrence inside the member's own resolved span is its declaration.
-    A reference is covered by a target of an admissible card: the file's self glyph, a package self glyph for the file's directory, or a member glyph whose resolved span holds the line.
-    A re-signed member admits only its own card, and a deleted member its own card and every earlier one; a deleted member's reference inside a later card's `Edit:` code is `delete-before-reference`'s alone, while a re-signed member's is reported here.
-    A resolved reference, package-level or method, gets one blocking finding per subject and file, attributed to the subject's card, with `Ref` the member and the file and its lines named; its way forward is to list the file, or the member glyph whose body holds the reference, on that card, or for a deleted member on an earlier card; when the file is a `_test.go` file it is to list only the member glyph whose body holds the reference, since `edit-test-file` refuses a test file under `Edit`.
-    A method's uncovered name-only matches collapse into one informational finding per subject, naming every file with its lines and stating that the receiver could not be resolved; its way forward is the same, and it offers only the member glyph when any file named is a `_test.go` file.
-    Emitted by `internal/planglyph`'s plan-gate pass at `ValidateFormat`, `Validate` and `ValidateRework`, never at `ValidateDispatch`, because the reference set shrinks as earlier cards land; the scan misses a caller in a file an earlier card creates, which webster's batch gate catches when the caller's package is in the batch, and webster's plan-level verify otherwise.
-    Bound: a call through an interface whose method set holds the method is no longer reported, where it was an informational name match before; a re-signed method that stops satisfying an interface breaks compilation at assignment sites this check does not see, which the batch gate catches in the batch's own directories, the plan-level verify's root build in untagged root-module code and its tagged vet steps in tagged files, and no gate for a file built only for another GOOS or in a nested module unless a command runs inside it.
-    Without type information the check is never weaker than the import-path scan.
-36. `delete-target-gone` (informational) — a `Delete:` target of a card that has not begun, already absent from the tree.
-    Emitted by `internal/planglyph` at `ValidateDispatch` only, once at least one batch is begun, in place of the blocking `path-missing` or `glyph-not-found` finding for that target; `ValidateFormat`, `Validate` and `ValidateRework` keep refusing a missing `Delete:` target.
-    The same target under the card's own `Edit:`, `Uses:` or `Rename` old side keeps its blocking finding.
-37. `card-fabric-reference` — a command in the plan that reaches the fabric repo: a sibling worktree path (a name ending in the fabric suffix) or a command spelling that drives the fabric repo.
-    It scans a card's `**Verify:**` value and the overview's `## verify:` section body with both rules, every fenced code block of every plan file with both rules, and every inline code span of every plan file with the path rule only, because a span documenting a command opens with the spelling.
-    Prose outside code is never scanned.
-    Each span is matched on its own, with the same rule the implementer audit uses.
-    The finding names the card, or for the overview the section the hit is in, and the matched text.
-    Its way forward is to take the data from committed test data an earlier card creates, or to drop the command.
-    The path rule also runs over each card id, since a slug ending in the fabric suffix makes every command naming the card, except a `lym gate` invocation, a fabric reference to the implementer audit.
-    That finding names the card and the matched id, and its way forward is to rename the card in the Card Index and its file name.
-    The plan index runs it in its format validation, so both plan gates and `lym loom validate-plan`'s default and `--rework` modes report it; `--require-approved`, webster's own `validate` verb and dispatch validation do not run it.
-    It only refuses and removes no guard: it misses a spelling in `bash -c "…"` or built from a variable, the rest of a span after an unterminated quote, a spelling in an inline span or prose, and a fabric-repo path not spelled as a name ending in the suffix, and the implementer audit stays the guard for those.
-38. `verify-module-wide` — a raw Go test, build or vet command in a card's `**Verify:**` value whose package argument holds `...` or equals `all`, or a raw Go test command whose `-tags` value names `tmux`, `llm`, `tier2` or `tier3`.
-    An agent's settings deny such a command, so it can never run under a fork.
-    It splits a chain as `verify-nested-module` does, at `&&`, `||`, `;`, `|` and a newline after joining line continuations, skips a `go -C <dir>` and a leading environment assignment, and stops reading a command at `--` or `-args`; a flag that takes a value takes the next field.
-    One finding per command, attributed to the card; the overview's `## verify:` section is never read.
-    Its way forward is `lym gate test --wait --tier <n> --card <id>` over the card's own scope, run in the foreground under the gate rule in the agent's system prompt.
-    Runs under any `language:` and is reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
-    It only refuses: it misses a command built from a variable or behind `bash -c`.
-39. `pattern-entry-line-cap` — a card that prescribes a verbatim `PATTERN.md` entry line whose rule text is over the cap: a line inside a fenced code block of the card file that opens with ``- `PATTERN-`` and whose rule text, the part between the name and a trailing `(test)` or background link, exceeds `pattern.MaxEntryTextChars` runes.
-    It scans fenced blocks only, whatever the fence's info string and including an unclosed fence; inline spans and prose are never scanned, since an entry line carries backticks of its own.
-    One finding per line, attributed to the card, naming the entry, the length and the cap; its way forward is to shorten the line or move the detail to the entry's background file.
-    Runs under any `language:` and is reported by both plan gates, `lym loom validate-plan` and dispatch through `ValidateFormat`.
-    It measures verbatim lines only, so a declared `adds` or `changes` entry is prescribed as its whole overview line in a fenced block, which `pattern-headroom` and `pattern-line-unprescribed` then check.
-    An undeclared prose edit of `PATTERN.md` passes, and the plan-writer stencil states that rule.
-40. `done-card-edited` — a card of a batch webster's run record holds done whose file no longer hashes to what the batch recorded at begin.
-    `loomshed.ValidatePlan` appends it outside both planparser entry points, from the run record and the card bytes alone, so both plan gates and `lym loom validate-plan` report it.
-    A plan with no run record, a record without recorded hashes and a card of a batch that is not done report nothing; an unreadable card file is a returned error.
-    The finding names the card.
-    Its way forward is to restore the card file, because a done card is frozen: a finding against its work goes in a follow-up card placed after the last begun batch, with its Card Index line in `00-overview.md`.
-    It gates the done-card edit only; a begun batch's card-set change, a failed batch with uncheckable findings and an overview change outside the Card Index pass the plan gate and block at the Webster row.
-41. `fabric-vocabulary-name` — a name a card declares that the fabric-vocabulary scan would refuse once it lands.
-    It reads each `Create` handle's member and each `Rename` pair's `New` handle, and skips a handle that does not split into a unit and a member, which the handle checks already report.
-    With `first` the unit's first path segment and `last` the member's last dot-segment, a name fails the bare-token rule when the whole member carries a bare fabric side token, the unit's directory is not in the owner set (`internal/configsync` still fails, under its identifier rule), and `first` is `internal` or a doc root or `last` carries a `Test`, `Benchmark`, `Fuzz` or `Example` prefix.
-    An external `_test` unit counts as its package's directory for the owner check.
-    A name fails the host-geometry rule when `last` has no such test prefix, is a retired host-geometry identifier, and `first` is `internal` or `cmd`.
-    One blocking finding per name, attributed to the card naming the member, naming `PATTERN-fabric-vocabulary` and the rule broken; its way forward is to rename the member.
-    Runs under any `language:`, and the plan index appends it to its format, rework and dispatch validation, so both plan gates, `lym loom validate-plan`'s default and `--rework` modes and webster dispatch report it; dispatch drops a finding against a completed card, and `--require-approved` and webster's own `validate` verb do not run it.
-    It only refuses: it misses a name spelled only in prose, such as a test row or subtest name, or built at implementation time, which the verify gate still catches, and it may refuse a host-geometry helper declared in a `_test.go` file under `internal/`, which the scan admits.
-42. `verify-package-missing` — a relative package argument (`.`, `..`, `./…` or `../…`, a trailing `/...` removed, not a `.go` file) of a raw Go test, build or vet command or a `lym gate test` command in a card's `**Verify:**` value that names no directory.
-    A directory counts when it is on disk under the worktree root, or equals or is an ancestor of a directory a card creates: a card's value reads the targets of non-`Delete` groups of that card and the earlier ones, a `Rename` pair's `New` side included; an external `_test` unit counts as its package's directory.
-    It splits a chain as `verify-nested-module` does and follows a literal `cd <dir>` and a `go -C <dir>`, `lym gate test -C <dir>` or `--dir <dir>` the same way; `--tags` skips its value for `lym gate test`, and reading stops at `--`.
-    A card's value is skipped when that card or an earlier one holds a `Move` group, since a `Move`'s destination lives in `Intent` prose.
-    The overview's `## verify:` section is never read.
-    One finding per argument, with the argument as its ref.
-    When the argument ends in `_test` and its `_test`-less spelling is a directory, the detail names that spelling as the replacement.
-    Its way forward is to correct the Verify line.
-    It runs right after `verify-module-wide` in `Validate` and `ValidateFormat`, under any `language:`, and both plan gates, `lym loom validate-plan` and dispatch report it; dispatch drops a finding against a completed card.
-    It only refuses: it misses an argument behind a variable or inside `bash -c`, an argument after an unplaceable `cd` or `-C` or after a `cd` in a pipeline stage or after `||`, an import path, a module-wide pattern whose stem exists and a `.go` file argument, and a directory an earlier card deletes is left to that card's own verify run.
-43. `edit-test-file` — a file self glyph in a card's `**Edit:**` or `**Extends:**` group whose path ends in `_test.go`.
-    Only `Edit` and `Extends` groups are read, so a `Create`, `Delete`, `Rename`, `Move`, `Prosa` or `Custom` group and `Uses` never trip it, and neither does a member glyph, a `plan:` handle or a path with no extension, since a card file's plain `x_test.go` path is canonicalized into its file self glyph at parse time.
-    A path with a segment the go tool ignores (`testdata`, `vendor`, and names starting with `.` or `_`), the file name included, is exempt, since no test there is compiled.
-    One blocking finding per entry, attributed to the card, with `Ref` the entry.
-    Its way forward is to name each existing test function, fake or helper the card changes as a member glyph under `**Edit:**`, to declare each new one as a `**Create:**` `plan:` handle on the package directory (or on `<dir>_test` for an external test package), to keep a new test file a `**Create:**` path, and, for a change confined to the file's header such as its build constraint, to name every member of that file.
-    Skipped under `language: none`, whose plan forgoes every glyph check and has neither a self glyph to read nor a member glyph or handle to name.
-    It reads plan text only, so it fires whether or not the file exists, and only refuses.
-    The plan index appends it to its format and rework validation, so both plan gates and `lym loom validate-plan`'s default and `--rework` modes report it; format validation skips a done card, rework skips none because a rework generation is a fresh plan whose prior cards are archived, and dispatch, `--require-approved` and webster's own `validate` verb do not run it.
-44. `verify-raw-command` — a card's `**Verify:**` line holding a command the hub's `refuse_raw` list names, read in command position over each command of the line, past a leading `env`, `exec`, `xargs`, `sudo` or `time` launcher.
-    Go re-runs a `**Verify:**` line outside any agent hook, so the shell guard cannot refuse it there.
-    One blocking finding per command, attributed to the card; its way forward is a `lym gate test --wait` call with a tier list and a scope form.
-    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it from the hub's `gate.yaml` list outside both planparser entry points; an absent `gate.yaml` or an empty list reports nothing.
-    A done card is not read, since its file is frozen, and the rework gate reads the fresh generation's cards.
-    It reads static text only: a test hidden behind a script in the line passes.
-45. `verify-gate-no-wait` — a `lym gate test` call in a card's `**Verify:**` line without `--wait`.
-    Go re-runs a `**Verify:**` line outside any agent hook, and a gate call without `--wait` is a slot-held line there, run inside one slot under `cardverify`'s per-line timeout instead of taking its tiers' own slots.
-    It is appended and scoped as `verify-raw-command` is; one blocking finding per call, and its way forward is to add `--wait`.
-46. `plan-verify-retired` (informational) — an overview carrying a `## verify:` section.
-    No gate runs it; the parser keeps accepting the section, so an in-flight plan still parses.
-    It is appended as `verify-raw-command` is and never blocks.
-47. `plan-language-mismatch` — a plan whose `language:` does not fit the files its cards target.
-    Under `go` it fires when the cards' file targets are `.cs` files and no `.go` file, or when the targets resolve into `.cs` files only; under `csharp` it fires when they are `.go` files and no `.cs` file.
-    A member glyph, a `plan:` handle or an extensionless self glyph shows the plan may name code of its own language and silences the plan-text half, and the resolve half runs only when no card is done and is silent when a card creates a declaration whose head opens with a Go keyword.
-    One blocking plan-level finding; its way forward is to set `language:` to the files' language, or to `none` for a plan that changes both.
-    It never fires under `language: none`; `internal/planparser` raises the plan-text half, and `internal/planglyph`'s resolve pass the resolve half.
-48. `rename-namespace-pair` — under `language: csharp`, a `Rename` pair of two self glyphs whose old side has no slash and names nothing on disk, such as `Glyphchain.Sharp# -> Glyphchain.Core#`.
-    Such a pair is a file pair that runs `git mv`, so a namespace cannot be renamed this way.
-    One blocking finding per pair, attributed to the card; its way forward is to rename the namespace through `Edit` cards on the files that declare it and the files that refer to it, to correct the old side to a root file that exists, or, when a later card creates the old side, to move the pair after that card.
-    A path an earlier card creates is no finding; under `go` the same pair is `path-missing`'s.
-49. `resign-overload-collision` — under `language: csharp`, an accepted `Edit` re-sign arrow whose new head mints the id of an overload that already exists, of a `Create` or `Rename` handle, or of another arrow.
-    One blocking finding attributed to the later of the two cards, naming the earlier one; it is lifted when a card between the two declarations deletes the colliding member, renames it away or re-signs it away.
-    Its way forward is to change the head to a free signature, or to remove or re-sign the other declaration on an earlier card.
-    Emitted by `internal/planglyph`'s resolve pass at every gate, since it reads plan text and the tree's overloads.
-50. `resign-not-done` — under `language: csharp`, a recorded `Edit` re-sign arrow whose minted id does not resolve in the tree, so the card's edit does not match its arrow.
-    One blocking finding attributed to the card; its way forward is to make the edit match the arrow's head, or to correct the head to the signature the card wrote and run `lym webster rebaseline --card <N>` naming that card.
-    It is raised only at webster's record-batch and recover-batch, never at a plan gate, and when every arrow of the batch is done webster rewrites each old glyph to its new one plan-wide.
-
-51. `extends-overlap` — a ref that a card names under an `Extends` group and also under any other type label of the same card.
-    One blocking finding per ref, naming the card, the ref and the other label; its way forward is to keep the ref under one label, `**Edit:**` when the card changes what is there.
-    An `Extends` ref that is also under `Uses:` is `card-field-overlap`, since the card's flat targets hold it.
-52. `extends-resign` — an arrow sub-bullet in an `Extends` group.
-    One blocking finding per arrow, naming the card and the member; its way forward is to move that ref under `**Edit:**`, since a re-sign changes what is already there.
-53. `rename-leaves-test` — under `language: go`, a symbol `Rename` pair renaming `unit#Name`, or the method `unit#T.M`, while a card lists a test named after it under `Edit` in the same unit and no `Rename` pair renames that test.
-    A test is named after the symbol when it is `Test<base>` or `Test<base>_<case>`, with base `Name`, or `T_M` for a method; `TestNameX` is not.
-    An implementer renames such a test with its symbol, so a later card still naming the old test refuses at its `begin-batch`.
-    One blocking finding per test ref, attributed to the renaming card and naming the card that edits the test; its way forward is to add the test's rename as a `Rename` pair on the renaming card.
-54. `test-tier-unstated` — under `language: go`, a test file a card creates as a `**Create:**` file target whose path ends in `_test.go` and whose Intent lines state no valid tier.
-    The check collects the Intent lines that name the file, by its worktree-relative path or by its base name as a token of its own, never the tail of a longer path, and the tier tags those lines name as whole words, each tier key of the hub's `gate.yaml` being a tag; the tags are collected as a set of distinct tags, so the same tag stated on several naming lines counts as one.
-    A line that also names another test file carries that file's tags into the file's collection, so each file's statement goes on a line that names no other test file.
-    The file passes when the lines name exactly one tag; or several, each pair of consecutive ones joined by `||` on the same line, the form of a helper several tiers share; or the word `untagged` and no tag, a support-only file.
-    One blocking finding per file, attributed to the card and naming the file and the tags its naming lines hold; its way forward is "add an Intent line naming the file and its tier, such as `tier0`, the tier every test function of the file names in its opening tiergate.Require call, or the word `untagged` when the file holds support only (TestMain, helpers), on a line that names no other test file; where the lines name several tiers, keep one; drop untagged or the tier when both appear".
-    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, from the hub's `gate.yaml` tier keys; an absent `gate.yaml` reports nothing, a done card is not read, and the rework gate reads the fresh generation's cards.
-    Bound: a test file created as a member handle rather than a file target is not seen; whether the stated tier fits stays with `cmd/lym/tiertags_test.go` and review.
-    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
-55. `seam-test-unlisted` — under `language: go`, a card not recorded done that touches a struct a `//lym:seam` test reflects over without covering that test.
-    A test carries `//lym:seam <unit>#<Type>` in the comment block directly above its `func Test…` line, one line per struct its reflection walks.
-    A card touches a marked struct `u#T` when a ref of its `Create`, `Edit`, `Extends`, `Delete` or `Rename` groups, with a `plan:` prefix stripped, is `u#T`, a member `u#T.<x>`, the file self glyph of a file declaring `T`, or the package self glyph `u#`.
-    Such a card covers a test marked for `u#T` when its own target groups name the test's glyph `<Unit>#<Name>` or the glyph's package counterpart, or its `Uses`, `Delete`, `Rename` or `Move` refs name the test's file, or any of its refs is the package self glyph of the test's unit or of its counterpart unit; or when a later card names the test glyph or its counterpart under `Edit` or `Extends`.
-    One blocking finding per card, struct and test, naming all three; its way forward is "list it under Edit by its member glyph when the card changes it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
-    The closing "else list it under Edit" covers a test a later card deletes, renames or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
-    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, after reading the markers once through the context's seam-test reader and resolving every marked struct in one index call; a done card is not read.
-    A marker the parser rejects, or a test file that does not parse, halts the gate with the scan error: it names the file and line, the halt is the parent's, and the operator corrects the marker or the unparsable test file the error names in the task worktree and re-runs `lym loom validate-plan`.
-    Bound: a method change on a marked struct also requires the listing; a field added through a target this rule does not name is not seen; a test listed under `Uses`, or edited by a later card for another reason, passes while the card breaks it, and the card's gate test run and review catch that.
-    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
-56. `doc-go-unlisted` — under `language: go`, a card not recorded done that changes a package's non-test Go code without covering the package's `doc.go`.
-    A card changes a package through the refs of its `Create`, `Edit`, `Extends`, `Delete`, `Rename` and `Move` groups, with a `plan:` prefix stripped, never `Prosa` or `Custom`; each maps to its package directory, a file unit's directory or a `<dir>_test` unit's `<dir>`.
-    A file target whose path does not end in `.go`, such as `internal/d/template.yaml`, is not Go code and is skipped.
-    A ref is test code when it is a file ending `_test.go`, has a `_test` pseudo-unit, is a member glyph the index reports declared only in `_test.go` files, or is a member that does not resolve yet and either is a `Rename` new side whose old side is test code or has a member name beginning `Test`, `Benchmark`, `Fuzz` or `Example`; every other ref, an ambiguous answer included, is non-test code.
-    The name rule applies to any unresolved member, a `Create` handle included, so a card creating `plan:<dir>#TestNew` is test-only, while one creating a helper handle whose name begins with none of the prefixes is not.
-    A directory with no `doc.go` on disk is skipped, which covers a package the plan creates.
-    The card covers `<dir>/doc.go` when any of its own groups or its `Uses` names that file, when a ref is the package self glyph `<dir>#`, or when a later card names the file under `Edit` or `Extends`.
-    One blocking finding per card and package, naming both; its way forward is "list it under Edit when the card changes what it says, under Extends when it only adds to it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
-    The closing "else list it under Edit" covers a `doc.go` a later card deletes or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
-    A `Uses` listing records that the writer read the doc and found nothing the card falsifies.
-    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, resolving every member ref of the told cards in one index call.
-    Bound: a `doc.go` under `Extends` or `Uses` whose text the card falsifies, or one a later card edits for another reason, passes and stays with review; a test-only card, `Prosa` and `Custom` groups, and `docs/overview.md` are not checked; a card creating a test helper by a handle whose name begins with none of the test prefixes counts as non-test code and lists the `doc.go`.
-    Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
-57. `part-export-missing` — an export of a part's contract that no card of the part meets: no card creates it (a `Create` target or `Rename` destination), re-signs it (an `Edit` arrow target) or deletes it (a `Delete` target).
-    A `plan:` handle is met by the declaration it names, so a handle the resolve pass rewrote on disk to its canonical spelling still meets the export as the parts file spells it, and the parts file never changes.
-    One blocking finding per export, naming the part and the export; its way forward is to create the export on a card of the part, declaring a `plan:` export on a `**Create:**` bullet with the parts file's spelling, or to re-sign or delete it on a card, and when the part's area cannot meet it, to message the chair naming the contract line.
-    Only `loomshed.ValidatePart` raises it, appended after the context checks, so a part writer learns of a missing export from its own check; the join's `planparser.JoinParts` applies the same test as a backstop.
-
-`plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
-`extends-overlap` and `extends-resign` run right after `card-field-overlap`, in that order.
-`rename-leaves-test` runs right after `rename-mechanic-missing`.
-`test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` run after the other `loomshed` context checks, in that order, after `verify-gate-no-wait` and before `plan-verify-retired`.
-
-A plan under `language: csharp` skips the checks that read Go source or Go toolchain semantics: `verify-nested-module`, `verify-module-wide`, `verify-package-missing`, the `.go` file-unit half of `handle-malformed`, `delete-before-reference`, `caller-uncovered`, `rename-leaves-test`, and the Go package-directory mapping of a unit.
-The remaining checks run under it as they do under `go`.
-
-One further check, `rework-first-card`, is outside both entry points and has no row above.
-Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
-
-## Part scope
-
-A plan directory that is one part of a split plan is checked with a part scope: the checks above run unchanged over it, and the scope adds to what they read.
-`lym loom validate-plan --part` is the mode that sets the scope; an ordinary plan has none, and its findings do not change.
-
-- The scope lists the `plan:` handles and the new file paths that other parts and shared spots export to the part, and the path of every shared spot.
-- `handle-dangling` counts a handle the scope lists as claimed; it never counts toward `handle-collision`, which stays about the plan's own declarations.
-- `path-missing` counts a path the scope lists as satisfied, as a `Create` target of the plan is.
-- `glyph-not-found` leaves out a target path the part's external exports hold, as it leaves out a `Create` target.
-- `caller-uncovered` is not reported: that verdict rests on cards outside the part, and the joined plan's `plan` gate checks it.
-- `part-spot-target`, run only under a part scope right after `path-missing`, refuses a ref of any card's target group, never `Uses`, whose path is a shared spot's.
-  One blocking finding per card and ref, with the way forward of dropping the target and saying in the card's `**Intent:**` what the card needs from the spot, since the chair writes the shared spot's cards.
-
-## Joined plans
-
-A split task's plan is written as one plan per part, and `planparser.JoinParts` is the one writer of the plan joined from them, so Go numbers and orders the cards and no agent spends turns renumbering.
-
-`JoinParts` parses each part's plan directory in the parts file's order and refuses, before it writes anything, with an error naming the part to fix and the reason, when:
-
-- a part's plan does not parse;
-- two parts' overviews differ in `language:` or `root:`;
-- a part's export is not met by its plan: no card creates it (a `Create` target or `Rename` destination), re-signs it (an `Edit` arrow target) or deletes it (a `Delete` target).
-  A path export is met by its disk path, a glyph exactly, and a `plan:` handle exactly or by a declared handle that reads to the same unit and name, since the resolve pass canonicalizes a declared handle by spelling its owner chain from the declaration head;
-- a `plan:` handle or a new file path is a `Create` target or `Rename` destination of cards of two parts, exported or not.
-
-Otherwise it numbers the parts' cards into one sequence from 1 in part order.
-Each card keeps its slug; its heading and `Commit:` prefix take the new number, and every card id in it that names a card of its own part is rewritten to that card's new number.
-It removes every top-level card file and `00-overview.md` the plan directory held, leaving subdirectories such as archives in place, writes the joined cards, and writes `00-overview.md` last.
-The overview carries `approved: false`, the parts' shared `root:` and `language:`, a framing paragraph naming the parts for the chair to rewrite, the Card Index, each part's own `## Shared Decisions` body under `### Part <name>`, and the canonical `## Rename mechanic` section when any part has one.
-
-A read or write failure is not a refusal: running the join again rewrites the whole plan directory from the parts.
+A docstring is never a card of its own: the `Create`, `Edit` or `Rename` card that touches a symbol writes its doc comment, per `docs/code-comment-conventions.md`.
+`Prosa` is for documentation with no single-symbol owner: design docs, `docs/overview.md`, a `doc.go` header no code change triggers, a comment sweep.
 
 ## Worked example
 
-A complete plan for a fictional task ("add a `--json` flag to `lym board list`"), byte-consistent with the golden fixture `internal/planparser`'s own tests parse.
-Across its seven card files this example demonstrates every plan-format feature: seven of the eight type labels are exercised across the suite of cards below (`Create`, `Edit`, `Custom`, `Delete`, `Rename`, `Move`, `Prosa`), flat `N` card headings, a `## Shared Decisions` overview entry, a plan-level `root:` with `//`-escaped entries, a pinned `Commit:`/`Verify:` pair, and a `Rename` card with its plan-level `## Rename mechanic` section.
-Card 2 is additionally the multi-label example: it carries an `**Edit:**` group followed by a `**Create:**` group.
+A plan for a fictional task, "add a `--json` flag to `lym board list`", modelled on the fixture `internal/planparser/testdata/goodplan`.
+It uses seven of the eight type labels, a multi-label card (card 2), `root:` with `//`-escaped entries, a pinned `Commit:` and `Verify:`, and a `Rename` card with its `## Rename mechanic`.
 
 `_lym/plan/00-overview.md`:
 
@@ -748,18 +309,7 @@ of a later extraction.
 
 ## Rename mechanic
 
-1. For a file pair (both sides file self glyphs or paths), run `git mv <old> <new>` FIRST, before any other change to the moved file.
-2. Then make ONLY surgical edits (package declaration, imports, identifier
-   retargeting) — no unrelated rewrites.
-3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
-   into the `Rename` pair.
-4. Never write the relocated file from scratch and delete the original — that loses
-   git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
-
-## verify:
-
-lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
+<the canonical section above, verbatim>
 ```
 
 `_lym/plan/01-json-row-type.md`:
@@ -768,12 +318,12 @@ lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
 # Card 1 — json-row-type
 
 **Create:**
-- `internal/boardcli#RowJSON`
+- `plan:internal/boardcli#RowJSON` -> `type RowJSON struct`
 
 **Intent:** Define the `RowJSON` struct carrying the list command's existing table columns as JSON-taggable fields.
 
 **Commit:** `1: json-row-type`
-**Verify:** lym gate test --wait ./internal/boardcli
+**Verify:** lym gate test --wait --tier 0 --card 1-json-row-type
 ```
 
 `_lym/plan/02-json-flag.md`:
@@ -791,6 +341,7 @@ lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
 - `//internal/output/envelope.go`
 
 **Intent:** Add the `--json` bool flag to `newListCmd` and branch its row output between the table writer and the JSON path.
+`list_json_test.go` is tier0.
 
 **ImpactSummary:** Adds a --json flag to the list command and branches its row-emission path on it.
 ```
@@ -818,7 +369,7 @@ lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
 **Delete:**
 - `//internal/boardengine/legacyrows.go`
 
-**Intent:** Remove the legacy per-row conversion helper now that `boardengine.MapRowJSON` (card 5) supersedes it.
+**Intent:** Remove the legacy per-row conversion helper, which the JSON path supersedes.
 
 **ImpactSummary:** Deletes the legacy row-conversion file; no remaining callers reference it.
 ```
@@ -858,13 +409,11 @@ lym gate test ./internal/boardcli ./internal/boardengine ./cmd/lym
 **Intent:** Update the package doc comment and the standalone docs page describing `--json` output.
 ```
 
-`list.go`/`doc.go`/`list_json_test.go` above resolve (per the plan's `root: internal/boardcli`) to `internal/boardcli/list.go`/`internal/boardcli/doc.go`/`internal/boardcli/list_json_test.go`, then canonicalize (per the plan's `language: go`) to the file self glyphs `internal/boardcli/list.go#`/`internal/boardcli/doc.go#`/`internal/boardcli/list_json_test.go#`;
-the `//`-prefixed entries (`envelope.go`, `emit.go`, `legacyrows.go`, `rows.go`, `rowsjson.go`, `helppins.go`, `boardcli-json.md`) stay worktree-root-relative regardless of `root:`, escaping it for the files each card needs outside the shared prefix, and canonicalize to their own file self glyphs the same way.
-`internal/boardcli#newListCmd`, `internal/boardcli#RowJSON`, `internal/output#emitJSON`, and `internal/boardengine#MapRow` are glyph-shaped entries already, copied verbatim from a quarry answer, and pass through every one of these resolution rules byte-identical — a glyph is never `root:`-joined and never re-canonicalized.
-Card 5's `New` side, `plan:internal/boardengine#MapRowJSON`, is a handle rather than a glyph, because a symbol `Rename`'s `New` side must be one (`rename-to-not-handle`, and [Plan: handles](#plan-handles) above): the renamed symbol does not exist until the rename lands, so its spelling is computed at the validation boundary rather than written here.
+Under `root: internal/boardcli`, `list.go`, `doc.go` and `list_json_test.go` resolve to `internal/boardcli/…` and canonicalize to their file self glyphs; the `//` entries stay worktree-root-relative.
+The glyphs are copied from quarry answers and pass through unchanged.
+Card 5's `New` side is a handle, because the renamed symbol does not exist until the rename lands.
 
 ## Related
 
-- [webster-spec.md](webster-spec.md#the-summary-artifact--_lymwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
-- `contracts/stencils/loom/loom-template-plan.md` and the plan-format blocks it includes (`loom-block-plan-format.md`, `loom-block-plan-overview.md`, `loom-block-plan-cards.md`) — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
-- [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.
+- [webster-spec.md](webster-spec.md) and `internal/websterengine`'s package documentation — the module that executes this format.
+- `contracts/stencils/loom/loom-template-plan.md` and the plan-format blocks it includes — what `Plan-Write` reads.

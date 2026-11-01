@@ -1,6 +1,6 @@
 # Loom parts-spec — the task split into parts
 
-> **Status: Contract — pinned.** This doc pins **parts-format**: the parts file `Parts-Write` produces, which `Parts-Plan-Write` consumes and `internal/partsparser` parses. This is `internal/partsparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Parts-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-parts.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **parts-format**: the parts file `Parts-Write` produces, which `Parts-Plan-Write` consumes and `internal/partsparser` parses. This is `internal/partsparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Parts-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-parts.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc. It also pins the part scope a part's plan is checked under and the join of the parts' plans.
 
 ## Producer and contract
 
@@ -94,3 +94,35 @@ Each finding names the part, or the shared spot's path, and ends in its way forw
 
 `Validate` reads the parts file, parses it, reads the decision record and runs the checks over the record's decision ids.
 An absent record is not a finding: it is Discussion-Write's committed output, which the `Parts-Write` agent cannot write, so the gate ends at once with an error naming `lym loom validate-discussion` for the parent.
+
+## Part plans
+
+### Part scope
+
+A part's plan directory is checked with a part scope, which `lym loom validate-plan --part` sets: the plan checks of `loom-plan-checks-spec.md` run unchanged, and the scope adds to what they read.
+An ordinary plan has no scope.
+
+- The scope lists the `plan:` handles and new file paths that other parts and shared spots export to the part, and the path of every shared spot.
+- `handle-dangling` counts a listed handle as claimed; it never counts toward `handle-collision`.
+- `path-missing` counts a listed path as satisfied, as a `Create` target is, and `glyph-not-found` leaves out a target path the part's external exports hold.
+- `caller-uncovered` is not reported, since its verdict rests on cards outside the part; the joined plan's gate checks it.
+- `part-spot-target` refuses a card's target, never a `Uses` entry, that is a shared spot's path, since the chair writes the spots' cards.
+- `part-export-missing` refuses an export of the part's contract that no card of the part creates, re-signs or deletes.
+
+### Joining the parts' plans
+
+`planparser.JoinParts` is the one writer of the joined plan: Go numbers and orders the cards.
+It parses each part's plan in the parts file's order and refuses, before writing anything, with an error naming the part and the reason, when:
+
+- a part's plan does not parse;
+- two parts' overviews differ in `language:` or `root:`;
+- a part's export is not met: no card creates it (a `Create` target or `Rename` destination), re-signs it or deletes it.
+  A path export is met by its disk path, a glyph exactly, and a `plan:` handle exactly or by a declared handle that reads to the same unit and name;
+- a `plan:` handle or a new file path is created by cards of two parts, exported or not.
+
+Otherwise it numbers the cards from 1 in part order.
+Each card keeps its slug; its heading and `Commit:` prefix take the new number, and each card id naming a card of its own part is rewritten.
+It removes every top-level card file and `00-overview.md` of the plan directory, leaving subdirectories in place, writes the joined cards, and writes `00-overview.md` last.
+The overview carries `approved: false`, the parts' shared `root:` and `language:`, a framing paragraph naming the parts for the chair to rewrite, the Card Index, each part's `## Shared Decisions` body under `### Part <name>`, and the canonical `## Rename mechanic` when any part has one.
+
+A read or write failure is not a refusal: running the join again rewrites the whole plan directory from the parts.

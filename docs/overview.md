@@ -97,7 +97,7 @@ Two doc classes, opposite lifecycles:
   the task building the module writes the design into the package's `doc.go` and leaves its own entry's body and scope unchanged;
   the landing marks the entry done and the board prune removes it, and the implementation and tests become the source of truth.
   A module's purpose and key design rationale then live in its Go package header comment, next to the code it documents.
-- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `implementer-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `loom-final-summary-spec.md`, `loom-plan-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
+- **Durable Go-to-Go contract docs** (`contracts/specs/`) pin cross-module schemas a real consumer honors — they are **kept**, not deleted on landing: `loom-status-spec.md`, `implementer-spec.md`, `webster-spec.md`, `llm-model-spec.md`, `loom-final-summary-spec.md`, `loom-plan-spec.md` with its by-need companions `loom-plan-checks-spec.md` (the validation-check catalogue) and `loom-plan-csharp-spec.md`, and `loom-parts-spec.md`. LLM-facing producer format contracts (what `Discussion-Write`/`Plan-Write` must write) live in the producer's own stencil under `contracts/stencils/`, not as a separate doc — see the Documentation Lifecycle's stencil-vs-doc split.
 
 The other durable documentation is this `overview.md` (principles, naming, the module and shared-lib map, the records contract,
 and this lifecycle convention).

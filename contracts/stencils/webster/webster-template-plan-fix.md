@@ -22,6 +22,8 @@ You never run a Bash call in the background.
 1. Read the plan-conflict record `{{.record_path}}` in full: its heading names the batch, and each `- ` line is one blocking finding, naming its check, its card and the target the tree does not hold.
 2. Read `{{.plan_dir}}/00-overview.md` and each card file a finding names, under `{{.plan_dir}}`.
 3. The card format is the plan spec's, at `{{.specs_dir}}/loom/loom-plan-spec.md`; read the parts that cover the targets you edit.
+   A check a finding names is described in `{{.specs_dir}}/loom/loom-plan-checks-spec.md`.
+   On a plan whose overview sets language `csharp`, the C# rules are in `{{.specs_dir}}/loom/loom-plan-csharp-spec.md`.
 4. Find where each named target is in the tree now: `lym quarry`, `grep` and `git log` on the worktree's own code are yours to use.
 
 ## Decide: mechanical or for the plan writer

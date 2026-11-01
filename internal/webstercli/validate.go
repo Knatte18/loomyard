@@ -147,7 +147,7 @@ func (c *websterCLI) validateCmd() *cobra.Command {
 		Short:       "lint the plan against the plan-format machine checks without running anything",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate parses the plan at _lym/plan and runs the plan-format machine checks
-listed in contracts/specs/loom-plan-spec.md's "Validation checks" section. A
+listed in contracts/specs/loom-plan-checks-spec.md. A
 plan with no blocking finding prints {"valid": true, "cards": N}, carrying any
 informational findings under their own key; a blocking finding prints an
 error envelope with every finding (check, card, detail, severity) and exits

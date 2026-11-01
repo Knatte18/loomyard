@@ -28,10 +28,8 @@
 // The index's format and rework validation also append card-fabric-reference and edit-test-file (planparser.CheckEditTestFile), which dispatch does not run.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //
-// Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks
-// a claim against without reading Go source — the parallel this package owes planparser's own
-// exhaustively numbered "Validation checks" section in contracts/specs/loom-plan-spec.md, since
-// nothing enumerated these anywhere else:
+// Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks a claim against without reading Go source,
+// and the parallel this package owes the plan gate's check catalogue in contracts/specs/loom-plan-checks-spec.md, since nothing enumerated these anywhere else:
 //
 //   - glyph-not-found, glyph-ambiguous, glyph-rejected — the resolve status policy (resolve.go),
 //     blocking, over every glyph target that neither a Create group owns nor a Rename pair names as
