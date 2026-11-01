@@ -1,9 +1,10 @@
 // render.go — turns the entry list into the wiki's output files.
 //
-// Render is a pure function: entries in, a map of filename → content out (README.md for the root project, built by renderReadme, and project-<slug>.md for each project, built by renderProjectFile, plus design-*.md for any entry with a body).
-// Every project, the root's Prime included, renders through one project section: its heading, facts and brief, then a section per open project directly under it one heading level down, nested to any depth with headings capped at level six, then its own entries;
-// with no open sub-project the own entries sit one level down, and with any they sit under a No project heading for the root or an Own entries heading for any other project, at the sub-projects' level, two levels down;
-// README.md holds the Prime section under its header, and a project file holds its project's sub-projects and own entries under its header.
+// Render is a pure function: entries in, a map of filename → content out (README.md, the overview of every project, built by renderReadme, and project-<slug>.md for each project and project-root.md for the root project P0, built by renderProjectFile, plus design-*.md for any entry with a body).
+// Every project, the root P0 included, renders through one project section: its heading linked to its file, facts and brief, then a section per open project directly under it one heading level down, nested to any depth with headings capped at level six, then its own entries;
+// with no open sub-project the own entries sit one level down, and with any they sit under an Own entries heading at the sub-projects' level, two levels down;
+// the root's projects stand beside it rather than under it, so its section holds its own entries alone.
+// README.md holds every top-level project's section under its header and the root's last, and a project file holds its project's sub-projects and own entries under its header.
 // A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
@@ -100,7 +101,8 @@ func Render(tasks []Task, primeOwner string, out Outputs, now time.Time) (map[st
 
 	board := newBoardView(ordered, primeOwner, out, now)
 	result := map[string]string{
-		out.Readme: board.renderReadme(),
+		out.Readme:      board.renderReadme(),
+		rootProjectFile: board.renderProjectFile(rootProject),
 	}
 	for _, twl := range ordered {
 		if twl.Kind == KindProject {
@@ -127,10 +129,8 @@ var boardIntro = []string{
 	"",
 }
 
-// The root project's section, the headings over a project's own entries beside its sub-projects, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
+// The heading over a project's own entries beside its sub-projects, the board files' Tasks, Notes and Done sections and the Running and Ready subsections of Tasks, declared here alone.
 var (
-	primeSection      = readmeSection{"Prime", "The root project: the entries under no other project."}
-	noProjectSection  = readmeSection{"No project", "The entries under no project."}
 	ownEntriesSection = readmeSection{"Own entries", "The entries directly under this project and under none of its sub-projects."}
 	tasksSection      = readmeSection{"Tasks", "Concrete and claimable; only a task can run."}
 	runningSection    = readmeSection{"Running", "Held by a run; its scope is locked until the run ends."}
@@ -152,8 +152,15 @@ const researchHeading = "Research"
 // The board's Bolt replayer recognises the same prefix as its own.
 const projectFilePrefix = "project-"
 
-// rootTitle is the H1 of the root project's board file and the text of a link up to it.
+// rootTitle is the H1 of README.md, the overview of every project, and the text of a link up to it.
 const rootTitle = "Board"
+
+// rootProject is the root project as the board files render it: handle P0, which no board project takes since their handles start at 1, and the entries under no other project.
+// Its empty slug names the root wherever a project is looked up, and it has no board entry, so no design file.
+var rootProject = Task{Handle: projectHandleLetter + "0", Title: "Root: entries under no project"}
+
+// rootProjectFile is the name of the root project's own board file.
+var rootProjectFile = projectFileName(RootSubject)
 
 // emptySectionLine stands in for the table of a subsection that is always rendered and has no entry.
 const emptySectionLine = "_None._"
@@ -317,21 +324,32 @@ func newBoardView(ordered []TaskWithLayer, primeOwner string, out Outputs, now t
 	}
 }
 
-// fileLink is a markdown link to the board file of project, the zero Task naming the root, its text the project's handle and title.
-func (b boardView) fileLink(project Task) string {
-	if project.Slug == "" {
+// upLink is a markdown link to the board file that project's file links up to: its parent's project file, or README.md, titled Board, for a project whose parent is not on the board, the root and every project under no other included.
+func (b boardView) upLink(project Task) string {
+	parent, onBoard := b.bySlug[project.Project]
+	if !onBoard {
 		return "[" + rootTitle + "](" + b.out.Readme + ")"
 	}
-	return "[" + cellText(project.Handle+" "+project.Title) + "](" + projectFileName(project.Slug) + ")"
+	return projectLink(parent.Task)
 }
 
-// fileHeader is the opening of project's board file, the zero Task naming the root: the title, the render time, then the prime owner for the root, or for a project a link up to its parent's file, its facts line, its brief, and for a beam the word beam.
-func (b boardView) fileHeader(project Task) []string {
-	rendered := "Rendered " + b.now.UTC().Format(renderedTimeLayout) + "; every age below is as of then."
-	if project.Slug == "" {
-		return []string{"# " + rootTitle, "", rendered, "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
+// projectLink is a markdown link to project's own board file, its text the project's handle and title.
+func projectLink(project Task) string {
+	file := rootProjectFile
+	if project.Slug != "" {
+		file = projectFileName(project.Slug)
 	}
-	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", rendered, "Under: " + b.fileLink(b.bySlug[project.Project].Task) + ".", "", b.projectFacts(project), ""}
+	return "[" + cellText(project.Handle+" "+project.Title) + "](" + file + ")"
+}
+
+// renderedLine is the line every board file states its render time on.
+func (b boardView) renderedLine() string {
+	return "Rendered " + b.now.UTC().Format(renderedTimeLayout) + "; every age below is as of then."
+}
+
+// fileHeader is the opening of project's board file: its handle and title, the render time, a link up to the file above it, its facts line, its brief, and for a beam the word beam.
+func (b boardView) fileHeader(project Task) []string {
+	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", b.renderedLine(), "Under: " + b.upLink(project) + ".", "", b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}
@@ -342,7 +360,11 @@ func (b boardView) fileHeader(project Task) []string {
 }
 
 // projectFacts is the line naming project's slug, linked to its design doc when the project has a body, its age as of the render time and its effective owner, the age left out when its created date is unknown.
+// The root's line names only the prime owner, since the root has no board entry to give it a slug or an age.
 func (b boardView) projectFacts(project Task) string {
+	if project.Slug == "" {
+		return "Owner " + primeOwnerText(b.primeOwner)
+	}
 	parts := []string{slugCell(project, b.out.DesignPrefix)}
 	if age := FormatAge(project.Created, b.now); age != "" {
 		parts = append(parts, "Age "+age)
@@ -350,45 +372,49 @@ func (b boardView) projectFacts(project Task) string {
 	return strings.Join(append(parts, "Owner "+primeOwnerText(b.ownerOf(project.Slug))), " · ")
 }
 
-// renderReadme builds the root project's board file: its header, the intro, then the Prime project section at heading level two.
+// renderReadme builds README.md, the overview of every project: its header naming the render time and the prime owner, the intro, then a section at heading level two per open project under no other, in childProjects' order, and the root project's section last.
 func (b boardView) renderReadme() string {
-	lines := append(b.fileHeader(Task{}), boardIntro...)
-	lines = append(lines, b.projectSection(Task{}, 2)...)
+	lines := []string{"# " + rootTitle, "", b.renderedLine(), "Prime owner: " + primeOwnerText(b.primeOwner) + ".", ""}
+	lines = append(lines, boardIntro...)
+	for _, child := range b.childProjects(rootProject) {
+		lines = append(lines, b.projectSection(child.Task, 2)...)
+	}
+	lines = append(lines, b.projectSection(rootProject, 2)...)
 	return joinLines(lines)
 }
 
-// renderProjectFile builds project's board file: its header, which stands as the project's level-one heading, the intro, then the project's sub-projects and own entries.
+// renderProjectFile builds project's board file, rootProject naming the root's: its header, which stands as the project's level-one heading, the intro, then the project's sub-projects and own entries.
 func (b boardView) renderProjectFile(project Task) string {
 	lines := append(b.fileHeader(project), boardIntro...)
 	lines = append(lines, b.projectBody(project, 1)...)
 	return joinLines(lines)
 }
 
-// projectSection renders project, the zero Task naming the root, as one section at heading level level, then its body.
-// The root's heading is Prime with its meaning line;
-// any other project's heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
+// projectSection renders project, rootProject naming the root, as one section at heading level level: its heading linking its handle and title to its file and counting its open members, its facts line, its brief, then its body.
 func (b boardView) projectSection(project Task, level int) []string {
-	if project.Slug == "" {
-		lines := []string{heading(level, primeSection.name), "", primeSection.meaning, ""}
-		return append(lines, b.projectBody(Task{}, level)...)
-	}
 	members := 0
 	for _, twl := range b.ordered {
-		if twl.Project == project.Slug && !isDone(twl.Task) {
+		// The root's projects stand beside it, not under it, so they are not its members.
+		member := twl.Project == project.Slug && (project.Slug != "" || twl.Kind != KindProject)
+		if member && !isDone(twl.Task) {
 			members++
 		}
 	}
-	lines := []string{countedHeading(level, b.fileLink(project), members), "", b.projectFacts(project), ""}
+	lines := []string{countedHeading(level, projectLink(project), members), "", b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}
 	return append(lines, b.projectBody(project, level)...)
 }
 
-// projectBody renders what sits under the heading of project, the zero Task naming the root, at heading level level: a section per open project directly under it, in childProjects' order, each one level down and holding its own sub-projects in turn, then project's own Tasks, Notes and Done.
+// projectBody renders what sits under the heading of project, rootProject naming the root, at heading level level: a section per open project directly under it, in childProjects' order, each one level down and holding its own sub-projects in turn, then project's own Tasks, Notes and Done.
 // With no open sub-project the own entries sit one level down;
-// with any, they sit under a heading of their own at the sub-projects' level, No project for the root and Own entries for any other project, so a reader sees where the last sub-project ends.
+// with any, they sit under an Own entries heading at the sub-projects' level, so a reader sees where the last sub-project ends.
+// The root's body is its own entries alone, since its projects stand beside it in README.md.
 func (b boardView) projectBody(project Task, level int) []string {
+	if project.Slug == "" {
+		return b.entrySections(project, level+1)
+	}
 	children := b.childProjects(project)
 	if len(children) == 0 {
 		return b.entrySections(project, level+1)
@@ -397,11 +423,7 @@ func (b boardView) projectBody(project Task, level int) []string {
 	for _, child := range children {
 		lines = append(lines, b.projectSection(child.Task, level+1)...)
 	}
-	own := ownEntriesSection
-	if project.Slug == "" {
-		own = noProjectSection
-	}
-	lines = append(lines, heading(level+1, own.name), "", own.meaning, "")
+	lines = append(lines, heading(level+1, ownEntriesSection.name), "", ownEntriesSection.meaning, "")
 	return append(lines, b.entrySections(project, level+2)...)
 }
 
@@ -431,7 +453,7 @@ func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
 	return append(lines, "")
 }
 
-// entrySections builds the Tasks, Notes and Done sections of project, the zero Task naming the root, with level the heading level of their headings and their subsections one level down: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
+// entrySections builds the Tasks, Notes and Done sections of project, rootProject naming the root, with level the heading level of their headings and their subsections one level down: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
 // Every section holds only the entries whose project is project, while layers, After cells and owners read the whole board.
 func (b boardView) entrySections(project Task, level int) []string {
 	sublevel := level + 1
@@ -532,7 +554,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 }
 
 // childProjects returns the open projects directly under project, in project's order, then by handle.
-// The zero Task names the root, which has no order, so its children run by handle;
+// rootProject names the root, which has no order, so its children run by handle;
 // an open project under a done project counts as directly under the root, since a done project has no README section to hold it.
 func (b boardView) childProjects(project Task) []TaskWithLayer {
 	var children []TaskWithLayer

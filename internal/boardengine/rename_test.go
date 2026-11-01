@@ -163,6 +163,7 @@ func TestRename_Refusals(t *testing.T) {
 		{"TargetIsSource", "old", "old", `"old" already names an entry`, false, nil},
 		{"EmptyTarget", "old", "", "non-empty slug", false, nil},
 		{"TargetTooLong", "old", strings.Repeat("x", boardengine.MaxSlugLength+1), "pick a shorter target slug", false, nil},
+		{"TargetIsRootSubject", "old", boardengine.RootSubject, "reserved for the root project", false, nil},
 		{"RunHeldSource", "waiter", "fresh", `"waiter" is held by a run`, true, nil},
 		{"BeamProject", "beamer", "fresh", "lym board upsert", false, func(t *testing.T) (*boardengine.Board, string) {
 			var boardPath string

@@ -362,7 +362,7 @@ User-facing modules each get one `lym <module>` namespace:
   `lym board intake` lists the open issues of the hub's own GitHub repository not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The hub's repository is the one its recorded binding names, else its origin remote, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc;
-  every project, the root's Prime included, renders through one project section that nests the projects under it, each with its own slug, age, owner, Tasks, Notes and Done, so the README shows every open project's entries split the same way, with the root's own entries last under a `No project` heading, and a project file shows its project and the projects under it.
+  every project, the root included as `P0` with its file `project-root.md`, renders through one project section that nests the projects under it, each with its own slug, age, owner, Tasks, Notes and Done, so the README shows every open project's entries split the same way, with the root's section last, and a project file shows its project and the projects under it.
   An entry may carry a priority, `high` or `low`, absent meaning normal, which orders it first or last within its subsection.
   A task may name a run profile in its `profile` field, and `lym board profiles` prints the hub's profiles with their settings and each recipe's default profile.
   Agents use the board through the `ly:board` skill.

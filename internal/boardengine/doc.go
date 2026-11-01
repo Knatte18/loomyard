@@ -169,27 +169,29 @@
 //
 // # README
 //
-// Every write renders one board file per project: README.md is the root project's, holding under Prime the entries whose project is empty, and every project, open or done, renders to project-<slug>.md beside it.
+// The root, the entries whose project is empty, is a project like the others, rendered with the handle `P0` and the title `Root: entries under no project`; board project handles start at 1, so `P0` names no board entry.
+// Every write renders README.md, the overview of every project, and one board file per project: every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // The split is rendering only: every entry stays in the one store, handles stay numbered across the hub, so a file's handles have gaps, and layers, After cells and owners read the whole board.
 // README.md opens with the UTC date and time it was rendered, so its ages read as of that moment, and the prime owner;
-// a project file opens with its handle and title, the render time, a link up to its parent's file, its facts line, its brief, and for a beam the word `beam`.
+// a project file opens with its handle and title, the render time, a link up to its parent's file, README.md for the root and a project under no other, its facts line, its brief, and for a beam the word `beam`.
 // A project's facts line is its slug as a code span, linked to its design file the way a table's Slug cell is when the project has a body, then `Age` and its created age when its created date is known, then `Owner` and its effective owner, its recorded owner_machine for a beam else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's, or none recorded, parts joined by a middle dot.
+// The root's facts line is `Owner` and the prime owner alone, since it has no board entry to give it a slug, an age or a design file.
 // The Running table's Owner column shows a task's effective owner the same way.
-// Every project, the root included, renders through one project section at a given heading level.
-// The root's section is `Prime` with one meaning line;
-// any other project's heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
-// Under the heading come a section per open project directly under it, one heading level down, each holding its own sub-projects the same way, in the parent's order key and then by handle, the root's by handle;
+// Every project, the root included, renders through one project section at a given heading level:
+// its heading links its handle and title to its file and counts its open members, and its facts line and brief follow.
+// Under the heading come a section per open project directly under it, one heading level down, each holding its own sub-projects the same way, in the parent's order key and then by handle;
 // then the project's own entries.
 // A project with no open sub-project has its own entries one level down;
-// a project with any has them under a heading of their own after its sub-projects, at their level, with a meaning line, `No project` for the root and `Own entries` for any other project, so its own entries never read as the last sub-project's.
+// a project with any has them under an `Own entries` heading after its sub-projects, at their level, with a meaning line, so its own entries never read as the last sub-project's.
+// The root's projects stand beside it rather than under it: its section and its file hold its own entries alone, and its open members are its open tasks and notes.
 // Heading levels nest with the project depth and stop at six, so a deep project still renders.
 // An open project under a done project counts as under the root, since a done project has no section.
-// README.md holds the `## Prime` section after its header, so every open project shows there with its own Running, Ready, Tasks, Notes and Done, and the root's own entries come last.
+// README.md holds a `##` section per open project under the root, by handle, so every open project shows there with its own Running, Ready, Tasks, Notes and Done, and the root's `##` section comes last.
 // A project file's header stands as its project's heading: after it come the project's sub-projects at `##`, then its own entries at `##`, or under `## Own entries` at `###` when it has open sub-projects.
 // A project's own entries are a Tasks section, a Notes section grouped by type label, research first under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // No project is a row of Tasks or Notes; a done project is a row of its parent file's Done table, its title linked to its file.
-// Every section heading but Prime, No project and Own entries ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
+// Every section heading but Own entries ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
 // Tasks splits into Running, Ready, the dependency layers A, B and on, Independent for an isolated task, and Draft for an unreleased one.
 // A task a run holds, by RunHolds as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // An open draft task a run does not hold goes under Draft, whatever its dependencies or isolation, since nothing starts it until it is released;
@@ -333,7 +335,7 @@
 // # Replay
 //
 // FabricReplay is the board's Bolt replayer, named `board`, and the run ledger fabricengine reads the ended set and the owners through; the lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
-// It claims `board.json`, `README.md`, the `project-<slug>.md` files and the `design-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
+// It claims `board.json`, `README.md`, the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's, and the `design-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
 // The by-entry merge of fields is `internal/entrymerge`'s.
 // Apply re-applies a local board commit, read out of the files the request holds by path, onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.

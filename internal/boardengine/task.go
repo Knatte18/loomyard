@@ -361,6 +361,14 @@ func validateSlugLength(slug string) error {
 	return nil
 }
 
+// validateSlugNotReserved returns an error when slug is RootSubject, which names the root project and whose board file project-root.md a project of that slug would overwrite.
+func validateSlugNotReserved(slug string) error {
+	if slug == RootSubject {
+		return fmt.Errorf("slug %q is reserved for the root project: pick another slug", RootSubject)
+	}
+	return nil
+}
+
 // NewTask builds a Task from a raw field map, assigning nextID.
 // Uses JSON round-trip so field types are validated exactly as they would be on disk.
 // Unknown-field validation is the caller's responsibility (store.validateUpsertFields).
@@ -376,6 +384,9 @@ func NewTask(fields map[string]any, nextID int) (Task, error) {
 	}
 
 	if err := validateSlugLength(slugStr); err != nil {
+		return Task{}, err
+	}
+	if err := validateSlugNotReserved(slugStr); err != nil {
 		return Task{}, err
 	}
 
@@ -465,6 +476,12 @@ func ApplyPatch(existing Task, fields map[string]any) (Task, error) {
 
 	if err := validateSlugLength(result.Slug); err != nil {
 		return Task{}, err
+	}
+	// An entry already stored under the reserved slug stays patchable; only a patch that moves an entry onto it is refused.
+	if result.Slug != existing.Slug {
+		if err := validateSlugNotReserved(result.Slug); err != nil {
+			return Task{}, err
+		}
 	}
 
 	if err := normalizeTask(&result); err != nil {

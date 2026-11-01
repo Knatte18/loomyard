@@ -59,6 +59,9 @@ func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	if err := validateSlugLength(to); err != nil {
 		return RenameResult{}, fmt.Errorf("%w: pick a shorter target slug", err)
 	}
+	if err := validateSlugNotReserved(to); err != nil {
+		return RenameResult{}, err
+	}
 	if _, taken := s.GetTask(to); taken {
 		return RenameResult{}, fmt.Errorf("slug %q already names an entry: pick another target slug, or fold the two entries with \"lym board merge\"", to)
 	}

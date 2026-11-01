@@ -92,6 +92,13 @@ func TestNewTask(t *testing.T) {
 		}
 	})
 
+	t.Run("slug root is rejected as reserved", func(t *testing.T) {
+		_, err := boardengine.NewTask(map[string]any{"slug": boardengine.RootSubject, "kind": boardengine.KindProject}, 1)
+		if err == nil || !strings.Contains(err.Error(), "reserved for the root project") {
+			t.Errorf("NewTask(slug root) error = %v; want one containing %q", err, "reserved for the root project")
+		}
+	})
+
 	t.Run("slug at MaxSlugLength is accepted", func(t *testing.T) {
 		fields := map[string]any{
 			"slug": strings.Repeat("a", 32),
@@ -456,6 +463,25 @@ func TestApplyPatch(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "exceeds max length") {
 			t.Errorf("expected error containing 'exceeds max length', got: %v", err)
+		}
+	})
+
+	t.Run("patching slug to root is rejected as reserved", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: "test", Kind: boardengine.KindNote}
+		_, err := boardengine.ApplyPatch(existing, map[string]any{"slug": boardengine.RootSubject})
+		if err == nil || !strings.Contains(err.Error(), "reserved for the root project") {
+			t.Errorf("ApplyPatch(slug root) error = %v; want one containing %q", err, "reserved for the root project")
+		}
+	})
+
+	t.Run("patching an entry already named root leaves it patchable", func(t *testing.T) {
+		existing := boardengine.Task{ID: 1, Slug: boardengine.RootSubject, Kind: boardengine.KindNote}
+		result, err := boardengine.ApplyPatch(existing, map[string]any{"title": "Renamed"})
+		if err != nil {
+			t.Fatalf("ApplyPatch(title on slug root) error = %v; want nil", err)
+		}
+		if result.Slug != boardengine.RootSubject {
+			t.Errorf("ApplyPatch(title on slug root) slug = %q; want %q", result.Slug, boardengine.RootSubject)
 		}
 	})
 
