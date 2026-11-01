@@ -57,7 +57,7 @@ type Renderer struct {
 	BoltLockWait time.Duration
 }
 
-// Render writes the file targets of req into its root from the entries of the store.
+// Render writes the file targets of req into its root from the entries of the shipped layer and the store.
 // It holds the worktree's render lock for the whole read and write, so two renders of one worktree serialize and the last one's text stands whole.
 // A target with no entry loses its marked file; a target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
 // The lock wait running out fails the render before it writes anything.
@@ -73,11 +73,14 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 	}
 	defer func() { _ = renderLock.Release() }()
 
-	store, err := r.read(req.BoltDir)
+	layers, err := r.read(req.BoltDir)
 	if err != nil {
 		return report, err
 	}
-	entries := store.Ordered()
+	if layers.OverrideWarning != "" {
+		report.warn(layers.OverrideWarning)
+	}
+	entries := layers.Ordered()
 
 	tempDir := filepath.Join(req.Root, tempDirName)
 	blocked, err := tempDirBlocked(tempDir)
@@ -141,22 +144,22 @@ func (r *Report) warn(text string) {
 	}
 }
 
-// read loads the store from boltDir while holding the Bolt write lock, so it sees the old store or the new, never an absent file in mid-move.
+// read loads the layers from boltDir while holding the Bolt write lock, so it sees the old store or the new, never an absent file in mid-move.
 // The lock wait running out is an error naming the render verb as the way to run it again.
-func (r Renderer) read(boltDir string) (Store, error) {
+func (r Renderer) read(boltDir string) (Layers, error) {
 	wait := r.BoltLockWait
 	if wait == 0 {
 		wait = DefaultBoltLockWait
 	}
 	boltLock, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(boltDir, fabricengine.BoardWriteLockFile), wait)
 	if err != nil {
-		return Store{}, err
+		return Layers{}, err
 	}
 	if !acquired {
-		return Store{}, fmt.Errorf("the Bolt checkout stayed locked for %s, so %s was not read; way forward: run `%s` again", wait, FileName, renderVerb)
+		return Layers{}, fmt.Errorf("the Bolt checkout stayed locked for %s, so %s was not read; way forward: run `%s` again", wait, FileName, renderVerb)
 	}
 	defer func() { _ = boltLock.Release() }()
-	return Load(boltDir)
+	return ReadLayers(boltDir)
 }
 
 // tempDirBlocked reports whether dir is a file, or a directory holding anything but files that end in tempSuffix.
@@ -218,16 +221,31 @@ func removeTempDir(dir string) error {
 	return nil
 }
 
-// fileText builds the text a file target renders to at root from the ordered entries that name it, and reports false when none does.
+// fileText builds the text a file target renders to at root from the layered entries that name it, and reports false when none does.
 // It opens with Marker.
+// The shipped layer's texts follow under their own heading, then the repository's, under a heading of their own only when shipped texts precede them.
 // The claude-file target imports the AGENTS.md files the root holds when the root holds no CLAUDE.md, and the codex-file target opens with the root's AGENTS.md.
-func fileText(target Target, root string, entries []Entry) (string, bool, error) {
-	var texts []string
+func fileText(target Target, root string, entries []LayeredEntry) (string, bool, error) {
+	var shipped, repository []string
 	for _, entry := range entries {
-		if slices.Contains(entry.Targets, target.Name) {
-			texts = append(texts, strings.Trim(entry.Text, "\n"))
+		if !slices.Contains(entry.Targets, target.Name) {
+			continue
+		}
+		text := strings.Trim(entry.Text, "\n")
+		if entry.Layer == LayerShipped {
+			shipped = append(shipped, text)
+		} else {
+			repository = append(repository, text)
 		}
 	}
+	var texts []string
+	if len(shipped) > 0 {
+		texts = append(append(texts, shippedHeading), shipped...)
+		if len(repository) > 0 {
+			texts = append(texts, repositoryHeading)
+		}
+	}
+	texts = append(texts, repository...)
 	if len(texts) == 0 {
 		return "", false, nil
 	}
@@ -263,42 +281,42 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// Show returns the text the named target renders to now for root, and writes nothing.
+// Show returns the text the named target renders to now for root, from the shipped layer and the store, and writes nothing.
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
 func (r Renderer) Show(boltDir, target, root string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
 		return "", fmt.Errorf("unknown target %q; way forward: use one of %s", target, strings.Join(TargetNames(), ", "))
 	}
-	store, err := r.read(boltDir)
+	layers, err := r.read(boltDir)
 	if err != nil {
 		return "", err
 	}
 	if named.Delivery == DeliveryPrompt {
-		return strings.Join(passagesOf(store, named.Name), "\n\n"), nil
+		return strings.Join(passagesOf(layers, named.Name), "\n\n"), nil
 	}
-	text, _, err := fileText(named, root, store.Ordered())
+	text, _, err := fileText(named, root, layers.Ordered())
 	return text, err
 }
 
-// Passages returns, in order, the texts of the entries aimed at a prompt target that reaches a session of engine whose strand role is role.
+// Passages returns the texts of the entries aimed at a prompt target that reaches a session of engine whose strand role is role, the shipped layer's first, each layer in order.
 // An entry aimed at several such targets gives its text once, and a session no prompt target reaches gets none.
 func (r Renderer) Passages(boltDir, engine, role string) ([]string, error) {
 	targets := promptTargetsFor(engine, role)
 	if len(targets) == 0 {
 		return nil, nil
 	}
-	store, err := r.read(boltDir)
+	layers, err := r.read(boltDir)
 	if err != nil {
 		return nil, err
 	}
-	return passagesOf(store, targets...), nil
+	return passagesOf(layers, targets...), nil
 }
 
-// passagesOf returns the texts of the entries that name one of targets, in order.
-func passagesOf(store Store, targets ...string) []string {
+// passagesOf returns the texts of the layered entries that name one of targets, in render order.
+func passagesOf(layers Layers, targets ...string) []string {
 	var passages []string
-	for _, entry := range store.Ordered() {
+	for _, entry := range layers.Ordered() {
 		if slices.ContainsFunc(entry.Targets, func(name string) bool { return slices.Contains(targets, name) }) {
 			passages = append(passages, strings.Trim(entry.Text, "\n"))
 		}

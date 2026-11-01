@@ -46,11 +46,13 @@ func commandOf(c *heddleCLI) *cobra.Command {
 	heddle := &cobra.Command{
 		Use:   groupName,
 		Short: "list, set, remove, show and render the instruction entries heddle stores for the hub",
-		Long: `heddle stores the instruction text LoomYard gives its agents in heddle.json
-in the hub's Bolt checkout, and delivers it two ways: it renders file targets
-into git-excluded files at a worktree's root, and it appends prompt targets to
+		Long: `heddle delivers the instruction text agents get from two layers: the entries
+lym ships in its binary, read-only, and the repository's own in heddle.json in
+the hub's Bolt checkout. It renders file targets into git-excluded files at a
+worktree's root, the shipped entries first, and it appends prompt targets to
 the system prompt of the Claude sessions launched in the hub: claude-prompt to
-every one, orch-prompt to an orch session alone.
+every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
+lym_override may override a shipped entry's text with set --layer lym.
 
 set and remove change the store under the Bolt write lock and start the board's
 detached Bolt sync, which commits and pushes the saved file. A worktree takes a
@@ -151,7 +153,7 @@ func (c *heddleCLI) changeStore(cwd string, change func(*heddleengine.Store) err
 	if err := c.wire(cwd); err != nil {
 		return "", err
 	}
-	if err := c.write(change); err != nil {
+	if err := c.write(c.repositoryFile(), change); err != nil {
 		return "", err
 	}
 	return c.syncWarning, nil

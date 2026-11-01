@@ -1,0 +1,1 @@
+lym_override: false  # whether renders use the hub's overrides of lym's shipped heddle entries, set with `lym heddle set <slug> --layer lym`, in place of the shipped texts; off ignores every override and refuses a new one

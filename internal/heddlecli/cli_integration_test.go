@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/heddleengine"
@@ -152,6 +153,47 @@ func seedStore(t *testing.T, h *hubforge.Hub, entries map[string][]string) {
 
 func ptr[T any](v T) *T { return &v }
 
+// shippedSlugs returns the slugs of the entries lym ships, in render order.
+func shippedSlugs() []string {
+	var slugs []string
+	for _, entry := range (heddleengine.Layers{}).Ordered() {
+		slugs = append(slugs, entry.Slug)
+	}
+	return slugs
+}
+
+// listedWithShipped returns the slugs list prints for a store holding the repository slugs: the shipped ones first.
+func listedWithShipped(repository ...string) string {
+	return strings.Join(append(shippedSlugs(), repository...), ",")
+}
+
+// listedEntry returns the entry list prints under slug, failing when none is listed.
+func listedEntry(t *testing.T, env envelope.Envelope, slug string) map[string]any {
+	t.Helper()
+	list, _ := env.Raw["entries"].([]any)
+	for _, item := range list {
+		if entry, _ := item.(map[string]any); entry["slug"] == slug {
+			return entry
+		}
+	}
+	t.Fatalf("list = %v; want an entry %q", list, slug)
+	return nil
+}
+
+// setHubOverride writes the hub's heddle.yaml with lym_override set to on.
+func setHubOverride(t *testing.T, h *hubforge.Hub, on bool) {
+	t.Helper()
+	path := configengine.ConfigFile(fabricengine.BoltDir(h.Path), "heddle")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	value := "false"
+	if on {
+		value = "true"
+	}
+	writeFile(t, path, heddleengine.LymOverrideKey+": "+value+"\n")
+}
+
 func entrySlugs(t *testing.T, env envelope.Envelope) []string {
 	t.Helper()
 	list, _ := env.Raw["entries"].([]any)
@@ -183,8 +225,11 @@ func TestHeddleCLI(t *testing.T) {
 		requireOK(t, runVerb(c, cwd, "text from stdin", "set", "intro", "--text-file", "-", "--order", "10", "--targets", "claude-prompt,claude-file"))
 
 		listed := requireOK(t, runVerb(c, cwd, "", "list"))
-		if got := strings.Join(entrySlugs(t, listed), ","); got != "intro,rules" {
-			t.Errorf("list slugs = %q; want intro,rules in render order", got)
+		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped("intro", "rules"); got != want {
+			t.Errorf("list slugs = %q; want %q, the shipped entries first, in render order", got, want)
+		}
+		if layer := listedEntry(t, listed, "rules")["layer"]; layer != heddleengine.LayerRepository {
+			t.Errorf("list layer of rules = %v; want %s", layer, heddleengine.LayerRepository)
 		}
 
 		got := requireOK(t, runVerb(c, cwd, "", "get", "rules"))
@@ -202,11 +247,102 @@ func TestHeddleCLI(t *testing.T) {
 
 		requireOK(t, runVerb(c, cwd, "", "remove", "intro"))
 		listed = requireOK(t, runVerb(c, cwd, "", "list"))
-		if got := strings.Join(entrySlugs(t, listed), ","); got != "rules" {
-			t.Errorf("list slugs after remove = %q; want rules", got)
+		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped("rules"); got != want {
+			t.Errorf("list slugs after remove = %q; want %q", got, want)
 		}
 		if len(rec.syncs) != 4 {
 			t.Errorf("syncs = %d; want one per write", len(rec.syncs))
+		}
+	})
+
+	t.Run("EntryCollidingWithAShippedSlugIsListedAndRemoved", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		cwd := primeCwd(h)
+		c := (&recorder{}).cli()
+		shipped := shippedSlugs()[0]
+		colliding := heddleengine.Store{Entries: []heddleengine.Entry{{Slug: shipped, Text: "mine", Order: 1, Targets: []string{"claude-file"}}}}
+		if err := heddleengine.Save(fabricengine.BoltDir(h.Path), colliding); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		listed := requireOK(t, runVerb(c, cwd, "", "list"))
+		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped(shipped); got != want {
+			t.Errorf("list slugs = %q; want %q, the shipped entry and the colliding one", got, want)
+		}
+		got := requireOK(t, runVerb(c, cwd, "", "get", shipped))
+		shadowed, _ := got.Raw["shadowed"].([]any)
+		if len(shadowed) != 1 || shadowed[0].(map[string]any)["text"] != "mine" {
+			t.Errorf("get %s shadowed = %v; want the colliding repository entry with its text", shipped, shadowed)
+		}
+		requireOK(t, runVerb(c, cwd, "", "set", shipped, "--order", "5"))
+		requireOK(t, runVerb(c, cwd, "", "remove", shipped))
+		if got, want := strings.Join(entrySlugs(t, requireOK(t, runVerb(c, cwd, "", "list"))), ","), listedWithShipped(); got != want {
+			t.Errorf("list slugs after remove = %q; want %q", got, want)
+		}
+		requireRefusal(t, runVerb(c, cwd, "", "remove", shipped), "ships with lym")
+	})
+
+	t.Run("MalformedOverrideFileIsWarnedOfAndListStillWorks", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		cwd := primeCwd(h)
+		c := (&recorder{}).cli()
+		setHubOverride(t, h, true)
+		writeFile(t, filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName), `{"entries": [`)
+
+		listed := requireOK(t, runVerb(c, cwd, "", "list"))
+		if got, want := strings.Join(entrySlugs(t, listed), ","), listedWithShipped(); got != want {
+			t.Errorf("list slugs = %q; want %q", got, want)
+		}
+		warnings, _ := listed.Raw["warnings"].([]any)
+		if len(warnings) != 1 || !strings.Contains(warnings[0].(string), heddleengine.OverrideFileName) {
+			t.Errorf("list warnings = %v; want one naming %s", warnings, heddleengine.OverrideFileName)
+		}
+	})
+
+	t.Run("OverrideVerbs", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		cwd := primeCwd(h)
+		rec := &recorder{}
+		c := rec.cli()
+		shipped := shippedSlugs()[0]
+		overridePath := filepath.Join(fabricengine.BoltDir(h.Path), heddleengine.OverrideFileName)
+
+		requireRefusal(t, runVerb(c, cwd, "t", "set", shipped, "--text-file", "-", "--order", "1", "--targets", "claude-file"), "ships with lym", "--layer lym")
+		requireRefusal(t, runVerb(c, cwd, "", "remove", shipped), "ships with lym")
+		requireRefusal(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "lym", "--text-file", "-"), "lym config heddle --set lym_override=true")
+		requireRefusal(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "nope", "--text-file", "-"), "--layer lym")
+		if _, err := os.Stat(overridePath); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stat %s: %v; want no override saved after refusals", overridePath, err)
+		}
+
+		setHubOverride(t, h, true)
+		requireRefusal(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "lym", "--text-file", "-", "--order", "3"), "--text-file only")
+		requireRefusal(t, runVerb(c, cwd, "", "set", shipped, "--layer", "lym"), "--text-file")
+		requireRefusal(t, runVerb(c, cwd, "tuned", "set", "house-rules", "--layer", "lym", "--text-file", "-"), "lym heddle list")
+		if len(rec.syncs) != 0 {
+			t.Errorf("syncs = %d; want none after refusals", len(rec.syncs))
+		}
+
+		requireOK(t, runVerb(c, cwd, "tuned", "set", shipped, "--layer", "lym", "--text-file", "-"))
+		if listed := listedEntry(t, requireOK(t, runVerb(c, cwd, "", "list")), shipped); listed["layer"] != heddleengine.LayerShipped || listed["overridden"] != true {
+			t.Errorf("list entry %v; want layer %s, overridden", listed, heddleengine.LayerShipped)
+		}
+		got := requireOK(t, runVerb(c, cwd, "", "get", shipped))
+		if entry, _ := got.Raw["entry"].(map[string]any); entry["text"] != "tuned" {
+			t.Errorf("get %s = %v; want the override's text", shipped, entry)
+		}
+
+		setHubOverride(t, h, false)
+		if listed := listedEntry(t, requireOK(t, runVerb(c, cwd, "", "list")), shipped); listed["overridden"] != nil {
+			t.Errorf("list entry %v with the setting off; want it not overridden", listed)
+		}
+		requireOK(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym"))
+		requireRefusal(t, runVerb(c, cwd, "", "remove", shipped, "--layer", "lym"), "lym heddle list")
+		if len(rec.syncs) != 2 || rec.saves != 0 {
+			t.Errorf("syncs = %d, repository saves = %d; want one sync per override write and no heddle.json save", len(rec.syncs), rec.saves)
 		}
 	})
 

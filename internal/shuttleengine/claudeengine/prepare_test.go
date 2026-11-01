@@ -1,6 +1,6 @@
 //go:build tier0
 
-// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the append-system-prompt file carrying the deny notice, the creel trust sentence and the batching sentence, ResumeSessionID adoption, and the skills-deferred prompt pointer.
+// prepare_test.go covers Prepare's spec handling: an unrealizable effort, permission mode, resume session id or model-plus-version combination is rejected before any artifact is written (mirroring TestPrepare_PromptLaunchLimit's before-artifacts guarantee), the flags a valid spec threads into Launch.Cmd and Launch.ResumeCmd, the append-system-prompt file carrying the deny notice and the creel trust sentence, ResumeSessionID adoption, and the skills-deferred prompt pointer.
 
 package claudeengine
 
@@ -363,9 +363,9 @@ func TestPrepare_ThreadsSpecIntoLaunchCmds(t *testing.T) {
 }
 
 // TestPrepare_AppendSystemPromptMatchesDenyNotice proves that for every combination of the deny inputs, Launch.Cmd and Launch.ResumeCmd both carry --append-system-prompt-file naming the run directory's append-system-prompt.txt and no --append-system-prompt argument,
-// and that the file holds the deny notice, the creel trust sentence and the batching sentence, space-separated, with the notice left out when empty.
+// and that the file holds the deny notice and the creel trust sentence, space-separated, with the notice left out when empty.
 //
-//testtiming:keep pins append-system-prompt.txt equal to the notice, the trust sentence and the batching sentence, named on both lines over every deny combination, which its covering tests do not assert
+//testtiming:keep pins append-system-prompt.txt equal to the notice and the trust sentence, named on both lines over every deny combination, which its covering tests do not assert
 func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 	for _, denyAgent := range []bool{false, true} {
 		for _, denyAsk := range []bool{false, true} {
@@ -395,7 +395,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 								t.Errorf("agent=%v ask=%v python=%v interactive=%v fork=%v: %s = %q; want no --append-system-prompt argument", denyAgent, denyAsk, denyPython, interactive, fork, name, cmd)
 							}
 						}
-						want := creelTrustSentence + " " + batchingSentence
+						want := creelTrustSentence
 						if notice != "" {
 							want = notice + " " + want
 						}
@@ -517,7 +517,7 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 // a reader error leaves the launch succeeded with lym's sentences only and logs the way to inspect the store.
 // It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
-	sentences := creelTrustSentence + " " + batchingSentence
+	sentences := creelTrustSentence
 	tests := []struct {
 		name string
 		// board is the told Bolt checkout; empty means a session outside a hub.

@@ -3,9 +3,13 @@
 //
 // # The verbs
 //
-// `list` prints every entry in render order with its slug, order and targets, without its text, and `get <slug>` prints one entry in full.
+// `list` prints every entry in render order with its slug, layer, order and targets, without its text: the entries lym ships first, then the repository's, a shipped entry an override replaces marked overridden.
+// An override file that does not load is reported in warnings and ignored.
+// `get <slug>` prints one entry in full, a shipped entry with the text renders use, and lists in shadowed any repository entry that shares its slug.
 //
-// `set <slug>` and `remove <slug>` change the store.
+// `set <slug>` and `remove <slug>` change the repository's store, and refuse a new entry under a slug lym ships; an entry the store already holds under one stays open to both.
+// With `--layer lym` they change the hub's override of a shipped entry instead, in its own file beside the store:
+// `set` takes `--text-file` alone and is refused while the hub's heddle.yaml leaves lym_override off, and `remove` drops an override whatever the setting holds.
 // `set` takes `--text-file <path>` (`-` reads stdin), `--order <n>` and `--targets <a,b>` and changes only the fields given; a new entry needs all three.
 // Both take the Bolt write lock, load the store, apply the change, save it and release the lock, then start the board's detached Bolt sync, which commits what is dirty under that lock and pushes.
 // A refused change saves nothing and starts no sync.

@@ -24,7 +24,7 @@
 // shuttleengine defines the Engine interface and its value types, and never imports a concrete
 // engine implementation — concrete engines import shuttleengine, not the reverse.
 // Only internal/shuttleengines and an engine's own directory import a concrete engine (the provider-seam import rule, enforced module-wide by seam_enforcement_test.go).
-// StandingPassages returns the instruction passages a hub's Bolt checkout holds for a session of an engine and a strand role, read through the reader InstallPassageReader installs for the process;
+// StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role, read through the reader InstallPassageReader installs for the process;
 // it returns none outside a hub, with no reader installed or when the reader fails, which is logged at Warn, so a launch never waits on the store.
 // An engine appends them to the system prompt it launches with, and shuttle itself parses no store.
 // Requirement support, fork audit, the outstanding-fork reading, resume-context rendering, creel hook delivery (the hook-input parse, the hook output and the wake output) and instruction files are optional capabilities beside Engine, which an engine without them lacks.

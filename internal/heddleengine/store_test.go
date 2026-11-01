@@ -146,6 +146,7 @@ func TestStore(t *testing.T) {
 			{"NewWithoutOrder", "x", Patch{Text: textOf("t"), Targets: []string{"claude-file"}}, "--order"},
 			{"NewWithoutTargets", "x", Patch{Text: textOf("t"), Order: orderOf(1)}, "--targets"},
 			{"ExistingWithEmptyTargets", "a", Patch{Targets: []string{}}, "--targets"},
+			{"ShippedSlug", shippedStore.Ordered()[0].Slug, Patch{Text: textOf("t"), Order: orderOf(1), Targets: []string{"claude-file"}}, "--layer " + OverrideLayer},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -165,6 +166,15 @@ func TestStore(t *testing.T) {
 		}
 	})
 
+	t.Run("ShippedBatchingEntryIsPinned", func(t *testing.T) {
+		t.Parallel()
+		const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit; wait for a result only to choose the next call."
+		first := shippedStore.Ordered()[0]
+		if first.Slug != "lym-batching" || len(first.Targets) != 1 || first.Targets[0] != "claude-file" || first.Text != batchingSentence {
+			t.Errorf("first shipped entry = %+v; want slug lym-batching aimed at claude-file with the batching sentence unchanged", first)
+		}
+	})
+
 	t.Run("RemoveAndGetOfUnknownSlug", func(t *testing.T) {
 		t.Parallel()
 		store := Store{Entries: []Entry{{Slug: "a"}}}
@@ -173,6 +183,33 @@ func TestStore(t *testing.T) {
 		}
 		if _, ok := store.Get("nope"); ok {
 			t.Error("Get(nope) reported the slug held")
+		}
+	})
+
+	t.Run("RemoveRefusesAShippedSlugTheStoreLacks", func(t *testing.T) {
+		t.Parallel()
+		shipped := shippedStore.Ordered()[0].Slug
+		store := Store{Entries: []Entry{{Slug: "a", Text: "t", Order: 1, Targets: []string{"claude-file"}}}}
+		if err := store.Remove(shipped); err == nil || !strings.Contains(err.Error(), "ships with lym") {
+			t.Errorf("Remove(%s) = %v; want an error naming the shipped layer", shipped, err)
+		}
+		if len(store.Entries) != 1 {
+			t.Errorf("store changed on a refused Remove: %v", store.Entries)
+		}
+	})
+
+	t.Run("EntryCollidingWithAShippedSlugCanBeChangedAndRemoved", func(t *testing.T) {
+		t.Parallel()
+		shipped := shippedStore.Ordered()[0].Slug
+		store := Store{Entries: []Entry{{Slug: shipped, Text: "t", Order: 1, Targets: []string{"claude-file"}}}}
+		if err := store.Set(shipped, Patch{Text: textOf("edited")}); err != nil {
+			t.Fatalf("Set(%s) on a colliding entry = %v; want it applied", shipped, err)
+		}
+		if got, _ := store.Get(shipped); got.Text != "edited" {
+			t.Errorf("colliding entry text = %q; want the edit", got.Text)
+		}
+		if err := store.Remove(shipped); err != nil || len(store.Entries) != 0 {
+			t.Errorf("Remove(%s) = %v, leaving %v; want the colliding entry gone", shipped, err, store.Entries)
 		}
 	})
 

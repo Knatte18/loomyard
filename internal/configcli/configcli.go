@@ -482,7 +482,7 @@ func buildConfigLong() string {
 		"  lym config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
 		"A value the module's loader refuses is refused, naming the key.\n" +
 		"Keys the template lacks are\n" +
-		"preserved and reported in the JSON success output's \"preserved\" field;\n" +
+		"preserved and reported in the JSON output's \"preserved\" field;\n" +
 		"run \"lym config reconcile --layer default --apply\" from the prime to remove them from the\n" +
 		"board dir's files, and \"lym config reconcile --apply\" to remove them from a worktree file.\n\n" +
 		"--layer default|worktree|machine|local picks the file to print or write: default is the board's\n" +

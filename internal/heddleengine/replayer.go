@@ -21,6 +21,7 @@ var _ fabricengine.BoltReplayer = Replayer{}
 func (Replayer) Name() string { return "heddle" }
 
 // Claims reports whether path, a Bolt-root-relative slash path, is the store file.
+// The lym override file is left unclaimed, since its entries carry no order or targets for the by-entry merge.
 func (Replayer) Claims(path string) bool { return path == FileName }
 
 // entryFields is the merge's table over Entry, keyed by slug.

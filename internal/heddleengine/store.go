@@ -181,16 +181,21 @@ func decodeBytes(data []byte) (Store, error) {
 // Load reads heddle.json from the Bolt checkout boltDir, an absent file holding no entry.
 // It takes no lock; the caller does.
 func Load(boltDir string) (Store, error) {
-	data, err := os.ReadFile(filepath.Join(boltDir, FileName))
+	return loadFile(boltDir, FileName)
+}
+
+// loadFile reads the store file name from boltDir, an absent file holding no entry.
+func loadFile(boltDir, name string) (Store, error) {
+	data, err := os.ReadFile(filepath.Join(boltDir, name))
 	if errors.Is(err, os.ErrNotExist) {
 		return Store{}, nil
 	}
 	if err != nil {
-		return Store{}, fmt.Errorf("read %s: %w", FileName, err)
+		return Store{}, fmt.Errorf("read %s: %w", name, err)
 	}
 	store, err := decodeBytes(data)
 	if err != nil {
-		return Store{}, fmt.Errorf("%s does not decode: %w; way forward: restore the last committed file with `git -C %s checkout HEAD -- %s`, or an earlier commit found with `git -C %s log -- %s`", FileName, err, boltDir, FileName, boltDir, FileName)
+		return Store{}, fmt.Errorf("%s does not decode: %w; way forward: restore the last committed file with `git -C %s checkout HEAD -- %s`, or an earlier commit found with `git -C %s log -- %s`", name, err, boltDir, name, boltDir, name)
 	}
 	return store, nil
 }
@@ -198,11 +203,16 @@ func Load(boltDir string) (Store, error) {
 // Save writes s as heddle.json in the Bolt checkout boltDir, indented and ending in a newline, atomically.
 // It takes no lock; the caller does.
 func Save(boltDir string, s Store) error {
+	return saveFile(boltDir, FileName, s)
+}
+
+// saveFile writes s as the store file name in boltDir, indented and ending in a newline, atomically.
+func saveFile(boltDir, name string, s Store) error {
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode %s: %w", FileName, err)
+		return fmt.Errorf("encode %s: %w", name, err)
 	}
-	return fsx.AtomicWrite(boltDir, FileName, string(data)+"\n")
+	return fsx.AtomicWrite(boltDir, name, string(data)+"\n")
 }
 
 // Ordered returns the entries by ascending order, a tie broken by slug.
@@ -235,13 +245,15 @@ type Patch struct {
 }
 
 // Set updates the entry with slug by the fields p gives, or creates it, which needs all three fields.
-// The result must pass ValidateEntry or nothing changes.
+// The result must pass ValidateEntry or nothing changes, and a new entry under a slug the shipped layer holds is refused.
 func (s *Store) Set(slug string, p Patch) error {
 	index := slices.IndexFunc(s.Entries, func(entry Entry) bool { return entry.Slug == slug })
 	candidate := Entry{Slug: slug}
 	if index >= 0 {
 		candidate = s.Entries[index]
 		candidate.Targets = slices.Clone(candidate.Targets)
+	} else if err := refuseShipped(slug); err != nil {
+		return err
 	} else if p.Text == nil || p.Order == nil || p.Targets == nil {
 		return fmt.Errorf("entry %q is new, so it needs %s; way forward: give them all in the same call", slug, missingFlags(p))
 	}
@@ -283,9 +295,13 @@ func missingFlags(p Patch) string {
 }
 
 // Remove deletes the entry with slug, and refuses a slug the store does not hold.
+// A slug the shipped layer holds is refused as read-only when the store holds no entry under it.
 func (s *Store) Remove(slug string) error {
 	index := slices.IndexFunc(s.Entries, func(entry Entry) bool { return entry.Slug == slug })
 	if index < 0 {
+		if err := refuseShipped(slug); err != nil {
+			return err
+		}
 		return fmt.Errorf("no entry %q; way forward: list the entries with `lym heddle list`", slug)
 	}
 	s.Entries = slices.Delete(slices.Clone(s.Entries), index, index+1)

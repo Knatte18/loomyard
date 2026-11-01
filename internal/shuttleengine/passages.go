@@ -8,7 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 )
 
-// PassageReader returns the standing passages a hub's Bolt checkout holds for a session of engine whose strand role is role, in the order they are appended.
+// PassageReader returns the standing passages heddle's layers hold for a session of engine whose strand role is role, in the order they are appended.
 type PassageReader func(boltDir, engine, role string) ([]string, error)
 
 var installedPassageReader atomic.Pointer[PassageReader]

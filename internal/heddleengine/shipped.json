@@ -1,0 +1,12 @@
+{
+  "entries": [
+    {
+      "slug": "lym-batching",
+      "text": "Request every call whose arguments you already know in one message, and read what you need before you edit; wait for a result only to choose the next call.",
+      "order": 10,
+      "targets": [
+        "claude-file"
+      ]
+    }
+  ]
+}

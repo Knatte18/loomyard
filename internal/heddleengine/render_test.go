@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -69,6 +70,36 @@ func (f renderFixture) rootHas(rel string) bool {
 	return err == nil
 }
 
+// claudeFileWant returns the CLAUDE.local.md a render writes: the marker, imports when non-empty, the shipped layer's section, then the repository's texts under their heading when any are given.
+func claudeFileWant(imports string, texts ...string) string {
+	parts := []string{Marker}
+	if imports != "" {
+		parts = append(parts, imports)
+	}
+	parts = append(parts, shippedHeading)
+	for _, entry := range shippedStore.Ordered() {
+		if slices.Contains(entry.Targets, "claude-file") {
+			parts = append(parts, entry.Text)
+		}
+	}
+	if len(texts) > 0 {
+		parts = append(append(parts, repositoryHeading), texts...)
+	}
+	return strings.Join(parts, "\n\n") + "\n"
+}
+
+// writeHeddleConfig writes content as the hub's heddle.yaml in the Bolt checkout bolt.
+func writeHeddleConfig(t *testing.T, bolt, content string) {
+	t.Helper()
+	path := configengine.ConfigFile(bolt, configModule)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // entryFor builds an entry aimed at one or more targets.
 func entryFor(slug, text string, order int, targets ...string) Entry {
 	return Entry{Slug: slug, Text: text, Order: order, Targets: targets}
@@ -124,6 +155,69 @@ func mustRender(t *testing.T, f renderFixture, only ...string) Report {
 	return report
 }
 
+// useShippedLayer replaces the package's shipped layer with the entries in json until the test ends.
+func useShippedLayer(t *testing.T, json string) {
+	t.Helper()
+	previous := shippedStore
+	shippedStore = decodeShipped([]byte(json))
+	t.Cleanup(func() { shippedStore = previous })
+}
+
+// TestShowAndPassagesReadTheShippedLayerFirst is not parallel: it replaces shippedStore, which every render reads.
+func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
+	useShippedLayer(t, `{"entries": [
+  {"slug": "ship-file", "text": "shipped file text", "order": 10, "targets": ["claude-file"]},
+  {"slug": "ship-prompt", "text": "shipped prompt", "order": 5, "targets": ["claude-prompt"]}
+]}`)
+	repository := Store{Entries: []Entry{entryFor("mine", "repository prompt", 1, "claude-prompt")}}
+
+	tests := []struct {
+		name         string
+		config       string
+		override     string
+		wantPrompt   string
+		wantFileText string
+	}{
+		{"NoOverride", "", "", "shipped prompt\n\nrepository prompt", "shipped file text"},
+		{"OverrideOn", LymOverrideKey + ": true\n", "tuned prompt", "tuned prompt\n\nrepository prompt", "tuned file text"},
+		{"OverrideOff", LymOverrideKey + ": false\n", "tuned prompt", "shipped prompt\n\nrepository prompt", "shipped file text"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newRenderFixture(t, repository)
+			if tt.config != "" {
+				writeHeddleConfig(t, f.bolt, tt.config)
+			}
+			if tt.override != "" {
+				var overrides Store
+				if err := overrides.SetOverride("ship-prompt", tt.override); err != nil {
+					t.Fatal(err)
+				}
+				if err := overrides.SetOverride("ship-file", strings.Replace(tt.override, "prompt", "file text", 1)); err != nil {
+					t.Fatal(err)
+				}
+				if err := SaveOverrides(f.bolt, overrides); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r := Renderer{}
+
+			shown, err := r.Show(f.bolt, "claude-prompt", f.root)
+			if err != nil || shown != tt.wantPrompt {
+				t.Errorf("Show(claude-prompt) = %q, %v; want %q", shown, err, tt.wantPrompt)
+			}
+			passages, err := r.Passages(f.bolt, "claude", "")
+			if want := strings.Split(tt.wantPrompt, "\n\n"); err != nil || !slices.Equal(passages, want) {
+				t.Errorf("Passages(claude) = %q, %v; want %q", passages, err, want)
+			}
+			shown, err = r.Show(f.bolt, "claude-file", f.root)
+			if want := strings.Join([]string{Marker, shippedHeading, tt.wantFileText}, "\n\n") + "\n"; err != nil || shown != want {
+				t.Errorf("Show(claude-file) = %q, %v; want %q", shown, err, want)
+			}
+		})
+	}
+}
+
 func TestRender(t *testing.T) {
 	t.Parallel()
 
@@ -136,7 +230,7 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
 		report := mustRender(t, f)
-		if want := Marker + "\n\none\n\ntwo\n"; f.readRoot(t, "CLAUDE.local.md") != want {
+		if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
 		}
 		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || len(report.Warnings) != 0 {
@@ -154,9 +248,9 @@ func TestRender(t *testing.T) {
 			files []string
 			want  string
 		}{
-			{"RootAgents", []string{"AGENTS.md"}, "@AGENTS.md\n\n"},
-			{"ClaudeDirAgents", []string{".claude/AGENTS.md"}, "@.claude/AGENTS.md\n\n"},
-			{"BothAgents", []string{"AGENTS.md", ".claude/AGENTS.md"}, "@AGENTS.md\n@.claude/AGENTS.md\n\n"},
+			{"RootAgents", []string{"AGENTS.md"}, "@AGENTS.md"},
+			{"ClaudeDirAgents", []string{".claude/AGENTS.md"}, "@.claude/AGENTS.md"},
+			{"BothAgents", []string{"AGENTS.md", ".claude/AGENTS.md"}, "@AGENTS.md\n@.claude/AGENTS.md"},
 			{"RootClaude", []string{"AGENTS.md", "CLAUDE.md"}, ""},
 			{"ClaudeDirClaude", []string{"AGENTS.md", ".claude/CLAUDE.md"}, ""},
 		}
@@ -168,7 +262,7 @@ func TestRender(t *testing.T) {
 					f.writeRoot(t, rel, "base\n")
 				}
 				mustRender(t, f)
-				if want := Marker + "\n\n" + tt.want + "text\n"; f.readRoot(t, "CLAUDE.local.md") != want {
+				if want := claudeFileWant(tt.want, "text"); f.readRoot(t, "CLAUDE.local.md") != want {
 					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
 				}
 			})
@@ -183,18 +277,136 @@ func TestRender(t *testing.T) {
 		if want := Marker + "\n\nrepository rules\n\ncodex text\n"; f.readRoot(t, "AGENTS.override.md") != want {
 			t.Errorf("AGENTS.override.md = %q; want %q", f.readRoot(t, "AGENTS.override.md"), want)
 		}
-		if f.rootHas("CLAUDE.local.md") {
-			t.Error("CLAUDE.local.md written with no claude-file entry")
+	})
+
+	t.Run("ClaudeFileHoldsTheShippedLayerWithNoEntry", func(t *testing.T) {
+		t.Parallel()
+		f := newRenderFixture(t, Store{})
+		report := mustRender(t, f)
+		if want := claudeFileWant(""); f.readRoot(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+		}
+		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || f.rootHas("AGENTS.override.md") {
+			t.Errorf("report = %+v; want only CLAUDE.local.md written", report)
+		}
+	})
+
+	t.Run("RepositoryEntryUnderAShippedSlugRendersUnderTheRepositoryHeading", func(t *testing.T) {
+		t.Parallel()
+		f := newRenderFixture(t, Store{Entries: []Entry{entryFor(shippedStore.Ordered()[0].Slug, "mine", 1, "claude-file")}})
+		mustRender(t, f)
+		if want := claudeFileWant("", "mine"); f.readRoot(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+		}
+	})
+
+	t.Run("OverrideReplacesTheShippedTextOnlyWhileTheSettingIsOn", func(t *testing.T) {
+		t.Parallel()
+		shipped := shippedStore.Ordered()[0]
+		tests := []struct {
+			name         string
+			config       string
+			wantOverride bool
+		}{
+			{"SettingOn", LymOverrideKey + ": true\n", true},
+			{"SettingOff", LymOverrideKey + ": false\n", false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRenderFixture(t, Store{})
+				writeHeddleConfig(t, f.bolt, tt.config)
+				var overrides Store
+				if err := overrides.SetOverride(shipped.Slug, "tuned text"); err != nil {
+					t.Fatal(err)
+				}
+				if err := SaveOverrides(f.bolt, overrides); err != nil {
+					t.Fatal(err)
+				}
+				mustRender(t, f)
+				want := claudeFileWant("")
+				if tt.wantOverride {
+					want = strings.Replace(want, shipped.Text, "tuned text", 1)
+				}
+				if got := f.readRoot(t, "CLAUDE.local.md"); got != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", got, want)
+				}
+			})
+		}
+	})
+
+	t.Run("OverrideWithoutEffectLeavesTheShippedText", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name   string
+			config string
+			slug   string
+		}{
+			{"NoHeddleConfigDefaultsOff", "", shippedStore.Ordered()[0].Slug},
+			{"StaleOverrideOfAnUnshippedSlug", LymOverrideKey + ": true\n", "no-longer-shipped"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRenderFixture(t, Store{})
+				if tt.config != "" {
+					writeHeddleConfig(t, f.bolt, tt.config)
+				}
+				if err := SaveOverrides(f.bolt, Store{Entries: []Entry{{Slug: tt.slug, Text: "tuned text"}}}); err != nil {
+					t.Fatal(err)
+				}
+				report := mustRender(t, f)
+				if want := claudeFileWant(""); f.readRoot(t, "CLAUDE.local.md") != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+				}
+				if len(report.Warnings) != 0 {
+					t.Errorf("warnings = %v; want none", report.Warnings)
+				}
+			})
+		}
+	})
+
+	t.Run("UnusableOverrideFileLeavesTheShippedTextStanding", func(t *testing.T) {
+		t.Parallel()
+		shipped := shippedStore.Ordered()[0]
+		tests := []struct {
+			name        string
+			file        string
+			wantWarning bool
+		}{
+			{"MalformedJSON", `{"entries": [`, true},
+			{"BlankText", `{"entries": [{"slug": "` + shipped.Slug + `", "text": "  \n"}]}`, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRenderFixture(t, claudeStore)
+				writeHeddleConfig(t, f.bolt, LymOverrideKey+": true\n")
+				if err := os.WriteFile(filepath.Join(f.bolt, OverrideFileName), []byte(tt.file), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				report := mustRender(t, f)
+				if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+				}
+				if tt.wantWarning {
+					if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], OverrideFileName) {
+						t.Errorf("warnings = %v; want one naming %s", report.Warnings, OverrideFileName)
+					}
+				} else if len(report.Warnings) != 0 {
+					t.Errorf("warnings = %v; want none", report.Warnings)
+				}
+			})
 		}
 	})
 
 	t.Run("StaleMarkedRenderIsRemovedEvenOffExcluded", func(t *testing.T) {
 		t.Parallel()
-		f := newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex text", 1, "codex-file")}})
+		f := newRenderFixture(t, Store{})
 		f.excluded = nil
-		f.writeRoot(t, "CLAUDE.local.md", Marker+"\n\nold\n")
+		f.writeRoot(t, "AGENTS.override.md", Marker+"\n\nold\n")
 		report := mustRender(t, f)
-		if f.rootHas("CLAUDE.local.md") || !slices.Equal(report.Removed, []string{"CLAUDE.local.md"}) {
+		if f.rootHas("AGENTS.override.md") || !slices.Equal(report.Removed, []string{"AGENTS.override.md"}) {
 			t.Errorf("stale render kept or not reported: removed %v", report.Removed)
 		}
 	})
@@ -326,7 +538,7 @@ func TestRender(t *testing.T) {
 			t.Fatal(err)
 		}
 		requireFinished(t, done)
-		if want := Marker + "\n\none\n\ntwo\n"; f.readRoot(t, "CLAUDE.local.md") != want {
+		if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want the new store's text", f.readRoot(t, "CLAUDE.local.md"))
 		}
 	})
@@ -365,7 +577,7 @@ func TestRender(t *testing.T) {
 		}})
 		r := Renderer{}
 		shown, err := r.Show(f.bolt, "claude-file", f.root)
-		if err != nil || shown != Marker+"\n\nfile text\n" {
+		if err != nil || shown != claudeFileWant("", "file text") {
 			t.Errorf("Show(claude-file) = %q, %v", shown, err)
 		}
 		shown, err = r.Show(f.bolt, "claude-prompt", f.root)

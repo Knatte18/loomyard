@@ -60,8 +60,8 @@ func TestReplayer(t *testing.T) {
 	t.Run("NameAndClaims", func(t *testing.T) {
 		t.Parallel()
 		r := Replayer{}
-		if r.Name() != "heddle" || !r.Claims("heddle.json") || r.Claims("board.json") || r.Claims("sub/heddle.json") {
-			t.Error("Replayer must be named heddle and claim exactly heddle.json at the root")
+		if r.Name() != "heddle" || !r.Claims("heddle.json") || r.Claims("board.json") || r.Claims("sub/heddle.json") || r.Claims(OverrideFileName) {
+			t.Error("Replayer must be named heddle and claim exactly heddle.json at the root, leaving the override file unclaimed")
 		}
 		if _, isLedger := any(r).(fabricengine.RunLedger); isLedger {
 			t.Error("Replayer is a run ledger")
