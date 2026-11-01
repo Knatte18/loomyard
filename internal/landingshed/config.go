@@ -68,6 +68,8 @@ type Config struct {
 	FinalizeFixAttempts int `yaml:"finalize_fix_attempts"`
 	// FinalizeFixMaxLines is the added plus deleted lines a fixer change may hold before it is over the cap.
 	FinalizeFixMaxLines int `yaml:"finalize_fix_max_lines"`
+	// FinalizeFixReviewRounds is the fix reviews one Finalize row entry may run over an over-cap fixer change before it halts for the operator.
+	FinalizeFixReviewRounds int `yaml:"finalize_fix_review_rounds"`
 }
 
 // defaultIdleReleaseMin is the idle bound in minutes that a missing or non-positive parent_lock_idle_release_min reads as.
@@ -147,9 +149,10 @@ func ConfigSpec() configengine.Spec {
 			"fixer":                        configengine.CategoryNone,
 			"fixer_timeout_min":            configengine.CategoryNone,
 			// The attempt caps and the line cap bound what the fixer lands on the parent unreviewed.
-			"parent_align_fix_attempts": configengine.CategoryCrossPair,
-			"finalize_fix_attempts":     configengine.CategoryCrossPair,
-			"finalize_fix_max_lines":    configengine.CategoryCrossPair,
+			"parent_align_fix_attempts":  configengine.CategoryCrossPair,
+			"finalize_fix_attempts":      configengine.CategoryCrossPair,
+			"finalize_fix_max_lines":     configengine.CategoryCrossPair,
+			"finalize_fix_review_rounds": configengine.CategoryCrossPair,
 		},
 		// A file still holding a retired key loads and reconcile prunes it.
 		// publish_verify moved to the hub's publish gate.
@@ -164,7 +167,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and unmarshals configuration for the landing module strictly through the hub-wide layer stack under dirs.
-// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap or fixer line cap below 1, and refuses a credit_engines entry whose key names no engine.
+// It validates the conflict, describe, pr_reviewer and fixer keys' model-spec grammar at load time, refuses a fixer timeout, fixer attempt cap, fixer line cap or fix review round cap below 1, and refuses a credit_engines entry whose key names no engine.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -204,6 +207,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		{"parent_align_fix_attempts", cfg.ParentAlignFixAttempts},
 		{"finalize_fix_attempts", cfg.FinalizeFixAttempts},
 		{"finalize_fix_max_lines", cfg.FinalizeFixMaxLines},
+		{"finalize_fix_review_rounds", cfg.FinalizeFixReviewRounds},
 	} {
 		if positive.value < 1 {
 			return Config{}, fmt.Errorf("landing config key %q: %d is below 1; way forward: lym config landing --set %s=<n> from the prime", positive.key, positive.value, positive.key)

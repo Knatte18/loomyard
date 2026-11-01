@@ -37,10 +37,8 @@
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
 # board field and the origin, which the row decides in its own call.
 #
-# Finalize declares on_reroute: Code-Bouncer, the row a spent fixer change, or an over-cap one
-# Finalize's own solo fix review does not approve, sends the run back to, so the perch reviews
-# the code the fixer changed in answer.
-# Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
+# Finalize declares no on_reroute: it settles a fixer change in place, through its own fix review
+# and the fixer, and never sends the run back to the perch.
 
 version: 1
 entry: Preflight
@@ -174,12 +172,11 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # An over-cap fixer change goes to Finalize's own solo fix review first, and lands on its approval.
-  # Only a spent fixer change, or an over-cap one the fix review does not approve, reroutes to Code-Bouncer;
-  # a conflict or a large merge lands through the gate.
+  # An over-cap fixer change goes to Finalize's own fix review, whose findings the fixer fixes in place
+  # until the review approves or its rounds run out and Finalize halts for the operator; Finalize never
+  # reroutes, and a conflict or a large merge lands through the gate.
   - name: Finalize
     engine: Finalize
-    on_reroute: Code-Bouncer
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

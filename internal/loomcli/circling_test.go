@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -40,6 +41,9 @@ type circlingFake struct {
 	raise      string
 	hardCapErr error
 	records    []string
+	// acceptErr is what the Finalize acceptance returns, and accepted records the row entry of each acceptance made.
+	acceptErr error
+	accepted  []int
 }
 
 func (f *circlingFake) deps() circlingDeps {
@@ -60,6 +64,13 @@ func (f *circlingFake) deps() circlingDeps {
 		latestRound:       func(string) (int, error) { return f.latest, f.latestErr },
 		escalationPending: func(string) (bool, error) { return f.pending, f.pendingErr },
 		hardCap:           func(string) (int, string, error) { return f.hardCap, f.raise, f.hardCapErr },
+		acceptFinalize: func(entry int) error {
+			if f.acceptErr != nil {
+				return f.acceptErr
+			}
+			f.accepted = append(f.accepted, entry)
+			return nil
+		},
 	}
 }
 
@@ -105,6 +116,33 @@ func TestCirclingVerb_Records(t *testing.T) {
 	}
 }
 
+// blockedAtFinalize is a run halted at Finalize as its second row entry: one earlier row ran before it.
+func blockedAtFinalize() shedengine.Status {
+	return shedengine.Status{
+		State:           shedengine.StateBlocked,
+		CurrentProducer: loomshed.NameFinalize,
+		History:         []shedengine.HistoryEntry{{Producer: loomshed.NamePRReview, Outcome: shedengine.Done}, {Producer: loomshed.NameFinalize, Outcome: shedengine.Stuck}},
+	}
+}
+
+// TestCirclingVerb_AcceptsFinalizeFixReviewHalt pins that accept at a run halted at Finalize records the acceptance for Finalize's current row entry and no Bouncer decision.
+func TestCirclingVerb_AcceptsFinalizeFixReviewHalt(t *testing.T) {
+	f := circlingFake{status: blockedAtFinalize(), found: true}
+	var out bytes.Buffer
+
+	if code := circlingVerb(&out, "task-a", f.deps(), shedadapters.CirclingAccept); code != 0 {
+		t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+	}
+
+	data := envelope.RequireOK(t, out.String()).Raw
+	if data["slug"] != "task-a" || data["decision"] != "accept" || data["row"] != loomshed.NameFinalize || data["resume"] != "lym loom resume" {
+		t.Errorf("envelope = %v; want slug, decision accept, row Finalize and the resume hint", data)
+	}
+	if len(f.accepted) != 1 || f.accepted[0] != 1 || len(f.records) != 0 {
+		t.Errorf("Finalize acceptances = %v, Bouncer records = %v; want one for row entry 1 and none", f.accepted, f.records)
+	}
+}
+
 func TestCirclingVerb_Refusals(t *testing.T) {
 	const loomRaise = `run "lym config loom --set review_hard_max_bounces=<n>" in the task worktree`
 	const localRaise = `run "lym config loom --layer local --set review_hard_max_bounces=<n>" in the task worktree, and correct the task's run_settings with "lym board upsert" too, so a later Seed-Child writes the same value`
@@ -122,6 +160,9 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 		{"record I/O failure", "", circlingFake{status: atPlanBouncer, found: true, recordErr: errors.New("write circling decision: disk full")}, []string{"re-run the verb"}},
 		{"running run", "", circlingFake{status: shedengine.Status{State: shedengine.StateRunning, CurrentProducer: loomshed.NamePlanBouncer}, found: true}, []string{"not awaiting"}},
 		{"awaiting at Finalize", "", circlingFake{status: awaitingAt(loomshed.NameFinalize), found: true}, []string{"not a review segment's Bouncer row"}},
+		{"continue at a Finalize halt", shedadapters.CirclingContinue, circlingFake{status: blockedAtFinalize(), found: true}, []string{"only accept settles fix reviews that ran out of rounds", "lym loom resume", "lym loom circling accept task-a"}},
+		{"accept at a Finalize halt on another cause", "", circlingFake{status: blockedAtFinalize(), found: true, acceptErr: landingshed.ErrNoFixReviewHalt}, []string{"not after its fix reviews ran out of rounds"}},
+		{"accept at Finalize whose description commit fails", "", circlingFake{status: blockedAtFinalize(), found: true, acceptErr: errors.New("commit: index locked")}, []string{"commit: index locked", "re-run the verb"}},
 		{"latest round not escalated", "", circlingFake{status: awaitingAt(loomshed.NameCodeBouncer), found: true, recordErr: shedadapters.ErrNotEscalated}, []string{"is not escalated"}},
 		{"malformed escalation record", "", circlingFake{status: atPlanBouncer, found: true, recordErr: fmt.Errorf("%w: round-2-escalation.md: bad cause", shedadapters.ErrEscalationMalformed)}, []string{"fix or delete the named escalation file"}},
 		{"second decision", "", circlingFake{status: awaitingAt(loomshed.NameDiscussionBouncer), found: true, recordErr: shedadapters.ErrCirclingDecided}, []string{`already recorded for the escalated round at Discussion-Bouncer; way forward: the decision for this round is recorded and stays; run "lym loom resume"`}},
@@ -176,8 +217,8 @@ func TestCirclingVerb_Refusals(t *testing.T) {
 					t.Errorf("message = %q; want it to contain %q", msg, want)
 				}
 			}
-			if len(f.records) != 0 {
-				t.Fatalf("records = %v; want none", f.records)
+			if len(f.records) != 0 || len(f.accepted) != 0 {
+				t.Fatalf("records = %v, Finalize acceptances = %v; want none", f.records, f.accepted)
 			}
 		})
 	}

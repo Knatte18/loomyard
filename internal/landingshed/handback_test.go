@@ -27,7 +27,7 @@ func TestHandsBack(t *testing.T) {
 		{"UndecodableAttemptRecordAtMergeIn", "Merge-In", LandingStopPrefix + "the fixer attempt record of Merge-In does not decode: p; way forward: remove p", true, false},
 		{"UndecodableAttemptRecordAtFinalize", "Finalize", LandingStopPrefix + "the fixer attempt record of Finalize does not decode: p; way forward: remove p", true, false},
 		{"LockRecheckAtFinalize", "Finalize", LandingStopPrefix + "the parent lock on \"main\" no longer names this run; nothing was landed", true, false},
-		{"RerouteCapAtFinalize", "Finalize", shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Parent-Align 3 times since its last done; way forward: x", true, false},
+		{"RerouteCapAtFinalize", "Finalize", shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Parent-Align 3 times since its last done; way forward: x", false, false},
 		{"RerouteCapAtWebster", "Webster", shedengine.ReasonRerouteCapReached + ": Webster rerouted to Plan-Write 3 times since its last done; way forward: x", false, false},
 		{"RerouteCapAtParentAlign", "Parent-Align", shedengine.ReasonRerouteCapReached + ": Parent-Align rerouted to Webster 3 times since its last done; way forward: x", false, false},
 		{"RerouteCapAtMergeIn", "Merge-In", shedengine.ReasonRerouteCapReached + ": Merge-In rerouted to Webster 3 times since its last done; way forward: x", false, false},

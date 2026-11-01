@@ -22,10 +22,19 @@ type FixerAttempts struct {
 	Baseline string `json:"baseline"`
 	// AlignFrom is the parent tip a Parent-Align entry reads the parent's changes from when the merge record holds no aligned tip.
 	AlignFrom string `json:"align_from"`
-	// Halt notes the halt that last stopped the entry: "spent", "over-cap" or empty.
+	// Halt notes the halt that last stopped the entry: "spent", "over-cap", "review-capped" or empty.
 	Halt string `json:"halt"`
 	// Reviewed is the HEAD a fix review approved the entry's over-cap change at; empty when none did.
 	Reviewed string `json:"reviewed,omitempty"`
+	// ReviewRounds is the fix reviews the entry ran over its over-cap change.
+	ReviewRounds int `json:"review_rounds,omitempty"`
+	// FixReview is the report of a fix review whose findings the fixer has yet to fix; empty when none is pending.
+	FixReview string `json:"fix_review,omitempty"`
+	// Findings are the findings the last fix review left open when the entry halted at its review round cap.
+	Findings []string `json:"findings,omitempty"`
+	// AcceptedHead is the HEAD the operator accepted the entry's change at after that halt, so the entry lands that change with Findings open; empty when none was accepted.
+	// A change at any other HEAD is not covered by the acceptance.
+	AcceptedHead string `json:"accepted_head,omitempty"`
 }
 
 // FixerAttemptsPath is the attempt record's path for row under scratchDir: one file per row.

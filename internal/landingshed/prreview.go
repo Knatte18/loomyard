@@ -212,7 +212,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	}
 	if found && rec.ClosedForContinue {
 		// The operator already ended this review and lym closed its pull request.
-		// A head past the one gated then means the Finalize reroute added commits that need review, so the review starts afresh.
+		// A head past the one gated then means commits were added since that need review, so the review starts afresh.
 		if head == rec.GatedHead {
 			return p.wait(ctx, api, rec, nil, time.Time{})
 		}

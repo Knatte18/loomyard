@@ -22,8 +22,8 @@
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
 # and a Stuck of a Drift row halts it with the ways forward in its reason.
 # Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
-# The comparison never sees the code the Code-Review perch's fixes change, a Finalize merge and its
-# fixer, or the code a Finalize reroute makes the perch review.
+# The comparison never sees the code the Code-Review perch's fixes change, or a Finalize merge and its
+# fixer.
 # PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
 # never returns Stuck.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
@@ -42,11 +42,8 @@
 # The perch's answer key is the decision record alone: its `## Goal` holds the task's board entry, as
 # amended by the record's `Added after Discussion` entries, which win where they differ.
 #
-# Finalize declares on_reroute: Code-Bouncer, the row a spent fixer change, or an over-cap one
-# Finalize's own solo fix review does not approve, sends the run back to, so the perch reviews
-# the code the writer changed in answer.
-# Shed's reroute cap bounds that edge, and a reroute spends no bounce budget.
-# With a budget of 0 the Bouncer settles approved at once on that reroute too.
+# Finalize declares no on_reroute: it settles a fixer change in place, through its own fix review
+# and the fixer, and never sends the run back to the perch.
 #
 # An in-flight run parked on a row this recipe removed -- Merge-In, Publish, PR-Align, PR-Gate -- or
 # on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
@@ -229,12 +226,11 @@ producers:
 
   # Finalize takes the parent lock first, merges the parent into the task branch, runs the landing
   # gate and the merge fixer, then fast-forwards the parent and releases the lock on every way out.
-  # An over-cap fixer change goes to Finalize's own solo fix review first, and lands on its approval.
-  # Only a spent fixer change, or an over-cap one the fix review does not approve, reroutes to Code-Bouncer;
-  # a conflict or a large merge lands through the gate.
+  # An over-cap fixer change goes to Finalize's own fix review, whose findings the fixer fixes in place
+  # until the review approves or its rounds run out and Finalize halts for the operator; Finalize never
+  # reroutes, and a conflict or a large merge lands through the gate.
   - name: Finalize
     engine: Finalize
-    on_reroute: Code-Bouncer
     # Hands off to the reflection row rather than ending the run.
     on_done: Friction-Reflect
 

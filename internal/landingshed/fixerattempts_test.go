@@ -7,6 +7,7 @@ package landingshed
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -17,13 +18,13 @@ func TestFixerAttempts(t *testing.T) {
 	t.Run("RoundTripsUnderItsOwnEntry", func(t *testing.T) {
 		t.Parallel()
 		path := FixerAttemptsPath(filepath.Join(t.TempDir(), "scratch"), "merge-in")
-		want := FixerAttempts{Entry: 3, Spent: 2, Baseline: "abc123", AlignFrom: "def456", Halt: "over-cap"}
+		want := FixerAttempts{Entry: 3, Spent: 2, Baseline: "abc123", AlignFrom: "def456", Halt: "review-capped", Reviewed: "r1", ReviewRounds: 2, FixReview: "review.md", Findings: []string{"f1 loosens an assertion"}, AcceptedHead: "h9"}
 
 		if err := WriteFixerAttempts(path, want); err != nil {
 			t.Fatalf("WriteFixerAttempts() = %v; want nil", err)
 		}
 		got, err := ReadFixerAttempts(path, 3)
-		if err != nil || got != want {
+		if err != nil || !reflect.DeepEqual(got, want) {
 			t.Errorf("ReadFixerAttempts(entry 3) = %+v, %v; want %+v, nil", got, err, want)
 		}
 	})
@@ -31,14 +32,14 @@ func TestFixerAttempts(t *testing.T) {
 	t.Run("OtherEntryAndAbsentFileReadZero", func(t *testing.T) {
 		t.Parallel()
 		path := FixerAttemptsPath(t.TempDir(), "finalize")
-		if got, err := ReadFixerAttempts(path, 5); err != nil || got != (FixerAttempts{Entry: 5}) {
+		if got, err := ReadFixerAttempts(path, 5); err != nil || !reflect.DeepEqual(got, FixerAttempts{Entry: 5}) {
 			t.Errorf("ReadFixerAttempts(absent) = %+v, %v; want a zero record for entry 5, nil", got, err)
 		}
 
 		if err := WriteFixerAttempts(path, FixerAttempts{Entry: 3, Spent: 2}); err != nil {
 			t.Fatalf("WriteFixerAttempts() = %v; want nil", err)
 		}
-		if got, err := ReadFixerAttempts(path, 4); err != nil || got != (FixerAttempts{Entry: 4}) {
+		if got, err := ReadFixerAttempts(path, 4); err != nil || !reflect.DeepEqual(got, FixerAttempts{Entry: 4}) {
 			t.Errorf("ReadFixerAttempts(other entry) = %+v, %v; want a zero record for entry 4, nil", got, err)
 		}
 	})

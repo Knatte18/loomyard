@@ -153,13 +153,12 @@ func TestWire_BeamRecipe(t *testing.T) {
 
 		tests := []struct {
 			recipe                  string
-			wantRerouteSeam         bool
 			wantLandBlockers        bool
 			wantEscalateJudgedFirst bool
 		}{
-			{shedrun.RecipeTapestry, true, false, true},
-			{shedrun.RecipeDarn, true, false, true},
-			{shedrun.RecipePawl, false, true, true},
+			{shedrun.RecipeTapestry, false, true},
+			{shedrun.RecipeDarn, false, true},
+			{shedrun.RecipePawl, true, true},
 		}
 		for _, tt := range tests {
 			deps := landingDeps(
@@ -179,9 +178,6 @@ func TestWire_BeamRecipe(t *testing.T) {
 				planVerifySource(loc),
 				lock,
 			)
-			if (deps.RerouteReviewed != nil) != tt.wantRerouteSeam {
-				t.Errorf("%s: RerouteReviewed set = %v; want %v", tt.recipe, deps.RerouteReviewed != nil, tt.wantRerouteSeam)
-			}
 			if (deps.LandBlockers != nil) != tt.wantLandBlockers {
 				t.Errorf("%s: LandBlockers set = %v; want %v", tt.recipe, deps.LandBlockers != nil, tt.wantLandBlockers)
 			}

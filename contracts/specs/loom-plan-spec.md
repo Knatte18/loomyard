@@ -327,7 +327,7 @@ A `**Verify:**` line that tests is one `lym gate test --wait` call with a gate k
 The plan-level `## verify:` body section in `00-overview.md` is accepted and ignored: the parser still reads it, and the plan gate reports an informational finding, because the `webster` gate key has replaced it.
 
 Parent-Align and Finalize run their own gate keys, `parent-align` and `finalize`, in the task worktree whenever the tree differs from the last verified tree, which `internal/verifytree` records,
-and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent or its change is over the caps.
+and, on a failure, run the merge fixer before anything is landed, halting only when the fixer's cap is spent, a Parent-Align fixer change is over the caps, or Finalize's fix reviews run out of rounds.
 Both also halt Stuck on a dirty tree, so only committed content is ever verified or landed.
 
 The tiers below match this repo's own test-tier discipline:

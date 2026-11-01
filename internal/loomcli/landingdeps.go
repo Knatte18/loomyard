@@ -79,11 +79,6 @@ func landingDeps(
 	if recipeHasEngine(recipe, planWriteEngine) {
 		traceFailure = failuretrace.NewTracer(l.WorktreePath(), l.AnchorPath())
 	}
-	// A pawl run has no reroute edge, so it has no review to follow one and a nil seam halts a spent or over-cap fixer for the orch.
-	var reviewFollowsReroute func() (bool, error)
-	if recipe != shedrun.RecipePawl {
-		reviewFollowsReroute = rerouteReviewed(l, recipe)
-	}
 	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check with a land check over the members and pairs still working under it.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
 	if recipe == shedrun.RecipePawl {
@@ -272,10 +267,9 @@ func landingDeps(
 			}
 			return rowEntry(status.History, row), nil
 		},
-		CodeReviewOff:   codeBudgetZero(l, recipe),
-		RerouteReviewed: reviewFollowsReroute,
-		LandBlockers:    landBlockers,
-		PullRequest:     pullRequestDeps(l, parentBranch, pushSkipped, runner),
+		CodeReviewOff: codeBudgetZero(l, recipe),
+		LandBlockers:  landBlockers,
+		PullRequest:   pullRequestDeps(l, parentBranch, pushSkipped, runner),
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -417,16 +411,6 @@ func parentPullRequestMode(l *lymcwd.Location) func() (mode, worktree string, er
 		}
 		cfg, err := dobbyengine.LoadConfig(fabricengine.ConfigDirs(parentLocation))
 		return cfg.PullRequest, parentLocation.WorktreeName, err
-	}
-}
-
-// rerouteReviewed returns the seam that reports whether a review follows Finalize's reroute: whether the Code-Perch is on for recipe, with an effective budget above 0.
-// A loom Finalize reroutes through Parent-Align to the Code-Perch, and a darn or sampler Finalize to Code-Bouncer, which settles approved at once on a budget of 0.
-func rerouteReviewed(l *lymcwd.Location, recipe string) func() (bool, error) {
-	budgetZero := codeBudgetZero(l, recipe)
-	return func() (bool, error) {
-		zero, err := budgetZero()
-		return !zero, err
 	}
 }
 

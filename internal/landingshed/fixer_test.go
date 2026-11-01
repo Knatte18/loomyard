@@ -101,7 +101,7 @@ func TestFixerTable(t *testing.T) {
 		if err := table.Validate(in.StencilsDir); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
-		for _, name := range []string{"plan_dir", "failure_record_path", "aligned_tip"} {
+		for _, name := range []string{"plan_dir", "failure_record_path", "fix_review_path", "aligned_tip"} {
 			if !slices.Contains(table.Optional, name) {
 				t.Errorf("finalize table Optional = %v; want it to list %q", table.Optional, name)
 			}
@@ -122,7 +122,7 @@ func TestFixerTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FixerTable(merge-in, empty optionals) = _, %v; want nil error", err)
 		}
-		if want := []string{"plan_dir", "failure_record_path"}; !slices.Equal(table.Optional, want) {
+		if want := []string{"plan_dir", "failure_record_path", "fix_review_path"}; !slices.Equal(table.Optional, want) {
 			t.Errorf("merge-in table Optional = %v; want %v", table.Optional, want)
 		}
 	})

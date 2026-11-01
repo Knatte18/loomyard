@@ -480,9 +480,9 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 		})
 	}
 
-	rerouteCapError := shedengine.ReasonRerouteCapReached + ": Finalize rerouted to Merge-In 3 times since its last done"
+	landingStopError := "landing stop: the fixer spent every attempt of Finalize and the landing gate still fails"
 	handBackCheck := func(producer, reason string) bool {
-		return producer == "Finalize" && strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+		return producer == "Finalize" && strings.HasPrefix(reason, "landing stop: ")
 	}
 	handBackTests := []struct {
 		name     string
@@ -491,8 +491,8 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 		check    func(producer, reason string) bool
 		want     bool
 	}{
-		{"BlockedFinalizeRerouteCap", "Finalize", shedengine.StateBlocked, handBackCheck, true},
-		{"BlockedWebsterRerouteCap", "Webster", shedengine.StateBlocked, handBackCheck, false},
+		{"BlockedFinalizeLandingStop", "Finalize", shedengine.StateBlocked, handBackCheck, true},
+		{"BlockedWebsterLandingStop", "Webster", shedengine.StateBlocked, handBackCheck, false},
 		{"NoCheckTold", "Finalize", shedengine.StateBlocked, nil, false},
 		{"FailedFinalize", "Finalize", shedengine.StateFailed, handBackCheck, false},
 	}
@@ -501,7 +501,7 @@ func TestStatusCmd_FoundEnvelope_GenericCore(t *testing.T) {
 			spec := seededStatusSpec(t, Hooks{})
 			spec.HandBack = tt.check
 			if err := state.UpdateJSON(spec.StatusPath, spec.StatusLockPath, func(cur shedengine.Status, found bool) (shedengine.Status, error) {
-				cur.CurrentProducer, cur.State, cur.Error = tt.producer, tt.state, rerouteCapError
+				cur.CurrentProducer, cur.State, cur.Error = tt.producer, tt.state, landingStopError
 				return cur, nil
 			}); err != nil {
 				t.Fatalf("record the halt: %v", err)

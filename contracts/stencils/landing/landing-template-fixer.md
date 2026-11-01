@@ -3,7 +3,7 @@
      <hub>/_board/_lym/stencils/landing/, and read from there at call time by internal/seatengine,
      which fills it from the lead's value map that landingshed's FixerTable builds, then hands it to shuttle as the fixing agent's whole
      prompt. Every marker below is a top-level {{.X}} substitution; stencil.FillWith requires every
-     marker non-empty except the table's Optional values (plan_dir, failure_record_path and, in finalize mode, aligned_tip), parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
+     marker non-empty except the table's Optional values (plan_dir, failure_record_path, fix_review_path and, in finalize mode, aligned_tip), parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective) included, and there are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Merge fixer — fix the merge or the failing tests on the task branch
 
@@ -21,6 +21,7 @@ The task branch is `{{.task_branch}}` and it lands on `{{.parent_branch}}`.
 - The plan directory, when this line names one: `{{.plan_dir}}`.
 - The landing failure record, when this line names one: `{{.failure_record_path}}`.
   It names the gate's log, which you read as well.
+- The fix review report, when this line names one: `{{.fix_review_path}}`.
 
 Issue every search and read you can name in one message; wait for a result only to choose the next call.
 
@@ -32,6 +33,7 @@ When a change of the parent conflicts with a decision of the record, do not choo
 
 In `finalize` mode fix the failing tests only.
 Judge no parent change and align nothing.
+When the fix review report is named above, Finalize's fix review rejected the merge fixer's change: fix each finding of its `## Findings` section on the task branch, keeping every test's meaning, and keep the landing gate passing.
 
 When the landing failure record holds `build: true`, the gate failed in its build step before any test ran, so in either mode fix the compile error the record's log names, in place of failing tests.
 

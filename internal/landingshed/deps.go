@@ -321,11 +321,6 @@ type Deps struct {
 	// With the perch off no review follows Parent-Align and its fixer's change is judged against the caps instead.
 	// A nil CodeReviewOff reads as the budget being 0, and a returned error is an error stop of the row.
 	CodeReviewOff func() (bool, error)
-	// RerouteReviewed reports whether a review follows Finalize's reroute, so a fixer change it keeps is seen before the run lands.
-	// For loom that is the Code-Review perch's effective budget being above 0, and for darn and sampler Finalize's reroute edge reaching the same perch's Code-Bouncer, under that budget above 0 and with the perch's rows not left out by their entry gate, rather than PR-Review.
-	// It is read each time Finalize ends on a spent cap or an over-cap change.
-	// A nil RerouteReviewed reads as no review, so Finalize halts instead of rerouting, and a returned error is an error stop of the row.
-	RerouteReviewed func() (bool, error)
 
 	// PullRequest is the PR-Review row's told seams.
 	PullRequest PullRequestDeps

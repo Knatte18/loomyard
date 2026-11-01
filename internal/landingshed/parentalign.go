@@ -52,10 +52,11 @@ type ParentAlign struct {
 	attempts FixerAttempts
 }
 
-// fixerHaltSpent and fixerHaltOverCap are the FixerAttempts.Halt notes a spent cap and an over-cap change leave.
+// The FixerAttempts.Halt notes: a spent cap, an over-cap change at Parent-Align, and an over-cap change at Finalize whose fix reviews ran out of rounds without approving it.
 const (
-	fixerHaltSpent   = "spent"
-	fixerHaltOverCap = "over-cap"
+	fixerHaltSpent        = "spent"
+	fixerHaltOverCap      = "over-cap"
+	fixerHaltReviewCapped = "review-capped"
 )
 
 var _ shedengine.ShedProducer = (*ParentAlign)(nil)

@@ -2,23 +2,15 @@
 
 package landingshed
 
-import (
-	"strings"
-
-	"github.com/Knatte18/loomyard/internal/shedengine"
-)
+import "strings"
 
 // HandsBack reports whether a blocked stop at producer with the persisted reason is a landing halt for the orch.
 // A stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix is one, as the fixer and its caps raise them.
 // A stop at Merge-In, the row's name before its rename, is read the same way, since batten and the arbiter read a child's status file before any loom verb has renamed a run halted there.
-// A stop at Finalize, the only landing row with a reroute edge, whose reason opens with the reroute-cap prefix is one too.
-// Shed writes the reroute-cap prefix for every row, so the producer match keeps another row's reroute-cap halt out.
 func HandsBack(producer, reason string) bool {
 	switch producer {
-	case parentAlignName, retiredMergeInName:
+	case parentAlignName, retiredMergeInName, finalizeName:
 		return strings.HasPrefix(reason, LandingStopPrefix)
-	case finalizeName:
-		return strings.HasPrefix(reason, LandingStopPrefix) || strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
 	}
 	return false
 }

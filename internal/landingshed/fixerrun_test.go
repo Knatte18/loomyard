@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -308,7 +309,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				t.Errorf("run() record Spent = %d; want %d", rec.Spent, tt.wantSpent)
 			}
 			onDisk, err := ReadFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, fixerTestRow), start.Entry)
-			if err != nil || onDisk != rec {
+			if err != nil || !reflect.DeepEqual(onDisk, rec) {
 				t.Errorf("attempt record on disk = %+v, %v; want the returned %+v", onDisk, err, rec)
 			}
 			if tt.wantTurns != 0 && fx.seats.turnsRun != tt.wantTurns {
@@ -385,11 +386,11 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		if err == nil || shedengine.TransientOf(err) != shedengine.TransientAgentStart {
 			t.Fatalf("run() error = %v; want one the transient mark classifies as %q", err, shedengine.TransientAgentStart)
 		}
-		if rec != start || outcome != (fixerOutcome{}) {
+		if !reflect.DeepEqual(rec, start) || outcome != (fixerOutcome{}) {
 			t.Errorf("run() = %+v, %+v; want the record as it was and no outcome", outcome, rec)
 		}
 		onDisk, readErr := ReadFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, fixerTestRow), 1)
-		if readErr != nil || onDisk != start {
+		if readErr != nil || !reflect.DeepEqual(onDisk, start) {
 			t.Errorf("attempt record on disk = %+v, %v; want %+v", onDisk, readErr, start)
 		}
 	})

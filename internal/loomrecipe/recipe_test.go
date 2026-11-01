@@ -352,7 +352,29 @@ func TestEntryNumbers(t *testing.T) {
 	}
 }
 
-// TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels: the Webster row reroutes to Plan-Burler-Review, whose fasit instructions name the conflict record by the path websterengine declares.
+// TestRecipe_FinalizeDeclaresNoReroute pins that the tapestry recipe has a Finalize row and that it declares no reroute edge.
+func TestRecipe_FinalizeDeclaresNoReroute(t *testing.T) {
+	env, paths := testEnv(t)
+	shed, err := New(shedrun.RecipeTapestry, env, paths)
+	if err != nil {
+		t.Fatalf("New() error = %v; want nil", err)
+	}
+	found := false
+	for _, p := range shed.Producers {
+		if p.Name != loomshed.NameFinalize {
+			continue
+		}
+		found = true
+		if p.OnReroute != "" {
+			t.Errorf("Finalize.OnReroute = %q; want none", p.OnReroute)
+		}
+	}
+	if !found {
+		t.Errorf("tapestry recipe has no %s row", loomshed.NameFinalize)
+	}
+}
+
+// TestRecipe_WebsterReroutesToPlanReview pins the edge a Webster plan conflict travels:the Webster row reroutes to Plan-Burler-Review, whose fasit instructions name the conflict record by the path websterengine declares.
 func TestRecipe_WebsterReroutesToPlanReview(t *testing.T) {
 	env, paths := testEnv(t)
 	shed, err := New(shedrun.RecipeTapestry, env, paths)

@@ -182,7 +182,7 @@ const (
 	fixReviewEndChanged fixReviewEnd = "changed"
 )
 
-// fixReviewOutcome is how a fix review session ended and what the reroute or halt that follows names.
+// fixReviewOutcome is how a fix review session ended and what the fixer turn or halt that follows names.
 type fixReviewOutcome struct {
 	end fixReviewEnd
 	// reportPath is the report the session writes.
@@ -278,10 +278,22 @@ func runFixReview(deps Deps, gate verifyGate, row, baseline, head, capReason str
 	return outcome, nil
 }
 
-// rerouteCause words what a rejected or verdict-less review adds to the reroute's cause.
-func (o fixReviewOutcome) rerouteCause() string {
+// verdictSummary words, on one line, why a rejected or verdict-less review did not approve the change.
+func (o fixReviewOutcome) verdictSummary() string {
 	if o.end == fixReviewEndRejected {
 		return fmt.Sprintf("the fix review rejected it: %s; review: %s", singleLine(strings.Join(o.findings, "; ")), o.reportPath)
 	}
 	return fmt.Sprintf("the fix review gave no verdict (%s); session log: %s", o.cause, o.sessionLog)
+}
+
+// openFindings returns what a rejected or verdict-less review left open: a rejection's findings, each on one line, or the one line naming why no verdict came.
+func (o fixReviewOutcome) openFindings() []string {
+	if o.end != fixReviewEndRejected {
+		return []string{o.verdictSummary()}
+	}
+	findings := make([]string, 0, len(o.findings))
+	for _, finding := range o.findings {
+		findings = append(findings, singleLine(finding))
+	}
+	return findings
 }

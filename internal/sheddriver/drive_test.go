@@ -151,14 +151,14 @@ func TestGoDriver_Settle(t *testing.T) {
 	}
 
 	finalizeCapStatus := shedengine.Status{
-		State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: shedengine.ReasonRerouteCapReached + " for Finalize; way forward: the orch resumes",
+		State: shedengine.StateBlocked, CurrentProducer: "Finalize", Error: "landing stop: the fixer spent every attempt of Finalize; way forward: the orch resumes",
 		History: append(slices.Clone(blockedStatus.History), shedengine.HistoryEntry{Producer: "Finalize", Outcome: shedengine.Stuck, At: driveTestEpoch.Add(2 * time.Second).Format(time.RFC3339)}),
 	}
 
 	tests := []struct {
 		name  string
 		steps []func(t *testing.T) []byte
-		// handsBack wires Deps.HandsBack to mark a blocked Finalize reroute-cap status.
+		// handsBack wires Deps.HandsBack to mark a blocked Finalize landing-stop status.
 		handsBack bool
 		// statuses, when set, is the status the run shows after each step; otherwise the status the step's envelope describes.
 		statuses []shedengine.Status
@@ -535,7 +535,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 1, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{1: {"only the orch's resume lifts it"}},
 		},
 		{
-			name:  "no hand-back check: a status moved to a blocked reroute-cap halt goes to the tackler",
+			name:  "no hand-back check: a status moved to a blocked landing halt goes to the tackler",
 			steps: []func(*testing.T) []byte{blocked}, statusSeq: []shedengine.Status{finalizeCapStatus}, tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
 			wantCalls:   []string{"step", "tackler", "snapshot", "snapshot"},
 			wantActions: []string{shedrun.SettleMoved, shedrun.SettleSpawn, shedrun.SettleHandBack}, wantSettlers: []string{shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
@@ -781,7 +781,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if tt.handsBack {
 				deps.HandsBack = func(producer, reason string) bool {
-					return producer == "Finalize" && strings.HasPrefix(reason, shedengine.ReasonRerouteCapReached)
+					return producer == "Finalize" && strings.HasPrefix(reason, "landing stop: ")
 				}
 			}
 			if tt.startCheck {

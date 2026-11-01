@@ -31,7 +31,7 @@ const fixerStencilName = "landing-template-fixer"
 const fixerRole = "fixer"
 
 // FixerInputs carries the told values one merge fixer session needs.
-// Every field is required except PlanDir, FailureRecordPath and LanguageSkills; AlignedTip is required in parent-align mode only.
+// Every field is required except PlanDir, FailureRecordPath, FixReviewPath and LanguageSkills; AlignedTip is required in parent-align mode only.
 type FixerInputs struct {
 	// StencilsDir is the absolute directory the landing stencils are read from.
 	StencilsDir string
@@ -45,6 +45,9 @@ type FixerInputs struct {
 	PlanDir string
 	// FailureRecordPath is the landing failure record of the gate that failed; empty before any gate has failed.
 	FailureRecordPath string
+	// FixReviewPath is the report of a fix review whose findings the fixer fixes; empty when no review rejected the change.
+	// Finalize alone sets it.
+	FixReviewPath string
 	// AlignedTip is the tip the parent's changes are read from: the merge record's aligned tip or, when it holds none, the entry's fork point.
 	// Empty in finalize mode, where the fixer reads no parent change.
 	AlignedTip string
@@ -64,7 +67,7 @@ type FixerInputs struct {
 
 // FixerTable builds the seatengine.Table of the merge fixer session: one lead that fixes on the task branch and writes the report at in.ReportPath.
 // An empty required input field is an error naming the field, and so is an unknown mode and a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
-// PlanDir and FailureRecordPath are optional values in both modes, and AlignedTip is optional in finalize mode only, so an empty AlignedTip in parent-align mode is refused by name.
+// PlanDir, FailureRecordPath and FixReviewPath are optional values in both modes, and AlignedTip is optional in finalize mode only, so an empty AlignedTip in parent-align mode is refused by name.
 // The table's timeout is one turn's, cfg.FixerTimeoutMin; the caller sets the gate and stretches the timeout over the turns it may spend.
 func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ name, value string }{
@@ -83,7 +86,7 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 			return seatengine.Table{}, fmt.Errorf("landingshed: FixerTable: %s is empty", r.name)
 		}
 	}
-	optional := []string{"plan_dir", "failure_record_path"}
+	optional := []string{"plan_dir", "failure_record_path", "fix_review_path"}
 	switch in.Mode {
 	case FixerModeParentAlign:
 	case FixerModeFinalize:
@@ -115,6 +118,7 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 			"merge_record_path":    in.MergeRecordPath,
 			"plan_dir":             in.PlanDir,
 			"failure_record_path":  in.FailureRecordPath,
+			"fix_review_path":      in.FixReviewPath,
 			"aligned_tip":          in.AlignedTip,
 			"merged_tip":           in.MergedTip,
 			"report_path":          in.ReportPath,

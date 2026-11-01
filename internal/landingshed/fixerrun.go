@@ -103,6 +103,7 @@ func (f fixerRun) run(ctx context.Context, mode FixerMode, rec FixerAttempts, ca
 		MergeRecordPath:    f.deps.MergeRecordPath,
 		PlanDir:            f.deps.PlanDir,
 		FailureRecordPath:  f.failureRecordPath(),
+		FixReviewPath:      rec.FixReview,
 		AlignedTip:         tips[0],
 		MergedTip:          tips[1],
 		ReportPath:         reportPath,

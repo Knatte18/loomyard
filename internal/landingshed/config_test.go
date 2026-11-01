@@ -279,7 +279,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
-		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\ncredit_engines:\n  claude: \"Claude <noreply@anthropic.com>\"\n"
+		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
@@ -292,6 +292,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 		{"parent align fix attempts below 1", "parent_align_fix_attempts: 2", "parent_align_fix_attempts: 0", "parent_align_fix_attempts"},
 		{"finalize fix attempts below 1", "finalize_fix_attempts: 2", "finalize_fix_attempts: 0", "finalize_fix_attempts"},
 		{"finalize fix max lines below 1", "finalize_fix_max_lines: 40", "finalize_fix_max_lines: 0", "finalize_fix_max_lines"},
+		{"finalize fix review rounds below 1", "finalize_fix_review_rounds: 3", "finalize_fix_review_rounds: 0", "finalize_fix_review_rounds"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

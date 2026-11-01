@@ -129,7 +129,7 @@ func setCodeBudget(env *shedrecipe.Env, budget int) {
 	env.Segments[codeReviewSegment] = settings
 }
 
-// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize's reroute to Code-Bouncer, no Merge-In row, and a review budget of 0 keeping every edge and gating Describe off.
+// TestNewDarn_Routing pins the darn tail: the Code-Review perch, then Describe, PR-Review and Finalize after Darn-Write with the review budget on all three perch rows, Finalize with no reroute edge, no Merge-In row, and a review budget of 0 keeping every edge and gating Describe off.
 func TestNewDarn_Routing(t *testing.T) {
 	build := func(t *testing.T, reviewBudget int) map[string]shedengine.ProducerDef {
 		t.Helper()
@@ -146,7 +146,7 @@ func TestNewDarn_Routing(t *testing.T) {
 		return rows
 	}
 
-	t.Run("Drift-Baseline follows Preflight and Drift-Await follows it, Darn-Write follows Drift-Await, Drift-Verify and the perch follow Darn-Write, and Finalize reroutes to the perch", func(t *testing.T) {
+	t.Run("Drift-Baseline follows Preflight and Drift-Await follows it, Darn-Write follows Drift-Await, Drift-Verify and the perch follow Darn-Write, and Finalize declares no reroute", func(t *testing.T) {
 		rows := build(t, 4)
 		if preflight := rows[loomshed.NamePreflight]; preflight.OnDone != loomshed.NameRecordWrite {
 			t.Errorf("Preflight OnDone = %q; want %q", preflight.OnDone, loomshed.NameRecordWrite)
@@ -187,8 +187,8 @@ func TestNewDarn_Routing(t *testing.T) {
 		if _, ok := rows[loomshed.NameParentAlign]; ok {
 			t.Errorf("darn recipe has a %s row; want none", loomshed.NameParentAlign)
 		}
-		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != loomshed.NameCodeBouncer || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
-			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect, loomshed.NameCodeBouncer)
+		if finalize := rows[loomshed.NameFinalize]; finalize.OnReroute != "" || finalize.OnDone != loomshed.NameFrictionReflect || finalize.OnStuck != "" {
+			t.Errorf("Finalize OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/empty", finalize.OnDone, finalize.OnStuck, finalize.OnReroute, loomshed.NameFrictionReflect)
 		}
 		if bouncer.Segment != codeReviewSegment || review.Segment != bouncer.Segment || fix.Segment != bouncer.Segment {
 			t.Errorf("segments Code-Bouncer/review/fix = %q/%q/%q; want all %s", bouncer.Segment, review.Segment, fix.Segment, codeReviewSegment)
@@ -221,9 +221,6 @@ func TestNewDarn_Routing(t *testing.T) {
 		rows := build(t, 0)
 		if got := rows[loomshed.NameDriftVerify].OnDone; got != loomshed.NameCodeBouncer {
 			t.Errorf("Drift-Verify OnDone = %q; want %q", got, loomshed.NameCodeBouncer)
-		}
-		if got := rows[loomshed.NameFinalize].OnReroute; got != loomshed.NameCodeBouncer {
-			t.Errorf("Finalize OnReroute = %q; want %q", got, loomshed.NameCodeBouncer)
 		}
 		describe := rows[loomshed.NameDescribe]
 		if describe.EntryGate == nil {
@@ -399,9 +396,6 @@ func TestDarnRouting(t *testing.T) {
 		for _, p := range routing.Producers {
 			if p.Name == loomshed.NameDriftVerify && p.OnDone != loomshed.NameCodeBouncer {
 				t.Errorf("Drift-Verify OnDone = %q; want %q", p.OnDone, loomshed.NameCodeBouncer)
-			}
-			if p.Name == loomshed.NameFinalize && p.OnReroute != loomshed.NameCodeBouncer {
-				t.Errorf("Finalize OnReroute = %q; want %q", p.OnReroute, loomshed.NameCodeBouncer)
 			}
 			if p.Segment == codeReviewSegment && p.MaxBounces != 0 {
 				t.Errorf("%s MaxBounces = %d; want the budget 0", p.Name, p.MaxBounces)

@@ -4,9 +4,10 @@
 
 ## What it is
 
-The fix review is the one solo session Finalize spawns when the merge fixer's change is over the caps and a review follows Finalize's reroute.
+The fix review is the solo session Finalize spawns when the merge fixer's change is over the caps.
 It reads only the fixer's commits and ends by writing one report, a markdown file at the path its prompt names.
-An approval lets Finalize land; a rejection sends the run back along Finalize's reroute edge.
+An approval lets Finalize land; a rejection hands the report's findings to the merge fixer, which fixes them in place, and the fix review then judges the fixed change again.
+Once `finalize_fix_review_rounds` reviews have not approved, Finalize halts for the operator with the last report's findings open.
 
 ## Format
 

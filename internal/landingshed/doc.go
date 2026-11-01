@@ -39,12 +39,12 @@
 // A wanted pull request on a task branch with no commit beyond its parent is a no, before any origin fact is judged, since GitHub opens none on an empty branch; both rows then take the no path, and Finalize's parent-side merge commits nothing.
 // A missing fact is a Halt when the parent is required or the field is on, and a no with the fact named when the parent is on alone; an origin on github.com that names no repository is a Halt in every mode that wants a pull request.
 //
-// A merge or test failure at Parent-Align or Finalize is owned by the recipe: it ends in the row's fixer, a reroute or a halt to the orch.
+// A merge or test failure at Parent-Align or Finalize is owned by the recipe: it ends in the row's fixer or a halt to the orch, and Finalize never sends the run back to an earlier row.
 //
 // Finalize holds the parent lock, which it takes through the shared guard; the guard grants a run that already holds it, so a re-call after a resume takes back a record handed to batten.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.
 // Finalize's constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock.
-// Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a reroute, a Stuck and an error.
+// Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a Stuck and an error.
 // A lock a dead Finalize left is taken over at the next acquire, since the lock store grants a record whose owner process no longer lives.
 // Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Parent-Align does, then the owner checks.
 // It then opens the parent pair and syncs it before any merge: a pair that is missing, mid-merge or holding tracked dirt in its code checkout is Stuck with its way forward, whether the parent is behind, equal, without an upstream or under the push skip.
@@ -75,8 +75,8 @@
 // It reads the merge record's merged tip, clears a parked merge-in, checks the tree clean and merges.
 // An unreadable merge record is logged and read as absent, so the parent side is measured from the task's merge base, as a run with no record is.
 // The merge is large when the parent's changes since the merged tip it read touch a file the task changed since its merge base; a parent already holding the task's work is never large.
-// A large merge writes the merge record, with its overlap, and goes on to the gate like any other merge, and a conflict or a large merge reroutes in no recipe.
-// Bound: what lands with no review is the conflict session's resolution against the parent's newer work and a textually clean merge of the parent's changes to files the task also changed; the `finalize` gate over the merged tree bounds both, and a spent fixer, or a change past the caps the fix review does not approve, reroutes when a review follows the reroute and halts for the orch otherwise.
+// A large merge writes the merge record, with its overlap, and goes on to the gate like any other merge.
+// Bound: what lands with no review is the conflict session's resolution against the parent's newer work and a textually clean merge of the parent's changes to files the task also changed; the `finalize` gate over the merged tree bounds both, a spent fixer halts for the orch, and a change past the caps lands only behind the fix review's approval or the operator's acceptance.
 // The conflict session runs while the parent lock is held, so sibling landings onto that parent wait, bounded by the lock's owner, pause and release rules.
 // Finalize then writes the merge record with the new merged tip and the aligned tip as it was.
 // Next it runs its own gate key, `finalize`, over the merged tree through verifytree, which skips a tree it already verified, so a run that went right holds the lock for one merge, a skipped gate and the landing.
@@ -84,18 +84,21 @@
 // A passing gate removes the landing failure record, and a failing one writes it.
 // A failing gate spawns the merge fixer in finalize mode, which fixes failing tests only, on the attempts `finalize_fix_attempts` leaves the entry, read from the attempt record under the row's entry.
 // The fixer gets no parent tip to read from and the merged tip the merge record carries.
-// The first spawn writes the HEAD before the fixer's first turn into the record's Baseline, every resume of the entry keeps it but the one after an over-cap halt, and the fixer's whole change is judged by `LineChange(Baseline, HEAD)` against `finalize_fix_max_lines` and the run's test-file matcher, so turns that each stay under the cap but sum past it are over it.
+// The first spawn writes the HEAD before the fixer's first turn into the record's Baseline, every resume of the entry keeps it, and the fixer's whole change is judged by `LineChange(Baseline, HEAD)` against `finalize_fix_max_lines` and the run's test-file matcher, so turns that each stay under the cap but sum past it are over it.
 // An entry has no attempts left when its Spent reaches `finalize_fix_attempts`, whatever the record's Halt notes, and a resumed entry with none left spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
-// A change over the caps, when a review follows the reroute (Deps.RerouteReviewed), first goes to the fix review: one solo session on the fixer's model-spec and turn timeout, which reads only the fixer's commits, Baseline..HEAD, and writes the report `landing-fix-review-spec.md` pins.
+// A change over the caps, in every recipe, goes to the fix review: one solo session on the fixer's model-spec and turn timeout, which reads only the fixer's commits, Baseline..HEAD, and writes the report `landing-fix-review-spec.md` pins.
 // An approval lands the change and keeps the approved HEAD in the record's Reviewed, so a later pass of the entry at that HEAD lands with no second review;
-// a rejection, or a session that ends without a verdict, reroutes naming the findings or why;
+// a rejection hands its findings to the fixer, which fixes them in place on a fresh `finalize_fix_attempts` turn cap, and its fixed change is judged again;
+// a session that ends without a verdict runs again;
+// each review spends one of `finalize_fix_review_rounds`, and a review that does not approve on the last round halts with LandingStopPrefix, noting `review-capped` and the open findings in the record, with `lym loom circling accept` or a fix on the task branch as the way forward;
 // a session that dirties the tree or moves the task head halts with LandingStopPrefix, and one that fails to start is a transient error.
-// Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, under the parent lock, for at most one `fixer_timeout_min` session and one re-prompt over an unparseable report.
-// A spent cap, and a change over the caps the fix review does not approve, keep the fixer's commits and reroute through the reroute reason when a review follows the reroute, and halt with LandingStopPrefix otherwise, naming the commits and noting `spent` or `over-cap` in the record's Halt.
-// A resume after an over-cap halt writes Baseline afresh at the HEAD the gate starts from, clears the note in the same record write, reads the operator's review as acceptance of the commits and runs the gate: a passing gate lands without judging the change, and a failing one runs the fixer on the attempts left.
+// Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, under the parent lock, for at most `finalize_fix_review_rounds` review sessions of `fixer_timeout_min` each, with the fixer's turns between them.
+// AcceptFixReview is the operator's acceptance after that halt: it appends the open findings to the change description under `## Unresolved fix review findings` and records the task HEAD it accepted at, and the resume lands the change as it stands at that HEAD.
+// A resume with no acceptance clears the note and the rounds and runs the fix reviews afresh over the change as it then stands.
+// A spent cap keeps the fixer's commits and halts with LandingStopPrefix, naming the commits and noting `spent` in the record's Halt.
 // An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry, darn or sampler run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
-// A Finalize reroute leaves the entry's attempt record for the next entry to clear, and a Done clears it.
+// A Done clears the entry's attempt record.
 // The size and kind caps bound what a Finalize fix lets through without a reviewer: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
 // After a merge-in-required error from the parent-side merge Finalize retries once, which covers a parent moved by run records alone;
 // the retry merges the parent again and gates the merged tree under the same lock, so a code-side commit that arrives between the first merge and the parent-side merge is merged, gated and landed.
@@ -152,10 +155,10 @@
 // An up-to-date merge records an empty overlap, and a failed record write is an error, never Stuck.
 // Parent-Align holds no lock on any way out of the row, so no later row inherits one.
 //
-// HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix, and a blocked stop at Finalize whose reason opens with the reroute-cap prefix.
-// Parent-Align has no reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
+// HandsBack is the one predicate that names the halts the orch takes over: a blocked stop at Parent-Align or Finalize whose reason opens with LandingStopPrefix.
+// Neither row has a reroute edge, and a reroute-cap halt at another row, such as Webster's, stays routed as before.
 // A merge or test failure at Parent-Align or Finalize is the recipe's own to settle:
-// the row's fixer fixes it, a spent fix or an over-cap fix its fix review does not approve at Finalize routes back through the recipe's reroute edge, or halts where that edge reaches no review, and the halt goes to the orch.
+// the row's fixer fixes it, Finalize's fix review and fixer settle an over-cap fix in place, and a spent fix or a fix review out of rounds halts, and the halt goes to the orch.
 // No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //

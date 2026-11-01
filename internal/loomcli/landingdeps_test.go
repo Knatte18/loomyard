@@ -510,11 +510,11 @@ func TestMergeableTips(t *testing.T) {
 	}
 }
 
-// TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml pins that the reroute and budget-zero seams read the Code-Review perch at call time:
-// a budget of 0 reports no review after the reroute and a budget above 0 reports one.
-// A loom.yaml that fails to load is returned as the seams' error.
+// TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml pins that the budget-zero seam reads the Code-Review perch at call time:
+// a budget of 0 reports the perch off and a budget above 0 reports it on.
+// A loom.yaml that fails to load is returned as the seam's error.
 // On a sampler run the perch also reads off when sampler.yaml's code_review leaves the rows out, and a non-bool value is returned as the gate's error.
-func TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml(t *testing.T) {
+func TestCodeBudgetZero_ReadsTheCodePerchFromLoomYaml(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name         string
@@ -522,15 +522,15 @@ func TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml(t *testing.T) {
 		codeBudget   string
 		codeReview   string
 		localSampler string
-		wantReviewed bool
+		wantOn       bool
 		wantErr      bool
 	}{
-		{name: "a zero budget leaves no review after the reroute", recipe: shedrun.RecipeDarn, codeBudget: "0", wantReviewed: false},
-		{name: "a budget above zero leaves a review after the reroute", recipe: shedrun.RecipeDarn, codeBudget: "2", wantReviewed: true},
+		{name: "a zero budget reads the perch off", recipe: shedrun.RecipeDarn, codeBudget: "0", wantOn: false},
+		{name: "a budget above zero reads the perch on", recipe: shedrun.RecipeDarn, codeBudget: "2", wantOn: true},
 		{name: "a loom.yaml that fails to load is returned as the error", recipe: shedrun.RecipeDarn, codeBudget: "-1", wantErr: true},
-		{name: "a sampler run with code_review false and a budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "false", wantReviewed: false},
-		{name: "a sampler run with code_review true and a budget reads a review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "true", wantReviewed: true},
-		{name: "a sampler run with code_review true and a zero budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "0", codeReview: "true", wantReviewed: false},
+		{name: "a sampler run with code_review false and a budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "false", wantOn: false},
+		{name: "a sampler run with code_review true and a budget reads a review", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "true", wantOn: true},
+		{name: "a sampler run with code_review true and a zero budget reads no review", recipe: shedrun.RecipeSampler, codeBudget: "0", codeReview: "true", wantOn: false},
 		{name: "a sampler run whose local code_review is not a bool returns the gate's error", recipe: shedrun.RecipeSampler, codeBudget: "2", codeReview: "false", localSampler: "code_review: \"yes\"\n", wantErr: true},
 	}
 	for _, tt := range tests {
@@ -555,22 +555,18 @@ func TestRerouteReviewed_ReadsTheCodeBudgetFromLoomYaml(t *testing.T) {
 				}
 			}
 
-			reviewed, err := rerouteReviewed(loc, tt.recipe)()
-			zero, zeroErr := codeBudgetZero(loc, tt.recipe)()
+			zero, err := codeBudgetZero(loc, tt.recipe)()
 			if tt.wantErr {
-				if err == nil || zeroErr == nil {
-					t.Fatalf("rerouteReviewed() error = %v, codeBudgetZero() error = %v; want both to return the load error", err, zeroErr)
+				if err == nil {
+					t.Fatalf("codeBudgetZero() error = nil; want the load error")
 				}
 				return
 			}
-			if err != nil || zeroErr != nil {
-				t.Fatalf("rerouteReviewed() error = %v, codeBudgetZero() error = %v; want nil", err, zeroErr)
+			if err != nil {
+				t.Fatalf("codeBudgetZero() error = %v; want nil", err)
 			}
-			if reviewed != tt.wantReviewed {
-				t.Errorf("rerouteReviewed() = %v; want %v", reviewed, tt.wantReviewed)
-			}
-			if zero != !tt.wantReviewed {
-				t.Errorf("codeBudgetZero() = %v; want %v", zero, !tt.wantReviewed)
+			if zero != !tt.wantOn {
+				t.Errorf("codeBudgetZero() = %v; want %v", zero, !tt.wantOn)
 			}
 		})
 	}

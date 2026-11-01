@@ -1,13 +1,14 @@
 // circling.go implements the `circling` loom subtree: the two verbs through which the operator settles a review segment's escalation.
 // `accept` ends the review loop on the current round and lets the run proceed; `continue` runs another round.
-// Each records a decision file in the Bouncer's run directory and nothing else: neither resumes the run, so the operator runs `lym loom resume` afterwards.
+// At a Bouncer row each records a decision file in the Bouncer's run directory and nothing else; neither verb resumes the run, so the operator runs `lym loom resume` afterwards.
+// `accept` also settles a run halted at Finalize after its fix reviews ran out of rounds: it marks the fixer's change accepted in Finalize's attempt record and commits the change description with the open findings appended, and the resume lands the change as it stands.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
 // It resolves the target worktree through the same resolver the review group uses.
 //
 // The verbs check no caller identity, like `lym loom review`:
 // any shell addressing the run can record a decision, an agent's tmux session in the task worktree included.
-// That is bounded by which stencils name the verbs, the Bouncer escalation brief and the arbiter stencil only;
+// That is bounded by what names the verbs, the Bouncer escalation brief, the arbiter stencil and Finalize's halt at its fix review round cap only;
 // and by the refusal preconditions — the verbs refuse unless the run awaits at a Bouncer row with a pending escalation, the round carries an escalation the Bouncer wrote (a circling, hard-cap, budget or decision escalation), one decision per round, and only while the run awaits at that Bouncer row.
 // `continue` also refuses a round at or past its perch's hard cap, whoever asks, with `accept` or raising the cap as its way forward; `accept` is never refused by the cap.
 // The decision file in the committed run directory records the decision and the escalation's cause for that round.
@@ -24,8 +25,10 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
@@ -33,19 +36,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/spf13/cobra"
 )
 
 const (
 	circlingGroup        = "circling"
 	circlingWayNoRun     = `way forward: "lym loom start" in the task worktree begins the run; an escalation exists only once a review segment's Bouncer has escalated a round`
-	circlingWayNotAtHalt = `way forward: "lym loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation`
+	circlingWayNotAtHalt = `way forward: "lym loom status <slug>" shows where the run is; the verbs apply only while the run is awaiting at a review segment's Bouncer row after an escalation, and accept also while the run is halted at Finalize after its fix reviews ran out of rounds`
 	circlingWayNot       = `way forward: "lym loom status <slug>" shows the run's state; the verbs apply only to a round the Bouncer escalated (a circling, hard-cap, budget or decision escalation), and a plain CONTINUE round below the budget needs no decision`
 	circlingWayHardCap   = `way forward: fix the file or key the message names, then re-run "lym loom circling continue %s" in place of any "lym loom resume" it names`
 	circlingWayMalformed = `way forward: fix or delete the named escalation file, then run "lym loom start", which re-escalates the round, and re-run the verb`
 	circlingWayDecided   = `way forward: the decision for this round is recorded and stays; run "lym loom resume" in the task worktree to resume the run`
 	circlingWayRetry     = `way forward: re-run the verb; if the failure persists, fix the file or directory the message names`
 	circlingWayRecipe    = `way forward: the embedded tapestry recipe failed to parse, so this lym build is broken; rebuild or reinstall lym, then re-run the verb`
+	circlingWayFinalize  = `way forward: fix the findings on the task branch, then run "lym loom resume", which runs the fix reviews afresh; or run "lym loom circling accept %s" to land the change as it stands`
 )
 
 // circlingDeps is every side effect circlingVerb performs, injected so tests supply fakes.
@@ -62,6 +67,8 @@ type circlingDeps struct {
 	escalationPending func(subdir string) (bool, error)
 	// hardCap returns the row's resolved hard cap, 0 meaning none, and the way forward that raises it.
 	hardCap func(row string) (hardCap int, raise string, err error)
+	// acceptFinalize records the operator's acceptance of the fixer change a run halted at Finalize holds, for the Finalize row entry entry, and commits the change description it writes the open findings into.
+	acceptFinalize func(entry int) error
 }
 
 // circlingVerb records decision for the run's escalated round, or refuses with a way forward.
@@ -77,6 +84,9 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 	}
 	if !found {
 		return refuse("the run has no status file; %s", circlingWayNoRun)
+	}
+	if st.State == shedengine.StateBlocked && st.CurrentProducer == loomshed.NameFinalize {
+		return finalizeCirclingVerb(out, slug, deps, decision, st, refuse)
 	}
 	if st.State != shedengine.StateAwaiting {
 		return refuse("the run is %s at %s, not awaiting; %s", st.State, st.CurrentProducer, circlingWayNotAtHalt)
@@ -126,6 +136,28 @@ func circlingVerb(out io.Writer, slug string, deps circlingDeps, decision shedad
 		"decision": verb,
 		"round":    round,
 		"cause":    string(cause),
+		"resume":   "lym loom resume",
+	})
+}
+
+// finalizeCirclingVerb settles a run halted at Finalize after its fix reviews ran out of rounds.
+// accept records the operator's acceptance of the fixer's change as it stands, with the open findings written into the change description, and continue is refused, since a resume already runs the fix reviews afresh.
+// A halt at Finalize on any other cause refuses both.
+func finalizeCirclingVerb(out io.Writer, slug string, deps circlingDeps, decision shedadapters.CirclingDecision, st shedengine.Status, refuse func(format string, args ...any) int) int {
+	if decision != shedadapters.CirclingAccept {
+		return refuse("the run is halted at %s, where only accept settles fix reviews that ran out of rounds; %s", st.CurrentProducer, fmt.Sprintf(circlingWayFinalize, slug))
+	}
+	err := deps.acceptFinalize(rowEntry(st.History, st.CurrentProducer))
+	switch {
+	case errors.Is(err, landingshed.ErrNoFixReviewHalt):
+		return refuse("the run is halted at %s, but not after its fix reviews ran out of rounds; %s", st.CurrentProducer, circlingWayNotAtHalt)
+	case err != nil:
+		return refuse("%s; %s", err, circlingWayRetry)
+	}
+	return output.Ok(out, map[string]any{
+		"slug":     slug,
+		"decision": string(decision),
+		"row":      st.CurrentProducer,
 		"resume":   "lym loom resume",
 	})
 }
@@ -185,6 +217,21 @@ func (s *circlingState) preRun(cmd *cobra.Command, args []string) error {
 		},
 		hardCap: func(row string) (int, string, error) {
 			return perchHardCap(target, row)
+		},
+		acceptFinalize: func(entry int) error {
+			taskHead := func() (string, error) {
+				f, err := fabricengine.Open(target)
+				if err != nil {
+					return "", err
+				}
+				return f.HeadSHA()
+			}
+			if err := landingshed.AcceptFixReview(loomengine.LoomScratchDir(target), entry, summaryparser.Path(loomengine.LandingDir(target)), taskHead); err != nil {
+				return err
+			}
+			description := filepath.Join(loomengine.LandingDirRel(), summaryparser.FileName)
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), target, []string{description}, fmt.Sprintf("loom: accept the fixer change Finalize's fix reviews did not approve, for %s", seedSlug(target.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
 		},
 	}
 	return nil
@@ -288,6 +335,10 @@ whether a circling, hard-cap, budget or decision escalation. On resume the Bounc
 settles the segment as approved and the run proceeds to the next row. The
 perch's hard cap never refuses it. It resumes nothing itself: run
 "lym loom resume" in the task worktree.
+
+accept also settles a run halted at Finalize after its fix reviews ran out
+of rounds: it appends the open findings to the change description, commits
+it, and on resume Finalize lands the fixer's change as it stands.
 
 Example:
   lym loom circling accept <slug>`)

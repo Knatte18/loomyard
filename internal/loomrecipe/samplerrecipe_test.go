@@ -1,6 +1,6 @@
 //go:build tier0
 
-// samplerrecipe_test.go covers New over the sampler recipe: its row path, the entry gate that leaves the Code-Review perch out, the perch-gate accessor, its reroute and the engine-row accessor.
+// samplerrecipe_test.go covers New over the sampler recipe: its row path, the entry gate that leaves the Code-Review perch out, the perch-gate accessor, Finalize's lack of a reroute edge and the engine-row accessor.
 
 package loomrecipe
 
@@ -14,7 +14,7 @@ import (
 )
 
 // TestSamplerRecipe asserts the sampler recipe builds under the loom contract and walks Preflight to Friction-Reflect on the Done edges.
-// It also asserts the three Code-Review rows are left out unless sampler.code_review holds while Describe always runs, Finalize reroutes to Code-Bouncer, CodePerchGate answers that gate, and the session row is found by engine.
+// It also asserts the three Code-Review rows are left out unless sampler.code_review holds while Describe always runs, Finalize declares no reroute, CodePerchGate answers that gate, and the session row is found by engine.
 func TestSamplerRecipe(t *testing.T) {
 	t.Parallel()
 
@@ -71,8 +71,8 @@ func TestSamplerRecipe(t *testing.T) {
 			if def := producerDef(t, shed, loomshed.NameDescribe); def.EntryGate != nil {
 				t.Errorf("%s EntryGate is set; want nil so Describe runs with the perch off", loomshed.NameDescribe)
 			}
-			if def := producerDef(t, shed, loomshed.NameFinalize); def.OnReroute != loomshed.NameCodeBouncer {
-				t.Errorf("%s OnReroute = %q; want %q", loomshed.NameFinalize, def.OnReroute, loomshed.NameCodeBouncer)
+			if def := producerDef(t, shed, loomshed.NameFinalize); def.OnReroute != "" {
+				t.Errorf("%s OnReroute = %q; want none", loomshed.NameFinalize, def.OnReroute)
 			}
 		}
 	})

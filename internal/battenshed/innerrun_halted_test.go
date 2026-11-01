@@ -611,14 +611,14 @@ func TestInnerRun_BinaryChangeSkipsALandingHalt(t *testing.T) {
 	t.Parallel()
 
 	handBack := func(status shedengine.Status) bool {
-		return status.State == shedengine.StateBlocked && status.CurrentProducer == "Finalize" && strings.HasPrefix(status.Error, shedengine.ReasonRerouteCapReached)
+		return status.State == shedengine.StateBlocked && status.CurrentProducer == "Finalize" && strings.HasPrefix(status.Error, "landing stop: ")
 	}
 	tests := []struct {
 		name       string
 		producer   string
 		wantSpawns int
 	}{
-		{name: "FinalizeRerouteCapHaltIsLeftToTheOrch", producer: "Finalize"},
+		{name: "FinalizeLandingStopIsLeftToTheOrch", producer: "Finalize"},
 		{name: "WebsterHaltIsReSteppedAsToday", producer: "Webster", wantSpawns: 1},
 	}
 	for _, tt := range tests {
@@ -627,7 +627,7 @@ func TestInnerRun_BinaryChangeSkipsALandingHalt(t *testing.T) {
 			h := newRestepHarness(t)
 			h.handBack = handBack
 			h.status.CurrentProducer = tt.producer
-			h.status.Error = shedengine.ReasonRerouteCapReached + ": " + tt.producer + " rerouted 3 times since its last done; way forward: x"
+			h.status.Error = "landing stop: the fixer spent every attempt of " + tt.producer + "; way forward: x"
 
 			h.call(6)
 

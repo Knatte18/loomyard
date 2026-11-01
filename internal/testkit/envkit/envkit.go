@@ -203,7 +203,6 @@ func LandingDeps(dir string) landingshed.Deps {
 		RowEntry:           func(string) (int, error) { return 1, nil },
 		TaskRemoteTip:      func() (string, error) { return "", nil },
 		CodeReviewOff:      func() (bool, error) { return false, nil },
-		RerouteReviewed:    func() (bool, error) { return true, nil },
 		// ParentMode answers off and Origin is empty, so a landing through this deps takes the local path and calls no GitHub.
 		PullRequest: landingshed.PullRequestDeps{
 			RecordPath:     filepath.Join(dir, "landing-scratch", "pull-request.json"),
