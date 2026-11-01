@@ -44,7 +44,12 @@
 //     shuttleengine.OutcomeDone maps to Done with the chair's first output as the pointer's path,
 //     a done chair whose gate failed maps to Stuck with that pointer and the gate's attempts and reason,
 //     and OutcomeDied and OutcomeTimeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair's provider never came up and carrying the start error's text when shuttle reported one, and a chair that started and died wraps shuttleengine.ErrAgentDied.
-//     The advisors' results are logged and never judged, since an advisor's death weakens nothing the chair decided.
+//     An advisor's result is logged only, since an advisor's death weakens nothing the chair decided.
+//     A writer seat that ended the step decides it instead, the first such seat in table order, whatever the chair's result was; the mapping uses the seat's name as both seat and part:
+//     a start failure is an error wrapping shuttleengine.ErrNotStarted, and a died run or a wait error is an error wrapping shuttleengine.ErrAgentDied naming the writer;
+//     a timeout, a failed gate, an Accept error and a writer lost at resume with its outputs missing are Stuck with the seat's first output as the pointer, so the commit decorator commits the part, and a reason naming the seat and its part;
+//     a failed gate's reason keeps the findings in the seat's GateFindingsPath, with the gate's attempts and spans on the pointer, and every Stuck reason ends with the way forward of re-running the row with `lym loom resume`.
+//     Any other writer end is an error naming the writer and its outcome, and a cancelled context returns the context error first.
 //     Before archiving anything Call probes the table's seats through its SeatRunner: a live chair is resumed and its result mapped,
 //     and otherwise the probe has stopped every live advisor, so Call archives every seat's stale outputs and runs the table fresh.
 //     A probe, resume or run error returns the context error when the context is cancelled and otherwise the error wrapped with the producer's name and engine label;

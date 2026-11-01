@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
+	"github.com/Knatte18/loomyard/internal/partsparser"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -136,6 +137,18 @@ func planCommitPathspecWith(location *lymcwd.Location, tracked func(rel string) 
 		paths = append(paths, websterengine.DirRel())
 	}
 	return append(paths, amendmentPathspec(location, tracked)...)
+}
+
+// partsPlanCommitPathspec returns the pathspec the Parts-Plan-Write commit stages: planCommitPathspec's, followed by the parts directory the part writers and the chair wrote under.
+func partsPlanCommitPathspec(location *lymcwd.Location) []string {
+	return partsPlanCommitPathspecWith(location, func(rel string) (bool, error) {
+		return fabricengine.PathTracked(location.AnchorPath(), rel)
+	})
+}
+
+// partsPlanCommitPathspecWith is partsPlanCommitPathspec with the index lookup injected as tracked.
+func partsPlanCommitPathspecWith(location *lymcwd.Location, tracked func(rel string) (bool, error)) []string {
+	return append(planCommitPathspecWith(location, tracked), partsparser.DirRel())
 }
 
 // removeSettledAmendment removes the plan amendment record at amendmentPath when the live settle record in planRunDir judged it:
@@ -771,6 +784,24 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 				return err
 			}
 			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, planCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
+		// PartsTable and PartsPlanTable are evaluated per Call, like PlanTable, so the stencils and the parts file are read at call time.
+		// PartsPlanTable is told shuttle's run_timeout_min as a duration, which a plan_timeout_min of 0 resolves to, and the per-part hooks only the producer entry can build.
+		PartsTable: func() (seatengine.Table, error) {
+			return loomengine.PartsTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry)
+		},
+		PartsPlanTable: func(seats shedrecipe.PartSeats) (seatengine.Table, error) {
+			return loomengine.PartsPlanTable(location, websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, gateTiers, time.Duration(shuttleCfg.RunTimeoutMin)*time.Minute, seats.Gates, seats.Accept, seats.FindingsPath)
+		},
+		// CommitParts and CommitPartsPlan keep the working tree clean and the artifacts durable, as CommitPlan does;
+		// the parts directory is the whole directory via partsparser.DirRel().
+		CommitParts: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{partsparser.DirRel()}, fmt.Sprintf("loom: parts artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
+			return err
+		},
+		CommitPartsPlan: func() error {
+			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, partsPlanCommitPathspec(location), fmt.Sprintf("loom: plan artifacts for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
 		// ApprovePlan is what flips approved: true on the Plan-Bouncer row's approved settle. It runs

@@ -36,7 +36,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
@@ -182,17 +181,35 @@ func refuseUnservedRecipe(recipe string) error {
 // planVerbs are the `lym loom` verbs that act on the run's plan.
 var planVerbs = []string{"validate-plan", "insert-card", "remove-card", "restore-renumber"}
 
-// refuseVerbOffRecipe refuses a plan verb on a recipe with no Plan-Write row, which has no plan, and answers nil for every other verb.
+// verbRowEngines maps each verb that needs a recipe row to the engine of that row: every plan verb to Plan-Write, validate-parts to Parts-Write and join-parts to Parts-Plan-Write.
+var verbRowEngines = func() map[string]string {
+	engines := map[string]string{"validate-parts": partsWriteEngine, "join-parts": partsPlanWriteEngine}
+	for _, verb := range planVerbs {
+		engines[verb] = planWriteEngine
+	}
+
+	return engines
+}()
+
+// refuseVerbOffRecipe refuses a verb whose row the run's recipe lacks, read from the recipe's rows, and answers nil for every verb that needs none.
+// A plan verb on a recipe with no Plan-Write row has no plan, validate-parts on a recipe with no Parts-Write row has no parts file, and join-parts on a recipe with no Parts-Plan-Write row has no parts to join.
 func refuseVerbOffRecipe(verb, recipe string) error {
-	if !slices.Contains(planVerbs, verb) {
+	engine, needsRow := verbRowEngines[verb]
+	if !needsRow {
 		return nil
 	}
-	hasPlan, err := loomrecipe.HasEngine(recipe, planWriteEngine)
+	hasRow, err := loomrecipe.HasEngine(recipe, engine)
 	if err != nil {
 		return err
 	}
-	if hasPlan {
+	if hasRow {
 		return nil
+	}
+	switch engine {
+	case partsWriteEngine:
+		return fmt.Errorf("loom: %s does not apply to this run, whose %q recipe has no Parts-Write row and so writes no parts file; way forward: none is needed, since there is nothing to check, and a run with a plan checks it with \"lym loom validate-plan\"", verb, recipe)
+	case partsPlanWriteEngine:
+		return fmt.Errorf("loom: %s does not apply to this run, whose %q recipe has no Parts-Plan-Write row and so no parts to join; way forward: none is needed, and a run with a plan edits it with \"lym loom insert-card\" and \"lym loom remove-card\"", verb, recipe)
 	}
 
 	return fmt.Errorf("loom: %s does not apply to this run, whose %q recipe has no Plan-Write row and so no plan; way forward: none is needed, since the run's scope is its decision record, which \"lym loom validate-discussion\" checks", verb, recipe)
@@ -312,6 +329,8 @@ func (c *loomCLI) newShed() (*shedengine.Shed, error) {
 // The engine names of the recipe rows loomcli's wiring keys on, and the verify_source value that selects the tree-scope source.
 const (
 	planWriteEngine       = "PlanWrite"
+	partsWriteEngine      = "PartsWrite"
+	partsPlanWriteEngine  = "PartsPlanWrite"
 	darnWriteEngine       = "DarnWrite"
 	samplerSessionEngine  = "SamplerSession"
 	treeScopeVerifySource = "tree_scope"

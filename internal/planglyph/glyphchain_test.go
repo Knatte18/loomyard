@@ -787,6 +787,8 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 		subject string
 		// unusableGate validates through a slotted index whose hub gate.yaml holds slots: 0, so the slot acquire fails.
 		unusableGate bool
+		// partScope validates the plan as one part of a split plan, which reports no caller-uncovered finding.
+		partScope bool
 		// want lists "<severity> <file>" for every caller-uncovered finding, sorted.
 		want []string
 		// wantDeleteOrder lists "<severity> <location>" for every delete-before-reference finding, sorted: "<file>:<line>" when blocking and "<file> at line <n>" when informational.
@@ -821,6 +823,18 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			cards:   []string{editCard(append(slices.Clone(covers), "callers#")...), editWithResign("callees#Target", resignHead)},
 			subject: "2-card2",
 			want:    []string{"blocking callees/callees_external_test.go", "blocking callees/local.go", "blocking callers/callers.go"},
+		},
+		{
+			name:      "re-sign with an uncovered caller under a part scope reports no caller-uncovered",
+			cards:     []string{editCard(append(slices.Clone(covers), "callers#")...), editWithResign("callees#Target", resignHead)},
+			subject:   "2-card2",
+			partScope: true,
+		},
+		{
+			name:            "delete with a later card editing a caller keeps delete-before-reference under a part scope",
+			cards:           []string{deleteCard("callees#Target"), editCard("callers/callers.go")},
+			partScope:       true,
+			wantDeleteOrder: []string{"blocking callers/callers.go:6"},
 		},
 		{
 			name:  "re-sign with the covers on its own card",
@@ -1013,6 +1027,9 @@ func TestGlyphChain_CallerCoverage(t *testing.T) {
 			root := copyGlyphChainFixture(t)
 			writeFixtureFiles(t, root, tc.files)
 			_, plan := writeLanguagePlan(t, cmp.Or(tc.language, "go"), tc.cards, tc.sections...)
+			if tc.partScope {
+				plan.Part = &planparser.PartScope{Name: "p"}
+			}
 
 			findings, err := ValidateFormat(plan, root)
 			if tc.unusableGate {

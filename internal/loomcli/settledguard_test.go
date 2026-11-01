@@ -20,6 +20,7 @@ func TestSettledSegmentGuard(t *testing.T) {
 	t.Parallel()
 
 	producers := []shedengine.ProducerDef{
+		{Name: "Parts-Plan-Write", OnDone: "Plan-Write"},
 		{Name: "Plan-Write", OnDone: "Plan-Bouncer"},
 		{Name: "Plan-Bouncer", Segment: "Plan-Review", OnStuck: "Plan-Burler-Review", OnDone: "Webster"},
 		{Name: "Plan-Burler-Review", Segment: "Plan-Review", OnStuck: "Plan-Burler-Fix", OnDone: "Plan-Burler-Fix"},
@@ -58,10 +59,15 @@ func TestSettledSegmentGuard(t *testing.T) {
 		// amendment is the plan amendment record, nil when none exists; amendmentErr is its read error.
 		amendment    *loomshed.AmendmentRecord
 		amendmentErr error
-		target       string
+		// history is the run's status history, and historyErr its read error.
+		history    []shedengine.HistoryEntry
+		historyErr error
+		target     string
 		// wantRefusal lists the substrings of the refusal; empty means the target is admitted.
 		wantRefusal []string
-		wantErr     bool
+		// wantNotNamed is a substring the refusal must not contain.
+		wantNotNamed string
+		wantErr      bool
 	}{
 		{name: "Bouncer under a live record", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "Plan-Bouncer"},
 		{
@@ -89,6 +95,29 @@ func TestSettledSegmentGuard(t *testing.T) {
 			name: "amendment generation that has not settled", bouncer: "Plan-Bouncer",
 			files:  map[string]string{"settle-record.json": settled, "generation-record.json": amendment},
 			target: "Plan-Burler-Review",
+		},
+		{
+			name: "writer latest skipped names the row that precedes it", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			history: []shedengine.HistoryEntry{{Producer: "Parts-Plan-Write", Outcome: shedengine.Done}, {Producer: "Plan-Write", Outcome: shedengine.OutcomeSkipped}},
+			target:  "Plan-Burler-Review", wantRefusal: []string{"goto --to Plan-Bouncer", "goto --to Parts-Plan-Write"}, wantNotNamed: "goto --to Plan-Write",
+		},
+		{
+			name: "writer done after an earlier skip names the writer", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			history: []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.OutcomeSkipped}, {Producer: "Plan-Write", Outcome: shedengine.Done}},
+			target:  "Plan-Burler-Review", wantRefusal: []string{"goto --to Plan-Write"}, wantNotNamed: "goto --to Parts-Plan-Write",
+		},
+		{
+			name: "no history names the writer", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			target: "Plan-Burler-Review", wantRefusal: []string{"goto --to Plan-Write"}, wantNotNamed: "goto --to Parts-Plan-Write",
+		},
+		{
+			name: "both writers skipped never steps further", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			history: []shedengine.HistoryEntry{{Producer: "Parts-Plan-Write", Outcome: shedengine.OutcomeSkipped}, {Producer: "Plan-Write", Outcome: shedengine.OutcomeSkipped}},
+			target:  "Plan-Burler-Review", wantRefusal: []string{"goto --to Parts-Plan-Write"}, wantNotNamed: "goto --to Plan-Write",
+		},
+		{
+			name: "history unreadable", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled},
+			historyErr: errors.New("read status"), target: "Plan-Burler-Review", wantErr: true,
 		},
 		{name: "segment with no record", bouncer: "Plan-Bouncer", target: "Plan-Burler-Review"},
 		{name: "row outside every review segment", bouncer: "Plan-Bouncer", files: map[string]string{"settle-record.json": settled}, target: "Plan-Write"},
@@ -144,7 +173,7 @@ func TestSettledSegmentGuard(t *testing.T) {
 					return loomshed.AmendmentRecord{}, false, tt.amendmentErr
 				}
 				return *tt.amendment, true, nil
-			})
+			}, func() ([]shedengine.HistoryEntry, error) { return tt.history, tt.historyErr })
 
 			refusal, err := guard(tt.target)
 
@@ -161,6 +190,9 @@ func TestSettledSegmentGuard(t *testing.T) {
 				if !strings.Contains(refusal, want) {
 					t.Errorf("guard(%q) = %q; want it to contain %q", tt.target, refusal, want)
 				}
+			}
+			if tt.wantNotNamed != "" && strings.Contains(refusal, tt.wantNotNamed) {
+				t.Errorf("guard(%q) = %q; want it not to contain %q", tt.target, refusal, tt.wantNotNamed)
 			}
 		})
 	}

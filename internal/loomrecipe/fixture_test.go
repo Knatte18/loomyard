@@ -20,6 +20,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -90,6 +91,8 @@ Scope text.
 
 ## Decisions
 
+### D1 — Fixture decision
+
 Decisions text.
 
 ## Constraints
@@ -106,7 +109,7 @@ Risks text.
 
 ## Acceptance criteria
 
-Criteria text.
+- D1 holds.
 
 ## Notes for the plan writer
 
@@ -242,12 +245,42 @@ func runLoomShuttle(planDir string, writeOutputs bool, spec shuttleengine.Spec) 
 }
 
 // writeLoomOutputs writes the files a fake writer of the given role leaves behind, so both the shuttle and the seat runner serve one set of row fixtures.
-// Role "plan" writes the whole plan directory under planDir, role "describe" writes a valid change description to each output, and any other role writes the valid discussion content to outputs when writeOutputs is true.
+// Role "plan" writes the whole plan directory under planDir, role "parts" a parts file of one part, role "parts-plan" that part's plan, the plan directory and the join record, role "describe" writes a valid change description to each output, and any other role writes the valid discussion content to outputs when writeOutputs is true.
 func writeLoomOutputs(planDir string, writeOutputs bool, role string, outputs []string) error {
 	switch role {
 	case "plan":
 		if err := writePlanFixture(planDir, false); err != nil {
 			return fmt.Errorf("write plan fixture %s: %w", planDir, err)
+		}
+		return nil
+
+	case "parts":
+		// One part, "whole", carrying every decision id of the fixture's record.
+		ids := discussionparser.DecisionIDs([]byte(validDecisionRecord))
+		parts := "# Parts: Fixture\n\n## Split note\n\nThe fixture task does not split.\n\n## Part: whole\n\n" +
+			"- Decisions: " + strings.Join(ids, ", ") + "\n- Takes in: the decision record.\n- Delivers: the fixture change.\n- Area:\n  - `internal/firstcard`\n"
+		for _, path := range outputs {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", filepath.Dir(path), err)
+			}
+			if err := os.WriteFile(path, []byte(parts), 0o644); err != nil {
+				return fmt.Errorf("write parts file %s: %w", path, err)
+			}
+		}
+		return nil
+
+	case "parts-plan":
+		// The chair's outputs are the join record, which sits in the parts directory beside the part's directory.
+		for _, path := range outputs {
+			if err := writePlanFixture(filepath.Join(filepath.Dir(path), "whole"), false); err != nil {
+				return fmt.Errorf("write part plan fixture: %w", err)
+			}
+			if err := writePlanFixture(planDir, false); err != nil {
+				return fmt.Errorf("write plan fixture %s: %w", planDir, err)
+			}
+			if err := os.WriteFile(path, []byte("# Join\n\nThe fixture's one part joined.\n"), 0o644); err != nil {
+				return fmt.Errorf("write join record %s: %w", path, err)
+			}
 		}
 		return nil
 

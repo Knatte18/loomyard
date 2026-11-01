@@ -40,6 +40,7 @@
 //     Create inversion's own fail-closed arm (create.go), since a Create target is excluded from
 //     the status policy above and would otherwise have no reader at all for an answer neither
 //     policy understands.
+//     Under a part scope resolvePass treats Part.Paths as forthcoming: a self glyph of a file another part creates is left out of the status policy as a Create target is.
 //     A member whose every declaration sits in files no single build environment selects together is one member, so a partitioned ambiguous answer resolves;
 //     the detail of an unpartitioned one names each candidate's file and build constraint.
 //     Build-constraint partitioning reads `.go` candidate sets only: a candidate set holding any other file is never partitioned, and such a file is described as carrying no constraint, so a name such as `Foo_windows.cs` is never read as one.
@@ -85,6 +86,7 @@
 //   - caller-uncovered (blocking for a resolved reference, informational for a name-only method match) — callerCoverageFindings (callercoverage.go), reached through planGatePass: a deleted or re-signed member that Go code still references with no admissible card's target covering that code.
 //     A partitioned member's candidates are its declarations, so each is a subject's span and a target's span alike.
 //     It runs only when a subject exists and at the plan gates only.
+//     planGatePass reports none when plan.Part is set, since the verdict rests on cards outside the part and the joined plan's plan gate checks it.
 //     A typesLoader (typesload.go) loads the root module's packages through go/packages, offline, with test variants and the tier0 through tier3 tags, under a timeout, and logged; an identifier whose used object is the member is a resolved reference.
 //     An index built by NewSlottedIndex with a pool slots the load: it writes a wait record into the told wait directory, acquires a hub gate slot, drops the record once the acquire returns, starts the timeout only once the slot is held, runs go list under the slot's `-p` cap and releases the slot when the load returns.
 //     NewIndex, standalone runs and a nil pool load unslotted.

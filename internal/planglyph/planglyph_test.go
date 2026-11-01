@@ -389,6 +389,33 @@ func TestResolvePass_ForthcomingCreateTargetExcludedFromStatus(t *testing.T) {
 	}
 }
 
+// TestValidateFormat_PartScope asserts the plan-gate form leaves out of the status policy a file self glyph the part scope's Paths hold, and reports it as glyph-not-found without the scope.
+func TestValidateFormat_PartScope(t *testing.T) {
+	t.Parallel()
+
+	root := writeFixtureRepo(t, map[string]string{"sub/a.go": resolveFixture})
+	card := "**Edit:**\n- `sub#Foo`\n\n**Uses:**\n- `sub/gadget.go#`\n\n**Intent:** use the file another part creates\n"
+
+	for _, tt := range []struct {
+		name string
+		part *planparser.PartScope
+		want bool
+	}{
+		{"scope holds the file", &planparser.PartScope{Name: "p", Paths: []string{"sub/gadget.go"}}, false},
+		{"no scope", nil, true},
+	} {
+		_, plan := writePlanFixture(t, map[int]string{1: card})
+		plan.Part = tt.part
+		got, err := ValidateFormat(plan, root)
+		if err != nil {
+			t.Fatalf("%s: ValidateFormat(...) returned error: %v", tt.name, err)
+		}
+		if hasCheck(got, "glyph-not-found") != tt.want {
+			t.Errorf("%s: findings = %+v; want glyph-not-found = %v", tt.name, got, tt.want)
+		}
+	}
+}
+
 // TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus asserts a Rename New side declared by a forthcoming card is excluded from the status check the same way.
 func TestResolvePass_ForthcomingRenameNewSideExcludedFromStatus(t *testing.T) {
 	card1 := "**Rename:**\n- `sub#Thing` -> `sub#Widget`\n\n**Intent:** rename the type\n"

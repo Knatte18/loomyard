@@ -20,7 +20,7 @@
 //
 // The `lym loom` verbs serve loom runs only.
 // `arm`, the subtree's entry, sets `loomPath` before `armAt` and `armAt` then refuses, right after the recipe is resolved and before any wiring, a recipe that does not declare the loom contract: an embedded non-loom recipe is refused naming the `lym shed` verbs, and a seed naming no embedded recipe naming the re-seed.
-// It then refuses `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` on a recipe with no Plan-Write row, which has no plan.
+// It then refuses `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` on a recipe with no Plan-Write row, which has no plan, `validate-parts` on a recipe with no Parts-Write row, which writes no parts file, and `join-parts` on a recipe with no Parts-Plan-Write row, which has no parts to join.
 // The target resolver the `circling` and `decision` groups share judges the target's own seed recipe the same way.
 // `ArmAt`, which `lym shed` shares, leaves `loomPath` false and never refuses a recipe, and `lym loom checklist` is exempt, being a read-only pane the pre-run never arms.
 //
@@ -153,6 +153,16 @@
 //
 // `lym loom validate-plan --lens-review` runs the flag-less check set plus the check that the plan directory's `lens-review.md` holds a recorded lens review, the check set of a twill Plan-Write run's own gate.
 // It runs alone: combined with `--rework`, `--require-approved` or `--overlay` it is refused before the plan is parsed.
+//
+// `lym loom validate-plan --part <name>` runs the check a part writer's own gate runs over the named part's plan, `loomshed.ValidatePart`, with the plan context but no decision record.
+// It runs alone: combined with any other mode flag it is refused before the parts file is read.
+// It is refused on a recipe with no Parts-Plan-Write row, read from the recipe's rows.
+//
+// `lym loom validate-parts` runs `partsparser.Validate`, the check the parts gate runs, over the parts file with the most parts `parts_max` allows; it runs on the lightweight wiring, reads the decision record, and changes nothing.
+//
+// `lym loom join-parts` is the chair's one call that joins the parts' plans into the plan directory: it re-checks every part with `loomshed.ValidatePart` and writes the joined plan through `loomshed.JoinParts`.
+// It runs on the full wiring and refuses unless the run's status is at the running Parts-Plan-Write row and the caller's `LYM_STRAND_NAME` is the strand name the seat engine gives that row's chair, so a halted or later run, a part writer, a Plan-Burler-Fix fixer and Webster cannot reach it.
+// It overwrites only the plan directory, and a rerun within the row discards whatever the chair added after the last join.
 //
 // # Validate plan overlay
 //

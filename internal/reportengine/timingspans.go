@@ -89,6 +89,8 @@ func loomPhases() map[string]string {
 		retiredBatchifierRow:         PhaseWebster,
 		loomshed.NameDescribe:        PhaseWebster,
 		loomshed.NameDriftBaseline:   PhasePlan,
+		loomshed.NamePartsWrite:      PhasePlan,
+		loomshed.NamePartsPlanWrite:  PhasePlan,
 		loomshed.NameDriftAwait:      PhasePlan,
 		loomshed.NameDriftVerify:     PhaseWebster,
 		loomshed.NamePRReview:        PhasePublishFinalize,

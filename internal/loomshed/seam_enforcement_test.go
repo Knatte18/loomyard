@@ -35,6 +35,9 @@ var loomshedAllowedImports = []string{
 	// The resolve-backed implementation, internal/planglyph, links tree-sitter and stays out of this package for good.
 	"github.com/Knatte18/loomyard/internal/planindex",
 	"github.com/Knatte18/loomyard/internal/discussionparser",
+	// internal/partsparser reads the parts file the parts gate, the part check and the join check.
+	// It is told the worktree's anchor path and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/partsparser",
 	// internal/impactset parses the `//lym:seam` markers of the package directories it is told and resolves no geometry.
 	"github.com/Knatte18/loomyard/internal/impactset",
 	"github.com/Knatte18/loomyard/internal/batcher",

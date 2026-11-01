@@ -45,21 +45,13 @@ func CheckDecisionIDs(record []byte) []Finding {
 	var ids []string
 	firstLine := map[string]int{}
 	reportedDuplicate := map[string]bool{}
-	for i := first; i < end; i++ {
-		if fenced[i] {
-			continue
-		}
-		heading := strings.TrimRight(lines[i], " \t\r")
-		if !strings.HasPrefix(heading, "### ") || isAddedDecisionHeading(heading) {
-			continue
-		}
-		id, ok := parseDecisionHeading(heading)
+	walkDecisionHeadings(lines, fenced, first, end, func(i int, heading, id string, ok bool) {
 		if !ok {
 			findings = append(findings, Finding{
 				Check:  checkDecisionHeadingMalformed,
 				Detail: fmt.Sprintf("line %d: decision heading %q is not `### D<n> — <title>`; way forward: rewrite the heading as `### D<n> — <title>` when it is a decision, or demote it to H4 or plain text when it is not", i+1, heading),
 			})
-			continue
+			return
 		}
 		if firstSeen, seen := firstLine[id]; seen {
 			if !reportedDuplicate[id] {
@@ -69,11 +61,11 @@ func CheckDecisionIDs(record []byte) []Finding {
 					Detail: fmt.Sprintf("line %d: decision id %s is already used by the heading on line %d; way forward: renumber one of the decisions and every mention of its id", i+1, id, firstSeen),
 				})
 			}
-			continue
+			return
 		}
 		firstLine[id] = i + 1
 		ids = append(ids, id)
-	}
+	})
 
 	acceptanceFirst, acceptanceEnd := sectionBounds(lines, fenced, acceptanceHeading)
 	if acceptanceFirst < 0 {
@@ -89,6 +81,42 @@ func CheckDecisionIDs(record []byte) []Finding {
 		}
 	}
 	return findings
+}
+
+// DecisionIDs returns the ids `D<n>` of the record's `## Decisions` section, in record order, each listed once.
+// Each unfenced H3 of the section that reads `### D<n> — <title>` gives its id; an added-decision entry heading and a malformed heading give none.
+// A record without a `## Decisions` section gives an empty list.
+func DecisionIDs(record []byte) []string {
+	lines := strings.Split(string(record), "\n")
+	fenced := fencedLines(lines)
+	first, end := sectionBounds(lines, fenced, decisionsHeading)
+	if first < 0 {
+		return []string{}
+	}
+	ids := []string{}
+	seen := map[string]bool{}
+	walkDecisionHeadings(lines, fenced, first, end, func(_ int, _, id string, ok bool) {
+		if ok && !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	})
+	return ids
+}
+
+// walkDecisionHeadings calls visit for each unfenced H3 in [first, end) that is not an added-decision entry heading, with the line index, the trimmed heading and the id parseDecisionHeading read from it, ok false for a malformed heading.
+func walkDecisionHeadings(lines []string, fenced []bool, first, end int, visit func(i int, heading, id string, ok bool)) {
+	for i := first; i < end; i++ {
+		if fenced[i] {
+			continue
+		}
+		heading := strings.TrimRight(lines[i], " \t\r")
+		if !strings.HasPrefix(heading, "### ") || isAddedDecisionHeading(heading) {
+			continue
+		}
+		id, ok := parseDecisionHeading(heading)
+		visit(i, heading, id, ok)
+	}
 }
 
 // sectionBounds returns the index of the first line after the H2 heading and the index of the next H2 line, or len(lines) when none follows.

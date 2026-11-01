@@ -33,6 +33,14 @@
 // Its table is told rather than built from Config: Env.DiscussionTable is a closure the caller supplies, evaluated once per call, because building the table needs a location this package may not import.
 // The row's "gates" key is stamped onto each table the closure returns, so the gate guards the lead whatever table the closure builds.
 //
+// # The PartsWrite and PartsPlanWrite rows
+//
+// The PartsWrite and PartsPlanWrite entries run the two steps of a split plan on MultiLLM producers behind the same commit decorator as the PlanWrite row.
+// PartsWrite takes the "gates" key and runs Env.PartsTable, the lead that splits the task into parts, committing through Env.CommitParts.
+// PartsPlanWrite takes the "gates" key, which guards its chair, and the "part_gates" key, which guards each part's writer seat, and runs Env.PartsPlanTable, handing it the per-part hooks as a PartSeats; it commits through Env.CommitPartsPlan.
+// "part_gates" shares the element keys of "gates", and its one legal gate name is `plan-part`.
+// The gate vocabulary gains `parts`, which caps the parts file at the tapestry.parts_max setting.
+//
 // # The RecordWrite row
 //
 // The RecordWrite entry builds a loom recipe's record row for a run whose task is a board entry: a Go producer that writes the decision record and support log with no agent.

@@ -233,7 +233,7 @@ func stampFindings(findings []discussionparser.Finding, path string) []discussio
 //
 // scratchDir is the run's told ephemeral scratch directory, where an informational pass records its findings; empty keeps them inline in the log line.
 func NewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
-	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+	return planGate("Plan-Gate", planparser.PlanDir(anchorPath), scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidatePlan(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
@@ -295,7 +295,7 @@ const doneCardEditedCheck = "done-card-edited"
 // Parse failures, the blocking-versus-informational split and the logging follow the plan gate's contract.
 // It only adds a refusal over NewPlanGate's set: a writer that never records the lens review spends the gate's existing re-prompt budget.
 func NewLensReviewPlanGate(anchorPath, worktreeRoot, scratchDir string, index planindex.Index, pc PlanContext) shuttleengine.Gate {
-	return planGate("Plan-Gate", anchorPath, scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
+	return planGate("Plan-Gate", planparser.PlanDir(anchorPath), scratchDir, func(plan *planparser.Plan) ([]planindex.Finding, error) {
 		return ValidatePlanLensReview(plan, anchorPath, worktreeRoot, index, pc)
 	})
 }
@@ -347,12 +347,11 @@ func ValidateReworkPlan(plan *planparser.Plan, worktreeRoot string, index planin
 	return append(findings, contextFindings...), nil
 }
 
-// planGate builds a plan gate closure named gateName in its log lines: it parses the plan under anchorPath, runs validate over it, and maps the result onto the gate contract.
+// planGate builds a plan gate closure named gateName in its log lines: it parses the plan in planDir, runs validate over it, and maps the result onto the gate contract.
 // On an informational pass it records the findings in a file under scratchDir and logs their count and the file's path;
 // with no scratchDir, or when the file cannot be written, the log line carries the findings inline.
-func planGate(gateName, anchorPath, scratchDir string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {
+func planGate(gateName, planDir, scratchDir string, validate func(*planparser.Plan) ([]planindex.Finding, error)) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		planDir := planparser.PlanDir(anchorPath)
 		plan, err := planparser.ParsePlan(planDir)
 		if err != nil {
 			if errors.As(err, new(*fs.PathError)) {

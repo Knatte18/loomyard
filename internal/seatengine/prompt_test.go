@@ -189,6 +189,13 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 	if requiredSpec.QuietHold || !requiredSpec.KeepPane {
 		t.Errorf("required advisor spec QuietHold/KeepPane = %v/%v, want false/true", requiredSpec.QuietHold, requiredSpec.KeepPane)
 	}
+	writerSpec := seatSpec(table, Seat{Name: advisorName(1), Writer: true, Timeout: 90 * time.Minute}, "")
+	if !writerSpec.QuietHold || !writerSpec.KeepPane || writerSpec.Timeout != 90*time.Minute {
+		t.Errorf("writer spec QuietHold/KeepPane/Timeout = %v/%v/%v, want true/true/90m, the seat's own timeout over the table's", writerSpec.QuietHold, writerSpec.KeepPane, writerSpec.Timeout)
+	}
+	if got := seatSpec(table, Seat{Name: advisorName(1), Writer: true}, "").Timeout; got != 7*time.Minute {
+		t.Errorf("writer spec with no timeout of its own: Timeout = %v, want the table's 7m", got)
+	}
 	if advisorSpec.Interactive || !advisorSpec.KeepPane || !advisorSpec.QuietHold {
 		t.Errorf("advisor spec Interactive/KeepPane/QuietHold = %v/%v/%v, want false/true/true", advisorSpec.Interactive, advisorSpec.KeepPane, advisorSpec.QuietHold)
 	}

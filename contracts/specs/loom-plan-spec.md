@@ -1,10 +1,10 @@
 # Loom plan-spec — flat card list
 
-> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the producer's own stencil, `contracts/stencils/loom/loom-template-plan.md`, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
+> **Status: Contract — pinned.** This doc pins **plan-format**: the flat card-list plan schema `Plan-Write` produces, which webster (`internal/websterengine`, via its sole parser `internal/planparser`) consumes. This is `internal/planparser`'s own as-built contract — every check below is already implemented, not a future spec — kept as a durable Go-to-Go reference doc under `contracts/specs/`, not deleted on landing. The LLM-facing subset of this format — what `Plan-Write` itself must write — is pinned separately in the plan-format blocks `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md`, which `contracts/stencils/loom/loom-template-plan.md` includes, so the agent's prompt never duplicates this file and the two cannot drift from being the same doc.
 
 ## Producer and contract
 
-This format is produced by `Plan-Write` (stencil: `contracts/stencils/loom/loom-template-plan.md`).
+This format is produced by `Plan-Write` (stencil: `contracts/stencils/loom/loom-template-plan.md`, whose plan format is pinned in the plan-format blocks it includes: `loom-block-plan-format`, `loom-block-plan-overview` and `loom-block-plan-cards`).
 It is validated by `Plan-Write`'s and `Plan-Burler-Fix`'s own gates over `internal/planparser` — see [Validation checks](#validation-checks-as-implemented-by-internalplanparser) below, this file's own validation-checks section.
 It is reviewed by `Plan-Review`.
 
@@ -411,7 +411,8 @@ The rows that name `internal/planglyph` as their emitter are an exception: that 
 `glyph-ambiguous` is not raised for a member declared once per mutually exclusive build-constraint set, which resolves as one member.
 `card-fabric-reference` is the other exception: it is a `planparser` function outside both entry points, which the plan index appends to its own format validation.
 `done-card-edited` is the third: `loomshed.ValidatePlan` appends it after the index's validation.
-`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom`, `pattern-line-unprescribed`, `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` join it, appended by `loomshed` outside the `planparser` entry points in every mode but `--require-approved` (default, `--lens-review`, `--overlay` and `--rework`, and the Plan-Write, Plan-Burler-Fix and PR-Rework gates).
+`rename-tool-missing`, `pattern-changes-mismatch`, `pattern-removes-prescribed`, `pattern-headroom`, `pattern-card-headroom`, `pattern-line-unprescribed`, `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted` join it, appended by `loomshed` outside the `planparser` entry points in every mode but `--require-approved` (default, `--lens-review`, `--overlay`, `--rework` and `--part`, and the Plan-Write, Plan-Burler-Fix, PR-Rework and part plan gates, and a part writer's Accept).
+The part modes append them without the decision record, so `pattern-changes-mismatch` and `pattern-line-unprescribed` are left to the joined plan's `plan` gate.
 `rename-tool-missing` is one blocking finding per symbol `Rename` pair of a card not recorded done, raised when `language.yaml` lists no `rename_tools`; its way forward is to set `rename_tools` with `lym config language` from the prime, or recast the card.
 A file pair raises none.
 `pattern-changes-mismatch` is one blocking finding per entry (ID, action and text) that the decision record's `## PATTERN changes` section and the overview's section do not both declare; its way forward is to copy the record's bullets into the overview's section, one per entry, without the added-after-Discussion suffix.
@@ -628,7 +629,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     A line that also names another test file carries that file's tags into the file's collection, so each file's statement goes on a line that names no other test file.
     The file passes when the lines name exactly one tag; or several, each pair of consecutive ones joined by `||` on the same line, the form of a helper several tiers share; or the word `untagged` and no tag, a support-only file.
     One blocking finding per file, attributed to the card and naming the file and the tags its naming lines hold; its way forward is "add an Intent line naming the file and its `//go:build` line, such as `//go:build tier0`, or the word `untagged` when the file holds support only (TestMain, helpers) and carries no build line, on a line that names no other test file; where the lines name several tags, join them with || only for a helper several tiers share, else keep one; drop untagged or the tag when both appear".
-    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, from the hub's `gate.yaml` tier keys; an absent `gate.yaml` reports nothing, a done card is not read, and the rework gate reads the fresh generation's cards.
+    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, from the hub's `gate.yaml` tier keys; an absent `gate.yaml` reports nothing, a done card is not read, and the rework gate reads the fresh generation's cards.
     Bound: a test file created as a member handle rather than a file target is not seen; whether the stated tier fits stays with `cmd/lym/tiertags_test.go` and review.
     Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
 55. `seam-test-unlisted` — under `language: go`, a card not recorded done that touches a struct a `//lym:seam` test reflects over without covering that test.
@@ -637,7 +638,7 @@ The rows below stay in one fixed order regardless of which entry point runs them
     Such a card covers a test marked for `u#T` when its own target groups name the test's glyph `<Unit>#<Name>` or the glyph's package counterpart, or its `Uses`, `Delete`, `Rename` or `Move` refs name the test's file, or any of its refs is the package self glyph of the test's unit or of its counterpart unit; or when a later card names the test glyph or its counterpart under `Edit` or `Extends`.
     One blocking finding per card, struct and test, naming all three; its way forward is "list it under Edit by its member glyph when the card changes it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
     The closing "else list it under Edit" covers a test a later card deletes, renames or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
-    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, after reading the markers once through the context's seam-test reader and resolving every marked struct in one index call; a done card is not read.
+    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, after reading the markers once through the context's seam-test reader and resolving every marked struct in one index call; a done card is not read.
     A marker the parser rejects, or a test file that does not parse, halts the gate with the scan error: it names the file and line, the halt is the parent's, and the operator corrects the marker or the unparsable test file the error names in the task worktree and re-runs `lym loom validate-plan`.
     Bound: a method change on a marked struct also requires the listing; a field added through a target this rule does not name is not seen; a test listed under `Uses`, or edited by a later card for another reason, passes while the card breaks it, and the card's gate test run and review catch that.
     Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
@@ -651,9 +652,13 @@ The rows below stay in one fixed order regardless of which entry point runs them
     One blocking finding per card and package, naming both; its way forward is "list it under Edit when the card changes what it says, under Extends when it only adds to it, under Uses when it stays as is and no later card targets it, leave it to the later card that edits it, else list it under Edit".
     The closing "else list it under Edit" covers a `doc.go` a later card deletes or moves, where `uses-later-target` refuses the `Uses` listing and no later `Edit` or `Extends` covers it.
     A `Uses` listing records that the writer read the doc and found nothing the card falsifies.
-    `loomshed.ValidatePlan` and `loomshed.ValidateReworkPlan` append it with the context checks, resolving every member ref of the told cards in one index call.
+    `loomshed.ValidatePlan`, `loomshed.ValidateReworkPlan` and `loomshed.ValidatePart` append it with the context checks, resolving every member ref of the told cards in one index call.
     Bound: a `doc.go` under `Extends` or `Uses` whose text the card falsifies, or one a later card edits for another reason, passes and stays with review; a test-only card, `Prosa` and `Custom` groups, and `docs/overview.md` are not checked; a card creating a test helper by a handle whose name begins with none of the test prefixes counts as non-test code and lists the `doc.go`.
     Dispatch, `--require-approved` and webster's own `validate` verb do not run it.
+57. `part-export-missing` — an export of a part's contract that no card of the part meets: no card creates it (a `Create` target or `Rename` destination), re-signs it (an `Edit` arrow target) or deletes it (a `Delete` target).
+    A `plan:` handle is met by the declaration it names, so a handle the resolve pass rewrote on disk to its canonical spelling still meets the export as the parts file spells it, and the parts file never changes.
+    One blocking finding per export, naming the part and the export; its way forward is to create the export on a card of the part, declaring a `plan:` export on a `**Create:**` bullet with the parts file's spelling, or to re-sign or delete it on a card, and when the part's area cannot meet it, to message the chair naming the contract line.
+    Only `loomshed.ValidatePart` raises it, appended after the context checks, so a part writer learns of a missing export from its own check; the join's `planparser.JoinParts` applies the same test as a backstop.
 
 `plan-language-mismatch` and `rename-namespace-pair` run in the position of their own place in the order, not of their numbers: the first right after `plan-language-unrecognized`, the second right after `path-missing`.
 `extends-overlap` and `extends-resign` run right after `card-field-overlap`, in that order.
@@ -665,6 +670,38 @@ The remaining checks run under it as they do under `go`.
 
 One further check, `rework-first-card`, is outside both entry points and has no row above.
 Only the rework gate runs it: `planglyph.ValidateRework` runs it after the format-only set, and it reports a `first_card:` that differs from the card number Go told the rework session to start at.
+
+## Part scope
+
+A plan directory that is one part of a split plan is checked with a part scope: the checks above run unchanged over it, and the scope adds to what they read.
+`lym loom validate-plan --part` is the mode that sets the scope; an ordinary plan has none, and its findings do not change.
+
+- The scope lists the `plan:` handles and the new file paths that other parts and shared spots export to the part, and the path of every shared spot.
+- `handle-dangling` counts a handle the scope lists as claimed; it never counts toward `handle-collision`, which stays about the plan's own declarations.
+- `path-missing` counts a path the scope lists as satisfied, as a `Create` target of the plan is.
+- `glyph-not-found` leaves out a target path the part's external exports hold, as it leaves out a `Create` target.
+- `caller-uncovered` is not reported: that verdict rests on cards outside the part, and the joined plan's `plan` gate checks it.
+- `part-spot-target`, run only under a part scope right after `path-missing`, refuses a ref of any card's target group, never `Uses`, whose path is a shared spot's.
+  One blocking finding per card and ref, with the way forward of dropping the target and saying in the card's `**Intent:**` what the card needs from the spot, since the chair writes the shared spot's cards.
+
+## Joined plans
+
+A split task's plan is written as one plan per part, and `planparser.JoinParts` is the one writer of the plan joined from them, so Go numbers and orders the cards and no agent spends turns renumbering.
+
+`JoinParts` parses each part's plan directory in the parts file's order and refuses, before it writes anything, with an error naming the part to fix and the reason, when:
+
+- a part's plan does not parse;
+- two parts' overviews differ in `language:` or `root:`;
+- a part's export is not met by its plan: no card creates it (a `Create` target or `Rename` destination), re-signs it (an `Edit` arrow target) or deletes it (a `Delete` target).
+  A path export is met by its disk path, a glyph exactly, and a `plan:` handle exactly or by a declared handle that reads to the same unit and name, since the resolve pass canonicalizes a declared handle by spelling its owner chain from the declaration head;
+- a `plan:` handle or a new file path is a `Create` target or `Rename` destination of cards of two parts, exported or not.
+
+Otherwise it numbers the parts' cards into one sequence from 1 in part order.
+Each card keeps its slug; its heading and `Commit:` prefix take the new number, and every card id in it that names a card of its own part is rewritten to that card's new number.
+It removes every top-level card file and `00-overview.md` the plan directory held, leaving subdirectories such as archives in place, writes the joined cards, and writes `00-overview.md` last.
+The overview carries `approved: false`, the parts' shared `root:` and `language:`, a framing paragraph naming the parts for the chair to rewrite, the Card Index, each part's own `## Shared Decisions` body under `### Part <name>`, and the canonical `## Rename mechanic` section when any part has one.
+
+A read or write failure is not a refusal: running the join again rewrites the whole plan directory from the parts.
 
 ## Worked example
 
@@ -828,5 +865,5 @@ Card 5's `New` side, `plan:internal/boardengine#MapRowJSON`, is a handle rather 
 ## Related
 
 - [webster-spec.md](webster-spec.md#the-summary-artifact--_lymwebstersummarymd) and `internal/websterengine`'s package documentation — the module that consumes this format.
-- `contracts/stencils/loom/loom-template-plan.md` — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
+- `contracts/stencils/loom/loom-template-plan.md` and the plan-format blocks it includes (`loom-block-plan-format.md`, `loom-block-plan-overview.md`, `loom-block-plan-cards.md`) — the LLM-facing compact spec `Plan-Write` actually reads; this doc is the Go-parser's own fuller contract, not the agent's prompt.
 - [`internal/fabricengine`](../../internal/fabricengine/doc.go) — `ChangedFilesSince`/`SHAExists` used for contract verification.

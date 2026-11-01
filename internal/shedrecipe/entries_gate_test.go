@@ -39,6 +39,8 @@ func gateCapableEntries() map[string]Constructor {
 	return map[string]Constructor{
 		"DiscussionWrite": discussionWriteEntry,
 		"PlanWrite":       planWriteEntry,
+		"PartsWrite":      partsWriteEntry,
+		"PartsPlanWrite":  partsPlanWriteEntry,
 		"Describe":        describeEntry,
 		"DarnWrite":       darnWriteEntry,
 		"Webster":         websterEntry,
@@ -56,10 +58,11 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 }
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
-	for _, name := range []string{"discussion", "plan", "description"} {
+	for _, name := range []string{"discussion", "plan", "parts", "description"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
+			env.Setting = partsMaxSetting(6)
 			spec, err := resolveGateSpec("Row", gatesCfg(name, 4), env)
 			if err != nil {
 				t.Fatalf("resolveGateSpec() error = %v; want nil", err)
@@ -250,6 +253,10 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"DiscussionNilHistory", gatesCfg("discussion", 1), "DiscussionHistory"},
 		{"LoomDiscussionNilPlanIndex", gatesCfg("discussion", 1), "PlanIndex"},
 		{"LoomDiscussionRelativeWorktreeRoot", gatesCfg("discussion", 1), "WorktreeRoot"},
+		{"PartsEmptyAnchorPath", gatesCfg("parts", 1), "AnchorPath"},
+		{"PartsEmptyDecisionRecordPath", gatesCfg("parts", 1), "DecisionRecordPath"},
+		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
+		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -261,6 +268,14 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 				env.PlanIndex = nil
 			case "LoomDiscussionRelativeWorktreeRoot":
 				env.WorktreeRoot = "relative/worktree"
+			case "PartsEmptyAnchorPath":
+				env.Setting = partsMaxSetting(6)
+				env.AnchorPath = ""
+			case "PartsEmptyDecisionRecordPath":
+				env.Setting = partsMaxSetting(6)
+				env.DecisionRecordPath = ""
+			case "PartsMaxBelowOne":
+				env.Setting = partsMaxSetting(0)
 			}
 			_, err := resolveGateSpec("TheRow", tt.cfg, env)
 			assertErrContains(t, err, "TheRow")
@@ -313,7 +328,7 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"discussion", "plan", "description", "verify"} {
+			for _, want := range []string{"discussion", "plan", "parts", "description", "verify"} {
 				assertErrContains(t, err, want)
 			}
 		})

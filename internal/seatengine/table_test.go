@@ -20,6 +20,9 @@ import (
 const (
 	chairStencilBody   = "Chair of {{.seat_name}}.\n{{template \"seat-directive-chair\"}}\n"
 	advisorStencilBody = "Advisor {{.seat_name}}.\n{{template \"seat-directive-advisor\"}}\n"
+
+	writerChairStencilBody = "Writer chair of {{.seat_name}}.\n{{template \"seat-directive-writer-chair\"}}\n"
+	writerStencilBody      = "Writer {{.seat_name}}.\n{{template \"seat-directive-writer\"}}\n"
 )
 
 // writeStencil writes body as the stencil name under dir, in the family folder stencilstore reads it from.
@@ -40,7 +43,18 @@ func seatedStencils(t *testing.T) string {
 	dir := stencilkit.Seed(t)
 	writeStencil(t, dir, "seat-test-chair", chairStencilBody)
 	writeStencil(t, dir, "seat-test-advisor", advisorStencilBody)
+	writeStencil(t, dir, "seat-test-writer-chair", writerChairStencilBody)
+	writeStencil(t, dir, "seat-test-writer", writerStencilBody)
 	return dir
+}
+
+// asWriters makes every seat of table after the lead a writer, and gives the lead and the writers the stencils that include the writer directives.
+func asWriters(table *Table) {
+	table.Seats[0].Stencil = "seat-test-writer-chair"
+	for i := 1; i < len(table.Seats); i++ {
+		table.Seats[i].Stencil = "seat-test-writer"
+		table.Seats[i].Writer = true
+	}
 }
 
 // validTable returns an unnamed lead with two named advisors whose outputs are the lead's inputs.
@@ -73,7 +87,7 @@ func TestTable_Validate(t *testing.T) {
 		{name: "a gate on the lead", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `the lead carries a gate`},
 		{name: "a required lead", mutate: func(tb *Table) { tb.Seats[0].Required = true }, wantErr: `the lead is marked required`},
 		{name: "an accept hook on the lead", mutate: func(tb *Table) { tb.Seats[0].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `the lead carries an accept hook`},
-		{name: "an accept hook on an advisor that is not required", mutate: func(tb *Table) { tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "advisor-1": carries an accept hook but is not required`},
+		{name: "an accept hook on an advisor that is not required", mutate: func(tb *Table) { tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `seat "advisor-1": carries an accept hook but is neither required nor a writer`},
 		{name: "a required advisor with an accept hook", mutate: func(tb *Table) {
 			tb.Seats[1].Required = true
 			tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
@@ -83,6 +97,24 @@ func TestTable_Validate(t *testing.T) {
 			tb.Seats[0].ForkSubagents, tb.Seats[1].ForkSubagents = true, true
 			tb.Round = "r1"
 		}},
+		{name: "a writer table whose lead includes the writer chair directive", mutate: asWriters},
+		{name: "a writer with an accept hook", mutate: func(tb *Table) {
+			asWriters(tb)
+			tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
+		}},
+		{name: "a table of writers and an advisor", mutate: func(tb *Table) {
+			asWriters(tb)
+			tb.Seats[2].Writer, tb.Seats[2].Stencil = false, "seat-test-advisor"
+		}, wantErr: `seat "advisor-2": the table holds writers, but this seat is not one; a table holds advisors only or writers only`},
+		{name: "a writer table whose lead includes only the advisor chair directive", mutate: func(tb *Table) {
+			asWriters(tb)
+			tb.Seats[0].Stencil = "seat-test-chair"
+		}, wantErr: `include seat-directive-writer-chair in the lead's stencil`},
+		{name: "a writer whose stencil lacks the writer directive", mutate: func(tb *Table) {
+			asWriters(tb)
+			tb.Seats[2].Stencil = "seat-test-advisor"
+		}, wantErr: `seat "advisor-2": the stencil "seat-test-advisor" does not include seat-directive-writer`},
+		{name: "a writer lead", mutate: func(tb *Table) { tb.Seats[0].Writer = true }, wantErr: `the lead is marked a writer, but only a seat after the lead can be`},
 		{name: "a lone lead is accepted", mutate: func(tb *Table) { tb.Seats = tb.Seats[:1] }},
 		{name: "a lone lead needs no chair directive", mutate: func(tb *Table) {
 			tb.Seats = tb.Seats[:1]

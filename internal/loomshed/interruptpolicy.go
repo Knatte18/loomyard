@@ -61,6 +61,10 @@ var InterruptPolicies = map[string]string{
 	NameDriftAwait:    shedverbs.InterruptPolicyReinvoke,
 	NameDriftVerify:   shedverbs.InterruptPolicyReinvoke,
 
+	// Both parts rows probe for a live chair and resume it through the seat probe rather than spawn a second one.
+	NamePartsWrite:     shedverbs.InterruptPolicyReinvoke,
+	NamePartsPlanWrite: shedverbs.InterruptPolicyReinvoke,
+
 	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
 	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,
 }

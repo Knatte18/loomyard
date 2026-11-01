@@ -156,11 +156,16 @@ func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, 
 }
 
 // seatSpec returns the shuttle spec that runs seat with prompt.
-// Only the chair is interactive; only an advisor keeps its pane, and an advisor holds its turn end quietly unless it is Required.
+// Only the chair is interactive; every seat after the lead keeps its pane and holds its turn end quietly unless it is a required advisor.
+// A seat's own Timeout, when non-zero, bounds its run in place of the table's.
 // Every seat of a table declares the own-window anchor with the table's window group and seat count.
 // The seat's gate rides the start call, not the spec.
 func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 	isChair := seat.Name == leadName
+	timeout := table.Timeout
+	if seat.Timeout != 0 {
+		timeout = seat.Timeout
+	}
 	return shuttleengine.Spec{
 		Prompt:        prompt,
 		OutputFiles:   slices.Clone(seat.Outputs),
@@ -173,7 +178,7 @@ func seatSpec(table Table, seat Seat, prompt string) shuttleengine.Spec {
 		Segment:       table.Segment,
 		Role:          SeatRole(table.RolePrefix, seat.Name),
 		Round:         table.Round,
-		Timeout:       table.Timeout,
+		Timeout:       timeout,
 		Skills:        slices.Clone(seat.Skills),
 		Display:       render.Display{Anchor: render.AnchorOwnWindow, Window: tableWindow(table), WindowSize: len(table.Seats)},
 	}

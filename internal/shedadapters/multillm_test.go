@@ -410,6 +410,105 @@ func TestMultiLLMProducer_MapsTheLeadResult(t *testing.T) {
 	}
 }
 
+func TestMultiLLMProducer_MapsAWriterThatEndedTheStep(t *testing.T) {
+	t.Parallel()
+	const (
+		label      = "writer seat advisor-1 of part advisor-1"
+		wayForward = "way forward: re-run the row with lym loom resume, which starts every part over unless the chair is still live"
+	)
+	two := 2
+	acceptErr := errors.New("handle-dangling")
+	tests := []struct {
+		name string
+		// seat is the writer's result, whose Outputs the test fills in.
+		seat seatengine.SeatResult
+		// chair is the chair's result, a done one when zero.
+		chair     shuttleengine.Result
+		cancelled bool
+		// wantReason may hold {path}, which stands for the seat's findings path.
+		wantReason   string
+		wantAttempts *int
+		wantFindings string
+		// wantErr is a substring of the error, and "" means a Stuck outcome.
+		wantErr        string
+		wantNotStarted bool
+		wantDied       bool
+	}{
+		{name: "a start failure", seat: seatengine.SeatResult{StartError: "no pane"}, wantErr: label + " did not start", wantNotStarted: true},
+		{name: "a died run", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeDied}, wantErr: label + " ended without finishing", wantDied: true},
+		{name: "a wait error", seat: seatengine.SeatResult{StrandGUID: "guid", WaitErr: errors.New("wait failed")}, wantErr: "wait error wait failed", wantDied: true},
+		{name: "a timeout", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeTimeout}, wantReason: label + " timed out; " + wayForward},
+		{
+			name:         "a failed gate keeps its findings in the seat's file",
+			seat:         seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeDone, Result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false, Attempts: 2, Findings: "the part's findings"}}},
+			wantReason:   label + ": gate did not pass after 2 attempts; findings: {path}; " + wayForward,
+			wantAttempts: &two,
+			wantFindings: "the part's findings",
+		},
+		{name: "an accept error", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeDone, AcceptErr: acceptErr}, wantReason: label + ": its part did not pass the part check: handle-dangling; " + wayForward},
+		{name: "a writer lost at resume with outputs missing", seat: seatengine.SeatResult{}, wantReason: label + ": its outputs were missing at resume; " + wayForward},
+		{name: "an unrecognized outcome", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: "vanished"}, wantErr: `ended with the unrecognized outcome "vanished"`},
+		{name: "the writer decides over a chair that also timed out", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeDone, AcceptErr: acceptErr}, chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}, wantReason: label + ": its part did not pass the part check: handle-dangling; " + wayForward},
+		{name: "a cancelled context", seat: seatengine.SeatResult{StrandGUID: "guid", Outcome: shuttleengine.OutcomeTimeout}, cancelled: true, wantErr: "context cancelled"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			table := multiLLMTable(t.TempDir(), 1)
+			writerOutput := table.Seats[1].Outputs[0]
+			findingsPath := filepath.Join(t.TempDir(), "findings", "writer.md")
+			seat := tt.seat
+			seat.Name, seat.Writer, seat.EndedStep, seat.Outputs, seat.GateFindingsPath = "advisor-1", true, true, []string{writerOutput}, findingsPath
+			chair := tt.chair
+			if chair.Outcome == "" {
+				chair.Outcome = shuttleengine.OutcomeDone
+			}
+			// An earlier advisor that did not end the step must not be mistaken for the writer.
+			bystander := seatengine.SeatResult{Name: "bystander", Outcome: shuttleengine.OutcomeDied}
+			producer := NewMultiLLMProducer("multi", table, &shedfake.SeatRunner{
+				Results: []seatengine.Result{{Chair: chair, ChairOutputs: table.Chair().Outputs, Advisors: []seatengine.SeatResult{bystander, seat}}},
+			}, multiLLMFixedNow)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tt.cancelled {
+				cancel()
+			}
+
+			outcome, pointer, err := producer.Call(ctx)
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Call() error = %v, want one containing %q", err, tt.wantErr)
+				}
+				if errors.Is(err, shuttleengine.ErrNotStarted) != tt.wantNotStarted || errors.Is(err, shuttleengine.ErrAgentDied) != tt.wantDied {
+					t.Errorf("Call() error = %v, want wrapping ErrNotStarted = %v and ErrAgentDied = %v", err, tt.wantNotStarted, tt.wantDied)
+				}
+				if tt.wantErr != "context cancelled" && !strings.Contains(err.Error(), wayForward) {
+					t.Errorf("Call() error = %v, want it to end with the way forward", err)
+				}
+				if outcome != "" || !reflect.DeepEqual(pointer, shedengine.OutputPointer{}) {
+					t.Errorf("Call() = %q, %+v on error, want the zero outcome and pointer", outcome, pointer)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Call() error = %v, want nil", err)
+			}
+			want := shedengine.OutputPointer{Path: writerOutput, GateAttempts: tt.wantAttempts, Reason: strings.ReplaceAll(tt.wantReason, "{path}", findingsPath)}
+			if outcome != shedengine.Stuck || !reflect.DeepEqual(pointer, want) {
+				t.Errorf("Call() = %q, %+v, want %q, %+v", outcome, pointer, shedengine.Stuck, want)
+			}
+			got, readErr := os.ReadFile(findingsPath)
+			if tt.wantFindings == "" && readErr == nil {
+				t.Errorf("findings file holds %q, want none", got)
+			}
+			if tt.wantFindings != "" && string(got) != tt.wantFindings {
+				t.Errorf("findings file = %q (%v), want %q", got, readErr, tt.wantFindings)
+			}
+		})
+	}
+}
+
 func TestMultiLLMProducer_ErrorExits(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("boom")

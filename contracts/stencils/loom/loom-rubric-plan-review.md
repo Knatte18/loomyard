@@ -118,7 +118,7 @@ Do not flag any of the following as a finding:
   A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exempt, and so is a fail-loud wiring guard in that file's sense, which takes no reaching test.
   A test that calls only the refusal's error constructor does not reach the refusal.
 - **The writer/reviewer symmetry note.**
-  The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`.
+  The plan writer's own stencil is `{{.stencils_dir}}/loom/loom-template-plan.md`, which includes the plan-format blocks `{{.stencils_dir}}/loom/loom-block-plan-format.md`, `{{.stencils_dir}}/loom/loom-block-plan-overview.md` and `{{.stencils_dir}}/loom/loom-block-plan-cards.md`.
   Whatever it says not to write, this rubric must not flag as missing.
 
 ## Proposed fixes

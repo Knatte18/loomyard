@@ -100,7 +100,7 @@ func TestHubGenericStencils_NameNoGoTiers(t *testing.T) {
 	t.Parallel()
 
 	banned := []string{"go build", "go vet", "go test", "-tags tmux", "-tags llm", "go -C"}
-	for _, name := range []string{"loom-template-plan", "loom-rubric-plan-review", "webster-body-implementer"} {
+	for _, name := range []string{"loom-template-plan", "loom-block-plan-glyphs", "loom-block-plan-format", "loom-block-plan-overview", "loom-block-plan-cards", "loom-rubric-plan-review", "webster-body-implementer"} {
 		text, ok := Registry().Default(name)
 		if !ok {
 			t.Fatalf("stencil %q is not registered", name)

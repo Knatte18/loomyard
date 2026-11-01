@@ -20,6 +20,12 @@ import (
 //go:embed loom-plan-spec.md
 var LoomPlanSpec []byte
 
+// LoomPartsSpec is the parts file format contract's shipped-default content.
+// Parts-Write writes the parts file against its format and checks, and internal/partsparser parses it.
+//
+//go:embed loom-parts-spec.md
+var LoomPartsSpec []byte
+
 // LoomFinalSummarySpec is the final-summary format contract's shipped-default content.
 // Every producer of a task's final summary writes against its format and validation, and its consumers parse it.
 //
@@ -60,6 +66,7 @@ type registryEntry struct {
 // A registered name starts with its owning product's name because stencilstore.RelPath derives the family directory from the substring up to the first "-".
 var entries = []registryEntry{
 	{"loom-plan-spec", &LoomPlanSpec},
+	{"loom-parts-spec", &LoomPartsSpec},
 	{"loom-final-summary-spec", &LoomFinalSummarySpec},
 	{"loom-discussion-spec", &LoomDiscussionSpec},
 	{"landing-fixer-report-spec", &LandingFixerReportSpec},

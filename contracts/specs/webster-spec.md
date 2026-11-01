@@ -11,7 +11,7 @@ Everything about *how* webster reaches those shapes — the fork mechanism, the 
 
 ## Plan input
 
-Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/` — the format itself is pinned in `contracts/stencils/loom/loom-template-plan.md`, the Plan producer's own stencil, not a separate reference doc.
+Webster consumes the pinned flat card-list plan-format via `internal/planparser`, the sole parser of `_lym/plan/` — the format itself is pinned in the plan-format blocks `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md`, which `contracts/stencils/loom/loom-template-plan.md` includes, not a separate reference doc.
 webster groups a plan's cards into execution batches via a batcher configured through `batcher.yaml`.
 The grouping is computed once per run and recorded in `state.json`, and every verb reads the recorded partition, so a file the batches change never regroups the cards mid-run.
 
@@ -70,7 +70,7 @@ A pass records the verified tree, so a landing step or a later gate that finds t
 ## See also
 
 - [loom-final-summary-spec.md](loom-final-summary-spec.md) — the producer-agnostic read contract for `summary.md`'s format, validation, and consumers.
-- `contracts/stencils/loom/loom-template-plan.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the Plan producer's own stencil rather than a separate doc.
+- `contracts/stencils/loom/loom-block-plan-format.md`, `loom-block-plan-overview.md` and `loom-block-plan-cards.md` — the flat-card format webster consumes via `internal/planparser`, pinned in the plan-format blocks `contracts/stencils/loom/loom-template-plan.md` includes rather than a separate doc.
 - [refusal-spec.md](refusal-spec.md) — the way forward every webster refusal names, and its classes.
 - [llm-model-spec.md](llm-model-spec.md) — the model-spec notation webster's roles resolve against.
 - [loom-status-spec.md](loom-status-spec.md) — loom's own status file, the analogous contract for loom's orchestration state.

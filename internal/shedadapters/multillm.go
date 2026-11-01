@@ -1,5 +1,5 @@
 // multillm.go implements MultiLLMProducer, the shedadapters adapter that wraps one table of seats, a chair and its advisors, behind the shedengine.ShedProducer seam.
-// The chair's result decides the step as one shuttle run's does.
+// The chair's result decides the step as one shuttle run's does, unless a writer seat ended the step first, which writerExit maps instead.
 
 package shedadapters
 
@@ -32,7 +32,7 @@ var _ SeatRunner = (*seatengine.Engine)(nil)
 
 // MultiLLMProducer is the shedadapters adapter over one seatengine table:
 // it probes for a live chair, resumes it or archives every seat's stale outputs and runs the table fresh, and maps the chair's result onto the shedengine.ShedProducer contract.
-// The advisors' results are logged and never judged: an advisor's death weakens nothing the chair decided.
+// An advisor's result is logged only, since an advisor's death weakens nothing the chair decided; a writer that ended the step decides it instead.
 type MultiLLMProducer struct {
 	name  string
 	table seatengine.Table
@@ -138,7 +138,9 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 	return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %s: %w", p.name, multiLLMEngineLabel, what, err)
 }
 
-// mapOutcome maps the chair's result onto shedengine's contract, shared by the resume path and the fresh path:
+// mapOutcome maps a table's result onto shedengine's contract, shared by the resume path and the fresh path.
+// A writer seat that ended the step decides it, the first such seat in table order through writerExit, whatever the chair's outcome.
+// Otherwise the chair's result decides:
 // done maps to Done with the chair's first output as the pointer, unless its gate failed, which maps to Stuck with the pointer and the gate's attempts and reason;
 // died and timeout are engine-level errors, wrapping shuttleengine.ErrNotStarted when the chair never started and carrying the chair's start error text when shuttle reported one;
 // a chair that started and died wraps shuttleengine.ErrAgentDied.
@@ -146,6 +148,12 @@ func (p *MultiLLMProducer) errorExit(ctx context.Context, what string, err error
 func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Result) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	for _, advisor := range result.Advisors {
 		logger.Info("shedadapters: advisor seat result", "producer", p.name, "engine", multiLLMEngineLabel, "seat", advisor.Name, "outcome", advisor.Outcome, "startError", advisor.StartError, "notified", advisor.Notified, "strandGUID", advisor.StrandGUID)
+	}
+
+	for _, seat := range result.Advisors {
+		if seat.Writer && seat.EndedStep {
+			return p.writerExit(ctx, seat)
+		}
 	}
 
 	chair := result.Chair
@@ -188,5 +196,43 @@ func (p *MultiLLMProducer) mapOutcome(ctx context.Context, result seatengine.Res
 		}
 		logger.Warn("shedadapters: unrecognized shuttle outcome", "producer", p.name, "engine", multiLLMEngineLabel, "sessionID", chair.SessionID, "strandGUID", chair.StrandGUID, "runDir", chair.RunDir, "outcome", chair.Outcome)
 		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): unrecognized shuttle outcome %q", p.name, multiLLMEngineLabel, chair.Outcome)
+	}
+}
+
+// writerResumeWayForward is the way forward every writer exit ends with.
+const writerResumeWayForward = "way forward: re-run the row with lym loom resume, which starts every part over unless the chair is still live"
+
+// writerExit maps a writer seat that ended the step onto the producer contract, with the seat's name as both the seat and its part.
+// A start failure wraps shuttleengine.ErrNotStarted, and a died run or a wait error wraps shuttleengine.ErrAgentDied naming the writer.
+// A timeout, a failed gate, an Accept error and a writer lost at resume with its outputs missing are Stuck with the seat's first output as the pointer, so the part's files are committed, and a reason naming the seat and its part.
+// Any other end is an error naming the writer and its outcome.
+// A cancelled context returns the context error first: no writer end is a success.
+func (p *MultiLLMProducer) writerExit(ctx context.Context, seat seatengine.SeatResult) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	if cerr := cancelErr(ctx, p.name, multiLLMEngineLabel); cerr != nil {
+		return "", shedengine.OutputPointer{}, cerr
+	}
+	logger.Warn("shedadapters: writer seat ended the step", "producer", p.name, "engine", multiLLMEngineLabel, "seat", seat.Name, "outcome", seat.Outcome, "startError", seat.StartError, "strandGUID", seat.StrandGUID)
+
+	label := fmt.Sprintf("writer seat %s of part %s", seat.Name, seat.Name)
+	stuck := func(reason string, gate *shuttleengine.GateOutcome) (shedengine.Outcome, shedengine.OutputPointer, error) {
+		return shedengine.Stuck, shedengine.OutputPointer{Path: seat.Outputs[0], GateAttempts: gateAttemptsPointer(gate), GateSpans: gateSpansOf(gate), Reason: reason + "; " + writerResumeWayForward}, nil
+	}
+	gate := seat.Result.Gate
+
+	switch {
+	case seat.StartError != "":
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %s did not start: %w: %s; %s", p.name, multiLLMEngineLabel, label, shuttleengine.ErrNotStarted, seat.StartError, writerResumeWayForward)
+	case seat.Outcome == shuttleengine.OutcomeDied || seat.WaitErr != nil:
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %s ended without finishing (outcome %q, wait error %v): %w; %s", p.name, multiLLMEngineLabel, label, seat.Outcome, seat.WaitErr, shuttleengine.ErrAgentDied, writerResumeWayForward)
+	case seat.Outcome == shuttleengine.OutcomeTimeout:
+		return stuck(label+" timed out", nil)
+	case seat.Outcome == shuttleengine.OutcomeDone && gate != nil && !gate.Passed:
+		return stuck(label+": "+gateFailedReason(gate, seat.GateFindingsPath), gate)
+	case seat.AcceptErr != nil:
+		return stuck(fmt.Sprintf("%s: its part did not pass the part check: %v", label, seat.AcceptErr), gate)
+	case seat.StrandGUID == "" && seat.Outcome == "":
+		return stuck(label+": its outputs were missing at resume", nil)
+	default:
+		return "", shedengine.OutputPointer{}, fmt.Errorf("shedadapters: %s (%s): %s ended with the unrecognized outcome %q; %s", p.name, multiLLMEngineLabel, label, seat.Outcome, writerResumeWayForward)
 	}
 }

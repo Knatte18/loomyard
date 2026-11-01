@@ -600,6 +600,35 @@ func TestCheckDecisionIDs(t *testing.T) {
 	}
 }
 
+func TestDecisionIDs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		record string
+		want   []string
+	}{
+		{"SeveralDecisionsInOrder", "## Decisions\n\n### D2 — a\n\nx.\n\n### D1 — b\n\ny.\n\n### D10 — c\n", []string{"D2", "D1", "D10"}},
+		{
+			"AddedDecisionAndMalformedHeadingAreSkipped",
+			"## Decisions\n\n### D1 — a\n\n### Added after Discussion (orch, 2026-10-28): t\n\n### Some decision\n\n### D2 —\n\n### D3 — c\n",
+			[]string{"D1", "D3"},
+		},
+		{"FencedHeadingIsSkipped", "## Decisions\n\n### D1 — a\n\n```\n### D9 — x\n```\n", []string{"D1"}},
+		{"RepeatedIDIsListedOnce", "## Decisions\n\n### D1 — a\n\n### D1 — b\n\n### D2 — c\n", []string{"D1", "D2"}},
+		{"HeadingAfterTheSectionIsSkipped", "## Decisions\n\n### D1 — a\n\n## Notes\n\n### D5 — z\n", []string{"D1"}},
+		{"NoDecisionsSection", "# Record\n\n## Goal\n\nbody.\n", []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := DecisionIDs([]byte(tt.record)); !slices.Equal(got, tt.want) {
+				t.Errorf("DecisionIDs() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCitations(t *testing.T) {
 	t.Parallel()
 

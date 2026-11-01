@@ -6,6 +6,7 @@
 // AppendDecisions adds several such calls to the record in one write and one discussion check.
 // CheckDecisionIDs checks the record's decision headings and their acceptance coverage: each H3 under `## Decisions` reads `### D<n> — <title>` with a unique id, and each id appears as a whole word in an `## Acceptance criteria` bullet.
 // It runs beside Validate in the discussion gates and `validate-discussion`, never inside it, and not from AppendDecision, so a record whose decision headings predate it is still appended to.
+// DecisionIDs is the read of the record's decision ids for other packages.
 // Citations returns every inline code span of the record, with its line and whether a ` (new)` or ` (removed)` mark follows it, and judges none of them: judging a citation against the tree is internal/loomshed's.
 // It skips fenced blocks, `### Added after Discussion` entries, appended `## PATTERN changes` bullets and carry-over blocks, the parts no writer authors.
 // WriteCarryOver keeps one review segment's carry-over entry, the findings still open when the segment closed, in its `## Open risks` section.

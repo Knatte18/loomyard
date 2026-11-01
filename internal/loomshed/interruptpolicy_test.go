@@ -22,6 +22,8 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"webster handback", NameWebster, shedverbs.InterruptPolicyHandback},
 		{"gate reinvoke", NamePreflight, shedverbs.InterruptPolicyReinvoke},
 		{"writer reinvoke", NameDiscussionWrite, shedverbs.InterruptPolicyReinvoke},
+		{"parts write reinvoke", NamePartsWrite, shedverbs.InterruptPolicyReinvoke},
+		{"parts plan write reinvoke", NamePartsPlanWrite, shedverbs.InterruptPolicyReinvoke},
 		{"bouncer reinvoke", NameDiscussionBouncer, shedverbs.InterruptPolicyReinvoke},
 		{"burler review reinvoke", NameDiscussionBurlerReview, shedverbs.InterruptPolicyReinvoke},
 		{"burler fix reinvoke", NameCodeBurlerFix, shedverbs.InterruptPolicyReinvoke},

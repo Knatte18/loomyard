@@ -6,10 +6,16 @@
 # The recipe declares contract: loom, so Shed checks the loom contract when it builds it.
 #
 # The main line is Preflight, Discussion-Write, the Discussion-Review ring,
-# Drift-Baseline, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
+# Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
 # Drift-Verify, the Code-Review ring, Describe, PR-Review, Finalize and Friction-Reflect.
 # The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them.
+# Parts-Write and Parts-Plan-Write carry entry_gate: tapestry.plan_split, and Plan-Write carries entry_gate: tapestry.plan_split != true.
+# With the flag off, each of the two parts rows is recorded Skipped and Plan-Write runs as before.
+# With it on, Parts-Plan-Write's Done enters Plan-Write, whose gate skips it to Plan-Bouncer.
+# Bound: each row reads the flag when the run enters it, and a goto bypasses only its target's gate,
+# so a flag flipped mid-branch routes the rest of the run by the new value.
+# The flag is meant to be set before a run starts, in its profile or run_settings.
 #
 # Every gate and validator bounces back to the producer whose artifact it guards, and a gate whose
 # guarded artifact is produced by no row in the list escalates instead.
@@ -20,7 +26,7 @@
 #
 # Those are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header.
-# These PRODUCER rows also carry no on_stuck -- Discussion-Write, Drift-Baseline, Plan-Write,
+# These PRODUCER rows also carry no on_stuck -- Discussion-Write, Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write,
 # Drift-Await, Webster, Drift-Verify, Describe and PR-Review -- and their Stuck halts the whole run just
 # as a gate's does.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
@@ -219,12 +225,41 @@ producers:
   - name: Drift-Baseline
     engine: DriftBaseline
     entry_gate: drift.enabled
-    on_done: Plan-Write
+    on_done: Parts-Write
     config:
       subject: decision-record
 
+  # Parts-Write and Parts-Plan-Write write the plan in two steps when tapestry.plan_split is true: Parts-Write splits
+  # the task into parts with contracts, and Parts-Plan-Write runs one writer per part and a chair that joins their cards
+  # into one ordinary plan. With the flag off both rows are recorded Skipped and Plan-Write runs as before; with it on,
+  # Parts-Plan-Write's Done enters Plan-Write, whose gate skips it to Plan-Bouncer. Neither carries on_stuck: a Stuck
+  # halts the run as Plan-Write's does, and the way back is a rerun of the halted row.
+  - name: Parts-Write
+    engine: PartsWrite
+    entry_gate: tapestry.plan_split
+    on_done: Parts-Plan-Write
+    config:
+      gates:
+        - name: parts
+          attempts: 3
+
+  - name: Parts-Plan-Write
+    engine: PartsPlanWrite
+    entry_gate: tapestry.plan_split
+    on_done: Plan-Write
+    config:
+      # gates holds the chair's handoff until the joined plan passes the plan gate; part_gates gives each writer seat
+      # the plan-part gate over its own part directory.
+      gates:
+        - name: plan
+          attempts: 3
+      part_gates:
+        - name: plan-part
+          attempts: 3
+
   - name: Plan-Write
     engine: PlanWrite
+    entry_gate: tapestry.plan_split != true
     on_done: Plan-Bouncer
     config:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a

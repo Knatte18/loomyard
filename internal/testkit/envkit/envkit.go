@@ -398,10 +398,32 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitPlan:     func() error { return nil },
-		ApprovePlan:    func() error { return nil },
-		SkipPlanReview: func() (bool, error) { return false, nil },
-		CarryOver:      func(discussionparser.CarryOver) error { return nil },
+		CommitPlan: func() error { return nil },
+		PartsTable: func() (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "parts",
+				Segment:    segmentcolor.Plan,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-parts",
+					Outputs: []string{filepath.Join(dir, "parts-output.md")},
+				}},
+			}, nil
+		},
+		PartsPlanTable: func(shedrecipe.PartSeats) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "parts-plan",
+				Segment:    segmentcolor.Plan,
+				Seats: []seatengine.Seat{{
+					Stencil: "loom-template-parts-chair",
+					Outputs: []string{filepath.Join(dir, "parts-plan-output.md")},
+				}},
+			}, nil
+		},
+		CommitParts:     func() error { return nil },
+		CommitPartsPlan: func() error { return nil },
+		ApprovePlan:     func() error { return nil },
+		SkipPlanReview:  func() (bool, error) { return false, nil },
+		CarryOver:       func(discussionparser.CarryOver) error { return nil },
 		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
 		},

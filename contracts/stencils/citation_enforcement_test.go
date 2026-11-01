@@ -41,13 +41,21 @@ func citationAllowKey(stencilName, token string) string {
 // so the justification cannot drift away from what it justifies -- the same (file, target)-keyed, owner-naming shape internal/lymcwd's Markdown Link Integrity allowlist already uses.
 //
 // A small allowlist is the design here, not a workaround.
-// Its entry names loom-template-plan's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
+// Its first entry names loom-block-plan-overview's own glyph-grammar worked example -- `internal/boardcli/list.go` illustrates
 // the plain-file-path spelling rule for a reader of the stencil, it is not a pointer the agent is
 // meant to open.
 var citationAllowlist = []scankit.Entry{
 	{
-		Key: "loom-template-plan:internal/boardcli/list.go",
+		Key: "loom-block-plan-overview:internal/boardcli/list.go",
 		Why: "glyph-grammar worked example, not a citation",
+	},
+	{
+		Key: "loom-template-parts:internal/x/newfile.go",
+		Why: "parts-file skeleton placeholder, not a citation",
+	},
+	{
+		Key: "loom-template-parts:contracts/specs/x-spec.md",
+		Why: "parts-file skeleton placeholder, not a citation",
 	},
 }
 

@@ -21,9 +21,9 @@
 // # The table rules
 //
 // Table.Validate applies every rule as a loud error naming the seat.
-// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor with a unique valid name.
+// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor or a writer, never both in one table, with a unique valid name.
 // A table may hold no advisors: the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
-// The lead's stencil of a table of more than one seat includes seat-directive-chair; a lone lead needs no such include.
+// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, and a writer table's lead includes seat-directive-writer-chair in its place; a lone lead needs no such include.
 // The lead carries no gate, since the lead's gate is the table's.
 // Every seat has at least one output and no two seats share an output path, and every advisor output is among the lead's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
@@ -58,7 +58,7 @@
 // The settle interval and the maximum deferral are shuttle's, so a chair held while every counted advisor is idle notifies once after the settle interval, and never later than the maximum deferral whatever its advisors do.
 // A started seat whose strand took a different name than expected, which is reed numbering a name an earlier strand still holds, is stopped and reported as a start error naming the holder and the way forward.
 // A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
-// Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line.
+// Once each advisor's start ends, the chair is told in one line that the advisor is up, or that it did not start; seat-directive-chair tells the chair to send an advisor nothing before its up line, and a writer gets no up line.
 // An advisor that fails to start is recorded on its SeatResult and the step goes on without it.
 // A required advisor that fails to start ends the step instead: no later advisor starts and the chair is stopped.
 // An advisor whose misnamed strand could not be stopped ends the run: the chair and every started advisor are stopped and the error is returned.
@@ -84,8 +84,22 @@
 // Ending the step, the engine stops the notice sender, stops the chair and waits for its result, stops every started advisor, the required one included, and sets EndedStep on that advisor's SeatResult.
 // SeatResult then also carries the advisor's terminal Result, its WaitErr and its AcceptErr.
 // A required advisor that was accepted stays kept until the chair ends, as every done advisor does, and the chair's end decides the step.
-// Only a required advisor can end the step before the chair, and only through its own end or its own Accept.
+// Only a required advisor or a writer can end the step before the chair, and only through its own end or its own Accept.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them: the engine judges nothing about finishing itself (PATTERN-shuttle-provider-seam).
+//
+// # Writers
+//
+// A Seat marked Writer is a writing assistant: it writes a product of its own, which the chair joins, where an advisor's output is advice the chair weighs.
+// A table holds advisors only or writers only after the lead, and the lead is never a writer.
+// The lead's stencil of a writer table includes seat-directive-writer-chair in place of seat-directive-chair, and every writer's stencil includes seat-directive-writer.
+// A writer is required by kind: every end of its run that its gate and its Accept hook do not pass ends the step, a failed start included, with no line queued to the chair.
+// Its held turn end does not notify the parent, as a required advisor's does, since a writer waits on the chair between turns.
+// A writer gets no up line; when it ended done with its gate and Accept passed, the chair is told in one line that its part stands and it keeps answering, so a chair waiting on its parts is woken.
+// A writer keeps its pane after done, as every seat after the lead does.
+// The chair's hold deferral counts a writer by its session alone, since a writer gets no up line: an unended writer counts while its session reads mid-turn, and a writer whose run ended done still counts while its kept session reads mid-turn, so a chair waiting on a fix it asked of a done writer is deferred; any other ended run never counts.
+// In a writer table, join marks a writer whose end ended the step EndedStep even when the chair's end arrives first or together with it: once the chair's end is received and before any seat is stopped, a fired step ender marks its writer, and stopping the kept writers afterwards never marks one.
+// A Seat's own Timeout, when non-zero, bounds its run in place of the table's, so a chair can outlast its writers.
+// A SeatResult carries Writer, the seat's absolute Outputs and its GateFindingsPath, a path the engine only carries for the producer that keeps a writer's failed gate findings there.
 //
 // # Probe before archive
 //
@@ -104,6 +118,9 @@
 // Probe passes the chair's probe the same hold-deferral predicate and keeps the advisor work it reads on the LiveTable it returns; Resume binds its sender to that work and adds every found advisor, so an attached chair defers as a fresh one does.
 // A LiveTable built without Probe carries no work.
 // A found required advisor is watched with the same Accept rule, and a required advisor the probe did not find ends the step at once with EndedStep set and no terminal result.
+// A found writer is attached and watched as in a fresh run, with no up line queued.
+// A writer the probe did not find, which includes a done writer whose kept pane the probe removed, counts as finished when all its outputs exist and its Accept hook passes on a zero result, and the chair is then told once that the writer was stopped when the step was interrupted, that any fix asked of it is lost and that it no longer answers.
+// A writer not found whose outputs are not all there, or whose Accept hook fails, ends the step at once, with its Accept error kept on its result.
 //
 // # Imports
 //

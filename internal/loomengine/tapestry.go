@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -52,6 +53,23 @@ type TapestryConfig struct {
 	PlanMaxBounces     *int `yaml:"plan_max_bounces"`
 	PlanHardMaxBounces int  `yaml:"plan_hard_max_bounces"`
 	PlanAutoAccept     bool `yaml:"plan_auto_accept"`
+
+	// PlanSplit turns the Parts-Write and Parts-Plan-Write rows on and Plan-Write off.
+	PlanSplit bool `yaml:"plan_split"`
+
+	// PartsDepth is the Parts-Write agent's reading depth, light or medium.
+	PartsDepth string `yaml:"parts_depth"`
+
+	// PartsMax is the most parts a parts file may hold.
+	PartsMax int `yaml:"parts_max"`
+
+	// Parts, PartWriter and PartsChair are the model-specs of the Parts-Write agent, of every part writer and of the chair.
+	Parts      string `yaml:"parts"`
+	PartWriter string `yaml:"part_writer"`
+	PartsChair string `yaml:"parts_chair"`
+
+	// PartsChairTimeoutMin is the minutes the chair's run may take; nil takes twice the effective plan timeout.
+	PartsChairTimeoutMin *int `yaml:"parts_chair_timeout_min"`
 }
 
 // WithTapestry returns c with its plan fields set from t.
@@ -68,7 +86,37 @@ func (c Config) WithTapestry(t TapestryConfig) Config {
 	c.PlanMaxBounces = t.PlanMaxBounces
 	c.PlanHardMaxBounces = t.PlanHardMaxBounces
 	c.PlanAutoAccept = t.PlanAutoAccept
+	c.PlanSplit = t.PlanSplit
+	c.PartsDepth = t.PartsDepth
+	c.PartsMax = t.PartsMax
+	c.Parts = t.Parts
+	c.PartWriter = t.PartWriter
+	c.PartsChair = t.PartsChair
+	c.PartsChairTimeoutMin = t.PartsChairTimeoutMin
 	return c
+}
+
+// PlanTimeout returns the run's effective plan timeout: PlanTimeoutMin minutes, or runTimeout when PlanTimeoutMin is 0.
+// runTimeout is shuttle's run_timeout_min as a duration, which tapestry.yaml's load cannot read.
+func (c Config) PlanTimeout(runTimeout time.Duration) time.Duration {
+	if c.PlanTimeoutMin == 0 {
+		return runTimeout
+	}
+	return time.Duration(c.PlanTimeoutMin) * time.Minute
+}
+
+// PartsChairTimeout returns the Parts-Plan-Write chair's timeout: the set PartsChairTimeoutMin minutes, or twice PlanTimeout(runTimeout) when it is nil.
+// A set value not above PlanTimeout(runTimeout) is an error naming parts_chair_timeout_min, since the chair spans every part writer.
+func (c Config) PartsChairTimeout(runTimeout time.Duration) (time.Duration, error) {
+	planTimeout := c.PlanTimeout(runTimeout)
+	if c.PartsChairTimeoutMin == nil {
+		return 2 * planTimeout, nil
+	}
+	chairTimeout := time.Duration(*c.PartsChairTimeoutMin) * time.Minute
+	if chairTimeout <= planTimeout {
+		return 0, fmt.Errorf("tapestry config key %q: %d minutes is not above the effective plan timeout of %s; set it above plan_timeout_min (or shuttle's run_timeout_min when plan_timeout_min is 0) or to null for twice it", "parts_chair_timeout_min", *c.PartsChairTimeoutMin, planTimeout)
+	}
+	return chairTimeout, nil
 }
 
 // TapestryConfigTemplate returns the default YAML template for the tapestry config module.
@@ -105,6 +153,9 @@ func TapestryConfigSpec() configengine.Spec {
 			"plan_seed":           none,
 		},
 	}
+	for _, key := range []string{"plan_split", "parts_depth", "parts_max", "parts", "part_writer", "parts_chair", "parts_chair_timeout_min"} {
+		spec.Categories[key] = none
+	}
 	for key, category := range reviewbudget.Categories([]string{string(PerchPlan)}) {
 		switch key {
 		case reviewbudget.RunSoftKey, reviewbudget.RunHardKey, reviewbudget.RunAmendKey:
@@ -127,6 +178,7 @@ func ValidateTapestryLocalValues(document []byte) error {
 
 // LoadTapestryConfig loads and unmarshals configuration for the tapestry module strictly through the layer stack under dirs.
 // It validates model-spec grammar at load time, reads lenses.yaml through the same dirs, refuses a negative plan_timeout_min, and refuses a plan perch budget or hard cap below its bound.
+// It also refuses an unparseable parts model, a parts_depth other than light or medium, a parts_max below 1, and a parts_chair_timeout_min not above a non-zero plan_timeout_min.
 // The run-wide review_max_bounces, review_hard_max_bounces and review_amend_max_bounces come from loom.yaml, loaded strictly through the same dirs, so a plan_max_bounces of null and a plan_hard_max_bounces of 0 resolve against them.
 // Each refusal names the module that owns the key it reports.
 func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, error) {
@@ -195,6 +247,29 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 	// Zero is accepted: a zero timeout defers to shuttle's run_timeout_min.
 	if cfg.PlanTimeoutMin < 0 {
 		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", "plan_timeout_min", cfg.PlanTimeoutMin)
+	}
+
+	for _, model := range []struct {
+		key   string
+		value string
+	}{
+		{"parts", cfg.Parts},
+		{"part_writer", cfg.PartWriter},
+		{"parts_chair", cfg.PartsChair},
+	} {
+		if _, err := modelspec.Parse(model.value); err != nil {
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", model.key, err)
+		}
+	}
+	if cfg.PartsDepth != "light" && cfg.PartsDepth != "medium" {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %q is not a reading depth; set it to light or medium", "parts_depth", cfg.PartsDepth)
+	}
+	if cfg.PartsMax < 1 {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: must be at least 1, got %d; set it to 1 or more", "parts_max", cfg.PartsMax)
+	}
+	// With plan_timeout_min 0 the effective plan timeout is shuttle's run_timeout_min, which the table builder checks.
+	if cfg.PartsChairTimeoutMin != nil && cfg.PlanTimeoutMin > 0 && *cfg.PartsChairTimeoutMin <= cfg.PlanTimeoutMin {
+		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %d is not above plan_timeout_min %d; set it above plan_timeout_min or to null for twice it", "parts_chair_timeout_min", *cfg.PartsChairTimeoutMin, cfg.PlanTimeoutMin)
 	}
 
 	loomSpec := ConfigSpec()

@@ -19,30 +19,34 @@ const defaultNoticeRetry = 5 * time.Second
 // ErrSeatNotStopped marks a seat whose strand could not be stopped; its message ends with the way forward.
 var ErrSeatNotStopped = errors.New("seatengine: a seat could not be stopped")
 
-// SeatResult is what one advisor's run came to.
+// SeatResult is what one seat's run came to, a seat after the lead.
 // Name is the seat's name in the table.
-// StrandGUID and RunDir are empty for an advisor that never started, and StartError then holds why.
-// Outcome is the advisor's own terminal outcome, empty while it has none.
+// StrandGUID and RunDir are empty for a seat that never started, and StartError then holds why.
+// Outcome is the seat's own terminal outcome, empty while it has none.
 // Result is its terminal shuttle result, zero while it has none, and WaitErr is its wait's error.
 // AcceptErr is the error its Accept hook returned.
-// EndedStep is true for a required advisor whose end ended the step before the chair's.
-// Notified reports whether the chair was told, from Go, that the advisor ended or never started.
+// EndedStep is true for a required advisor or a writer whose end ended the step before the chair's.
+// Notified reports whether the chair was told, from Go, that the seat ended or never started.
+// Writer reports whether the seat is a writer, Outputs are the seat's absolute output paths, and GateFindingsPath is the seat's own, where the producer keeps its failed gate findings.
 type SeatResult struct {
-	Name       string
-	StrandGUID string
-	RunDir     string
-	StartError string
-	Outcome    shuttleengine.Outcome
-	Result     shuttleengine.Result
-	WaitErr    error
-	AcceptErr  error
-	EndedStep  bool
-	Notified   bool
+	Name             string
+	StrandGUID       string
+	RunDir           string
+	StartError       string
+	Outcome          shuttleengine.Outcome
+	Result           shuttleengine.Result
+	WaitErr          error
+	AcceptErr        error
+	EndedStep        bool
+	Notified         bool
+	Writer           bool
+	Outputs          []string
+	GateFindingsPath string
 }
 
 // Result is what one run of a table came to.
 // Chair is the chair's result exactly as shuttle reported it, and ChairOutputs are the chair's output paths.
-// Advisors holds one entry per advisor seat, in table order.
+// Advisors holds one entry per seat after the lead, advisor or writer, in table order.
 type Result struct {
 	Chair        shuttleengine.Result
 	ChairOutputs []string
@@ -62,12 +66,13 @@ func New(shuttle Shuttle, geom Geometry) *Engine {
 	return &Engine{shuttle: shuttle, geom: geom, noticeRetry: defaultNoticeRetry, noticeAfter: time.After}
 }
 
-// seatRun is one advisor: its handle, and what its goroutine recorded when its wait ended, or why it never started.
+// seatRun is one seat after the lead: its handle, its absolute outputs, and what its goroutine recorded when its wait ended, or why it never started.
 type seatRun struct {
-	seat   Seat
-	name   string
-	handle Handle
-	done   chan struct{}
+	seat    Seat
+	name    string
+	handle  Handle
+	outputs []string
+	done    chan struct{}
 
 	mu         sync.Mutex
 	startError string
@@ -79,7 +84,7 @@ type seatRun struct {
 	notice     string
 }
 
-// stepEnder records the first required advisor whose end ends the step, and wakes the join that waits on the chair.
+// stepEnder records the first seat that ends the step, a required advisor or a writer, and wakes the join that waits on the chair.
 type stepEnder struct {
 	once    sync.Once
 	signal  chan struct{}
@@ -90,7 +95,7 @@ func newStepEnder() *stepEnder {
 	return &stepEnder{signal: make(chan struct{})}
 }
 
-// end records advisor as the one that ended the step; only the first call counts.
+// end records advisor, a seat that ends the step, as the one that ended it; only the first call counts.
 func (s *stepEnder) end(advisor *seatRun) {
 	s.once.Do(func() {
 		s.advisor = advisor
@@ -98,7 +103,7 @@ func (s *stepEnder) end(advisor *seatRun) {
 	})
 }
 
-// fired reports whether a required advisor has ended the step.
+// fired reports whether a seat that ends the step, a required advisor or a writer, has ended it.
 func (s *stepEnder) fired() bool {
 	select {
 	case <-s.signal:
@@ -108,17 +113,18 @@ func (s *stepEnder) fired() bool {
 	}
 }
 
-// newSeatRun returns the run of an advisor that started, and begins waiting on it.
-// An advisor that ends without finishing queues one notice on sender, unless it is required, which ends the step on ender instead.
+// newSeatRun returns the run of a seat that started, with outputs as its absolute output paths, and begins waiting on it.
+// An advisor that ends without finishing queues one notice on sender, unless it is required, and a writer queues none; a required advisor or a writer ends the step on ender instead.
 func newSeatRun(seat Seat, name string, handle Handle, outputs []string, sender *noticeSender, ender *stepEnder) *seatRun {
-	run := &seatRun{seat: seat, name: name, handle: handle, done: make(chan struct{})}
+	run := &seatRun{seat: seat, name: name, handle: handle, outputs: outputs, done: make(chan struct{})}
 	go run.watch(outputs, sender, ender)
 	return run
 }
 
-// watch waits on the advisor's run and records how it ended.
+// watch waits on the seat's run and records how it ended.
 // An advisor that reached done queues nothing, since it stays reachable and the chair reads its file.
-// A required advisor that ended done with its gate passed has its Accept hook called once with the terminal result; every other end of a required advisor, and an Accept error, ends the step with no line queued.
+// A required advisor or a writer that ended done with its gate passed has its Accept hook called once with the terminal result; every other end of such a seat, and an Accept error, ends the step with no line queued.
+// A writer that was accepted queues one line telling the chair its part stands and it keeps answering; a required advisor queues nothing.
 func (r *seatRun) watch(outputs []string, sender *noticeSender, ender *stepEnder) {
 	defer close(r.done)
 	result, err := r.handle.Wait()
@@ -127,8 +133,11 @@ func (r *seatRun) watch(outputs []string, sender *noticeSender, ender *stepEnder
 	r.mu.Unlock()
 
 	finished := err == nil && result.Outcome == shuttleengine.OutcomeDone
-	if r.seat.Required {
+	if r.seat.endsStep() {
 		if finished && (result.Gate == nil || result.Gate.Passed) && r.accept(result) {
+			if r.seat.Writer {
+				sender.queue(writerDoneNotice(r.name, outputs))
+			}
 			return
 		}
 		ender.end(r)
@@ -156,6 +165,13 @@ func (r *seatRun) accept(result shuttleengine.Result) bool {
 	return err == nil
 }
 
+// finishedDone reports whether the seat's wait ended without error on an outcome of done.
+func (r *seatRun) finishedDone() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.waitErr == nil && r.outcome == shuttleengine.OutcomeDone
+}
+
 // ended reports whether the advisor's watch goroutine has returned.
 func (r *seatRun) ended() bool {
 	select {
@@ -166,20 +182,21 @@ func (r *seatRun) ended() bool {
 	}
 }
 
-// markEnded records that this advisor's end ended the step.
+// markEnded records that this seat's end ended the step.
 func (r *seatRun) markEnded() {
 	r.mu.Lock()
 	r.endedStep = true
 	r.mu.Unlock()
 }
 
-// result snapshots the advisor's result; sender tells whether its notice landed.
+// result snapshots the seat's result; sender tells whether its notice landed.
 func (r *seatRun) result(sender *noticeSender) SeatResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	result := SeatResult{
 		Name: r.seat.Name, StartError: r.startError, Outcome: r.outcome,
 		Result: r.terminal, WaitErr: r.waitErr, AcceptErr: r.acceptErr, EndedStep: r.endedStep,
+		Writer: r.seat.Writer, Outputs: r.outputs, GateFindingsPath: r.seat.GateFindingsPath,
 	}
 	if r.handle != nil {
 		result.StrandGUID = r.handle.StrandGUID()
@@ -202,10 +219,10 @@ func (e *Engine) absolute(paths []string) []string {
 }
 
 // Run starts table's seats fresh and returns once the chair has ended.
-// It starts the chair first, then the advisors in table order, and tells the chair of each advisor once its start ends: up, or never started.
-// A chair that fails to start starts no advisor and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
+// It starts the chair first, then the other seats in table order, and tells the chair of each advisor once its start ends: up, or never started; a writer gets no up line, since its done line is what the chair waits for.
+// A chair that fails to start starts no other seat and returns the error, which wraps shuttleengine.ErrNotStarted when the provider never came up.
 // An advisor that fails to start is recorded and the step goes on without it.
-// A required advisor that fails to start, or whose run later ends without being accepted, ends the step: Run starts no later advisor, stops the chair and every started advisor, and returns with that advisor's EndedStep set and no line queued to the chair.
+// A required advisor or a writer that fails to start, or whose run later ends without being accepted, ends the step: Run starts no later seat, stops the chair and every started seat, and returns with that seat's EndedStep set and no line queued to the chair.
 // An advisor whose misnamed strand could not be stopped is still live, so Run stops the chair and every started advisor and returns the error.
 // The result carries the chair's outcome, gate and NotStarted as shuttle reported them; the engine judges nothing about finishing itself.
 // A seat that cannot be stopped is an error wrapping ErrSeatNotStopped.
@@ -245,9 +262,9 @@ func (e *Engine) Run(table Table) (Result, error) {
 		}
 		if err != nil {
 			logger.Warn("seatengine: advisor did not start", "seat", seat.Name, "error", err)
-			failed := &seatRun{seat: seat, name: name, startError: err.Error()}
+			failed := &seatRun{seat: seat, name: name, outputs: e.absolute(seat.Outputs), startError: err.Error()}
 			advisors = append(advisors, failed)
-			if seat.Required {
+			if seat.endsStep() {
 				ender.end(failed)
 				break
 			}
@@ -255,7 +272,9 @@ func (e *Engine) Run(table Table) (Result, error) {
 			sender.queue(failed.notice)
 			continue
 		}
-		sender.queue(advisorUpNotice(name))
+		if !seat.Writer {
+			sender.queue(advisorUpNotice(name))
+		}
 		started := newSeatRun(seat, name, handle, e.absolute(seat.Outputs), sender, ender)
 		work.add(started)
 		advisors = append(advisors, started)
@@ -341,6 +360,7 @@ func snapshot(advisors []*seatRun, sender *noticeSender) []SeatResult {
 // join waits on the chair, stops the notice sender, then stops every started advisor, a kept done one included.
 // A chair whose wait errored carries no terminal outcome and may still be running, and a chair that timed out keeps its strand live, so each is stopped too.
 // A required advisor whose end ended the step before the chair's makes join stop the sender and the chair, wait for the chair's result, and mark that advisor EndedStep; a chair that also ended by then decides the step as usual.
+// In a table that has writers, a writer whose end ended the step is marked EndedStep even when the chair's end arrives first or together with it: once the chair's end is received and before any seat is stopped, a fired step ender marks its writer.
 // join returns the chair's result, the wait error and any stop error; a stop that failed is not waited for.
 func (e *Engine) join(table Table, chair Handle, advisors []*seatRun, sender *noticeSender, ender *stepEnder) (Result, error) {
 	type chairEnd struct {
@@ -358,9 +378,15 @@ func (e *Engine) join(table Table, chair Handle, advisors []*seatRun, sender *no
 	stepEnded := false
 	select {
 	case end = <-chairDone:
+		if table.hasWriters() && ender.fired() {
+			ender.advisor.markEnded()
+		}
 	case <-ender.signal:
 		select {
 		case end = <-chairDone:
+			if table.hasWriters() {
+				ender.advisor.markEnded()
+			}
 		default:
 			stepEnded = true
 			sender.stop()

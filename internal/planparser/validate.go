@@ -16,6 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -100,6 +101,9 @@ func validate(plan *Plan, worktreeRoot string, requireApproved bool) []Validatio
 	findings = append(findings, checkProsaSymbolTarget(plan)...)
 	findings = append(findings, checkCardNumbering(plan)...)
 	findings = append(findings, checkPathMissing(plan, worktreeRoot)...)
+	if plan.Part != nil {
+		findings = append(findings, checkPartSpotTarget(plan)...)
+	}
 	findings = append(findings, checkRenameNamespacePair(plan, worktreeRoot)...)
 	findings = append(findings, checkCommitSubjectMismatch(plan)...)
 	findings = append(findings, checkVerifyNestedModule(plan, worktreeRoot)...)
@@ -612,7 +616,7 @@ func checkHandleConsistency(plan *Plan) []ValidationError {
 	}
 	sort.Strings(handles)
 	for _, handle := range handles {
-		if len(claims[handle]) > 0 {
+		if len(claims[handle]) > 0 || partHoldsHandle(plan, handle) {
 			continue
 		}
 		for _, cid := range referenced[handle] {
@@ -1305,7 +1309,7 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	renames := renameTargetsUnion(plan)
 
 	satisfied := func(p string) bool {
-		return pathExistsOnDisk(worktreeRoot, p) || creates[p] || renames[p]
+		return pathExistsOnDisk(worktreeRoot, p) || creates[p] || renames[p] || (plan.Part != nil && slices.Contains(plan.Part.Paths, p))
 	}
 
 	report := func(c Card, raw string) {
@@ -1350,6 +1354,47 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 		}
 	}
 
+	return findings
+}
+
+// partHoldsHandle reports whether the plan's part scope lists handle among the handles other parts and shared spots export to it.
+func partHoldsHandle(plan *Plan, handle string) bool {
+	return plan.Part != nil && slices.Contains(plan.Part.Handles, handle)
+}
+
+// checkPartSpotTarget implements part-spot-target: under a part scope, a ref of any target group of a card, never a Uses entry, whose disk path is a shared spot's path.
+// Both sides of a Rename pair are read.
+// A shared spot's cards are the chair's, so the finding is one blocking finding per card and ref, with the way forward of dropping the target and saying in the card's Intent what the card needs from the spot.
+func checkPartSpotTarget(plan *Plan) []ValidationError {
+	var findings []ValidationError
+	for _, c := range plan.Cards {
+		reported := map[string]bool{}
+		check := func(raw string) {
+			mapped, ok := diskPathForRef(plan, raw)
+			if !ok || reported[raw] || !slices.Contains(plan.Part.SpotPaths, mapped) {
+				return
+			}
+			reported[raw] = true
+			findings = append(findings, ValidationError{
+				Check: "part-spot-target",
+				Card:  cardID(c),
+				Detail: fmt.Sprintf(
+					"card %d targets %q, which is the shared spot %q; the chair writes a shared spot's cards, so drop the target and say in the card's **Intent:** what the card needs from the spot",
+					c.Number, raw, mapped,
+				),
+				Ref: raw,
+			})
+		}
+		for _, g := range c.TargetGroups {
+			for _, t := range g.Refs {
+				check(t)
+			}
+			for _, p := range g.Pairs {
+				check(p.Old)
+				check(p.New)
+			}
+		}
+	}
 	return findings
 }
 

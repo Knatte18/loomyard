@@ -7,7 +7,7 @@ Each on-disk format has one parser; consumers read only its model.
 `internal/planparser` is the sole production parser and writer of the on-disk plan format (`_lym/plan/`).
 
 - Consumers read only from the `planparser.Plan` model.
-- `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), `AppendAmendment` (the append-only amendment log), `InsertCard` and `RemoveCard` (one card added or dropped, the cards after it renumbered under a journal) and `RestoreRenumber` (the journal's only reader, which undoes an interrupted renumber) are the write paths, and no others.
+- `SetApproved` (approval), `RewriteRefs` (ref substitution across the plan), `AppendAmendment` (the append-only amendment log), `InsertCard` and `RemoveCard` (one card added or dropped, the cards after it renumbered under a journal), `RestoreRenumber` (the journal's only reader, which undoes an interrupted renumber) and `JoinParts` (a plan joined from the plans of a split task's parts) are the write paths, and no others.
 - In tests, `internal/testkit/plankit` is the one writer of valid plans, and a test may write raw plan bytes only to test rejection of a malformed plan.
   That admits a second, test-only writer of the plan format, reachable only from `_test.go` files by the testkit importer rule.
 - It renders through `planparser.RecognizedFormat`, so a format bump fails at one site, and `TestValidate_GoldenFixture_ZeroFindings` stays the parser-side anchor.
@@ -21,6 +21,12 @@ Each on-disk format has one parser; consumers read only its model.
   No planglyph file is exempt.
 - The two sync meta-tests are separate obligations, and both parse a const block from the AST because Go cannot reflect over constants.
   Ledger completeness ranges `ledger`'s own keys and therefore cannot see a gate missing from it entirely.
+
+## Parts format (`internal/partsparser`)
+
+`internal/partsparser` is the sole parser of `_lym/parts/parts.md` and the sole declarer of the parts directory's paths.
+It reads decision ids only through `discussionparser.DecisionIDs`.
+A part directory holds a plan in the plan format, which only `internal/planparser` reads and writes.
 
 ## Discussion format (`internal/discussionparser`)
 

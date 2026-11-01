@@ -2,6 +2,13 @@ plan: opus[medium]  # model-spec for the plan-phase producer agent (see contract
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)
 implementer: webster  # engine of the Webster row, the implementer that builds the approved plan on the task branch and batches it its own way; webster, the only value, runs the Merriam session with one fork per batch
 plan_lenses: twill-plan  # fan name from lenses.yaml that has the Plan-Write lead explore, have one fork write the plan, then fork itself once per lens of the fan to review it before it finishes; twill-plan is the default, and empty turns the forks off; this names the writer's lens fan, not the plan_reviewer_fan of the Plan-Review perch
+plan_split: false  # true turns the Parts-Write and Parts-Plan-Write rows on and Plan-Write off, so the plan is written in parts by one writer each and joined by a chair; false, the default, runs Plan-Write alone
+parts_depth: light  # reading depth of the Parts-Write agent: light reads the decision record, relevant.md and lym quarry glyphs over the packages the record names; medium adds lym quarry toc of each package the task touches and lym quarry expand of the types the record names
+parts_max: 6  # the most parts a parts file may hold; the parts check refuses more
+parts: opus[medium]  # model-spec for the Parts-Write agent (see contracts/specs/llm-model-spec.md)
+part_writer: opus[medium]  # model-spec for every part writer of the Parts-Plan-Write row
+parts_chair: opus[medium]  # model-spec for the chair of the Parts-Plan-Write row, which joins the parts
+parts_chair_timeout_min: ~  # minutes the Parts-Plan-Write chair's run may take; null takes twice plan_timeout_min, and a set value must be above plan_timeout_min, since the chair spans every writer
 plan_reviewer_model: ["opus[medium]", "sonnet[high]"]  # model-spec for the Plan-Review reviewer, one model per round with the last entry serving every later round; the default runs the first round on opus[medium] and later rounds on sonnet[high]; empty takes loom.yaml's reviewer_model
 plan_fixer_model: ""  # model-spec for the Plan-Review fixer; empty, the default, takes loom.yaml's fixer_model, a set value (one model-spec, or a per-round list whose last entry serves every later round) replaces it for this segment
 plan_reviewer_fan: ["review-plan", ""]  # fan name from lenses.yaml that turns the lens fan on for Plan-Review; one fan name, or a YAML list with one fan name per round, the last entry serving every later round; the default fans round one out over review-plan and runs later rounds solo; an empty entry runs that round solo

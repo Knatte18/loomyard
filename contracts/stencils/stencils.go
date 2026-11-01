@@ -83,6 +83,51 @@ var LoomDirectiveProjectRecord []byte
 //go:embed loom/loom-template-plan.md
 var LoomTemplatePlan []byte
 
+// LoomBlockPlanGlyphs is the plan-format block holding the glyph lookup rule, pulled into the stencils of every plan writer as an include.
+//
+//go:embed loom/loom-block-plan-glyphs.md
+var LoomBlockPlanGlyphs []byte
+
+// LoomBlockPlanFormat is the plan-format block holding what a card is and the on-disk layout, pulled into the stencils of every plan writer as an include.
+//
+//go:embed loom/loom-block-plan-format.md
+var LoomBlockPlanFormat []byte
+
+// LoomBlockPlanOverview is the plan-format block holding the overview file format and the glyph and handle target rules, pulled into the stencils of every plan writer as an include.
+//
+//go:embed loom/loom-block-plan-overview.md
+var LoomBlockPlanOverview []byte
+
+// LoomBlockPlanCards is the plan-format block holding the card file format, the rename mechanic and the skeleton, pulled into the stencils of every plan writer as an include.
+//
+//go:embed loom/loom-block-plan-cards.md
+var LoomBlockPlanCards []byte
+
+// LoomTemplateParts is the loom Parts-Write producer's shipped-default autonomous prompt.
+//
+//go:embed loom/loom-template-parts.md
+var LoomTemplateParts []byte
+
+// LoomFragmentPartsLight is the light reading depth of the Parts-Write agent, filled into the Parts-Write prompt when parts_depth is light.
+//
+//go:embed loom/loom-fragment-parts-light.md
+var LoomFragmentPartsLight []byte
+
+// LoomFragmentPartsMedium is the medium reading depth of the Parts-Write agent, filled into the Parts-Write prompt when parts_depth is medium.
+//
+//go:embed loom/loom-fragment-parts-medium.md
+var LoomFragmentPartsMedium []byte
+
+// LoomTemplatePartWriter is a part writer's shipped-default opening prompt: the seat that turns one part of the parts file into plan cards.
+//
+//go:embed loom/loom-template-part-writer.md
+var LoomTemplatePartWriter []byte
+
+// LoomTemplatePartsChair is the Parts-Plan-Write chair's shipped-default opening prompt: the lead that checks the parts, joins them into one plan and writes the shared spots.
+//
+//go:embed loom/loom-template-parts-chair.md
+var LoomTemplatePartsChair []byte
+
 // LoomTemplateArbiter is the loom arbiter's shipped-default opening prompt: the cold session that settles one stop its run's driver could not.
 //
 //go:embed loom/loom-template-arbiter.md
@@ -451,6 +496,16 @@ var SeatDirectiveChair []byte
 //go:embed seat/seat-directive-advisor.md
 var SeatDirectiveAdvisor []byte
 
+// SeatDirectiveWriter is the writer seat block's shipped default: the channel rules a writer works under, pulled into a writer seat's stencil as an include.
+//
+//go:embed seat/seat-directive-writer.md
+var SeatDirectiveWriter []byte
+
+// SeatDirectiveWriterChair is the writer chair seat block's shipped default: the channel rules the lead of a table of writer seats works under, pulled into its stencil as an include in place of the advisor chair's block.
+//
+//go:embed seat/seat-directive-writer-chair.md
+var SeatDirectiveWriterChair []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -473,6 +528,15 @@ var entries = []registryEntry{
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
 	{"loom-directive-project-record", &LoomDirectiveProjectRecord},
 	{"loom-template-plan", &LoomTemplatePlan},
+	{"loom-block-plan-glyphs", &LoomBlockPlanGlyphs},
+	{"loom-block-plan-format", &LoomBlockPlanFormat},
+	{"loom-block-plan-overview", &LoomBlockPlanOverview},
+	{"loom-block-plan-cards", &LoomBlockPlanCards},
+	{"loom-template-parts", &LoomTemplateParts},
+	{"loom-fragment-parts-light", &LoomFragmentPartsLight},
+	{"loom-fragment-parts-medium", &LoomFragmentPartsMedium},
+	{"loom-template-part-writer", &LoomTemplatePartWriter},
+	{"loom-template-parts-chair", &LoomTemplatePartsChair},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
 	{"loom-rubric-discussion-review", &LoomRubricDiscussionReview},
 	{"loom-rubric-plan-review", &LoomRubricPlanReview},
@@ -544,6 +608,8 @@ var entries = []registryEntry{
 	{"twill-judge-plain", &TwillJudgePlain},
 	{"seat-directive-chair", &SeatDirectiveChair},
 	{"seat-directive-advisor", &SeatDirectiveAdvisor},
+	{"seat-directive-writer", &SeatDirectiveWriter},
+	{"seat-directive-writer-chair", &SeatDirectiveWriterChair},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
 }
 

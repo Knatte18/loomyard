@@ -53,7 +53,7 @@ type wantSequenceEntry struct {
 // method, still finds a complete, zero-findings plan after the decorator's rotation archived the
 // seeded one away.
 //
-// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, a Drift row is skipped since the kit's template answers drift.enabled false, Merge-In is Stuck and ends the sequence, and every other row is Done.
+// It is derived from wantProducerTable's order and types: a Bouncer row expands to its four entries (its review and fix rows follow it in the table), a review or fix row contributes only through its Bouncer, a Drift row is skipped since the kit's template answers drift.enabled false, a parts row is skipped since it answers tapestry.plan_split false, Merge-In is Stuck and ends the sequence, and every other row is Done.
 var wantSequenceOrder = deriveSequenceOrder()
 
 func deriveSequenceOrder() []wantSequenceEntry {
@@ -69,7 +69,8 @@ func deriveSequenceOrder() []wantSequenceEntry {
 				wantSequenceEntry{row.name, shedengine.Done},
 			)
 		case row.producerType == burlerReviewType, row.producerType == burlerFixType:
-		case row.name == loomshed.NameDriftBaseline, row.name == loomshed.NameDriftAwait, row.name == loomshed.NameDriftVerify:
+		case row.name == loomshed.NameDriftBaseline, row.name == loomshed.NameDriftAwait, row.name == loomshed.NameDriftVerify,
+			row.name == loomshed.NamePartsWrite, row.name == loomshed.NamePartsPlanWrite:
 			order = append(order, wantSequenceEntry{row.name, shedengine.OutcomeSkipped})
 		case row.name == loomshed.NameParentAlign:
 			return append(order, wantSequenceEntry{row.name, shedengine.Stuck})

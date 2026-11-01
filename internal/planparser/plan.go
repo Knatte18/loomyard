@@ -103,8 +103,27 @@ type Plan struct {
 	// the section's non-blank lines, in order, chained with " && ".
 	Verify string
 
+	// Part is the part scope of a plan that is one part of a split plan, nil for an ordinary plan.
+	// A caller sets it after parsing a part directory; the checks that read it do so only when it is non-nil.
+	Part *PartScope
+
 	// overlay is the in-memory plan source the plan was parsed through, nil for a plan ParsePlan or ParsePlanFrom built.
 	overlay *Overlay
+}
+
+// PartScope is what the plan checks need to know to read one part of a split plan on its own.
+type PartScope struct {
+	// Name is the part.
+	Name string
+
+	// Handles are the `plan:` handles other parts and shared spots export to this part.
+	Handles []string
+
+	// Paths are the worktree-relative new file paths other parts and shared spots export to this part.
+	Paths []string
+
+	// SpotPaths are the worktree-relative paths of every shared spot, which no card of a part may target.
+	SpotPaths []string
 }
 
 // Card is one flat, format-5 plan-format card: the Card Index entry's fields plus everything

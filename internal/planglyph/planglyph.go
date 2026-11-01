@@ -390,6 +390,10 @@ func resolvePass(plan *planparser.Plan, worktreeRoot string, done, forthcoming m
 		if createTargets[r.Target] || renameNewTargets[r.Target] {
 			continue
 		}
+		// Under a part scope a self glyph of a file another part creates is forthcoming exactly as a Create target is.
+		if entryPath, ok := planparser.PathEntryPath(r.Target); ok && plan.Part != nil && slices.Contains(plan.Part.Paths, entryPath) {
+			continue
+		}
 		nonCreateResults = append(nonCreateResults, r)
 	}
 

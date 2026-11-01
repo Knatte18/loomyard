@@ -60,7 +60,18 @@ func minimalEntries() map[string]minimalEntry {
 		"BeamAwait": {newTestEnv, emptyConfig},
 		"BeamDown":  {newTestEnv, emptyConfig},
 		"PlanWrite": {newTestEnv, emptyConfig},
-		"Stub":      {newTestEnv, emptyConfig},
+		"PartsWrite": {
+			env: partsWriteTestEnv,
+			cfg: emptyConfig,
+		},
+		"PartsPlanWrite": {
+			env: func(t *testing.T) Env {
+				env, _ := partsPlanWriteTestEnv(t)
+				return env
+			},
+			cfg: emptyConfig,
+		},
+		"Stub": {newTestEnv, emptyConfig},
 		"Bouncer": {
 			env: newTestEnv,
 			cfg: minimalBouncerConfig,

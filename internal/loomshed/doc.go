@@ -20,6 +20,12 @@
 // A done card is also frozen: ValidatePlan appends a blocking `done-card-edited` finding for each one whose file no longer hashes to what its batch recorded at begin, naming the follow-up card as the way forward.
 // A plan with no run record or no recorded hashes reports nothing, and an unreadable card file is a returned error.
 //
+// A split plan has three checks of its own.
+// NewPartsGate maps partsparser.Validate onto the gate contract for the Parts-Write row.
+// ValidatePart is the part check `lym loom validate-plan --part`, the part plan gate (NewPartPlanGate) and a part writer's Accept (NewPartAccept) share:
+// the plan gate's format and context checks over one part's plan directory under a part scope, without the decision record, so the PATTERN checks that rest on the joined overview are left to the joined plan's gate, plus a blocking `part-export-missing` finding for each export of the part's contract no card of the part meets.
+// JoinParts re-runs ValidatePart on every part, in the parts file's order, and joins the parts' plans through planparser.JoinParts; the part to fix and the way forward are named by each refusal.
+//
 // Every plan gate, and every `validate-plan` mode, also takes a PlanContext and appends blocking checks outside planparser.
 // `rename-tool-missing` is one finding per symbol `Rename` pair of a card not recorded done when the context's rename tools are empty, with `lym config language` as the way forward.
 // `pattern-changes-mismatch` is one finding per `## PATTERN changes` bullet that the overview and the context's decision record do not both declare.

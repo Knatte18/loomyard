@@ -234,6 +234,15 @@ type Env struct {
 	// CommitPlan is the injected closure that commits the plan output directory, invoked by the
 	// PlanWrite entry's commit decorator on a Done outcome.
 	CommitPlan func() error
+	// PartsTable is the injected shedadapters.TableSource the PartsWrite entry evaluates once per Call, the Parts-Write lead's table.
+	// It arrives as a closure for the reason PlanTable does.
+	PartsTable shedadapters.TableSource
+	// PartsPlanTable is the injected table factory the PartsPlanWrite entry evaluates once per Call, the Parts-Plan-Write table, told the per-part hooks only the entry can build.
+	PartsPlanTable func(PartSeats) (seatengine.Table, error)
+	// CommitParts is the injected closure that commits the parts directory, invoked by the PartsWrite entry's commit decorator.
+	CommitParts func() error
+	// CommitPartsPlan is the injected closure that commits the plan's pathspec and the parts directory, invoked by the PartsPlanWrite entry's commit decorator.
+	CommitPartsPlan func() error
 	// ApprovePlan is the injected closure marking the reviewed plan approved, read by the Bouncer
 	// entry. It is invoked on the approved branch of that producer's settle, before the commit
 	// seam.

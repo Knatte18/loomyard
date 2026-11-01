@@ -74,6 +74,8 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameDiscussionBurlerFix, "BurlerFix", burlerFixType},
 	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
+	{loomshed.NamePartsWrite, "PartsWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
+	{loomshed.NamePartsPlanWrite, "PartsPlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
 	{loomshed.NamePlanWrite, "PlanWrite", reflect.TypeOf(loomshed.NewPlanWrite("", nil, nil))},
 	{loomshed.NamePlanBouncer, "Bouncer", bouncerType},
 	{loomshed.NamePlanBurlerReview, "BurlerReview", burlerReviewType},

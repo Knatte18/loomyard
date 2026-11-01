@@ -2,6 +2,7 @@
      top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/loom/`
      and read from there at call time by internal/seatengine, which fills it from the lead's value map that loomengine.PlanTable builds (plan.go),
      then hands it to shuttle as the plan agent's entire instruction set.
+     The stencil includes the four plan-format blocks loom-block-plan-glyphs, loom-block-plan-format, loom-block-plan-overview and loom-block-plan-cards with the bare {{template "<name>"}}; specs_dir and gate_tiers reach them through the same value map.
      gate_tiers is a required marker filled by loomengine.PlanTable from the hub's gate.yaml; a hub declaring no tier renders it as none.
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillOptional requires the three original ones non-empty and there are no {{if}}/{{range}} conditionals anywhere in this file (a required marker inside a conditional branch would render silently blank when present-but-empty — see internal/stencil/stencil.go). pattern_directive and friction_directive are the two optional markers: each is filled via stencil.FillOptional and renders as nothing when its own tier is inactive (PATTERN for pattern_directive, Tier 2 for friction_directive).
@@ -51,21 +52,7 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 Issue every search and read you can name in one message; wait for a result only to choose the next call.
 
-### Look up glyphs with `lym quarry` — never spell one from memory
-
-`lym quarry` is your only source of glyph spellings,
-and it answers against the current worktree only — it takes no repository-path flag, so a spelling it gives you is always from the tree the plan validator resolves against.
-
-- `lym quarry glyphs <dir>` is the flat index: every symbol under `<dir>`'s whole tree, depth-first, each with its own glyph spelling.
-  This is what you read a card's target spellings out of.
-  `lym quarry glyphs --text <dir>` gives the same index as one symbol per line, the form to use before any line filter such as `grep`.
-  The glyph to copy from a `--text` line is its last field, the id — never the whole line.
-- `lym quarry resolve <glyph>...` checks that a spelling names something real — pass it one or more glyphs, positionally, in one call.
-  It answers each glyph separately, and exits non-zero when any glyph is not found, ambiguous, or rejected by the grammar, but still prints every glyph's answer.
-  Read each answer's `status` (or `error`, for a grammar-rejected spelling) rather than treating the non-zero exit as a tool failure.
-- `lym quarry toc <path>` and `lym quarry expand <glyph>` are the structure and detail queries: `toc` for a directory's shape, and `expand` for a type's own head plus every member whose owner chain begins with it.
-
-**You never spell a glyph — you copy a line verbatim out of a quarry answer.**
+{{template "loom-block-plan-glyphs"}}
 This is the hard rule behind the glyph spelling rules Step 3 spells out below: a bare package-qualified symbol (`pkg.Symbol`) is a hard finding precisely because it is the one spelling that cannot have come verbatim from a quarry answer.
 The verbs above are the whole of what `lym quarry` offers you — there is no further verb to ask for.
 {{.twill_directive}}
@@ -75,208 +62,12 @@ When this prompt ends with a `Prior plan` section, read that section and act on 
 Create `{{.plan_dir}}` first if it does not already exist.
 Write one `00-overview.md` plus one `NN-<card-slug>.md` per card, following this **compact plan-format** spec.
 
-### What a card is
-
-Each card is the smallest change that:
-
-1. **Builds on its own** — the project builds with the repo's build immediately after the card's commit;
-   never reference a symbol that no earlier card creates.
-2. **Is independently committable** — a meaningful, revertible git commit on its own.
-3. **Carries the coverage for the behavior it introduces** — the card's own targets include the test that covers it.
-   `verify:` commands are no substitute for test coverage;
-   only pure refactors/renames may rely on existing tests instead.
-   A stencil's static prose is not behavior a test covers.
-4. **Greps for reworded messages** — a card that changes a user-visible message or error text greps the repository for the old text, and every test asserting it joins that card's targets.
-   A stale exact-string assertion then fails on the card that reworded it, under that card's own gate, not at the plan-level gate.
-
-The plan runs strictly in card order, and the Card Index lists the cards in that order: a card never depends on anything a later card does.
-`{{.specs_dir}}/loom/loom-plan-spec.md`'s "Plan vs. schedule" section holds the rule.
-
-A card that needs a corpus or a fixture takes it from committed test data in the tree, created by an earlier card where it does not exist yet, never from the live files of other worktrees or the fabric repo.
-`card-fabric-reference` in `{{.specs_dir}}/loom/loom-plan-spec.md` names what the plan gate refuses.
-
-The plan gate also refuses a card for `test-tier-unstated`, `seam-test-unlisted` and `doc-go-unlisted`; `{{.specs_dir}}/loom/loom-plan-spec.md`'s validation checks hold their rules.
-
-A card that prescribes an addition to a `PATTERN.md` entry line leaves the line's rule text under the cap, `pattern-entry-line-cap` in the same spec: the gate fails a fenced verbatim entry line whose rule text is over it.
-A declared `adds` or `changes` entry is prescribed verbatim as its whole overview line in a fenced block on a card that edits `PATTERN.md`.
-A card fences only the new line, never the old one or an example, since the gate reads every fenced line that opens like an entry.
-The plan gate measures the overview those lines project against the headroom line, so a line that grows `PATTERN.md` past it is refused.
-It also measures each card's own step in plan order, `pattern-card-headroom` in the same spec, so a later card that shortens the overview never covers an earlier card's growth: the shortening goes on the growing card or before it.
-A card that removes an entry names the entry's ID in backticks, so the gate credits the removal to that card.
-
-### On-disk layout
-
-`00-overview.md` + one `NN-<card-slug>.md` per card. `NN` is zero-padded and equals the card's flat heading number `N`;
-cards run `1..M` with no gaps.
+{{template "loom-block-plan-format"}}
 Insert or remove a card only with `lym loom insert-card` or `lym loom remove-card`, which renumber the later cards and whose `--help` says what they do, never by renaming, rewriting under a new name or deleting a card file by hand.
 
-### `00-overview.md`
-
-Scalar-only frontmatter:
-
-```yaml
-format: 5
-approved: false
-root: <optional worktree-relative dir>
-language: go
-```
-
-`root:` is optional shorthand for a plan whose cards repeat one directory prefix: when set, every card path resolves as `<root>/<path>` — unless the path starts with `//`, which is always worktree-root-relative (root set or not).
-Omit `root:` when there is no shared prefix.
-Card paths are always worktree-relative and clean: never absolute, never containing `..`.
-
-`language:` is `"go"` (the default — you may omit the key entirely), `"csharp"` or `"none"`.
-Set `"csharp"` when the code the cards change is C#, read from the files' extension; `{{.specs_dir}}/loom/loom-plan-spec.md` holds the C# rules.
-Otherwise leave it at `"go"` unless the task is explicitly non-Go.
-
-**A symbol target is always spelled as a glyph, never as a bare `pkg.Symbol` string.** A glyph is `<unit>#<member>` — the package or file's own repository-relative path, a `#`, then the symbol's own name (e.g. `internal/boardcli#newListCmd`, or `internal/boardcli#` to name the whole package). A bare package-qualified symbol is a hard finding (`bare-symbol-target`) because it is the one spelling that cannot have come verbatim from a quarry answer — not because the form is uglier. A file path (`list.go`, `internal/boardcli/list.go`) stays a plain path — the parser canonicalizes it into its own file self glyph automatically; you never hand-write the `#`-suffixed form for a plain file.
-
-### Declaring a symbol that does not exist yet: `plan:` handles
-
-`lym quarry` can only answer with glyphs for symbols that already exist — it never invents one. When a card creates a brand-new symbol or file, `quarry` has nothing to look up, so you invent a draft placeholder spelling instead: a `plan:` handle, `plan:<unit>#<member>`, where `<unit>` is the new symbol's own repository-relative PACKAGE DIRECTORY — never the `.go` file it will live in (`plan:internal/boardcli#RowJSON`, not `plan:internal/boardcli/rowjson.go#RowJSON`; a file-unit member spelling can never resolve, and the validator refuses it as `handle-malformed`).
-
-Write it on the `**Create:**` sub-bullet using the two-field declaration grammar, reusing the same `` `x` -> `y` `` arrow shape a `**Rename:**` pair uses:
-
-```markdown
-**Create:**
-- `plan:internal/boardcli#RowJSON` -> `type RowJSON struct`
-- `plan:internal/boardcli#newRowJSON` -> `func newRowJSON(r Row) RowJSON`
-```
-
-The left-hand token is the handle you just invented; the right-hand token is the declaration head — the symbol's own spelling and kind, the text a later resolve step needs to turn your handle into a real glyph. Every later card that targets this same not-yet-real symbol references it by the identical handle string, never by guessing what its eventual glyph will be.
-
-**The declaration head must be one real, parseable Go declaration head, declaring exactly one symbol.** It is parsed as source, not read as prose, so a placeholder body is a hard finding (`handle-name-failed`), not a shorthand:
-
-- Write `type RowJSON struct`, never `type RowJSON struct{...}` — `...` is not Go and the whole plan is blocked.
-- Write the head only. A body is unnecessary; `func Foo() error` and `type Bar interface` are both complete.
-- One symbol per bullet: `const A, B = 1, 2`, two funcs in one bullet, or an interface written out with its methods each declare more than one and are rejected.
-- The receiver belongs to a method's head: `func (c *Cache) Get(k string) (Row, bool)`.
-
-On a `**Rename:**` pair renaming an existing symbol, the grammar is asymmetric: the `Old` side is always a real glyph (looked up via `lym quarry`, exactly like any other target), and the `New` side is always a `plan:` handle you invent for the renamed name — never a glyph, since the symbol under its new name does not exist until the rename lands. A file-rename pair (old and new both plain file paths) is unaffected by this rule.
-
-A card that renames a symbol also renames the tests named after it, `Test<Name>` and `Test<Name>_<case>` (`Test<Type>_<Method>` for a method), as `**Rename:**` pairs on the same card, since the implementer renames them with the symbol and a later card naming the old test would no longer match the tree.
-The plan gate refuses a renamed symbol whose same-named test a card still lists under `**Edit:**` with no pair of its own (`rename-leaves-test`).
-
-Every new member a card creates is declared as a `plan:` handle, whether or not a later card references it.
-A handle referenced but never declared, or two `Create:` bullets declaring the same handle, are each hard findings (`handle-dangling`, `handle-collision`) — every handle you invent must be declared exactly once.
-
-Always write `approved: false` — you never self-approve;
-`Plan-Bouncer`'s approved settle writes it to `true`.
-Body: a short task-framing paragraph, then an ordered **Card Index** (`N — <card-slug> — <one-line intent>`), then the optional plan-level sections `## Shared Decisions`, `## Rename mechanic` (required when any card is type `Rename`).
+{{template "loom-block-plan-overview"}}
 When the decision record has a `## PATTERN changes` section, copy its bullets into the overview's `## PATTERN changes` section, one per entry, without the added-after-Discussion suffix; the plan gate refuses a mismatch.
-A symbol `Rename` needs the hub's `rename_tools` in `language.yaml`; the plan gate refuses one when the list is empty.
-
-### Each `NN-<card-slug>.md`
-
-In this exact order: `# Card N — <name>`;
-one or more bold type labels from `**Create:**`, `**Edit:**`, `**Extends:**`, `**Delete:**`, `**Rename:**`, `**Move:**`, `**Prosa:**`, `**Custom:**`, each label's own indented backtick-wrapped sub-bullets are the card's targets for that label;
-optionally `**Uses:**`, in the same bullet shape, for what the card reads but does not change;
-a required, multi-line `**Intent:**` (prose — what, and why);
-`**ImpactSummary:**` on `Edit`/`Extends`/`Delete` cards only, taking its value inline on the label line;
-optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
-
-An implementation card lists the implementation's member glyphs under `**Edit:**`, beside the test members it changes or the `**Create:**` handles of the tests it adds.
-A new test file is a `**Create:**` path, written only for a surface no existing test file covers.
-
-`**Edit:**` lists the member glyphs the card changes, and a file path only for a file with no symbol to name: a non-Go file, or a whole file the card creates or deletes.
-A `_test.go` path under `**Edit:**` is refused by `edit-test-file` in `{{.specs_dir}}/loom/loom-plan-spec.md`, which holds the way forward.
-A card names an existing test function, fake or helper it changes as a member glyph, for example `internal/x#TestFoo` or `internal/x#fakeClock`.
-A new test function is a `**Create:**` declaration with a `plan:` handle whose unit is the package directory, or `<dir>_test` for an external test package, never a file, so the plan does not pin the file a new test goes in.
-A card whose new tests reuse an existing test's setup, or call existing test helpers or fakes, names those members as glyphs under `**Uses:**`.
-Listing a file or a package beside a member of it on one card is refused: `redundant-package-target` and `redundant-file-target` in `{{.specs_dir}}/loom/loom-plan-spec.md` say what counts and the way forward.
-
-A card that changes a member's parameters, results, type parameters or receiver writes that `**Edit:**` bullet with the re-sign arrow, `` `<glyph>` -> `<new declaration head>` ``, the head written like a `Create` head.
-An interface method or a struct field takes no arrow, and the card's `**Intent:**` states its change.
-
-A card that deletes or re-signs a member lists every caller of it: the file, or the member glyph whose body holds the call, on the same card for a re-sign and on the same or an earlier card for a delete.
-For a caller in a `_test.go` file the card lists only the member glyph whose body holds the call.
-`caller-uncovered` in `{{.specs_dir}}/loom/loom-plan-spec.md` says what counts.
-
-`**Extends:**` lists a ref that already exists and that the card only adds to, without changing anything already there: a flag, a list line, a doc paragraph, a spec entry, a verb in a wire function.
-A ref whose existing content the card rewrites, reorders or removes goes under `**Edit:**`, and a re-sign arrow never goes under `**Extends:**`.
-Two cards that extend one ref make no dependency on each other, unless both cards fence a verbatim line for one PATTERN entry ID.
-The card that writes the code writes its docs too, naming the doc files under `**Extends:**`, so no separate closing docs card is planned.
-
-`**Custom:**` is a last resort, used only where none of the other seven genuinely fits.
-A card whose targets can be expressed as a multi-label combination of the other seven is not `Custom`.
-A `**Custom:**` group may not be combined with a group of a different type.
-
-A card that introduces a new verb, flag, escape hatch or routing edge, or removes, downgrades or makes bypassable a guard, states in its `**Intent:**` what the change can now skip or let through and what bounds it.
-Plan-Review flags one left unbounded.
-
-A card that prescribes a refusal or guard branch names in its `**Intent:**` the input that reaches it after every upstream check passes, and the test that reaches it.
-A propagated raw I/O error, which `refusal-spec.md` exempts as transient, is exempt.
-A branch that upstream validation already rules out is not prescribed: drop it, or, when it guards an invariant, write it as a fail-loud wiring guard in `refusal-spec.md`'s sense, which takes no reaching test.
-A test that calls only the refusal's error constructor does not reach it.
-
-A field with no content is omitted entirely — never write a `none` sentinel on any field.
-
-**`Uses:` names what the card reads but does not change — never a target.**
-An entry appearing in both a card's own target list and its own `Uses:` is a contradiction: is it being changed, or only read?
-That is the `card-field-overlap` finding — see `{{.specs_dir}}/loom/loom-plan-spec.md`'s own Card fields section for the full grammar and the complete validation-check set.
-
-The gates run the hub's tier lists over scopes lym computes, so the plan carries no plan-level verify section and asks for none.
-The hub's tiers and gate lists follow:
-{{.gate_tiers}}
-A card's `**Verify:**` is the optional escape hatch for what no gate expresses, written only for what the gates cannot catch on their own.
-A `**Verify:**` line that tests is one `lym gate test --wait` call with a tier list and a scope form, never a raw test command or a target list.
-See `{{.specs_dir}}/loom/loom-plan-spec.md`'s verify model section for the gates and scope forms themselves — this file does not restate them.
-
-### `## Rename mechanic` — reproduce verbatim when any card is type `Rename`
-
-A `Rename` card's bullets are `` `old` -> `new` `` pairs.
-A genuinely new file with no predecessor belongs in a separate `Create` card, never folded into a `Rename` pair.
-
-```markdown
-## Rename mechanic
-
-1. For a file pair (both sides file self glyphs or paths), run `git mv <old> <new>` FIRST, before any other change to the moved file.
-2. Then make ONLY surgical edits (package declaration, imports, identifier
-   retargeting) — no unrelated rewrites.
-3. A genuinely new file with no predecessor belongs in a separate `Create` card, never folded
-   into the `Rename` pair.
-4. Never write the relocated file from scratch and delete the original — that loses
-   git history exactly as an unstructured create+delete pair would.
-5. For a symbol pair, run the hub's structure-aware rename tool the implementer prompt names (`language.yaml` `rename_tools`), never a text or regex replace, then grep for zero remaining old-name references and confirm the symbol's doc comment opening names the new name.
-```
-
-### Minimal skeleton
-
-`00-overview.md`:
-
-```markdown
----
-format: 5
-approved: false
----
-
-# Plan: <task title>
-
-<task-framing paragraph>
-
-## Card Index
-
-1 — <card-slug> — <one-line intent>
-```
-
-`01-<card-slug>.md`:
-
-```markdown
-# Card 1 — <name>
-
-**Edit:**
-- `internal/boardcli#newListCmd`
-- `internal/boardcli#Row.Render` -> `func (r Row) Render(width int) string`
-- `internal/boardcli#TestList`
-
-**Intent:** <the change to make, concretely>
-
-**ImpactSummary:** <one line: the blast radius across this card's Edit/Delete targets>
-```
-
-`**ImpactSummary:**` is in the skeleton because the skeleton's own label is `**Edit:**`, and
-`card-missing-field` blocks an `Edit` or `Delete` card that omits it.
-A card whose only labels are `Create`/`Rename`/`Move`/`Prosa`/`Custom` omits the field entirely.
+{{template "loom-block-plan-cards"}}
 
 ## Step 4 — Write `{{.overview_path}}` LAST
 

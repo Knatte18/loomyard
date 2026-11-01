@@ -12,7 +12,7 @@
 // Routing refuses a review segment its map lacks and a negative entry, each naming the segment.
 //
 // The tapestry recipe's tail after Webster reads `Parent-Align → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`.
-// Drift-Baseline sits between the Discussion-Review ring and Plan-Write, and Drift-Await between the Plan-Review ring and Webster.
+// Drift-Baseline sits between the Discussion-Review ring and Parts-Write, the two parts rows sit between it and Plan-Write, and Drift-Await sits between the Plan-Review ring and Webster.
 // PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize declares no reroute.
 // The darn recipe reads `Preflight → Record-Write → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align.
 // Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.

@@ -82,6 +82,119 @@ func TestEngine_ProbeAndResume_AttachToALiveChair(t *testing.T) {
 	}
 }
 
+func TestEngine_Resume_Writers(t *testing.T) {
+	t.Parallel()
+	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+
+	t.Run("a found writer is kept and the chair is sent no line", func(t *testing.T) {
+		t.Parallel()
+		shuttle := newFakeShuttle(t)
+		engine, geom := engineFixture(t, shuttle)
+		table := engineTable(geom.WorktreeRoot, 1)
+		asWriters(&table)
+		chair, writer := shuttle.newHandle(role("")), shuttle.newHandle(role(advisorName(1)))
+		ended := make(chan engineEnd, 1)
+		go func() {
+			result, err := engine.Resume(table, LiveTable{Chair: chair, Advisors: map[string]Handle{advisorName(1): writer}})
+			ended <- engineEnd{result, err}
+		}()
+		chair.release(done, nil)
+		end := await(t, ended)
+		if end.err != nil || end.result.Advisors[0].EndedStep || end.result.Advisors[0].Notified {
+			t.Errorf("Resume() = %+v, %v; want the chair's end to decide and the writer unnotified", end.result.Advisors, end.err)
+		}
+		if writer.stopCount() != 1 || len(chair.sent) != 0 {
+			t.Errorf("writer stops = %d, lines typed into the chair = %d; want the writer stopped once and no line", writer.stopCount(), len(chair.sent))
+		}
+	})
+
+	t.Run("a writer not found whose outputs pass Accept is finished and the chair is told once", func(t *testing.T) {
+		t.Parallel()
+		shuttle := newFakeShuttle(t)
+		engine, geom := engineFixture(t, shuttle)
+		table := engineTable(geom.WorktreeRoot, 1)
+		asWriters(&table)
+		table.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
+		output := table.Seats[1].Outputs[0]
+		if err := os.WriteFile(output, []byte("part"), 0o644); err != nil {
+			t.Fatalf("write the writer's output: %v", err)
+		}
+		chair := shuttle.newHandle(role(""))
+		ended := make(chan engineEnd, 1)
+		go func() {
+			result, err := engine.Resume(table, LiveTable{Chair: chair})
+			ended <- engineEnd{result, err}
+		}()
+		if got, want := receive(t, chair), writerResumeNotice("ly:task:"+role(advisorName(1)), []string{output}); got != want {
+			t.Errorf("line typed into the chair = %q, want %q", got, want)
+		}
+		chair.release(done, nil)
+		end := await(t, ended)
+		if got := end.result.Advisors[0]; end.err != nil || got.EndedStep || !got.Notified {
+			t.Errorf("Resume() = %+v, %v; want the step to go on until the chair ends, with the writer notified", got, end.err)
+		}
+	})
+
+	t.Run("a writer not found whose outputs are missing ends the step without calling Accept", func(t *testing.T) {
+		t.Parallel()
+		shuttle := newFakeShuttle(t)
+		engine, geom := engineFixture(t, shuttle)
+		table := engineTable(geom.WorktreeRoot, 1)
+		asWriters(&table)
+		acceptCalls := 0
+		table.Seats[1].Accept = func(shuttleengine.Result) error { acceptCalls++; return nil }
+		chair := shuttle.newHandle(role(""))
+		ended := make(chan engineEnd, 1)
+		go func() {
+			result, err := engine.Resume(table, LiveTable{Chair: chair})
+			ended <- engineEnd{result, err}
+		}()
+
+		end := await(t, ended)
+
+		if end.err != nil {
+			t.Fatalf("Resume() error = %v; want nil", end.err)
+		}
+		if got := end.result.Advisors[0]; !got.EndedStep || got.Notified || got.StrandGUID != "" || got.Outcome != "" || got.AcceptErr != nil {
+			t.Errorf("writer result = %+v; want EndedStep, unnotified, with no strand, no outcome and no Accept error", got)
+		}
+		if acceptCalls != 0 || chair.stopCount() != 1 || len(chair.sent) != 0 {
+			t.Errorf("Accept calls = %d, chair stops = %d, lines typed into the chair = %d; want none, one and none", acceptCalls, chair.stopCount(), len(chair.sent))
+		}
+	})
+
+	t.Run("a writer not found whose outputs fail Accept ends the step and keeps the error", func(t *testing.T) {
+		t.Parallel()
+		shuttle := newFakeShuttle(t)
+		engine, geom := engineFixture(t, shuttle)
+		table := engineTable(geom.WorktreeRoot, 1)
+		asWriters(&table)
+		rejected := errors.New("part is malformed")
+		table.Seats[1].Accept = func(shuttleengine.Result) error { return rejected }
+		if err := os.WriteFile(table.Seats[1].Outputs[0], []byte("part"), 0o644); err != nil {
+			t.Fatalf("write the writer's output: %v", err)
+		}
+		chair := shuttle.newHandle(role(""))
+		ended := make(chan engineEnd, 1)
+		go func() {
+			result, err := engine.Resume(table, LiveTable{Chair: chair})
+			ended <- engineEnd{result, err}
+		}()
+
+		end := await(t, ended)
+
+		if end.err != nil {
+			t.Fatalf("Resume() error = %v; want nil", end.err)
+		}
+		if got := end.result.Advisors[0]; !got.EndedStep || got.Notified || !errors.Is(got.AcceptErr, rejected) || got.StrandGUID != "" || got.Outcome != "" {
+			t.Errorf("writer result = %+v; want EndedStep, unnotified, with the Accept error, no strand and no outcome", got)
+		}
+		if chair.stopCount() != 1 || len(chair.sent) != 0 {
+			t.Errorf("chair stops = %d, lines typed into the chair = %d; want one and none", chair.stopCount(), len(chair.sent))
+		}
+	})
+}
+
 func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *testing.T) {
 	t.Parallel()
 	shuttle := newFakeShuttle(t)

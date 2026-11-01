@@ -227,8 +227,12 @@ func TestArmAt_RefusesOffLoomRecipes(t *testing.T) {
 		{"DarnInsertCard", shedrun.RecipeDarn, "insert-card", noPlan, "lym loom validate-discussion"},
 		{"DarnRemoveCard", shedrun.RecipeDarn, "remove-card", noPlan, "lym loom validate-discussion"},
 		{"DarnRestoreRenumber", shedrun.RecipeDarn, "restore-renumber", noPlan, "lym loom validate-discussion"},
+		{"DarnValidateParts", shedrun.RecipeDarn, "validate-parts", noPlan, "lym loom validate-plan"},
+		{"DarnJoinParts", shedrun.RecipeDarn, "join-parts", noPlan, "lym loom insert-card"},
 		{"PawlStatusPasses", shedrun.RecipePawl, "status", "", ""},
+		{"TapestryJoinPartsPasses", shedrun.RecipeTapestry, "join-parts", "", ""},
 		{"TapestryValidatePlanPasses", shedrun.RecipeTapestry, "validate-plan", "", ""},
+		{"TapestryValidatePartsPasses", shedrun.RecipeTapestry, "validate-parts", "", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

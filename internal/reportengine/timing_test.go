@@ -303,6 +303,8 @@ var loomRowPhases = []struct{ row, phase string }{
 	{loomshed.NameCodeBurlerReview, PhaseWebster},
 	{loomshed.NameCodeBurlerFix, PhaseWebster},
 	{loomshed.NamePRReview, PhasePublishFinalize},
+	{loomshed.NamePartsWrite, PhasePlan},
+	{loomshed.NamePartsPlanWrite, PhasePlan},
 	{retiredLoomPreflightRow, PhaseSetup},
 }
 
@@ -530,7 +532,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 			check: func(t *testing.T, got TimingReport) {
 				wantPhases(t, runOf(t, got, "every"), map[string]int64{
-					PhaseSetup: 660, PhaseDiscussion: 240, PhasePlan: 255, PhaseWebster: 540,
+					PhaseSetup: 660, PhaseDiscussion: 240, PhasePlan: 375, PhaseWebster: 540,
 					PhaseMerge: 300, PhasePublishFinalize: 405, PhaseLand: 60,
 				})
 				if len(got.Findings) != 0 {

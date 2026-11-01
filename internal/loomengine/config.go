@@ -447,6 +447,15 @@ type Config struct {
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"-"`
 
+	// PlanSplit, PartsDepth, PartsMax, Parts, PartWriter, PartsChair and PartsChairTimeoutMin are the plan-split keys tapestry.yaml owns; WithTapestry fills them.
+	PlanSplit            bool   `yaml:"-"`
+	PartsDepth           string `yaml:"-"`
+	PartsMax             int    `yaml:"-"`
+	Parts                string `yaml:"-"`
+	PartWriter           string `yaml:"-"`
+	PartsChair           string `yaml:"-"`
+	PartsChairTimeoutMin *int   `yaml:"-"`
+
 	ReviewCirclingCheckpoint int `yaml:"review_circling_checkpoint"`
 	ReviewMaxBounces         int `yaml:"review_max_bounces"`
 	ReviewHardMaxBounces     int `yaml:"review_hard_max_bounces"`

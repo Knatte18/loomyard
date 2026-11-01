@@ -82,11 +82,20 @@ func (p *Plan) RewriteRefs(subs map[string]string) error {
 }
 
 // Reparse parses the plan again from its source: the Overlay when the plan was parsed through one, and Dir on disk otherwise.
+// The returned plan keeps the receiver's Part scope.
 func (p *Plan) Reparse() (*Plan, error) {
+	var reparsed *Plan
+	var err error
 	if p.overlay != nil {
-		return p.overlay.Parse()
+		reparsed, err = p.overlay.Parse()
+	} else {
+		reparsed, err = ParsePlan(p.Dir)
 	}
-	return ParsePlan(p.Dir)
+	if err != nil {
+		return nil, err
+	}
+	reparsed.Part = p.Part
+	return reparsed, nil
 }
 
 // readFile returns the proposed contents of name when it is overlaid, and the file under the plan directory otherwise.

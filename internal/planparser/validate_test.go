@@ -25,6 +25,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/planparser"
+	"github.com/Knatte18/loomyard/internal/testkit/plankit"
 )
 
 // validCard returns a fully well-formed format-4 Card at position number with slug — Type Edit,
@@ -2561,4 +2562,115 @@ func TestSymbolRenamePairs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidate_PartScope covers the part scope of a split plan's part directory: the exports of other parts count as declared for handle-dangling and path-missing, the shared spots are refused as targets, and a reparse keeps the scope.
+func TestValidate_PartScope(t *testing.T) {
+	t.Parallel()
+
+	const handle = "plan:internal/foo#Ext"
+	const newPath = "internal/ext/new.go"
+	user := func() planparser.Card {
+		card := validCard(1, "user")
+		card.HasUses = true
+		card.Uses = []string{handle, newPath}
+		return card
+	}
+	scope := &planparser.PartScope{Name: "p", Handles: []string{handle}, Paths: []string{newPath}, SpotPaths: []string{"internal/reg/reg.go"}}
+
+	t.Run("an export of another part is declared with the scope and dangling without it", func(t *testing.T) {
+		t.Parallel()
+		for _, tt := range []struct {
+			name      string
+			part      *planparser.PartScope
+			wantCount int
+		}{
+			{"scope set", scope, 0},
+			{"scope nil", nil, 1},
+		} {
+			plan := &planparser.Plan{Format: 5, Approved: true, Part: tt.part, Cards: []planparser.Card{user()}}
+			findings := planparser.Validate(plan, t.TempDir())
+			for _, check := range []string{"handle-dangling", "path-missing"} {
+				got := countFor(findings, check)
+				if check == "path-missing" {
+					// The card's own Edit target pkg/card1.go is absent in both rows, so only the Uses path counts here.
+					got--
+				}
+				if got != tt.wantCount {
+					t.Errorf("%s: countFor(findings, %q) = %d; want %d", tt.name, check, got, tt.wantCount)
+				}
+			}
+		}
+	})
+
+	t.Run("a handle neither the plan nor the scope declares is dangling", func(t *testing.T) {
+		t.Parallel()
+		other := &planparser.PartScope{Name: "p", Handles: []string{"plan:internal/foo#Other"}}
+		plan := &planparser.Plan{Format: 5, Approved: true, Part: other, Cards: []planparser.Card{user()}}
+		if got := countFor(planparser.Validate(plan, t.TempDir()), "handle-dangling"); got != 1 {
+			t.Errorf("countFor(findings, handle-dangling) = %d; want 1", got)
+		}
+	})
+
+	t.Run("a handle the plan declares and the scope also holds is no collision", func(t *testing.T) {
+		t.Parallel()
+		declarer := cardOfType(1, "declarer", planparser.CardTypeCreate, []string{handle})
+		declarer.Declarations = []planparser.CardDeclaration{{Handle: handle, Decl: "func Ext()"}}
+		declarer.TargetGroups[0].Declarations = declarer.Declarations
+		plan := &planparser.Plan{Format: 5, Approved: true, Part: scope, Cards: []planparser.Card{declarer}}
+		findings := planparser.Validate(plan, t.TempDir())
+		for _, check := range []string{"handle-collision", "handle-dangling"} {
+			if got := countFor(findings, check); got != 0 {
+				t.Errorf("countFor(findings, %q) = %d; want 0", check, got)
+			}
+		}
+	})
+
+	t.Run("part-spot-target refuses a shared spot as a target and not as a use", func(t *testing.T) {
+		t.Parallel()
+		target := cardOfType(1, "target", planparser.CardTypeEdit, []string{"internal/reg/reg.go"})
+		reader := validCard(2, "reader")
+		reader.Uses = []string{"internal/reg/reg.go"}
+		for _, tt := range []struct {
+			name string
+			part *planparser.PartScope
+			card planparser.Card
+			want int
+		}{
+			{"edit target under the scope", scope, target, 1},
+			{"use under the scope", scope, reader, 0},
+			{"edit target without the scope", nil, target, 0},
+		} {
+			plan := &planparser.Plan{Format: 5, Approved: true, Part: tt.part, Cards: []planparser.Card{tt.card}}
+			findings := planparser.Validate(plan, t.TempDir())
+			if got := countFor(findings, "part-spot-target"); got != tt.want {
+				t.Errorf("%s: countFor(findings, part-spot-target) = %d; want %d", tt.name, got, tt.want)
+			}
+			for _, f := range findings {
+				if f.Check == "part-spot-target" && (f.Ref != "internal/reg/reg.go" || !strings.Contains(f.Detail, "**Intent:**")) {
+					t.Errorf("%s: finding %+v; want Ref internal/reg/reg.go and the Intent way forward", tt.name, f)
+				}
+			}
+		}
+	})
+
+	t.Run("a reparsed plan keeps the scope", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		plankit.Write(t, dir, plankit.Plan{Cards: []plankit.Card{{
+			Number: 1, Slug: "a", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"pkg/a.go"}}}, ImpactSummary: "none",
+		}}})
+		plan, err := planparser.ParsePlan(dir)
+		if err != nil {
+			t.Fatalf("ParsePlan() = _, %v; want nil error", err)
+		}
+		plan.Part = scope
+		reparsed, err := plan.Reparse()
+		if err != nil {
+			t.Fatalf("Reparse() = _, %v; want nil error", err)
+		}
+		if reparsed.Part != scope {
+			t.Errorf("Reparse().Part = %v; want the receiver's scope %v", reparsed.Part, scope)
+		}
+	})
 }

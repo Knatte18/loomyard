@@ -394,6 +394,10 @@ func TestValidatePlanCmd_ModeFlagsAreExclusive(t *testing.T) {
 		{"ReworkWithRequireApproved", []string{"--rework", "--require-approved"}, []string{"mutually exclusive"}},
 		{"LensReviewWithRework", []string{"--lens-review", "--rework"}, []string{"--lens-review and --rework are mutually exclusive", "way forward: run --lens-review alone"}},
 		{"LensReviewWithRequireApproved", []string{"--lens-review", "--require-approved"}, []string{"--lens-review and --require-approved are mutually exclusive", "way forward: run --lens-review alone"}},
+		{"PartWithRequireApproved", []string{"--part", "core", "--require-approved"}, []string{"--part and --require-approved are mutually exclusive", "way forward: run --part alone"}},
+		{"PartWithRework", []string{"--part", "core", "--rework"}, []string{"--part and --rework are mutually exclusive", "way forward: run --part alone"}},
+		{"PartWithLensReview", []string{"--part", "core", "--lens-review"}, []string{"--part and --lens-review are mutually exclusive", "way forward: run --part alone"}},
+		{"PartWithOverlay", []string{"--part", "core", "--overlay"}, []string{"--part and --overlay are mutually exclusive", "way forward: run --part alone"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer

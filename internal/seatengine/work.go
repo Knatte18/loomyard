@@ -30,10 +30,12 @@ func (w *advisorWork) bindSender(sender *noticeSender) {
 	w.sender = sender
 }
 
-// outstanding reports whether any advisor whose run has not ended either has an up line the sender has not landed or reads mid-turn.
-// An advisor whose run ended never counts, a timed-out one included.
-// Each advisor's session state is read before its up line: one reading asking, idle-stalled, idle-done or dead is held or gone, so it never counts, whether or not its up line has landed.
-// A session-state reading that errors counts as neither held nor mid-turn, so only the up line can still count that advisor.
+// outstanding reports whether any started seat is still working.
+// An advisor whose run has not ended counts when it has an up line the sender has not landed or reads mid-turn.
+// A writer, which gets no up line, counts when its session reads mid-turn, whether its run has ended done or not, so a chair waiting on a fix it asked of a done writer is deferred.
+// Any other ended run never counts, a timed-out one included.
+// Each seat's session state is read before its up line: one reading asking, idle-stalled, idle-done or dead is held or gone, so it never counts, whether or not an advisor's up line has landed.
+// A session-state reading that errors counts as neither held nor mid-turn, so only an advisor's up line can still count that seat.
 func (w *advisorWork) outstanding() bool {
 	w.mu.Lock()
 	sender := w.sender
@@ -41,7 +43,7 @@ func (w *advisorWork) outstanding() bool {
 	w.mu.Unlock()
 
 	for _, run := range runs {
-		if run.handle == nil || run.ended() {
+		if run.handle == nil || (run.ended() && !(run.seat.Writer && run.finishedDone())) {
 			continue
 		}
 		state, err := run.handle.SessionState()
@@ -51,7 +53,7 @@ func (w *advisorWork) outstanding() bool {
 				continue
 			}
 		}
-		if sender != nil && !sender.wasSent(advisorUpNotice(run.name)) {
+		if !run.seat.Writer && sender != nil && !sender.wasSent(advisorUpNotice(run.name)) {
 			return true
 		}
 		if err == nil && state.State.Name == shuttleengine.SessionBusy && state.State.Cause == shuttleengine.SessionCauseTurn {

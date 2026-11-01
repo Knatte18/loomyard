@@ -4,7 +4,8 @@
 // (the batcher, webster's master, and fork prompt rendering) goes through
 // planparser.ParsePlan and the Plan/Card model it returns.
 // The package's write paths are the only places any `_lym/plan/` byte is ever rewritten:
-// SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go), and RestoreRenumber (the undo of an interrupted renumber, restore.go).
+// SetApproved (the approval flag), RewriteRefs (ref substitution across the plan, rewrite.go), AppendAmendment (the append-only amendment log, amendment.go), InsertCard and RemoveCard (one card added or dropped with the cards after it renumbered, renumber.go), RestoreRenumber (the undo of an interrupted renumber, restore.go), and JoinParts (the plan joined from the plans of a split task's parts, numbered in part order, join.go).
+// ExportMet (join.go) is the read that tests whether a part's plan delivers one of its exports, shared by the join and the part check.
 // So the on-disk grammar has exactly one reader and named writers, and the rest of webster never re-derives it.
 // Overlay (overlay.go) is a read path beside them and writes no `_lym/plan/` byte:
 // it lays proposed contents of the overview and the cards the Card Index lists over a plan directory, and a plan parsed through it reads, rewrites (Plan.RewriteRefs) and re-parses (Plan.Reparse) in memory.
@@ -144,6 +145,13 @@
 // CheckEditTestFile is appended by the plan index at format and rework validation, and takes the done set so format validation skips a completed card.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
 // It also runs the path rule over each card id, since an id ending in the fabric suffix would turn every command naming the card, except a `lym gate` invocation, into a fabric reference to the implementer audit.
+//
+// # Part scope
+//
+// Plan.Part, a *PartScope, marks a plan that is one part of a split plan; a caller sets it after parsing a part directory, and it is nil for an ordinary plan, whose findings it never changes.
+// Under it handle-dangling counts a handle in Part.Handles as claimed, which never counts toward handle-collision, and path-missing counts a path in Part.Paths as satisfied, as a Create target of the plan is.
+// The part-spot-target check, run only under a part scope right after path-missing, refuses a ref of any target group, never a Uses entry, whose disk path is one of Part.SpotPaths, since the chair writes the shared spots' cards.
+// Plan.Reparse keeps the scope.
 //
 // # Entry-line cap
 //

@@ -19,8 +19,14 @@ import (
 // leadName is the name of the lead, the table's first seat.
 const leadName = ""
 
-// chairDirectiveBlock is the shipped block that tells the lead how to work with its advisors, which a table of more than one seat's lead stencil includes.
+// chairDirectiveBlock is the shipped block that tells the lead how to work with its advisors, which the lead's stencil of an advisor table of more than one seat includes.
 const chairDirectiveBlock = "seat-directive-chair"
+
+// writerChairDirectiveBlock is the shipped block that tells the lead how to work with its writers, which the lead's stencil of a writer table of more than one seat includes in place of chairDirectiveBlock.
+const writerChairDirectiveBlock = "seat-directive-writer-chair"
+
+// writerDirectiveBlock is the shipped block that tells a writer how to work with the chair, which every writer seat's stencil includes.
+const writerDirectiveBlock = "seat-directive-writer"
 
 // reservedMarkers are the marker names the seat engine fills itself, sorted.
 // A table or seat value may not use one of them.
@@ -86,9 +92,22 @@ type Seat struct {
 	// Required marks an advisor the step depends on: any end of its run that Accept does not accept ends the step, and its held turn end still notifies the parent.
 	// The lead is never Required.
 	Required bool
-	// Accept judges a Required advisor's terminal result once it ended done with its gate passed; an error ends the step.
-	// Only a Required advisor carries one.
+	// Writer marks a writing assistant: a seat that writes a product of its own, which the chair joins.
+	// A writer is required by kind, so every end of its run that its gate and Accept do not pass ends the step, but its held turn end does not notify the parent.
+	// The lead is never a writer, and a table holds advisors only or writers only.
+	Writer bool
+	// Timeout bounds this seat's run; zero takes the table's Timeout.
+	Timeout time.Duration
+	// GateFindingsPath is where the producer keeps the findings of a writer's failed gate; the engine only carries it onto the seat's result.
+	GateFindingsPath string
+	// Accept judges the terminal result of a seat that ends the step, a Required advisor or a writer, once it ended done with its gate passed; an error ends the step.
+	// Only such a seat carries one.
 	Accept func(shuttleengine.Result) error
+}
+
+// endsStep reports whether an end of this seat's run that its gate and Accept do not pass ends the step: a required advisor or a writer.
+func (s Seat) endsStep() bool {
+	return s.Required || s.Writer
 }
 
 // Table is the ordered set of seats one step runs, with the settings they share.
@@ -101,7 +120,7 @@ type Table struct {
 	Gate shuttleengine.GateSpec
 	// Round names every seat's run directory; empty keeps the default naming.
 	Round string
-	// Timeout bounds every seat's run.
+	// Timeout bounds every seat's run, except a seat that sets its own Timeout, which overrides it.
 	Timeout time.Duration
 	// Interactive makes the chair's session interactive; advisors never are.
 	Interactive bool
@@ -112,8 +131,16 @@ type Table struct {
 	// Amendment is text appended verbatim to the lead's composed prompt when the table starts fresh; empty leaves the prompt unchanged.
 	// A later seat's prompt never carries it, and a resumed lead keeps the prompt it started with.
 	Amendment string
-	// Seats are the table's seats in order: the lead, which carries no name, then the named advisors.
+	// Seats are the table's seats in order: the lead, which carries no name, then the named advisors or the named writers.
 	Seats []Seat
+}
+
+// hasWriters reports whether any seat after the lead is a writer.
+func (t Table) hasWriters() bool {
+	if len(t.Seats) == 0 {
+		return false
+	}
+	return slices.ContainsFunc(t.Seats[1:], func(seat Seat) bool { return seat.Writer })
 }
 
 // Chair returns the lead, the table's first seat, or the zero Seat when the table has none.
@@ -137,9 +164,11 @@ func (t Table) Outputs() []string {
 // The table has at least one seat; the first is the lead and carries no name, and every later seat has a name valid under ValidateSeatName and unique in the table.
 // Every seat has an output, no two seats share an output path, and every advisor output is one of the lead's inputs.
 // The role prefix and every seat's formed role are valid agent-name roles.
-// The lead carries no gate, since the lead's gate is the table's, and is neither Required nor given an Accept hook; Accept belongs to a Required advisor.
+// The lead carries no gate, since the lead's gate is the table's, and is neither Required, a Writer nor given an Accept hook; Accept belongs to a seat that ends the step, a Required advisor or a Writer.
+// A table holds advisors only or writers only after the lead.
 // Every seat's stencil is readable from stencilsDir, as is every block it includes, and an included block includes nothing.
-// The lead's stencil of a table of more than one seat includes seat-directive-chair.
+// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, and the lead's stencil of a writer table includes seat-directive-writer-chair in its place.
+// A writer seat's stencil includes seat-directive-writer.
 // A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
 func (t Table) Validate(stencilsDir string) error {
 	if err := agentname.ValidateRole(t.RolePrefix); err != nil {
@@ -153,7 +182,7 @@ func (t Table) Validate(stencilsDir string) error {
 	if err := validateValues("table", t.requiredValues()); err != nil {
 		return err
 	}
-	for _, check := range []func() error{t.validateNames, t.validateOutputs, t.validateRoles} {
+	for _, check := range []func() error{t.validateNames, t.validateOutputs, t.validateRoles, t.validateWriterKinds} {
 		if err := check(); err != nil {
 			return err
 		}
@@ -169,14 +198,23 @@ func (t Table) Validate(stencilsDir string) error {
 		if err != nil {
 			return err
 		}
-		if index == 0 && len(t.Seats) > 1 && !slices.Contains(blocks, chairDirectiveBlock) {
-			return fmt.Errorf("seatengine: the lead's stencil %q does not include %s, which a table of more than one seat needs; include %s in the lead's stencil", seat.Stencil, chairDirectiveBlock, chairDirectiveBlock)
+		if index == 0 && len(t.Seats) > 1 {
+			directive := chairDirectiveBlock
+			if t.hasWriters() {
+				directive = writerChairDirectiveBlock
+			}
+			if !slices.Contains(blocks, directive) {
+				return fmt.Errorf("seatengine: the lead's stencil %q does not include %s, which a table of more than one seat needs; include %s in the lead's stencil", seat.Stencil, directive, directive)
+			}
+		}
+		if seat.Writer && !slices.Contains(blocks, writerDirectiveBlock) {
+			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which a writer needs; include %s in the writer's stencil", seat.Name, seat.Stencil, writerDirectiveBlock, writerDirectiveBlock)
 		}
 	}
 	return nil
 }
 
-// validateSeatRoles checks the fields only some seats may carry: no gate, Required or Accept on the lead, and Accept only on a Required advisor.
+// validateSeatRoles checks the fields only some seats may carry: no gate, Required, Writer or Accept on the lead, and Accept only on a seat that ends the step.
 func validateSeatRoles(seat Seat) error {
 	if seat.Name == leadName {
 		switch {
@@ -184,13 +222,28 @@ func validateSeatRoles(seat Seat) error {
 			return fmt.Errorf("seatengine: the lead carries a gate, but the lead's gate is the table's")
 		case seat.Required:
 			return fmt.Errorf("seatengine: the lead is marked required, but only an advisor can be")
+		case seat.Writer:
+			return fmt.Errorf("seatengine: the lead is marked a writer, but only a seat after the lead can be")
 		case seat.Accept != nil:
-			return fmt.Errorf("seatengine: the lead carries an accept hook, but only a required advisor can")
+			return fmt.Errorf("seatengine: the lead carries an accept hook, but only a required advisor or a writer can")
 		}
 		return nil
 	}
-	if seat.Accept != nil && !seat.Required {
-		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is not required", seat.Name)
+	if seat.Accept != nil && !seat.endsStep() {
+		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is neither required nor a writer", seat.Name)
+	}
+	return nil
+}
+
+// validateWriterKinds checks a table that holds a writer holds writers only after the lead.
+func (t Table) validateWriterKinds() error {
+	if !t.hasWriters() {
+		return nil
+	}
+	for _, seat := range t.Seats[1:] {
+		if !seat.Writer {
+			return fmt.Errorf("seatengine: seat %q: the table holds writers, but this seat is not one; a table holds advisors only or writers only, so mark the seat a writer or drop it", seat.Name)
+		}
 	}
 	return nil
 }

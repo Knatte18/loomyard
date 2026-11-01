@@ -25,6 +25,16 @@ func advisorNotice(name string, outputs []string, outcome shuttleengine.Outcome)
 	return fmt.Sprintf("Advisor %s %s and no longer answers; its outputs stand where they exist: %s", name, ended, strings.Join(outputs, ", "))
 }
 
+// writerDoneNotice returns the one-line notice that tells the chair writer name finished its part and keeps answering.
+func writerDoneNotice(name string, outputs []string) string {
+	return fmt.Sprintf("Writer %s finished its part and keeps answering you; its outputs stand: %s", name, strings.Join(outputs, ", "))
+}
+
+// writerResumeNotice returns the one-line notice that tells the chair writer name was stopped when the step was interrupted, so it no longer answers while its outputs stand.
+func writerResumeNotice(name string, outputs []string) string {
+	return fmt.Sprintf("Writer %s was stopped when this step was interrupted; any fix you had asked of it is lost, and it no longer answers; its outputs stand: %s", name, strings.Join(outputs, ", "))
+}
+
 // advisorUpNotice returns the one-line notice that tells the chair advisor name is up and takes its questions.
 func advisorUpNotice(name string) string {
 	return fmt.Sprintf("Advisor %s is up and takes your questions.", name)

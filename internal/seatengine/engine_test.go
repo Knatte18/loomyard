@@ -6,6 +6,8 @@ package seatengine
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -497,6 +499,10 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 		stopErr     error
 		wantAccepts int
 		wantNoStop  bool
+		// writer makes the seat a writer in place of a required advisor.
+		writer bool
+		// outputsExist writes the seat's output before the run.
+		outputsExist bool
 		// acceptedThenChairEnds releases the advisor done and accepted, and ends the chair afterwards.
 		acceptedThenChairEnds bool
 	}{
@@ -509,6 +515,10 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 		{name: "the advisor failed to start", startErr: startErr, wantNoStop: true},
 		{name: "the resume did not find the advisor", resume: true, wantNoStop: true},
 		{name: "the advisor cannot be stopped", advisor: died, stopErr: errors.New("pane gone")},
+		{name: "a writer is done with its gate failed", advisor: failedGate, writer: true},
+		{name: "a writer failed to start", startErr: startErr, wantNoStop: true, writer: true},
+		{name: "the resume did not find a writer whose output is missing", resume: true, wantNoStop: true, writer: true},
+		{name: "the resume did not find a writer whose accept hook fails", resume: true, wantNoStop: true, writer: true, outputsExist: true, acceptErr: acceptErr, wantAccepts: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -524,7 +534,16 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 			table := engineTable(geom.WorktreeRoot, 1)
 			var mu sync.Mutex
 			var accepted []shuttleengine.Result
-			table.Seats[1].Required = true
+			if tt.writer {
+				asWriters(&table)
+			} else {
+				table.Seats[1].Required = true
+			}
+			if tt.outputsExist {
+				if err := os.WriteFile(table.Seats[1].Outputs[0], []byte("part"), 0o644); err != nil {
+					t.Fatalf("write the seat's output: %v", err)
+				}
+			}
 			acceptCalled := make(chan struct{}, 2)
 			table.Seats[1].Accept = func(result shuttleengine.Result) error {
 				mu.Lock()
@@ -590,6 +609,9 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 			if !got.EndedStep || got.Notified || (got.StartError != "") != (tt.startErr != nil) {
 				t.Errorf("advisor result = %+v, want EndedStep, no notice, and a start error only for a failed start", got)
 			}
+			if wantOutputs := []string{filepath.Join(geom.WorktreeRoot, advisorName(1)+".md")}; got.Writer != tt.writer || !slices.Equal(got.Outputs, wantOutputs) {
+				t.Errorf("advisor result Writer = %v, Outputs = %v; want %v and %v", got.Writer, got.Outputs, tt.writer, wantOutputs)
+			}
 			if got.Result.Outcome != tt.advisor.Outcome || got.Result.Gate != tt.advisor.Gate || !errors.Is(got.WaitErr, tt.waitErr) || !errors.Is(got.AcceptErr, tt.acceptErr) {
 				t.Errorf("advisor result = %+v, want the result %+v, wait error %v and accept error %v", got, tt.advisor, tt.waitErr, tt.acceptErr)
 			}
@@ -599,11 +621,68 @@ func TestEngine_Run_RequiredAdvisorEndsTheStep(t *testing.T) {
 				t.Errorf("accept calls = %d, want %d", len(accepted), tt.wantAccepts)
 			}
 			for len(chair.sent) > 0 {
-				if line := <-chair.sent; line != advisorUpNotice("ly:task:"+role(advisorName(1))) {
+				if line := <-chair.sent; tt.writer || line != advisorUpNotice("ly:task:"+role(advisorName(1))) {
 					t.Errorf("a line beyond the up line reached the chair: %q", line)
 				}
 			}
 		})
+	}
+}
+
+func TestEngine_Run_WriterSeat(t *testing.T) {
+	t.Parallel()
+	shuttle := newFakeShuttle(t)
+	engine, geom := engineFixture(t, shuttle)
+	table := engineTable(geom.WorktreeRoot, 1)
+	asWriters(&table)
+	table.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
+
+	ended := runAsync(engine, table)
+	shuttle.awaitStarts(2)
+	chair, writer := shuttle.handle(role("")), shuttle.handle(role(advisorName(1)))
+	writer.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+
+	// The writer gets no up line, so the first line the chair is typed is the done line.
+	wantOutputs := []string{filepath.Join(geom.WorktreeRoot, advisorName(1)+".md")}
+	if got, want := receive(t, chair), writerDoneNotice("ly:task:"+role(advisorName(1)), wantOutputs); got != want {
+		t.Errorf("first line typed into the chair = %q, want the writer's done line %q", got, want)
+	}
+	chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+	end := await(t, ended)
+	if end.err != nil || len(end.result.Advisors) != 1 {
+		t.Fatalf("Run() error = %v, advisors = %d; want nil and one", end.err, len(end.result.Advisors))
+	}
+	if got := end.result.Advisors[0]; !got.Writer || got.EndedStep || !slices.Equal(got.Outputs, wantOutputs) {
+		t.Errorf("writer result = %+v, want a writer that did not end the step, with its outputs", got)
+	}
+}
+
+func TestEngine_Run_WriterEndDecidesTheJoin(t *testing.T) {
+	t.Parallel()
+	shuttle := newFakeShuttle(t)
+	engine, geom := engineFixture(t, shuttle)
+	table := engineTable(geom.WorktreeRoot, 1)
+	asWriters(&table)
+	chair, writer := shuttle.newHandle(role("")), shuttle.newHandle(role(advisorName(1)))
+	sender := newNoticeSender(engine.absolute(table.Chair().Outputs), engine.noticeRetry, engine.noticeAfter)
+	ender := newStepEnder()
+	run := newSeatRun(table.Seats[1], "ly:task:"+role(advisorName(1)), writer, engine.absolute(table.Seats[1].Outputs), sender, ender)
+
+	// The writer's end fires the step ender, then the chair ends, and only then does join run: both ends are ready whichever case its select takes.
+	writer.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}}, nil)
+	select {
+	case <-ender.signal:
+	case <-time.After(fakeWait):
+		t.Fatal("the writer's end did not fire the step ender")
+	}
+	chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+
+	result, err := engine.join(table, chair, []*seatRun{run}, sender, ender)
+	if err != nil {
+		t.Fatalf("join() error = %v; want nil", err)
+	}
+	if got := result.Advisors[0]; !got.EndedStep || !got.Writer {
+		t.Errorf("writer result = %+v; want it marked as the seat that ended the step", got)
 	}
 }
 
@@ -618,6 +697,8 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 		act        func(advisor *fakeHandle)
 		wantDefers bool
 		resume     bool
+		// writer makes the seat a writer, which gets no up line.
+		writer bool
 	}{
 		{name: "an advisor mid-turn defers", act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
 		{name: "an advisor whose up line has not landed defers", upLineStuck: true, act: func(a *fakeHandle) { a.setSession(shuttleengine.RunSessionState{}, nil) }, wantDefers: true},
@@ -638,6 +719,12 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 		}},
 		{name: "a session-state error does not defer", act: func(a *fakeHandle) { a.setSession(midTurn, errors.New("unreadable")) }},
 		{name: "an attached chair defers on the advisors the probe found", resume: true, act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
+		{name: "an unended writer mid-turn defers", writer: true, act: func(a *fakeHandle) {}, wantDefers: true},
+		{name: "a done writer mid-turn still defers", writer: true, act: func(a *fakeHandle) { a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil) }, wantDefers: true},
+		{name: "a done writer reading idle does not defer", writer: true, act: func(a *fakeHandle) {
+			a.setSession(shuttleengine.RunSessionState{}, nil)
+			a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -648,6 +735,9 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			}
 			engine, geom := engineFixture(t, shuttle)
 			table := engineTable(geom.WorktreeRoot, 1)
+			if tt.writer {
+				asWriters(&table)
+			}
 
 			var chair, advisor *fakeHandle
 			var predicate func() bool
@@ -684,7 +774,7 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			// With no advisor counted the predicate is false, so it holding with the advisor mid-turn proves the advisor is counted.
 			advisor.setSession(midTurn, nil)
 			awaitCondition(t, "the advisor to be counted", predicate)
-			if !tt.upLineStuck {
+			if !tt.upLineStuck && !tt.writer {
 				receive(t, chair)
 				advisor.setSession(shuttleengine.RunSessionState{}, nil)
 				awaitCondition(t, "the up line to land", func() bool { return !predicate() })

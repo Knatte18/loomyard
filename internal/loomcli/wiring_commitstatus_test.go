@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/partsparser"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/websterengine"
@@ -385,14 +386,19 @@ func TestPlanCommitPathspec(t *testing.T) {
 				want = append(want, loomengine.LoomAmendmentRecordRel())
 			}
 			// The tracked answer is webster's directory's alone: the amendment record is untracked in every row.
-			got := planCommitPathspecWith(location, func(rel string) (bool, error) {
+			tracked := func(rel string) (bool, error) {
 				if rel == websterengine.DirRel() {
 					return tt.tracked, tt.trackedErr
 				}
 				return false, nil
-			})
-			if !reflect.DeepEqual(got, want) {
+			}
+			if got := planCommitPathspecWith(location, tracked); !reflect.DeepEqual(got, want) {
 				t.Errorf("planCommitPathspecWith() = %v; want %v", got, want)
+			}
+			// The Parts-Plan-Write commit stages the same paths, then the parts directory.
+			wantParts := append(append([]string{}, want...), partsparser.DirRel())
+			if got := partsPlanCommitPathspecWith(location, tracked); !reflect.DeepEqual(got, wantParts) {
+				t.Errorf("partsPlanCommitPathspecWith() = %v; want %v", got, wantParts)
 			}
 		})
 	}

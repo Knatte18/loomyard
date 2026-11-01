@@ -1,5 +1,5 @@
-// validate.go implements the `validate-discussion`, `validate-plan` and `validate-description` loom verbs.
-// Each is a standalone, zero-argument caller of the identical package function the Discussion, Plan or Describe row's own gate calls, per the shared-implementation-is-the-whole-point Shared Decision.
+// validate.go implements the `validate-discussion`, `validate-plan`, `validate-parts` and `validate-description` loom verbs.
+// Each is a standalone caller of the identical package function the Discussion, Plan, Parts or Describe row's own gate calls, per the shared-implementation-is-the-whole-point Shared Decision.
 // No verb re-implements or re-derives any check.
 // Each maps its package's result onto the envelope-and-exit-contract Shared Decision.
 
@@ -7,13 +7,17 @@ package loomcli
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
+	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/partsparser"
 	"github.com/Knatte18/loomyard/internal/planglyph"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
@@ -155,43 +159,42 @@ func planFindingsHaveBlocking(findings []planglyph.Finding) bool {
 // check no gate runs at all, callable by the writer agent before handoff.
 func (c *loomCLI) validatePlanCmd() *cobra.Command {
 	var requireApproved, rework, overlay, lensReview bool
+	var part string
 
 	cmd := &cobra.Command{
 		Use:         "validate-plan",
 		Short:       "run the checks Plan-Write's, a twill Plan-Write run's, or Plan-Burler-Fix's own gate runs standalone against the current plan",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `validate-plan parses the current worktree's plan and checks it in one of
-five modes, reporting one JSON envelope that carries informational findings
+six modes, reporting one JSON envelope that carries informational findings
 under their own key even on success. It takes no arguments.
 
-No flag: the index's ValidateFormat, the format-only check set Plan-Write's and
-Plan-Burler-Fix's own gate runs, which the plan writer calls before handoff.
-The cards of batches webster's run record holds done are history, and their
-tree-dependent checks are skipped. --require-approved: the index's Validate,
-the same set plus the plan-unapproved check no gate runs. --rework: the
-format-only checks over the whole new plan plus a check that its first_card
-equals the number one past the highest card of the plan committed at HEAD. The default and --rework
-modes include the card-fabric-reference, fabric-vocabulary-name and
-edit-test-file checks; --require-approved leaves all three out.
-Every mode but --require-approved also runs rename-tool-missing,
-pattern-changes-mismatch, test-tier-unstated, seam-test-unlisted and
-doc-go-unlisted; the first two read language.yaml and the record.
-
---lens-review: the no-flag checks plus the check that the plan directory's
-lens-review.md holds a recorded lens review, the check set of a twill
-Plan-Write run's own gate.
+No flag: the format-only check set Plan-Write's and Plan-Burler-Fix's own gate
+runs, which the plan writer calls before handoff. Cards of batches webster's
+run record holds done are history, and their tree-dependent checks are skipped.
+--require-approved: the same set plus the plan-unapproved check no gate runs.
+--rework: the format-only checks over the whole new plan plus a check that
+first_card is one past the highest card of the plan committed at HEAD.
+--lens-review: the no-flag checks plus a check that lens-review.md holds a
+recorded lens review.
 
 --overlay: the no-flag checks over the plan with proposed contents laid over
-its files, in memory. Pipe one JSON object on stdin, keys
-the file names and values their full content. A name is 00-overview.md or a
-card file the Card Index lists; adding, removing or renumbering a card still
-goes through insert-card and remove-card. {} checks the plan as it is. It
-validates target-list, verify-command and card-text changes, never code.
+its files, in memory. Pipe one JSON object on stdin, keys the file names and
+values their full content. A name is 00-overview.md or a card file the Card
+Index lists; adding, removing or renumbering a card goes through insert-card
+and remove-card. {} checks the plan as it is.
 
-The four flags are mutually exclusive.
+--part <name>: the check a part writer's own gate runs over the named part's
+plan in the parts directory, with the part's external exports and the shared
+spots in scope, plus a check that every export the part's contract names is met.
+It runs without the decision record and applies only to a run whose recipe has
+a Parts-Plan-Write row.
+
+The five flags are mutually exclusive.
 
 Example:
   lym loom validate-plan
+  lym loom validate-plan --part <name>
   lym loom validate-plan --require-approved
   lym loom validate-plan --rework
   lym loom validate-plan --lens-review
@@ -230,6 +233,20 @@ Example:
 				return nil
 			}
 
+			if part != "" {
+				for _, other := range []struct {
+					set  bool
+					name string
+				}{{requireApproved, "--require-approved"}, {rework, "--rework"}, {lensReview, "--lens-review"}, {overlay, "--overlay"}} {
+					if other.set {
+						clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: --part and "+other.name+" are mutually exclusive; way forward: run --part alone, which checks one part's plan"))
+						return nil
+					}
+				}
+
+				return c.validatePart(cmd, part)
+			}
+
 			planDir := planparser.PlanDir(c.env.AnchorPath)
 			var plan *planparser.Plan
 			var err error
@@ -250,29 +267,10 @@ Example:
 
 			var pc loomshed.PlanContext
 			if !requireApproved {
-				language, loadErr := languageconfig.Load(fabricengine.ConfigDirs(c.location))
-				if loadErr != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+loadErr.Error()))
+				pc, err = c.planContext()
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
 					return nil
-				}
-				// An absent gate.yaml refuses no raw command, so the verb stays usable in a repo without one.
-				var refuseRaw, tierTags []string
-				gateCfg, gateErr := gateslot.LoadConfig(fabricengine.ConfigDirs(c.location))
-				switch {
-				case gateErr == nil:
-					refuseRaw = gateCfg.RefuseRaw
-					tierTags = gateTierTags(gateCfg)
-				case !errors.Is(gateErr, gateslot.ErrConfigAbsent):
-					clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan: "+gateErr.Error()))
-					return nil
-				}
-				pc = loomshed.PlanContext{
-					RenameTools:        language.RenameTools,
-					RefuseRaw:          refuseRaw,
-					TierTags:           tierTags,
-					SeamTests:          loomshed.SeamTestReader(c.env.WorktreeRoot),
-					DecisionRecordPath: c.env.PatternRecordPath,
-					PatternBase:        loomshed.PatternBaseReader(c.env.WorktreeRoot, c.env.VerifyMergeBase),
 				}
 			}
 
@@ -302,23 +300,7 @@ Example:
 				return nil
 			}
 
-			if planFindingsHaveBlocking(findings) {
-				clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: plan is not yet valid", map[string]any{
-					"findings": renderFindings(findings),
-				}))
-				return nil
-			}
-
-			fields := map[string]any{
-				"plan_dir": planDir,
-			}
-			if len(findings) > 0 {
-				// Informational-only: surfaced for visibility on the pass path, under its own key
-				// rather than dropped, so a plan that introduces a new package is never silently
-				// reported as if nothing had been said about it.
-				fields["findings"] = renderFindings(findings)
-			}
-			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
+			reportPlanFindings(cmd, planDir, findings)
 			return nil
 		},
 	}
@@ -327,6 +309,142 @@ Example:
 	cmd.Flags().BoolVar(&rework, "rework", false, "check the whole new plan, and that its first_card is one past the highest card committed at HEAD")
 	cmd.Flags().BoolVar(&lensReview, "lens-review", false, "run the flag-less check set plus the check that the plan directory's lens-review.md holds a recorded lens review, as a twill Plan-Write run's own gate does")
 	cmd.Flags().BoolVar(&overlay, "overlay", false, "run the no-flag check set over the plan with the proposed plan file contents on stdin (one JSON object, file name to full content) laid over it, in memory, writing nothing")
+	cmd.Flags().StringVar(&part, "part", "", "check the named part's plan in the parts directory, as a part writer's own gate does; only on a run whose recipe has a Parts-Plan-Write row")
 
 	return cmd
+}
+
+// planContext builds the context the plan checks read beyond the plan itself: the language's rename tools, the gate's raw-command prefixes and tier tags, the seam-test reader and the pattern record.
+// An absent gate.yaml refuses no raw command, so the verbs stay usable in a repo without one.
+// Every error names validate-plan and the config to fix.
+func (c *loomCLI) planContext() (loomshed.PlanContext, error) {
+	language, err := languageconfig.Load(fabricengine.ConfigDirs(c.location))
+	if err != nil {
+		return loomshed.PlanContext{}, fmt.Errorf("loom: validate-plan: %w", err)
+	}
+	var refuseRaw, tierTags []string
+	gateCfg, err := gateslot.LoadConfig(fabricengine.ConfigDirs(c.location))
+	switch {
+	case err == nil:
+		refuseRaw = gateCfg.RefuseRaw
+		tierTags = gateTierTags(gateCfg)
+	case !errors.Is(err, gateslot.ErrConfigAbsent):
+		return loomshed.PlanContext{}, fmt.Errorf("loom: validate-plan: %w", err)
+	}
+
+	return loomshed.PlanContext{
+		RenameTools:        language.RenameTools,
+		RefuseRaw:          refuseRaw,
+		TierTags:           tierTags,
+		SeamTests:          loomshed.SeamTestReader(c.env.WorktreeRoot),
+		DecisionRecordPath: c.env.PatternRecordPath,
+		PatternBase:        loomshed.PatternBaseReader(c.env.WorktreeRoot, c.env.VerifyMergeBase),
+	}, nil
+}
+
+// reportPlanFindings sets cmd's exit from a plan check's findings: a blocking finding is an error envelope carrying all of them, and otherwise an ok envelope naming planDir.
+// Informational findings ride the ok envelope under their own key, so a plan that introduces a new package is never reported as if nothing had been said about it.
+func reportPlanFindings(cmd *cobra.Command, planDir string, findings []planglyph.Finding) {
+	out := cmd.OutOrStdout()
+	if planFindingsHaveBlocking(findings) {
+		clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: plan is not yet valid", map[string]any{
+			"findings": renderFindings(findings),
+		}))
+		return
+	}
+
+	fields := map[string]any{
+		"plan_dir": planDir,
+	}
+	if len(findings) > 0 {
+		fields["findings"] = renderFindings(findings)
+	}
+	clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
+}
+
+// validatePart runs `validate-plan --part`: the part check a part writer's own gate runs, over the part named part.
+// It refuses on a recipe with no Parts-Plan-Write row, read from the recipe's rows, and reports every error ValidatePart returns in the error envelope with its text.
+func (c *loomCLI) validatePart(cmd *cobra.Command, part string) error {
+	out := cmd.OutOrStdout()
+
+	hasParts, err := loomrecipe.HasEngine(c.recipe, partsPlanWriteEngine)
+	if err != nil {
+		clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan --part: "+err.Error()))
+		return nil
+	}
+	if !hasParts {
+		clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("loom: validate-plan --part does not apply to this run, whose %q recipe has no Parts-Plan-Write row and so no parts; way forward: run \"lym loom validate-plan\" without --part", c.recipe)))
+		return nil
+	}
+
+	pc, err := c.planContext()
+	if err != nil {
+		clihelp.SetExit(cmd.Context(), output.Err(out, err.Error()))
+		return nil
+	}
+	findings, err := loomshed.ValidatePart(c.env.AnchorPath, c.env.WorktreeRoot, part, c.env.PlanIndex, pc)
+	if err != nil {
+		clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-plan --part "+part+": "+err.Error()))
+		return nil
+	}
+
+	reportPlanFindings(cmd, partsparser.PartDir(c.env.AnchorPath, part), findings)
+	return nil
+}
+
+// validatePartsCmd builds the `validate-parts` subcommand: the standalone form of the check the parts gate runs, callable by the Parts-Write agent before handoff.
+// It reads the parts file and the decision record and changes nothing.
+func (c *loomCLI) validatePartsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "validate-parts",
+		Short:       "run the check the parts gate runs standalone against the current parts file",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `validate-parts runs partsparser.Validate against the current worktree's
+parts file -- the identical check the Parts-Write row's own gate runs: the
+file's format, the part and shared-spot rules, the decision ids each part
+names against the decision record, and the most parts parts_max allows -- and
+reports the result as one JSON envelope. It takes no arguments and no flags,
+and it changes nothing. It sits beside validate-plan, whose --part checks one
+part's plan.
+
+Example:
+  lym loom validate-parts`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			out := cmd.OutOrStdout()
+
+			tapestry, err := loomengine.LoadTapestryConfig(fabricengine.ConfigDirs(c.location), "tapestry")
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
+				return nil
+			}
+			findings, err := partsparser.Validate(c.env.AnchorPath, c.env.DecisionRecordPath, tapestry.PartsMax)
+			if err != nil {
+				clihelp.SetExit(cmd.Context(), output.Err(out, "loom: validate-parts: "+err.Error()))
+				return nil
+			}
+			if len(findings) > 0 {
+				rendered := make([]string, len(findings))
+				for i, finding := range findings {
+					label := finding.Check
+					if finding.Part != "" {
+						label += "/" + finding.Part
+					}
+					rendered[i] = label + ": " + finding.Detail
+				}
+				clihelp.SetExit(cmd.Context(), output.ErrFields(out, "loom: parts file is not yet valid", map[string]any{
+					"findings": rendered,
+				}))
+				return nil
+			}
+
+			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+				"parts_path": partsparser.File(c.env.AnchorPath),
+			}))
+			return nil
+		},
+	}
 }

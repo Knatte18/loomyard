@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -96,6 +97,8 @@ func TestLoadTapestryConfig(t *testing.T) {
 			PlanReviewerFan: lenses.FanList{"full"}, PlanFixerFan: lenses.FanList{"fix-plan"},
 			PlanJudge: "opus[low]", PlanSeed: "haiku[low]",
 			PlanMaxBounces: intPtr(2), PlanHardMaxBounces: 3, PlanAutoAccept: true,
+			PlanSplit: false, PartsDepth: "light", PartsMax: 6,
+			Parts: "opus[medium]", PartWriter: "opus[medium]", PartsChair: "opus[medium]", PartsChairTimeoutMin: nil,
 		}
 		if !reflect.DeepEqual(loaded, want) {
 			t.Errorf("LoadTapestryConfig() = %+v; want %+v", loaded, want)
@@ -110,7 +113,8 @@ func TestLoadTapestryConfig(t *testing.T) {
 		}
 		applied := loom.WithTapestry(loaded)
 		if applied.Plan != want.Plan || applied.PlanTimeoutMin != 7 || applied.PlanLenses != "" || !reflect.DeepEqual(applied.PlanReviewerFan, want.PlanReviewerFan) ||
-			!reflect.DeepEqual(applied.PlanFixerFan, want.PlanFixerFan) || applied.PlanJudge != want.PlanJudge || applied.PlanSeed != want.PlanSeed || !applied.PlanAutoAccept {
+			!reflect.DeepEqual(applied.PlanFixerFan, want.PlanFixerFan) || applied.PlanJudge != want.PlanJudge || applied.PlanSeed != want.PlanSeed || !applied.PlanAutoAccept ||
+			applied.PlanSplit || applied.PartsDepth != "light" || applied.PartsMax != 6 || applied.Parts != "opus[medium]" || applied.PartWriter != "opus[medium]" || applied.PartsChair != "opus[medium]" || applied.PartsChairTimeoutMin != nil {
 			t.Errorf("WithTapestry() = %+v; want every plan field copied from %+v", applied, want)
 		}
 		if caps := applied.Caps(PerchPlan); caps.Soft != 2 || caps.SoftKey != "plan_max_bounces" || caps.Hard != 3 || caps.HardKey != "plan_hard_max_bounces" {
@@ -189,6 +193,12 @@ func TestLoadTapestryConfig(t *testing.T) {
 		{name: "negative plan_max_bounces", key: "plan_max_bounces", value: "-1", wantIn: []string{"must not be negative", "or to null to take review_max_bounces"}},
 		{name: "negative plan_hard_max_bounces", key: "plan_hard_max_bounces", value: "-1", wantIn: []string{"set it to 0 to take review_hard_max_bounces", "lym config tapestry --set plan_hard_max_bounces=<n>", `lym loom resume`}},
 		{name: "negative plan_timeout_min", key: "plan_timeout_min", value: "-1", wantIn: []string{"must not be negative"}},
+		{name: "malformed parts spec", key: "parts", value: `"opus[effort"`},
+		{name: "malformed part_writer spec", key: "part_writer", value: `"opus[effort"`},
+		{name: "malformed parts_chair spec", key: "parts_chair", value: `"opus[effort"`},
+		{name: "unknown parts_depth", key: "parts_depth", value: "deep", wantIn: []string{"light", "medium"}},
+		{name: "zero parts_max", key: "parts_max", value: "0", wantIn: []string{"set it to 1 or more"}},
+		{name: "parts_chair_timeout_min not above plan_timeout_min", key: "parts_chair_timeout_min", value: "120", wantIn: []string{"120", "set it above plan_timeout_min", "null"}},
 		{
 			name: "plan_hard_max_bounces below the budget inherited from loom.yaml",
 			loom: map[string]string{"review_max_bounces": "5", "review_hard_max_bounces": "6"},
@@ -213,6 +223,61 @@ func TestLoadTapestryConfig(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a set parts_chair_timeout_min loads with a zero plan_timeout_min and above a set one", func(t *testing.T) {
+		t.Parallel()
+		for _, values := range []map[string]string{
+			{"plan_timeout_min": "0", "parts_chair_timeout_min": "30"},
+			{"plan_timeout_min": "60", "parts_chair_timeout_min": "61"},
+		} {
+			dir := t.TempDir()
+			seedLoomAndTapestry(t, dir, nil, values)
+			loaded, err := LoadTapestryConfig(configengine.Dirs{Anchor: dir}, "tapestry")
+			if err != nil {
+				t.Fatalf("LoadTapestryConfig(%v) = _, %v; want nil error", values, err)
+			}
+			if loaded.PartsChairTimeoutMin == nil {
+				t.Errorf("LoadTapestryConfig(%v).PartsChairTimeoutMin = nil; want the set value", values)
+			}
+		}
+	})
+
+	t.Run("the timeout accessors resolve against the effective plan timeout", func(t *testing.T) {
+		t.Parallel()
+		const runTimeout = 90 * time.Minute
+		tests := []struct {
+			name         string
+			planMin      int
+			chairMin     *int
+			wantPlan     time.Duration
+			wantChair    time.Duration
+			wantChairErr bool
+		}{
+			{name: "a set plan timeout and an unset chair", planMin: 60, wantPlan: 60 * time.Minute, wantChair: 120 * time.Minute},
+			{name: "a zero plan timeout defers to the run timeout", planMin: 0, wantPlan: runTimeout, wantChair: 2 * runTimeout},
+			{name: "a set chair above the effective plan timeout", planMin: 60, chairMin: intPtr(200), wantPlan: 60 * time.Minute, wantChair: 200 * time.Minute},
+			{name: "a set chair not above the run timeout under a zero plan timeout", planMin: 0, chairMin: intPtr(90), wantPlan: runTimeout, wantChairErr: true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				cfg := Config{PlanTimeoutMin: tt.planMin, PartsChairTimeoutMin: tt.chairMin}
+				if got := cfg.PlanTimeout(runTimeout); got != tt.wantPlan {
+					t.Errorf("PlanTimeout(%s) = %s; want %s", runTimeout, got, tt.wantPlan)
+				}
+				got, err := cfg.PartsChairTimeout(runTimeout)
+				if tt.wantChairErr {
+					if err == nil || !strings.Contains(err.Error(), "parts_chair_timeout_min") {
+						t.Errorf("PartsChairTimeout(%s) = %s, %v; want an error naming parts_chair_timeout_min", runTimeout, got, err)
+					}
+					return
+				}
+				if err != nil || got != tt.wantChair {
+					t.Errorf("PartsChairTimeout(%s) = %s, %v; want %s, nil", runTimeout, got, err, tt.wantChair)
+				}
+			})
+		}
+	})
 
 	t.Run("an unreadable loom.yaml is refused", func(t *testing.T) {
 		t.Parallel()

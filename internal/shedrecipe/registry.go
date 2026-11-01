@@ -36,6 +36,8 @@ var registry = map[string]Constructor{
 	"BeamAwait":        beamAwaitEntry,
 	"BeamDown":         beamDownEntry,
 	"PlanWrite":        planWriteEntry,
+	"PartsWrite":       partsWriteEntry,
+	"PartsPlanWrite":   partsPlanWriteEntry,
 	"Stub":             stubEntry,
 	"MultiLLM":         multiLLMEntry,
 	"Bouncer":          bouncerEntry,

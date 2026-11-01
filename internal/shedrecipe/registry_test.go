@@ -106,6 +106,8 @@ func TestNames(t *testing.T) {
 			"MultiLLM",
 			"PRReview",
 			"ParentAlign",
+			"PartsPlanWrite",
+			"PartsWrite",
 			"PlanWrite",
 			"Preflight",
 			"RecordWrite",
