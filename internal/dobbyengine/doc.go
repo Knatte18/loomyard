@@ -18,6 +18,7 @@
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
 //     Its `pull_request` key is the receiving branch's pull-request mode, on, off or required, read with the receiving branch's worktree as the anchor.
 //     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
+//     Its `adopt_fix_tries` key is the adopt check's try limit, the most fix tasks a failed adopt check files for the worktree's subject between two hand adopts, which dobby itself never reads.
 //   - Run is the daemon loop, with every seam it reads in Deps.
 //   - `dobby.log` holds the dobby's own lines only, each appended by AppendLog through its own open, which creates no directory, so a removed worktree gets nothing back.
 //     Only the holder of the file's dobby lock passes `rotate`: a write that would take the file past 1 MiB first renames it to `dobby.log.1`, replacing an older one.
@@ -75,6 +76,7 @@
 //   - A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer; every other pass is full, and runs with `--no-reopen` while the run's origin-owed marker stands.
 //     A start and each recorded sleep owe every run a full pass, kept in the state record until a full pass exits 0 with no origin-owed marker standing.
 //   - While a pause covers the run, only continue passes run, and the full pass at the lift.
+//     A run a hold-caller entry covers gets no pass of any kind and no owner-pause recheck, and the lift of the hold gives it the full pass.
 //   - A refused continue pass owes a full pass; a covered pass counts as no failure; any other non-zero exit counts a failure by its error text, retried on the next probe tick.
 //     The third failure in a row with one text posts one notice to the nearest live orch, and an exit 0 clears the count and the noticed texts.
 //   - A pass that exits as owned by another machine keeps the run's full pass owed and marks it owned elsewhere in the state record.
@@ -95,6 +97,14 @@
 //     A first pass refused for a covering pause is no refused start: no notice, no marker and no backoff, and the start waits for the lift.
 //     Any other first pass that exits non-zero and leaves no status file, a refusal as owned elsewhere included, is a refused start: one notice per refusal text, and a retry from one probe interval, doubling up to an hour, or at once when the entry changes.
 //     The backoff, the last refusal text and the noticed texts are kept in the state record, and cleared when a pass claims the task or its board entry changes.
+//   - A front task, a task entry whose `front` is true filed by lym ahead of the worktree's other starts, is open while its status is empty or a run status, and belongs to this dobby when its `project` is the dobby's beam slug, empty for the prime's.
+//     While one is open, the step starts no other task of the worktree, and the view shows each released task behind it as `front_first`, not ready.
+//     It starts the front task itself, once released and ready by the start condition, even when the runs in flight, halted and held ones included, fill `max_runs`; once started it takes its slot like any run.
+//     `max_runs: 0` still starts nothing, and the task-limit hold, a covering pause and the start backoff hold the front task as they hold any task.
+//     A draft front task is closed and lifts the hold.
+//     Bound: the hold reaches only new starts in this worktree, never a nested beam's.
+//   - Each tick, after the passes and the notices and before the start step, `Deps.SettleFronts` settles the worktree's front tasks, which records an open front entry that has no record and runs the land action of one that landed.
+//     An error stops nothing: the first of an episode is logged and posted once to the nearest live orch as `[dobby notice] front task: <error>`, naming the slug, the action and its hand step; a tick that settles cleanly ends the episode.
 //   - A released task whose slug has a finished run record carries the refusal every start of that slug gets, from TaskView.StartRefusal, with its way forward.
 //     Dobby spawns no pass for it; unless the task is owned elsewhere, has open dependencies or is covered by a pause, it also records the refusal as the start record's refusal with no backoff, with the same one notice per refusal text, again when the entry changes.
 //     Bound: the record is read every tick, so the task starts on the first tick after the record is gone.

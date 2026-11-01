@@ -28,7 +28,7 @@
 // The verb makes, marks and pushes no pair itself: the run's Worktree-Create makes the pair from the parent beam, unmarked, at the anchor the run's seed records, its Record-Write writes the project record from the entry's body, and its Beam-Up marks the pair and starts the beam's dobby and orch.
 // `--anchor <dir>` is recorded in the seed's `anchor` param on the first pass only, so it rides in the run record and a resume keeps it.
 // A first pass a covering pause refused leaves no run, and the same `lym beam create <slug> [--anchor <dir>]` after the lift starts it; a flagged beam left by a first pass that died takes the same `--anchor` again, since its anchor reached no run record.
-// Dobby never starts a beam project, so only this verb, a hand pass or `lym adopt` starts or resumes its run.
+// Dobby never starts a beam project, so only this verb, a hand pass or the green end of the adopt check that `lym adopt` starts starts or resumes its run.
 //
 // Writing the beam flag first makes a member started mid-create stop at Worktree-Create and resume into the beam rather than fork from the prime for good.
 // Members already spawned under the grouping project keep the prime as their parent.
@@ -98,7 +98,7 @@
 // `status` prints, once, the dobby section a beam's window draws, for the prime and for each local beam `hubgeom.DobbyStart` lists, the prime's first.
 // Each entry carries the worktree's label, the structured `dobbyengine.View` that `battencli.DobbyViewReader` reads, and the lines `battencli.DobbyLines` renders from it with each run's cells from `battencli.DobbyRunCells`.
 // It also carries the beam's orch, `orchView`: whether the orch strand is live (`orchcli.OrchLive`), whether its watcher is live (`orchengine.WatcherLive` over `orchcli.PrimePaths`) and the session id its state records.
-// The envelope also carries `adopt_check`, the `adoptcli.CheckView` that `adoptcli.ReadCheckView` reads from the hub's adopt scratch directory: the adopt check's state, the tier in flight, the tiers done and the paths of its log and output, absent when the hub holds no record of one, and a read error joins the returned error like a dobby's.
+// The envelope also carries `adopt_checks`, one `adoptcli.CheckView` per subject directory of the hub's adopt scratch directory that holds a record, sorted by subject, as `adoptcli.ReadCheckViews` reads them: the subject, its adopt check's state, the tier in flight, the tiers done and the paths of its log and output, absent when the hub holds no record of one, and a read error joins the returned error like a dobby's.
 // A view that does not read carries its error in its entry, the others still read, and the verb fails naming each.
 // It starts and changes nothing; its one write is the empty orch directory the watcher probe creates.
 //
@@ -119,6 +119,8 @@
 //
 // A path that is neither the prime nor a local pair whose origin record carries the beam mark, read as `hubgeom.DobbyStart` reads it, is refused naming `lym beam start`, before anything is registered or locked.
 // `hubgeom.DobbyGeometry` alone places any worktree with a directory, a task pair's included, so a hand invocation can do no more than `lym beam start` does: a second invocation exits on the held lock, and one on a worktree another machine owns exits on the loop's owner read.
+//
+// The dobby's settle seam, `Deps.SettleFronts`, is `fronttask.Settle` over the worktree's front tasks, filled by `fronttask.HubSettleDeps` for the beam's slug, empty for the prime.
 //
 // A beam's dobby also gets `Deps.PrimeTidyShuttle`, a `runnerTidyShuttle` over the prime's location, with which it stops its board-tidy agent when its worktree is gone; the removed worktree's own config no longer exists, and the prime's dobby is given none.
 // `hubDobbyDeps` still runs before the dobby holds its lock, so a fresh dobby is unregistered from its spawn until it does, at most the wiring time plus `lock.ProbeGrace`, and a beam dobby spawned inside a teardown of its own beam escapes that teardown; the worktree-gone exit ends it.

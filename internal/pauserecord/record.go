@@ -22,6 +22,10 @@ const ScopeHub = "hub"
 // OwnerCaller is the Caller of every pause entry that holds a run owned by another machine.
 const OwnerCaller = "owner"
 
+// HoldCaller is the Caller of every pause entry that holds a run, or a released task, that `lym adopt` took over.
+// Only the green adopt check of the entry's subject lifts it by itself.
+const HoldCaller = "adopt-hold"
+
 // Retention is how long a resumed entry stays in the record, so a reader that was away across a pause still sees its interval.
 const Retention = 7 * 24 * time.Hour
 
@@ -83,6 +87,8 @@ type Coverage struct {
 	Intervals []Interval
 	// OwnerHeld reports whether a live entry of the slug's own scope carries OwnerCaller, whichever entry is the oldest covering one.
 	OwnerHeld bool
+	// Held reports whether a live entry of the slug's own scope carries HoldCaller, whichever entry is the oldest covering one.
+	Held bool
 }
 
 // Read returns the record at path: the empty record when the file is missing, and an error naming the path when it cannot be read or decoded.
@@ -199,13 +205,18 @@ func ClaimSession(path, slug string, session Session, now time.Time) (Entry, boo
 
 // CoverageOf returns the covering live entry for slug and the interval of every entry covering it.
 // A live entry's interval runs from its pause to now, a resumed one's to its resume.
-// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller.
+// OwnerHeld is set when a live entry of slug's own scope carries OwnerCaller, and Held when one carries HoldCaller.
 func (r Record) CoverageOf(slug string, now time.Time) Coverage {
 	var coverage Coverage
 	coverage.Entry, coverage.Covered = r.Covering(slug)
 	for _, entry := range r.Live {
-		if slug != "" && entry.Scope == slug && entry.Caller == OwnerCaller {
-			coverage.OwnerHeld = true
+		if slug != "" && entry.Scope == slug {
+			switch entry.Caller {
+			case OwnerCaller:
+				coverage.OwnerHeld = true
+			case HoldCaller:
+				coverage.Held = true
+			}
 		}
 		if entry.covers(slug) {
 			coverage.Intervals = append(coverage.Intervals, Interval{Start: entry.PausedAt, End: now})

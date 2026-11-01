@@ -121,6 +121,9 @@ func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) str
 		return "ready to start"
 	}
 	var reasons []string
+	if task.FrontFirst != "" {
+		reasons = append(reasons, "front task "+task.FrontFirst+" runs first")
+	}
 	if len(task.Dependencies) > 0 {
 		reasons = append(reasons, "dependencies "+strings.Join(task.Dependencies, ", "))
 	}

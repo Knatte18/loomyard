@@ -145,11 +145,13 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 	views := make([]dobbyengine.RunView, 0, len(runs))
 	for _, run := range runs {
 		slug := run.slug
+		coverage := record.CoverageOf(slug, now)
 		view := dobbyengine.RunView{
 			Slug:     slug,
 			State:    string(run.status.State),
 			Producer: run.status.CurrentProducer,
-			Covered:  record.CoverageOf(slug, now).Covered,
+			Covered:  coverage.Covered,
+			Held:     coverage.Held,
 			NoSlot:   runTakesNoSlot(entryOf[slug]),
 		}
 		outcome := battenrecipe.LandOutcomeOf(run.status)
@@ -265,7 +267,7 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	}
 	views := make([]dobbyengine.TaskView, 0, len(tasks))
 	for _, task := range tasks {
-		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand}
+		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand, Front: task.Front, Project: task.Project}
 		for _, dep := range task.DependsOn {
 			if status, present := statusOf[dep]; present && (status == nil || *status != "done") {
 				view.PendingDependencies = append(view.PendingDependencies, dep)
@@ -374,6 +376,7 @@ func (r *DobbyViewReader) Read(now time.Time) (dobbyengine.View, error) {
 	}
 	return dobbyengine.BuildView(dobbyengine.ViewInput{
 		Worktree: r.geom.WorktreeName,
+		Project:  r.geom.Slug,
 		Alive:    alive,
 		Config:   cfg,
 		Record:   record,

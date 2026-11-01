@@ -157,9 +157,10 @@ func discussionRecordCheck(l *lymcwd.Location, recipe string) func() ([]discussi
 // Every closure reads or writes on demand and opens nothing at build time.
 func darnDeps(l *lymcwd.Location, runID, recipe string) loomshed.DarnDeps {
 	return loomshed.DarnDeps{
-		RecordPath:     loomengine.DiscussionDecisionRecord(l),
-		SupportLogPath: loomengine.DiscussionSupportLog(l),
-		StopMarkerPath: shedrun.StopMarker(l, runID),
+		RecordPath:              loomengine.DiscussionDecisionRecord(l),
+		SupportLogPath:          loomengine.DiscussionSupportLog(l),
+		StopMarkerPath:          shedrun.StopMarker(l, runID),
+		ConditionStopMarkerPath: shedrun.ConditionStopMarker(l, runID),
 		CommittedRecord: func() (bool, error) {
 			_, found, err := fabricengine.CommittedAnchoredFile(l, loomengine.DiscussionDecisionRecordRel())
 			return found, err
@@ -245,6 +246,8 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			StopMarkerPath:     shedrun.StopMarker(location, c.runID),
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
+
+			ConditionStopMarkerPath: shedrun.ConditionStopMarker(location, c.runID),
 		}, cfg, registry)
 		if err != nil {
 			return seatengine.Table{}, err

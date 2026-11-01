@@ -592,6 +592,7 @@
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
 // `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally (task worktree, records worktree, records branch, task branch, launchers), made from the same `inspectPair` `Remove` uses.
 // `Topology.TaskBranchOnOrigin` reports whether the task branch is on the task repository's origin: a repository with no origin remote reads false, and a failed lookup is returned.
+// `TaskBranchSlugs` lists, offline and read-only, the slugs of a prefix whose task branch exists locally or as an origin remote-tracking branch, so a caller numbering new slugs past a torn-down pair's kept branch sees it.
 // `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin whether or not its work is landed: it tags each tip `archive/<slug>/<first 12 hex>` and pushes the tag first, archiving only the containing tip when one tip holds the other, and deletes only under those tags.
 // A failed archive deletes nothing and wraps `ErrArchiveFailed`, a lost origin lease or refused gate is returned as an error naming the branch, and a branch present nowhere is a zero result.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
@@ -744,6 +745,8 @@
 // The last holder to release therefore always sees a flag set after its last push, and no committed transition is left unpushed.
 // A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait; a missed re-acquire after its own push landed returns nil.
 // A holder that hangs delays every later push of that records worktree until it exits.
+//
+// The hub-wide scratch tree also holds `AdoptScratchDir(hub)`, the adopt check's files, and `FrontTaskScratchDir(hub)`, the front-task record and its action output, as sibling directories.
 //
 // A pair's teardown lock is `TeardownLockPath(hub, slug)`, `<HubScratchDir>/teardown/<slug>.lock`, outside both of the pair's worktrees.
 // Neither the lock file nor a child's working directory or log therefore sits in a tree `Remove` deletes.

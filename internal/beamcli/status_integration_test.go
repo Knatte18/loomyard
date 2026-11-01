@@ -126,25 +126,30 @@ func TestStatus_PrintsThePrimesDobbyAndEachLocalBeams(t *testing.T) {
 
 	// A hub with no check record shows no section and the call creates no adopt directory.
 	scratch := fabricengine.AdoptScratchDir(h.Path)
-	if _, held := env.Raw["result"].(map[string]any)["adopt_check"]; held {
-		t.Errorf("lym beam status = %s; want no adopt_check with no record", out.String())
+	if _, held := env.Raw["result"].(map[string]any)["adopt_checks"]; held {
+		t.Errorf("lym beam status = %s; want no adopt_checks with no record", out.String())
 	}
 	if _, err := os.Stat(scratch); !os.IsNotExist(err) {
 		t.Errorf("Stat(%s) = %v; want the adopt scratch directory still absent", scratch, err)
 	}
 
-	// A green record shows as the adopt_check section naming the log.
-	if err := os.MkdirAll(scratch, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%s) = %v; want nil", scratch, err)
+	// A green record shows as one adopt_checks item naming its subject and log.
+	subjectDir := filepath.Join(scratch, "b")
+	if err := os.MkdirAll(subjectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%s) = %v; want nil", subjectDir, err)
 	}
-	record := `{"pid": 1, "gate": "adopt", "state": "green", "start": "2026-10-27T12:00:00Z", "ended_at": "2026-10-27T12:05:00Z", "tiers": [{"tier": 0, "outcome": "green"}]}`
-	if err := os.WriteFile(filepath.Join(scratch, "check.json"), []byte(record), 0o644); err != nil {
+	record := `{"subject": "b", "pid": 1, "gate": "adopt", "state": "green", "start": "2026-10-27T12:00:00Z", "ended_at": "2026-10-27T12:05:00Z", "tiers": [{"tier": 0, "outcome": "green"}]}`
+	if err := os.WriteFile(filepath.Join(subjectDir, "check.json"), []byte(record), 0o644); err != nil {
 		t.Fatalf("WriteFile(check.json) = %v; want nil", err)
 	}
 	out.Reset()
 	beamcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"status"})
-	check, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)["adopt_check"].(map[string]any)
-	if check["state"] != "green" || check["suite_log"] != filepath.Join(scratch, "suite.log") {
-		t.Errorf("lym beam status = %s; want adopt_check green naming %s", out.String(), filepath.Join(scratch, "suite.log"))
+	checks, _ := envelope.Decode(t, out.String()).Raw["result"].(map[string]any)["adopt_checks"].([]any)
+	if len(checks) != 1 {
+		t.Fatalf("lym beam status = %s; want one adopt_checks item", out.String())
+	}
+	check, _ := checks[0].(map[string]any)
+	if check["subject"] != "b" || check["state"] != "green" || check["suite_log"] != filepath.Join(subjectDir, "suite.log") {
+		t.Errorf("lym beam status = %s; want adopt_checks item b green naming %s", out.String(), filepath.Join(subjectDir, "suite.log"))
 	}
 }

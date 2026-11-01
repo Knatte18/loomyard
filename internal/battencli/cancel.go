@@ -186,6 +186,33 @@ func cancelCommand(slug string, remove bool) string {
 	return fmt.Sprintf("lym batten cancel %s", slug)
 }
 
+// ErrNothingLeft is what a cancel's refusal that no record, claim, pair part, session, process or marker of the slug is left matches through errors.Is.
+var ErrNothingLeft = errors.New("nothing of the slug is left to cancel")
+
+// nothingLeftError is a nothing-left refusal: its text is the refusal's own, and it matches ErrNothingLeft.
+type nothingLeftError struct {
+	text string
+}
+
+func (e *nothingLeftError) Error() string { return e.text }
+
+// Is reports whether target is ErrNothingLeft.
+func (e *nothingLeftError) Is(target error) bool { return target == ErrNothingLeft }
+
+// cancelJudgingEndOnly runs cancelRun and reads an end-only cancel as an error.
+// An end-only cancel leaves the entry's run status and the run record in place, so a caller that counted it done would go on to a removal the run lock refuses.
+// The error names the cancel to run again once origin answers and never matches ErrNothingLeft.
+func cancelJudgingEndOnly(ctx context.Context, slug string, remove bool, deps cancelDeps) error {
+	report, err := cancelRun(ctx, slug, remove, deps)
+	if err != nil {
+		return err
+	}
+	if report.EndOnly {
+		return fmt.Errorf("batten cancel of %s: origin was unreachable, so the cancel ended the run's processes and stopped; way forward: run %s again once origin answers", slug, cancelCommand(slug, remove))
+	}
+	return nil
+}
+
 // cancelRun ends the batten run of slug for good, in the order every refusal and acceptance of the verb follows.
 // It refuses before it ends or removes anything unless a step's text says otherwise, and every step is a no-op once done, so a cancel run again finishes an interrupted one.
 // An unreachable origin makes the cancel end-only: the run's processes and strands are ended, and the rest waits for a cancel run once origin answers.
@@ -580,7 +607,7 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 		if parts.TaskBranch {
 			return fmt.Errorf("the task branch of %s is all that is left; way forward: run %q, which archives and deletes its task branch", slug, cancelCommand(slug, true))
 		}
-		return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lym board list\"", slug)
+		return nothingLeft(slug)
 	}
 	if parts.TaskBranch {
 		return nil
@@ -595,7 +622,12 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 	if onOrigin {
 		return nil
 	}
-	return fmt.Errorf("nothing of %s is left to cancel; way forward: check it with \"lym board list\"", slug)
+	return nothingLeft(slug)
+}
+
+// nothingLeft is the refusal that nothing of slug is left to cancel, matching ErrNothingLeft.
+func nothingLeft(slug string) error {
+	return &nothingLeftError{text: fmt.Sprintf("nothing of %s is left to cancel; way forward: check it with \"lym board list\"", slug)}
 }
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first, then archives and deletes the task branch while one is left.

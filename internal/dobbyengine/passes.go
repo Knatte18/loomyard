@@ -41,6 +41,8 @@ type RunView struct {
 	OriginOwed bool
 	// Covered reports whether a pause entry covers the hub or the slug.
 	Covered bool
+	// Held reports whether a live pause entry of the run's own scope carries pauserecord.HoldCaller.
+	Held bool
 	// NoSlot reports whether the run takes no slot under max_runs: a pawl run whose landing hold does not stand.
 	NoSlot bool
 	// PastLand reports whether the run is past its Land row, and Landed whether it landed there rather than ending without landing.
@@ -87,11 +89,15 @@ type passTrigger struct {
 // planPass decides, for one run and trigger, none, a continue pass or a full pass.
 // There is none unless batten's state is running, none while the cancel marker exists or a pass is in flight, and a held driver lock reads as in flight.
 // A write of batten's own status file triggers only when it is later than the run's last pass exit, so a pass's own writes never trigger the next.
+// A run a hold-caller entry covers gets none either, an owned-elsewhere run included, and its lift gives it the full pass.
 // While a pause covers the run, only a continue pass runs, and the full pass at the lift; an owed full pass waits for the lift.
 // A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer, and every other pass is full, with no reopen while the origin-owed marker stands.
 // A run recorded owned elsewhere gets a full pass at the lift of its covering pause, and while no pause covers it a full pass on each probe tick; no other trigger gives it one.
 func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passKind {
 	if run.State != runStateRunning || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
+		return passNone
+	}
+	if run.Held {
 		return passNone
 	}
 	full := passFull
@@ -160,7 +166,7 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 	d.busy = false
 	for _, run := range runs {
 		rs := current.Runs[run.Slug]
-		if d.probeDue && rs.OwnedElsewhere && !rs.OwnerPauseFailed {
+		if d.probeDue && rs.OwnedElsewhere && !rs.OwnerPauseFailed && !run.Held {
 			d.recheckOwnerPause(ctx, run.Slug)
 		}
 		trigger := d.triggerFor(run)

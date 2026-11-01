@@ -129,6 +129,22 @@ func TestOwnedElsewhere(t *testing.T) {
 		}
 	})
 
+	t.Run("a held run whose owner reads this machine is neither lifted, owed a lift pass nor given a pass", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t, runningRun("task"))
+		h.fake.owner = "m2"
+		h.fake.exits = []PassExit{owned}
+		h.tick(true)
+		h.tick(true)
+
+		h.fake.owner = "m1"
+		h.fake.runs[0].Held = true
+		h.tick(true)
+		if h.fake.lifts != 0 || h.d.liftPending["task"] || len(h.fake.spawnsOf("task")) != 1 {
+			t.Errorf("lifts, lift pending, passes under a hold = %d, %v, %d; want 0, false, 1", h.fake.lifts, h.d.liftPending["task"], len(h.fake.spawnsOf("task")))
+		}
+	})
+
 	t.Run("a dobby whose only run is marked owned elsewhere under a covering pause is idle, and that run uncovered counts as in flight", func(t *testing.T) {
 		t.Parallel()
 		h := newPassHarness(t, runningRun("task"))

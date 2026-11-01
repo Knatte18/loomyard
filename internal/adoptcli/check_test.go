@@ -30,8 +30,11 @@ type scriptedTier struct {
 
 // checkFixture is a runCheck over a temp directory with a fake gate, recording the notices, the status bar marks and the gate calls.
 type checkFixture struct {
-	dir        string
-	deps       checkDeps
+	dir  string
+	deps checkDeps
+	// ownedBy and ownerErr are what the fixture's owner read answers.
+	ownedBy    string
+	ownerErr   error
 	notices    []string
 	marks      []checkMark
 	gateCalls  int
@@ -54,13 +57,15 @@ func checkFixtureAfter(read int) time.Time {
 // newCheckFixture returns a fixture whose gate drives tiers through the observer and returns exit.
 func newCheckFixture(t *testing.T, tiers []scriptedTier, exit int) *checkFixture {
 	t.Helper()
-	f := &checkFixture{dir: filepath.Join(t.TempDir(), "adopt")}
+	f := &checkFixture{dir: filepath.Join(t.TempDir(), "alpha")}
 	f.deps = checkDeps{
-		Dir:        f.dir,
-		Now:        f.tick,
-		PID:        4242,
-		StartTicks: "777",
-		Reconcile:  func() error { f.reconciled++; return nil },
+		Subject:        "alpha",
+		Dir:            f.dir,
+		Now:            f.tick,
+		PID:            4242,
+		StartTicks:     "777",
+		Reconcile:      func() error { f.reconciled++; return nil },
+		OwnedElsewhere: func() (string, error) { return f.ownedBy, f.ownerErr },
 		RunGate: func(_ context.Context, _ io.Writer, observer gatecli.TierObserver) int {
 			f.gateCalls++
 			for _, step := range tiers {
@@ -101,16 +106,16 @@ func TestRunCheck(t *testing.T) {
 		if err != nil || !ran {
 			t.Fatalf("runCheck() = ran %v, error %v; want it to run", ran, err)
 		}
-		if record.State != checkGreen || record.Running != nil || record.FailedTier != nil || record.EndedAt.IsZero() || record.PID != 4242 || record.StartTicks != "777" || record.Gate != "adopt" {
+		if record.State != checkGreen || record.Running != nil || record.FailedTier != nil || record.EndedAt.IsZero() || record.PID != 4242 || record.StartTicks != "777" || record.Gate != "adopt" || record.Subject != "alpha" {
 			t.Errorf("record = %+v; want green, nothing in flight, no failed tier, an end time and this process's identity", record)
 		}
 		if want := []CheckTier{{0, checkGreen, 10, 0, 1, 1.5, nil}, {1, checkGreen, 4, 0, 0, 1.5, nil}}; !reflect.DeepEqual(record.Tiers, want) {
 			t.Errorf("tiers = %+v; want %+v", record.Tiers, want)
 		}
 		wantNotices := []string{
-			"adopt check: tier0 green, passed 10 failed 0 skipped 1, 1.5s",
-			"adopt check: tier1 green, passed 4 failed 0 skipped 0, 1.5s",
-			"adopt check: green, tiers 0, 1; log " + f.logPath(),
+			"adopt check of alpha: tier0 green, passed 10 failed 0 skipped 1, 1.5s",
+			"adopt check of alpha: tier1 green, passed 4 failed 0 skipped 0, 1.5s",
+			"adopt check of alpha: green, tiers 0, 1; log " + f.logPath(),
 		}
 		if !slices.Equal(f.notices, wantNotices) {
 			t.Errorf("notices = %q; want %q", f.notices, wantNotices)
@@ -135,7 +140,7 @@ func TestRunCheck(t *testing.T) {
 		if record.State != checkFailed || record.FailedTier == nil || *record.FailedTier != 1 || record.Error != "" {
 			t.Errorf("record = %+v; want failed at tier 1 with no error text", record)
 		}
-		wantTierNotice := "adopt check: tier1 failed, passed 3 failed 2 skipped 0, 2.0s\n" +
+		wantTierNotice := "adopt check of alpha: tier1 failed, passed 3 failed 2 skipped 0, 2.0s\n" +
 			"example.com/a TestA/sub: a_test.go:12: got 1; want 2\n" +
 			"example.com/b TestB\n" +
 			"log " + f.logPath()
@@ -146,9 +151,14 @@ func TestRunCheck(t *testing.T) {
 			t.Errorf("ReadCheck() = %+v, %v; want tier1's failures on disk", onDisk, err)
 		}
 		end := f.notices[len(f.notices)-1]
-		for _, want := range []string{"tier1", f.logPath(), "lym gate test --gate adopt"} {
+		for _, want := range []string{"tier1", f.logPath()} {
 			if !strings.Contains(end, want) {
 				t.Errorf("end notice = %q; want it to hold %q", end, want)
+			}
+		}
+		for _, unwanted := range []string{"in the prime", "lym gate test --gate adopt"} {
+			if strings.Contains(end, unwanted) {
+				t.Errorf("end notice = %q; want it to hold no %q", end, unwanted)
 			}
 		}
 		if len(f.notices) != 3 {
@@ -186,7 +196,7 @@ func TestRunCheck(t *testing.T) {
 		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
 			t.Fatalf("runCheck() error = %v", err)
 		}
-		want := "adopt check: tier0 failed, passed 3 failed 0 skipped 0, 2.0s\nlog " + f.logPath()
+		want := "adopt check of alpha: tier0 failed, passed 3 failed 0 skipped 0, 2.0s\nlog " + f.logPath()
 		if len(f.notices) == 0 || f.notices[0] != want {
 			t.Errorf("notices = %q; want the tier0 notice %q", f.notices, want)
 		}
@@ -208,16 +218,54 @@ func TestRunCheck(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, nil, 0)
 		f.deps.Reconcile = func() error { return errors.New("config invalid") }
+		endCalls := 0
+		f.deps.Green = func() []string { endCalls++; return nil }
+		f.deps.Failed = func(CheckRecord) []string { endCalls++; return nil }
 
 		record, ran, err := runCheck(context.Background(), f.deps)
 		if err != nil || !ran {
 			t.Fatalf("runCheck() = ran %v, error %v; want it to run", ran, err)
 		}
-		if record.State != checkFailed || !strings.Contains(record.Error, "config invalid") || !strings.Contains(record.Error, "lym fabric reconcile") || !strings.Contains(record.Error, "lym gate test --gate adopt") {
-			t.Errorf("record = %+v; want failed with the reconcile's error and the way forward", record)
+		if record.State != checkFailed || !strings.Contains(record.Error, "config invalid") || !strings.Contains(record.Error, "lym fabric reconcile") || !strings.Contains(record.Error, "lym adopt alpha") || strings.Contains(record.Error, "lym gate test --gate adopt") {
+			t.Errorf("record = %+v; want failed with the reconcile's error and the re-run of lym adopt alpha", record)
+		}
+		if endCalls != 0 {
+			t.Errorf("Green and Failed calls = %d; want none", endCalls)
 		}
 		if f.gateCalls != 0 || len(f.notices) != 1 || !strings.Contains(f.notices[0], "config invalid") {
 			t.Errorf("gate calls = %d, notices = %q; want no gate and the one notice naming the error", f.gateCalls, f.notices)
+		}
+	})
+
+	t.Run("a subject owned elsewhere posts the notice naming its adopt, writes no record and runs no gate", func(t *testing.T) {
+		t.Parallel()
+		f := newCheckFixture(t, nil, 0)
+		f.ownedBy = "otherbox"
+
+		_, ran, err := runCheck(context.Background(), f.deps)
+		want := "adopt check of alpha: alpha is owned by otherbox, so no check ran; way forward: run lym adopt alpha on this machine"
+		if ran || err == nil || err.Error() != want {
+			t.Errorf("runCheck() = ran %v, error %v; want it not to run, with the error %q", ran, err, want)
+		}
+		if !slices.Equal(f.notices, []string{want}) || f.gateCalls != 0 || f.reconciled != 0 {
+			t.Errorf("notices = %q, gate calls = %d, reconciles = %d; want the one notice and nothing run", f.notices, f.gateCalls, f.reconciled)
+		}
+		if _, err := os.Stat(f.dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Stat(%s) error = %v; want no directory or record written", f.dir, err)
+		}
+	})
+
+	t.Run("an owner read that fails writes nothing and runs no gate", func(t *testing.T) {
+		t.Parallel()
+		f := newCheckFixture(t, nil, 0)
+		f.ownerErr = errors.New("board unreadable")
+
+		_, ran, err := runCheck(context.Background(), f.deps)
+		if ran || err == nil || !strings.Contains(err.Error(), "board unreadable") || !strings.Contains(err.Error(), "lym adopt alpha") {
+			t.Errorf("runCheck() = ran %v, error %v; want it not to run, with an error naming the cause and lym adopt alpha", ran, err)
+		}
+		if _, statErr := os.Stat(f.dir); !errors.Is(statErr, os.ErrNotExist) || f.gateCalls != 0 || len(f.notices) != 0 {
+			t.Errorf("Stat(%s) error = %v, gate calls = %d, notices = %q; want nothing written, run or posted", f.dir, statErr, f.gateCalls, f.notices)
 		}
 	})
 
@@ -318,6 +366,8 @@ func TestRunCheck(t *testing.T) {
 	t.Run("a gate that exits 1 with no tier ended ends failed naming the exit code and the log", func(t *testing.T) {
 		t.Parallel()
 		f := newCheckFixture(t, nil, 1)
+		failedCalls := 0
+		f.deps.Failed = func(CheckRecord) []string { failedCalls++; return nil }
 
 		record, _, err := runCheck(context.Background(), f.deps)
 		if err != nil {
@@ -326,8 +376,36 @@ func TestRunCheck(t *testing.T) {
 		if record.State != checkFailed || record.FailedTier != nil || !strings.Contains(record.Error, "exited 1") {
 			t.Errorf("record = %+v; want failed with no failed tier and an error naming exit 1", record)
 		}
-		if len(f.notices) != 1 || !strings.Contains(f.notices[0], "exited 1") || !strings.Contains(f.notices[0], f.logPath()) {
-			t.Errorf("notices = %q; want one end notice naming the exit code and the log", f.notices)
+		if len(f.notices) != 1 || !strings.Contains(f.notices[0], "exited 1") || !strings.Contains(f.notices[0], f.logPath()) || !strings.Contains(f.notices[0], "lym adopt alpha") {
+			t.Errorf("notices = %q; want one end notice naming the exit code, the log and lym adopt alpha", f.notices)
+		}
+		if strings.Contains(f.notices[0], "in the prime") || strings.Contains(f.notices[0], "lym gate test --gate adopt") || failedCalls != 0 {
+			t.Errorf("notice = %q, Failed calls = %d; want no worktree named and no fix loop", f.notices[0], failedCalls)
+		}
+	})
+
+	t.Run("a failed tier calls Failed once after the failed record is written and posts its lines after the failed notice", func(t *testing.T) {
+		t.Parallel()
+		f := newCheckFixture(t, []scriptedTier{{0, failedTier(0, gateslot.TestFailure{Package: "example.com/a", Test: "TestA"})}}, 1)
+		calls := 0
+		var seen CheckRecord
+		var onDisk CheckRecord
+		f.deps.Failed = func(record CheckRecord) []string {
+			calls++
+			seen = record
+			onDisk, _, _ = ReadCheck(f.recordPath())
+			return []string{"filed the fix task adopt-fix-alpha-t1"}
+		}
+
+		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
+			t.Fatalf("runCheck() error = %v", err)
+		}
+		if calls != 1 || seen.State != checkFailed || seen.FailedTier == nil || onDisk.State != checkFailed || onDisk.EndedAt.IsZero() {
+			t.Errorf("Failed calls = %d, record = %+v, on disk = %+v; want one call with the failed record written", calls, seen, onDisk)
+		}
+		wantEnd := []string{"adopt check of alpha: failed, tier0 failed; log " + f.logPath(), "filed the fix task adopt-fix-alpha-t1"}
+		if got := f.notices[len(f.notices)-2:]; !slices.Equal(got, wantEnd) {
+			t.Errorf("last notices = %q; want %q", got, wantEnd)
 		}
 	})
 
@@ -368,6 +446,91 @@ func TestRunCheck(t *testing.T) {
 			t.Errorf("ReadCheck() after the check = %+v, %v, %v; want the fresh green record", onDisk, found, err)
 		}
 	})
+
+	t.Run("a green end calls Green once after the green record is written and posts its lines after the green notice", func(t *testing.T) {
+		t.Parallel()
+		f := newCheckFixture(t, []scriptedTier{{0, passedTier(0, 1, 0)}}, 0)
+		calls := 0
+		var onDiskAtCall CheckRecord
+		f.deps.Green = func() []string {
+			calls++
+			onDiskAtCall, _, _ = ReadCheck(f.recordPath())
+			return []string{"the hold of t1 was not lifted", "the dobby was not brought up"}
+		}
+
+		if _, _, err := runCheck(context.Background(), f.deps); err != nil {
+			t.Fatalf("runCheck() error = %v", err)
+		}
+		if calls != 1 || onDiskAtCall.State != checkGreen || onDiskAtCall.EndedAt.IsZero() {
+			t.Errorf("Green calls = %d, record at the call = %+v; want one call after the green record was written", calls, onDiskAtCall)
+		}
+		want := []string{
+			"adopt check of alpha: tier0 green, passed 1 failed 0 skipped 0, 1.5s",
+			"adopt check of alpha: green, tiers 0; log " + f.logPath(),
+			"the hold of t1 was not lifted",
+			"the dobby was not brought up",
+		}
+		if !slices.Equal(f.notices, want) {
+			t.Errorf("notices = %q; want %q", f.notices, want)
+		}
+	})
+
+	t.Run("a failed end and an end before any tier never call Green, and a check leaves the holds and tries files as they were", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name  string
+			tiers []scriptedTier
+			exit  int
+		}{
+			{"GreenEnd", []scriptedTier{{0, passedTier(0, 1, 0)}}, 0},
+			{"FailedTier", []scriptedTier{{0, failedTier(0)}}, 1},
+			{"GateExitsBeforeAnyTier", nil, 1},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newCheckFixture(t, tt.tiers, tt.exit)
+				if err := appendHolds(f.dir, []string{"t1", "t2"}); err != nil {
+					t.Fatal(err)
+				}
+				if err := writeTries(f.dir, 2); err != nil {
+					t.Fatal(err)
+				}
+				holdsBefore, _ := os.ReadFile(filepath.Join(f.dir, holdsFileName))
+				triesBefore, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
+				calls := 0
+				f.deps.Green = func() []string { calls++; return nil }
+
+				if _, ran, err := runCheck(context.Background(), f.deps); err != nil || !ran {
+					t.Fatalf("runCheck() = ran %v, error %v; want it to run", ran, err)
+				}
+				if wantCalls := map[bool]int{true: 1, false: 0}[tt.exit == 0]; calls != wantCalls {
+					t.Errorf("Green calls = %d; want %d", calls, wantCalls)
+				}
+				holdsAfter, _ := os.ReadFile(filepath.Join(f.dir, holdsFileName))
+				triesAfter, _ := os.ReadFile(filepath.Join(f.dir, triesFileName))
+				if string(holdsAfter) != string(holdsBefore) || string(triesAfter) != string(triesBefore) {
+					t.Errorf("holds %q -> %q, tries %q -> %q; want both files byte for byte as they were", holdsBefore, holdsAfter, triesBefore, triesAfter)
+				}
+			})
+		}
+	})
+
+	t.Run("a subject owned elsewhere and a failing reconcile never call Green", func(t *testing.T) {
+		t.Parallel()
+		owned := newCheckFixture(t, nil, 0)
+		owned.ownedBy = "otherbox"
+		reconcile := newCheckFixture(t, nil, 0)
+		reconcile.deps.Reconcile = func() error { return errors.New("config invalid") }
+		for _, f := range []*checkFixture{owned, reconcile} {
+			calls := 0
+			f.deps.Green = func() []string { calls++; return nil }
+			_, _, _ = runCheck(context.Background(), f.deps)
+			if calls != 0 {
+				t.Errorf("Green calls = %d; want none", calls)
+			}
+		}
+	})
 }
 
 // TestRunCheckMarks pins the status bar marks of a check run, in order: its start, each tier in flight and ended, and its end.
@@ -377,7 +540,7 @@ func TestRunCheckMarks(t *testing.T) {
 	timed := func(tier int, outcome string, wall float64) scriptedTier {
 		return scriptedTier{tier, gateslot.RunRecord{Tier: tier, Outcome: outcome, WallSec: wall}}
 	}
-	starting := checkMark{State: checkRunning, Text: "adopt check: starting", Start: checkFixtureNow}
+	starting := checkMark{State: checkRunning, Text: "adopt check of alpha: starting", Start: checkFixtureNow}
 
 	tests := []struct {
 		name      string
@@ -391,11 +554,11 @@ func TestRunCheckMarks(t *testing.T) {
 			tiers: []scriptedTier{timed(0, "passed", 40), timed(1, "passed", 104)},
 			want: []checkMark{
 				starting,
-				{State: checkRunning, Text: "adopt check: tier0", Start: checkFixtureAfter(1)},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s"},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1 green 104s"},
-				{State: checkGreen, Text: "adopt check green: tier0 40s · tier1 104s"},
+				{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureAfter(1)},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s"},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1 green 104s"},
+				{State: checkGreen, Text: "adopt check of alpha green: tier0 40s · tier1 104s"},
 			},
 		},
 		{
@@ -404,11 +567,11 @@ func TestRunCheckMarks(t *testing.T) {
 			exit:  1,
 			want: []checkMark{
 				starting,
-				{State: checkRunning, Text: "adopt check: tier0", Start: checkFixtureAfter(1)},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s"},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
-				{State: checkRunning, Text: "adopt check: tier0 green 40s · tier1 failed 104s"},
-				{State: checkFailed, Text: "adopt check failed: tier0 green 40s · tier1 failed 104s"},
+				{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureAfter(1)},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s"},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1", Start: checkFixtureAfter(2)},
+				{State: checkRunning, Text: "adopt check of alpha: tier0 green 40s · tier1 failed 104s"},
+				{State: checkFailed, Text: "adopt check of alpha failed: tier0 green 40s · tier1 failed 104s"},
 			},
 		},
 		{
@@ -416,7 +579,7 @@ func TestRunCheckMarks(t *testing.T) {
 			reconcile: errors.New("config invalid"),
 			want: []checkMark{
 				starting,
-				{State: checkFailed, Text: "adopt check failed before any tier ended; lym beam status shows why"},
+				{State: checkFailed, Text: "adopt check of alpha failed before any tier ended; lym beam status shows why"},
 			},
 		},
 	}
@@ -433,6 +596,57 @@ func TestRunCheckMarks(t *testing.T) {
 			}
 			if !reflect.DeepEqual(f.marks, tt.want) {
 				t.Errorf("marks = %+v; want %+v", f.marks, tt.want)
+			}
+		})
+	}
+}
+
+// TestPrimeMark pins the prime's mark over a temp adopt directory: the check's own mark, joined with the running checks of the other subjects.
+func TestPrimeMark(t *testing.T) {
+	t.Parallel()
+	own := checkMark{State: checkRunning, Text: "adopt check of alpha: tier0", Start: checkFixtureNow}
+	ownGreen := checkMark{State: checkGreen, Text: "adopt check of alpha green: tier0 40s"}
+
+	tests := []struct {
+		name string
+		own  checkMark
+		// others maps a subject to the record its directory holds.
+		others map[string]CheckRecord
+		want   checkMark
+	}{
+		{
+			name: "OwnMarkAlone",
+			own:  own,
+			want: own,
+		},
+		{
+			name:   "RunningOtherSubjectsAreJoinedAfterItSortedWithStateRunning",
+			own:    ownGreen,
+			others: map[string]CheckRecord{"zeta": {Subject: "zeta", State: checkRunning}, "root": {Subject: "root", State: checkRunning}, "beta": {Subject: "beta", State: checkGreen}},
+			want:   checkMark{State: checkRunning, Text: "adopt check of alpha green: tier0 40s | adopt check of root: starting | adopt check of zeta: starting"},
+		},
+		{
+			name:   "FailedOtherSubjectIsNotJoined",
+			own:    ownGreen,
+			others: map[string]CheckRecord{"beta": {Subject: "beta", State: checkFailed}},
+			want:   ownGreen,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			adoptDir := t.TempDir()
+			for subject, record := range tt.others {
+				if err := writeCheck(filepath.Join(adoptDir, subject, checkRecordName), record); err != nil {
+					t.Fatalf("write the record of %s: %v", subject, err)
+				}
+			}
+			if err := writeCheck(filepath.Join(adoptDir, "alpha", checkRecordName), CheckRecord{Subject: "alpha", State: checkRunning}); err != nil {
+				t.Fatalf("write the record of alpha: %v", err)
+			}
+
+			if got := primeMark(adoptDir, "alpha", tt.own); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("primeMark() = %+v; want %+v", got, tt.want)
 			}
 		})
 	}

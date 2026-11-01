@@ -114,7 +114,7 @@ func ownerHaltReason(slug, subject, runOwner string, parent ParentOwnership) str
 
 	switch {
 	case runOwner == "":
-		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", which resumes the halted run, or %s, which stops at its first step and names "--keep-local" and "--drop-local" when that machine drove the run before and holds local commits or a live pair for it`,
+		return fmt.Sprintf(`%s is owned by machine %q, so this machine does not land on it; way forward: adopt it here with "%s", whose green adopt check resumes the halted run, or %s, which stops at its first step and names "--keep-local" and "--drop-local" when that machine drove the run before and holds local commits or a live pair for it`,
 			parentName, parent.Owner, adoptParentHere, adoptOnParentOwner)
 	case parent.Here:
 		return fmt.Sprintf(`this run is owned by machine %q, so this machine does not land it; way forward: run "lym adopt %s --keep-local" here`, runOwner, subject)

@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift, the run resume, the child resume, the beam steps, the landing-hold read and the adopt check start.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift and hold, the holds and tries files, the beam steps, the landing-hold read, the adopt check start and the reads behind the run reports.
 
 package adoptcli
 
@@ -10,8 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -92,23 +92,22 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 		RunRecord: func(slug string) (shedengine.Status, bool, error) {
 			return readStatus(shedrun.StatusFile(prime, slug))
 		},
-		ResumeRun: func(slug string) (map[string]any, error) {
-			return battencli.StartFirstPass(prime, slug, battencli.FirstPassOptions{})
+		Tasks: func() ([]boardengine.Task, error) { return boardengine.ReadTasks(boardDir) },
+		UpdatePause: func(mutate func(record *pauserecord.Record, now time.Time) error) error {
+			now := time.Now()
+			_, err := pauserecord.Update(geometry.RecordPath, now, func(record *pauserecord.Record) error { return mutate(record, now) })
+			return err
 		},
-		ChildStatus: func(slug string) (shedengine.Status, bool, error) {
-			pairPath := fabricengine.WorktreePath(prime, slug)
-			if _, err := os.Stat(pairPath); errors.Is(err, fs.ErrNotExist) {
-				return shedengine.Status{}, false, nil
-			}
-			pair, err := lymcwd.ResolveWorktree(pairPath)
-			if err != nil {
-				return shedengine.Status{}, false, err
-			}
-			return readStatus(shedrun.StatusFile(pair, shedrun.SelfRunID))
+		Holds: holdStore{
+			Read: func(subject string) ([]string, error) { return readHolds(subjectDir(prime.HubPath, subject)) },
+			Append: func(subject string, slugs []string) error {
+				return appendHolds(subjectDir(prime.HubPath, subject), slugs)
+			},
+			Remove: func(subject string, slugs []string) error {
+				return removeHolds(subjectDir(prime.HubPath, subject), slugs)
+			},
 		},
-		ResumeChild: func(slug string) error {
-			return resumeChild(fabricengine.WorktreePath(prime, slug))
-		},
+		ResetTries: func(subject string) error { return writeTries(subjectDir(prime.HubPath, subject), 0) },
 		MoveInProgress: func(worktree string) (string, bool, error) {
 			if worktree == "" {
 				worktree = prime.WorktreeName
@@ -147,11 +146,30 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			return false, nil
 		},
 		PrimeName: prime.WorktreeName,
-		StartSuite: func() (suiteStart, error) {
-			dir := fabricengine.AdoptScratchDir(prime.HubPath)
-			return startCheckWithTiers(prime, dir, checkAlive, func() (int, error) {
-				return startSuite(prime.AnchorPath(), filepath.Join(dir, checkOutName))
+		CheckState: func(subject string) (string, error) {
+			record, found, err := ReadCheck(filepath.Join(subjectDir(prime.HubPath, subject), checkRecordName))
+			switch {
+			case err != nil:
+				return "", err
+			case !found:
+				return checkStateNone, nil
+			case record.State == checkRunning && !checkAlive(record):
+				return checkStateEnded, nil
+			}
+			return record.State, nil
+		},
+		EscalationEligible: hubEscalationEligible(prime),
+		StartSuite: func(subject string) (suiteStart, error) {
+			dir := subjectDir(prime.HubPath, subject)
+			resolve := func() error {
+				_, err := resolveSubjectWorktree(prime, subject)
+				return err
+			}
+			start, err := startCheckWithTiers(prime, dir, resolve, checkAlive, func() (int, error) {
+				return startSuite(prime.AnchorPath(), filepath.Join(dir, checkOutName), subject)
 			})
+			start.Subject = subject
+			return start, err
 		},
 		HubPath: prime.HubPath,
 	}, nil
@@ -193,13 +211,15 @@ func readStatus(path string) (shedengine.Status, bool, error) {
 // suiteLogName is the file the adopt check writes its output to.
 const suiteLogName = "suite.log"
 
-// suiteArgs is the lym command line of the adopt check: the hidden check, which runs the hub's adopt gate.
-var suiteArgs = []string{"adopt", "check"}
+// suiteArgs returns the lym command line of the adopt check of subject: the hidden check, which runs the hub's adopt gate in the subject's worktree.
+func suiteArgs(subject string) []string {
+	return []string{"adopt", "check", subject}
+}
 
-// startSuite starts the adopt check detached in dir, with its stdout and stderr appended to the file at outPath, and returns its pid.
+// startSuite starts the adopt check of subject detached in dir, with its stdout and stderr appended to the file at outPath, and returns its pid.
 // The check is started and never waited for, so the adopt returns while it runs; the file holds a losing check's envelope and a panic, and the gate's own output goes to the suite log the check truncates.
 // It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
-func startSuite(dir, outPath string) (int, error) {
+func startSuite(dir, outPath, subject string) (int, error) {
 	if testing.Testing() {
 		return 0, errors.New("the adopt check is not started under go test")
 	}
@@ -216,22 +236,27 @@ func startSuite(dir, outPath string) (int, error) {
 	}
 	defer outFile.Close()
 
-	command := exec.Command(executable, suiteArgs...)
+	args := suiteArgs(subject)
+	command := exec.Command(executable, args...)
 	command.Dir = dir
 	command.Stdout = outFile
 	command.Stderr = outFile
 	proc.Detach(command)
 	if err := command.Start(); err != nil {
-		logger.Warn("adoptcli: the adopt check did not start", "exe", executable, "args", suiteArgs, "dir", dir, "error", err)
+		logger.Warn("adoptcli: the adopt check did not start", "exe", executable, "args", args, "dir", dir, "error", err)
 		return 0, err
 	}
 	pid := command.Process.Pid
-	logger.Info("adoptcli: spawned the adopt check", "exe", executable, "args", suiteArgs, "dir", dir, "pid", pid, "out", outPath)
+	logger.Info("adoptcli: spawned the adopt check", "exe", executable, "args", args, "dir", dir, "pid", pid, "out", outPath)
 	return pid, nil
 }
 
 // startCheckWithTiers returns the adopt check of the scratch directory dir as ensureCheck finds or starts it, with the tiers of the prime's adopt gate key set.
-func startCheckWithTiers(prime *lymcwd.Location, dir string, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
+// resolve runs first and reports whether the subject's worktree resolves: when it fails nothing is spawned and its error is returned, so a check that could never write a record is never reported started.
+func startCheckWithTiers(prime *lymcwd.Location, dir string, resolve func() error, alive func(CheckRecord) bool, spawn func() (int, error)) (suiteStart, error) {
+	if err := resolve(); err != nil {
+		return suiteStart{}, err
+	}
 	start, err := ensureCheck(dir, alive, spawn)
 	if err != nil {
 		return suiteStart{}, err

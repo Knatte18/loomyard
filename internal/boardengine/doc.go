@@ -34,6 +34,12 @@
 // True names `lym beam create <slug>`, for a project, and for a task a project entry made under a slug of its own.
 // False on a beam says the flag stays set for the beam's life, which ends when `lym beam land <slug>` lands it and marks the project done.
 // The replay is not routed through that rule, as the owner rule is not, so a hand edit of board.json can still set the flag.
+//
+// The front and on_land fields mark a front task: a task lym files ahead of its worktree's other starts, with the key of the action the front-task package runs when it lands.
+// Board.FileFrontTask is their one writer, and the task it files is draft until a caller releases it.
+// An upsert, batch or merge payload may carry either only as the entry's stored value, false and empty for a new entry, which is dropped as a no-op; any other value, or a value of the wrong type, is refused.
+// A front task's project and kind are fixed too, a payload naming another is refused, and so is a rename of it; its way forward is to cancel its run and remove the entry.
+// A run-held entry takes no change to either field.
 // SetOwners writes the flag through OwnerRequest.Beam, in the one commit that records the owner.
 // OwnerEntry carries IsProject and Beam for `lym adopt`'s beam admission.
 //

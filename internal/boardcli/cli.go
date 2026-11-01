@@ -476,7 +476,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?, front?, on_land?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -498,20 +498,21 @@ Optional fields:
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — the hub's issue numbers
-  "created"    string — RFC 3339 creation time
-  "revised"    string — RFC 3339 last scope change
+  "created"    string — RFC 3339 creation
+  "revised"    string — RFC 3339 scope change
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
-  "profile"    string — a "lym board profiles" name laid under run_settings; "" clears it
-  "pull_request" string — "on" or "off" overrides beam.yaml's pull_request mode; "" clears it
+  "profile"    string — a "lym board profiles" name; "" clears it
+  "pull_request" string — "on" or "off" overrides beam.yaml; "" clears it
   "notify_on_land" bool — a line to the orch once the run lands
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none
-  "order"      array  — a project's member slugs in plan order
+  "order"      array  — a project's member slugs, in order
   "beam"       bool   — a project's beam flag; only the "lym beam" verbs set it
+  "front", "on_land" — a front task's mark and land action; only lym writes them
 
 Flag:
-  --body-file <path>  read "body" from the file, or from stdin when the path is "-";
-                      refused when the payload also carries "body" or is itself "-".
+  --body-file <path>  read "body" from the file, or from stdin for "-";
+                      refused when the payload also carries "body".
 
 Example:
   lym board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),

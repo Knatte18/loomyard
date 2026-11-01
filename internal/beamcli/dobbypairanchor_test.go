@@ -5,6 +5,7 @@
 package beamcli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -12,12 +13,14 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -124,6 +127,37 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 		}
 		if _, listed := dirs[filepath.Dir(brokenStatus)]; listed {
 			t.Errorf("dobbyWatchDirs() = %v; want the pair with the invalid marker left out", dirs)
+		}
+	})
+
+	t.Run("HoldCallerEntryReadsHeldAndOwnerEntryDoesNot", func(t *testing.T) {
+		commitAnchorMarker(t, h, "broken", ".")
+		for _, row := range []struct {
+			caller   string
+			wantHeld bool
+		}{
+			{pauserecord.HoldCaller, true},
+			{pauserecord.OwnerCaller, false},
+		} {
+			content, err := json.Marshal(pauserecord.Record{Live: []pauserecord.Entry{{Scope: "moved", Caller: row.caller, PausedAt: time.Now()}}})
+			if err != nil {
+				t.Fatalf("marshal the pause record: %v", err)
+			}
+			if err := os.WriteFile(pauseRecord, content, 0o644); err != nil {
+				t.Fatalf("write %s: %v", pauseRecord, err)
+			}
+			views, err := battencli.DobbyRuns(prime, geom, newParents(), pauseRecord)
+			if err != nil {
+				t.Fatalf("dobbyRuns() = _, %v; want nil", err)
+			}
+			for _, view := range views {
+				if view.Slug == "moved" && (!view.Covered || view.Held != row.wantHeld) {
+					t.Errorf("caller %q: moved view Covered, Held = %v, %v; want true, %v", row.caller, view.Covered, view.Held, row.wantHeld)
+				}
+				if view.Slug == "broken" && (view.Covered || view.Held) {
+					t.Errorf("caller %q: broken view Covered, Held = %v, %v; want false, false", row.caller, view.Covered, view.Held)
+				}
+			}
 		}
 	})
 }

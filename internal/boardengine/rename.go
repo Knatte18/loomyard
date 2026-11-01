@@ -34,7 +34,7 @@ func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 }
 
 // Rename changes the slug of the entry selector names to to and rewrites every other entry's depends_on, project and order to match.
-// It refuses an absent entry, an entry a run holds, a beam, an entry whose pair exists, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
+// It refuses an absent entry, an entry a run holds, a front task, a beam, an entry whose pair exists, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
 // The run-held refusal is a *RunLockedError.
 func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	current, found := s.GetTask(selector)
@@ -43,6 +43,9 @@ func (s *Store) Rename(selector any, to string) (RenameResult, error) {
 	}
 	if IsRunStatus(current.Status) {
 		return RenameResult{}, &RunLockedError{Slug: current.Slug, Status: *current.Status}
+	}
+	if current.Front {
+		return RenameResult{}, frontFixedRefusal(current.Slug)
 	}
 	if current.Kind == KindProject && current.Beam {
 		return RenameResult{}, fmt.Errorf("entry %q is a beam, and a beam's slug stays fixed while it lives: change its title with `lym board upsert` instead", current.Slug)

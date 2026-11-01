@@ -1,6 +1,6 @@
 //go:build tier1
 
-// pairparts_integration_test.go covers Topology.PairParts and Topology.TaskBranchOnOrigin over hubforge hubs.
+// pairparts_integration_test.go covers Topology.PairParts, Topology.TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
 // Every hub has an empty branch_prefix, so a pair's task branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
@@ -8,6 +8,7 @@
 package fabricengine_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -98,4 +99,38 @@ func TestPairParts(t *testing.T) {
 			t.Errorf("TaskBranchOnOrigin() = %v, nil; want an error", onOrigin)
 		}
 	})
+}
+
+// TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads from the local branches and the origin remote-tracking branches.
+func TestTaskBranchSlugs(t *testing.T) {
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := h.PrimeWorktree()
+	gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t1")
+	gitkit.MustRun(t, prime, "git", "branch", "other")
+	gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t3")
+	gitkit.MustRun(t, prime, "git", "push", "origin", "adopt-fix-x-t3")
+	gitkit.MustRun(t, prime, "git", "branch", "-D", "adopt-fix-x-t3")
+
+	tests := []struct {
+		name   string
+		prefix string
+		want   []string
+	}{
+		{"LocalAndOriginTrackingBranches", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3"}},
+		{"NoMatch", "nothing-", nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := fabricengine.TaskBranchSlugs(h.Location, tt.prefix)
+			if err != nil {
+				t.Fatalf("TaskBranchSlugs(%q): %v", tt.prefix, err)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("TaskBranchSlugs(%q) = %v; want %v", tt.prefix, got, tt.want)
+			}
+		})
+	}
 }

@@ -88,6 +88,7 @@
 // The decision record Record-Write wrote is the writer's scope: a call that finds it missing, or finds the support log missing beside it, halts the run Stuck before any session, with the way forward that brings the file back.
 // A record the committed history holds but the working copy lacks is restored from there, never written again from the board entry.
 // The producer removes the stop marker before each session, and a marker the session wrote halts the run Stuck after the commit, Done or gate-failed alike, with the session's stop report as the reason and the way forward that records the parent's answer.
+// A condition stop marker the session wrote beside the stop marker marks a stop on a condition the task's body names: the reason is then the stop report alone, whose own way forward stands, or a fixed message naming the stop marker when the report is empty, and the producer removes that marker before each session too.
 // The note, written in Go, is told whenever the run's history holds a Darn-Write entry:
 // it says the change is already under way on the task branch, names that entry's outcome and the row's kept gate findings file when one exists, and lets a decision recorded after the Discussion win over a finding it forbids fixing.
 // It reads no halt reason, because the shed's resume write clears the status error before the row is called.

@@ -35,19 +35,18 @@ Steps, in order:
      archives each local tip as archive/<slug>/<tip> and moves the branches to origin's
      (refused for a live pair); a project one of whose runs stops is held back whole
   3. the pair of a beam or run this machine lacks is added
-  4. one owner write for every beam not stopped, and for the prime with root
-  5. each owner pause of an adopted beam and of a moved run is lifted
-  6. each moved run not done that this machine now owns is resumed as a detached first
-     pass, a beam's pawl run only when this machine owns its parent; a child halted at
-     Finalize's owner check is resumed
-  7. the beam steps of the prime with root and of each adopted beam, as "lym beam start"
-     runs them: its dobby and orch; a beam whose landing holds it gets none
-  8. the adopt check starts detached in the prime; the prime's status bar shows its
-     progress and result, the orch gets each tier, and red only reports
+  4. each run this call takes over, and each unstarted released task of an adopted subject
+     bar a front task, is held until its subject's adopt check is green
+  5. one owner write for every beam not stopped, and for the prime with root
+  6. the beam steps of the prime with root and of each adopted beam: its dobby and orch
+  7. one adopt check per subject, root first, starts detached in that subject's worktree;
+     a green check lifts the subject's holds and starts its runs, and a red one files a
+     fix task, up to adopt_fix_tries
 
 The envelope carries reconcile, mutations, partial, per slug what happened and its
-beam_steps, prime_beam_steps, and suite with message, or suite_warning.
-A slug's error never stops the others.
+beam_steps, prime_beam_steps, warnings, and checks with message, or check_warnings. A
+slug's error never stops the others. runs holds one item per run under the named
+subjects, sorted by slug, with its state and a plain line.
 
 Example:
   lym adopt payments
@@ -100,17 +99,25 @@ Example:
 }
 
 // adoptFields returns the fields of the adopt envelope for result.
-// The always-present fields are reconcile, mutations, partial, slugs and prime_recorded; every other field appears only when result holds its value.
+// The always-present fields are reconcile, mutations, partial, slugs, prime_recorded and runs, an empty array for none; every other field appears only when result holds its value.
 func adoptFields(result outcome) map[string]any {
+	runs := result.Runs
+	if runs == nil {
+		runs = []runReport{}
+	}
 	fields := map[string]any{
 		"reconcile":      result.Reconcile,
 		"mutations":      result.Mutations,
 		"partial":        result.Partial,
 		"slugs":          result.Slugs,
 		"prime_recorded": result.PrimeRecorded,
+		"runs":           runs,
 	}
 	if result.PrimeLost != "" {
 		fields["prime_lost_to"] = result.PrimeLost
+	}
+	if len(result.Warnings) > 0 {
+		fields["warnings"] = result.Warnings
 	}
 	if result.PrimeBeamSteps != nil {
 		fields["prime_beam_steps"] = result.PrimeBeamSteps
@@ -118,14 +125,14 @@ func adoptFields(result outcome) map[string]any {
 	if result.PrimeBeamWarning != "" {
 		fields["prime_beam_warning"] = result.PrimeBeamWarning
 	}
-	if result.Suite != nil {
-		fields["suite"] = result.Suite
+	if len(result.Checks) > 0 {
+		fields["checks"] = result.Checks
 	}
 	if result.SuiteMessage != "" {
 		fields["message"] = result.SuiteMessage
 	}
-	if result.SuiteWarning != "" {
-		fields["suite_warning"] = result.SuiteWarning
+	if len(result.CheckWarnings) > 0 {
+		fields["check_warnings"] = result.CheckWarnings
 	}
 	return fields
 }

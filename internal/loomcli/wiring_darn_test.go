@@ -126,6 +126,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 			{"RecordPath", c.env.Darn.RecordPath, loomengine.DiscussionDecisionRecord(loc)},
 			{"SupportLogPath", c.env.Darn.SupportLogPath, loomengine.DiscussionSupportLog(loc)},
 			{"StopMarkerPath", c.env.Darn.StopMarkerPath, shedrun.StopMarker(loc, c.runID)},
+			{"ConditionStopMarkerPath", c.env.Darn.ConditionStopMarkerPath, shedrun.ConditionStopMarker(loc, c.runID)},
 		} {
 			if path.got != path.want {
 				t.Errorf("c.env.Darn.%s = %q; want %q", path.field, path.got, path.want)

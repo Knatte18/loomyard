@@ -455,6 +455,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Commit:          func() error { return nil },
 			LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 			CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+
+			ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
 		},
 		Sampler: loomshed.SamplerDeps{
 			RecordPath:      filepath.Join(dir, "sampler", "sampler.json"),

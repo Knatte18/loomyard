@@ -172,6 +172,15 @@ func TestBuildView(t *testing.T) {
 			}, Waiting: []WaitingTask{{Slug: "asking", NotifyOnLand: true}}},
 		},
 		{
+			name: "ATaskUnderAnOpenFrontTaskReadsFrontFirstAndNotReady",
+			mutate: func(in *ViewInput) {
+				running := "running · Run-Shed"
+				front := TaskView{Slug: "fix", Kind: "task", Status: &running, Front: true}
+				in.Tasks = []TaskView{front, readyTask("next")}
+			},
+			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{{Slug: "next", FrontFirst: "fix"}}},
+		},
+		{
 			name:   "ADeadDobbyReadsNotAlive",
 			mutate: func(in *ViewInput) { in.Alive = false },
 			want:   View{MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{}},

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/fronttask"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -96,6 +97,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		}
 		return read.Effective(slug, parents.Of)
 	}
+	settleFronts, err := fronttask.HubSettleDeps(prime, geom.Slug)
+	if err != nil {
+		return dobbyengine.Deps{}, err
+	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
 		Awake: pauserecord.MonotonicAwake(),
@@ -165,6 +170,7 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			}
 			return board.ClearNotifyOnLand(slug)
 		},
+		SettleFronts: func() error { return fronttask.Settle(settleFronts) },
 		Landings: machineLandings(machinename.Name, func(machine string) ([]string, error) {
 			return battencli.DobbyLandings(prime, geom, parents, machine)
 		}),

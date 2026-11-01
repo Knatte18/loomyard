@@ -5,6 +5,7 @@
 package battencli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -128,6 +129,18 @@ Example:
 	}
 	cmd.Flags().BoolVar(&remove, "remove", false, "also remove the pair, snapshotting its uncommitted paths, and archive and delete its task branch")
 	return cmd
+}
+
+// Cancel ends the batten run of slug for good in this process, as "lym batten cancel <slug>" does for a slug addressed from the prime, with --remove when remove is set.
+// A cancel that nothing of the slug is left for returns an error matching ErrNothingLeft through errors.Is.
+// A cancel that could not reach origin and so only ended the run's processes returns an error naming the cancel to run again, since it removed nothing.
+// It skips the verb's self-address and own-pair refusals, so its caller must not run inside the slug's task pair.
+func Cancel(ctx context.Context, prime *lymcwd.Location, slug string, remove bool) error {
+	deps, err := hubCancelDeps(prime, slug)
+	if err != nil {
+		return err
+	}
+	return cancelJudgingEndOnly(ctx, slug, remove, deps)
 }
 
 // cancelEnvelope renders report as the verb's JSON envelope fields; every list is an array, empty when nothing was listed.

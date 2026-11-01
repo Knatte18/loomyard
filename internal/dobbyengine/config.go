@@ -43,6 +43,8 @@ type Config struct {
 	PullRequest string `yaml:"pull_request"`
 	// LandNotice decides which runs the dobby sends a landing notice for: LandNoticeAll, LandNoticePerTask or LandNoticeOff.
 	LandNotice string `yaml:"land_notice"`
+	// AdoptFixTries is the most fix tasks a failed adopt check files for the worktree's subject between two hand adopts; 0 files none.
+	AdoptFixTries int `yaml:"adopt_fix_tries"`
 }
 
 // ConfigSpec returns beam's layered-load spec: a per-worktree module whose keys are open to every layer but pull_request.
@@ -58,6 +60,7 @@ func ConfigSpec() configengine.Spec {
 			"task_headroom":          configengine.CategoryNone,
 			"pull_request":           configengine.CategoryCrossPair,
 			"land_notice":            configengine.CategoryNone,
+			"adopt_fix_tries":        configengine.CategoryNone,
 		},
 	}
 }
@@ -81,6 +84,7 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		{"board_tidy_every", cfg.BoardTidyEvery},
 		{"board_tidy_timeout_min", cfg.BoardTidyTimeoutMin},
 		{"task_headroom", cfg.TaskHeadroom},
+		{"adopt_fix_tries", cfg.AdoptFixTries},
 	} {
 		if key.value < 0 {
 			return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %d: must not be negative; way forward: fix it with `lym config beam --set %s=<value>`", key.name, key.value, key.name))

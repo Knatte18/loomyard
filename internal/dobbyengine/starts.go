@@ -34,8 +34,23 @@ type TaskView struct {
 	StartRefusal string
 	// NotifyOnLand reports whether the entry carries notify_on_land, a request for a landing notice.
 	NotifyOnLand bool
+	// Front reports whether the entry is a front task, one lym filed ahead of its worktree's other starts; read for every entry.
+	Front bool
+	// Project is the slug of the beam project the entry belongs to, empty for the prime's own; read for every entry.
+	Project string
 	// Fingerprint changes whenever the entry does.
 	Fingerprint string
+}
+
+// openFront returns the open front task of the worktree whose beam slug is project, empty for the prime: a task entry with Front set whose status is empty or a run status.
+func openFront(tasks []TaskView, project string) (TaskView, bool) {
+	for _, task := range tasks {
+		if task.Kind == boardengine.KindTask && task.Front && task.Project == project &&
+			(boardengine.IsEmptyStatus(task.Status) || boardengine.IsRunStatus(task.Status)) {
+			return task, true
+		}
+	}
+	return TaskView{}, false
 }
 
 // released reports whether task is released to the dobby of the worktree named here: a task with an empty status whose parent is here.
@@ -59,6 +74,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // The runs counted are the ones listed for this tick, halted ones included and done ones, ones recorded owned elsewhere and pawl runs without their landing hold not, plus first passes that have not yet left a status file.
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
 // While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
+// While an open front task of the worktree stands, the step starts no other task, and starts the front task itself once it is released, even when the runs in flight fill max_runs.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	cfg, err := d.deps.LoadConfig()
 	if err != nil {
@@ -77,8 +93,12 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	}
 	running := d.runsInFlight(current)
 
-	for _, task := range tasks {
-		if running >= cfg.MaxRuns {
+	candidates, pastMaxRuns := tasks, false
+	if front, open := openFront(tasks, d.geom.Slug); open {
+		candidates, pastMaxRuns = []TaskView{front}, true
+	}
+	for _, task := range candidates {
+		if running >= cfg.MaxRuns && !pastMaxRuns {
 			break
 		}
 		if _, flying := d.flights[task.Slug]; flying {
@@ -115,6 +135,25 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 		d.busy = true
 	}
 	return nil
+}
+
+// settleFronts settles the worktree's front tasks through Deps.SettleFronts and stops nothing on its error.
+// The first error of an episode is logged and posted once to the nearest live orch; a tick that settles cleanly ends the episode.
+func (d *daemon) settleFronts(ctx context.Context) {
+	if d.deps.SettleFronts == nil {
+		return
+	}
+	err := d.deps.SettleFronts()
+	if err == nil {
+		d.frontFailures.Recover("dobbyengine: the front tasks settle again", "worktree", d.geom.WorktreeName)
+		d.frontNoticed = false
+		return
+	}
+	d.frontFailures.Fail("dobbyengine: settling the front tasks failed", "worktree", d.geom.WorktreeName, "error", err)
+	if !d.frontNoticed {
+		d.frontNoticed = true
+		d.post(ctx, runNoticePrefix+" front task: "+err.Error())
+	}
 }
 
 // taskLimitHolds reports whether the cgroup task limit holds a start: fewer than headroom tasks are free under it, so a new run could take the host to where every fork fails.

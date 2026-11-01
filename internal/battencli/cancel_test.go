@@ -257,6 +257,10 @@ func TestCancelRun(t *testing.T) {
 		// wantErrAlso lists further substrings the refusal carries, and errAbsent substrings it never carries.
 		wantErrAlso []string
 		errAbsent   []string
+		// nothingLeft is whether the refusal matches ErrNothingLeft through errors.Is.
+		nothingLeft bool
+		// judging is "endonly" when cancelJudgingEndOnly over a fresh fake of the row must return the origin-unreachable error, "full" when it must return nil, and empty when it is not run.
+		judging string
 		// wantCalls is an ordered subsequence of the calls made.
 		wantCalls []string
 		// noCalls are seams that must not have been called.
@@ -269,6 +273,7 @@ func TestCancelRun(t *testing.T) {
 	rows := []row{
 		{
 			name:      "BlockedRunWithNoPair",
+			judging:   "full",
 			wantCalls: []string{"HubPaused", "ExemptGate", "TaskWorktreePresent", "PullBolt", "Owner", "ReadStatus", "TakeMarker", "EndForCancel", "StopTackler", "RemoveRecords", "ClearClaim", "SpawnPush", "Notify"},
 			noCalls:   []string{"Reconcile", "RemovePair", "DiscardTaskBranch"},
 			marker:    "removed",
@@ -565,9 +570,10 @@ func TestCancelRun(t *testing.T) {
 			setup: func(f *cancelFake) {
 				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
 			},
-			wantErr: `nothing of some-slug is left to cancel; way forward: check it with "lym board list"`,
-			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:  "none",
+			wantErr:     `nothing of some-slug is left to cancel; way forward: check it with "lym board list"`,
+			nothingLeft: true,
+			noCalls:     append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:      "none",
 		},
 		{
 			name: "TaskBranchAloneRefusesWithoutRemove",
@@ -580,13 +586,14 @@ func TestCancelRun(t *testing.T) {
 			marker:  "none",
 		},
 		{
-			name:      "NothingLeftWithRemoveReadsOrigin",
-			remove:    true,
-			setup:     func(f *cancelFake) { f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false },
-			wantErr:   `nothing of some-slug is left to cancel`,
-			wantCalls: []string{"TaskBranchOnOrigin"},
-			noCalls:   append([]string{"TakeMarker"}, destructiveCancelCalls...),
-			marker:    "none",
+			name:        "NothingLeftWithRemoveReadsOrigin",
+			remove:      true,
+			setup:       func(f *cancelFake) { f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false },
+			wantErr:     `nothing of some-slug is left to cancel`,
+			nothingLeft: true,
+			wantCalls:   []string{"TaskBranchOnOrigin"},
+			noCalls:     append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:      "none",
 		},
 		{
 			name:   "NothingLeftWithRemoveAndUnreachableOriginNamesTheRerun",
@@ -793,6 +800,7 @@ func TestCancelRun(t *testing.T) {
 			rows = append(rows, row{
 				name:      name,
 				remove:    remove,
+				judging:   "endonly",
 				setup:     func(f *cancelFake) { unreachable.setup(f); f.parts = fabricengine.PairParts{TaskBranch: true} },
 				wantCalls: []string{"Owner", "EndForCancel", "StopTackler", "Notify"},
 				noCalls:   []string{"RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim", "LiftPauses", "SpawnPush"},
@@ -843,6 +851,27 @@ func TestCancelRun(t *testing.T) {
 			for _, absent := range tt.errAbsent {
 				if err != nil && strings.Contains(err.Error(), absent) {
 					t.Errorf("cancelRun() error = %q; want it to never carry %q", err.Error(), absent)
+				}
+			}
+			if err != nil {
+				if got := errors.Is(err, ErrNothingLeft); got != tt.nothingLeft {
+					t.Errorf("errors.Is(%q, ErrNothingLeft) = %v; want %v", err, got, tt.nothingLeft)
+				}
+			}
+			if tt.judging != "" {
+				judged := newCancelFake()
+				tt.setup(judged)
+				judgedErr := cancelJudgingEndOnly(context.Background(), cancelSlug, tt.remove, judged.deps())
+				switch {
+				case tt.judging == "full" && judgedErr != nil:
+					t.Errorf("cancelJudgingEndOnly() = %v; want nil for a full cancel", judgedErr)
+				case tt.judging == "endonly":
+					if judgedErr == nil || !strings.Contains(judgedErr.Error(), "origin was unreachable") || !strings.Contains(judgedErr.Error(), cancelCommand(cancelSlug, tt.remove)+" again") || errors.Is(judgedErr, ErrNothingLeft) {
+						t.Errorf("cancelJudgingEndOnly() = %v; want an origin-unreachable error naming %q that does not match ErrNothingLeft", judgedErr, cancelCommand(cancelSlug, tt.remove))
+					}
+					if judged.called("ClearClaim") || judged.called("RemoveRecords") {
+						t.Errorf("calls = %v; want the end-only cancel to leave the run status and the run record", judged.calls)
+					}
 				}
 			}
 			if !callsInOrder(fake.calls, tt.wantCalls) {

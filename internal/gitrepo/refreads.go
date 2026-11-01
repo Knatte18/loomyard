@@ -1,11 +1,13 @@
 // refreads.go implements the ref reads fabric asks of a checkout through go-git:
-// BranchExists, RefSHA, HeadRef, RefTree and Upstream.
+// BranchExists, RefSHA, HeadRef, RefTree, Upstream and BranchNames.
 
 package gitrepo
 
 import (
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -109,4 +111,33 @@ func (r *Repo) Upstream(branch string) (sha string, ok bool, err error) {
 		return upstreamRead{sha: resolved.Hash().String(), ok: true}, nil
 	})
 	return read.sha, read.ok, err
+}
+
+// BranchNames lists the short names of the branches held under refs/heads when remote is empty, and of the remote-tracking branches of remote otherwise, sorted.
+// A remote-tracking name omits the remote, and the symbolic HEAD ref a clone leaves under the remote is skipped.
+func (r *Repo) BranchNames(remote string) ([]string, error) {
+	prefix := "refs/heads/"
+	if remote != "" {
+		prefix = "refs/remotes/" + remote + "/"
+	}
+	return readGoGit(r, func(repo *git.Repository) ([]string, error) {
+		refs, err := repo.References()
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: list refs in %s: %w", r.path, err)
+		}
+		var names []string
+		err = refs.ForEach(func(ref *plumbing.Reference) error {
+			name := string(ref.Name())
+			if !strings.HasPrefix(name, prefix) || ref.Type() == plumbing.SymbolicReference {
+				return nil
+			}
+			names = append(names, strings.TrimPrefix(name, prefix))
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("gitrepo: iterate refs in %s: %w", r.path, err)
+		}
+		sort.Strings(names)
+		return names, nil
+	})
 }

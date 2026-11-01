@@ -111,6 +111,7 @@ func TestCancelPauseEntries(t *testing.T) {
 	ownEntry := pauserecord.Entry{Scope: cancelSlug, Caller: "orch", PausedAt: epoch.Add(time.Minute)}
 	otherEntry := pauserecord.Entry{Scope: "other-slug", Caller: "orch", PausedAt: epoch.Add(2 * time.Minute)}
 	liftedHub := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: "orch", PausedAt: epoch, ResumedAt: epoch.Add(time.Hour)}
+	holdEntry := pauserecord.Entry{Scope: cancelSlug, Caller: pauserecord.HoldCaller, PausedAt: epoch.Add(3 * time.Minute)}
 
 	tests := []struct {
 		name       string
@@ -120,6 +121,7 @@ func TestCancelPauseEntries(t *testing.T) {
 	}{
 		{"LiveHubEntryRefusesAndIsNotLifted", pauserecord.Record{Live: []pauserecord.Entry{hubEntry}}, true, nil},
 		{"OwnSlugEntryIsLiftedAndNeverRefuses", pauserecord.Record{Live: []pauserecord.Entry{ownEntry}}, false, []tenderengine.EntryRef{{Scope: cancelSlug, Caller: "orch", PausedAt: ownEntry.PausedAt}}},
+		{"OwnSlugHoldCallerEntryIsLiftedAndNeverRefuses", pauserecord.Record{Live: []pauserecord.Entry{holdEntry}}, false, []tenderengine.EntryRef{{Scope: cancelSlug, Caller: pauserecord.HoldCaller, PausedAt: holdEntry.PausedAt}}},
 		{"OtherSlugEntryIsNeitherLiftedNorRefuses", pauserecord.Record{Live: []pauserecord.Entry{otherEntry}}, false, nil},
 		{"LiftedHubEntryDoesNotRefuse", pauserecord.Record{Resumed: []pauserecord.Entry{liftedHub}}, false, nil},
 		{"OwnEntryAmongOthersIsTheOnlyOneLifted", pauserecord.Record{Live: []pauserecord.Entry{otherEntry, ownEntry, hubEntry}}, true, []tenderengine.EntryRef{{Scope: cancelSlug, Caller: "orch", PausedAt: ownEntry.PausedAt}}},

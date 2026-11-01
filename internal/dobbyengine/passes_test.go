@@ -46,6 +46,9 @@ func TestPlanPass(t *testing.T) {
 		{"CoveredProbeGivesContinue", nil, probe, true, passContinue},
 		{"CoveredOwedFullWaits", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, probe, true, passNone},
 		{"CoveredLiftGivesFull", func(_ *RunView, rs *RunState) { rs.FullPassOwed = true }, passTrigger{Lift: true}, true, passFull},
+		{"HeldChildWriteGivesNone", func(run *RunView, _ *RunState) { run.Held = true }, passTrigger{ChildWrite: true}, true, passNone},
+		{"HeldLiftTriggerStillCoveredGivesNone", func(run *RunView, _ *RunState) { run.Held = true }, passTrigger{Lift: true}, true, passNone},
+		{"HeldOwnedElsewhereLiftTriggerGivesNone", func(run *RunView, rs *RunState) { run.Held = true; rs.OwnedElsewhere = true }, passTrigger{Lift: true}, true, passNone},
 		{"LiftGivesFull", nil, passTrigger{Lift: true}, false, passFull},
 		{"LiftWithOriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, passTrigger{Lift: true}, false, passFullNoReopen},
 	}
@@ -87,6 +90,11 @@ type passFake struct {
 	maxRuns  int
 	statuses map[string]bool
 	covers   map[string]bool
+
+	// settleErr is what the front settle seam returns, settles counts its calls and spawnedAtSettle holds how many passes had been spawned at each call.
+	settleErr       error
+	settles         int
+	spawnedAtSettle []int
 
 	// taskHeadroom is beam.yaml's task_headroom, and limit and limitFound what the task-limit seam reads.
 	taskHeadroom int
@@ -148,6 +156,11 @@ func newPassHarness(t *testing.T, runs ...RunView) *passHarness {
 			Notice: func(_ context.Context, line string) error {
 				fake.notices = append(fake.notices, line)
 				return nil
+			},
+			SettleFronts: func() error {
+				fake.settles++
+				fake.spawnedAtSettle = append(fake.spawnedAtSettle, len(fake.spawned))
+				return fake.settleErr
 			},
 			Machine:      func() (string, error) { return "m1", nil },
 			Tasks:        func() ([]TaskView, error) { return append([]TaskView(nil), fake.tasks...), nil },

@@ -106,7 +106,7 @@
 //	tapestry, darn  Drift-Verify                            drift-verify     diff
 //	tapestry, darn, pawl, sampler  PR-Review                         pr-review        diff
 //	tapestry, darn, sampler  Finalize                                finalize         all
-//	adopt       lym adopt check                         adopt            all
+//	adopt       lym adopt check <subject>, in its worktree  adopt            all
 //	darn        Darn-Write                              darn-write       diff
 //	darn        Darn-Write, Code-Burler-Fix, Finalize   the row's key    the touched trees' targets
 //

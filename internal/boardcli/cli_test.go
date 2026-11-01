@@ -121,6 +121,7 @@ func TestCLI(t *testing.T) {
 		{"RetireLegacy", stepRetireLegacy},
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},
+		{"FrontTask", stepFrontTask},
 		{"UpsertBodyFile", stepUpsertBodyFile},
 		{"MergeBodyFile", stepMergeBodyFile},
 		{"GetBody", stepGetBody},

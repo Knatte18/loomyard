@@ -44,7 +44,10 @@ func TestHubCheckDeps_StaleStampRunsTheTunedFinalizeTiers(t *testing.T) {
 		t.Fatalf("make the build stamp stale: %v", err)
 	}
 
-	deps := hubCheckDeps(h.Location)
+	deps, err := hubCheckDeps(h.Location, "root")
+	if err != nil {
+		t.Fatalf("hubCheckDeps: %v", err)
+	}
 	var adoptTiers []int
 	var gateErr error
 	deps.RunGate = func(context.Context, io.Writer, gatecli.TierObserver) int {

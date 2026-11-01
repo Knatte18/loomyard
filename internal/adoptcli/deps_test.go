@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,7 +68,7 @@ func TestHubOnlyPaused(t *testing.T) {
 func TestStartSuiteStartsNothingUnderTest(t *testing.T) {
 	t.Parallel()
 	outPath := filepath.Join(t.TempDir(), "adopt", checkOutName)
-	if pid, err := startSuite(t.TempDir(), outPath); err == nil {
+	if pid, err := startSuite(t.TempDir(), outPath, "alpha"); err == nil {
 		t.Errorf("startSuite under go test = %d, nil; want an error", pid)
 	}
 	if _, err := os.Stat(filepath.Dir(outPath)); !os.IsNotExist(err) {
@@ -172,20 +173,36 @@ func TestStartCheckWithTiers(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configDir, "gate.yaml"), []byte(gate), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(t.TempDir(), "adopt")
-	running := CheckRecord{PID: 77, State: checkRunning, Gate: checkGateKey}
+	dir := filepath.Join(t.TempDir(), "adopt", "b")
+	running := CheckRecord{Subject: "b", PID: 77, State: checkRunning, Gate: checkGateKey}
 	if err := state.WriteJSON(filepath.Join(dir, checkRecordName), filepath.Join(dir, checkRecordName+".lock"), running); err != nil {
 		t.Fatalf("write the record: %v", err)
 	}
 
-	got, err := startCheckWithTiers(prime, dir, func(CheckRecord) bool { return true }, func() (int, error) {
-		t.Error("startCheckWithTiers spawned a check over a running one")
-		return 0, nil
+	t.Run("RunningCheckIsFoundWithTheGateTiers", func(t *testing.T) {
+		t.Parallel()
+		got, err := startCheckWithTiers(prime, dir, func() error { return nil }, func(CheckRecord) bool { return true }, func() (int, error) {
+			t.Error("startCheckWithTiers spawned a check over a running one")
+			return 0, nil
+		})
+
+		if err != nil || got.PID != 77 || !got.AlreadyRunning || !slices.Equal(got.Tiers, []int{0, 1}) {
+			t.Errorf("startCheckWithTiers() = %+v, %v; want the running check 77 with tiers [0 1]", got, err)
+		}
 	})
 
-	if err != nil || got.PID != 77 || !got.AlreadyRunning || !slices.Equal(got.Tiers, []int{0, 1}) {
-		t.Errorf("startCheckWithTiers() = %+v, %v; want the running check 77 with tiers [0 1]", got, err)
-	}
+	t.Run("WorktreeThatDoesNotResolveSpawnsNothingAndNamesBeamStart", func(t *testing.T) {
+		t.Parallel()
+		resolveErr := errors.New("the worktree of b does not resolve (no such directory); way forward: run lym beam start b, then re-run lym adopt b")
+		got, err := startCheckWithTiers(prime, dir, func() error { return resolveErr }, func(CheckRecord) bool { return false }, func() (int, error) {
+			t.Error("startCheckWithTiers spawned a check for a worktree that does not resolve")
+			return 0, nil
+		})
+
+		if !errors.Is(err, resolveErr) || !strings.Contains(err.Error(), "lym beam start b") || !reflect.DeepEqual(got, suiteStart{}) {
+			t.Errorf("startCheckWithTiers() = %+v, %v; want no start and the resolve error naming lym beam start b", got, err)
+		}
+	})
 }
 
 func TestCheckAlive(t *testing.T) {

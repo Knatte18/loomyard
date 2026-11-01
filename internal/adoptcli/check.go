@@ -1,4 +1,4 @@
-// check.go is the hidden `lym adopt check` verb: it runs the hub's adopt gate in-process in the prime, keeps its progress in check.json and reports each tier and the end to the nearest live orch.
+// check.go is the hidden `lym adopt check <subject>` verb: it runs the hub's adopt gate in-process in the subject's worktree, keeps its progress in the subject's check.json and reports each tier and the end to that worktree's nearest live orch.
 
 package adoptcli
 
@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/battencli"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gatecli"
@@ -25,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -55,9 +57,11 @@ const (
 	checkFailed  = "failed"
 )
 
-// CheckRecord is the progress of the adopt check, kept in check.json.
+// CheckRecord is the progress of one subject's adopt check, kept in that subject's check.json.
 // An unknown key reads, so a newer writer's record never fails an older reader.
 type CheckRecord struct {
+	// Subject is the beam slug or `root` the check runs for.
+	Subject string `json:"subject"`
 	// PID and StartTicks name the process that wrote the record; StartTicks is its proc.StartTime, empty where the platform cannot read it.
 	PID        int       `json:"pid"`
 	StartTicks string    `json:"start_ticks,omitempty"`
@@ -103,24 +107,50 @@ func ReadCheck(recordPath string) (CheckRecord, bool, error) {
 	return record, found, err
 }
 
-// checkDeps holds the seams of one check run: the scratch directory its files sit in, the clock, the process identity it records, the hub reconcile, the gate, the notice to the orch and the mark on the prime's status bar.
+// checkDeps holds the seams of one check run: the subject it checks, the scratch directory its files sit in, the clock, the process identity it records, the hub reconcile, the owner read, the gate, the notice to the orch and the mark on the prime's status bar.
 // RunGate runs the check's gate key with log as its output and returns its exit code.
+// OwnedElsewhere returns the machine that owns the subject when it is not this one, "" otherwise.
+// Green runs the green end once the gate exits 0 and the green record is written, and returns the lines to post after the green notice; nil does nothing.
+// Failed runs the fix loop once the gate exits non-zero with a failed tier recorded and the failed record is written, and returns the lines to post after the failed notice; nil does nothing.
 type checkDeps struct {
-	Dir        string
-	Now        func() time.Time
-	PID        int
-	StartTicks string
-	Reconcile  func() error
-	RunGate    func(ctx context.Context, log io.Writer, observer gatecli.TierObserver) int
-	Notice     func(line string) error
-	Mark       func(mark checkMark) error
+	Subject        string
+	Dir            string
+	Now            func() time.Time
+	PID            int
+	StartTicks     string
+	Reconcile      func() error
+	OwnedElsewhere func() (owner string, err error)
+	RunGate        func(ctx context.Context, log io.Writer, observer gatecli.TierObserver) int
+	Notice         func(line string) error
+	Mark           func(mark checkMark) error
+	Green          func() []string
+	Failed         func(record CheckRecord) []string
+}
+
+// subjectDir returns the scratch directory of the adopt check of subject, a beam slug or `root`, in the hub at hubPath.
+func subjectDir(hubPath, subject string) string {
+	return filepath.Join(fabricengine.AdoptScratchDir(hubPath), subject)
 }
 
 // runCheck runs the check under check.lock and returns the final record and whether this call ran it.
+// A subject owned by another machine ends the call with an error and a notice before the lock is taken, and writes no record.
 // A held lock returns at once with nothing written or posted.
 // A failing reconcile ends the check failed before any tier runs, so no check goes green on the template's tiers.
 // The record is rewritten, and the prime's status bar marked, as the check starts, as each tier starts and ends, and at its end; a post or mark that fails is logged and changes nothing.
 func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
+	opening := "adopt check of " + deps.Subject + ":"
+	owner, err := deps.OwnedElsewhere()
+	if err != nil {
+		return CheckRecord{}, false, fmt.Errorf("%s read the owner of %s: %w; way forward: fix the cause it names, then re-run lym adopt %s", opening, deps.Subject, err, deps.Subject)
+	}
+	if owner != "" {
+		text := fmt.Sprintf("%s %s is owned by %s, so no check ran; way forward: run lym adopt %s on this machine", opening, deps.Subject, owner, deps.Subject)
+		if err := deps.Notice(text); err != nil {
+			logger.Warn("adoptcli: the adopt check notice was not posted", "line", text, "error", err)
+		}
+		return CheckRecord{}, false, errors.New(text)
+	}
+
 	if err := os.MkdirAll(deps.Dir, 0o755); err != nil {
 		return CheckRecord{}, false, fmt.Errorf("create the adopt scratch directory: %w", err)
 	}
@@ -131,7 +161,14 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	if !acquired {
 		return CheckRecord{}, false, nil
 	}
-	defer held.Release()
+	released := false
+	releaseLock := func() {
+		if !released {
+			released = true
+			_ = held.Release()
+		}
+	}
+	defer releaseLock()
 
 	recordPath := filepath.Join(deps.Dir, checkRecordName)
 	logPath := filepath.Join(deps.Dir, suiteLogName)
@@ -141,7 +178,7 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 	}
 	defer logFile.Close()
 
-	record := CheckRecord{PID: deps.PID, StartTicks: deps.StartTicks, Start: deps.Now(), Gate: checkGateKey, State: checkRunning}
+	record := CheckRecord{Subject: deps.Subject, PID: deps.PID, StartTicks: deps.StartTicks, Start: deps.Now(), Gate: checkGateKey, State: checkRunning}
 	if err := writeCheck(recordPath, record); err != nil {
 		return CheckRecord{}, false, err
 	}
@@ -173,11 +210,10 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 		return record, true, err
 	}
 
-	rerun := "lym gate test --gate " + checkGateKey
 	if err := deps.Reconcile(); err != nil {
 		record.State = checkFailed
-		record.Error = fmt.Sprintf("the hub reconcile failed (%v); way forward: fix the cause, then run lym fabric reconcile in the prime and %s", err, rerun)
-		post("adopt check: " + record.Error)
+		record.Error = fmt.Sprintf("the hub reconcile failed (%v); way forward: fix the cause, then run lym fabric reconcile in the prime and re-run lym adopt %s", err, deps.Subject)
+		post(opening + " " + record.Error)
 		return finish()
 	}
 
@@ -195,7 +231,7 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 			record.Tiers = append(record.Tiers, tier)
 			record.Running = nil
 			save()
-			post(tierNotice(tier, logPath))
+			post(tierNotice(deps.Subject, tier, logPath))
 		},
 	}
 	code := deps.RunGate(ctx, logFile, observer)
@@ -207,25 +243,43 @@ func runCheck(ctx context.Context, deps checkDeps) (CheckRecord, bool, error) {
 		for i, tier := range record.Tiers {
 			numbers[i] = strconv.Itoa(tier.Tier)
 		}
-		post(fmt.Sprintf("adopt check: green, tiers %s; log %s", strings.Join(numbers, ", "), logPath))
+		post(fmt.Sprintf("%s green, tiers %s; log %s", opening, strings.Join(numbers, ", "), logPath))
 	default:
 		record.State = checkFailed
-		var failure string
 		for _, tier := range record.Tiers {
 			if tier.Outcome == checkFailed {
 				number := tier.Tier
 				record.FailedTier = &number
-				failure = fmt.Sprintf("tier%d failed", number)
 				break
 			}
 		}
-		if record.FailedTier == nil {
+		if record.FailedTier != nil {
+			post(fmt.Sprintf("%s failed, tier%d failed; log %s", opening, *record.FailedTier, logPath))
+		} else {
 			record.Error = fmt.Sprintf("the gate exited %d before any tier ended", code)
-			failure = record.Error
+			post(fmt.Sprintf("%s failed, %s; log %s; way forward: fix what stopped the gate, read in the log, then re-run lym adopt %s", opening, record.Error, logPath, deps.Subject))
 		}
-		post(fmt.Sprintf("adopt check: failed, %s; log %s; way forward: fix it, then run %s in the prime", failure, logPath, rerun))
 	}
-	return finish()
+
+	final, ran, err := finish()
+	if err != nil {
+		return final, ran, err
+	}
+	var end func() []string
+	switch {
+	case final.State == checkGreen && deps.Green != nil:
+		end = deps.Green
+	case final.FailedTier != nil && deps.Failed != nil:
+		end = func() []string { return deps.Failed(final) }
+	default:
+		return final, ran, nil
+	}
+	// The lock is let go first, so a check a concurrent adopt started meanwhile runs instead of exiting on it.
+	releaseLock()
+	for _, line := range end() {
+		post(line)
+	}
+	return final, ran, nil
 }
 
 // checkMark is what the check shows on the prime's status bar: its state, a one-line text and the start of its step in flight, zero for none.
@@ -236,9 +290,11 @@ type checkMark struct {
 }
 
 // checkMarkOf renders record as its status bar mark, where tierStart is when the tier in flight started.
+// Every text names the record's subject, so two subjects' marks tell apart.
 // A running check shows its done tiers with their outcomes and wall times, then the tier in flight timed from tierStart, or `starting` timed from the check's start before any tier;
 // an ended one shows its result and every tier it ran.
 func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
+	name := "adopt check of " + record.Subject
 	parts := make([]string, 0, len(record.Tiers)+1)
 	for _, tier := range record.Tiers {
 		if record.State == checkGreen {
@@ -256,24 +312,54 @@ func checkMarkOf(record CheckRecord, tierStart time.Time) checkMark {
 
 	switch {
 	case record.State == checkGreen:
-		return checkMark{State: checkGreen, Text: listed("adopt check green")}
+		return checkMark{State: checkGreen, Text: listed(name + " green")}
 	case record.State == checkFailed && len(parts) == 0:
-		return checkMark{State: checkFailed, Text: "adopt check failed before any tier ended; lym beam status shows why"}
+		return checkMark{State: checkFailed, Text: name + " failed before any tier ended; lym beam status shows why"}
 	case record.State == checkFailed:
-		return checkMark{State: checkFailed, Text: listed("adopt check failed")}
+		return checkMark{State: checkFailed, Text: listed(name + " failed")}
 	case record.Running != nil:
 		parts = append(parts, "tier"+strconv.Itoa(*record.Running))
-		return checkMark{State: checkRunning, Text: listed("adopt check"), Start: tierStart}
+		return checkMark{State: checkRunning, Text: listed(name), Start: tierStart}
 	case len(parts) == 0:
-		return checkMark{State: checkRunning, Text: "adopt check: starting", Start: record.Start}
+		return checkMark{State: checkRunning, Text: name + ": starting", Start: record.Start}
 	default:
-		return checkMark{State: checkRunning, Text: listed("adopt check")}
+		return checkMark{State: checkRunning, Text: listed(name)}
 	}
 }
 
-// tierNotice renders the notice of one ended tier: its outcome and counts on the first line, and for a failed tier one line per failed test with the first line it printed, at most maxListedFailures, then the log at logPath.
-func tierNotice(tier CheckTier, logPath string) string {
-	lines := []string{fmt.Sprintf("adopt check: tier%d %s, passed %d failed %d skipped %d, %.1fs", tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds)}
+// primeMark returns the mark the prime's status bar shows for the check of subject, whose own mark is own and whose scratch directories sit under adoptDir.
+// Its text is own's, followed by the mark of each other subject whose record reads running, sorted by subject and joined by ` | `;
+// its state is running while any joined record runs, else own's state.
+// A record that does not read is skipped with one Warn.
+func primeMark(adoptDir, subject string, own checkMark) checkMark {
+	entries, err := os.ReadDir(adoptDir)
+	if err != nil {
+		logger.Warn("adoptcli: the adopt scratch directory was not listed for the prime's mark", "path", adoptDir, "error", err)
+		return own
+	}
+	texts := []string{own.Text}
+	state := own.State
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == subject {
+			continue
+		}
+		record, found, err := ReadCheck(filepath.Join(adoptDir, entry.Name(), checkRecordName))
+		if err != nil {
+			logger.Warn("adoptcli: an adopt check record was not read for the prime's mark", "subject", entry.Name(), "error", err)
+			continue
+		}
+		if !found || record.State != checkRunning {
+			continue
+		}
+		texts = append(texts, checkMarkOf(record, time.Time{}).Text)
+		state = checkRunning
+	}
+	return checkMark{State: state, Text: strings.Join(texts, " | "), Start: own.Start}
+}
+
+// tierNotice renders the notice of one ended tier of the check of subject: its outcome and counts on the first line, and for a failed tier one line per failed test with the first line it printed, at most maxListedFailures, then the log at logPath.
+func tierNotice(subject string, tier CheckTier, logPath string) string {
+	lines := []string{fmt.Sprintf("adopt check of %s: tier%d %s, passed %d failed %d skipped %d, %.1fs", subject, tier.Tier, tier.Outcome, tier.Passed, tier.Failed, tier.Skipped, tier.WallSeconds)}
 	if tier.Outcome != checkFailed {
 		return lines[0]
 	}
@@ -297,14 +383,59 @@ func writeCheck(recordPath string, record CheckRecord) error {
 	return state.WriteJSON(recordPath, recordPath+".lock", record)
 }
 
-// hubCheckDeps fills checkDeps over the prime: the reconcile is the hub's, which reads an absent board-level lym directory as an error since an adopt runs only in a hub, the gate is the hub's adopt key in the prime's anchor, the notice goes to the nearest live orch, and the mark goes on the prime's reed session.
+// resolveSubjectWorktree returns the location of the worktree the adopt check of subject runs in: the prime for `root`, else the beam's pair.
+// A worktree that does not resolve is an error naming `lym beam start` and the re-run of the adopt.
+func resolveSubjectWorktree(prime *lymcwd.Location, subject string) (*lymcwd.Location, error) {
+	if subject == boardengine.RootSubject {
+		return prime, nil
+	}
+	worktree, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, subject))
+	if err != nil {
+		return nil, fmt.Errorf("the worktree of %s does not resolve (%w); way forward: run lym beam start %s, then re-run lym adopt %s", subject, err, subject, subject)
+	}
+	return worktree, nil
+}
+
+// subjectOwnedElsewhere returns a func that reads the board for the owner of subject, the prime owner for `root`, and returns it when another machine than this one owns it, "" otherwise.
+func subjectOwnedElsewhere(prime *lymcwd.Location, subject string) func() (string, error) {
+	return func() (string, error) {
+		owners, err := boardengine.ReadOwners(fabricengine.BoardDir(prime.HubPath))
+		if err != nil {
+			return "", err
+		}
+		here, err := machinename.Name()
+		if err != nil {
+			return "", err
+		}
+		owner := owners.Prime
+		if subject != boardengine.RootSubject {
+			owner, err = owners.Effective(subject, func(slug string) (string, error) { return hubgeom.ParentOf(prime, slug) })
+			if err != nil {
+				return "", err
+			}
+		}
+		if !boardengine.OwnedElsewhere(owner, here) {
+			return "", nil
+		}
+		return owner, nil
+	}
+}
+
+// hubCheckDeps fills checkDeps for the check of subject over the prime and the subject's worktree: the reconcile is the hub's, which reads an absent board-level lym directory as an error since an adopt runs only in a hub, the gate is the hub's adopt key in the subject's anchor, the notice goes to the subject's nearest live orch, and the mark goes on the prime's reed session.
+// It returns an error when the subject's worktree does not resolve.
 // A reed config or geometry that does not read is each mark's error.
-func hubCheckDeps(prime *lymcwd.Location) checkDeps {
+func hubCheckDeps(prime *lymcwd.Location, subject string) (checkDeps, error) {
+	worktree, err := resolveSubjectWorktree(prime, subject)
+	if err != nil {
+		return checkDeps{}, err
+	}
 	pid := os.Getpid()
 	ticks, _ := proc.StartTime(pid)
 	reed, reedErr := primeReed(prime)
+	dir := subjectDir(prime.HubPath, subject)
 	return checkDeps{
-		Dir:        fabricengine.AdoptScratchDir(prime.HubPath),
+		Subject:    subject,
+		Dir:        dir,
 		Now:        time.Now,
 		PID:        pid,
 		StartTicks: ticks,
@@ -315,11 +446,12 @@ func hubCheckDeps(prime *lymcwd.Location) checkDeps {
 			}
 			return hubreconcile.Ensure(geometry, hubreconcile.Options{})
 		},
+		OwnedElsewhere: subjectOwnedElsewhere(prime, subject),
 		RunGate: func(ctx context.Context, log io.Writer, observer gatecli.TierObserver) int {
-			return gatecli.RunGate(ctx, prime.AnchorPath(), checkGateKey, log, log, observer)
+			return gatecli.RunGate(ctx, worktree.AnchorPath(), checkGateKey, log, log, observer)
 		},
 		Notice: func(line string) error {
-			posted, err := orchcli.NotifyFrom(prime, checkProgram, line)
+			posted, err := orchcli.NotifyFrom(worktree, checkProgram, line)
 			if err == nil && !posted {
 				return errors.New("no live orch strand to post to")
 			}
@@ -329,9 +461,24 @@ func hubCheckDeps(prime *lymcwd.Location) checkDeps {
 			if reedErr != nil {
 				return reedErr
 			}
-			return reed.SetCheckMark(mark.State, mark.Text, mark.Start)
+			shown := primeMark(filepath.Dir(dir), subject, mark)
+			return reed.SetCheckMark(shown.State, shown.Text, shown.Start)
 		},
-	}
+		Green: func() []string {
+			green, err := hubGreenDeps(prime, subject)
+			if err != nil {
+				return []string{fmt.Sprintf("the green end of the adopt check of %s did not run (%v); way forward: fix the cause it names, then re-run lym adopt %s", subject, err, subject)}
+			}
+			return greenEnd(green)
+		},
+		Failed: func(record CheckRecord) []string {
+			fix, err := hubFixDeps(prime, subject)
+			if err != nil {
+				return []string{fmt.Sprintf("the fix loop of the adopt check of %s did not run (%v); way forward: fix the cause it names, then re-run lym adopt %s, the holds standing meanwhile", subject, err, subject)}
+			}
+			return failedEnd(fix, record)
+		},
+	}, nil
 }
 
 // primeReed returns the reed engine of the prime's session.
@@ -347,15 +494,15 @@ func primeReed(prime *lymcwd.Location) (*reedengine.Engine, error) {
 	return reedengine.New(cfg, geom, shuttleengines.EnvScrub()), nil
 }
 
-// checkCmd is the hidden `check` verb, which `lym adopt` spawns detached in the prime.
-// It resolves the prime from the working directory, so it runs from anywhere in the hub, and prints the record's state, or already_running when another check holds the lock.
+// checkCmd is the hidden `check <subject>` verb, which `lym adopt` spawns detached for each adopted subject.
+// It resolves the prime from the working directory, so it runs from anywhere in the hub, and prints the record's state, or already_running when another check of the subject holds the lock.
 func checkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "check",
-		Short:       "run the hub's adopt gate in the prime and report each tier to the orch",
+		Use:         "check <subject>",
+		Short:       "run the hub's adopt gate in a subject's worktree and report each tier to its orch",
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Args:        cobra.NoArgs,
+		Args:        cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
@@ -377,7 +524,12 @@ func checkCmd() *cobra.Command {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil
 			}
-			record, ran, err := runCheck(ctx, hubCheckDeps(prime))
+			deps, err := hubCheckDeps(prime, args[0])
+			if err != nil {
+				clihelp.SetExit(ctx, output.Err(out, err.Error()))
+				return nil
+			}
+			record, ran, err := runCheck(ctx, deps)
 			if err != nil {
 				clihelp.SetExit(ctx, output.Err(out, err.Error()))
 				return nil

@@ -33,6 +33,10 @@ type darnFixture struct {
 	committed bool
 	// writeMarker makes the fake session create the stop marker.
 	writeMarker bool
+	// writeConditionMarker makes the fake session create the condition stop marker.
+	writeConditionMarker bool
+	// emptyReport makes the fake session leave the description file empty.
+	emptyReport bool
 }
 
 func newDarnFixture(t *testing.T) *darnFixture {
@@ -50,12 +54,14 @@ func newDarnFixture(t *testing.T) *darnFixture {
 	}
 	f := &darnFixture{outcome: shedengine.Done, pointer: shedengine.OutputPointer{Path: description}}
 	f.deps = DarnDeps{
-		RecordPath:      filepath.Join(dir, "decision-record.md"),
-		SupportLogPath:  filepath.Join(dir, "support-log.md"),
-		StopMarkerPath:  filepath.Join(dir, "stop-marker"),
-		CommittedRecord: func() (bool, error) { return f.committed, nil },
-		Commit:          func() error { f.events = append(f.events, "commit"); return nil },
-		LatestOutcome:   func() (DarnOutcome, bool, error) { return DarnOutcome{}, false, nil },
+		RecordPath:     filepath.Join(dir, "decision-record.md"),
+		SupportLogPath: filepath.Join(dir, "support-log.md"),
+		StopMarkerPath: filepath.Join(dir, "stop-marker"),
+
+		ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
+		CommittedRecord:         func() (bool, error) { return f.committed, nil },
+		Commit:                  func() error { f.events = append(f.events, "commit"); return nil },
+		LatestOutcome:           func() (DarnOutcome, bool, error) { return DarnOutcome{}, false, nil },
 		CheckRecord: func() ([]discussionparser.Finding, error) {
 			f.events = append(f.events, "check")
 			return f.findings, f.checkErr
@@ -75,6 +81,16 @@ func (s darnSession) Call(context.Context) (shedengine.Outcome, shedengine.Outpu
 	s.f.events = append(s.f.events, "session")
 	if s.f.writeMarker {
 		if err := os.WriteFile(s.f.deps.StopMarkerPath, nil, 0o644); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	if s.f.writeConditionMarker {
+		if err := os.WriteFile(s.f.deps.ConditionStopMarkerPath, nil, 0o644); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	if s.f.emptyReport {
+		if err := os.WriteFile(s.f.pointer.Path, nil, 0o644); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
 	}
@@ -100,6 +116,10 @@ func TestDarnWrite_Call(t *testing.T) {
 		staleMarker bool
 		// wantNoMarker asserts the stop marker is absent after the call.
 		wantNoMarker bool
+		// staleConditionMarker leaves a condition stop marker from an earlier spawn in place before the call.
+		staleConditionMarker bool
+		// wantNoConditionMarker asserts the condition stop marker is absent after the call.
+		wantNoConditionMarker bool
 	}{
 		{
 			name:       "first spawn tells nothing, commits and checks the record",
@@ -280,6 +300,46 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantEvents:    "session,commit",
 		},
 		{
+			name: "a stop marker with the condition stop marker halts with the stop report alone",
+			mutate: func(f *darnFixture) {
+				f.writeMarker = true
+				f.writeConditionMarker = true
+			},
+			session:         true,
+			wantResult:      shedengine.Stuck,
+			wantReason:      darnStopReport,
+			wantReasonLacks: "lym loom resume",
+			wantEvents:      "session,commit",
+		},
+		{
+			name: "a condition stop with an empty report halts with a fixed reason naming the stop marker",
+			mutate: func(f *darnFixture) {
+				f.writeMarker = true
+				f.writeConditionMarker = true
+				f.emptyReport = true
+			},
+			session:         true,
+			wantResult:      shedengine.Stuck,
+			wantReasonHas:   []string{"stopped on the task body's condition and wrote no report", "stop-marker"},
+			wantReasonLacks: "lym loom resume",
+			wantEvents:      "session,commit",
+		},
+		{
+			name:                  "a stale condition stop marker is removed before the session and does not halt",
+			staleConditionMarker:  true,
+			session:               true,
+			wantResult:            shedengine.Done,
+			wantEvents:            "session,commit,check",
+			wantNoConditionMarker: true,
+		},
+		{
+			name:       "a condition stop marker alone does not halt",
+			mutate:     func(f *darnFixture) { f.writeConditionMarker = true },
+			session:    true,
+			wantResult: shedengine.Done,
+			wantEvents: "session,commit,check",
+		},
+		{
 			name:         "a stale stop marker is removed before the session and does not halt",
 			staleMarker:  true,
 			session:      true,
@@ -313,6 +373,11 @@ func TestDarnWrite_Call(t *testing.T) {
 			wantErr: "no StopMarkerPath seam wired",
 		},
 		{
+			name:    "unwired ConditionStopMarkerPath is named",
+			mutate:  func(f *darnFixture) { f.deps.ConditionStopMarkerPath = "" },
+			wantErr: "no ConditionStopMarkerPath seam wired",
+		},
+		{
 			name:    "unwired LatestOutcome seam is named",
 			mutate:  func(f *darnFixture) { f.deps.LatestOutcome = nil },
 			wantErr: "no LatestOutcome seam wired",
@@ -333,6 +398,11 @@ func TestDarnWrite_Call(t *testing.T) {
 			if tc.staleMarker {
 				if err := os.WriteFile(f.deps.StopMarkerPath, nil, 0o644); err != nil {
 					t.Fatalf("WriteFile(%q) = %v; want nil", f.deps.StopMarkerPath, err)
+				}
+			}
+			if tc.staleConditionMarker {
+				if err := os.WriteFile(f.deps.ConditionStopMarkerPath, nil, 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", f.deps.ConditionStopMarkerPath, err)
 				}
 			}
 			outcome, pointer, err := NewDarnWrite(NameDarnWrite, f.session, f.deps).Call(context.Background())
@@ -365,6 +435,9 @@ func TestDarnWrite_Call(t *testing.T) {
 			}
 			if _, err := os.Stat(f.deps.StopMarkerPath); tc.wantNoMarker && !errors.Is(err, os.ErrNotExist) {
 				t.Errorf("Stat(stop marker) = %v; want it removed", err)
+			}
+			if _, err := os.Stat(f.deps.ConditionStopMarkerPath); tc.wantNoConditionMarker && !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("Stat(condition stop marker) = %v; want it removed", err)
 			}
 			if !tc.session {
 				if len(f.told) != 0 {

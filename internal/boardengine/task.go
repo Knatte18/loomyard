@@ -56,6 +56,10 @@ type Task struct {
 	Beam bool `json:"beam,omitempty"`
 	// BeamColor is the #rrggbb colour a beam project's VS Code windows show, recorded once by the owner setter; only a beam project carries it.
 	BeamColor string `json:"beam_color,omitempty"`
+	// Front marks a task lym filed ahead of its worktree's other starts; only FileFrontTask sets it.
+	Front bool `json:"front,omitempty"`
+	// OnLand is the key of the action the front-task package runs when the front task lands; empty for any other entry.
+	OnLand string `json:"on_land,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.

@@ -45,10 +45,10 @@ anywhere in the hub, and all act on the prime's location.`,
 	return beam
 }
 
-// statusResult is the envelope of `beam status`: one entry per local beam, the prime's first, and the adopt check when the hub holds a record of one.
+// statusResult is the envelope of `beam status`: one entry per local beam, the prime's first, and one adopt check item per subject the hub holds a record of.
 type statusResult struct {
-	Dobbies    []statusEntry       `json:"dobbies"`
-	AdoptCheck *adoptcli.CheckView `json:"adopt_check,omitempty"`
+	Dobbies     []statusEntry        `json:"dobbies"`
+	AdoptChecks []adoptcli.CheckView `json:"adopt_checks,omitempty"`
 }
 
 // statusEntry is one beam's view in `beam status`: the dobby's structured view and the lines a beam's window draws for it, and the orch's view, or why either did not read.
@@ -75,8 +75,9 @@ ownership, a pause, a start batten refuses, a refused start and its retry, or ma
 A ready task shows its last refused start when one is recorded. Each entry
 carries the structured view and its rendered lines, and the beam's orch: whether its
 strand is live, whether its watcher is live and the session id it recorded.
-The adopt_check section shows the check a lym adopt started: its state, the tier in flight, the
-tiers done and the paths of its log and output, and is absent when the hub holds no record of one.
+The adopt_checks section holds one item per subject whose check a lym adopt started: the subject,
+its state, the tier in flight, the tiers done and the paths of its log and output, and is absent
+when the hub holds no record of one.
 It starts and changes nothing; its one write is the empty orch directory its watcher probe creates.
 
 It runs from the prime and from any beam.
@@ -133,11 +134,11 @@ func dobbyStatus(prime *lymcwd.Location, now time.Time) (statusResult, error) {
 		}
 		result.Dobbies = append(result.Dobbies, entry)
 	}
-	check, err := adoptcli.ReadCheckView(prime.HubPath)
+	checks, err := adoptcli.ReadCheckViews(prime.HubPath)
 	if err != nil {
-		failures = append(failures, fmt.Errorf("adopt check: %w", err))
+		failures = append(failures, fmt.Errorf("adopt checks: %w", err))
 	}
-	result.AdoptCheck = check
+	result.AdoptChecks = checks
 	if err := errors.Join(failures...); err != nil {
 		return result, fmt.Errorf("lym beam status: %w; way forward: fix the cause each names, then run `lym beam status` again", err)
 	}
@@ -496,7 +497,7 @@ A pawl run in flight is reported live and starts nothing. A first pass a coverin
 pause refused leaves no run, and the same "lym beam create <slug> [--anchor <dir>]"
 after the lift starts it. A flagged beam left by a first pass that died takes the same
 --anchor again, since its anchor reached no run record. Dobby never starts a beam
-project, so only this verb, a hand pass or "lym adopt" starts or resumes its run.
+project, so only this verb, a hand pass or the green end of the adopt check that "lym adopt" starts starts or resumes its run.
 
 With --anchor <dir> the new pair takes <dir> of the code checkout as its anchor
 instead of its parent's; the directory must be tracked in the commit the beam forks

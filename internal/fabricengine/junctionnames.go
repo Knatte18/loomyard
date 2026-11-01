@@ -175,6 +175,12 @@ func AdoptScratchDir(hub string) string {
 	return filepath.Join(HubScratchDir(hub), lymdirs.AdoptDirName)
 }
 
+// FrontTaskScratchDir returns the directory that holds the front-task record, its lock and the output of the actions a front task runs:
+// the Bolt checkout's `.lym/fronttask`.
+func FrontTaskScratchDir(hub string) string {
+	return filepath.Join(HubScratchDir(hub), lymdirs.FrontTaskDirName)
+}
+
 // HubLogsDir returns the hub-level directory where the shared per-hub reed server writes its
 // runtime log: `logs` in the Bolt checkout's `.lym`.
 // It is hub-anchored so one server per hub resolves to one deterministic place, and it lives

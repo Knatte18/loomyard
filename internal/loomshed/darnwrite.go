@@ -32,6 +32,9 @@ const darnStopWayForward = "way forward: record the answer with \"lym loom decis
 // darnStopReportMissing stands in for the stop report when the writer wrote the stop marker and no report.
 const darnStopReportMissing = "the writer stopped and wrote no stop report"
 
+// darnConditionStopReportMissing is the format of the Reason of a Darn-Write session whose writer stopped on the task body's condition and wrote an empty report; its argument is the stop marker path.
+const darnConditionStopReportMissing = "the writer stopped on the task body's condition and wrote no report; the stop marker %s marks the stop"
+
 // decisionRecordRestoreWayForward is the way forward of a Darn-Write session that left the decision record invalid.
 // Restoring keeps every `Added after Discussion` entry the record held.
 const decisionRecordRestoreWayForward = "way forward: restore each failing file under _lym to its latest version \"lym loom validate-discussion\" accepts (the committed copy when the damage is uncommitted, restored with \"git -C _lym checkout HEAD -- discussion/<file>\"), commit it with \"lym fabric commit\", which the orch runs when a session lym refuses it from reports status: FAILED, then run \"lym loom resume\""
@@ -70,6 +73,8 @@ type DarnDeps struct {
 	SupportLogPath string
 	// StopMarkerPath is the absolute path of the marker the writer creates to say it stopped instead of making the change.
 	StopMarkerPath string
+	// ConditionStopMarkerPath is the absolute path of the marker the writer creates, beside the stop marker, to say it stopped on a condition the task's body names.
+	ConditionStopMarkerPath string
 	// CommittedRecord reports whether the committed history holds the decision record, which tells a record removed from the working copy from one that was never written.
 	CommittedRecord func() (bool, error)
 	// Commit commits the landing directory.
@@ -97,11 +102,12 @@ func NewDarnWrite(name string, session func(DarnTold) shedengine.ShedProducer, d
 
 // Call implements shedengine.ShedProducer.
 // A missing decision record, or a support log missing beside a present record, halts the run Stuck before any session, with the way forward that brings the file back.
-// A stop marker left by an earlier spawn is removed before each session.
+// A stop marker and a condition stop marker left by an earlier spawn are removed before each session.
 // A failed read of the latest outcome, a Commit failure and a CheckRecord error are returned errors, never Stuck, because re-running the session cannot fix a git or filesystem fault.
 // The commit runs on every non-empty output pointer, a gate-failed Stuck included, so a halted run leaves the work committed.
 // A gate-failed Stuck keeps its pointer and gains the resume way forward.
 // A stop marker the session wrote halts the run Stuck, Done or gate-failed alike, with the session's output as the reason, since the writer stopped instead of making the change.
+// When the condition stop marker is present beside it, the writer stopped on a condition the task's body names, and the reason is the stop report alone, whose own way forward stands, or a fixed message naming the stop marker when the report is empty; a condition stop marker with no stop marker is no stop.
 // A Done session is then guarded: CheckRecord runs once after the commit, and findings halt the run Stuck with no re-prompt, since the record is written by Go and a re-prompt could only push the writer to edit it.
 // The Stuck reason names the findings and the way forward that restores the record.
 func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -119,8 +125,10 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	if refusal != "" {
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: refusal}, nil
 	}
-	if err := os.Remove(p.deps.StopMarkerPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: remove the stop marker: %w", p.name, err)
+	for _, marker := range []string{p.deps.StopMarkerPath, p.deps.ConditionStopMarkerPath} {
+		if err := os.Remove(marker); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: remove the stop marker %s: %w", p.name, marker, err)
+		}
 	}
 
 	latest, found, err := p.deps.LatestOutcome()
@@ -143,6 +151,17 @@ func (p *darnWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		report, err := readStopReport(pointer.Path)
 		if err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: read the stop report: %w", p.name, err)
+		}
+		conditionStopped, err := fileExists(p.deps.ConditionStopMarkerPath)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("loomshed: %s: read the condition stop marker: %w", p.name, err)
+		}
+		if conditionStopped {
+			pointer.Reason = report
+			if report == "" {
+				pointer.Reason = fmt.Sprintf(darnConditionStopReportMissing, p.deps.StopMarkerPath)
+			}
+			return shedengine.Stuck, pointer, nil
 		}
 		pointer.Reason = strings.Join(nonEmpty(report, darnStopWayForward), "; ")
 		return shedengine.Stuck, pointer, nil
@@ -178,6 +197,7 @@ func (p *darnWrite) checkSeams() error {
 		{"RecordPath", p.deps.RecordPath == ""},
 		{"SupportLogPath", p.deps.SupportLogPath == ""},
 		{"StopMarkerPath", p.deps.StopMarkerPath == ""},
+		{"ConditionStopMarkerPath", p.deps.ConditionStopMarkerPath == ""},
 	}
 	for _, s := range seams {
 		if s.missing {

@@ -48,6 +48,8 @@ type DarnInputs struct {
 	DecisionRecordPath string
 	// StopMarkerPath is the absolute path the writer creates a marker at when it stops instead of making the change.
 	StopMarkerPath string
+	// ConditionStopMarkerPath is the absolute path the writer creates a second marker at when it stops on a condition the task's body names.
+	ConditionStopMarkerPath string
 	// PriorWork names what an earlier spawn left unfinished or broken; empty on a first spawn.
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
@@ -69,6 +71,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"DescriptionPath", in.DescriptionPath},
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"StopMarkerPath", in.StopMarkerPath},
+		{"ConditionStopMarkerPath", in.ConditionStopMarkerPath},
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -100,14 +103,15 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		Segment:    segmentcolor.Darn,
 		Timeout:    time.Duration(cfg.WriterTimeoutMin) * time.Minute,
 		Values: map[string]string{
-			"slug":                 in.Slug,
-			"description_path":     in.DescriptionPath,
-			"decision_record_path": in.DecisionRecordPath,
-			"stop_marker_path":     in.StopMarkerPath,
-			"specs_dir":            in.SpecsDir,
-			"prior_work":           orNone(in.PriorWork),
-			"pattern_directive":    patternDirective,
-			friction.MarkerName:    frictionDirective,
+			"slug":                       in.Slug,
+			"description_path":           in.DescriptionPath,
+			"decision_record_path":       in.DecisionRecordPath,
+			"stop_marker_path":           in.StopMarkerPath,
+			"condition_stop_marker_path": in.ConditionStopMarkerPath,
+			"specs_dir":                  in.SpecsDir,
+			"prior_work":                 orNone(in.PriorWork),
+			"pattern_directive":          patternDirective,
+			friction.MarkerName:          frictionDirective,
 		},
 		Optional: []string{"pattern_directive", "project_directive", friction.MarkerName},
 		Seats: []seatengine.Seat{{

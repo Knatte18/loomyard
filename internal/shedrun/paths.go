@@ -131,6 +131,15 @@ func StopMarker(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), StopMarkerFileName)
 }
 
+// ConditionStopMarkerFileName is the filename of a run's writer condition-stop marker, whose path ConditionStopMarker returns.
+const ConditionStopMarkerFileName = "condition-stop-marker"
+
+// ConditionStopMarker returns the path to the marker a run's writer creates, beside its stop marker, to say it stopped on a condition the task's body names, ConditionStopMarkerFileName under RunDir(l, runID).
+// The run's producer removes it before each spawn and reads its presence, together with the stop marker, after the session.
+func ConditionStopMarker(l *lymcwd.Location, runID string) string {
+	return filepath.Join(RunDir(l, runID), ConditionStopMarkerFileName)
+}
+
 // SeedFile returns the path to a run's durable seed.json, under RunDir(l, runID).
 func SeedFile(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), "seed.json")

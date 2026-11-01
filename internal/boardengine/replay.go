@@ -166,6 +166,8 @@ var replayFields = entrymerge.Table[Task]{
 		{Name: "project", Get: func(t Task) any { return t.Project }, Set: func(dst *Task, src Task) { dst.Project = src.Project }},
 		{Name: "order", Get: func(t Task) any { return orEmpty(t.Order) }, Set: func(dst *Task, src Task) { dst.Order = slices.Clone(src.Order) }},
 		{Name: "beam", Get: func(t Task) any { return t.Beam }, Set: func(dst *Task, src Task) { dst.Beam = src.Beam }},
+		{Name: "front", Get: func(t Task) any { return t.Front }, Set: func(dst *Task, src Task) { dst.Front = src.Front }},
+		{Name: "on_land", Get: func(t Task) any { return t.OnLand }, Set: func(dst *Task, src Task) { dst.OnLand = src.OnLand }},
 		{Name: "beam_color", Get: func(t Task) any { return t.BeamColor }, Set: func(dst *Task, src Task) { dst.BeamColor = src.BeamColor }},
 	},
 }

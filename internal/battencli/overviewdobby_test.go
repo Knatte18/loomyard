@@ -44,6 +44,7 @@ func TestDobbyLines(t *testing.T) {
 					{Slug: "capped", AtMaxRuns: true},
 					{Slug: "done", StartRefusal: "already completed\nmore detail", Refusal: "already completed\nmore detail"},
 					{Slug: "retry", Refusal: "dirty source"},
+					{Slug: "behind", FrontFirst: "fix"},
 				},
 			},
 			cells: map[string]RunCells{
@@ -61,6 +62,7 @@ func TestDobbyLines(t *testing.T) {
 				"  capped   waits on max_runs 2",
 				"  done     waits on a start batten refuses: already completed",
 				"  retry    ready to start, last refused start: dirty source",
+				"  behind   waits on front task fix runs first",
 			},
 		},
 		{

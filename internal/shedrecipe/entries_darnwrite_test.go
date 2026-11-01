@@ -46,6 +46,8 @@ func darnTestEnv(t *testing.T) Env {
 		Commit:          func() error { return nil },
 		LatestOutcome:   func() (loomshed.DarnOutcome, bool, error) { return loomshed.DarnOutcome{}, false, nil },
 		CheckRecord:     func() ([]discussionparser.Finding, error) { return nil, nil },
+
+		ConditionStopMarkerPath: filepath.Join(dir, "condition-stop-marker"),
 	}
 	return env
 }
@@ -67,6 +69,7 @@ func TestDarnWriteEntry_ConstructionFailures(t *testing.T) {
 		{"RelativeRecordPath", "Darn.RecordPath", gated, func(e *Env) { e.Darn.RecordPath = "decision-record.md" }},
 		{"RelativeSupportLogPath", "Darn.SupportLogPath", gated, func(e *Env) { e.Darn.SupportLogPath = "support-log.md" }},
 		{"RelativeStopMarkerPath", "Darn.StopMarkerPath", gated, func(e *Env) { e.Darn.StopMarkerPath = "stop-marker" }},
+		{"RelativeConditionStopMarkerPath", "Darn.ConditionStopMarkerPath", gated, func(e *Env) { e.Darn.ConditionStopMarkerPath = "condition-stop-marker" }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

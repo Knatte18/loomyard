@@ -49,7 +49,7 @@
 // A driver that is alive but parked -- a provider waiting on an interactive prompt its launcher never answered -- or that stops of its own accord with the run still non-terminal is told apart from a working one only by the dobby's quiet notice, or by its API-error notice when the stall is one; an operator attaches to the child's session to tell the cases apart.
 //
 // A batten run is one pass after another: "lym batten run <slug>" runs one pass and exits, started by the run's parent worktree's dobby or by hand in a terminal, and a hand pass makes sure that dobby is live once it is over.
-// `lym adopt` and `lym beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
+// The green end of the adopt check and `lym beam land` start a run's first pass detached, and a second batten for the slug is refused by the run's own driver lock inside the pass, in batten's own log.
 // "lym batten run" steps the lifecycle through the Go driver, so an unexpected stop meets the driver's rule table and a cold tackler before the orch, and the driver lock refuses a second run for the slug.
 //
 // A beam project's run starts at the Worktree-Create row too: the row claims the entry, skips a complete pair, and otherwise makes the pair from the beam above the project, unmarked and at the anchor the run's seed records, since the pawl run's own Beam-Up marks it.

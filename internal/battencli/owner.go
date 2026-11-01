@@ -99,7 +99,7 @@ func (e *OwnedElsewhereError) Error() string {
 		return e.text
 	}
 	return fmt.Sprintf(
-		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lym adopt %s` from this machine's prime, which takes it over and resumes its run, or records the owner when no run exists here, after which `lym batten run %s` starts it",
+		"battencli: %q is owned by machine %q, so this machine does not start, resume or land it; way forward: run `lym adopt %s` from this machine's prime, which takes it over and holds its run until the adopt check of that subject is green, which then starts it, or records the owner when no run exists here, after which `lym batten run %s` starts it",
 		e.Slug, e.Owner, e.Subject, e.Slug,
 	)
 }

@@ -38,6 +38,8 @@ func TestPathConstructors(t *testing.T) {
 	}{
 		{"RunDir", func(l *lymcwd.Location) string { return RunDir(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), "_lym", "shed", worktreeName) }},
+		{"ConditionStopMarker", func(l *lymcwd.Location) string { return ConditionStopMarker(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "condition-stop-marker") }},
 		{"SeedFile", func(l *lymcwd.Location) string { return SeedFile(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(RunDir(l, "self"), "seed.json") }},
 		{"StatusFile", func(l *lymcwd.Location) string { return StatusFile(l, "self") },

@@ -27,6 +27,8 @@
 // The lead reads the decision record at the told path as its scope, the board entry's body under `## Goal` with the record's `Added after Discussion` entries over it, and writes neither the record nor the support log.
 // It checks that no landed work or other entry overtook the board entry, then edits and tests the repository, commits on the task branch, and writes the change description at the told path in the format the final-summary spec defines.
 // A lead that finds the entry outdated writes a stop report as its description and creates the marker at the told stop marker path, and the producer halts the run on the marker.
+// A lead that finds a stop condition the task's body names holds writes the report the body asks for as its description and creates both that marker and a second one at the told condition stop marker path;
+// the producer then halts the run with the report alone as the reason, since the report states its own way forward.
 // It is non-interactive, carries the description as its one output file, and renders `(none)` for prior work the spawn has nothing to tell for.
 // A spawn that continues earlier work is told so through that value, and its stencil continues from the commits already on the task branch.
 // The seat engine renders the parent and edit directives, so DarnTable reads no parent name.

@@ -1,6 +1,6 @@
 //go:build tier1
 
-// adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts root and so moves the run of a task only the first holds, and the first adopts it back over local commits and a live pair.
+// adopt_integration_test.go drives the takeover over two hubforge clones of one remote: the second clone adopts root and so holds the run of a task only the first holds, and the first adopts it back over local commits and a live pair.
 
 package adoptcli_test
 
@@ -94,6 +94,11 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 	}
 
 	second := hubforge.CloneSecond(t, first)
+	// The first clone pushes a commit to the prime's code branch and to the task's pair branch after the second clone exists, so only the second clone's reconcile can bring them.
+	for _, dir := range []string{first.PrimeWorktree(), first.PairCodeWorktree(taskSlug)} {
+		gitkit.CommitFile(t, dir, "pushed.txt", "pushed", "pushed work")
+		gitkit.MustRun(t, dir, "git", "push", "origin", gitkit.CurrentBranch(t, dir))
+	}
 	holdOwnerPause(t, second.Location)
 
 	// The task is moved with root, which the first machine owns, so the second clone adopts root and records no owner of the task's own.
@@ -102,9 +107,29 @@ func TestAdoptIntegration_SecondCloneTakesOver(t *testing.T) {
 		t.Fatalf("the second clone's adopt: %v", err)
 	}
 	adopted := slugOutcomeOf(t, got, taskSlug)
-	// A test binary spawns no first pass, so the resume is attempted and refused after the pair is added and the pause lifted.
-	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.PauseLifted || !strings.HasPrefix(adopted.Error, "resume the run:") || !got.PrimeRecorded {
-		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the pause lifted, the resume attempted, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
+	if !adopted.PairAdded || adopted.OwnerRecorded || !adopted.Held || adopted.PauseLifted || adopted.Error != "" || !got.PrimeRecorded {
+		t.Errorf("second clone's outcome = %+v, prime recorded = %v, want the pair added, the run held with its pause not lifted, no owner of the task's own and the prime recorded", adopted, got.PrimeRecorded)
+	}
+	geometry, err := hubgeom.PauseGeometry(second.Location)
+	if err != nil {
+		t.Fatalf("PauseGeometry: %v", err)
+	}
+	record, err := pauserecord.Read(geometry.RecordPath)
+	if err != nil || len(record.Live) != 1 || record.Live[0].Scope != taskSlug || record.Live[0].Caller != pauserecord.HoldCaller {
+		t.Errorf("second clone's pause record = %+v, %v; want the owner entry turned into the one hold entry", record.Live, err)
+	}
+	holds, err := os.ReadFile(filepath.Join(fabricengine.AdoptScratchDir(second.Path), boardengine.RootSubject, "holds.json"))
+	if err != nil || !strings.Contains(string(holds), taskSlug) {
+		t.Errorf("root's holds file = %s, %v; want it to list %s", holds, err, taskSlug)
+	}
+	// The adopt runs no fabric pull, so the reconcile alone brought both branches to the tip the first clone pushed.
+	for name, dirs := range map[string][2]string{
+		"prime":     {first.PrimeWorktree(), second.PrimeWorktree()},
+		"task pair": {first.PairCodeWorktree(taskSlug), second.PairCodeWorktree(taskSlug)},
+	} {
+		if want, got := gitkit.RevParse(t, dirs[0], "HEAD"), gitkit.RevParse(t, dirs[1], "HEAD"); got != want {
+			t.Errorf("second clone's %s branch is at %s, want origin's tip %s", name, got, want)
+		}
 	}
 	if _, err := os.Stat(second.PairCodeWorktree(taskSlug)); err != nil {
 		t.Errorf("the second clone has no pair worktree for %s: %v", taskSlug, err)
@@ -206,7 +231,7 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 
 	h := hubforge.NewHub(t, ".")
 	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{Beam: true})
-	scratch := fabricengine.AdoptScratchDir(h.Path)
+	scratch := filepath.Join(fabricengine.AdoptScratchDir(h.Path), "root")
 	if err := os.MkdirAll(scratch, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -217,11 +242,11 @@ func TestCheckCmd_FromABeamExitsZeroWhileOneRuns(t *testing.T) {
 	t.Cleanup(func() { _ = held.Release() })
 
 	var out bytes.Buffer
-	exit := adoptcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"check"})
+	exit := adoptcli.RunCLIIn(h.PairCodeWorktree("b"), &out, []string{"check", "root"})
 
 	got := envelope.RequireOK(t, out.String())
 	if exit != 0 || got.Raw["already_running"] != true {
-		t.Errorf("lym adopt check from a beam = exit %d, envelope %+v; want exit 0 and already_running true", exit, got)
+		t.Errorf("lym adopt check root from a beam = exit %d, envelope %+v; want exit 0 and already_running true", exit, got)
 	}
 	if _, err := os.Stat(filepath.Join(scratch, "check.json")); !os.IsNotExist(err) {
 		t.Errorf("Stat(check.json) error = %v; want no record written", err)

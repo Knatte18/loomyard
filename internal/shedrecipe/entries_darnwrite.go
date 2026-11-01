@@ -39,6 +39,7 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 		{"Darn.RecordPath", dw.RecordPath},
 		{"Darn.SupportLogPath", dw.SupportLogPath},
 		{"Darn.StopMarkerPath", dw.StopMarkerPath},
+		{"Darn.ConditionStopMarkerPath", dw.ConditionStopMarkerPath},
 	} {
 		if err := requireAbsRoot("DarnWrite", path.field, path.value); err != nil {
 			return nil, err

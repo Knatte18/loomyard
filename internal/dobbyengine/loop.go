@@ -127,6 +127,9 @@ type Deps struct {
 	Land func() error
 	// ClearNotifyOnLand clears the notify_on_land field of the board entry slug once its landing notice went out; nil clears nothing.
 	ClearNotifyOnLand func(slug string) error
+	// SettleFronts settles the front tasks of this dobby's worktree, running the land action of each one that landed (`fronttask.Settle` in production); nil settles nothing.
+	// It runs each tick before the start step, so a front entry with no record is recorded before it starts.
+	SettleFronts func() error
 	// Log writes one line to the dobby's log file at path; rotate is set for the dobby's own lines while it holds its lock.
 	// A nil Log logs nothing.
 	Log func(path, line string, rotate bool)
@@ -283,8 +286,11 @@ type daemon struct {
 	failures   logger.Episode
 	ownerRead  logger.Episode
 	moveStands logger.Episode
-	landRead   logger.Episode
-	landPost   logger.Episode
+	// frontFailures is the failure episode of the front-task settle step, and frontNoticed reports whether its notice went out.
+	frontFailures logger.Episode
+	frontNoticed  bool
+	landRead      logger.Episode
+	landPost      logger.Episode
 	// landNoticeConfig and landNoticeBoard are the failure episodes of the landing notices' beam.yaml and board reads.
 	landNoticeConfig logger.Episode
 	landNoticeBoard  logger.Episode
@@ -576,6 +582,7 @@ func (d *daemon) tick(ctx context.Context, now time.Time) error {
 		}
 		d.runNotices(ctx, now)
 		d.landNotices(ctx, now, d.listedRuns)
+		d.settleFronts(ctx)
 		if err := d.startReady(ctx, now); err != nil {
 			return err
 		}

@@ -32,6 +32,8 @@ func newSpecInputs(t *testing.T) DarnInputs {
 
 		DecisionRecordPath: filepath.Join(t.TempDir(), "decision-record.md"),
 		StopMarkerPath:     filepath.Join(t.TempDir(), "stop-marker"),
+
+		ConditionStopMarkerPath: filepath.Join(t.TempDir(), "condition-stop-marker"),
 	}
 }
 
@@ -81,7 +83,7 @@ func TestDarnSpec(t *testing.T) {
 			configure:  func(in *DarnInputs) {},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath}
+				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath}
 			},
 			wantNone:     1,
 			wantNoParent: true,
@@ -191,6 +193,7 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"empty DescriptionPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.DescriptionPath = "" }, "DescriptionPath"},
 		{"empty DecisionRecordPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.DecisionRecordPath = "" }, "DecisionRecordPath"},
 		{"empty StopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.StopMarkerPath = "" }, "StopMarkerPath"},
+		{"empty ConditionStopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.ConditionStopMarkerPath = "" }, "ConditionStopMarkerPath"},
 		{"malformed writer spec", func(t *testing.T, in *DarnInputs, cfg *Config) { cfg.Writer = "opus[effort=high" }, "writer model-spec"},
 		{"missing stencil", func(t *testing.T, in *DarnInputs, cfg *Config) { stencilkit.Remove(t, in.StencilsDir, darnStencilName) }, darnStencilName},
 	}

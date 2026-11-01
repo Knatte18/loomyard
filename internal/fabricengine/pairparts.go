@@ -1,8 +1,11 @@
-// pairparts.go holds the read-only reads of what is left of a pair: its local parts, and whether its task branch is on origin.
+// pairparts.go holds the read-only reads of what is left of a pair: its local parts, whether its task branch is on origin, and which task branches a slug prefix names.
 
 package fabricengine
 
 import (
+	"sort"
+	"strings"
+
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
@@ -52,4 +55,34 @@ func (t *Topology) TaskBranchOnOrigin(l *lymcwd.Location, slug string) (bool, er
 		return false, err
 	}
 	return tip != "", nil
+}
+
+// TaskBranchSlugs lists, sorted and without duplicates, the slugs starting with prefix whose task branch exists in the prime's warp repository, as a local branch or as an origin remote-tracking branch.
+// It reads the branch prefix from the fabric config and the refs in-process, so the remote-tracking branches are the ones the last fetch left and no network call is made.
+// An empty result is no error.
+func TaskBranchSlugs(prime *lymcwd.Location, prefix string) ([]string, error) {
+	cfg, err := LoadConfig(ConfigDirs(prime))
+	if err != nil {
+		return nil, err
+	}
+	repo := gitrepo.New(prime.WorktreePath())
+	seen := map[string]bool{}
+	for _, remote := range []string{"", originRemoteName} {
+		branches, err := repo.BranchNames(remote)
+		if err != nil {
+			return nil, err
+		}
+		for _, branch := range branches {
+			slug, ok := strings.CutPrefix(branch, cfg.BranchPrefix)
+			if ok && strings.HasPrefix(slug, prefix) {
+				seen[slug] = true
+			}
+		}
+	}
+	slugs := make([]string, 0, len(seen))
+	for slug := range seen {
+		slugs = append(slugs, slug)
+	}
+	sort.Strings(slugs)
+	return slugs, nil
 }

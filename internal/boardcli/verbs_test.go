@@ -392,6 +392,49 @@ func stepOwners(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepFrontTask drives the front and on_land guards through a seeded released front task:
+// every payload verb refuses a value other than the stored one, accepts the stored one unchanged, and refuses a change of the front task's project, kind or slug.
+func stepFrontTask(t *testing.T, f *cliFixture) {
+	seedBoardFile(t, f.cwd, `{"version":1,"draft_status":true,"entries":[`+
+		`{"id":0,"slug":"fix","title":"Fix","kind":"task","labels":["bug"],"front":true,"on_land":"adopt-check"}]}`)
+
+	refuse := func(t *testing.T, want string, args ...string) {
+		t.Helper()
+		result := runJSON(t, 1, args...)
+		if msg, _ := result["error"].(string); !strings.Contains(msg, want) {
+			t.Errorf("%v: error = %q, want it to carry %q", args, msg, want)
+		}
+	}
+	const dropKeys = "drop the front and on_land keys from the payload"
+	for _, key := range []string{`"front":false`, `"on_land":"x"`} {
+		refuse(t, dropKeys, "upsert", `{"slug":"fix",`+key+`}`)
+		refuse(t, dropKeys, "upsert-batch", `{"tasks":[{"slug":"fix",`+key+`}]}`)
+		refuse(t, dropKeys, "merge", `{"upsert":{"slug":"fix",`+key+`}}`)
+	}
+	refuse(t, dropKeys, "upsert", `{"slug":"fix","front":"yes"}`)
+	refuse(t, dropKeys, "upsert", `{"slug":"fix","on_land":7}`)
+
+	runJSON(t, 0, "upsert", `{"slug":"fix","front":true,"on_land":"adopt-check"}`)
+	if got := runJSON(t, 0, "get", `{"slug":"fix"}`)["task"].(map[string]any); got["front"] != true || got["on_land"] != "adopt-check" {
+		t.Errorf("get after an echoing upsert: front, on_land = %v, %v; want true, adopt-check", got["front"], got["on_land"])
+	}
+	runJSON(t, 0, "upsert", `{"slug":"plain","title":"Plain","kind":"task","labels":["bug"],"front":false,"on_land":""}`)
+	if got := runJSON(t, 0, "get", `{"slug":"plain"}`)["task"].(map[string]any); got["front"] != nil || got["on_land"] != nil {
+		t.Errorf("get a new task filed with false and empty: front, on_land = %v, %v; want neither stored", got["front"], got["on_land"])
+	}
+	runJSON(t, 0, "upsert", `{"slug":"fix","title":"Fix again"}`)
+
+	const fixed = `lym board remove`
+	refuse(t, fixed, "upsert", `{"slug":"fix","project":"other"}`)
+	refuse(t, fixed, "upsert", `{"slug":"fix","kind":"note"}`)
+	refuse(t, fixed, "rename", `{"slug":"fix","to":"moved"}`)
+
+	runJSON(t, 0, "remove", `{"slug":"fix"}`)
+	if got := runJSON(t, 0, "get", `{"slug":"fix"}`)["task"]; got != nil {
+		t.Errorf("get after remove: task = %v; want none", got)
+	}
+}
+
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam, empty under a grouping project and the beam once the project is hand-marked a beam.
 // A task slug ending in the records suffix and one equal to a configured junction name are refused with fabric's reason.

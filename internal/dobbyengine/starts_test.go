@@ -6,6 +6,7 @@ package dobbyengine
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -440,4 +441,137 @@ func TestStartReady_TaskLimitHold(t *testing.T) {
 			}
 		})
 	}
+}
+
+// frontTask is a released front task of the prime's dobby.
+func frontTask(slug string) TaskView {
+	task := readyTask(slug)
+	task.Front = true
+	return task
+}
+
+func TestStartReady_FrontTask(t *testing.T) {
+	t.Parallel()
+	halted := func(slug string) RunView { return RunView{Slug: slug, State: "blocked", Producer: producerRunShed} }
+	running := "running · Run-Shed"
+	draft := "draft"
+	otherProject := frontTask("fix")
+	otherProject.Project, otherProject.Parent = "other", "other"
+	runningFront := frontTask("fix")
+	runningFront.Status = &running
+	draftFront := frontTask("fix")
+	draftFront.Status = &draft
+
+	tests := []struct {
+		name    string
+		runs    []RunView
+		maxRuns int
+		tasks   []TaskView
+		covers  map[string]bool
+		want    []string
+	}{
+		{
+			name:    "AReleasedFrontTaskStartsPastMaxRunsAndTheOthersWait",
+			runs:    []RunView{halted("r1"), halted("r2")},
+			maxRuns: 2,
+			tasks:   []TaskView{readyTask("a"), frontTask("fix"), readyTask("b")},
+			want:    []string{"fix"},
+		},
+		{
+			name:    "ARunningFrontTaskHoldsEveryOtherStart",
+			maxRuns: 3,
+			tasks:   []TaskView{runningFront, readyTask("a")},
+		},
+		{
+			name:    "ADraftFrontTaskHoldsNothing",
+			maxRuns: 3,
+			tasks:   []TaskView{draftFront, readyTask("a")},
+			want:    []string{"a"},
+		},
+		{
+			name:    "AFrontTaskOfAnotherProjectHoldsNothingAndDoesNotStart",
+			maxRuns: 3,
+			tasks:   []TaskView{otherProject, readyTask("a")},
+			want:    []string{"a"},
+		},
+		{
+			name:    "MaxRunsZeroStartsNoFrontTask",
+			maxRuns: 0,
+			tasks:   []TaskView{frontTask("fix"), readyTask("a")},
+		},
+		{
+			name:    "APauseCoveringTheFrontTaskHoldsItAndTheOthersBehindIt",
+			maxRuns: 3,
+			tasks:   []TaskView{frontTask("fix"), readyTask("a")},
+			covers:  map[string]bool{"fix": true},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			h := newPassHarness(t, tt.runs...)
+			h.fake.maxRuns = tt.maxRuns
+			h.fake.tasks = tt.tasks
+			for slug, covered := range tt.covers {
+				h.fake.covers[slug] = covered
+			}
+			h.tick(true)
+			var got []string
+			for _, spawned := range h.fake.spawned {
+				got = append(got, spawned.slug)
+			}
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("first passes = %v; want %v", got, tt.want)
+			}
+		})
+	}
+
+	t.Run("the settle seam runs before the start in the same tick", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{frontTask("fix")}
+		h.tick(true)
+		if h.fake.settles != 1 || !slices.Equal(h.fake.spawnedAtSettle, []int{0}) || len(h.fake.spawnsOf("fix")) != 1 {
+			t.Errorf("settles = %d, passes spawned at each settle = %v, passes of fix = %d; want one settle before the one start", h.fake.settles, h.fake.spawnedAtSettle, len(h.fake.spawnsOf("fix")))
+		}
+	})
+
+	t.Run("a front task whose start backoff has not run out waits, and the others stay behind it", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{frontTask("fix"), readyTask("a")}
+		h.fake.exits = []PassExit{{Code: 1, Error: "pre-run refused"}}
+		h.tick(true)
+		h.tick(true)
+		if len(h.fake.spawnsOf("fix")) != 1 || len(h.fake.spawnsOf("a")) != 0 {
+			t.Errorf("first passes = %+v; want the refused front task once and nothing else", h.fake.spawned)
+		}
+	})
+
+	t.Run("a failing settle seam posts one notice naming its hand step per episode and still starts the front task", func(t *testing.T) {
+		t.Parallel()
+		h := newPassHarness(t)
+		h.fake.tasks = []TaskView{frontTask("fix")}
+		first := errors.New("front task fix: the action adopt-check failed: boom; way forward: run `lym adopt root`")
+		h.fake.settleErr = first
+		h.tick(true)
+		if len(h.fake.spawnsOf("fix")) != 1 {
+			t.Errorf("first passes of fix = %d; want the failing settle to stop nothing", len(h.fake.spawnsOf("fix")))
+		}
+		h.tick(true)
+		wantFirst := "[dobby notice] front task: " + first.Error()
+		if !slices.Equal(h.fake.notices, []string{wantFirst}) {
+			t.Fatalf("notices after two failing ticks = %q; want the one notice %q", h.fake.notices, wantFirst)
+		}
+
+		h.fake.settleErr = nil
+		h.tick(true)
+		second := errors.New("front task fix: the action adopt-check failed: bust; way forward: run `lym adopt root`")
+		h.fake.settleErr = second
+		h.tick(true)
+		wantBoth := []string{wantFirst, "[dobby notice] front task: " + second.Error()}
+		if !slices.Equal(h.fake.notices, wantBoth) {
+			t.Errorf("notices after a clean tick and a new failure = %q; want %q", h.fake.notices, wantBoth)
+		}
+	})
 }

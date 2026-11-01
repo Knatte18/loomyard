@@ -5,7 +5,8 @@
      Every marker below is a top-level {{.X}} substitution;
      stencil.FillWith requires every marker except pattern_directive, project_directive, friction_directive and parent_directive non-empty, and there are no {{if}}/{{range}} conditionals anywhere in this file.
      project_directive is rendered by internal/loomengine.ProjectRecordDirective for a run under a beam, and shares the pattern directive's line so an empty value leaves the prompt's bytes unchanged.
-     decision_record_path is a required marker, naming the decision record the writer reads as its scope; stop_marker_path is a required marker, naming the file the writer creates when it stops.
+     decision_record_path is a required marker, naming the decision record the writer reads as its scope; stop_marker_path is a required marker, naming the file the writer creates when it stops;
+     condition_stop_marker_path is a required marker, naming the second file the writer creates when it stops on a condition the task's body names.
      prior_work is never empty: DarnTable fills it with (none) when it has nothing to tell.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
 
@@ -48,6 +49,10 @@ Check whether landed work, another board entry or another run overtook or contra
   - With no parent, a `Decision for {{.slug}}:` note never settles the stop: an outdated entry with no `Added after Discussion` entry answering it stops you again, whatever note answers it.
     Write the change description, your one output file, as a stop report in the final-summary spec's form, naming the outdated entry, what overtook or contradicts it, and as the way forward `lym loom decision add` and then `lym loom resume`, never a board note.
     Then create the stop marker, an empty file, at `{{.stop_marker_path}}`, and end your turn with no commit.
+- When the task's body names a stop condition and you find it holds, you stop.
+  Write the change description, your one output file, as the stop report with the content the body asks for, in the final-summary spec's form.
+  Then create the stop marker, an empty file, at `{{.stop_marker_path}}`, and the condition stop marker, an empty file, at `{{.condition_stop_marker_path}}`, and end your turn with no commit.
+  Stop this way only on a condition the body's own text names, never on one you infer.
 
 ## Step 4 — Make the change
 
