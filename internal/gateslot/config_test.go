@@ -18,7 +18,50 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
+
+// TestConfigSpec_SetNestedKeys pins that a hub --set reaches one key inside a declared tier or the build step, a number decoding as a number and an env value as a string, so the hub file still loads;
+// and that a key no tier holds is refused naming it, leaving the hub file byte for byte.
+func TestConfigSpec_SetNestedKeys(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	dirs := configengine.Dirs{Board: seedGateConfig(t, baseKeys+tier0Flow)}
+	pairs := []yamlengine.KV{
+		{Key: "tiers.tier0.env.LYM_TEST_TIER", Value: "0"},
+		{Key: "tiers.tier0.timeout_min", Value: "30"},
+		{Key: "build.command", Value: "go build ./..."},
+		{Key: "build.timeout_min", Value: "5"},
+		{Key: "build.env.CGO_ENABLED", Value: "0"},
+	}
+	if _, err := configengine.Set(dirs, ConfigSpec(), configengine.LayerDefault, pairs); err != nil {
+		t.Fatalf("Set() = %v; want nil", err)
+	}
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		t.Fatalf("LoadConfig() = %v; want nil", err)
+	}
+	tier := cfg.Tiers["tier0"]
+	if tier.Command != "go test -json {targets} {args}" || tier.TimeoutMin != 30 || !maps.Equal(tier.Env, map[string]string{"LYM_TEST_TIER": "0"}) {
+		t.Errorf("LoadConfig() tier0 = %+v; want command kept, timeout_min 30 and env LYM_TEST_TIER=0", tier)
+	}
+	if cfg.Build.Command != "go build ./..." || cfg.Build.TimeoutMin != 5 || !maps.Equal(cfg.Build.Env, map[string]string{"CGO_ENABLED": "0"}) {
+		t.Errorf("LoadConfig() build = %+v; want command go build ./..., timeout_min 5 and env CGO_ENABLED=0", cfg.Build)
+	}
+
+	path := configengine.ConfigFile(dirs.Board, "gate")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = configengine.Set(dirs, ConfigSpec(), configengine.LayerDefault, []yamlengine.KV{{Key: "tiers.tier0.envv.X", Value: "1"}})
+	if err == nil || !strings.Contains(err.Error(), "tiers.tier0 holds no key envv") {
+		t.Errorf("Set(tiers.tier0.envv.X) = %v; want a refusal naming envv", err)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Errorf("hub file after the refusal = %q; want it unchanged %q", after, before)
+	}
+}
 
 var templateDefaults = Config{
 	Slots: 2, BusyQuitSec: 120,

@@ -92,13 +92,13 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\ntiers: {}\n"
 
-// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
+// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as one key inside a shaped open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	openMaps := []string{"labels", "rounds"}
+	openMaps := []string{"labels", "rounds", "tiers"}
 	perNameMaps := []string{"lists", "names", "profiles"}
 	tests := []struct {
 		name        string
@@ -149,11 +149,15 @@ func TestSetSparse(t *testing.T) {
 		{name: "per-name mapping entry key under a scalar entry is refused", existing: "profiles:\n    costed: x\n", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, wantErr: true, wantErrText: []string{"profiles.costed"}},
 		{name: "per-name mapping entry key into a per-name map that holds a list is refused", existing: "profiles: [a]\n", pairs: []KV{{Key: "profiles.costed.budget", Value: "300"}}, wantErr: true, wantErrText: []string{"profiles", "sequence"}},
 		{name: "per-name mapping entry key no template entry holds is unknown", pairs: []KV{{Key: "profiles.wide.nope", Value: "1"}}, wantUnknown: []string{"profiles.wide.nope"}},
+		{name: "a key inside a shaped open-map entry is written with the mappings on the way", pairs: []KV{{Key: "tiers.t0.env.NAME", Value: "0"}, {Key: "tiers.t0.timeout_min", Value: "30"}}, want: "tiers:\n    t0:\n        env:\n            NAME: \"0\"\n        timeout_min: 30\n"},
+		{name: "a key inside a shaped flow entry keeps the entry's keys", existing: "tiers:\n    t0: {command: x}\n", pairs: []KV{{Key: "tiers.t0.env.NAME", Value: "a"}}, want: "tiers:\n    t0: {command: x, env: {NAME: a}}\n"},
+		{name: "a whole shaped open-map entry is written from a flow mapping", pairs: []KV{{Key: "tiers.t0", Value: "{command: x}"}}, want: "tiers:\n    t0:\n        command: x\n"},
+		{name: "a key a shaped open-map entry lacks is refused naming it", pairs: []KV{{Key: "tiers.t0.nope", Value: "1"}}, wantErr: true, wantErrText: []string{"tiers.t0.nope", "tiers.t0 holds no key nope"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := SetSparse([]byte(sparseTemplate), []byte(tc.existing), tc.pairs, perNameMaps, openMaps...)
+			got, err := SetSparse([]byte(sparseTemplate), []byte(tc.existing), tc.pairs, perNameMaps, shapedOpenMaps, openMaps...)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("SetSparse error = %v, wantErr %v", err, tc.wantErr)
 			}

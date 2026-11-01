@@ -7,6 +7,7 @@ busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CP
 # It may also hold about, dir (relative to the worktree root; default the worktree's anchor), env, parallel (at least 1, default 1), covers (lower tier numbers its command runs anyway), slots (a count of at least 1, or all; default 1), prebuilt_lym and manual (true keeps a tier above tier0 out of lym gate test --upto, so it runs only when --tier names it).
 # Three more keys: filter (the tier's own test-filter expression, allowed only when the command holds {filter}), shared_build (true runs the hub's build step first, once per call) and carry (false keeps a green run from being carried over an unchanged tree; default true).
 # Inside the mapping a value holding a brace, comma or bracket is a double-quoted string.
+# One key of a declared tier is set alone with its dotted path: lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.

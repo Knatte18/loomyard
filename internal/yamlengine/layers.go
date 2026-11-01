@@ -153,6 +153,7 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars or mappings of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
 // Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
 // A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
+// An open map that shapes maps to a shape takes a key at any path the shape reaches, as SetValues takes it, and a path it does not reach is an error naming the key.
 // Preserved stays empty.
 //
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
@@ -163,7 +164,7 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // A per-name map of mappings also knows P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds:
 // the pair writes that one key into the mapping at P.<name>, creating it, under the template entry's tag or as a flow list.
 // A value at P that is neither a mapping nor null is an error naming P and its shape, and nothing is written.
-func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, openMaps ...string) (SetResult, error) {
+func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shapes map[string]*Shape, openMaps ...string) (SetResult, error) {
 	var templateNode yaml.Node
 	if err := yaml.Unmarshal(template, &templateNode); err != nil {
 		return SetResult{}, err
@@ -188,12 +189,21 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, open
 	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
+	if err := shapedKeyError(pairs, openMaps, shapes); err != nil {
+		return SetResult{}, err
+	}
 
 	if existingRoot == nil {
 		existingRoot = &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		existingDoc = &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{existingRoot}}
 	}
 	for _, pair := range pairs {
+		if shape, shaped, _ := shapedOpenMapKey(pair.Key, openMaps, shapes); shaped {
+			if err := setShapedValue(existingRoot, pair, shape); err != nil {
+				return SetResult{}, err
+			}
+			continue
+		}
 		if open, name, ok := splitOpenMapKey(pair.Key, openMaps); ok {
 			mapping, err := mappingAt(existingRoot, open)
 			if err != nil {

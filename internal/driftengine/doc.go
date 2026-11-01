@@ -4,6 +4,8 @@
 // `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; and `verify_max_runs`, the run budget of one Drift-Verify agent session.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from, and may hold `{skip_file}`, a file naming one skipped test per line.
 // `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
+// Once a step is declared, `--set` also changes one of its keys alone, as in `--set capture.env.NAME=1` or `--set compare.timeout_min=10`, and refuses a key a step lacks;
+// a step left with keys but no command fails the load check, so a first declaration sets `command` and `timeout_min` together.
 // LoadConfig loads the file strictly and refuses a declared step without `{baseline_dir}` or with a `timeout_min` below 1, a `verify_max_runs` below 1 and a model-spec that fails its grammar, each naming the key.
 // Config.Step returns a declared step and refuses an undeclared one, so every row and verb that runs a command goes through it.
 //

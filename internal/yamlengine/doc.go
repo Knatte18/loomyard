@@ -49,6 +49,10 @@
 //     a value starting with [ is a YAML flow list of scalars or mappings of scalars, and any other value a string.
 //     A bracketed value that is not such a list is refused, never written as a string.
 //     A module declares a key that takes one value or a list, such as a per-round model list, this way.
+//   - SetValues and SetSparse also take a map from an open-map path to its [Shape], which [ShapeOf] derives from the module's decode type.
+//     A shaped P takes a dotted key at any path its shape reaches, such as P.<name>.env.<var> under a mapping of names whose entries hold a map,
+//     and sets that one value, creating every mapping on the way: a text value as a string and any other scalar under the tag its own text resolves to.
+//     A path the shape does not reach is refused naming the key, so a misspelled field never lands as a new entry; an unshaped P keeps the dotted rest as one entry name.
 //
 // Only declared paths change behaviour.
 // The shape check on P belongs to the module that declares it, in its own decode.

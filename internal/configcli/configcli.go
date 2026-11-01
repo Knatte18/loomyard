@@ -478,8 +478,8 @@ func buildConfigLong() string {
 		"A list-valued key takes a YAML flow list and is replaced whole, e.g.\n" +
 		"  lym config landing --set 'deploy_branches=[]'\n" +
 		"A module may declare an open map, whose keys are the repo's own; --set\n" +
-		"adds or rewrites one entry of it with a scalar value, e.g.\n" +
-		"  lym config board --set labels.quarry=\"glyphs and the quarry index\"\n" +
+		"adds or rewrites one entry of it, or one key inside it, e.g.\n" +
+		"  lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0\n" +
 		"A value the module's loader refuses is refused, naming the key.\n" +
 		"Keys the template lacks are\n" +
 		"preserved and reported in the JSON output's \"preserved\" field;\n" +

@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
 )
 
@@ -89,12 +90,17 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns drift's layered-load spec.
 // capture and compare run commands, so they are executable keys and closed to the local layer.
+// Both carry the shape their decode gives them, so `--set` reaches one key inside a step, such as `capture.env.NAME`, and refuses a key a step lacks.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
 		Template: []byte(ConfigTemplate()),
 		HubWide:  true,
 		OpenMaps: ConfigOpenMaps(),
+		OpenMapShapes: map[string]*yamlengine.Shape{
+			stepCapture: yamlengine.ShapeOf(stepFile{}),
+			stepCompare: yamlengine.ShapeOf(stepFile{}),
+		},
 		Categories: map[string]configengine.Category{
 			"enabled":         configengine.CategoryNone,
 			stepCapture:       configengine.CategoryExecutable,

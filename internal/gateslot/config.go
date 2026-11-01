@@ -100,11 +100,16 @@ func ConfigPerNameMaps() []string {
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable; the gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel` and `guard_tier` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
+// `tiers` and `build` carry the shape their decode gives them, so `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`, and refuses a key neither holds.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
-		Name:        "gate",
-		Template:    []byte(ConfigTemplate()),
-		OpenMaps:    ConfigOpenMaps(),
+		Name:     "gate",
+		Template: []byte(ConfigTemplate()),
+		OpenMaps: ConfigOpenMaps(),
+		OpenMapShapes: map[string]*yamlengine.Shape{
+			"tiers": yamlengine.ShapeOf(map[string]tierFile{}),
+			"build": yamlengine.ShapeOf(buildFile{}),
+		},
 		PerNameMaps: ConfigPerNameMaps(),
 		HubWide:     true,
 		Categories: map[string]configengine.Category{

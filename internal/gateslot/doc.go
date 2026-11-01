@@ -56,7 +56,7 @@
 // TemplateConfig decodes the template alone, for a run outside every hub.
 //
 // The tier keys are `tiers`, `gates`, `scoper`, `refuse_raw`, `tier_parallel`, `build` and `inert_paths`.
-// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping;
+// `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping, or one key at a time, as `--set tiers.tier0.env.LYM_TEST_TIER=0` or `--set build.timeout_min=10`, a key no tier or build step holds refused;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern; the template's `card` key lists both.
 // The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix`, `drift-verify` and `pr-review` (scope `diff`).

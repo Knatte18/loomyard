@@ -53,6 +53,8 @@
 // A value whose first non-blank character is `{` or `[` writes the entry as a YAML flow mapping or list instead, replacing it whole, as in `lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", timeout_min: 60, counter: go-json}'`.
 // It refuses when the map holds a list,
 // and removing an entry stays an editor edit.
+// An open map whose spec declares its shape (`configengine.Spec.OpenMapShapes`) also takes a key inside an entry, as in `lym config gate --set tiers.tier0.env.LYM_TEST_TIER=0`:
+// the one value is written there, a number as a number and a string field as a string, and a key the shape lacks is refused naming it.
 // A key that is itself a declared open map holding a scalar or a list, such as loom's model keys `reviewer_model`, `fixer_model` and each segment's `*_reviewer_model` and `*_fixer_model` (the plan segment's in tapestry), and each perch's fan keys `*_reviewer_fan` and `*_fixer_fan` in loom and tapestry, takes either shape:
 // a value starting with `[` is written as a YAML flow list of scalars or mappings of scalars and any other value as a string, as in `lym config tapestry --set 'plan_reviewer_model=["opus[medium]", "sonnet[high]"]'`.
 // An entry holding `[` or `]` must be quoted, and a bracketed value that is not such a list is refused, never written as a string.

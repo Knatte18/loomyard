@@ -65,6 +65,7 @@ const (
 
 // Spec describes one module to the layered loaders.
 // OpenMaps are the dotted paths of the module's open maps;
+// OpenMapShapes maps an open-map path to the shape the module decodes there, so a set reaches one key inside it;
 // PerNameMaps are the dotted paths of the module's per-name maps, mappings of names the operator owns, such as a lens's prose or a batcher profile, which a layer adds to or overrides by name;
 // HubWide marks a module whose file lives at the hub only;
 // WholeEntries makes each top-level key one unit, open to the local layer.
@@ -79,6 +80,7 @@ type Spec struct {
 	Name              string
 	Template          []byte
 	OpenMaps          []string
+	OpenMapShapes     map[string]*yamlengine.Shape
 	PerNameMaps       []string
 	HubWide           bool
 	WholeEntries      bool

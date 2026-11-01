@@ -7,6 +7,8 @@ package yamlengine
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -39,6 +41,61 @@ type SetResult struct {
 	Preserved []string
 }
 
+// Shape is the shape a module's decode gives the value at a declared open-map path, which lets a set key reach below the open map's entries.
+// A shape with Fields is a mapping of fixed keys, one with Entries a mapping of names the user owns, and one with neither a single value.
+type Shape struct {
+	// Fields maps each key a mapping of fixed keys holds to its shape.
+	Fields map[string]*Shape
+	// Entries is the shape of every entry of a mapping of names.
+	Entries *Shape
+	// Text marks a single value decoded as a string, so a set writes it as a string whatever its text.
+	Text bool
+}
+
+// nodeType is the yaml.Node type, which decodes any value and so is a single value whatever it holds.
+var nodeType = reflect.TypeFor[yaml.Node]()
+
+// ShapeOf returns the shape yaml.v3 decodes value's type into:
+// a struct is a mapping of the keys its exported fields' yaml tags name, a field tagged `-` left out and an untagged one keyed by its lower-cased name;
+// a map is a mapping of names, a string a text value, and anything else, a yaml.Node included, a single value.
+// A pointer takes its element's shape.
+func ShapeOf(value any) *Shape {
+	return shapeOfType(reflect.TypeOf(value))
+}
+
+// shapeOfType returns the shape yaml.v3 decodes a value of t into.
+func shapeOfType(t reflect.Type) *Shape {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch {
+	case t == nodeType:
+		return &Shape{}
+	case t.Kind() == reflect.Struct:
+		fields := make(map[string]*Shape)
+		for i := range t.NumField() {
+			field := t.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+			name, _, _ := strings.Cut(field.Tag.Get("yaml"), ",")
+			if name == "-" {
+				continue
+			}
+			if name == "" {
+				name = strings.ToLower(field.Name)
+			}
+			fields[name] = shapeOfType(field.Type)
+		}
+		return &Shape{Fields: fields}
+	case t.Kind() == reflect.Map:
+		return &Shape{Entries: shapeOfType(t.Elem())}
+	case t.Kind() == reflect.String:
+		return &Shape{Text: true}
+	}
+	return &Shape{}
+}
+
 // SetValues applies pairs to a template-shaped YAML document, preserving comments and key order.
 // If any pairs[i].Key is absent from the template's leaf-key and list-key sets, SetResult.Unknown is
 // returned non-empty and Merged is nil.
@@ -59,6 +116,12 @@ type SetResult struct {
 // a bracketed value that is not such a list is an error.
 // Known lists each open map as P.<name>.
 //
+// An open map P that shapes maps to a shape takes a key P.<rest> for any rest the shape reaches, a name for each mapping of names on the way and a key the mapping holds for each mapping of fixed keys,
+// and the pair sets that one value in the tree at P, creating every missing mapping on the way.
+// A rest the shape does not reach, such as a key a mapping of fixed keys lacks or one below a single value, is an error naming the key, and nothing is merged.
+// A text value is written as a string, a value whose first non-blank character is { or [ as a flow mapping or list, and any other value as a scalar under the tag its own text resolves to, so a number decodes as a number.
+// A value on the way that is neither a mapping nor null is an error naming its path.
+//
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
 // P.<name> is known for any dot-free name, every name existing holds under P and the template lacks is carried onto the mapping, and the pair sets the name, appending it when absent.
 // Once the pairs apply, every name under P holding the template's value for it is left out of Merged, a name a pair set included.
@@ -68,7 +131,7 @@ type SetResult struct {
 // A per-name map of mappings also knows P.<name>.<rest> for any name, where rest is a scalar or list path some template entry holds:
 // the pair sets that one key in the name's mapping, creating it, under the template entry's tag or as a flow list.
 // A pair under P whose existing value at P is neither a mapping nor null is an error naming P and its shape.
-func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, openMaps ...string) (SetResult, error) {
+func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, shapes map[string]*Shape, openMaps ...string) (SetResult, error) {
 	// Parse the template into the tree we will mutate and ultimately marshal.
 	var templateNode yaml.Node
 	if err := yaml.Unmarshal(template, &templateNode); err != nil {
@@ -135,6 +198,9 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 	if unknown := unknownKeys(pairs, templateLeaves, templateSequences, openMaps, perNameMaps, entryLeaves); len(unknown) > 0 {
 		return SetResult{Unknown: unknown, Known: known}, nil
 	}
+	if err := shapedKeyError(pairs, openMaps, shapes); err != nil {
+		return SetResult{}, err
+	}
 
 	// Every key but a per-name entry key is now guaranteed to have a real node in templateNode, since
 	// the working tree always contains every template leaf. Apply pairs in
@@ -148,6 +214,12 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, open
 			current := findValueNode(&templateNode, pair.Key)
 			value.HeadComment, value.LineComment, value.FootComment = current.HeadComment, current.LineComment, current.FootComment
 			*current = *value
+			continue
+		}
+		if shape, shaped, _ := shapedOpenMapKey(pair.Key, openMaps, shapes); shaped {
+			if err := setShapedValue(documentRoot(&templateNode), pair, shape); err != nil {
+				return SetResult{}, err
+			}
 			continue
 		}
 		if open, name, ok := splitOpenMapKey(pair.Key, openMaps); ok {
@@ -284,6 +356,77 @@ func setOpenMapEntry(root *yaml.Node, open, name string, pair KV) error {
 		}
 	}
 	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, entry)
+	return nil
+}
+
+// shapedOpenMapKey returns the shape of the value key names under a declared open map that shapes maps to a shape, and whether key lies under such a map.
+// A key with an empty segment, a segment a mapping of fixed keys lacks or a segment below a single value is an error naming the key and where it leaves the shape.
+func shapedOpenMapKey(key string, openMaps []string, shapes map[string]*Shape) (*Shape, bool, error) {
+	open, rest, ok := splitOpenMapKey(key, openMaps)
+	if !ok {
+		return nil, false, nil
+	}
+	shape, shaped := shapes[open]
+	if !shaped {
+		return nil, false, nil
+	}
+	walked := open
+	for segment := range strings.SplitSeq(rest, ".") {
+		switch {
+		case segment == "":
+			return nil, true, fmt.Errorf("config key %s holds an empty segment after %s", key, walked)
+		case shape.Fields != nil:
+			next, ok := shape.Fields[segment]
+			if !ok {
+				return nil, true, fmt.Errorf("unknown config key %s: %s holds no key %s; it holds %s", key, walked, segment, strings.Join(slices.Sorted(maps.Keys(shape.Fields)), ", "))
+			}
+			shape = next
+		case shape.Entries != nil:
+			shape = shape.Entries
+		default:
+			return nil, true, fmt.Errorf("unknown config key %s: %s holds one value, so no key lies under it", key, walked)
+		}
+		walked += "." + segment
+	}
+	return shape, true, nil
+}
+
+// shapedKeyError returns the error shapedOpenMapKey reports for the first pair key it refuses, or nil when it refuses none.
+func shapedKeyError(pairs []KV, openMaps []string, shapes map[string]*Shape) error {
+	for _, pair := range pairs {
+		if _, _, err := shapedOpenMapKey(pair.Key, openMaps, shapes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// setShapedValue writes pair's value, of shape, at pair's key in the mapping tree under root, creating every missing mapping on the way.
+// A text value is a string; a mapping, or a value whose first non-blank character is { or [, takes the node an open-map entry takes;
+// any other value is a scalar under the tag its own text resolves to.
+// A value on the way that is neither a mapping nor null is an error naming its path.
+func setShapedValue(root *yaml.Node, pair KV, shape *Shape) error {
+	var value *yaml.Node
+	trimmed := strings.TrimSpace(pair.Value)
+	switch {
+	case shape.Text:
+		value = stringNode(pair.Value)
+	case shape.Fields != nil, shape.Entries != nil, strings.HasPrefix(trimmed, "{"), strings.HasPrefix(trimmed, "["):
+		entry, err := openMapEntryNode(pair)
+		if err != nil {
+			return err
+		}
+		value = entry
+	default:
+		// A null leaf tag makes scalarSetTag resolve the tag from the value's own text.
+		value = &yaml.Node{Kind: yaml.ScalarNode, Tag: scalarSetTag("!!null", pair.Value), Value: pair.Value}
+	}
+	parentPath, name := splitLastSegment(pair.Key)
+	parent, err := mappingAt(root, parentPath)
+	if err != nil {
+		return fmt.Errorf("%w: rewrite it as a map to set %s", err, pair.Key)
+	}
+	setEntry(parent, name, value)
 	return nil
 }
 

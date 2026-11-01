@@ -30,6 +30,27 @@ var (
 	perNameMappingMaps = []string{"profiles"}
 )
 
+// shapedTier is a decode type a shaped open map takes the shape of.
+// It holds a text key, a number key, a list key, a map of names and a yaml.Node.
+// It also holds an untagged field, a field whose tag holds an option, a field tagged out and an unexported field.
+type shapedTier struct {
+	Command    string            `yaml:"command"`
+	TimeoutMin *int              `yaml:"timeout_min"`
+	Covers     []int             `yaml:"covers"`
+	Env        map[string]string `yaml:"env"`
+	Slots      yaml.Node         `yaml:"slots"`
+	Plain      string
+	Retries    int    `yaml:"retries,omitempty"`
+	Hidden     string `yaml:"-"`
+	secret     string
+}
+
+// An unexported field is only declared to be left out of the shape, so one write keeps it used.
+var _ = shapedTier{secret: ""}
+
+// shapedOpenMaps shapes tiers as a mapping of names to shapedTier entries and build as one shapedTier.
+var shapedOpenMaps = map[string]*Shape{"tiers": ShapeOf(map[string]shapedTier{}), "build": ShapeOf(shapedTier{})}
+
 func intPointer(v int) *int { return &v }
 
 // assertDecodesAsInts fails unless merged decodes each key of want into an *int equal to want's entry, nil included.
@@ -64,6 +85,7 @@ func TestSetValues(t *testing.T) {
 		pairs         []KV
 		openMaps      []string
 		perNameMaps   []string
+		shapes        map[string]*Shape
 		wantValues    map[string]string
 		wantPreserved []string
 		contains      []string
@@ -337,12 +359,73 @@ func TestSetValues(t *testing.T) {
 			contains:    []string{"wide:\n        kind: identity\n        budget: 5\n"},
 			notContains: []string{"costed", "plain"},
 		},
+		{
+			name:        "shaped open map takes one key inside an entry and keeps the entry's other keys",
+			template:    "tiers: {}\nbuild: {}\n",
+			existing:    "tiers:\n  t0: {command: x, timeout_min: 5}\n",
+			pairs:       []KV{{Key: "tiers.t0.env.NAME", Value: "0"}, {Key: "tiers.t0.timeout_min", Value: "30"}},
+			openMaps:    []string{"tiers", "build"},
+			shapes:      shapedOpenMaps,
+			contains:    []string{"command: x", "timeout_min: 30", `NAME: "0"`},
+			notContains: []string{"t0.env", `"30"`},
+		},
+		{
+			name:        "shaped open map of fixed keys takes a number as a number and text as a string",
+			template:    "tiers: {}\nbuild: {}\n",
+			pairs:       []KV{{Key: "build.timeout_min", Value: "5"}, {Key: "build.command", Value: "42"}, {Key: "build.slots", Value: "all"}},
+			openMaps:    []string{"tiers", "build"},
+			shapes:      shapedOpenMaps,
+			contains:    []string{"timeout_min: 5", `command: "42"`, "slots: all"},
+			notContains: []string{`"5"`},
+		},
+		{
+			name:        "shaped open map takes a whole entry from a flow mapping",
+			template:    "tiers: {}\nbuild: {}\n",
+			pairs:       []KV{{Key: "tiers.t0", Value: "{command: x}"}},
+			openMaps:    []string{"tiers", "build"},
+			shapes:      shapedOpenMaps,
+			contains:    []string{"    t0:\n        command: x\n"},
+			notContains: []string{"{command"},
+		},
+		{
+			name:     "shaped open map writes a plain value for a whole entry as a string",
+			template: "tiers: {}\nbuild: {}\n",
+			pairs:    []KV{{Key: "tiers.t0", Value: "5"}},
+			openMaps: []string{"tiers", "build"},
+			shapes:   shapedOpenMaps,
+			contains: []string{`t0: "5"`},
+		},
+		{
+			name:     "shaped open map takes a bracketed value on a single-value field as a flow list",
+			template: "tiers: {}\nbuild: {}\n",
+			pairs:    []KV{{Key: "build.covers", Value: "[0, 1]"}},
+			openMaps: []string{"tiers", "build"},
+			shapes:   shapedOpenMaps,
+			contains: []string{"covers: [0, 1]"},
+		},
+		{
+			name:        "shaped open map keys an untagged field by its lower-cased name and a tag option out of the key",
+			template:    "tiers: {}\nbuild: {}\n",
+			pairs:       []KV{{Key: "build.plain", Value: "7"}, {Key: "build.retries", Value: "3"}},
+			openMaps:    []string{"tiers", "build"},
+			shapes:      shapedOpenMaps,
+			contains:    []string{`plain: "7"`, "retries: 3"},
+			notContains: []string{`"3"`},
+		},
+		{
+			name:     "unshaped open map keeps a dotted rest as one entry name",
+			template: openMapSetTemplate,
+			pairs:    []KV{{Key: "labels.a.b", Value: "v"}},
+			openMaps: []string{"labels"},
+			shapes:   shapedOpenMaps,
+			contains: []string{"a.b: v"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := SetValues([]byte(tt.template), []byte(tt.existing), tt.pairs, tt.perNameMaps, tt.openMaps...)
+			result, err := SetValues([]byte(tt.template), []byte(tt.existing), tt.pairs, tt.perNameMaps, tt.shapes, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() unexpected error: %v", err)
 			}
@@ -379,7 +462,7 @@ func TestSetValues(t *testing.T) {
 				previous = at
 			}
 
-			again, err := SetValues([]byte(tt.template), result.Merged, tt.pairs, tt.perNameMaps, tt.openMaps...)
+			again, err := SetValues([]byte(tt.template), result.Merged, tt.pairs, tt.perNameMaps, tt.shapes, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() second call unexpected error: %v", err)
 			}
@@ -445,7 +528,7 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := SetValues([]byte(tt.template), nil, tt.pairs, tt.perNameMaps, tt.openMaps...)
+			result, err := SetValues([]byte(tt.template), nil, tt.pairs, tt.perNameMaps, nil, tt.openMaps...)
 			if err != nil {
 				t.Fatalf("SetValues() unexpected error: %v", err)
 			}
@@ -477,8 +560,58 @@ func TestSetValues_Refusals(t *testing.T) {
 		pair        KV
 		openMaps    []string
 		perNameMaps []string
+		shapes      map[string]*Shape
 		want        []string
 	}{
+		{
+			name:     "key a shaped entry lacks",
+			template: "tiers: {}\n",
+			pair:     KV{Key: "tiers.t0.envv.X", Value: "1"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0.envv.X", "tiers.t0 holds no key envv", "command, covers, env, plain, retries, slots, timeout_min"},
+		},
+		{
+			name:     "unexported field of a shaped entry",
+			template: "tiers: {}\n",
+			pair:     KV{Key: "tiers.t0.secret", Value: "1"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0 holds no key secret"},
+		},
+		{
+			name:     "key a shaped entry tags out",
+			template: "tiers: {}\n",
+			pair:     KV{Key: "tiers.t0.hidden", Value: "1"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0 holds no key hidden"},
+		},
+		{
+			name:     "key below a single value of a shaped entry",
+			template: "tiers: {}\n",
+			pair:     KV{Key: "tiers.t0.command.x", Value: "1"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0.command.x", "tiers.t0.command holds one value"},
+		},
+		{
+			name:     "empty segment in a shaped key",
+			template: "tiers: {}\n",
+			pair:     KV{Key: "tiers.t0..command", Value: "1"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0..command", "empty segment"},
+		},
+		{
+			name:     "key inside a shaped entry that holds a scalar",
+			template: "tiers: {}\n",
+			existing: "tiers:\n  t0: x\n",
+			pair:     KV{Key: "tiers.t0.command", Value: "y"},
+			openMaps: []string{"tiers"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"tiers.t0 holds a scalar", "rewrite it as a map to set tiers.t0.command"},
+		},
 		{
 			name:     "scalar for a list key",
 			template: "deploy_branches: [\"main\"]\n",
@@ -585,7 +718,7 @@ func TestSetValues_Refusals(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := SetValues([]byte(tt.template), []byte(tt.existing), []KV{tt.pair}, tt.perNameMaps, tt.openMaps...)
+			_, err := SetValues([]byte(tt.template), []byte(tt.existing), []KV{tt.pair}, tt.perNameMaps, tt.shapes, tt.openMaps...)
 			if err == nil {
 				t.Fatal("SetValues() = nil error; want a refusal")
 			}
@@ -595,6 +728,20 @@ func TestSetValues_Refusals(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSetValues_ShapedRefusalRejectsWholeCall pins that a misspelled shaped key after a valid pair rejects the whole call: the error names the key and no merged bytes come back.
+func TestSetValues_ShapedRefusalRejectsWholeCall(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	pairs := []KV{{Key: "build.command", Value: "go build"}, {Key: "build.nope", Value: "1"}}
+	result, err := SetValues([]byte("build: {}\n"), nil, pairs, nil, shapedOpenMaps, "build")
+	if err == nil || !strings.Contains(err.Error(), "build holds no key nope") {
+		t.Errorf("SetValues() error = %v; want a refusal naming nope", err)
+	}
+	if result.Merged != nil {
+		t.Errorf("SetValues() Merged = %q; want nil (no partial write)", result.Merged)
 	}
 }
 

@@ -14,7 +14,52 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
+
+// TestConfigSpec_SetNestedKeys pins that a --set reaches one key inside capture or compare, a number decoding as a number and an env value as a string, so the file still loads;
+// and that a key a step lacks is refused naming it, leaving the file byte for byte.
+func TestConfigSpec_SetNestedKeys(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	baseDir := t.TempDir()
+	seedDriftConfig(t, baseDir, withKey(t, "capture", `capture: {command: "profile --out {baseline_dir}", timeout_min: 30}`))
+	dirs := configengine.Dirs{Board: baseDir}
+	pairs := []yamlengine.KV{
+		{Key: "capture.timeout_min", Value: "45"},
+		{Key: "capture.env.NAME", Value: "1"},
+		{Key: "compare.command", Value: "cmp {baseline_dir}"},
+		{Key: "compare.timeout_min", Value: "5"},
+	}
+	if _, err := configengine.Set(dirs, ConfigSpec(), configengine.LayerDefault, pairs); err != nil {
+		t.Fatalf("Set() = %v; want nil", err)
+	}
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		t.Fatalf("LoadConfig() = %v; want nil", err)
+	}
+	wantCapture := CommandStep{Command: "profile --out {baseline_dir}", Dir: ".", Env: map[string]string{"NAME": "1"}, TimeoutMin: 45}
+	if !reflect.DeepEqual(cfg.Capture, wantCapture) {
+		t.Errorf("LoadConfig() capture = %+v; want %+v", cfg.Capture, wantCapture)
+	}
+	wantCompare := CommandStep{Command: "cmp {baseline_dir}", Dir: ".", TimeoutMin: 5}
+	if !reflect.DeepEqual(cfg.Compare, wantCompare) {
+		t.Errorf("LoadConfig() compare = %+v; want %+v", cfg.Compare, wantCompare)
+	}
+
+	path := configengine.ConfigFile(baseDir, configModule)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = configengine.Set(dirs, ConfigSpec(), configengine.LayerDefault, []yamlengine.KV{{Key: "capture.timeoutt", Value: "1"}})
+	if err == nil || !strings.Contains(err.Error(), "capture holds no key timeoutt") {
+		t.Errorf("Set(capture.timeoutt) = %v; want a refusal naming timeoutt", err)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Errorf("drift file after the refusal = %q; want it unchanged %q", after, before)
+	}
+}
 
 // seedDriftConfig creates <baseDir>/_lym/config/drift.yaml with the given contents.
 func seedDriftConfig(t *testing.T, baseDir, contents string) {
