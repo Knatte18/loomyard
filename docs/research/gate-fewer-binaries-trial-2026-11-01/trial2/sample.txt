@@ -1,0 +1,10 @@
+internal/reedcli
+internal/webstercli
+internal/creelcli
+internal/loomcli
+internal/orchcli
+internal/pairteardown
+internal/treadleengine
+internal/standalonegeom
+internal/fabricengine
+internal/reedengine

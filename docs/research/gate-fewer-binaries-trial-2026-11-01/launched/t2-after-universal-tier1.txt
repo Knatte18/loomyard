@@ -1,0 +1,10 @@
+github.com/Knatte18/loomyard/internal/creelcli
+github.com/Knatte18/loomyard/internal/fabricengine
+github.com/Knatte18/loomyard/internal/loomcli
+github.com/Knatte18/loomyard/internal/orchcli
+github.com/Knatte18/loomyard/internal/pairteardown
+github.com/Knatte18/loomyard/internal/reedcli
+github.com/Knatte18/loomyard/internal/reedengine
+github.com/Knatte18/loomyard/internal/standalonegeom
+github.com/Knatte18/loomyard/internal/treadleengine
+github.com/Knatte18/loomyard/internal/webstercli

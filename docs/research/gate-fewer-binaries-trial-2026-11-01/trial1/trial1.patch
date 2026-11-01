@@ -1,0 +1,97 @@
+diff --git a/internal/testkit/tmuxkit/main_light.go b/internal/testkit/tmuxkit/main_light.go
+new file mode 100644
+index 00000000..8251d247
+--- /dev/null
++++ b/internal/testkit/tmuxkit/main_light.go
+@@ -0,0 +1,51 @@
++//go:build !tier2 && !tier3
++
++package tmuxkit
++
++import (
++	"os"
++	"path/filepath"
++	"strconv"
++	"strings"
++	"testing"
++)
++
++// Main is the trial's light TestMain path for the tiers with no tmux: a private temp directory, no import of lymtemp, proc, lock or agentname.
++func Main(m *testing.M) int {
++	dir, err := lightDir()
++	if err != nil {
++		return 1
++	}
++	_ = os.Setenv("TMPDIR", dir)
++	_ = os.Setenv("TMUX_TMPDIR", dir)
++	_ = os.Setenv("GIT_CEILING_DIRECTORIES", dir)
++	_ = os.Unsetenv("LYM_REED_TMUX_CONF")
++	code := m.Run()
++	_ = os.RemoveAll(dir)
++	return code
++}
++
++// ServerEnviron mirrors the full kit's scrub with the agent variable names spelled out.
++func ServerEnviron(environ []string) []string {
++	clean := make([]string, 0, len(environ))
++	for _, entry := range environ {
++		key, _, _ := strings.Cut(entry, "=")
++		switch {
++		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"):
++		case key == "LYM_TRACE_ID", key == "LYM_STRAND_NAME", key == "LYM_PARENT":
++		default:
++			clean = append(clean, entry)
++		}
++	}
++	return clean
++}
++
++// lightDir creates the private temp directory in the layout lymtemp uses, <system temp>/lym-<uid>/r<random>, so tests that read the run directory's place find it where they expect.
++// The directory is created without lymtemp, whose lock import the light path cuts, so it has no owner lock and no dead-owner sweep.
++func lightDir() (string, error) {
++	base := filepath.Join(os.TempDir(), "lym-"+strconv.Itoa(os.Getuid()))
++	if err := os.MkdirAll(base, 0o700); err != nil {
++		return "", err
++	}
++	return os.MkdirTemp(base, "r")
++}
+diff --git a/internal/testkit/tmuxkit/proc_test.go b/internal/testkit/tmuxkit/proc_test.go
+index 44d03e79..4a4c0a1d 100644
+--- a/internal/testkit/tmuxkit/proc_test.go
++++ b/internal/testkit/tmuxkit/proc_test.go
+@@ -1,4 +1,4 @@
+-//go:build tier0 && linux
++//go:build tier2 && linux
+ 
+ // proc_test.go checks the kit's stat and comm probes against the test's own process.
+ 
+diff --git a/internal/testkit/tmuxkit/tmuxkit.go b/internal/testkit/tmuxkit/tmuxkit.go
+index b9fd1e40..ab50c1b1 100644
+--- a/internal/testkit/tmuxkit/tmuxkit.go
++++ b/internal/testkit/tmuxkit/tmuxkit.go
+@@ -1,3 +1,5 @@
++//go:build tier2 || tier3
++
+ // Package tmuxkit gives each test package one isolated tmux socket directory.
+ //
+ // A package's TestMain calls Main, which points `TMUX_TMPDIR` at a private directory, so no test reaches the caller's own tmux server or leaves a socket in the default directory.
+diff --git a/internal/testkit/tmuxkit/tmuxkit_test.go b/internal/testkit/tmuxkit/tmuxkit_test.go
+index ef1c0090..a4faf81b 100644
+--- a/internal/testkit/tmuxkit/tmuxkit_test.go
++++ b/internal/testkit/tmuxkit/tmuxkit_test.go
+@@ -1,4 +1,4 @@
+-//go:build tier0
++//go:build tier2
+ 
+ package tmuxkit
+ 
+diff --git a/internal/testkit/tmuxkit/tmuxkit_unix_test.go b/internal/testkit/tmuxkit/tmuxkit_unix_test.go
+index 57f73708..4e1b083f 100644
+--- a/internal/testkit/tmuxkit/tmuxkit_unix_test.go
++++ b/internal/testkit/tmuxkit/tmuxkit_unix_test.go
+@@ -1,4 +1,4 @@
+-//go:build tier0 && !windows
++//go:build tier2 && !windows
+ 
+ // tmuxkit_unix_test.go holds the socket tests; tmux keeps its unix sockets under TMUX_TMPDIR, which Windows does not use.
+ 

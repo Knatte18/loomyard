@@ -1,0 +1,68 @@
+diff --git a/internal/testkit/tiergate/tiergate.go b/internal/testkit/tiergate/tiergate.go
+new file mode 100644
+index 00000000..d8c78392
+--- /dev/null
++++ b/internal/testkit/tiergate/tiergate.go
+@@ -0,0 +1,28 @@
++// Package tiergate selects at run time which tier's tests a test binary runs, for the one-binary-per-package trial.
++//
++// The tier comes from the LYM_TEST_TIER environment variable, set by the gate to the number of the tier it runs.
++// Require skips a test whose tier is not the running one, so a package's tiers share one test binary.
++package tiergate
++
++import (
++	"os"
++	"strconv"
++	"testing"
++)
++
++// Current returns the running tier, or -1 when LYM_TEST_TIER is unset or not a number.
++func Current() int {
++	tier, err := strconv.Atoi(os.Getenv("LYM_TEST_TIER"))
++	if err != nil {
++		return -1
++	}
++	return tier
++}
++
++// Require skips t unless the running tier is tier.
++func Require(t testing.TB, tier int) {
++	t.Helper()
++	if Current() != tier {
++		t.Skipf("tier%d test; running tier%d", tier, Current())
++	}
++}
+diff --git a/internal/testkit/tmuxkit/allow_tmux.go b/internal/testkit/tmuxkit/allow_tmux.go
+index a15711bb..e498e3ab 100644
+--- a/internal/testkit/tmuxkit/allow_tmux.go
++++ b/internal/testkit/tmuxkit/allow_tmux.go
+@@ -1,10 +1,10 @@
+-//go:build tier2 || tier3
+-
+-// allow_tmux.go turns on the tmux-server switch in a test binary built with the tier2 or tier3 tag.
++// allow_tmux.go reads the tmux-server switch from the running tier, so one test binary serves every tier.
+ 
+ package tmuxkit
+ 
+-// init allows tmux servers in a test binary built with the tier2 or tier3 tag.
+-func init() {
+-	tmuxAllowed = true
++import "github.com/Knatte18/loomyard/internal/testkit/tiergate"
++
++// tmuxAllowed reports whether this test binary's tests may start tmux servers: tier2 and tier3 allow them.
++func tmuxAllowed() bool {
++	return tiergate.Current() >= 2
+ }
+diff --git a/internal/testkit/tmuxkit/tmuxkit.go b/internal/testkit/tmuxkit/tmuxkit.go
+index b9fd1e40..ab42d843 100644
+--- a/internal/testkit/tmuxkit/tmuxkit.go
++++ b/internal/testkit/tmuxkit/tmuxkit.go
+@@ -103,7 +103,7 @@ func Main(m *testing.M) int {
+ // It returns code unless a socket finding or a leftover forces 1, and names each on w.
+ // A failed remove is named on w and leaves the code unchanged, since the next start's sweep removes the directory.
+ func afterRun(w io.Writer, dir string, code int, grace time.Duration, sweep func(), remove func() error) int {
+-	if findings := checkSockets(dir, tmuxAllowed); len(findings) > 0 {
++	if findings := checkSockets(dir, tmuxAllowed()); len(findings) > 0 {
+ 		for _, finding := range findings {
+ 			fmt.Fprintln(w, finding)
+ 		}

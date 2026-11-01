@@ -1,0 +1,10 @@
+Guard tests of cmd/lym run over the trial 2 tree (LYM_TEST_TIER=0 lym gate test --wait --tier 0 --guards ./cmd/lym):
+
+--- FAIL: TestLLMTier_OnlyLLMFilesReachAnLLM
+    internal/webstercli/smoke_test.go: imports llmkit but can compile without the `tier3` tag; constrain it to `//go:build tier3`
+--- FAIL: TestTierPurity_UntaggedTestsSpawnNothing
+    panic: interface conversion: ast.Expr is *ast.Ident, not *ast.SelectorExpr
+    (the guard reads a test file's tag to know its tier; the untagged files now carry tiergate.Require calls it does not expect)
+
+No other test in the run failed.
+Whether TestTierTags_OneTagPerTestFile ran in that scope was not checked; it asserts a tag on every test file, so the untagged sample files would break it too.

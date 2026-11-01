@@ -1,0 +1,2 @@
+github.com/Knatte18/loomyard/internal/loomcli
+github.com/Knatte18/loomyard/internal/webstercli
