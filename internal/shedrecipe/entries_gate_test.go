@@ -59,7 +59,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, name := range []string{"discussion", "plan", "parts", "description"} {
+	for _, name := range []string{"clean", "discussion", "plan", "parts", "description"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -336,9 +336,21 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"discussion", "plan", "parts", "description", "verify"} {
+			for _, want := range []string{"clean", "discussion", "plan", "parts", "description", "verify"} {
 				assertErrContains(t, err, want)
 			}
+		})
+	}
+}
+
+func TestResolveGateSpec_CleanRequiresAbsoluteWorktreeRoot(t *testing.T) {
+	tiergate.Require(t, 0)
+	for _, root := range []string{"", "relative/worktree"} {
+		t.Run(root, func(t *testing.T) {
+			env := newTestEnv(t)
+			env.WorktreeRoot = root
+			_, err := resolveGateSpec("Row", gatesCfg("clean", 3), env)
+			assertErrContains(t, err, "WorktreeRoot")
 		})
 	}
 }

@@ -43,6 +43,8 @@ type fakeFixerSeats struct {
 
 	// tables records every table Run was given.
 	tables []seatengine.Table
+	// findings records the findings of every re-prompting gate result, in order.
+	findings []string
 	// turnsRun counts the turns Run ran.
 	turnsRun int
 }
@@ -82,6 +84,7 @@ func (f *fakeFixerSeats) Run(table seatengine.Table) (seatengine.Result, error) 
 		if result.Passed || result.Terminal {
 			break
 		}
+		f.findings = append(f.findings, result.Findings)
 	}
 	return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, RunDir: fakeFixerRunDir}}, nil
 }
@@ -168,14 +171,15 @@ func TestFixerRun_Outcomes(t *testing.T) {
 
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	tests := []struct {
-		name        string
-		start       FixerAttempts
-		setup       func(t *testing.T, fx *fixerRunFixture)
-		wantEnd     fixerEnd
-		wantSpent   int
-		wantTurns   int
-		wantReason  []string
-		avoidReason []string
+		name         string
+		start        FixerAttempts
+		setup        func(t *testing.T, fx *fixerRunFixture)
+		wantEnd      fixerEnd
+		wantSpent    int
+		wantTurns    int
+		wantFindings []string
+		wantReason   []string
+		avoidReason  []string
 	}{
 		{
 			name: "fixed over a passing gate with an unmoved remote tip",
@@ -268,13 +272,24 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			wantEnd: fixerEndNoReport, wantSpent: 1, wantTurns: 1,
 		},
 		{
-			name: "a dirty tree after a turn is the dirty end",
+			name: "a dirty tree with a turn left re-prompts naming the paths, and a clean next turn is fixed",
+			setup: func(t *testing.T, fx *fixerRunFixture) {
+				fx.gate.fake.dirtyAt(0, ".scratch-task.txt")
+				report := func() { fx.writeReport(t, fixedReport) }
+				fx.seats.turns = []func(){report, report}
+			},
+			wantEnd: fixerEndFixed, wantSpent: fixerTestCap, wantTurns: 2,
+			wantFindings: []string{".scratch-task.txt", "delete the rest"},
+		},
+		{
+			name:  "a dirty tree after the last turn left is the dirty end",
+			start: FixerAttempts{Entry: 1, Spent: fixerTestCap - 1},
 			setup: func(t *testing.T, fx *fixerRunFixture) {
 				fx.gate.fake.dirtyAt(0, "a.go")
 				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
 			},
-			wantEnd: fixerEndDirty, wantSpent: 1, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "`lym loom resume`"},
+			wantEnd: fixerEndDirty, wantSpent: fixerTestCap, wantTurns: 1,
+			wantReason: []string{LandingStopPrefix, "(dirty)", "`lym loom resume`"},
 		},
 		{
 			name: "a remote tip that moved during the session is the pushed end",
@@ -317,6 +332,11 @@ func TestFixerRun_Outcomes(t *testing.T) {
 			}
 			if outcome.reportPath != fx.reportPath() {
 				t.Errorf("run() report path = %q; want %q", outcome.reportPath, fx.reportPath())
+			}
+			for _, want := range tt.wantFindings {
+				if found := strings.Join(fx.seats.findings, "\n"); !strings.Contains(found, want) {
+					t.Errorf("re-prompt findings = %q; want them to contain %q", found, want)
+				}
 			}
 			reason := outcome.haltReason(fixerTestRow, false)
 			judged := outcome.haltReason(fixerTestRow, true)

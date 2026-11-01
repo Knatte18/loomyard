@@ -288,8 +288,8 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameDarnWrite:     {"verify": 7, "description": 3},
-			loomshed.NameCodeBurlerFix: {"verify": 7},
+			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "description": 3},
+			loomshed.NameCodeBurlerFix: {"clean": 3, "verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}
 		for _, row := range recipe.Producers {
@@ -320,7 +320,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameCodeBurlerFix: {"verify": 7},
+			loomshed.NameCodeBurlerFix: {"clean": 3, "verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}
 		for _, row := range recipe.Producers {
@@ -333,6 +333,26 @@ func TestDarnVerifyBudget(t *testing.T) {
 			if wantGates, ok := want[row.Name]; ok && !reflect.DeepEqual(got, wantGates) {
 				t.Errorf("%s gates attempts = %v; want %v", row.Name, got, wantGates)
 			}
+		}
+	})
+
+	t.Run("on the tapestry recipe Code-Burler-Fix runs the clean gate before verify", func(t *testing.T) {
+		recipe, err := shedbuild.Parse(recipes.TapestryRecipe)
+		if err != nil {
+			t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+		}
+		var names []any
+		for _, row := range recipe.Producers {
+			if row.Name != loomshed.NameCodeBurlerFix {
+				continue
+			}
+			gates, _ := row.Config["gates"].([]any)
+			for _, g := range gates {
+				names = append(names, g.(map[string]any)["name"])
+			}
+		}
+		if want := []any{"clean", "verify"}; !reflect.DeepEqual(names, want) {
+			t.Errorf("tapestry Code-Burler-Fix gate names = %v; want %v", names, want)
 		}
 	})
 

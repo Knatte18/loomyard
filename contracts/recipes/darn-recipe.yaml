@@ -100,8 +100,11 @@ producers:
       # the hub's gate.yaml. The verify gate's attempts here is a
       # placeholder: the builder stamps darn.yaml's verify_attempts at every build.
       # The decision record is no gate: Go checks it once the session returns and halts the run
-      # when the writer left it invalid.
+      # when the writer left it invalid. The clean gate goes first, so a writer that left an
+      # uncommitted or untracked file commits or deletes it before its session ends.
       gates:
+        - name: clean
+          attempts: 3
         - name: verify
           attempts: 3
         - name: description
@@ -198,7 +201,11 @@ producers:
       # and re-prompts the fix session with the findings until it passes. The row runs its own key
       # and shares no pass with the writer's; gate_key names another key of the hub's gate.yaml.
       # Its attempts here is a placeholder: the builder stamps darn.yaml's verify_attempts at every build.
+      # The clean gate goes first, so a fixer that left an uncommitted or untracked file commits or
+      # deletes it before its session ends.
       gates:
+        - name: clean
+          attempts: 3
         - name: verify
           attempts: 3
       profile:

@@ -25,7 +25,8 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // An absent key returns the empty GateSpec, which is what every ungated row carries by saying nothing;
 // a present empty list is an error, since it is an author mistake rather than an ungated row.
 //
-// Each element carries a required "name", resolved against a closed five-value vocabulary:
+// Each element carries a required "name", resolved against a closed vocabulary:
+// "clean" requires env.WorktreeRoot to pass requireAbsRoot and returns loomshed.NewCleanGate over it;
 // "discussion" requires env.DecisionRecordPath and env.SupportLogPath to pass requireAbsRoot and a non-nil env.DiscussionHistory, and returns loomshed.NewDiscussionGate over them;
 // when env.RecordEngine is DiscussionWrite, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate with the citation checks on, which read the worktree and the index;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
@@ -34,7 +35,7 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // the gate's told command is env.VerifyCommand read for the row's gate key, and its tree scope is env.VerifyTreeScope read for that key, so the row runs its own key of the hub's gate.yaml;
 // env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
-// any other value is an error naming the key and all five legal values.
+// any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
 // "attempts" is required, a non-negative integer read via configInt so 0 is a present value:
@@ -135,11 +136,16 @@ func planContextOf(env Env) loomshed.PlanContext {
 	}
 }
 
-// resolvePlainGateClosure resolves the five validator names of the gate vocabulary.
+// resolvePlainGateClosure resolves the validator names of the gate vocabulary.
 // The "parts" gate requires the absolute env.AnchorPath and env.DecisionRecordPath and a non-nil env.Setting, and reads its cap from the tapestry.parts_max setting.
 // The "verify" gate is told env.VerifyHold, which holds its verify under a pause.
 func resolvePlainGateClosure(entry, row, gateKey string, index int, name string, env Env) (shuttleengine.Gate, error) {
 	switch name {
+	case "clean":
+		if err := requireAbsRoot(entry, "WorktreeRoot", env.WorktreeRoot); err != nil {
+			return nil, err
+		}
+		return loomshed.NewCleanGate(env.WorktreeRoot), nil
 	case "discussion":
 		if err := requireAbsRoot(entry, "DecisionRecordPath", env.DecisionRecordPath); err != nil {
 			return nil, err
@@ -223,6 +229,6 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		}
 		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "discussion", "plan", "parts", "description", "verify", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "description", "verify", name)
 	}
 }

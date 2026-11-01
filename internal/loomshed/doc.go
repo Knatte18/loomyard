@@ -48,6 +48,9 @@
 // A gate told no scratch directory, such as a standalone validate, and a gate whose file cannot be written keep the findings inline in the log line.
 // The blocking path is unchanged: the findings go to the writer and the log line in full.
 //
+// The clean gate (NewCleanGate) fails while the worktree holds any uncommitted or untracked path that git does not ignore, naming every path and asking the session to commit what belongs to its change and delete the rest.
+// A row lists it before its verify gate, so a writer or fixer that left a stray file is re-prompted to remove it before its session ends, not halted at a later row.
+//
 // The verify gate (NewVerifyGate) is told its verify command by the recipe's wiring and reads it at each arrival; it never parses the plan itself.
 // The command is the row's own `lym gate test --wait --gate <key>` call, the `code-burler-fix` key at Code-Burler-Fix, the `darn-write` key at Darn-Write and the `drift-verify` key at Drift-Verify, so each fix row and writer runs its own key and shares no pass with Webster's end gate.
 // Told a tree scope reader, it takes the darn form; otherwise it takes the round form.

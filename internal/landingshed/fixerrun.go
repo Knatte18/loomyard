@@ -50,7 +50,7 @@ const (
 	fixerEndTimeout fixerEnd = "timeout"
 	// fixerEndNoReport is a turn that left no report, or one that does not parse.
 	fixerEndNoReport fixerEnd = "no-report"
-	// fixerEndDirty is a turn that left the working tree dirty.
+	// fixerEndDirty is a turn that left the working tree dirty with no turn left to clean it.
 	fixerEndDirty fixerEnd = "dirty"
 	// fixerEndPushed is a session during which the task branch's remote ref moved.
 	fixerEndPushed fixerEnd = "pushed"
@@ -230,6 +230,7 @@ func (s *fixerSession) halt(end fixerEnd, findings string) (shuttleengine.GateRe
 
 // check is the gate closure run after every turn.
 // It judges the turn's duration, then the tree, then the report, and on a fixed verdict the landing gate.
+// A dirty tree with a turn left charges it and re-prompts naming the paths, so the fixer commits or deletes what it left; one with none left is the dirty end.
 // A failing gate with a turn left charges it and re-prompts; one with none left is the spent end.
 func (s *fixerSession) check() (shuttleengine.GateResult, error) {
 	result, err := s.judge()
@@ -248,12 +249,19 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	if gate.now().Sub(s.turnStart) > s.turnLimit {
 		return s.halt(fixerEndTimeout, "the fixer's turn ran past fixer_timeout_min")
 	}
-	reason, err := gate.clean(s.run.row, "after the fixer's turn")
+	const point = "after the fixer's turn"
+	dirty, err := gate.dirtyPaths(s.run.row, point)
 	if err != nil {
 		return shuttleengine.GateResult{}, err
 	}
-	if reason != "" {
-		return s.halt(fixerEndDirty, reason)
+	if len(dirty) > 0 {
+		if s.rec.Spent >= s.cap {
+			return s.halt(fixerEndDirty, dirtyReason(point, dirty))
+		}
+		if err := s.chargeTurn(); err != nil {
+			return shuttleengine.GateResult{}, err
+		}
+		return shuttleengine.GateResult{Findings: verifytree.UncommittedFindings(dirty)}, nil
 	}
 	report, err := ParseFixerReport(s.outcome.reportPath)
 	if err != nil {
@@ -268,7 +276,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 		return s.halt(fixerEndEscalate, report.Conflict)
 	}
 
-	reason, err = gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
+	reason, err := gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
 	if err != nil {
 		return shuttleengine.GateResult{}, err
 	}

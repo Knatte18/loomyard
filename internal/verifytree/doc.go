@@ -26,6 +26,8 @@
 // A held Verify removes its marker on every return, its dirty and skipped returns included.
 // The hold reads an unreadable record as uncovered, so a corrupt file never stops a verify, and while the site's slug-entry exemption reports true, as it does for a run holding its parent lock, only a hub entry holds it.
 //
+// DirtyPaths is the dirty check every caller shares, and UncommittedFindings is the one finding a producing session gets when its turn ends with such paths: commit what belongs to the change and delete the rest.
+//
 // Each run that spawns its command writes its own log, `verify-<n>.log` in the verify directory with n one above the highest existing number, and names it on Result.Log, so a later verify never overwrites an earlier run's evidence.
 // After each such run the directory keeps the newest verifyLogKeep logs plus the one the landing failure record names, and removes the rest.
 //

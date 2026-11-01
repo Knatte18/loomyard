@@ -550,8 +550,11 @@ producers:
       # whose scope the gate derives itself. The row runs its own key and shares no pass with
       # Webster's end gate; gate_key names another key of the hub's gate.yaml. A tree the
       # record already names passes without running, so a round that changed no code costs
-      # nothing.
+      # nothing. The clean gate goes first, so a fixer that left an uncommitted or untracked file
+      # commits or deletes it before its session ends.
       gates:
+        - name: clean
+          attempts: 3
         - name: verify
           attempts: 3
       profile:

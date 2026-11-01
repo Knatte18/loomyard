@@ -162,17 +162,23 @@ func (g verifyGate) markWait(label string) {
 // It returns a non-empty Stuck reason naming the dirty paths, a non-nil error when git cannot report the status,
 // and ("", nil) when the tree is clean.
 func (g verifyGate) clean(producer, point string) (string, error) {
+	paths, err := g.dirtyPaths(producer, point)
+	if err != nil || len(paths) == 0 {
+		return "", err
+	}
+	return dirtyReason(point, paths), nil
+}
+
+// dirtyPaths returns the task worktree's uncommitted or untracked paths at point, none for a gate told no dirty check, and a non-nil error when git cannot report the status.
+func (g verifyGate) dirtyPaths(producer, point string) ([]string, error) {
 	if g.dirty == nil {
-		return "", nil
+		return nil, nil
 	}
 	paths, err := g.dirty(g.paths.Worktree)
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: check the worktree is clean %s: %w", producer, point, err)
+		return nil, fmt.Errorf("landingshed: %s: check the worktree is clean %s: %w", producer, point, err)
 	}
-	if len(paths) == 0 {
-		return "", nil
-	}
-	return dirtyReason(point, paths), nil
+	return paths, nil
 }
 
 // dirtyWayForward ends every dirty-tree reason with what the operator does about it.

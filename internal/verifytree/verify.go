@@ -257,6 +257,12 @@ func pruneLogs(p Paths) error {
 	return nil
 }
 
+// UncommittedFindings is the gate finding for a producing session whose turn ended with paths, as DirtyPaths reports them, uncommitted or untracked in its worktree.
+// It names every path and asks the session to commit each one that belongs to its change and delete the rest, so the session that made a stray file removes it.
+func UncommittedFindings(paths []string) string {
+	return fmt.Sprintf("Your turn ended with uncommitted or untracked paths in the worktree: %s.\nCommit each one that belongs to the change, delete the rest, such as a scratch file or a shell redirect's output, and end your turn again.", strings.Join(paths, ", "))
+}
+
 // DirtyPaths returns the paths `git status --porcelain -z` reports in worktree, ignored files excluded.
 func DirtyPaths(worktree string) ([]string, error) {
 	out, err := gitexec.Run([]string{"status", "--porcelain", "-z"}, worktree)

@@ -133,6 +133,7 @@
 // The row's gate key is the told Deps.GateKey, which each row's registry entry sets from its optional `gate_key` config key, else its row name in lower case.
 // The told call, that key's `lym gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
 // The merge fixer a row spawns judges each turn through that row's gate, so it runs the same key.
+// A fixer turn that leaves the tree dirty is re-prompted with the paths, on a charged turn, to commit what belongs to the fix and delete the rest; only a dirty tree after the last turn ends the fixer.
 // Its base command is the told Deps.BaseCommand, the fix rows' `code-burler-fix` call, so a landing pass keeps the entry the Code-Burler-Fix lint base reads.
 // A refusal of the gate config or of the key is the producer's returned error, carrying the refusal's way forward.
 // A verify that does not finish within the verify timeout is killed and halts the run Stuck with the log path.
