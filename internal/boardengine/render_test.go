@@ -271,7 +271,7 @@ func readmeFixture() []boardengine.Task {
 // Neither row has a run status, the first only the hand-set word "running", so neither renders a Running subsection.
 // A third row pins that a task with a run status renders under Running, before Ready and in no layer, ordered by handle over ID, its At cell dropping the state `running` and keeping any other, and its Owner cell holding the prime owner for a task outside every beam.
 // The same row pins that a task waiting on a running one lands in Layer A, not Ready, still naming its handle under After, and that a task after that one lands in Layer B.
-// A fourth row pins that README.md nests every open project under Prime one heading level per depth, root-level ones by handle and nested ones in their parent's order and then by handle, with an open project under a done one counted as root-level, each heading linking the project and counting its open members, then its facts, its brief, its sub-projects and its own Tasks, Notes and Done split as the root's.
+// A fourth row pins that README.md nests every open project under Prime one heading level per depth, root-level ones by handle and nested ones in their parent's order and then by handle, with an open project under a done one counted as root-level, each heading linking the project and counting its open members, then its facts, the slug there linked to its design file only for a project with a body, its brief, its sub-projects and its own Tasks, Notes and Done split as the root's.
 // The same row pins that Prime's own entries, only those under no project, come after its sub-projects under a No project heading at their level, a done project a linked Done row there, that a project with sub-projects holds its own entries under an Own entries heading after them and one without holds them directly, and that every project, open or done, renders to project-<slug>.md.
 // A project file opens with its handle and title, a link up to its parent's file, the brief, and for a beam only, beam and its recorded owner, renders its nested projects as sections in its order and then by handle, and holds its own entries under Own entries after them.
 // A task there waiting on a running member and a root task stands in Layer A, its After cell one handle per line, and the running member shows the beam's recorded owner.
@@ -478,7 +478,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 		{
 			name: "each project renders to its own file under its parent",
 			tasks: []boardengine.Task{
-				{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: boardengine.KindProject, Beam: true, Brief: "Ships the thing.", OwnerMachine: "box", Order: []string{"later"}, Created: renderTime.AddDate(0, 0, -3)},
+				{ID: 1, Handle: "P1", Slug: "ship", Title: "Ship it", Kind: boardengine.KindProject, Beam: true, Brief: "Ships the thing.", OwnerMachine: "box", Order: []string{"later"}, Created: renderTime.AddDate(0, 0, -3), Body: "Ship design."},
 				{ID: 2, Handle: "P2", Slug: "tidy", Title: "Tidy up", Kind: boardengine.KindProject, Brief: "Loose ends."},
 				{ID: 3, Handle: "P3", Slug: "old", Title: "Old project", Kind: boardengine.KindProject, Status: stringPtr("done")},
 				{ID: 10, Handle: "P4", Slug: "inner", Title: "Inner", Kind: boardengine.KindProject, Project: "ship", Brief: "Nested work."},
@@ -507,7 +507,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				"### [P1 Ship it](project-ship.md) (6)\n" +
 				"\n" +
-				"`ship` · Age 3d · Owner `box`\n" +
+				"[`ship`](design-ship.md) · Age 3d · Owner `box`\n" +
 				"\n" +
 				"Ships the thing.\n" +
 				"\n" +
@@ -638,7 +638,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
 					"Under: [Board](README.md).\n" +
 					"\n" +
-					"`ship` · Age 3d · Owner `box`\n" +
+					"[`ship`](design-ship.md) · Age 3d · Owner `box`\n" +
 					"\n" +
 					"Ships the thing.\n" +
 					"\n" +

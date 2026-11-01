@@ -341,9 +341,9 @@ func (b boardView) fileHeader(project Task) []string {
 	return append(lines, projectBeamText, "")
 }
 
-// projectFacts is the line naming project's slug, its age as of the render time and its effective owner, the age left out when its created date is unknown.
+// projectFacts is the line naming project's slug, linked to its design doc when the project has a body, its age as of the render time and its effective owner, the age left out when its created date is unknown.
 func (b boardView) projectFacts(project Task) string {
-	parts := []string{codeSpan(project.Slug)}
+	parts := []string{slugCell(project, b.out.DesignPrefix)}
 	if age := FormatAge(project.Created, b.now); age != "" {
 		parts = append(parts, "Age "+age)
 	}
