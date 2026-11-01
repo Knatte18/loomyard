@@ -238,13 +238,9 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 				return false, err
 			}
 			// A run directory deleted on disk but still tracked at the records HEAD has its deletion outstanding, which the cancel's records removal commits.
-			for _, rel := range []string{shedrun.StatusRel(location, slug), shedrun.SeedRel(location, slug)} {
-				_, tracked, err := fabricengine.CommittedAnchoredFile(location, rel)
-				if err != nil || tracked {
-					return tracked, err
-				}
-			}
-			return false, nil
+			return runRecordsTracked(location, slug, func(rel string) ([]byte, bool, error) {
+				return fabricengine.CommittedAnchoredFile(location, rel)
+			})
 		},
 		ChildReachedParent: func(batten shedengine.Status, battenFound bool) (bool, error) {
 			child, childFound := reader.readChildStatus()

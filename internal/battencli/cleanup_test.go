@@ -40,12 +40,14 @@ type cleanupFixture struct {
 
 // cleanupStubs records what cleanup asked of its deps.
 type cleanupStubs struct {
-	committed  map[string][]byte
-	commits    [][]string
-	messages   []string
-	spawns     int
-	spawnErr   error
-	commitHook func()
+	committed map[string][]byte
+	// committedErr, when set, is what the Committed stub returns.
+	committedErr error
+	commits      [][]string
+	messages     []string
+	spawns       int
+	spawnErr     error
+	commitHook   func()
 }
 
 func newCleanupStubs() *cleanupStubs {
@@ -56,7 +58,7 @@ func (s *cleanupStubs) deps() cleanupDeps {
 	return cleanupDeps{
 		Committed: func(relPath string) ([]byte, bool, error) {
 			data, found := s.committed[relPath]
-			return data, found, nil
+			return data, found, s.committedErr
 		},
 		Commit: func(relPaths []string, msg string) (bool, error) {
 			if s.commitHook != nil {
@@ -86,6 +88,7 @@ func buildCleanupFixture(t *testing.T, location *lymcwd.Location, stubs *cleanup
 		}
 		writeCleanupFile(t, shedrun.StatusFile(location, slug), status)
 		writeCleanupFile(t, shedrun.SeedFile(location, slug), []byte("{}"))
+		stubs.committed[shedrun.SeedRel(location, slug)] = []byte("{}")
 	}
 	if fixture.committedStatus != "" {
 		stubs.committed[shedrun.StatusRel(location, slug)] = statusJSON(t, fixture.committedStatus)
@@ -353,6 +356,83 @@ func TestCleanup(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRemoveRunRecords_CommitsTheRemovalOnlyWhileTheRecordsHeadTracksTheRun(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		onDisk        bool
+		trackedRel    func(*lymcwd.Location, string) string
+		wantCommitted bool
+	}{
+		{name: "a tracked run directory on disk is removed and committed", onDisk: true, trackedRel: shedrun.SeedRel, wantCommitted: true},
+		{name: "a deleted run directory whose status is tracked commits its removal", trackedRel: shedrun.StatusRel, wantCommitted: true},
+		{name: "a run directory already gone and untracked commits nothing and succeeds"},
+		{name: "an untracked run directory on disk is removed with no commit", onDisk: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := newCleanupLocation(t)
+			stubs := newCleanupStubs()
+			const slug = "alpha"
+			if tt.onDisk {
+				writeCleanupFile(t, shedrun.SeedFile(location, slug), []byte("{}"))
+			}
+			if tt.trackedRel != nil {
+				stubs.committed[tt.trackedRel(location, slug)] = []byte("{}")
+			}
+			scratchFile := filepath.Join(shedrun.ScratchDir(location, slug), "last-commit")
+			writeCleanupFile(t, scratchFile, []byte("x"))
+
+			committed, err := removeRunRecords(location, slug, "remove "+slug, stubs.deps())
+			if err != nil {
+				t.Fatalf("removeRunRecords() error = %v", err)
+			}
+			if committed != tt.wantCommitted {
+				t.Errorf("removeRunRecords() committed = %v; want %v", committed, tt.wantCommitted)
+			}
+			wantCommits := 0
+			if tt.wantCommitted {
+				wantCommits = 1
+			}
+			if len(stubs.commits) != wantCommits {
+				t.Errorf("commits = %v; want %d", stubs.commits, wantCommits)
+			}
+			if entryExists(shedrun.RunDir(location, slug)) {
+				t.Errorf("run directory %s still exists; want it removed", shedrun.RunDir(location, slug))
+			}
+			if entryExists(scratchFile) {
+				t.Errorf("scratch file %s still exists; want the scratch emptied", scratchFile)
+			}
+		})
+	}
+}
+
+func TestRemoveRunRecords_ReturnsTheErrorOfAFailedRecordsHeadReadWithoutCommitting(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := newCleanupLocation(t)
+	stubs := newCleanupStubs()
+	stubs.committedErr = errors.New("records HEAD unreadable")
+	const slug = "alpha"
+	scratchFile := filepath.Join(shedrun.ScratchDir(location, slug), "last-commit")
+	writeCleanupFile(t, scratchFile, []byte("x"))
+
+	committed, err := removeRunRecords(location, slug, "remove "+slug, stubs.deps())
+	if !errors.Is(err, stubs.committedErr) {
+		t.Errorf("removeRunRecords() error = %v; want it to wrap %v", err, stubs.committedErr)
+	}
+	if committed || len(stubs.commits) != 0 {
+		t.Errorf("removeRunRecords() committed = %v, commits = %v; want no commit", committed, stubs.commits)
+	}
+	if !entryExists(scratchFile) {
+		t.Errorf("scratch file %s was removed; want the scratch left in place", scratchFile)
 	}
 }
 

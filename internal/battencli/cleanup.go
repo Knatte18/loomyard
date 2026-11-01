@@ -256,6 +256,17 @@ func cleanupSlug(location *lymcwd.Location, slug string, apply bool, deps cleanu
 	return false, nil
 }
 
+// runRecordsTracked reports whether the records HEAD holds the status or the seed of slug's run, each read through committed.
+func runRecordsTracked(location *lymcwd.Location, slug string, committed func(relPath string) ([]byte, bool, error)) (bool, error) {
+	for _, rel := range []string{shedrun.StatusRel(location, slug), shedrun.SeedRel(location, slug)} {
+		_, tracked, err := committed(rel)
+		if err != nil || tracked {
+			return tracked, err
+		}
+	}
+	return false, nil
+}
+
 // removalCommitError marks the records commit failure of removeRunRecords, which stops a cleanup pass.
 type removalCommitError struct{ error }
 
@@ -268,18 +279,25 @@ type scratchEmptyError struct{ error }
 // Unwrap returns the emptying failure.
 func (e scratchEmptyError) Unwrap() error { return e.error }
 
-// removeRunRecords removes the records run directory of slug when it is on disk, commits that directory's removal on the records side with msg, and empties the slug's scratch contents beside its lock files.
+// removeRunRecords removes the records run directory of slug when it is on disk, commits that directory's removal on the records side with msg while the records HEAD tracks the run, and empties the slug's scratch contents beside its lock files.
 // It takes no lock and judges nothing; the caller holds the slug's locks and has decided the removal.
-// An already absent run directory still commits, so a removal whose commit failed earlier finishes on a re-run.
+// An already absent run directory the records HEAD still tracks commits, so a removal whose commit failed earlier finishes on a re-run;
+// one the records HEAD no longer tracks commits nothing and succeeds, so a removal that already finished succeeds again.
 // committed reports whether a records commit was made.
 // A commit failure is a removalCommitError and an emptying failure, which follows the commit, a scratchEmptyError.
 func removeRunRecords(location *lymcwd.Location, slug, msg string, deps cleanupDeps) (committed bool, err error) {
 	if err := os.RemoveAll(shedrun.RunDir(location, slug)); err != nil {
 		return false, fmt.Errorf("remove run directory: %w", err)
 	}
-	committed, err = deps.Commit([]string{shedrun.RunDirRel(location, slug)}, msg)
+	tracked, err := runRecordsTracked(location, slug, deps.Committed)
 	if err != nil {
-		return committed, removalCommitError{fmt.Errorf("battencli: commit the removal of %s: %w", slug, err)}
+		return false, fmt.Errorf("read whether the records HEAD tracks the run of %s: %w", slug, err)
+	}
+	if tracked {
+		committed, err = deps.Commit([]string{shedrun.RunDirRel(location, slug)}, msg)
+		if err != nil {
+			return committed, removalCommitError{fmt.Errorf("battencli: commit the removal of %s: %w", slug, err)}
+		}
 	}
 	if err := emptyScratch(shedrun.ScratchDir(location, slug), true); err != nil {
 		return committed, scratchEmptyError{fmt.Errorf("empty scratch directory: %w", err)}

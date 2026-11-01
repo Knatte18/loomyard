@@ -1,8 +1,9 @@
-// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, every fetch, pull and push method waiting on it, and concurrent fetches and pushes of one repository that all succeed under it.
+// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, the pause gate passed before it is taken, every fetch, pull and push method waiting on it, and concurrent fetches and pushes of one repository that all succeed under it.
 
 package gitrepo_test
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -70,6 +72,64 @@ func TestHoldRemoteRefs_OneLockServesEveryWorktreeOfARepository(t *testing.T) {
 		t.Fatalf("TryAcquireWriteLock(%s) after release = %v, %v; want the lock free", path, acquired, err)
 	}
 	_ = probe.Release()
+}
+
+// TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheRelease is not parallel: it installs the process-wide network gate.
+func TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheRelease(t *testing.T) {
+	tiergate.Require(t, 1)
+	clone, _ := publishedClone(t)
+	lockPath := remoteRefsLockPath(t, clone)
+	recordPath := filepath.Join(t.TempDir(), pauserecord.RecordFileName)
+	pausedAt := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	setLive := func(live ...pauserecord.Entry) {
+		t.Helper()
+		if _, err := pauserecord.Update(recordPath, pausedAt, func(record *pauserecord.Record) error {
+			record.Live = live
+			return nil
+		}); err != nil {
+			t.Fatalf("pauserecord.Update: %v", err)
+		}
+	}
+	setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt})
+	waits := 0
+	t.Cleanup(pauserecord.InstallGate(pauserecord.Gate{
+		Geometry: pauserecord.Geometry{RecordPath: recordPath, Slug: "a"},
+		Notify:   func(string) {},
+		Sleep: func(context.Context, time.Duration) error {
+			waits++
+			probe, acquired, err := lock.TryAcquireWriteLock(lockPath)
+			if err != nil || !acquired {
+				t.Errorf("TryAcquireWriteLock while held at the gate = %v, %v; want the lock free until the gate is passed", acquired, err)
+			} else {
+				_ = probe.Release()
+			}
+			setLive()
+			return nil
+		},
+	}))
+
+	release, err := gitrepo.New(clone).HoldRemoteRefs()
+	if err != nil {
+		t.Fatalf("HoldRemoteRefs() error = %v", err)
+	}
+	if waits != 1 {
+		t.Fatalf("gate waits before the lock = %d; want 1", waits)
+	}
+	setLive(pauserecord.Entry{Scope: pauserecord.ScopeHub, PausedAt: pausedAt.Add(time.Minute)})
+	_, done := pauserecord.Network("fetch")
+	done()
+	if waits != 1 {
+		t.Errorf("gate waits for a call under the lock = %d; want the holder's calls to pass at once", waits-1)
+	}
+
+	if err := release(); err != nil {
+		t.Fatalf("release() error = %v", err)
+	}
+	_, done = pauserecord.Network("fetch")
+	done()
+	if waits != 2 {
+		t.Errorf("gate waits after the release = %d; want the next call held again", waits)
+	}
 }
 
 // remoteRefsHeldWindow is how long a call must stay blocked behind a held remote-refs lock to count as waiting on it.

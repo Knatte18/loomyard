@@ -15,6 +15,7 @@
 // It then takes the cancel marker, a record whose writer's liveness is a lock it holds, which every driving verb refuses on and a second cancel reads to finish an interrupted one.
 // The order is: end the registered processes, take batten's locks, stop the pair's strands and the tackler, remove the pair and its task branches with --remove, remove the records, leave the claim draft, lift the slug's own pauses, push and notify, and remove the marker last.
 // Without --remove the pair is kept and the cancel names "lym batten cancel <slug> --remove" as the step before the slug runs again.
+// Records already removed and no longer tracked at the records HEAD count as removed, with no records commit, so "--remove" after a plain cancel succeeds.
 // An unreachable origin ends only the processes and strands, leaves the marker and posts a notice naming the cancel to run once origin answers.
 // The cancel of a beam project first runs the hub's origin reconcile and refuses while the beam has members, naming each to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam; with origin unreachable it refuses naming the reconcile's way forward.
 // A beam with no members is ended like a task, its dobby with its run, and its orch and watcher are then stopped, a failure there only a warning on the report; `lym beam create <slug>` starts the run again.

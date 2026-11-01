@@ -449,6 +449,47 @@ func TestNetwork(t *testing.T) {
 		}
 	})
 
+	t.Run("an admission passes every call of the process at once, still marked in flight, until it is released", func(t *testing.T) {
+		recordPath := filepath.Join(t.TempDir(), RecordFileName)
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch})
+		sleeps := 0
+		defer InstallGate(Gate{
+			Geometry: Geometry{RecordPath: recordPath, Slug: "a"},
+			PID:      42,
+			Notify:   func(string) {},
+			Sleep: func(ctx context.Context, d time.Duration) error {
+				sleeps++
+				resumeLive(t, recordPath)
+				return nil
+			},
+		})()
+
+		release := Admit("remote-refs")
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d after Admit, want the admission held once by the live entry", sleeps)
+		}
+		setLive(t, recordPath, Entry{Scope: ScopeHub, PausedAt: epoch.Add(time.Minute)})
+		_, done := Network("fetch")
+		if sleeps != 1 {
+			t.Fatalf("sleeps = %d for a call under the admission, want it to pass at once", sleeps)
+		}
+		ops, err := ListNetOps(recordPath, alive)
+		if err != nil || len(ops) != 2 || ops[0].Op == ops[1].Op {
+			t.Fatalf("ListNetOps under the admission = %+v, %v; want the admission's and the call's markers", ops, err)
+		}
+		done()
+		release()
+		if ops, err := ListNetOps(recordPath, alive); err != nil || len(ops) != 0 {
+			t.Fatalf("ListNetOps after the release = %+v, %v; want none", ops, err)
+		}
+
+		_, done = Network("fetch")
+		done()
+		if sleeps != 2 {
+			t.Fatalf("sleeps = %d after the release, want the call held again", sleeps)
+		}
+	})
+
 	t.Run("SetGateExemptAll with no gate installed installs none", func(t *testing.T) {
 		restore := SetGateExemptAll()
 		restore()

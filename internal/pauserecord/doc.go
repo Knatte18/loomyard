@@ -31,12 +31,15 @@
 //
 // Network is the process gate that holds network calls: the CLI root installs a Gate once per process, and a call waits at entry while a pause covers the process, then writes a marker under `NetDir` that its returned function removes.
 // ListNetOps lists the markers of live processes, which are the operations in flight.
+// An operation named remote-refs marks a lock hold, which lasts from before the lock is taken until its release and covers the git calls and retries made under it.
 // It also returns the time it held the call, zero unless the wait slept, so a caller can move its own deadline later by that time; Network keeps its context-free signature and takes only the operation name.
 // With no gate installed, as in every test binary, Network does nothing and reports zero.
 // The gate only waits and marks; it fails no call.
 // While a call waits it also keeps a `WaitingMarker` (pid, start time and slug) under `WaitingDir`, a sibling of `NetDir` that `ListNetOps` never reads, removed as soon as the wait returns.
 // `ListWaiting` lists the markers of live processes and removes the rest.
 // The marker records only what the gate waits on, and no gate decision reads it.
+// Admit passes the gate as Network does and admits the process until its release runs; while an admission stands, every network call of the process passes at once, still marked in flight, whichever goroutine or repository makes the call.
+// A caller takes it before a lock other processes wait on, so a pause never holds the lock's holder.
 // SetGateExemptAll sets `Gate.ExemptAll` on the installed gate, so its waiter lets every live entry pass, for the one process an explicit operator verb runs in; it does nothing with no gate installed, and the returned function restores the previous value.
 // The exemption never reaches a child, which installs its own gate.
 // A gate with `Defer` set, which only a detached push or board-sync child installs, hands off to the function `SetGateDeferral` stored when `GateCovered` reads a live entry covering the process, before any wait; that function is the child's exit and does not return.

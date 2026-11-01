@@ -122,6 +122,7 @@ func sleepOnTimer(ctx context.Context, d time.Duration) error {
 }
 
 // NetOp is the marker of one network operation in flight.
+// An operation named remote-refs marks a lock hold: it lasts from before the lock is taken until its release, and covers the git calls and retries made under it.
 type NetOp struct {
 	PID       int    `json:"pid"`
 	StartTime string `json:"start_time"`
@@ -238,6 +239,7 @@ var (
 	gateDeferral   atomic.Pointer[func()]
 	netOpCounter   atomic.Int64
 	waitingCounter atomic.Int64
+	admissions     atomic.Int64
 )
 
 // SetGateDeferral stores the function a deferring gate calls when a live entry covers its process, and returns the function that restores the previous one.
@@ -377,18 +379,21 @@ func replaceGateExempt(scope string, pausedAt time.Time) gateExempt {
 // While it waits it keeps a waiting marker under WaitingDir, removed as soon as the wait returns and before the in-flight marker is written.
 // It returns held, the time from entry until the wait returned, which is zero unless the wait slept at least once.
 // With no gate installed it returns zero and a no-op at once.
+// While an admission of the process stands it marks the operation without waiting, whichever goroutine asks and whatever the call is, including a call unrelated to the admitted caller.
 // It only waits at entry: it fails no call, and a marker it cannot write is skipped.
 func Network(op string) (held time.Duration, done func()) {
 	gate := installedGate.Load()
 	if gate == nil {
 		return 0, func() {}
 	}
+	if admissions.Load() > 0 {
+		return 0, markInFlight(gate, op)
+	}
 	now := gate.Now
 	if now == nil {
 		now = time.Now
 	}
 	slug := gate.Geometry.Slug
-	holdsParentLock := func() bool { return gate.HoldsParentLock != nil && gate.HoldsParentLock(slug) }
 	slept := false
 	waiter := gate.waiter(func() { slept = true })
 	if gate.Defer && GateCovered() {
@@ -410,21 +415,41 @@ func Network(op string) (held time.Duration, done func()) {
 	if slept {
 		held = now().Sub(entered)
 	}
+	return held, markInFlight(gate, op)
+}
 
+// Admit passes the gate as Network does, marking op in flight, and admits the process until the returned release runs.
+// While an admission stands, every network call of the process passes the gate at once, still marked in flight;
+// the pass-through is process-wide for the length of the admission, so a call on another goroutine or in another repository passes too.
+// It serves a caller that takes a lock other processes wait on and makes network calls under it:
+// admitted before it takes the lock, the holder is never held by a pause while it holds the lock, and a pause that starts meanwhile reads its calls in flight.
+// With no gate installed it waits for nothing and marks nothing.
+func Admit(op string) (release func()) {
+	_, done := Network(op)
+	admissions.Add(1)
+	return func() {
+		admissions.Add(-1)
+		done()
+	}
+}
+
+// markInFlight writes the in-flight marker of op for the gate's process and returns the function that removes it; a marker it cannot write is skipped.
+func markInFlight(gate *Gate, op string) (done func()) {
+	slug := gate.Geometry.Slug
 	marker := NetOp{
 		PID:             gate.PID,
 		StartTime:       gate.StartTime,
 		Slug:            slug,
 		Strand:          gate.Strand,
 		Op:              op,
-		UnderParentLock: holdsParentLock(),
+		UnderParentLock: gate.HoldsParentLock != nil && gate.HoldsParentLock(slug),
 		StartedAt:       time.Now(),
 	}
 	markerPath := filepath.Join(NetDir(gate.Geometry.RecordPath), fmt.Sprintf("%d-%d.json", gate.PID, netOpCounter.Add(1)))
 	if err := writeMarker(markerPath, marker); err != nil {
-		return held, func() {}
+		return func() {}
 	}
-	return held, func() { os.Remove(markerPath) }
+	return func() { os.Remove(markerPath) }
 }
 
 // writeMarker writes the marker to path, creating its directory.

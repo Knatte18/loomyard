@@ -57,6 +57,7 @@
 //     Fetch, FetchWithArgs, Pull and every push method run git under it, waiting while it is held,
 //     since a fetch and a push both write the shared remote-tracking refs and two concurrent writers of one ref make the loser fail.
 //     A caller that reads origin and then judges the tracking refs holds it across both.
+//     It passes the process's pause gate before it takes the lock and stays admitted until the release, so a pause never holds a lock holder that other processes wait on.
 //   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
 //     tri-state exit code directly rather than folding any non-zero exit
