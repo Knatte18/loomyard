@@ -89,8 +89,8 @@ var negativeVerdictMarkers = map[string]bool{
 //     reached a positive OutcomeDone already, and the gate runs strictly after it, at a turn
 //     boundary with no in-progress turn to interrupt.
 //   - Wait [OutcomeTimeout] x1 — the run deadline, routed through classifyDeadlineExpiry.
-//   - checkLivenessTick [OutcomeDied] x2 — the dead-pane branch and the gone-session branch, each guarded by the allOutputFilesExist
-//     directly above it.
+//   - checkLivenessTick [OutcomeDied] x3 — the dead-pane branch, the gone-session branch and the untracked strand of a handle Stop marked,
+//     each guarded by the allOutputFilesExist directly above it.
 //   - checkLivenessTick [errStrandNotTracked] / [errStrandPaneBindingCleared] x1 each — the two
 //     mechanism-failure sentinels, each guarded by the allOutputFilesExist directly above it.
 //   - checkLivenessTick [Errorf] x1 — the per-tick reed.Status error. NOT itself a finalization: Wait
@@ -156,7 +156,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 	"handleGatedBoundary [Errorf]":                    1,
 	"Wait [OutcomeTimeout]":                           1,
 	"checkLivenessTick [Errorf]":                      1,
-	"checkLivenessTick [OutcomeDied]":                 2,
+	"checkLivenessTick [OutcomeDied]":                 3,
 	"checkLivenessTick [errStrandNotTracked]":         1,
 	"checkLivenessTick [errStrandPaneBindingCleared]": 1,
 	"classifyStartupWindow [OutcomeDied]":             1,

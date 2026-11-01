@@ -4,6 +4,7 @@
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when every output file already exists — the file contract can be satisfied an instant before the process disappears, racing ahead of its own Stop hook.
 // died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not alive;
 // the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) — are mechanism failures, not classifications.
+// The exception is a handle whose own Stop removed the strand: its Wait ends OutcomeDied, which finalize records as stopped unless the files show the run done.
 // A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout) is the only way out.
 // That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink (.lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached driver's own log, which captures stderr and therefore only Warn and above.
 // An operator asking "is this interview waiting for me, or is it wedged?"
@@ -223,6 +224,8 @@ var ErrAgentDied = errors.New("shuttle: the agent died before it wrote its outpu
 // The same reasoning binds the two cases where reed does NOT fail: a Status that succeeds without
 // this run's strand in it, and one that returns the strand with no pane bound, both exit here rather
 // than as OutcomeDied — see errStrandNotTracked and errStrandPaneBindingCleared.
+// The one exception is a handle Stop marked: its own Stop removed the strand,
+// so a Status without it ends the run OutcomeDied, which finalize records as stopped unless the files show the run done.
 func (run *Run) Wait() (Result, error) {
 	cfg := run.runner.cfg
 	interval := pollInterval(cfg)
@@ -1236,6 +1239,8 @@ func allOutputFilesExist(files []string) bool {
 // A satisfied file contract wins over every negative answer: the agent's output files ARE its return
 // value, so their existence classifies OutcomeDone whether the pane died or reed simply stopped
 // tracking or addressing it.
+// A Status that no longer lists the strand of a handle Stop marked answers OutcomeDied instead of errStrandNotTracked:
+// that Stop removed the strand, so its going is the stop and not reed's bookkeeping going away, and finalize records it stopped.
 //
 // A startup gate is dismissed at most once per dismissalGap on the run's clock: a probe inside the gap that still sees a gate plays nothing and does not ask for the dismissal keys.
 // Any play that sent at least one input starts the gap, failed partway or not; an empty sequence or a first input that failed does not.
@@ -1262,6 +1267,9 @@ func (run *Run) checkLivenessTick(started *bool, startupDeadline time.Time, even
 	if !tracked {
 		if allOutputFilesExist(run.spec.OutputFiles) {
 			return OutcomeDone, nil
+		}
+		if run.markedStopped() {
+			return OutcomeDied, nil
 		}
 		return "", errStrandNotTracked
 	}

@@ -26,6 +26,7 @@ const (
 	// it needs an engine that parses session signals and probes liveness.
 	// A strand reed no longer tracks AT ALL is deliberately NOT this outcome — reed's bookkeeping
 	// going away says nothing about the agent, so Wait reports that as a mechanism failure.
+	// The exception is a handle whose own Stop removed the strand: that handle ends OutcomeDied, which finalize records as stopped.
 	OutcomeDied Outcome = "died"
 	// OutcomeTimeout: wall-clock Timeout elapsed before output files written.
 	// A provider crash behind a still-live pane shell that nothing proves, such as an engine without liveness probing, also ends here.

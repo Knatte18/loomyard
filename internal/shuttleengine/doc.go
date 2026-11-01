@@ -210,6 +210,7 @@
 // A running run with such a strand and no step is listed under StepStopReport.Untied and left alone, a run of another step is left alone, and a stop that fails is listed under Failed while the stop goes on.
 // Attach's removal of a superseded run's strand goes through the same record-then-remove step.
 // A Wait on a stopped handle finalizes with the stop mark and records "stopped" unless the files show the run done.
+// Its liveness check reads the strand the stop removed as the run's end, OutcomeDied, never as reed's bookkeeping going away.
 // A Wait in another process may overwrite "stopped" with its own terminal outcome, and either answer is terminal.
 //
 // A Run's record lock guards the stop mark, RunState.Outcome and every save of run.state, so a stop from another goroutine never interleaves with Wait's own record writes.

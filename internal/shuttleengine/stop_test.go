@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -275,6 +276,70 @@ func TestRunner_StopStepRuns_StopsOnlyTheKilledStepsLiveRuns(t *testing.T) {
 		if failure.Strand == "" || !strings.Contains(failure.Error, "reed down") {
 			t.Errorf("failure = %+v; want a strand name and the removal error text", failure)
 		}
+	}
+}
+
+// TestStop_WaitThatSeesTheStoppedStrandGoEndsDied covers a Wait on a handle whose own Stop removed the strand:
+// with the run's files missing the strand's absence is the stop, so the run ends died and records stopped, never the not-tracked mechanism failure;
+// with the files present the finished work stays done.
+func TestStop_WaitThatSeesTheStoppedStrandGoEndsDied(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		writeOutput bool
+		want        Outcome
+	}{
+		{"OutputMissing", false, OutcomeDied},
+		{"OutputPresent", true, OutcomeDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fake := &fakeReed{StatusQueue: []reedengine.StatusResult{
+				{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}},
+				{},
+			}}
+			fx := newFixture(t, fake, &fakeEngine{}, withConfig(fastConfig))
+			runDir := t.TempDir()
+			outputFile := filepath.Join(runDir, "out.md")
+			clock := newFakeClock(time.Now())
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, KeepPane: true, Timeout: time.Minute},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: filepath.Join(runDir, "events.jsonl"), Outcome: runOutcomeRunning}),
+				withRunClock(clock, clock.Now().Add(time.Minute)))
+
+			if err := run.Stop(); err != nil {
+				t.Fatalf("Stop() error = %v; want nil", err)
+			}
+			if tt.writeOutput {
+				if err := os.WriteFile(outputFile, []byte("done"), 0o600); err != nil {
+					t.Fatalf("write output file: %v", err)
+				}
+			}
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error = %v; want nil", err)
+			}
+			if result.Outcome != tt.want {
+				t.Errorf("Wait() outcome = %q; want %q", result.Outcome, tt.want)
+			}
+			if len(fake.RemoveStrandCalls) != 1 {
+				t.Errorf("RemoveStrand calls = %v; want only the stop's one removal", fake.RemoveStrandCalls)
+			}
+			if tt.want != OutcomeDied {
+				return
+			}
+			record, _, err := loadRunState(runDir)
+			if err != nil {
+				t.Fatalf("loadRunState: %v", err)
+			}
+			if record.Outcome != runOutcomeStopped {
+				t.Errorf("recorded outcome = %q; want %q", record.Outcome, runOutcomeStopped)
+			}
+		})
 	}
 }
 

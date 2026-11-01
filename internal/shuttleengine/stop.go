@@ -49,6 +49,13 @@ func (run *Run) Stop() error {
 	return removeStrandIfPresent(run.runner.reed, run.state.StrandGUID)
 }
 
+// markedStopped reports whether Stop recorded a stop on this handle.
+func (run *Run) markedStopped() bool {
+	run.recordMu.Lock()
+	defer run.recordMu.Unlock()
+	return run.stopMarked
+}
+
 // StopStrand removes the strand guid names, when it is live or an own-window strand with a dead pane, and records the stop, without needing an in-process Run handle.
 // A guid with no run record is stopped by removing its strand alone.
 // A Wait in another process may overwrite the stopped record with its own terminal outcome, and either answer is terminal.
