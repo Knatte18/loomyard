@@ -47,6 +47,17 @@ func TestLoadConfig(t *testing.T) {
 			PromptCacheTTLRoles: map[string]string{"driver": "5m", "webster": "1h", "orch": "1h"},
 			KeepWarmCap:         "250s",
 			KeepWarmCapRoles:    map[string]string{},
+			BatchingNudge: BatchingNudgeConfig{
+				Enabled:       true,
+				LookupChain:   true,
+				ReadSlice:     true,
+				EditChain:     true,
+				ContextTokens: 150000,
+				LookupRun:     3,
+				EditRun:       2,
+				SliceLines:    2000,
+				MaxNudges:     5,
+			},
 		}
 		if !reflect.DeepEqual(cfg, want) {
 			t.Errorf("LoadConfig() = %+v; want %+v", cfg, want)

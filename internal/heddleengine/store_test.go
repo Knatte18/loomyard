@@ -169,7 +169,7 @@ func TestStore(t *testing.T) {
 
 	t.Run("ShippedEntriesArePinned", func(t *testing.T) {
 		t.Parallel()
-		const batchingSentence = "Request every call whose arguments you already know in one message, and read what you need before you edit: a file whole, or every span you need from it, in one message, and keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; wait for a result only to choose the next call."
+		const batchingSentence = "Request every call whose arguments you already know in one message. Before you look anything up, list every question the step raises, then send every grep and read for all of them in one message; wait for a result only to choose the next call, then send every call it unlocks and every call you know in one message. Read what you need before you edit: a file whole, or every span you need from it, in one message. This overrides the Read tool's own advice to read only the part you need: never grep for a line number and then read a slice around it, and never read one file in slices over several turns. Keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; after a command rewrites files, such as a formatter, a generator or a script, read every file it changed again in one message before you edit any of them."
 		// The rows are the shipped layer in render order; wantText is empty for an entry whose text is not pinned.
 		tests := []struct {
 			slug     string

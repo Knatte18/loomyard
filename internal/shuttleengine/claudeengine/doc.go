@@ -62,10 +62,10 @@
 // A color outside the palette answers no inputs.
 //
 // The engine owns a layered config module, `claude.yaml`, declared in config.go:
-// `binary`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap` and `keep_warm_cap_roles`.
+// `binary`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap`, `keep_warm_cap_roles` and the `batching_nudge` block.
 // The retired `deny_agent_tool` key is read out of every layer, and a local override setting it is refused with the way forward of deleting it.
 // LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
-// and a local override may set only the cache lifetimes.
+// and a local override may set every key but the binary and the tool denies.
 // It is told its directories and derives none.
 // NewFromConfig takes them, and Prepare, OpenLaunch, PromptCacheLifetime and KeepWarmCaps each load claude.yaml through them before anything else,
 // so an invalid file refuses a run start, a resume and an open with the file, the key and the way forward, `lym config claude`.
@@ -156,6 +156,22 @@
 // Bound: a session launched before this change keeps the default labels until it is relaunched.
 // Prepare marks the launch CreelHooks exactly when it passes the board directory's flag directory, so a strand is marked only when its settings carry the PostToolUse, Stop and waiter hooks.
 // On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
+//
+// The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the session's context when its recent calls break lym's batching rules; it never denies a call.
+// `claude.yaml`'s `batching_nudge` block holds `enabled`, the breach switches `lookup_chain`, `read_slice` and `edit_chain`, and the thresholds `context_tokens`, `lookup_run`, `edit_run`, `slice_lines` and `max_nudges`.
+// ValidateBatchingNudge refuses a negative `context_tokens`, or any other threshold below 1, while the hook is on, in Prepare and on a config write.
+// With `enabled` on, Prepare copies the block into `batching-nudge.json` beside the events file, and the settings carry a PostToolUse entry matching `Read|Grep|Glob|Edit|Write` that runs `lym shuttle hook-batching claude <state file>; true`, so no other tool call starts a process and a running session keeps the values its Prepare wrote.
+// On Windows the state file takes the git-bash POSIX path of the events file's directory, which git-bash converts back for the native lym.
+// The judgment reads the call's own input and the transcript tail `batchingTailBytes` bounds, whose main-chain assistant lines it groups by message id, so the parallel calls of one message count as one message.
+// It is silent for a subagent's call, below `context_tokens` by the tail's latest usage reading, past `max_nudges` nudges, and for a message it already nudged;
+// the judgment holds the state file's lock, so the parallel calls of one message get at most one nudge.
+// A single-lookup chain is a run of at least `lookup_run` consecutive messages, the current one as far as the transcript shows it included, that each hold exactly one Read, Grep or Glob call;
+// an edit-only chain is a run of at least `edit_run` consecutive messages that hold only Edit or Write calls.
+// A read slice is a Read with a `limit`, or an `offset` past the first line, of a file under `slice_lines` lines, or of a file that the latest earlier message reading it in the tail read no earlier than the file's last modification.
+// The line names one breach, the single-lookup chain before the read slice before the edit-only chain, and quotes the rule it breaks.
+// Bound: the hook is a heuristic, since some lookups must run in sequence, so it fires at times on a right call;
+// a later call of the current message may not be in the transcript yet when an early call's hook runs, so a batched message after a chain can read as one more single lookup;
+// an earlier read before the tail window is not seen, and the session's own edit counts as a change.
 //
 // Prepare declares the launch as recording session starts, so startup waits for the `startup` line beside the ready pane.
 // Two accepted races follow from the append order.

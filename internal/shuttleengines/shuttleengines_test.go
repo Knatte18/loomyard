@@ -356,7 +356,26 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	}
 }
 
-// TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template and refuses a keep-warm cap a run start would refuse.
+// TestBatchingNudger pins that the claude entry has the batching nudge, silent for a run with no state file, and that an unknown name has none.
+func TestBatchingNudger(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	nudger, ok := BatchingNudger("claude")
+	if !ok {
+		t.Fatal("BatchingNudger(claude) found none")
+	}
+	statePath := t.TempDir() + "/absent.json"
+	got, err := nudger.BatchingNudge(statePath, []byte(`{"transcript_path":"/absent.jsonl","tool_use_id":"call-1"}`))
+	if err != nil || got != nil {
+		t.Errorf("BatchingNudge(no state file) = %s, %v; want no output and no error", got, err)
+	}
+	if _, ok := BatchingNudger("nope"); ok {
+		t.Error("BatchingNudger(nope) found one; want none")
+	}
+}
+
+// TestConfigModules_ClaudeCheckLoad pins that the claude module's load check passes the template and refuses a keep-warm cap or a batching threshold a run start would refuse.
 func TestConfigModules_ClaudeCheckLoad(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -375,10 +394,23 @@ func TestConfigModules_ClaudeCheckLoad(t *testing.T) {
 		t.Errorf("CheckLoad over the template = %v; want nil", err)
 	}
 
-	anchor := t.TempDir()
-	writeLocalLayer(t, anchor, "claude", "keep_warm_cap: 10s\n")
-	err := checkLoad(configengine.Dirs{Anchor: anchor})
-	if err == nil || !strings.Contains(err.Error(), "keep_warm_cap") || !strings.Contains(err.Error(), "lym config claude") {
-		t.Errorf("CheckLoad over keep_warm_cap: 10s = %v; want a refusal naming keep_warm_cap and lym config claude", err)
+	refusals := []struct {
+		name  string
+		local string
+		key   string
+	}{
+		{"KeepWarmCapTooShort", "keep_warm_cap: 10s\n", "keep_warm_cap"},
+		{"BatchingRunBelowOne", "batching_nudge: {enabled: true, lookup_chain: true, read_slice: true, edit_chain: true, context_tokens: 150000, lookup_run: 0, edit_run: 2, slice_lines: 2000, max_nudges: 5}\n", "batching_nudge.lookup_run"},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchor := t.TempDir()
+			writeLocalLayer(t, anchor, "claude", tt.local)
+			err := checkLoad(configengine.Dirs{Anchor: anchor})
+			if err == nil || !strings.Contains(err.Error(), tt.key) || !strings.Contains(err.Error(), "lym config claude") {
+				t.Errorf("CheckLoad over %q = %v; want a refusal naming %s and lym config claude", tt.local, err, tt.key)
+			}
+		})
 	}
 }

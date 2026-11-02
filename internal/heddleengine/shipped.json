@@ -2,7 +2,7 @@
   "entries": [
     {
       "slug": "lym-batching",
-      "text": "Request every call whose arguments you already know in one message, and read what you need before you edit: a file whole, or every span you need from it, in one message, and keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; wait for a result only to choose the next call.",
+      "text": "Request every call whose arguments you already know in one message. Before you look anything up, list every question the step raises, then send every grep and read for all of them in one message; wait for a result only to choose the next call, then send every call it unlocks and every call you know in one message. Read what you need before you edit: a file whole, or every span you need from it, in one message. This overrides the Read tool's own advice to read only the part you need: never grep for a line number and then read a slice around it, and never read one file in slices over several turns. Keep a file you have read in mind rather than reading it again unless something other than your own edit has changed it; after a command rewrites files, such as a formatter, a generator or a script, read every file it changed again in one message before you edit any of them.",
       "order": 10,
       "targets": [
         "claude-file"
@@ -10,7 +10,7 @@
     },
     {
       "slug": "lym-plan-edits-before-gate",
-      "text": "Make every change in this order, and do not deviate from it.\n\n1. Read everything the change needs in one message: every Read and grep call together, a file whole when it fits and every span of it you need otherwise. Make a second round of reads only for files the first round named.\n2. Decide every edit across every file the card or task touches before you make any of them.\n3. Make all of those edits in one message, every Edit and Write call together in one turn.\n4. Run the gate once. Fix everything its report shows the same way: read what the fixes need in one message, decide every fix, make all of them in one message, then run the gate again.\n\nNever read one file per turn. Never read one file in slices over several turns. Never spread an edit, a read and another edit over turns. Never run the gate between the edits of one change.",
+      "text": "Make every round of edits in this order, and do not deviate from it. A round is any set of edits, whatever starts it: a card, a task, a plan, a review's findings, a fixer's report or a failed gate.\n\n1. Read everything the round needs in one message: every Read and grep call together, a file whole when it fits and every span of it you need otherwise. Make a second round of reads only for files the first round named.\n2. Decide every edit across every file the round touches before you make any of them.\n3. Make all of those edits in one message, every Edit and Write call together in one turn.\n4. Run the round's gate once, or its validator when it has no gate. Fix everything its report shows the same way: read what the fixes need in one message, decide every fix, make all of them in one message, then run it again.\n\nNever read one file per turn. Never read one file in slices over several turns. Never spread an edit, a read and another edit over turns. Never run the gate between the edits of one round.",
       "order": 20,
       "targets": [
         "claude-file"

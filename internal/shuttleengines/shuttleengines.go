@@ -62,7 +62,10 @@ var registry = map[string]entry{
 				if err != nil {
 					return err
 				}
-				return claudeengine.ValidateKeepWarm(claude)
+				if err := claudeengine.ValidateKeepWarm(claude); err != nil {
+					return err
+				}
+				return claudeengine.ValidateBatchingNudge(claude)
 			},
 		},
 	},
@@ -261,4 +264,15 @@ func ToolBoundaryRenderer(name string) (shuttleengine.ToolBoundaryContextRendere
 	}
 	renderer, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.ToolBoundaryContextRenderer)
 	return renderer, ok
+}
+
+// BatchingNudger returns the batching-nudge capability of the registered engine named name, and false when no engine of that name is registered or the engine has none.
+// The engine is built with a zero shuttle config and no config directories, as ToolBoundaryRenderer builds it, since the nudge reads its settings from the run's state file.
+func BatchingNudger(name string) (shuttleengine.BatchingNudger, bool) {
+	registered, ok := registry[name]
+	if !ok {
+		return nil, false
+	}
+	nudger, ok := registered.constructor(shuttleengine.Config{}, configengine.Dirs{}).(shuttleengine.BatchingNudger)
+	return nudger, ok
 }

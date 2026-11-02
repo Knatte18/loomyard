@@ -5,6 +5,7 @@
 // the SessionStart hook of a run whose spec sets a context-after-compaction command runs that command on the compaction source, so its output joins the session's context.
 // Every recording hook writes a stamp line with the hook-side time before its payload, which ParseEvents skips.
 // The PostToolUse, PreCompact and PostCompact hooks of every session touch the run's activity stamp beside the events file, so a tool call, a fork's included, and a compaction read as activity.
+// With claude.yaml's batching nudge on, PostToolUse also runs the batching hook after each call of a tool a breach is made of.
 // The document also carries the PreToolUse guardrails:
 // refusing `lym webster` verbs from inside a fork in a fork-mode run (the fork-context deadlock guard),
 // denying AskUserQuestion in autonomous runs (where there is no operator present to answer it),
@@ -64,7 +65,7 @@ type hookEntry struct {
 
 // settingsHooks is the "hooks" object of a Claude Code settings.json document.
 // Every event but PreToolUse and PostToolUse is a recording hook installed for every session.
-// PostToolUse, PreCompact and PostCompact touch the activity stamp, and PostToolUse also carries the creel mail hook in a hub.
+// PostToolUse, PreCompact and PostCompact touch the activity stamp, and PostToolUse also carries the batching hook while it is on and the creel mail hook in a hub.
 // In a hub, Stop carries two entries: the recording merged with creel's turn-end delivery, and creel's idle waiter; in no hub it carries the recording alone.
 // PreToolUse is omitted when an autonomous run has every deny off; interactive runs always carry at least the AskUserQuestion marker.
 type settingsHooks struct {
@@ -323,8 +324,9 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.
 // The recordings print nothing and exit 0, so the PermissionRequest recording answers no request and the SessionStart recording adds nothing to the session's context.
+// claude's batching nudge, when on, adds the batching hook's PostToolUse entry after the stamp, matched to the tools a breach is made of and naming the state file beside the events file.
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
-// It adds the PostToolUse creel mail hook, after the stamp, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
+// It adds the PostToolUse creel mail hook, after the stamp and the batching hook, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
 // Empty adds none of them and keeps the plain Stop recording.
 func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
@@ -374,6 +376,13 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		doc.Hooks.PreToolUse = append(doc.Hooks.PreToolUse, hookEntry{
 			Matcher: "AskUserQuestion",
 			Hooks:   recordingHook(hookEventPreToolUse, false)[0].Hooks,
+		})
+	}
+	if claude.BatchingNudge.Enabled {
+		statePath := path.Join(path.Dir(eventsPathPosix), batchingNudgeStateFileName)
+		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{
+			Matcher: batchingNudgeMatcher,
+			Hooks:   []hookCommand{{Type: "command", Command: batchingNudgeHookCommand(shQuote(statePath))}},
 		})
 	}
 	if creelFlagDirPosix != "" {

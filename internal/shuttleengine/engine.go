@@ -261,6 +261,17 @@ type ToolBoundaryContextRenderer interface {
 	RewakeOutput(text string) (stderr []byte, exitCode int)
 }
 
+// BatchingHookVerb is the name of the hidden `lym shuttle` verb an engine's after-tool-call hook runs to nudge its session back to batching its calls.
+const BatchingHookVerb = "hook-batching"
+
+// BatchingNudger is an optional capability beside Engine: the after-tool-call hook that adds one line to a session's context when its recent calls break lym's batching rules.
+// An engine without it installs no such hook.
+type BatchingNudger interface {
+	// BatchingNudge judges the tool call the provider's hook input payload describes against the run's nudge state file at statePath.
+	// It returns the provider's hook output carrying the nudge, or nil when no nudge is due.
+	BatchingNudge(statePath string, payload []byte) ([]byte, error)
+}
+
 // InstructionFileLister is an optional capability beside Engine: the names of the files the provider loads as project instructions.
 // An engine without it has no project instruction files.
 type InstructionFileLister interface {

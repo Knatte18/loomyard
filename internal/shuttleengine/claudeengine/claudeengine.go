@@ -104,7 +104,8 @@ func validateSessionID(id string) error {
 // Prepare writes prompt.md, settings.json and the Bash env file bash-env.sh into runDir and returns the Launch command strings.
 // The launch line carries a pointer to prompt.md rather than the prompt, so a prompt of any size launches.
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
-// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config and the keep-warm caps before writing any artifacts.
+// It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
+// With the batching nudge on it also seeds the nudge's state file beside the settings.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -142,6 +143,9 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	}
 	logger.Info("claudeengine: resolved the prompt-cache TTL", "role", spec.Role, "ttl", promptCacheTTL)
 	if err := ValidateKeepWarm(claude); err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	if err := ValidateBatchingNudge(claude); err != nil {
 		return shuttleengine.Launch{}, err
 	}
 
@@ -215,6 +219,11 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 	settingsPath := filepath.Join(runDir, "settings.json")
 	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write settings: %w", err)
+	}
+	if claude.BatchingNudge.Enabled {
+		if err := writeBatchingNudgeState(filepath.Join(runDir, batchingNudgeStateFileName), claude.BatchingNudge); err != nil {
+			return shuttleengine.Launch{}, fmt.Errorf("write batching nudge state: %w", err)
+		}
 	}
 
 	// The env file path stays the native absolute path on every OS: Claude Code reads the file itself and runs its content in the Bash tool's shell.

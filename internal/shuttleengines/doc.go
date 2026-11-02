@@ -9,7 +9,7 @@
 //
 // Each registry entry carries its engine's config module as plain data, and ConfigModules lists them sorted by name for the config registry,
 // so an engine's config module reaches that registry through this package alone.
-// The claude module's load check also validates the keep-warm caps, so a config write refuses a cap a run start would refuse.
+// The claude module's load check also validates the keep-warm caps and the batching nudge, so a config write refuses a value a run start would refuse.
 //
 // Each entry also declares the environment keys its engine's process injects, and EnvScrub returns their union for reed's server spawn,
 // so an engine's scrub keys reach reed through this package alone.
@@ -20,6 +20,7 @@
 // A capability is set only when the engine implements it, and each set one is its own adapter, one per capability rather than one per engine:
 // a reader of finished session records gets reading alone, and no type assertion on a value in the set recovers an engine that can start, open, send to or stop a run.
 // ToolBoundaryRenderer returns one registered engine's creel hook-delivery capability by name, built the same way: the hook-input parse, the hook output and the wake output the creel hook verbs render.
+// BatchingNudger returns one registered engine's batching-nudge capability by name, built the same way, for the shuttle hook verb that judges a session's tool call.
 // KeepWarm is the one keep-warm resolver: it answers a strand's keep-warm cap, the long cap and shuttle.yaml's break-even through the default engine's KeepWarmCaps.
 // A numbered role such as implementer-2 resolves as its base role, implementer.
 // When the strand does not parse or the shuttle config, the engine set or the engine's caps cannot be resolved, it answers the fallback: shuttleengine.DefaultAwaitCap for both caps, no break-even and the cause.
