@@ -50,6 +50,12 @@ var remoteDeadline = 10 * time.Minute
 // It is a variable only so a test can shorten it.
 var stallBound = 30 * time.Second
 
+// startStallTimer runs check once bound has passed and returns a function that stops it; tracePath, the attempt's packet trace, goes unused here.
+// It is a variable only so a test can run check once its remote is ready, instead of after a wall-clock bound that a loaded machine can spend starting git.
+var startStallTimer = func(bound time.Duration, tracePath string, check func()) (stop func() bool) {
+	return time.AfterFunc(bound, check).Stop
+}
+
 // spawnAgainAttempts is how many times a git the host could not start for EAGAIN is tried in all.
 const spawnAgainAttempts = 4
 
@@ -292,13 +298,13 @@ func runAttempt(args []string, cwd, stdin string, extraEnv []string, remote bool
 		})
 		if stallBound < deadline {
 			// git writes the trace's first line only once the remote's first packet arrives, so an empty trace at the bound is a remote that never answered.
-			stallTimer := time.AfterFunc(stallBound, func() {
+			stopStallTimer := startStallTimer(stallBound, tracePath, func() {
 				if info, statErr := os.Stat(tracePath); statErr == nil && info.Size() == 0 {
 					sawStall.Store(true)
 					cancel()
 				}
 			})
-			defer stallTimer.Stop()
+			defer stopStallTimer()
 		}
 	} else {
 		cmd = exec.Command("git", args...)

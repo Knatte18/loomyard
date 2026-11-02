@@ -1,12 +1,67 @@
-// export_test.go lets package gitexec_test shorten the remote deadline and the stall bound, inject a git version line and make a git start fail.
+// export_test.go lets package gitexec_test shorten the remote deadline and the stall bound, run the stall check on its own signal, start the production stall timer, inject a git version line and make a git start fail.
 
 package gitexec
 
 import (
 	"os/exec"
+	"sync"
 	"testing"
 	"time"
 )
+
+// defaultStallTimer is the production startStallTimer, kept reachable while SetStallCheckForTest has replaced it.
+var defaultStallTimer = startStallTimer
+
+// StartDefaultStallTimerForTest starts the production stall timer, with no packet trace, and returns its stop.
+func StartDefaultStallTimerForTest(bound time.Duration, check func()) (stop func() bool) {
+	return defaultStallTimer(bound, "", check)
+}
+
+// SetStallCheckForTest runs each armed stall check once ready reports true, instead of once the stall bound passes, until the test ends.
+// ready receives the attempt's number, counted from 1 across the test, and the path of its packet trace, and is polled until it reports true or the attempt ends.
+// It returns a function that reports the bounds the checks were armed with so far, one per armed attempt.
+// It changes process-global state, so the calling test must not be parallel.
+func SetStallCheckForTest(t *testing.T, ready func(attempt int, tracePath string) bool) (armed func() []time.Duration) {
+	t.Helper()
+
+	var mu sync.Mutex
+	var bounds []time.Duration
+	previous := startStallTimer
+	startStallTimer = func(bound time.Duration, tracePath string, check func()) func() bool {
+		mu.Lock()
+		bounds = append(bounds, bound)
+		attempt := len(bounds)
+		mu.Unlock()
+
+		stopped := make(chan struct{})
+		go func() {
+			tick := time.NewTicker(5 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				select {
+				case <-stopped:
+					return
+				case <-tick.C:
+					if ready(attempt, tracePath) {
+						check()
+						return
+					}
+				}
+			}
+		}()
+		var once sync.Once
+		return func() bool {
+			once.Do(func() { close(stopped) })
+			return true
+		}
+	}
+	t.Cleanup(func() { startStallTimer = previous })
+	return func() []time.Duration {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]time.Duration(nil), bounds...)
+	}
+}
 
 // SetVersionProbeForTest replaces the git version probe and resets the floor cache until the test ends.
 // It changes process-global state, so the calling test must not be parallel.

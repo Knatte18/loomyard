@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,7 +26,7 @@ import (
 )
 
 // TestRun_RemoteBounds drives the bounds on a remote git command through git's ext:: transport, a remote that accepts and never answers, with no network.
-// Its rows run serially because they set the remote deadline, the stall bound, the kill reporter, the pause network gate and the process environment, which are process-global state.
+// Its rows run serially because they set the remote deadline, the stall bound, the stall check seam, the kill reporter, the pause network gate and the process environment, which are process-global state.
 func TestRun_RemoteBounds(t *testing.T) {
 	tiergate.Require(t, 1)
 	const deadline = time.Second
@@ -185,6 +186,26 @@ func TestRun_RemoteBounds(t *testing.T) {
 		return
 	}
 
+	if !t.Run("the production stall timer runs its check once the bound passes, and stop cancels a pending one", func(t *testing.T) {
+		ran := make(chan struct{}, 1)
+		stopFired := gitexec.StartDefaultStallTimerForTest(time.Millisecond, func() { ran <- struct{}{} })
+		select {
+		case <-ran:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the production stall timer never ran its check")
+		}
+		if stopFired() {
+			t.Error("stop after the check ran = true; want false")
+		}
+
+		stopPending := gitexec.StartDefaultStallTimerForTest(time.Hour, func() { t.Error("the check ran after stop") })
+		if !stopPending() {
+			t.Error("stop of a pending timer = false; want true")
+		}
+	}) {
+		return
+	}
+
 	// remoteAttempts runs a remote ls-remote against an ext:: command that counts its runs, writes reply and hangs, and returns the command's run count, the call's kill reports and its error.
 	remoteAttempts := func(t *testing.T, name, reply string) (int, []kill, error) {
 		t.Helper()
@@ -210,8 +231,24 @@ func TestRun_RemoteBounds(t *testing.T) {
 	}
 
 	if !t.Run("a remote that never answers is killed at the stall bound and run once more", func(t *testing.T) {
+		// A stall bound under the deadline arms the stall check, and the check runs once the attempt's ext command has counted its run,
+		// so a loaded machine's git start-up never reaches the check; the long deadline leaves that start-up room.
 		const stall = deadline / 5
+		gitexec.SetRemoteDeadlineForTest(t, 10*deadline)
 		gitexec.SetStallBoundForTest(t, stall)
+		countFile := filepath.Join(scriptDir, "silent.count")
+		// An attempt is ready once the script has run more times than when the previous check fired.
+		// A retried git start arms a check without running the script, so it does not shift the count.
+		var firedAt atomic.Int64
+		armed := gitexec.SetStallCheckForTest(t, func(int, string) bool {
+			counted, err := os.ReadFile(countFile)
+			count := int64(strings.Count(string(counted), "run\n"))
+			if err != nil || count <= firedAt.Load() {
+				return false
+			}
+			firedAt.Store(count)
+			return true
+		})
 		logs := logcapture.Capture(t)
 
 		runs, recorded, err := remoteAttempts(t, "silent", "")
@@ -225,6 +262,9 @@ func TestRun_RemoteBounds(t *testing.T) {
 		}
 		if runs != 2 || len(recorded) != 2 {
 			t.Errorf("runs = %d, kill reports = %d; want 2 of each, the call and its one retry", runs, len(recorded))
+		}
+		if got, want := armed(), []time.Duration{stall, stall}; !reflect.DeepEqual(got, want) {
+			t.Errorf("stall checks armed with %v; want %v, one per attempt", got, want)
 		}
 		if got := strings.Count(logs.String(), "remote sent no answer, retrying once"); got != 1 {
 			t.Errorf("retry warnings = %d; want 1; log:\n%s", got, logs.String())
@@ -247,6 +287,8 @@ func TestRun_RemoteBounds(t *testing.T) {
 
 	if !t.Run("a deadline at or under the stall bound kills a silent remote once, at the deadline", func(t *testing.T) {
 		gitexec.SetStallBoundForTest(t, deadline)
+		// An always-ready check fires at once if armed, which the row's assertions would catch.
+		_ = gitexec.SetStallCheckForTest(t, func(int, string) bool { return true })
 
 		runs, recorded, err := remoteAttempts(t, "unarmed", "")
 
@@ -262,7 +304,18 @@ func TestRun_RemoteBounds(t *testing.T) {
 	}
 
 	if !t.Run("a remote that answers is not stalled, and is killed at the deadline without a retry", func(t *testing.T) {
-		gitexec.SetStallBoundForTest(t, deadline/5)
+		const stall = deadline / 5
+		gitexec.SetStallBoundForTest(t, stall)
+		// The check runs once git has traced the remote's packet, so a loaded machine's git start-up never reaches it.
+		var checkRan atomic.Bool
+		armed := gitexec.SetStallCheckForTest(t, func(_ int, tracePath string) bool {
+			info, err := os.Stat(tracePath)
+			if err != nil || info.Size() == 0 {
+				return false
+			}
+			checkRan.Store(true)
+			return true
+		})
 
 		runs, recorded, err := remoteAttempts(t, "answering", "000eversion 2\\n")
 
@@ -272,6 +325,12 @@ func TestRun_RemoteBounds(t *testing.T) {
 		}
 		if runs != 1 || len(recorded) != 1 {
 			t.Errorf("runs = %d, kill reports = %d; want 1 of each", runs, len(recorded))
+		}
+		if got, want := armed(), []time.Duration{stall}; !reflect.DeepEqual(got, want) {
+			t.Errorf("stall checks armed with %v; want %v", got, want)
+		}
+		if !checkRan.Load() {
+			t.Error("the stall check never ran, so the row did not prove an answering remote is spared")
 		}
 	}) {
 		return
