@@ -709,3 +709,59 @@ Package times are inflated by the contention of the packages running at once, as
 
 The three tiers together went from 4746 to 4911 top-level tests, +165 over two days, against +41 over the three days before.
 The second audit's counts include the few top-level skips of its own run, and these leave skips out, so each change is exact to within that small difference.
+
+## fabricengine-shm-bench: `internal/fabricengine` `tier1` with its temp root on `/dev/shm`
+
+A measurement report on OSL-1046: it records what was tried and is not meant to stay true.
+The question was whether the `internal/fabricengine` `tier1` run can use `/dev/shm` as its temp root, and whether that avoids the Cortex XDR scan `test-time-audit-3` suspected.
+The first answer is no on this machine, so the second is not measured.
+
+### Setup
+
+```yaml
+machine: Intel Core Ultra 7 366H, 16 cores, 30 GB, /dev/shm 16 GB, OSL-1046
+security: Cortex XDR installed
+go: go1.26.9 linux/amd64
+revision: fa38b1ef
+uid: 1856216086
+command: lym gate test --wait --tier 1 ./internal/fabricengine -- -count=1
+```
+
+The temp root of lym and its tests is `<os.TempDir()>/lym-<uid>`, so `TMPDIR` moves every file the tests create: `internal/lymtemp` makes the run directory there, `tmuxkit.Main` points the test's sockets and `t.TempDir()` there, and the children inherit it.
+The check that files landed in `/dev/shm` was a sample every two seconds of `find /dev/shm/lym-<uid> -type f` and `du` of that root during the run.
+
+### What happened
+
+1. `TMPDIR=/dev/shm`, probed on `internal/lymtemp` in `tier0` (not one of the six runs): `tmuxkit.Main` refused to start the package.
+   The socket directory `/dev/shm/lym-1856216086/r49ee2f` makes the longest socket path 109 bytes, over the 107-byte limit.
+   `internal/fabricengine`'s `TestMain` calls `tmuxkit.Main`, so its run fails the same way before the first test.
+   `/dev/shm` is the shortest in-memory path, and the 10-digit uid of this machine's domain account supplies the excess bytes.
+2. A symlink `/tmp/s` to `/dev/shm` shortens the path to 107 bytes, which the check accepts, so the first pair used it as `TMPDIR`.
+   Fabric's ownership checks compare the path a test was handed with the path git reports, and the two differ through the link.
+3. An unprivileged mount namespace to mount a short tmpfs was tried and refused: `/proc/self/uid_map: Operation not permitted`.
+
+### Runs
+
+Two of the six permitted runs were made, pair 1.
+They did not run together: the tool that started them ran the two commands one after the other, so each met a different load and the pair's ratio is not a measure.
+Pairs 2 and 3 were not run: the symlink setting fails the same tests whatever the load, and no other short in-memory path is reachable without root.
+
+| Run | Temp root | Gate wall | Package wall | Result | Load at start | Load at end | `/dev/shm` use before, peak, after |
+|---|---|---|---|---|---|---|---|
+| p1 default | `/tmp` | 358.5 s | 351.85 s | passed, 1600 of 1759 | 25.88 26.78 27.71 | 24.62 25.05 26.73 | 310, 321, 295 MB |
+| p1 shm | `/tmp/s` to `/dev/shm` | 432.4 s | 425.72 s | failed, 75 tests | 20.58 25.62 27.86 | 26.65 26.94 27.77 | 307, 458, 310 MB |
+
+The shm run started first, at 13:38, and the default run at 13:45.
+The files did land in memory: the root under `/dev/shm` held up to 8674 files and 35 MB at its peak, and the machine's `/dev/shm` use rose by 151 MB.
+The 75 failures are the ownership refusals of fabric (`is not the _bolt worktree of a weft repo in its hub`, `ownership check failed`) in the `Pull`, `IntegrateWeft`, `FastForwardPair`, `CloneHub` and `BoltReplayers` tests, which resolve a path through the link.
+The default run's package wall, 351.85 s, matches the 348.72 s of `test-time-audit-3`.
+
+### Answer
+
+- **Can `/dev/shm` be the work directory?** Not as it is. With `TMPDIR=/dev/shm` the package cannot start, since the socket path is 2 bytes over the limit for this uid, and a symlink that shortens it makes 75 tests fail on path identity. Memory is no obstacle: the package's files took 35 MB.
+- **Does it avoid the Cortex slowdown?** Not shown. The one shm run failed tests and ran at a different load from the default run, so its wall says nothing about the scan. The question needs a short real path to an in-memory directory.
+
+### Note for the operator
+
+A permanent setting is not worth a task of its own yet.
+What stands in the way is the socket directory name in `tmuxkit` (the 107-byte limit against `lym-<uid>/r<hex>` and the socket name), which a task would shorten, for example by naming the socket directory outside the uid-long root, before `TMPDIR=/dev/shm` can be tried again.
