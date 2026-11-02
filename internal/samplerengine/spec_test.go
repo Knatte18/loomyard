@@ -3,18 +3,20 @@
 package samplerengine
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSessionSpec covers the spec a valid call builds, the required inputs it refuses by name, and an agent the registry cannot resolve.
+// TestSessionSpec covers the spec a valid call builds, with and without a PATTERN overview in the worktree, the required inputs it refuses by name, and an agent the registry cannot resolve.
 func TestSessionSpec(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -53,6 +55,30 @@ func TestSessionSpec(t *testing.T) {
 			if !strings.Contains(spec.Prompt, want) {
 				t.Errorf("SessionSpec() prompt lacks %q", want)
 			}
+		}
+	})
+
+	t.Run("a worktree with a PATTERN overview carries the implementer directive", func(t *testing.T) {
+		t.Parallel()
+		in := valid
+		in.WorktreeRoot = t.TempDir()
+		const overview = "# PATTERN\n\n- `PATTERN-example` — an entry the sampler agent must follow.\n"
+		if err := os.WriteFile(pattern.File(in.WorktreeRoot), []byte(overview), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		spec, err := SessionSpec(in, cfg, registry)
+		if err != nil {
+			t.Fatalf("SessionSpec() = _, %v; want nil error", err)
+		}
+		directive, err := pattern.Directive(in.WorktreeRoot, stencilsDir, pattern.RoleImplementer, nil)
+		if err != nil {
+			t.Fatalf("pattern.Directive() = _, %v; want nil error", err)
+		}
+		if !strings.Contains(directive, "PATTERN-example") {
+			t.Fatalf("pattern.Directive() = %q; want the overview's entry", directive)
+		}
+		if !strings.Contains(spec.Prompt, directive) {
+			t.Errorf("SessionSpec() prompt lacks the implementer PATTERN directive %q", directive)
 		}
 	})
 

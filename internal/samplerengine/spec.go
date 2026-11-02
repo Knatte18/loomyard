@@ -8,6 +8,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/editdirective"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/parentdirective"
+	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
@@ -19,6 +20,9 @@ const Role = "sampler"
 
 // stencilName is the registered name of the sampler agent's opening prompt.
 const stencilName = "sampler-template-agent"
+
+// patternDirectiveMarker is the stencil's one optional marker, filled with the PATTERN directive and left empty when the worktree has no PATTERN overview.
+const patternDirectiveMarker = "pattern_directive"
 
 // skills are the skills the sampler session loads before its prompt: it talks with the operator and writes code and tests.
 var skills = []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}
@@ -39,7 +43,7 @@ type SessionInputs struct {
 
 // SessionSpec builds the spec the sampler agent's interactive session starts under.
 // It refuses an empty StencilsDir, Slug, WorktreeRoot or DecisionRecordPath by name, and an agent model-spec that does not resolve against reg.
-// The prompt carries paths only, never file content.
+// The prompt carries paths only, never file content, bar the PATTERN overview the implementer directive renders from WorktreeRoot, since the agent writes and commits code.
 func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttleengine.Spec, error) {
 	required := []struct{ field, value string }{
 		{"StencilsDir", in.StencilsDir},
@@ -74,13 +78,18 @@ func SessionSpec(in SessionInputs, cfg Config, reg modelspec.Registry) (shuttlee
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
 	}
-	prompt, err := stencil.Fill(template, map[string]string{
+	patternDirective, err := pattern.Directive(in.WorktreeRoot, in.StencilsDir, pattern.RoleImplementer, nil)
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: %w", err)
+	}
+	prompt, err := stencil.FillOptional(template, map[string]string{
 		"slug":                     in.Slug,
 		"task_worktree":            in.WorktreeRoot,
 		"decision_record_path":     in.DecisionRecordPath,
 		parentdirective.MarkerName: parentDirective,
 		editdirective.MarkerName:   editDirective,
-	})
+		patternDirectiveMarker:     patternDirective,
+	}, []string{patternDirectiveMarker})
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("sampler: SessionSpec: fill the sampler prompt: %w", err)
 	}

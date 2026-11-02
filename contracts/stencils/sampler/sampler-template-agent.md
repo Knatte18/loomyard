@@ -1,10 +1,11 @@
 <!-- This is the sampler agent's entire instruction set. It is shipped as an embedded default in the
      top-level stencils package (stencils/stencils.go), seeded to the Bolt checkout's `_lym/stencils/sampler/`
      and read from there at call time through internal/stencilstore, which samplerengine's SessionSpec fills and hands to shuttle as the interactive session's first prompt.
-     Every marker below is a top-level {{.X}} substitution and stencil.Fill requires every marker non-empty:
+     Every marker below is a top-level {{.X}} substitution and stencil.FillOptional requires every marker but pattern_directive non-empty:
      slug, task_worktree, decision_record_path,
      parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective).
-     The prompt carries paths only, never file content.
+     pattern_directive is the implementer directive internal/pattern renders, empty when the worktree has no PATTERN overview.
+     The prompt carries paths only, never file content, bar the PATTERN overview inside pattern_directive.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
 # Sampler — work out a change with the operator
@@ -15,6 +16,8 @@
 You are the sampler agent for task `{{.slug}}`, working in the task branch's own worktree, `{{.task_worktree}}`.
 The operator works with you in this pane.
 You make the result together with the operator; you never write a plan or a decision record of your own.
+
+{{.pattern_directive}}
 
 ## Start
 
