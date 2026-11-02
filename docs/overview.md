@@ -351,6 +351,8 @@ Every module but one also exposes `RunCLIIn(cwd string, out io.Writer, args []st
 `cmd/lym/main.go` uses `RunRoot` unchanged.
 
 All commands print JSON: `{"ok":true, ...}` on success, `{"ok":false,"error":"..."}` on failure (exit code 1).
+On a terminal, a command carrying the `operator` audience prints each envelope line as a short readable summary instead, rendered by `output.Summary`: the outcome, the fields, and every error, warning and way forward one line each, with long lists collapsed to a count.
+The global `--envelope` flag keeps the JSON there, and any output that is no terminal, as an agent's or a script's, always gets it; `clihelp.UseReadableOutput` makes the choice in the root's pre-run.
 
 ## Modules
 

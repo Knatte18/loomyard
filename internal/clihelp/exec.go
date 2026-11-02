@@ -14,6 +14,9 @@
 // It also owns the global --json flag (InstallJSONHelp): under it every command, leaf or group, prints its help as structured JSON and exits 0, and no command runs;
 // a command that declares its own local --json flag shadows the global one and keeps its own meaning.
 //
+// It owns the readable summary of operator verbs (UseReadableOutput): a command carrying the operator audience whose output is a terminal prints each JSON envelope line as a short summary, and the global --envelope flag keeps the envelope there.
+// An output that is no terminal, as an agent's or a script's, always gets the envelope.
+//
 // The command index appends a command's index note (IndexNoteAnnotation) only when rendering the audience its IndexNoteAudienceAnnotation names, and never prints a note that lacks one.
 package clihelp
 
@@ -44,12 +47,23 @@ type ctxKey struct{}
 // exitKey is the context key under which an *exitState is stored.
 var exitKey = ctxKey{}
 
-// exitState records the exit code and abort flag for a single CLI invocation.
+// exitState records the exit code, the abort flag and the steps to run once execution ends for a single CLI invocation.
 // It is allocated fresh per invocation by NewExitContext and is never shared
 // across invocations, making it safe for concurrent use across parallel tests.
 type exitState struct {
-	code  int
-	abort bool
+	code   int
+	abort  bool
+	finish []func()
+}
+
+// onFinish registers step to run, in registration order, once the invocation carried by ctx ends execution, before any cobra error envelope is written.
+// It is a no-op when ctx carries no exit state.
+func onFinish(ctx context.Context, step func()) {
+	es := exitStateFromCtx(ctx)
+	if es == nil {
+		return
+	}
+	es.finish = append(es.finish, step)
 }
 
 // Code returns the recorded exit code, which is 0 if SetExit was never called with a non-zero
@@ -177,7 +191,11 @@ func RunRootCtx(ctx context.Context, cmd *cobra.Command, out io.Writer) int {
 	cmd.SilenceUsage = true
 
 	execCtx, es := NewExitContext(ctx)
-	if err := cmd.ExecuteContext(execCtx); err != nil {
+	err := cmd.ExecuteContext(execCtx)
+	for _, step := range es.finish {
+		step()
+	}
+	if err != nil {
 		// Wrap the cobra error in the standard JSON envelope so all error paths
 		// (unknown command, bad flag, arg validation) have the same shape as domain
 		// errors. TrimSpace strips any newline cobra appends to its error strings.

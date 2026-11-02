@@ -131,6 +131,11 @@ all modules are discoverable via "lym --help" and every subcommand carries
 its own --help and --json help output; --json prints the help as JSON and
 never runs the command.
 
+On a terminal, an operator verb prints a short readable summary of its JSON
+envelope: what it did, each error and warning, and each way forward, with long
+lists collapsed to a count. --envelope prints the full envelope instead; any
+output that is no terminal, as an agent's or a script's, gets the envelope.
+
 Available modules: board, config, ide, reed, fabric, selfreport, shuttle, burler, webster, stencil, loom, quarry, batten, shed, orch, cleanup, adopt, beam, report, tender, hibernate, drift, gate, creel, heddle, help.
 Shortcuts, declared in internal/shortcutcli's embedded file, are listed under their own heading in lym --help.`,
 		SilenceUsage:  true,
@@ -162,11 +167,13 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 			}
 			// Seeding must never block a command from running, regardless of its outcome.
 			seedStencils(cmd)
+			clihelp.UseReadableOutput(cmd, clihelp.WriterIsTerminal)
 			return nil
 		},
 	}
 
 	clihelp.InstallJSONHelp(root)
+	clihelp.InstallReadableOutput(root)
 
 	root.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "increase log verbosity (-v info, -vv debug)")
 

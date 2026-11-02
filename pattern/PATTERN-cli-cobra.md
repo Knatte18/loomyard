@@ -17,6 +17,8 @@ Every lym CLI module is a cobra subtree assembled under one root in `cmd/lym/mai
 - Errors are JSON via `internal/output`, one object per line, and every `RunE` checks `clihelp.ShouldAbort` first.
 - The global `--json` flag, declared by `clihelp.InstallJSONHelp`, prints a command's help as JSON and never runs the command, so an agent can walk the tree with `lym <path> --json`.
   A command whose own local `--json` flag means something else, such as `lym shed status --json`, shadows the global one and runs.
+- The global `--envelope` flag, declared by `clihelp.InstallReadableOutput`, keeps the full JSON envelope where an operator verb on a terminal prints its readable summary.
+  A command's own local `--envelope` flag, such as `lym creel read`, shadows it.
 
 ## Interactive-handoff exception
 

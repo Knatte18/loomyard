@@ -6,27 +6,16 @@ package shedverbs
 
 import (
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// writerIsTerminal reports whether w is a terminal: an *os.File whose Stat mode has
-// os.ModeCharDevice. It is a package-level function value so a Tier 1 test can drive the terminal
+// writerIsTerminal reports whether w is a terminal by the check every operator verb shares.
+// It is a package-level function value so a Tier 1 test can drive the terminal
 // branch without a pseudo-terminal.
-var writerIsTerminal = func(w io.Writer) bool {
-	f, ok := w.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
-}
+var writerIsTerminal = clihelp.WriterIsTerminal
 
 // RenderStatusHuman composes the human status view, one trailing newline included.
 //
