@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/orchcli"
@@ -31,6 +32,8 @@ const (
 	requestFileName = "request.json"
 	// watchLogFileName is the daemon's log in the hibernate directory.
 	watchLogFileName = "watch.log"
+	// noticeFileName is the file in the hibernate directory a notice too long for one creel line is written to.
+	noticeFileName = "notice.txt"
 	// hibernateProgram is the program name hibernate signs its notices to the orch with.
 	hibernateProgram = "HIBERNATE"
 )
@@ -109,12 +112,16 @@ func hubDeps(location *lymcwd.Location) (hibernateengine.Deps, error) {
 		},
 		Hibernate: runHibernate,
 		Notify: func(line string) error {
-			_, err := orchcli.NotifyPrime(location, hibernateProgram, line)
+			posted, err := orchcli.NotifyPrime(location, hibernateProgram, line)
+			if err == nil && !posted {
+				logger.Warn("hibernate: no orch strand is recorded, so the notice was not queued", "notice", line)
+			}
 			return err
 		},
-		Now:   time.Now,
-		Sleep: time.Sleep,
-		Awake: pauserecord.MonotonicAwake(),
+		NoticePath: filepath.Join(dir, noticeFileName),
+		Now:        time.Now,
+		Sleep:      time.Sleep,
+		Awake:      pauserecord.MonotonicAwake(),
 	}, nil
 }
 

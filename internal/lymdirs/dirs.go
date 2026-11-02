@@ -15,7 +15,7 @@ const DotLymDirName = ".lym"
 // PauseDirName is the directory under the hub's board-level DotLymDirName that holds the pause record and its lock.
 const PauseDirName = "pause"
 
-// HibernateDirName is the directory under the hub's board-level DotLymDirName that holds the hibernate request, its lock and the daemon's log.
+// HibernateDirName is the directory under the hub's board-level DotLymDirName that holds the hibernate request, its lock, the daemon's log and the whole text of a notice too long for one creel line.
 const HibernateDirName = "hibernate"
 
 // CreelDirName is the directory under the hub's board-level DotLymDirName that holds creel's journal and the daemon lock.

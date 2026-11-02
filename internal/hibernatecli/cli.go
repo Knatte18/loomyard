@@ -102,7 +102,8 @@ func cancelCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `cancel ends the pending request, stops its daemon and lifts the pause entry the
 request added. No request, and one that has ended, succeed with nothing
-cancelled. Once the machine is going into hibernation cancel is refused: the
+cancelled, and one that has ended still has the pause entry it added lifted
+when its daemon left that entry live. Once the machine is going into hibernation cancel is refused: the
 daemon lifts its own pause on wake. Only the orch or an external caller may
 cancel.
 

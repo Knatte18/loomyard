@@ -281,8 +281,25 @@ func TestCancel(t *testing.T) {
 			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseDone})
 			before := readBytes(t, w.requestPath)
 			report, err = Cancel(w.deps())
-			if err != nil || report.Cancelled || len(w.killed) != 0 || string(readBytes(t, w.requestPath)) != string(before) {
-				t.Errorf("terminal request: %+v, %v, killed %v; want nothing cancelled and the file as it was", report, err, w.killed)
+			if err != nil || report.Cancelled || report.Lifted != nil || len(w.killed) != 0 || string(readBytes(t, w.requestPath)) != string(before) {
+				t.Errorf("terminal request: %+v, %v, killed %v; want nothing cancelled or lifted and the file as it was", report, err, w.killed)
+			}
+		}},
+		{"a terminal request whose owned entry is still live has the entry lifted, nothing cancelled and the file left as it was", func(t *testing.T) {
+			for _, phase := range []Phase{PhaseDone, PhaseFailed, PhaseCancelled} {
+				w := newFakeWorld(t)
+				entry := w.addHubEntry(PauseCaller)
+				w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: phase, Owned: refOf(entry)})
+				before := readBytes(t, w.requestPath)
+
+				report, err := Cancel(w.deps())
+
+				if err != nil || report.Cancelled || report.Lifted == nil || !reflect.DeepEqual(report.Lifted.Resumed, []string{pauserecord.ScopeHub}) || len(w.killed) != 0 {
+					t.Errorf("%s: %+v, %v, killed %v; want nothing cancelled or killed and the hub entry lifted", phase, report, err, w.killed)
+				}
+				if live := w.liveEntries(); len(live) != 0 || string(readBytes(t, w.requestPath)) != string(before) {
+					t.Errorf("%s: live %+v; want none and the file as it was", phase, live)
+				}
 			}
 		}},
 		{"a waiting request with a live daemon is cancelled, its daemon killed and nothing lifted", func(t *testing.T) {

@@ -39,15 +39,15 @@ type WakeReconcile struct {
 	Mutations   []string
 }
 
-// reconcileAtWake runs the hub reconcile for the wake and reports whether the daemon lifts its own pause entry, with the sentence the wake notice appends.
+// reconcileAtWake runs the hub reconcile for the wake and returns the sentence the wake notice appends; the caller lifts the owned entry on every outcome.
 // A hub entry the request does not own that stands skips the reconcile and the exemption.
 // Otherwise the owned entry, when it is live, is exempted from the network gate for the reconcile alone.
-// A stop on a shared branch keeps the entry live; every other outcome lifts it, after the pair pause entries of the stopped runs and the busy ended ones are added.
+// The stopped runs and the busy ended ones get pair pause entries, a stop on a branch every pair shares included, so those runs stay held once the hub entry is lifted.
 // A TenderStatus error is returned, since nothing was reconciled.
-func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error) {
+func reconcileAtWake(deps Deps, r Request) (notice string, err error) {
 	status, err := deps.TenderStatus()
 	if err != nil {
-		return false, "", fmt.Errorf("read the hub at the wake: %w", err)
+		return "", fmt.Errorf("read the hub at the wake: %w", err)
 	}
 
 	var exempt *tenderengine.EntryRef
@@ -56,7 +56,7 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 			continue
 		}
 		if r.Owned == nil || entry.Caller != r.Owned.Caller || !entry.PausedAt.Equal(r.Owned.PausedAt) {
-			return true, fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lym tender resume`, and then `lym beam start` or `lym cleanup --apply` runs the reconcile.", entry.Caller), nil
+			return fmt.Sprintf("the hub pause of %s stands, so the origin reconcile was skipped; lift it with `lym tender resume`, and then `lym beam start` or `lym cleanup --apply` runs the reconcile.", entry.Caller), nil
 		}
 		exempt = r.Owned
 	}
@@ -67,13 +67,19 @@ func reconcileAtWake(deps Deps, r Request) (lift bool, notice string, err error)
 	}
 	switch {
 	case reconcileErr != nil:
-		return true, fmt.Sprintf("the origin reconcile failed (%v), so nothing further moved; run `lym cleanup --apply` to reconcile.", reconcileErr), nil
+		return fmt.Sprintf("the origin reconcile failed (%v), so nothing further moved; run `lym cleanup --apply` to reconcile.", reconcileErr), nil
 	case wake.Unreachable:
-		return true, "origin was unreachable through the retry bound, so nothing was reconciled; run `lym cleanup --apply` to reconcile once the network is back.", nil
-	case wake.Stop != "":
-		return false, fmt.Sprintf("the origin reconcile stopped: %s; settle it, and then `lym tender resume` lifts the hub pause.", wake.Stop), nil
+		return "origin was unreachable through the retry bound, so nothing was reconciled; run `lym cleanup --apply` to reconcile once the network is back.", nil
 	}
-	return true, holdRuns(deps, wake.Runs), nil
+	held := holdRuns(deps, wake.Runs)
+	if wake.Stop == "" {
+		return held, nil
+	}
+	stop := fmt.Sprintf("the origin reconcile stopped on a branch every pair shares: %s; settle it before the runs held here go on.", wake.Stop)
+	if held == "" {
+		return stop, nil
+	}
+	return stop + " " + held, nil
 }
 
 // reconcileExempt runs the reconcile with owned, when not nil, exempted from the network gate until the reconcile returns.

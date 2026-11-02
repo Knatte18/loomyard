@@ -8,7 +8,7 @@
 //
 // # Wiring
 //
-// The request file and the daemon's log live in the hub's board-level `.lym` directory under `lymdirs.HibernateDirName`, beside the pause record.
+// The request file, the daemon's log and the file a notice too long for one creel line is written to live in the hub's board-level `.lym` directory under `lymdirs.HibernateDirName`, beside the pause record.
 // The prime is resolved the way a creel notice to the orch resolves it, and the batten status and land lock readers read the prime's run directories through shedrun's own path declarations.
 // The pause, tender status and lift seams each build tendercli.HubDeps at the call, so every reading sees the hub's current pairs, and the daemon's pause entry carries the caller label the engine names.
 // `status` builds no tender wiring, since those seams run only when called.

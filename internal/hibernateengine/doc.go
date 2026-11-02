@@ -36,6 +36,7 @@
 // Otherwise the request is written cancelled with the requester as the reason, a live daemon is killed, and the pause entry the request owns is lifted by identity, resume lines included.
 // The request is read again after the kill, since the daemon may have recorded its entry between the hold and the kill.
 // A request that owns no entry lifts nothing, so a hub pause that stood before the request stays.
+// A terminal request is not cancelled, but the pause entry it owns is still lifted by identity, which is the way out when its daemon left that entry live.
 // Bound: a daemon killed between its pause's record write and the write of its owned entry leaves that entry live and unowned, which `lym tender resume` lifts; the window is one file write.
 //
 // # Status
@@ -76,14 +77,15 @@
 //
 // Right before the hibernate the daemon reads the hub once more, needs a live hub entry, and moves the request to hibernating only if it is still this daemon's.
 // The wake is a sleep the clock gap watch records ending after the hibernate call, seen within five minutes of awake time; a hibernate error or no wake fails the request with the owned entry lifted and one notice.
-// After the wake and the move to resuming the daemon reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
+// After the wake the daemon lifts its owned entry on every path: a failed write of the resuming or done phase, a reconcile that stops and a notice that is never delivered all leave the entry lifted, and only a lift error leaves it, failing the request.
+// After the move to resuming the daemon reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
 // The engine imports no fabric package: `WakeReconcile` is its own view of the report, with whether origin was unreachable, the stop on a branch every pair shares, one `WakeRun` per stopped, ended or owned-elsewhere entry and one rendered line per mutation.
 // A hub entry the request does not own that is live skips the reconcile and the exemption, only an owned entry is lifted, and the notice names the standing entry, `lym tender resume`, and that `lym beam start` or `lym cleanup --apply` runs the reconcile after that lift.
 // Otherwise the owned entry, when live, is exempted from the network gate through `ExemptNetwork` until the reconcile returns, so only the reconcile's own network calls pass and every other process and entry stays held; with no hub entry live the reconcile runs with nothing to exempt.
 // The daemon has no envelope, so each mutation line is logged at Info and never enters the notice.
 // Unreachable through the retry bound, or a reconcile error, moves nothing further: the owned entry is lifted and the notice names the cause and `lym cleanup --apply`.
-// A stop on a shared branch keeps the hub entry live, and the notice names the stop and `lym tender resume` as the way forward once it is settled.
 // Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request; the owned entry is then lifted.
+// A stop on a shared branch is no exception: its stopped runs are held the same way, the hub entry is lifted, and the notice names the stop before the runs.
 // A pair whose pause fails is left unheld and named with `lym tender pause <slug>`.
 // A run whose `WakeRun.Owner` is set is owned by another machine: its pair pause carries the owner caller, so a slug entry already standing adds none, and the notice names the owner and `lym adopt <subject>` from this machine's prime, the subject being `WakeRun.AdoptSubject`, the beam or `root`, and the slug when it is empty.
 // Once an owner pause is added, `Deps.EndOwned` ends the run's owned processes on this machine; the hub's wiring fills it with `tendercli.EndOwnedElsewhere`, which spares a Finalize past its parent-side merge and the calling process and its ancestors.
@@ -92,4 +94,11 @@
 // The notice names per stopped run its way forward then `lym tender resume <slug>`, only `lym tender resume <slug>` for a pair busy on a parked push, and `lym cleanup --apply` in place of the resume for a pair stopped as gone; a busy ended run is named with its landing or removal and `lym cleanup --apply`, and the other ended runs are listed.
 // A `TenderStatus` error before the reconcile fails the request with the owned entry lifted.
 // Otherwise the owned entry is lifted by identity, so an entry already resumed, with another hub entry added meanwhile, lifts nothing, and the request ends done with one notice saying what became of the pause.
+//
+// # Notices
+//
+// Every notice is one line, queued through `Notify`, the hub's orch being its receiver.
+// A line over one kilobyte, or one spanning lines, is written whole to `Deps.NoticePath`, and a short line saying what became of the pause and naming that file is queued in its place, since creel refuses a line over its hook delivery limit.
+// A refused notice is queued again after a wait that starts at one second and doubles to thirty seconds, until the waits add up to ten minutes, since right after a wake the orch's session may not be listed yet; the last refusal is returned.
+// A hub that records no orch strand has no receiver, so `Notify` answers nil without queueing and the notice is not retried; the wiring logs the dropped notice at Warn.
 package hibernateengine

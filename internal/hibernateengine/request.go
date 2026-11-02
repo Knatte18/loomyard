@@ -112,8 +112,10 @@ type Deps struct {
 	Hibernate func() error
 	// Notify queues one line for the orch.
 	Notify func(line string) error
-	Now    func() time.Time
-	Sleep  func(time.Duration)
+	// NoticePath is the file a notice too long for one line is written to whole.
+	NoticePath string
+	Now        func() time.Time
+	Sleep      func(time.Duration)
 	// Awake is the awake clock: it does not run while the machine sleeps.
 	Awake func() time.Duration
 }

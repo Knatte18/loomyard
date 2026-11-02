@@ -5,6 +5,8 @@ package hibernateengine
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -35,6 +37,14 @@ const (
 	triggerPollBase = time.Second
 	// triggerPollCeiling is the longest wait between two trigger readings.
 	triggerPollCeiling = 30 * time.Second
+	// noticeLineBound is the longest notice line queued as it is; a longer one is written to Deps.NoticePath and a short line names the file.
+	noticeLineBound = 1 << 10
+	// noticeRetryBase is the first wait before a refused notice is queued again; it doubles to noticeRetryCeiling.
+	noticeRetryBase = time.Second
+	// noticeRetryCeiling is the longest wait between two attempts to queue a notice.
+	noticeRetryCeiling = 30 * time.Second
+	// noticeRetryWindow is how long the waits between attempts to queue a notice may add up to before the daemon gives up.
+	noticeRetryWindow = 10 * time.Minute
 )
 
 // runGoneError means the batten status an after trigger waits for no longer exists.
@@ -46,7 +56,7 @@ func (e runGoneError) Error() string {
 
 // Watch runs the daemon's sequence for the request whose daemon is the running process, and returns the request as it ended.
 // It acts only for a non-terminal request carrying the process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
-// After the wake it reconciles the hub with origin before it lifts its own pause entry, and a stop on a branch every pair shares keeps that entry live.
+// After the wake it reconciles the hub with origin and then lifts its own pause entry whatever the reconcile found, and a failed write of the request or a refused notice never keeps that entry live.
 // A request cancelled meanwhile ends the sequence quietly, since the cancel lifts the owned pause entry.
 // The daemon sends no key and no text of its own: every interrupt and resume line is tender's.
 func Watch(deps Deps) (Request, error) {
@@ -121,29 +131,68 @@ func Watch(deps Deps) (Request, error) {
 		return fail(deps, r, kept, "no wake was seen within five minutes")
 	}
 
-	if r, ok, err = advance(deps, PhaseResuming, ""); err != nil || !ok {
-		return r, err
-	}
-	lift, detail, err := reconcileAtWake(deps, r)
+	resuming, ok, err := advance(deps, PhaseResuming, "")
 	if err != nil {
-		return fail(deps, r, nil, err.Error())
+		return fail(deps, r, kept, err.Error())
 	}
-	outcome := "its pause stays live."
-	if lift {
-		lifted, err := liftOwned(deps, r)
-		if err != nil {
-			return fail(deps, r, nil, err.Error())
-		}
-		outcome = wakeOutcome(lifted)
+	if !ok {
+		return r, nil
 	}
-	r, err = finish(deps, r, PhaseDone, "")
+	r = resuming
+	// The entry kept from the pause stands in for an owned entry the request failed to record, so the reconcile recognises the daemon's own hub entry.
+	target := r
+	if target.Owned == nil {
+		target.Owned = kept
+	}
+	detail, err := reconcileAtWake(deps, target)
 	if err != nil {
-		return r, err
+		return fail(deps, r, kept, err.Error())
 	}
+	lifted, err := liftOwned(deps, target)
+	if err != nil {
+		return fail(deps, r, kept, err.Error())
+	}
+	r, writeErr := finish(deps, r, PhaseDone, "")
+	headline := "[lym hibernate] The machine woke from hibernation; " + wakeOutcome(lifted)
+	line := headline
 	if detail != "" {
-		outcome += " " + detail
+		line += " " + detail
 	}
-	return r, deps.Notify("[lym hibernate] The machine woke from hibernation; " + outcome)
+	return r, errors.Join(writeErr, sendNotice(deps, line, headline))
+}
+
+// sendNotice queues line for the orch, queueing it again after a doubling wait while it is refused, until the waits add up to noticeRetryWindow, since right after a wake the orch's session may not be listed yet.
+// A line longer than noticeLineBound, or one spanning lines, is written whole to Deps.NoticePath and headline is queued in its place with the file named, so the notice stays one short line.
+// The last refusal is returned.
+func sendNotice(deps Deps, line, headline string) error {
+	if len(line) > noticeLineBound || strings.Contains(line, "\n") {
+		line = headline + " " + writeNoticeFile(deps, line)
+	}
+	delay, waited := noticeRetryBase, time.Duration(0)
+	for {
+		err := deps.Notify(line)
+		if err == nil || waited >= noticeRetryWindow {
+			return err
+		}
+		logger.Warn("hibernate: the notice was not delivered, retrying", "error", err, "retry_in", delay)
+		deps.Sleep(delay)
+		waited += delay
+		delay = min(delay*2, noticeRetryCeiling)
+	}
+}
+
+// writeNoticeFile writes line whole to Deps.NoticePath and returns the sentence the short notice names the file with.
+// A failed write is logged with the line and named in the sentence instead.
+func writeNoticeFile(deps Deps, line string) string {
+	err := os.MkdirAll(filepath.Dir(deps.NoticePath), 0o755)
+	if err == nil {
+		err = os.WriteFile(deps.NoticePath, []byte(line+"\n"), 0o644)
+	}
+	if err != nil {
+		logger.Warn("hibernate: the whole notice could not be written", "path", deps.NoticePath, "error", err, "notice", line)
+		return fmt.Sprintf("The whole notice could not be written to %s, so it is in the daemon's log.", deps.NoticePath)
+	}
+	return fmt.Sprintf("The whole notice is in %s.", deps.NoticePath)
 }
 
 // wakeOutcome says what became of the request's pause entry, as the tail of the wake notice.
@@ -247,7 +296,7 @@ func fail(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Req
 			outcome = "its pause could not be lifted."
 		}
 	}
-	notifyErr := deps.Notify(fmt.Sprintf("[lym hibernate] The hibernate request failed: %s; %s", reason, outcome))
+	notifyErr := sendNotice(deps, fmt.Sprintf("[lym hibernate] The hibernate request failed: %s; %s", reason, outcome), "[lym hibernate] The hibernate request failed; "+outcome)
 	return r, errors.Join(writeErr, liftErr, notifyErr)
 }
 

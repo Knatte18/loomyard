@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -608,17 +609,187 @@ func TestWatch(t *testing.T) {
 				t.Errorf("notice = %q; want no resume for a pair stopped as gone", w.noticeList()[0])
 			}
 		}},
-		{"a stop on a branch every pair shares keeps the hub entry live and names the stop then the resume", func(t *testing.T) {
+		{"a stop on a branch every pair shares holds each stopped run, lifts the hub entry and names the stop then each run's resume", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.reconcileResult = WakeReconcile{Stop: "resolve board.json in the board worktree", Runs: []WakeRun{{Slug: "p1", WayForward: "resolve board.json in the board worktree"}}}
 
 			got, err := watchNow(t, w)
 
 			live := w.liveEntries()
-			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || w.pauseCount() != 1 {
-				t.Errorf("got %+v, %v, live %+v, pauses %d; want done with the hub entry live and no pair paused", got, err, live, w.pauseCount())
+			if err != nil || got.Phase != PhaseDone || len(live) != 1 || live[0].Scope != "p1" {
+				t.Errorf("got %+v, %v, live %+v; want done with only the pair entry live", got, err, live)
 			}
-			requireNotice(t, w, "its pause stays live.", "resolve board.json in the board worktree; settle it, and then `lym tender resume`")
+			requireNotice(t, w, "its pause was lifted.", "stopped on a branch every pair shares: resolve board.json in the board worktree; settle it", "then `lym tender resume p1`")
+		}},
+		{"a notice over the line bound is written whole to the notice file and a short line naming the file is queued", func(t *testing.T) {
+			w := newFakeWorld(t)
+			stop := "origin holds commits that change the same paths: " + strings.Repeat("0123456789abcdef ", 2*noticeLineBound/16)
+			w.reconcileResult = WakeReconcile{Stop: stop}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, live %+v; want done with the entry lifted", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "woke from hibernation; its pause was lifted.", "The whole notice is in "+w.noticePath+".")
+			if notice := w.noticeList()[0]; len(notice) > noticeLineBound || strings.Contains(notice, "0123456789abcdef") {
+				t.Errorf("notice = %q; want a line within %d bytes without the stop's detail", notice, noticeLineBound)
+			}
+			if whole := string(readBytes(t, w.noticePath)); !strings.Contains(whole, "its pause was lifted.") || !strings.Contains(whole, stop) {
+				t.Errorf("notice file = %q; want the whole notice with the stop", whole)
+			}
+		}},
+		{"a short notice spanning lines is written whole to the notice file and a one-line notice naming the file is queued", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Stop: "first line\nsecond line"}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone {
+				t.Fatalf("got %+v, %v; want done", got, err)
+			}
+			requireNotice(t, w, "woke from hibernation; its pause was lifted.", "The whole notice is in "+w.noticePath+".")
+			if notice := w.noticeList()[0]; len(notice) > noticeLineBound || strings.Contains(notice, "first line") {
+				t.Errorf("notice = %q; want a line within %d bytes without the stop's text", notice, noticeLineBound)
+			}
+			if whole := string(readBytes(t, w.noticePath)); !strings.Contains(whole, "first line\nsecond line") {
+				t.Errorf("notice file = %q; want the whole notice with both lines", whole)
+			}
+		}},
+		{"a notice file that cannot be written leaves a short notice saying so", func(t *testing.T) {
+			w := newFakeWorld(t)
+			blocker := filepath.Join(t.TempDir(), "file")
+			if err := os.WriteFile(blocker, nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			w.noticePath = filepath.Join(blocker, "notice.txt")
+			stop := "origin holds commits that change the same paths: " + strings.Repeat("0123456789abcdef ", 2*noticeLineBound/16)
+			w.reconcileResult = WakeReconcile{Stop: stop}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone {
+				t.Fatalf("got %+v, %v; want done", got, err)
+			}
+			requireNotice(t, w, "woke from hibernation; its pause was lifted.", "The whole notice could not be written to "+w.noticePath)
+			if notice := w.noticeList()[0]; len(notice) > noticeLineBound || strings.Contains(notice, "0123456789abcdef") {
+				t.Errorf("notice = %q; want a line within %d bytes without the stop's detail", notice, noticeLineBound)
+			}
+		}},
+		{"a wake whose request records no owned entry still reconciles, lifts the kept entry and says so without contradiction", func(t *testing.T) {
+			w := newFakeWorld(t)
+			cleared := false
+			w.onSleep = func() {
+				if cleared || w.hibernates() == 0 {
+					return
+				}
+				cleared = true
+				err := updateRequest(w.requestPath, func(cur Request, found bool) (Request, error) {
+					cur.Owned = nil
+					return cur, nil
+				})
+				if err != nil {
+					t.Error(err)
+				}
+			}
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseDone || w.reconcileCalls != 1 || len(w.liveEntries()) != 0 {
+				t.Errorf("got %+v, %v, reconciles %d, live %+v; want done after one reconcile with the entry lifted", got, err, w.reconcileCalls, w.liveEntries())
+			}
+			requireNotice(t, w, "its pause was lifted.")
+			if strings.Contains(w.noticeList()[0], "stands") {
+				t.Errorf("notice = %q; want no claim that a hub pause stands", w.noticeList()[0])
+			}
+		}},
+		{"a request file that cannot be written once the entry is lifted still sends the wake notice and returns the error", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.onReconcile = func() {
+				if err := os.Remove(w.requestPath); err != nil {
+					t.Error(err)
+				}
+				if err := os.Mkdir(w.requestPath, 0o755); err != nil {
+					t.Error(err)
+				}
+			}
+
+			_, err := watchNow(t, w)
+
+			if err == nil || len(w.liveEntries()) != 0 {
+				t.Errorf("err %v, live %+v; want the write's error and the entry lifted", err, w.liveEntries())
+			}
+			requireNotice(t, w, "woke from hibernation; its pause was lifted.")
+		}},
+		{"a failure with a long reason queues the short headline and writes the whole reason to the notice file", func(t *testing.T) {
+			w := newFakeWorld(t)
+			reason := strings.Repeat("job refused ", noticeLineBound/8)
+			w.hibernateErr = errors.New(reason)
+
+			got, err := watchNow(t, w)
+
+			if err != nil || got.Phase != PhaseFailed || len(w.liveEntries()) != 0 {
+				t.Fatalf("got %+v, %v, live %+v; want failed with the entry lifted", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "The hibernate request failed; its pause was lifted.", "The whole notice is in "+w.noticePath+".")
+			if notice := w.noticeList()[0]; len(notice) > noticeLineBound || strings.Contains(notice, "job refused") {
+				t.Errorf("notice = %q; want a line within %d bytes without the reason", notice, noticeLineBound)
+			}
+			if whole := string(readBytes(t, w.noticePath)); !strings.Contains(whole, reason) {
+				t.Errorf("notice file = %q; want the whole reason", whole)
+			}
+		}},
+		{"a refused notice is queued again after a doubling wait until it is delivered", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.notifyErrs = []error{errors.New(`creel: unknown receiver "ly:orch"`), errors.New(`creel: unknown receiver "ly:orch"`)}
+
+			got, err := watchNow(t, w)
+
+			sleeps := w.sleepList()
+			if err != nil || got.Phase != PhaseDone || w.notifyAttempts != 3 || !reflect.DeepEqual(sleeps[len(sleeps)-2:], []time.Duration{time.Second, 2 * time.Second}) {
+				t.Errorf("got %+v, %v, attempts %d, sleeps %v; want done after three attempts with waits of one and two seconds", got, err, w.notifyAttempts, sleeps)
+			}
+			requireNotice(t, w, "its pause was lifted.")
+		}},
+		{"a notice refused through the retry window is returned and the entry stays lifted", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.notifyErr = errors.New(`creel: unknown receiver "ly:orch"`)
+			var wokeAt time.Duration
+			w.onSleep = func() {
+				if wokeAt == 0 && w.hibernates() > 0 {
+					wokeAt = w.awakeClock()
+				}
+			}
+
+			got, err := watchNow(t, w)
+
+			waited := w.awakeClock() - wokeAt
+			if err == nil || got.Phase != PhaseDone || len(w.liveEntries()) != 0 || waited < noticeRetryWindow || waited > noticeRetryWindow+noticeRetryCeiling {
+				t.Errorf("got %+v, %v, live %+v, waited %s; want the refusal returned after the retry window with the request done and the entry lifted", got, err, w.liveEntries(), waited)
+			}
+		}},
+		{"a request file that cannot be written at the wake still lifts the entry and queues one notice", func(t *testing.T) {
+			w := newFakeWorld(t)
+			broken := false
+			w.onSleep = func() {
+				if broken || w.hibernates() == 0 {
+					return
+				}
+				broken = true
+				if err := os.Remove(w.requestPath); err != nil {
+					t.Error(err)
+				}
+				if err := os.Mkdir(w.requestPath, 0o755); err != nil {
+					t.Error(err)
+				}
+			}
+
+			_, err := watchNow(t, w)
+
+			if err == nil || len(w.liveEntries()) != 0 {
+				t.Errorf("err %v, live %+v; want the write's error and the entry lifted", err, w.liveEntries())
+			}
+			requireNotice(t, w, "The hibernate request failed", "its pause was lifted.")
 		}},
 		{"a busy ended run gets a pair pause entry naming its landing or removal and the cleanup, and the other ended runs are listed", func(t *testing.T) {
 			w := newFakeWorld(t)

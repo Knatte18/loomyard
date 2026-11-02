@@ -30,6 +30,7 @@ type fakeWorld struct {
 	mu          sync.Mutex
 	requestPath string
 	recordPath  string
+	noticePath  string
 
 	// wall and awake both advance on Sleep; pendingSleep makes the next Sleep move wall an hour past awake.
 	wall         time.Time
@@ -100,9 +101,13 @@ type fakeWorld struct {
 	hibernateCalls int
 	hibernateErr   error
 	// noWake makes a successful hibernate leave the clocks alone, so no sleep is ever seen.
-	noWake  bool
-	notices []string
-	start   time.Time
+	noWake bool
+	// notices holds every delivered notice; notifyErrs fail the first calls in turn, then notifyErr fails every call after them.
+	notices        []string
+	notifyErrs     []error
+	notifyErr      error
+	notifyAttempts int
+	start          time.Time
 }
 
 // newFakeWorld builds a Linux hub with systemctl on PATH, an external caller, and the clocks at a fixed instant.
@@ -114,6 +119,7 @@ func newFakeWorld(t *testing.T) *fakeWorld {
 		t:           t,
 		requestPath: filepath.Join(root, "hibernate", "request.json"),
 		recordPath:  filepath.Join(root, "pause", pauserecord.RecordFileName),
+		noticePath:  filepath.Join(root, "hibernate", "notice.txt"),
 		wall:        start,
 		start:       start,
 		goos:        "linux",
@@ -402,6 +408,15 @@ func (w *fakeWorld) elapsed() time.Duration {
 func (w *fakeWorld) notify(line string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.notifyAttempts++
+	if len(w.notifyErrs) > 0 {
+		err := w.notifyErrs[0]
+		w.notifyErrs = w.notifyErrs[1:]
+		return err
+	}
+	if w.notifyErr != nil {
+		return w.notifyErr
+	}
 	w.notices = append(w.notices, line)
 	return nil
 }
@@ -443,6 +458,7 @@ func (w *fakeWorld) deps() Deps {
 		ExemptNetwork: w.exemptNetwork,
 		Hibernate:     w.hibernate,
 		Notify:        w.notify,
+		NoticePath:    w.noticePath,
 		Now:           w.now,
 		Sleep:         w.sleep,
 		Awake:         w.awakeClock,

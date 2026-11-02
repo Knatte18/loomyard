@@ -149,7 +149,8 @@ type CancelReport struct {
 }
 
 // Cancel ends the pending request, stops its daemon and lifts the pause entry the request owns.
-// No request, and a terminal one, succeed with nothing cancelled.
+// No request, and a terminal one, succeed with nothing cancelled;
+// a terminal request still has the pause entry it owns lifted, so a pause its daemon left live is not kept.
 // A live daemon in the hibernating phase is refused; a dead daemon's request is cancelled in any phase.
 func Cancel(deps Deps) (CancelReport, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
@@ -180,9 +181,6 @@ func Cancel(deps Deps) (CancelReport, error) {
 	if err != nil {
 		return CancelReport{}, err
 	}
-	if !report.Cancelled {
-		return report, nil
-	}
 	if stopPID != 0 {
 		if err := deps.Kill(stopPID); err != nil {
 			return report, fmt.Errorf("hibernate: stop the daemon: %w", err)
@@ -190,6 +188,7 @@ func Cancel(deps Deps) (CancelReport, error) {
 		report.DaemonStopped = true
 	}
 	// The daemon may have recorded its owned entry after the hold and before the kill.
+	// The lift is by identity, so an entry already lifted lifts nothing.
 	cur, found, err := readRequest(deps.RequestPath)
 	if err != nil || !found {
 		return report, err
