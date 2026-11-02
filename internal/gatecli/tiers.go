@@ -299,7 +299,7 @@ func ranWhole(runs []tierRun, number int, sc scope) bool {
 	})
 }
 
-// renderTierCommand fills {targets}, {args}, {parallel} and {filter} in the tier's command, each target and each arg quoted for the platform shell.
+// renderTierCommand fills {targets}, {args}, {parallel}, {filter} and {test_timeout} in the tier's command, each target and each arg quoted for the platform shell.
 // number is the tier's number and terms are the class filter terms of the invocation; {filter} renders as filterArgument says.
 // A placeholder the command does not hold is not added, so terms given to a command without {filter} filter nothing.
 func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []string) (string, error) {
@@ -322,6 +322,7 @@ func renderTierCommand(number int, tier gateslot.Tier, targets, terms, args []st
 		"{args}", strings.Join(quotedArgs, " "),
 		"{parallel}", strconv.Itoa(tier.Parallel),
 		"{filter}", filter,
+		gateslot.TestTimeoutPlaceholder, strconv.Itoa(tier.TestTimeoutMin)+"m",
 	).Replace(tier.Command), nil
 }
 

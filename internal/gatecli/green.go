@@ -61,7 +61,7 @@ type greenRecord struct {
 	Entries []greenEntry `json:"entries"`
 }
 
-// tierFingerprint hashes tier's declaration without its parallel, timeout and slots, so a changed command, env, targets, counter, filter or carry setting never carries a pass over.
+// tierFingerprint hashes tier's declaration without its parallel, timeouts and slots, so a changed command, env, targets, counter, filter or carry setting never carries a pass over.
 // build is hashed only for a tier with shared_build, and inert only when non-empty;
 // every key added after the original fields is hashed at a non-default value alone, so a tier that sets none of them keeps its fingerprint.
 func tierFingerprint(tier gateslot.Tier, build gateslot.BuildStep, inert []string) string {

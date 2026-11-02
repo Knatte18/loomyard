@@ -63,6 +63,7 @@
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
+// A tier whose command holds TestTimeoutPlaceholder may hold `test_timeout_min`, the minutes the placeholder renders for the test runner's own per-binary bound, DefaultTestTimeoutMin when unset, so a hub raises `go test`'s own `-timeout` default from config instead of a literal in the command.
 // `build` holds `about`, `command`, `dir` (default the worktree's anchor, filled by `Config.WithDefaultDir`), `env` and `timeout_min`; the template's `build: {}` is no build step, and a declared step has a non-empty Config.Build.Command.
 // `inert_paths` lists glob patterns of files no test reads: Config.Inert matches a worktree-relative slash path through `path.Match`, a pattern without a slash against the path's base name and one with a slash against the whole path, and a pattern `path.Match` rejects matches nothing.
 // Config.AllInert is true only when the list and the paths are both non-empty and every path is inert.
@@ -73,7 +74,7 @@
 //
 // LoadConfig refuses at load, naming the key and `lym config gate`: a tier lacking `command`, `timeout_min` or `counter`, or `all_targets` when its command holds `{targets}`;
 // `manual: true` on `tier0`, the tier a call with no tier flag runs; `parallel` or `timeout_min` below 1, `slots` neither `all` nor at least 1, a counter other than `go-json` or `vstest`, a scoper other than `go`, `none` or `dotnet`;
-// a tier `filter` whose command holds no `{filter}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
+// a tier `filter` whose command holds no `{filter}`, a `test_timeout_min` below 1 or on a command that holds no `{test_timeout}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
 // a gate key whose scope is not `card`, `diff` or `all`, a `card` scope on any key but `card` and `batch`, and a lint other than `comments` or `pattern`.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.

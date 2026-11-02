@@ -29,7 +29,8 @@
 // `--tags` stays a registered flag only to be refused before any slot, naming `--tier`: a tier's own command sets its build tags.
 // The words after `--` fill each tier's `{args}`.
 //
-// A tier is one shell command with the placeholders `{targets}`, `{parallel}`, `{args}` and `{filter}`, which `renderTierCommand` fills with each target and each arg quoted for the platform shell by `verifyrun.QuoteArg`.
+// A tier is one shell command with the placeholders `{targets}`, `{parallel}`, `{args}`, `{filter}` and `{test_timeout}`, which `renderTierCommand` fills with each target and each arg quoted for the platform shell by `verifyrun.QuoteArg`.
+// `{test_timeout}` renders as the tier's `test_timeout_min` followed by `m`, such as `20m`, so a hub's `go test -timeout {test_timeout}` takes its per-binary bound from config.
 // `{filter}` renders as `--filter ` and the quoted expression, or as nothing when there is no expression.
 // With no class terms the expression is the tier's `filter`;
 // with the terms of an invocation the dotnet scoper narrowed to one project it is `(<filter>)&(<term>|<term>...)`, or the terms alone when the tier has no filter.
@@ -179,7 +180,7 @@
 // The record is one JSON file per worktree, `green.json` in the worktree's never-tracked gate directory, `gateslot.WaitDir` of the anchor, read tolerantly:
 // an unreadable or malformed file reads as empty.
 // An entry holds the tier fingerprint, HEAD's tree and commit, the module directory, the args after `--`, and either `whole` or the green package set, plus its write time.
-// `tierFingerprint` hashes the tier's declaration without `parallel`, `timeout_min` and `slots`, so a changed command, env, targets, counter, `filter`, `shared_build` or `carry` never carries.
+// `tierFingerprint` hashes the tier's declaration without `parallel`, `timeout_min`, `test_timeout_min` and `slots`, so a changed command, env, targets, counter, `filter`, `shared_build` or `carry` never carries.
 // It also hashes the hub's `build` declaration for a tier with `shared_build` and the hub's `inert_paths` when it is non-empty, so a changed build or inert list stops the tiers it concerns from carrying.
 // A key at its default value adds nothing to the hash, so a tier that sets none of these keeps its fingerprint and its green entries.
 //

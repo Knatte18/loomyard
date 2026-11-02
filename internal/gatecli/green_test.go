@@ -33,14 +33,14 @@ func TestGreenRecord(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("the fingerprint ignores parallel, timeout and slots and nothing else", func(t *testing.T) {
+	t.Run("the fingerprint ignores parallel, timeouts and slots and nothing else", func(t *testing.T) {
 		t.Parallel()
 		base := greenTier()
 		same := base
-		same.Parallel, same.TimeoutMin, same.Slots = 8, 90, 0
+		same.Parallel, same.TimeoutMin, same.TestTimeoutMin, same.Slots = 8, 90, 45, 0
 		noBuild := gateslot.BuildStep{}
 		if tierFingerprint(base, noBuild, nil) != tierFingerprint(same, noBuild, nil) {
-			t.Error("tierFingerprint changed with parallel, timeout_min and slots; want them ignored")
+			t.Error("tierFingerprint changed with parallel, timeout_min, test_timeout_min and slots; want them ignored")
 		}
 		// wantBase was captured from tierFingerprint(greenTier()) before the filter, shared_build, carry, build and inert keys existed.
 		const wantBase = "a3839b7915cd21ad432412c4d7cb98e94605df7f6d1beb7f17c0515b7a6dd1af"

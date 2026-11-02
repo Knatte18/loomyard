@@ -214,6 +214,15 @@ inert_paths: ["*.md", "docs/*"]
 			}), "",
 		},
 		{"filter on a command with no {filter}", baseKeys + `tiers: {tier0: {command: x, filter: "A", timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.filter": set, but the command holds no {filter}; want {filter} in the command or no filter` + fixIt},
+		{
+			"test_timeout_min defaults or loads on a command with {test_timeout}", baseKeys + `tiers: {tier0: {command: "go test -timeout {test_timeout}", timeout_min: 30, counter: go-json}, tier1: {command: "go test -timeout {test_timeout}", test_timeout_min: 25, timeout_min: 30, counter: go-json}}`,
+			hubWith(func(c *Config) {
+				c.Tiers["tier0"] = Tier{Command: "go test -timeout {test_timeout}", Parallel: 1, TimeoutMin: 30, TestTimeoutMin: DefaultTestTimeoutMin, Counter: "go-json", Slots: 1}
+				c.Tiers["tier1"] = Tier{Command: "go test -timeout {test_timeout}", Parallel: 1, TimeoutMin: 30, TestTimeoutMin: 25, Counter: "go-json", Slots: 1}
+			}), "",
+		},
+		{"test_timeout_min on a command with no {test_timeout}", baseKeys + `tiers: {tier0: {command: x, test_timeout_min: 25, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": set, but the command holds no {test_timeout}; want {test_timeout} in the command or no test_timeout_min` + fixIt},
+		{"test_timeout_min 0", baseKeys + `tiers: {tier0: {command: "t {test_timeout}", test_timeout_min: 0, timeout_min: 5, counter: vstest}}`, Config{}, `gate config key "tiers.tier0.test_timeout_min": 0; want at least 1` + fixIt},
 		{"build without command", baseKeys + "build: {dir: x, timeout_min: 5}\n", Config{}, `gate config key "build.command": missing; want the shell command the build runs` + fixIt},
 		{"build without timeout_min", baseKeys + "build: {command: b}\n", Config{}, `gate config key "build.timeout_min": missing; want at least 1` + fixIt},
 		{"build with timeout_min 0", baseKeys + "build: {command: b, timeout_min: 0}\n", Config{}, `gate config key "build.timeout_min": 0; want at least 1` + fixIt},

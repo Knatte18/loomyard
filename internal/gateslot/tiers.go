@@ -19,7 +19,7 @@ import (
 type Tier struct {
 	// About is one line saying what the tier tests.
 	About string
-	// Command is the shell command a run executes, with the placeholders {targets}, {parallel}, {args} and {filter}.
+	// Command is the shell command a run executes, with the placeholders {targets}, {parallel}, {args}, {filter} and {test_timeout}.
 	Command string
 	// Dir is the run directory relative to the worktree root, empty when gate.yaml sets none.
 	Dir string
@@ -31,6 +31,8 @@ type Tier struct {
 	Parallel int
 	// TimeoutMin is the minutes the tier may run once its slots are held.
 	TimeoutMin int
+	// TestTimeoutMin is the minutes the command's {test_timeout} placeholder renders, the test runner's own bound on one test binary; 0 when the command holds no such placeholder.
+	TestTimeoutMin int
 	// Counter names how the command's output is counted: go-json or vstest.
 	Counter string
 	// Covers lists lower tier numbers this tier's command runs anyway.
@@ -51,22 +53,30 @@ type Tier struct {
 
 // tierFile is a tier as gate.yaml spells it, before defaults and validation.
 type tierFile struct {
-	About       string            `yaml:"about"`
-	Command     string            `yaml:"command"`
-	Dir         string            `yaml:"dir"`
-	Env         map[string]string `yaml:"env"`
-	AllTargets  string            `yaml:"all_targets"`
-	Parallel    *int              `yaml:"parallel"`
-	TimeoutMin  *int              `yaml:"timeout_min"`
-	Counter     string            `yaml:"counter"`
-	Covers      []int             `yaml:"covers"`
-	Slots       yaml.Node         `yaml:"slots"`
-	PrebuiltLym bool              `yaml:"prebuilt_lym"`
-	Manual      bool              `yaml:"manual"`
-	Filter      string            `yaml:"filter"`
-	SharedBuild bool              `yaml:"shared_build"`
-	Carry       *bool             `yaml:"carry"`
+	About          string            `yaml:"about"`
+	Command        string            `yaml:"command"`
+	Dir            string            `yaml:"dir"`
+	Env            map[string]string `yaml:"env"`
+	AllTargets     string            `yaml:"all_targets"`
+	Parallel       *int              `yaml:"parallel"`
+	TimeoutMin     *int              `yaml:"timeout_min"`
+	TestTimeoutMin *int              `yaml:"test_timeout_min"`
+	Counter        string            `yaml:"counter"`
+	Covers         []int             `yaml:"covers"`
+	Slots          yaml.Node         `yaml:"slots"`
+	PrebuiltLym    bool              `yaml:"prebuilt_lym"`
+	Manual         bool              `yaml:"manual"`
+	Filter         string            `yaml:"filter"`
+	SharedBuild    bool              `yaml:"shared_build"`
+	Carry          *bool             `yaml:"carry"`
 }
+
+// TestTimeoutPlaceholder is the tier command placeholder a run fills with the tier's TestTimeoutMin followed by `m`, such as `20m`, the duration form `go test -timeout` reads.
+const TestTimeoutPlaceholder = "{test_timeout}"
+
+// DefaultTestTimeoutMin is the TestTimeoutMin of a tier whose command holds TestTimeoutPlaceholder and that sets no test_timeout_min.
+// It leaves room above the wall of the slowest package on a heavily loaded machine.
+const DefaultTestTimeoutMin = 20
 
 // GateKey is one gate.yaml key: the tier numbers a site runs, the scope form its call runs them over and the lint steps it runs after them.
 type GateKey struct {
@@ -167,6 +177,21 @@ func decodeTier(key string, number int, file tierFile) (Tier, error) {
 		return Tier{}, refuse("timeout_min", fmt.Sprintf("%d; want at least 1", *file.TimeoutMin))
 	}
 	tier.TimeoutMin = *file.TimeoutMin
+	holdsTestTimeout := strings.Contains(tier.Command, TestTimeoutPlaceholder)
+	if file.TestTimeoutMin != nil {
+		if !holdsTestTimeout {
+			return Tier{}, refuse("test_timeout_min", "set, but the command holds no "+TestTimeoutPlaceholder+"; want "+TestTimeoutPlaceholder+" in the command or no test_timeout_min")
+		}
+		if *file.TestTimeoutMin < 1 {
+			return Tier{}, refuse("test_timeout_min", fmt.Sprintf("%d; want at least 1", *file.TestTimeoutMin))
+		}
+	}
+	if holdsTestTimeout {
+		tier.TestTimeoutMin = DefaultTestTimeoutMin
+		if file.TestTimeoutMin != nil {
+			tier.TestTimeoutMin = *file.TestTimeoutMin
+		}
+	}
 	if file.Parallel != nil {
 		if *file.Parallel < 1 {
 			return Tier{}, refuse("parallel", fmt.Sprintf("%d; want at least 1", *file.Parallel))
