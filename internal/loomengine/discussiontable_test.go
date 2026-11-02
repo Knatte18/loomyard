@@ -6,6 +6,7 @@ package loomengine
 
 import (
 	"cmp"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -114,7 +115,7 @@ func TestDiscussionTable(t *testing.T) {
 				stencilsDir := newTestStencilsDir(t)
 				cfg := discussionTableConfig(advisors, interactive)
 
-				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -242,7 +243,7 @@ func TestDiscussionTable(t *testing.T) {
 				cfg := discussionTableConfig(1, false)
 				cfg.Friction = tt.friction
 
-				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
@@ -264,7 +265,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(PATTERN.md) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug, false)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -285,7 +286,7 @@ func TestDiscussionTable(t *testing.T) {
 		layout := discussionTableLayout(t)
 		writeDeclaredPatternRecord(t, layout, declaredBullet)
 
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), newTestStencilsDir(t), discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), newTestStencilsDir(t), discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug, false)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -304,7 +305,7 @@ func TestDiscussionTable(t *testing.T) {
 			t.Fatalf("WriteFile(chair stencil) = %v; want nil", err)
 		}
 
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, discussionTableConfig(1, false), reg, discussionTableSlug, false)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -324,7 +325,7 @@ func TestDiscussionTable(t *testing.T) {
 		cfg := discussionTableConfig(0, false)
 		cfg.Friction = "sonnet[medium]"
 
-		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
+		table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 		if err != nil {
 			t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 		}
@@ -356,7 +357,7 @@ func TestDiscussionTable(t *testing.T) {
 			cfg := discussionTableConfig(2, false)
 			cfg.DiscussionLenses = tt.lenses
 
-			table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
+			table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 			if err != nil {
 				t.Fatalf("DiscussionTable(lenses=%q) = _, %v; want nil error", tt.lenses, err)
 			}
@@ -389,6 +390,41 @@ func TestDiscussionTable(t *testing.T) {
 			}
 		})
 	}
+
+	// A fixer clearing the discussion gate drops the validator loop from the lead's prompt, the chair's included since the chair template wraps the discussion template:
+	// the self-check step's command block, the spawn point's validator clause and the closing step.
+	t.Run("fixer on", func(t *testing.T) {
+		t.Parallel()
+		loopLines := []string{"```bash\nlym loom validate-discussion\n```", "`lym loom validate-discussion` passes per Step 6", "again until it passes"}
+		for _, fixerOn := range []bool{false, true} {
+			t.Run(fmt.Sprintf("fixerOn=%v", fixerOn), func(t *testing.T) {
+				t.Parallel()
+				layout := discussionTableLayout(t)
+				stencilsDir := newTestStencilsDir(t)
+				cfg := discussionTableConfig(2, false)
+				cfg.DiscussionLenses = "twill-discussion"
+
+				table, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, fixerOn)
+				if err != nil {
+					t.Fatalf("DiscussionTable(fixerOn=%v) = _, %v; want nil error", fixerOn, err)
+				}
+				prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+				if err != nil {
+					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+				}
+				prompt := prompts[""]
+
+				for _, line := range loopLines {
+					if has := strings.Contains(prompt, line); has == fixerOn {
+						t.Errorf("chair prompt carries %q = %v; want it exactly when the fixer is off", line, has)
+					}
+				}
+				if has := strings.Contains(prompt, "Run no validator yourself"); has != fixerOn {
+					t.Errorf("chair prompt carries the gated self-check step = %v; want %v", has, fixerOn)
+				}
+			})
+		}
+	})
 
 	t.Run("lens review", func(t *testing.T) {
 		t.Parallel()
@@ -437,7 +473,7 @@ func TestDiscussionTable(t *testing.T) {
 				cfg := discussionTableConfig(0, false)
 				cfg.DiscussionLenses = cmp.Or(tt.fan, templateFanName)
 
-				table, err := DiscussionTable(layout, dirs, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug)
+				table, err := DiscussionTable(layout, dirs, stencilsDir, discussionTableSpecsDir, cfg, reg, discussionTableSlug, false)
 				if err != nil {
 					t.Fatalf("DiscussionTable(lenses=%q) = _, %v; want nil error", cfg.DiscussionLenses, err)
 				}
@@ -547,7 +583,7 @@ func TestDiscussionTable_Refuses(t *testing.T) {
 				tt.mutate(&cfg)
 			}
 
-			_, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, tt.slug)
+			_, err := DiscussionTable(layout, discussionTableDirs(layout), stencilsDir, discussionTableSpecsDir, cfg, reg, tt.slug, false)
 			if err == nil {
 				t.Fatalf("DiscussionTable(slug=%q) = _, nil; want a refusal", tt.slug)
 			}

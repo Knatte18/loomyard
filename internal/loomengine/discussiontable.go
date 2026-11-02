@@ -26,6 +26,9 @@ const (
 	discussionChairStencil = "loom-template-discussion-chair"
 	// discussionAdvisorStencil is the stencil that opens every advisor seat.
 	discussionAdvisorStencil = "loom-template-discussion-advisor"
+	// discussionSelfCheckStencil and discussionSelfCheckGatedStencil are the fragments that fill the discussion template's self-check step, the first for a writer that runs the validator itself and the second for one whose gate has a cold fixer.
+	discussionSelfCheckStencil      = "loom-fragment-self-check-discussion"
+	discussionSelfCheckGatedStencil = "loom-fragment-self-check-discussion-gated"
 )
 
 // discussionAdvisorSkills are the skills each advisor seat loads.
@@ -69,7 +72,8 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // A lead with no advisors decides each question itself, as its prompt says.
 // The PATTERN directive renders the PATTERN changes the decision record declares; a malformed section fails the table, naming the way forward.
 // A PATTERN directive or Tier 2 friction directive that cannot be rendered is left empty, the friction failure logged, and never fails the table.
-func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string) (seatengine.Table, error) {
+// fixerOn reports that a cold fixer clears the row's discussion gate, so the lead's prompt tells it to run no validator and the twill directive asks for none; false renders today's prompt.
+func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, slug string, fixerOn bool) (seatengine.Table, error) {
 	if slug == "" {
 		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: slug must not be empty")
 	}
@@ -99,14 +103,18 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 		frictionDirective = ""
 	}
 
+	selfCheck, err := selfCheckBlock(stencilsDir, fixerOn, discussionSelfCheckStencil, discussionSelfCheckGatedStencil)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: self-check step: %w", err)
+	}
 	forks := cfg.DiscussionLenses != ""
-	var leadValues map[string]string
+	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses)
+		lensDirective, err := discussionLensDirective(layout, dirs, stencilsDir, specsDir, cfg.DiscussionLenses, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: DiscussionTable: %w", err)
 		}
-		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(lensDirective)}
+		leadValues[twilldirective.MarkerName] = setOffParagraph(lensDirective)
 	}
 
 	seats := make([]seatengine.Seat, 0, 1+len(cfg.DiscussionAdvisors))

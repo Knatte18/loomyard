@@ -167,6 +167,11 @@ func TestWire_EverySeamFilled(t *testing.T) {
 		t.Fatalf("wire() = %v; want nil", err)
 	}
 
+	// envkit lists GateFixer as a legal nil, so wire's filling it is asserted here.
+	if c.env.GateFixer == nil {
+		t.Error("GateFixer is nil; want it set after wire()")
+	}
+
 	nils := envkit.NilSeams(c.env)
 	for _, path := range nils {
 		if _, ok := intentionallyNil[path]; !ok {

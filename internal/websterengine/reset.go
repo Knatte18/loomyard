@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
@@ -344,7 +345,7 @@ func refuseReportHeadBatch(deps ResetDeps, batch int) error {
 		return resetRefusal(to, fmt.Sprintf("batch %d was begun after batch %d, so its report head is not the run's tip", later[0], batch), wayForwardSteps(resetToStartStep))
 	}
 	if deps.Reed != nil && bs.Kind == "recovery" && bs.StrandGUID != "" {
-		live, err := StrandLive(deps.Reed, bs.StrandGUID)
+		live, err := gatefixer.StrandLive(deps.Reed, bs.StrandGUID)
 		if err != nil {
 			return err
 		}

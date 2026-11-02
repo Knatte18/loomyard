@@ -53,6 +53,8 @@ const (
 	phaseStarting = "starting"
 	phaseSlots    = "slots"
 	phaseRunning  = "running"
+	// phaseFixing is the state of a run waiting on a cold fixer, during which the tree changes under the run.
+	phaseFixing = "fixing"
 )
 
 // The verbs a request may name.
@@ -83,7 +85,7 @@ type detachRun struct {
 	dir string
 }
 
-// detachRequest is the call a runner runs: the verb, the words after it and the directory it ran in.
+// detachRequest is the call a runner runs: the verb, the words after it, the directory it ran in and the role of the strand that made it.
 type detachRequest struct {
 	// Verb is `test` or `card-verify`.
 	Verb string `json:"verb"`
@@ -91,11 +93,13 @@ type detachRequest struct {
 	Args []string `json:"args"`
 	// Cwd is the absolute directory the call resolves against.
 	Cwd string `json:"cwd"`
+	// Role is the role of the strand that made the call, empty when the strand name did not parse or an older front wrote the request.
+	Role string `json:"role,omitempty"`
 }
 
 // runPhase says where a run stands.
 type runPhase struct {
-	// State is `starting`, `slots` or `running`.
+	// State is `starting`, `slots`, `running` or `fixing`.
 	State string `json:"state"`
 	// Tier names the tier a `slots` or `running` state is for, empty for a run that has not reached one.
 	Tier string `json:"tier,omitempty"`
@@ -245,8 +249,8 @@ func phaseFrom(ctx context.Context) func(runPhase) {
 }
 
 // runnerCmd builds `lym gate run-detached <run-dir>`, the hidden verb that runs a front's request and keeps its state in the run directory.
-// gateTree builds a fresh gate command tree for the call to run in.
-func runnerCmd(gateTree func() *cobra.Command) *cobra.Command {
+// gateTree builds a fresh gate command tree for the call to run in, and seams are the card fixer's seams the runner reaches.
+func runnerCmd(gateTree func() *cobra.Command, seams detachSeams) *cobra.Command {
 	return &cobra.Command{
 		Use:         "run-detached <run-dir>",
 		Short:       "run a gate call a front started, until its lease passes",
@@ -259,7 +263,7 @@ It is started by lym gate test and lym gate card-verify and refuses a run direct
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			clihelp.SetExit(cmd.Context(), runDetached(cmd.Context(), cmd.OutOrStdout(), args[0], gateTree))
+			clihelp.SetExit(cmd.Context(), runDetached(cmd.Context(), cmd.OutOrStdout(), args[0], gateTree, seams))
 			return nil
 		},
 	}
@@ -273,7 +277,8 @@ func detachRefusal(out io.Writer, dir, reason string) int {
 // runDetached runs the request in runDir and returns 0 once the run's exit file is written.
 // It refuses, before it runs anything or writes an exit file, a directory with no live lease, a request that is missing or malformed, a verb it does not run and a run another runner claimed.
 // While the call runs it reads the lease once a second and cancels the call when the lease has passed; a terminating signal cancels it too.
-func runDetached(ctx context.Context, out io.Writer, runDir string, gateTree func() *cobra.Command) int {
+// A red `test` request is handed to a cold fixer and re-run, as runWithFixer says.
+func runDetached(ctx context.Context, out io.Writer, runDir string, gateTree func() *cobra.Command, seams detachSeams) int {
 	run := detachRun{dir: runDir}
 	if !run.leaseHolds(time.Now()) {
 		return detachRefusal(out, runDir, "holds no live lease of a gate call")
@@ -295,7 +300,7 @@ func runDetached(ctx context.Context, out io.Writer, runDir string, gateTree fun
 	}
 
 	run.writePhase(runPhase{State: phaseStarting})
-	exit := run.runRequest(ctx, request, gateTree)
+	exit := run.runWithFixer(ctx, request, gateTree, seams)
 	if err := run.writeExit(exit); err != nil {
 		logger.Warn("gate run-detached: could not write the exit file", "dir", runDir, "cause", err)
 		return 1

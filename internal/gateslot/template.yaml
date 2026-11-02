@@ -1,5 +1,6 @@
 slots: 2  # how many gate builds and test runs the hub executes at once; a lowered count takes effect on the next acquire while a running holder finishes
 busy_quit_sec: 120  # seconds a Go test binary under lym gate test may keep a CPU core at least 90 percent busy before it gets one SIGQUIT and dumps its goroutine stacks; 0 turns the watchdog off; raise it for a package that is CPU-bound but healthy
+fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that spawned it stops waiting; it bounds the card gate's fixer and the row gate fixers, and webster's fix-verify keeps its own recovery_timeout_min
 
 # The hub's test tiers, keyed tier0, tier1, and so on; the template declares none.
 # A tier is written whole with one flow mapping: lym config gate --set 'tiers.tier0={command: "go test -json {targets} {args}", all_targets: ./..., timeout_min: 60, counter: go-json}'
@@ -14,9 +15,10 @@ tiers: {}
 # The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix, drift-verify and pr-review (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks in // comments) and pattern (PATTERN.md grown past its headroom line).
+# The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
 # No tier list may be empty, and a tier a key names must be declared above when the gate runs.
 gates:
-  card: {tiers: [0], scope: card, lints: [comments, pattern]}
+  card: {tiers: [0], scope: card, lints: [comments, pattern], fixer: "sonnet[medium]"}
   batch: {tiers: [0], scope: card}
   webster: {tiers: [0], scope: all}
   parent-align: {tiers: [0], scope: all}

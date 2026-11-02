@@ -4,6 +4,7 @@
 package loomrecipe
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/loomshed"
@@ -70,6 +71,40 @@ func EngineRow(recipe, engine string) (string, bool, error) {
 	}
 
 	return "", false, nil
+}
+
+// GateFixerSetting returns the `fixer` value of the gate element named gate on the first row of the named recipe that runs engine: the `<module>.<key>` setting that holds the row's cold fixer model-spec.
+// It is empty when the row has no such element or the element carries no `fixer`.
+// An empty recipe name reads as the tapestry recipe; a name that selects no embedded recipe, a recipe with no row running engine, and a `fixer` that is not a string are refused.
+func GateFixerSetting(recipe, engine, gate string) (string, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return "", err
+	}
+	for _, row := range parsed.Producers {
+		if row.Engine != engine {
+			continue
+		}
+		elements, _ := row.Config["gates"].([]any)
+		for _, element := range elements {
+			fields, _ := element.(map[string]any)
+			if fields["name"] != gate {
+				continue
+			}
+			value, present := fields["fixer"]
+			if !present {
+				return "", nil
+			}
+			setting, isString := value.(string)
+			if !isString {
+				return "", fmt.Errorf("loomrecipe: the %s recipe's %s row names a gate fixer on element %q that is %v, not a setting string", recipe, row.Name, gate, value)
+			}
+			return setting, nil
+		}
+		return "", nil
+	}
+
+	return "", fmt.Errorf("loomrecipe: the %s recipe has no row running the %s engine", recipe, engine)
 }
 
 // CodePerchGate returns the entry gate of the named recipe's Code-Review segment Bouncer row, built over env.

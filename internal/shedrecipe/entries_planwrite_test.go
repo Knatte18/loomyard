@@ -409,6 +409,43 @@ func TestPlanWriteEntry_GateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("PlanWriteFixerRequestCarriesTheForkedClosureAndTheLensesSetting", func(t *testing.T) {
+		for _, tt := range []struct {
+			name   string
+			lenses string
+			want   bool
+		}{
+			{"no lenses", "", false},
+			{"lenses", "twill-plan", true},
+		} {
+			t.Run(tt.name, func(t *testing.T) {
+				env := newTestEnv(t)
+				env.Setting = fakeSetting(map[string]any{"tapestry.plan_gate_fixer": "opus", "tapestry.plan_lenses": tt.lenses})
+				calls := recordGateFixer(&env)
+				cfg := Config{"gates": []any{map[string]any{"name": "plan", "attempts": 3, "fixer": "tapestry.plan_gate_fixer"}}}
+				if _, err := planWriteEntry(RowIdentity{Name: "Row"}, cfg, env); err != nil {
+					t.Fatalf("planWriteEntry() error = %v; want nil", err)
+				}
+				if len(*calls) != 1 {
+					t.Fatalf("GateFixer called %d times; want 1", len(*calls))
+				}
+				req := (*calls)[0]
+				if req.Row != "Row" || req.Entry != "plan" || req.Model.Alias != "opus" {
+					t.Errorf("request = row %q, entry %q, model %+v; want row Row, entry plan, alias opus", req.Row, req.Entry, req.Model)
+				}
+				if len(req.Spec) != 1 || req.Spec[0].Forked == nil {
+					t.Errorf("request Spec = %+v; want the plan entry carrying its Forked closure", req.Spec)
+				}
+				if req.Forked != tt.want {
+					t.Errorf("request Forked = %v; want %v", req.Forked, tt.want)
+				}
+				if req.SkipForked == nil {
+					t.Errorf("request SkipForked = nil; want it set")
+				}
+			})
+		}
+	})
+
 	t.Run("PlanWriteSetsForkedOnItsPlanEntry", func(t *testing.T) {
 		env := newTestEnv(t)
 		env.PlanIndex = noFindingsPlanIndex{}

@@ -13,6 +13,7 @@
      twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
      it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
+     self_check is a required marker, the body of Step 6 up to its closing two lines, filled by internal/loomengine's DiscussionTable with the fragment that has the writer run the validator or, when the row's gate has a cold fixer, the one that has it run none.
      subagent_model is a required marker, filled from loom.yaml's subagent_model.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
 
@@ -115,15 +116,7 @@ That spec is authoritative, and this prompt restates none of it.
 
 ## Step 6 — Self-check before ending your turn
 
-Before ending your turn, run the mechanical gate standalone against what you just wrote:
-
-```bash
-lym loom validate-discussion
-```
-
-The verb takes no arguments.
-It exits 0 on a clean gate and 1 otherwise, and puts its findings under the failure envelope's `findings` key.
-Fix whatever it reports, then re-run it until it exits 0 before ending your turn.
+{{.self_check}}
 The gate also runs the decision-id, acceptance and citation checks that the decision record section of `{{.specs_dir}}/loom/loom-discussion-spec.md` states.
 A design change in that turn may update `{{.relevant_path}}` in the same turn.
 

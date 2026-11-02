@@ -43,6 +43,8 @@ type Config struct {
 	WriterTimeoutMin int `yaml:"writer_timeout_min"`
 	// VerifyAttempts is how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session before it halts the run.
 	VerifyAttempts int `yaml:"verify_attempts"`
+	// GateFixer is the model-spec of the cold fixer of Darn-Write's verify gate; empty turns the fixer off.
+	GateFixer string `yaml:"gate_fixer"`
 	// TreeScope maps each worktree-relative tree path, without a trailing slash, to the test target the tree contributes to a tree-scoped site's call.
 	// An empty target means the tree has no tests of its own.
 	// Tree scope is on exactly when it holds a tree.
@@ -63,6 +65,7 @@ func ConfigSpec() configengine.Spec {
 		"writer":             configengine.CategoryNone,
 		"writer_timeout_min": configengine.CategoryNone,
 		"verify_attempts":    configengine.CategoryNone,
+		"gate_fixer":         configengine.CategoryNone,
 		"tree_scope":         configengine.CategoryGuard,
 	}
 	retired := map[string]configengine.Category{
@@ -117,6 +120,13 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Writer); err != nil {
 		return Config{}, fmt.Errorf("darn config key %q: %w", "writer", err)
+	}
+
+	// An empty gate_fixer turns the fixer off and must load cleanly.
+	if cfg.GateFixer != "" {
+		if _, err := modelspec.Parse(cfg.GateFixer); err != nil {
+			return Config{}, fmt.Errorf("darn config key %q: %w; set a model-spec with \"lym config darn\", or \"\" to turn the fixer off", "gate_fixer", err)
+		}
 	}
 
 	treeScope, err := normalizeTreeScope(cfg)

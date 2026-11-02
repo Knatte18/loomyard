@@ -5,6 +5,8 @@
 package shedrecipe
 
 import (
+	"fmt"
+
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -28,12 +30,30 @@ import (
 // It carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
 // the key still names the validator.
 // The entry adds only the lens-review closure that shuttle evaluates in place of the "plan" closure for a run whose lead carries fork authorization, which the table sets exactly when tapestry.yaml's plan_lenses is set.
+//
+// A "fixer" key on a gate element is read through splitGateFixer, and the spec, once its forked closure is set, goes through applyGateFixer.
+// The request's Forked follows the tapestry.plan_lenses setting, and its SkipForked leaves a failing forked evaluation that only lacks the lens review to the writer.
 func planWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	cfg, fixer, err := splitGateFixer("PlanWrite", cfg, env)
+	if err != nil {
+		return nil, err
+	}
 	gate, err := planWriteGateSpec(cfg, env)
 	if err != nil {
 		return nil, err
 	}
 	if err := configRejectUnknown(cfg, "gates"); err != nil {
+		return nil, err
+	}
+	if fixer != nil {
+		fixer.Forked, err = planLensesSet(env)
+		if err != nil {
+			return nil, err
+		}
+		fixer.SkipForked = loomshed.LensReviewOnly
+	}
+	gate, err = applyGateFixer(row.Name, gate, fixer, env)
+	if err != nil {
 		return nil, err
 	}
 	if err := requireSeam("PlanWrite", "PlanTable", env.PlanTable); err != nil {
@@ -68,6 +88,19 @@ func planWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	}
 	inner := shedadapters.NewMultiLLMProducerSourced(row.Name, tables, env.Seats, env.Now, rotate).KeepGateFindings(env.gateFindingsPath(row.Name))
 	return loomshed.NewPlanWrite(row.Name, inner, env.CommitPlan), nil
+}
+
+// planLensesSet reports whether the tapestry.plan_lenses setting is non-empty, the setting that gives the Plan-Write lead fork authorization.
+func planLensesSet(env Env) (bool, error) {
+	value, err := env.Setting("tapestry", "plan_lenses")
+	if err != nil {
+		return false, fmt.Errorf("shedrecipe: PlanWrite: setting tapestry.plan_lenses: %w", err)
+	}
+	lenses, ok := value.(string)
+	if !ok {
+		return false, fmt.Errorf("shedrecipe: PlanWrite: setting tapestry.plan_lenses holds %v, want a string; way forward: set plan_lenses in tapestry.yaml to a fan name or \"\"", value)
+	}
+	return lenses != "", nil
 }
 
 // planWriteGateSpec resolves the PlanWrite row's "gates" key through resolveGateSpec, then sets Forked on every resolved entry named "plan" to loomshed.NewLensReviewPlanGate over the same roots and index.

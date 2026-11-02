@@ -90,6 +90,7 @@ func (c *websterCLI) recoverDeps(plan *planparser.Plan, batches []batcher.Batch,
 		GateTiers:      c.gateTiers,
 		RenameTools:    c.renameTools,
 		Gate:           gate,
+		CardFixer:      cardFixerOn(gate, c.pairSlug()),
 	}, nil
 }
 

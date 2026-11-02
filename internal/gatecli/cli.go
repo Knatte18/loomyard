@@ -119,7 +119,7 @@ Examples:
 	cmd.AddCommand(cardVerifyCmd(seams))
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
 		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay, seams)
-	}))
+	}, seams))
 
 	return cmd
 }

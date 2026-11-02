@@ -1,4 +1,5 @@
 writer: opus[medium]  # model-spec for the darn writer's session, which reads the board entry, edits, tests and commits (see contracts/specs/llm-model-spec.md)
 writer_timeout_min: 180  # minutes the darn writer's shuttle run is allowed to run
 verify_attempts: 3  # how many times a verify gate, the writer's or a Code-Review fix round's, re-prompts its session with the failing findings before it halts the run for the parent
+gate_fixer: sonnet[medium]  # model-spec for the cold fixer of Darn-Write's verify gate, which clears a failing gate's mechanical findings before the writer hears of them; empty turns the fixer off
 tree_scope: {}  # maps a tree path to the target string the tree contributes, an empty target meaning the tree has no tests of its own; a diff wholly under these trees runs each darn verify site's own gate key over the touched trees' targets, and a docs-only or empty diff with no target runs nothing; tree scope is on exactly when a tree is listed; write it with lym config darn --set tree_scope.<tree>=<target>, remove a tree only in lym config darn's editor; a tree path holding ".", such as .github, is written in the editor

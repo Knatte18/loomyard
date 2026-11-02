@@ -189,6 +189,23 @@ func TestDiscussionWriteEntry_GateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("FixerRequestNamesTheDiscussionEntry", func(t *testing.T) {
+		t.Parallel()
+		env := newTestEnv(t)
+		env.Setting = fakeSetting(map[string]any{"loom.discussion_gate_fixer": "opus"})
+		calls := recordGateFixer(&env)
+		cfg := Config{"gates": []any{map[string]any{"name": "discussion", "attempts": 3, "fixer": "loom.discussion_gate_fixer"}}}
+		if _, err := discussionWriteEntry(RowIdentity{Name: "Row"}, cfg, env); err != nil {
+			t.Fatalf("discussionWriteEntry() error = %v; want nil", err)
+		}
+		if len(*calls) != 1 {
+			t.Fatalf("GateFixer called %d times; want 1", len(*calls))
+		}
+		if req := (*calls)[0]; req.Row != "Row" || req.Entry != "discussion" || len(req.Spec) != 1 {
+			t.Errorf("request = %+v; want row Row, entry discussion and its one-entry spec", req)
+		}
+	})
+
 	t.Run("UnrecognisedGateValueFails", func(t *testing.T) {
 		t.Parallel()
 		env := newTestEnv(t)

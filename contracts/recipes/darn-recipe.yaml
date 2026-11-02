@@ -102,11 +102,14 @@ producers:
       # The decision record is no gate: Go checks it once the session returns and halts the run
       # when the writer left it invalid. The clean gate goes first, so a writer that left an
       # uncommitted or untracked file commits or deletes it before its session ends.
+      # fixer names the setting holding the model-spec of a cold fixer that clears a failing verify
+      # gate before the writer hears of it; an empty value turns the fixer off.
       gates:
         - name: clean
           attempts: 3
         - name: verify
           attempts: 3
+          fixer: darn.gate_fixer
         - name: description
           attempts: 3
 

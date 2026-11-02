@@ -9,9 +9,41 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// TestWebsterCLI_PairSlug pins the pair slug a wired CLI reads from the fabric origin record: a pair worktree's slug, "" for the prime and "" with no hub wiring.
+func TestWebsterCLI_PairSlug(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "feat-x")
+	pair, err := lymcwd.ResolveWorktree(h.PairCodeWorktree("feat-x"))
+	if err != nil {
+		t.Fatalf("ResolveWorktree(pair) = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		cli  *websterCLI
+		want string
+	}{
+		{"PairWorktree", &websterCLI{pairSlugRead: func() string { return originPairSlug(pair) }}, "feat-x"},
+		{"Prime", &websterCLI{pairSlugRead: func() string { return originPairSlug(h.Location) }}, ""},
+		{"Standalone", &websterCLI{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cli.pairSlug(); got != tt.want {
+				t.Errorf("pairSlug() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 // TestFixVerifyCmd drives the verb's first call, which spawns the cold fixer and returns a running snapshot, then the second call that attaches to it and reaches a terminal result.
 func TestFixVerifyCmd(t *testing.T) {

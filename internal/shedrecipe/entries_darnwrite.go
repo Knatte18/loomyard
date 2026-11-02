@@ -17,7 +17,13 @@ import (
 // The table arrives as an injected func(loomshed.DarnTold) for the reason planWriteEntry gives, evaluated with the values the producer tells each session it builds.
 // The resolved gate is stamped onto each table it returns, so the row's "gates" key guards the writer.
 // Each gate entry re-prompts with the darn line, which names Env.DecisionRecordPath so a recorded decision wins over a finding it forbids fixing.
+//
+// A "fixer" key on a gate element is read through splitGateFixer, and the spec, once every entry carries its re-prompt line, goes through applyGateFixer.
 func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	cfg, fixer, err := splitGateFixer("DarnWrite", cfg, env)
+	if err != nil {
+		return nil, err
+	}
 	gate, err := resolveRowGateSpec("DarnWrite", row.Name, cfg, env)
 	if err != nil {
 		return nil, err
@@ -27,6 +33,10 @@ func darnWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 	}
 	for i := range gate {
 		gate[i].Reprompt = loomshed.DarnGateReprompt(env.DecisionRecordPath)
+	}
+	gate, err = applyGateFixer(row.Name, gate, fixer, env)
+	if err != nil {
+		return nil, err
 	}
 	if err := requireSeam("DarnWrite", "DarnTable", env.DarnTable); err != nil {
 		return nil, err

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -326,6 +327,27 @@ func ValidatePlanLensReview(plan *planparser.Plan, anchorPath, worktreeRoot stri
 
 // lensReviewMissingCheck names the finding ValidatePlanLensReview appends for an absent or empty lens review.
 const lensReviewMissingCheck = "lens-review-missing"
+
+// planFindingHead matches the start of one finding in a plan gate's findings text: its check, an optional card and its severity.
+var planFindingHead = regexp.MustCompile(`(?:^|; )([a-z][a-z0-9-]*)(?:/[^\[;\s]+)?\[([a-z]*)\]: `)
+
+// LensReviewOnly reports whether the findings text of a failed plan gate holds a blocking finding and every blocking finding is the missing lens review.
+// The text is the gate's findings joined by "; ", each rendered as check[/card][severity]: detail.
+// Such a failure is the writer's own to clear, since only the writer records the lens review.
+// A finding that is informational is not counted, and a text with no blocking finding is false.
+func LensReviewOnly(findings string) bool {
+	blocking := false
+	for _, head := range planFindingHead.FindAllStringSubmatch(findings, -1) {
+		if head[2] == string(planindex.SeverityInformational) {
+			continue
+		}
+		if head[1] != lensReviewMissingCheck {
+			return false
+		}
+		blocking = true
+	}
+	return blocking
+}
 
 // ValidateReworkPlan checks the whole new plan with index.ValidateRework: the plan gate's format-only set, plus the check that first_card equals the number one past the highest card of the plan committed at HEAD.
 // readCommitted returns an anchor-relative file as committed at HEAD, with found false when HEAD has no such file.

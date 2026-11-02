@@ -15,12 +15,13 @@ import (
 
 // ClassifyInputs carries every signal Classify's decision needs.
 type ClassifyInputs struct {
-	BatchNumber  int
-	BatchSlug    string
-	ReportPath   string
-	Report       *Report // Non-nil always wins; nil when caller found none
-	TurnEnded    bool    // True if the strand's newest turn end counts (TurnEndedAfter)
-	StrandLive   bool    // True if fork's reed strand is still live
+	BatchNumber int
+	BatchSlug   string
+	ReportPath  string
+	Report      *Report // Non-nil always wins; nil when caller found none
+	// TurnEnded is true if the strand's newest turn end counts (gatefixer's TurnEndedAfter).
+	TurnEnded    bool
+	StrandLive   bool // True if fork's reed strand is still live
 	Elapsed      time.Duration
 	BatchTimeout time.Duration
 }

@@ -77,6 +77,9 @@
 // a tier `filter` whose command holds no `{filter}`, a `test_timeout_min` below 1 or on a command that holds no `{test_timeout}`, a non-empty `build` lacking `command` or `timeout_min`, a build `timeout_min` below 1, and a tier with `shared_build: true` while the hub declares no build step;
 // a `covers` entry not lower than its tier's number, a tier key not spelled `tier<N>`, a `refuse_raw` entry that is not words of letters, digits, `.`, `_` and `-` separated by single spaces, and a `tier_parallel` entry that is no integer of at least 1;
 // a gate key whose scope is not `card`, `diff` or `all`, a `card` scope on any key but `card` and `batch`, and a lint other than `comments` or `pattern`.
+// A GateKey may also hold `fixer`, a model-spec naming the cold fixer an agent's red call hands its failures to; only the `card` key may hold one, the template sets `sonnet[medium]` there, and an empty value turns the fixer off.
+// `fixer_timeout_min` bounds how long the callers of a cold gate fixer wait for it, and LoadConfig refuses a value below 1; Config.FixerTimeout returns it as a duration.
+// LoadConfig refuses a `fixer` on any key but `card` and a `fixer` that `modelspec.Parse` rejects, each naming the key and its way forward.
 // A `gates` entry still in the retired list shape, such as `card: [0]`, is refused naming `lym fabric reconcile` as the way forward, since the reconcile runs MigrateConfig.
 // A `tier_parallel` entry for a tier the config does not declare is dropped with a logged warning, so a tier the hub removes leaves no entry that fails the load.
 // Cross-references are checked at use, never at load, so the template and a hub whose gate keys name an undeclared tier both load.

@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -90,16 +91,25 @@ type detachSeams struct {
 	lockMargin time.Duration
 	// grace is how long a run's lease outlasts the deadline of the latest call that wrote it.
 	grace time.Duration
+	// cardFixer builds the kit a runner hands a red verdict to, and reports false for a request whose verdict stands.
+	cardFixer func(detachRequest) (cardFixerKit, bool, error)
+	// fixerStopper builds the stop of a fixer strand over the request's worktree, whether or not the request hands off.
+	fixerStopper func(detachRequest) (func(guid string) error, error)
+	// treeIdentity reads the identity of the tree at a worktree root, which the runner rewrites once a fixer left the tree.
+	treeIdentity func(dir string) treeRecord
 }
 
 // defaultDetachSeams returns the seams of a production call.
 func defaultDetachSeams() detachSeams {
 	return detachSeams{
-		keepWarm:   shuttleengines.KeepWarm,
-		launch:     launchRunner,
-		claimBound: defaultClaimBound,
-		lockMargin: defaultLockMargin,
-		grace:      defaultGrace,
+		keepWarm:     shuttleengines.KeepWarm,
+		launch:       launchRunner,
+		claimBound:   defaultClaimBound,
+		lockMargin:   defaultLockMargin,
+		grace:        defaultGrace,
+		cardFixer:    newCardFixer,
+		fixerStopper: newFixerStopper,
+		treeIdentity: treeIdentityAt,
 	}
 }
 
@@ -167,6 +177,10 @@ type frontCall struct {
 	maxReruns int
 	// recordsDir is the directory the call's run records are in.
 	recordsDir string
+	// strand is the full name of the strand that made the call.
+	strand string
+	// role is the role part of strand, empty when the name does not parse.
+	role string
 }
 
 // treeRecord is the tree identity a run was started over: HEAD's tree and the sorted paths `git status` reports.
@@ -196,6 +210,8 @@ type joinState struct {
 	// process is the runner's claim, read only when hasProcess.
 	process    processRecord
 	hasProcess bool
+	// fixing is whether the run's phase is a cold fixer's, during which the tree changes under the run and no tree comparison holds.
+	fixing bool
 }
 
 // String names the phase as its state followed by the tier and the line it is for, such as `running tier0`.
@@ -260,7 +276,28 @@ func frontDecision(dir string, wait bool, seams detachSeams) (call frontCall, ca
 	return frontCall{
 		dir: dir, location: location, inHub: inHub, pool: pool,
 		cap: answer.Cap, longCap: answer.LongCap, maxReruns: answer.MaxReruns, recordsDir: runLogDirOf(location, inHub),
+		strand: strand, role: strandRole(strand),
 	}, true
+}
+
+// strandRole returns the role part of a strand name, and "" for a name that does not parse.
+// The detached runner's environment carries no strand name, so the front reads the role here and writes it into the request.
+func strandRole(strand string) string {
+	name, err := agentname.Parse(strand)
+	if err != nil {
+		return ""
+	}
+	return name.Role
+}
+
+// callKeyDir returns the key directory of a call.
+// A call from a fixer strand, whose role gatefixer.IsFixerRole matches, adds its strand name to the hashed words, so its own gate call never joins the run that waits on it and two fixer strands never share one.
+func callKeyDir(call frontCall) string {
+	words := call.words
+	if gatefixer.IsFixerRole(call.role) {
+		words = append(slices.Clone(words), call.strand)
+	}
+	return detachKeyDir(call.location.AnchorPath(), call.verb, call.dir, words)
 }
 
 // words returns the call's words after the verb in a fixed order that the runner parses to the same call: flags as `--name=value`, the targets, and `--` with the arguments after it.
@@ -313,11 +350,13 @@ func detachKeyDir(anchor, verb, runDir string, words []string) string {
 // joinable reports whether a front joins the run state describes.
 // It joins only a run whose lease holds at now, whose result no front printed, and that started over the tree identity the front sees now;
 // the run must have ended without being abandoned, or its runner's pid must be live with the start reading the runner recorded, so a reused pid is no runner.
+// A run in the fixing phase that has not ended skips the tree comparison, since a cold fixer is changing the tree the run joins.
 func joinable(run joinState, now time.Time, live func(int) bool, reading func(int) (string, bool)) bool {
+	fixing := run.fixing && !run.hasExit
 	switch {
 	case !run.lease.After(now), run.delivered:
 		return false
-	case run.current.Tree == "", run.current.Tree != run.recorded.Tree, !slices.Equal(run.current.Dirty, run.recorded.Dirty):
+	case !fixing && (run.current.Tree == "" || run.current.Tree != run.recorded.Tree || !slices.Equal(run.current.Dirty, run.recorded.Dirty)):
 		return false
 	case run.hasExit:
 		return !run.exit.Abandoned
@@ -361,7 +400,7 @@ func runFront(ctx context.Context, out, stderr io.Writer, call frontCall, seams 
 	start := time.Now()
 	f := &front{
 		call: call, seams: seams, out: out, stderr: stderr,
-		keyDir:   detachKeyDir(call.location.AnchorPath(), call.verb, call.dir, call.words),
+		keyDir:   callKeyDir(call),
 		start:    start,
 		deadline: start.Add(chooseCap(call, gateslot.ReadRunRecords)),
 	}
@@ -649,15 +688,20 @@ func (f *front) lockKey(ctx context.Context) (file *lock.FileLock, code int, don
 // treeIdentity reads the identity of the tree the call runs over.
 // A tree that cannot be read answers the zero identity, which no run is joined over.
 func (f *front) treeIdentity() treeRecord {
-	root := f.call.location.WorktreePath()
-	tree, _, err := headIdentity(root)
+	return treeIdentityAt(f.call.location.WorktreePath())
+}
+
+// treeIdentityAt reads the identity of the worktree at dir: HEAD's tree and the sorted dirty paths.
+// A tree that cannot be read answers the zero identity, which no run is joined over.
+func treeIdentityAt(dir string) treeRecord {
+	tree, _, err := headIdentity(dir)
 	if err != nil {
-		logger.Warn("gate test: could not read HEAD's tree, so the call joins no run", "root", root, "cause", err)
+		logger.Warn("gate test: could not read HEAD's tree, so the call joins no run", "root", dir, "cause", err)
 		return treeRecord{}
 	}
-	dirty, err := verifytree.DirtyPaths(root)
+	dirty, err := verifytree.DirtyPaths(dir)
 	if err != nil {
-		logger.Warn("gate test: could not read the dirty paths, so the call joins no run", "root", root, "cause", err)
+		logger.Warn("gate test: could not read the dirty paths, so the call joins no run", "root", dir, "cause", err)
 		return treeRecord{}
 	}
 	slices.Sort(dirty)
@@ -693,6 +737,8 @@ func (f *front) readJoinState(run detachRun, identity treeRecord) joinState {
 	}
 	js.exit, js.hasExit = readRunFile[detachExit](run.path(exitFile))
 	js.process, js.hasProcess = run.readProcessRecord()
+	phase, _ := readRunFile[runPhase](run.path(phaseFile))
+	js.fixing = phase.State == phaseFixing
 	return js
 }
 
@@ -781,7 +827,7 @@ func (f *front) writeNewRun(identity treeRecord) (detachRun, error) {
 	if err := os.Mkdir(run.dir, 0o755); err != nil {
 		return detachRun{}, err
 	}
-	request, err := json.Marshal(detachRequest{Verb: f.call.verb, Args: f.call.words, Cwd: f.call.cwd})
+	request, err := json.Marshal(detachRequest{Verb: f.call.verb, Args: f.call.words, Cwd: f.call.cwd, Role: f.call.role})
 	if err != nil {
 		return detachRun{}, err
 	}

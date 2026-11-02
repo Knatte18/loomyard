@@ -17,6 +17,7 @@ import (
 // GotoGuard decides whether a recipe admits a goto onto target beyond Shed's own checks.
 // A non-empty refusal refuses the target and carries the recipe's own way forward; a non-nil err means the guard could not decide, which refuses too.
 // The guard only decides: it moves no run and writes no file.
+// Once it admits, a guard may end processes the move would leave running, and it still writes no file and moves no run.
 type GotoGuard func(target string) (refusal string, err error)
 
 // checkGuard runs guard for target and returns the refusal Goto and Relaunch return when it refuses or cannot decide.

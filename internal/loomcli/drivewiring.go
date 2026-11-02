@@ -278,7 +278,7 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 				Producers:               c.routing.Producers,
 				RunID:                   runID,
 				MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
-				Guard:                   gotoGuard,
+				Guard:                   c.gotoGuardEndingFixers(gotoGuard),
 			})
 		},
 		OpenAttempts: func(key sheddriver.StopKey) (string, string, bool, error) {

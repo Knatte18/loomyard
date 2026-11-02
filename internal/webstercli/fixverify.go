@@ -11,6 +11,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 	"github.com/spf13/cobra"
@@ -35,7 +39,30 @@ func (c *websterCLI) fixVerifyDeps() (websterengine.FixVerifyDeps, error) {
 		FrictionDir:    c.frictionDir,
 		LanguageSkills: c.languageSkills,
 		Gate:           gate,
+		Register:       gatefixer.Registrar(c.reed, c.runProcDir, c.pairSlug(), gatefixer.RoleVerifyFixer),
 	}, nil
+}
+
+// pairSlug returns the worktree's pair slug when the run is in a hub and the worktree's fabric origin record exists, and "" in standalone, on the prime and for a worktree with no record.
+func (c *websterCLI) pairSlug() string {
+	if c.pairSlugRead == nil {
+		return ""
+	}
+	return c.pairSlugRead()
+}
+
+// originPairSlug returns the slug the fabric origin record names for loc's worktree, and "" for the prime or a worktree with no record.
+// A record that cannot be read is logged and reads as none, so the fixer strand runs unregistered rather than the verb refusing.
+func originPairSlug(loc *lymcwd.Location) string {
+	_, found, err := fabricengine.ReadOrigin(loc)
+	if err != nil {
+		logger.Warn("webster: could not read the fabric origin record; the fixer strand is not registered with runproc", "cause", err)
+		return ""
+	}
+	if !found {
+		return ""
+	}
+	return loc.WorktreeName
 }
 
 // fixVerifyNotDoneMessage is the error of a fix-verify call whose fixer ended dead for reason.

@@ -15,6 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 )
 
@@ -28,6 +29,8 @@ type Config struct {
 	Slots int `yaml:"slots"`
 	// BusyQuitSec is the continuous seconds a Go test binary may keep a core busy before the watchdog quits it; 0 turns the watchdog off.
 	BusyQuitSec int `yaml:"busy_quit_sec"`
+	// FixerTimeoutMin is the minutes a cold gate fixer may run before its caller stops waiting for it.
+	FixerTimeoutMin int `yaml:"fixer_timeout_min"`
 	// Tiers are the declared test tiers keyed tier0, tier1, and so on.
 	Tiers map[string]Tier `yaml:"tiers"`
 	// Gates maps a gate key to the tiers and scope that site runs.
@@ -70,15 +73,16 @@ type buildFile struct {
 // configFile is gate.yaml as it is spelled, before defaults and validation.
 // A tier_parallel entry is a node because a scalar --set writes it as a string, and a gates entry is a node so decodeGates names the key a bad entry sits under.
 type configFile struct {
-	Slots        int                  `yaml:"slots"`
-	BusyQuitSec  int                  `yaml:"busy_quit_sec"`
-	Tiers        map[string]tierFile  `yaml:"tiers"`
-	Gates        map[string]yaml.Node `yaml:"gates"`
-	Scoper       string               `yaml:"scoper"`
-	RefuseRaw    []string             `yaml:"refuse_raw"`
-	TierParallel map[string]yaml.Node `yaml:"tier_parallel"`
-	Build        buildFile            `yaml:"build"`
-	InertPaths   []string             `yaml:"inert_paths"`
+	Slots           int                  `yaml:"slots"`
+	BusyQuitSec     int                  `yaml:"busy_quit_sec"`
+	FixerTimeoutMin int                  `yaml:"fixer_timeout_min"`
+	Tiers           map[string]tierFile  `yaml:"tiers"`
+	Gates           map[string]yaml.Node `yaml:"gates"`
+	Scoper          string               `yaml:"scoper"`
+	RefuseRaw       []string             `yaml:"refuse_raw"`
+	TierParallel    map[string]yaml.Node `yaml:"tier_parallel"`
+	Build           buildFile            `yaml:"build"`
+	InertPaths      []string             `yaml:"inert_paths"`
 }
 
 // ErrConfigAbsent is LoadConfig's error for a baseDir with no gate.yaml.
@@ -98,6 +102,7 @@ func ConfigPerNameMaps() []string {
 
 // ConfigSpec returns gate's layered-load spec.
 // `slots` and `tier_parallel` take a machine override, and every key stays closed to the local layer.
+// `fixer_timeout_min` is cross-pair like `busy_quit_sec`, and a gate key's `fixer` sits inside `gates`, which is a guard key.
 // `tiers` and `build` run any shell command in a task worktree, so they are executable; the gate lists, the scoper, the refused commands and the inert paths switch off or hollow a guard.
 // `cli_wait_sec`, `go_parallel` and `guard_tier` are retired, so a hub or machine file that still sets one loads and reconcile prunes it.
 // `tiers` and `build` carry the shape their decode gives them, so `--set` reaches one key inside a tier or the build step, such as `tiers.tier0.env.LYM_TEST_TIER`, and refuses a key neither holds.
@@ -113,15 +118,16 @@ func ConfigSpec() configengine.Spec {
 		PerNameMaps: ConfigPerNameMaps(),
 		HubWide:     true,
 		Categories: map[string]configengine.Category{
-			"slots":         configengine.CategoryMachine,
-			"tier_parallel": configengine.CategoryMachine,
-			"busy_quit_sec": configengine.CategoryCrossPair,
-			"tiers":         configengine.CategoryExecutable,
-			"gates":         configengine.CategoryGuard,
-			"scoper":        configengine.CategoryGuard,
-			"refuse_raw":    configengine.CategoryGuard,
-			"build":         configengine.CategoryExecutable,
-			"inert_paths":   configengine.CategoryGuard,
+			"slots":             configengine.CategoryMachine,
+			"tier_parallel":     configengine.CategoryMachine,
+			"busy_quit_sec":     configengine.CategoryCrossPair,
+			"fixer_timeout_min": configengine.CategoryCrossPair,
+			"tiers":             configengine.CategoryExecutable,
+			"gates":             configengine.CategoryGuard,
+			"scoper":            configengine.CategoryGuard,
+			"refuse_raw":        configengine.CategoryGuard,
+			"build":             configengine.CategoryExecutable,
+			"inert_paths":       configengine.CategoryGuard,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"cli_wait_sec": configengine.CategoryCrossPair,
@@ -236,6 +242,9 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 	if file.BusyQuitSec < 0 {
 		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 0", "busy_quit_sec", file.BusyQuitSec)
 	}
+	if file.FixerTimeoutMin < 1 {
+		return Config{}, fmt.Errorf("gate config key %q: %d; want at least 1", "fixer_timeout_min", file.FixerTimeoutMin)
+	}
 	tiers, err := decodeTiers(file.Tiers)
 	if err != nil {
 		return Config{}, err
@@ -264,15 +273,16 @@ func decodeConfig(data []byte, machineLayerApplies bool) (Config, error) {
 		return Config{}, err
 	}
 	return Config{
-		Slots:        file.Slots,
-		BusyQuitSec:  file.BusyQuitSec,
-		Tiers:        tiers,
-		Gates:        gates,
-		Scoper:       file.Scoper,
-		RefuseRaw:    file.RefuseRaw,
-		TierParallel: tierParallel,
-		Build:        build,
-		InertPaths:   file.InertPaths,
+		Slots:           file.Slots,
+		BusyQuitSec:     file.BusyQuitSec,
+		FixerTimeoutMin: file.FixerTimeoutMin,
+		Tiers:           tiers,
+		Gates:           gates,
+		Scoper:          file.Scoper,
+		RefuseRaw:       file.RefuseRaw,
+		TierParallel:    tierParallel,
+		Build:           build,
+		InertPaths:      file.InertPaths,
 	}, nil
 }
 
@@ -348,7 +358,12 @@ func refuseRetiredGateLists(hubFile string) error {
 	return nil
 }
 
-// decodeGates decodes the gates entries into keys and validates each key's scope.
+// FixerTimeout returns the bound on a cold gate fixer's run as a duration.
+func (c Config) FixerTimeout() time.Duration {
+	return time.Duration(c.FixerTimeoutMin) * time.Minute
+}
+
+// decodeGates decodes the gates entries into keys and validates each key's scope, lints and fixer.
 func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 	gates := make(map[string]GateKey, len(entries))
 	for _, name := range sortedKeys(entries) {
@@ -360,7 +375,7 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		}
 		switch key.Scope {
 		case scopeCard:
-			if name != "card" && name != "batch" {
+			if name != cardGateKey && name != "batch" {
 				return nil, guidedError{fmt.Errorf("gate config key %q: scope card is only for the card and batch keys; fix it with \"lym config gate\" from the prime%s", path, roleClause)}
 			}
 		case scopeDiff, scopeAll:
@@ -370,6 +385,14 @@ func decodeGates(entries map[string]yaml.Node) (map[string]GateKey, error) {
 		for _, lint := range key.Lints {
 			if lint != LintComments && lint != LintPattern {
 				return nil, guidedError{fmt.Errorf("gate config key %q: lint %q; want %s or %s; fix it with \"lym config gate\" from the prime%s", path, lint, LintComments, LintPattern, roleClause)}
+			}
+		}
+		if key.Fixer != "" {
+			if name != cardGateKey {
+				return nil, guidedError{fmt.Errorf("gate config key %q: a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with \"lym config gate\" from the prime%s", path+".fixer", roleClause)}
+			}
+			if _, err := modelspec.Parse(key.Fixer); err != nil {
+				return nil, guidedError{fmt.Errorf("gate config key %q: %q is no model-spec: %v; set a model-spec such as sonnet[medium], or \"\" to turn the fixer off, with \"lym config gate\" from the prime%s", path+".fixer", key.Fixer, err, roleClause)}
 			}
 		}
 		gates[name] = key
@@ -542,7 +565,7 @@ func migrateGateLists(gates *yaml.Node) []string {
 			content = append(content, name, value)
 			continue
 		}
-		if name.Value == "card" || name.Value == "batch" {
+		if name.Value == cardGateKey || name.Value == "batch" {
 			content = append(content, name, gateMapping(value, scopeCard))
 			lines = append(lines, fmt.Sprintf("gates.%s: list shape retired, migrated to tiers and scope %s", name.Value, scopeCard))
 			continue

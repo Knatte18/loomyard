@@ -21,12 +21,22 @@ import (
 //
 // The row carries a "gates" key even though this entry's own dedicated constructor could imply the validator, so that one key means one thing at every gated site and a reader of the recipe can see which validator guards each row without opening Go;
 // this entry therefore never hard-codes a validator choice of its own.
+//
+// A "fixer" key on a gate element is read through splitGateFixer, and the resolved spec goes through applyGateFixer.
 func discussionWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	cfg, fixer, err := splitGateFixer("DiscussionWrite", cfg, env)
+	if err != nil {
+		return nil, err
+	}
 	gate, err := resolveGateSpec("DiscussionWrite", cfg, env)
 	if err != nil {
 		return nil, err
 	}
 	if err := configRejectUnknown(cfg, "gates"); err != nil {
+		return nil, err
+	}
+	gate, err = applyGateFixer(row.Name, gate, fixer, env)
+	if err != nil {
 		return nil, err
 	}
 	if err := requireSeam("DiscussionWrite", "DiscussionTable", env.DiscussionTable); err != nil {

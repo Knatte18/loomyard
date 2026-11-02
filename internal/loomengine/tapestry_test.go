@@ -92,7 +92,7 @@ func TestLoadTapestryConfig(t *testing.T) {
 			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
 		}
 		want := TapestryConfig{
-			Plan: "opus[effort=high]", PlanTimeoutMin: 7, PlanLenses: "",
+			Plan: "opus[effort=high]", PlanTimeoutMin: 7, PlanLenses: "", PlanGateFixer: "sonnet[medium]",
 			PlanReviewerModel: burlerengine.ModelSpecList{"sonnet[low]"}, PlanFixerModel: burlerengine.ModelSpecList{"sonnet[high]"},
 			PlanReviewerFan: lenses.FanList{"full"}, PlanFixerFan: lenses.FanList{"fix-plan"},
 			PlanJudge: "opus[low]", PlanSeed: "haiku[low]",
@@ -119,6 +119,20 @@ func TestLoadTapestryConfig(t *testing.T) {
 		}
 		if caps := applied.Caps(PerchPlan); caps.Soft != 2 || caps.SoftKey != "plan_max_bounces" || caps.Hard != 3 || caps.HardKey != "plan_hard_max_bounces" {
 			t.Errorf("WithTapestry().Caps(PerchPlan) = %+v; want the plan perch's own budget and hard cap", caps)
+		}
+	})
+
+	t.Run("an empty plan_gate_fixer loads the fixer off", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		seedLoomAndTapestry(t, dir, nil, map[string]string{"plan_gate_fixer": `""`})
+
+		loaded, err := LoadTapestryConfig(configengine.Dirs{Anchor: dir}, "tapestry")
+		if err != nil {
+			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
+		}
+		if loaded.PlanGateFixer != "" {
+			t.Errorf("LoadTapestryConfig().PlanGateFixer = %q; want empty, the fixer off", loaded.PlanGateFixer)
 		}
 	})
 
@@ -188,6 +202,7 @@ func TestLoadTapestryConfig(t *testing.T) {
 		{name: "empty plan_reviewer_fan list", key: "plan_reviewer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
 		{name: "empty plan_fixer_fan list", key: "plan_fixer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
 		{name: "mapping inside a plan_reviewer_fan list", key: "plan_reviewer_fan", value: "\n  - full\n  - model: opus", wantIn: []string{"line ", "neither a fan name nor a list of fan names", "a list of fan names"}},
+		{name: "malformed plan_gate_fixer spec", key: "plan_gate_fixer", value: `"opus[effort"`, wantIn: []string{"lym config tapestry"}},
 		{name: "malformed plan_judge spec", key: "plan_judge", value: `"opus[effort"`},
 		{name: "malformed plan_seed spec", key: "plan_seed", value: `"opus[effort"`},
 		{name: "negative plan_max_bounces", key: "plan_max_bounces", value: "-1", wantIn: []string{"must not be negative", "or to null to take review_max_bounces"}},

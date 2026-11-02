@@ -76,7 +76,7 @@ func TestModules_EveryTemplateKeyClassified(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	wantLocalKeys := map[string][]string{
-		"darn":    {"verify_attempts", "writer", "writer_timeout_min"},
+		"darn":    {"gate_fixer", "verify_attempts", "writer", "writer_timeout_min"},
 		"drift":   {"baseline_model", "enabled", "verify_interactive", "verify_max_runs", "verify_model"},
 		"landing": {"conflict", "conflict_timeout_min", "describe", "describe_timeout_min", "fixer", "fixer_timeout_min", "pr_reviewer"},
 		"sampler": {"agent", "code_review"},

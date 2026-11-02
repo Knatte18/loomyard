@@ -1,5 +1,6 @@
 // verifyfixer.go implements the cold verify-gate fixer `lym webster fix-verify` drives:
 // the spawn-or-attach of a strand at the recovery role with the cold verify-fix prompt, the bounded wait that classifies it done on its reply file or dead, and its terminal record.
+// The strand's spawn, wait and registration are internal/gatefixer's; this file is webster's adapter onto it.
 
 package websterengine
 
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -22,8 +24,8 @@ import (
 // fixVerifyCommand is the verb that runs the cold fixer, as the gate's way forward names it and Master runs it.
 const fixVerifyCommand = "lym webster fix-verify"
 
-// verifyFixerStrandRole is the reed strand role the cold fixer runs under.
-const verifyFixerStrandRole = "verify-fixer"
+// verifyFixBodyStencil is the shared verify-gate fixer body both fixers' prompts carry.
+const verifyFixBodyStencil = "webster-body-verify-fix"
 
 // verifyFixReplyFileName is the cold fixer's reply file name inside the webster scratch dir.
 const verifyFixReplyFileName = "verify-fix-reply.md"
@@ -54,6 +56,9 @@ type FixVerifyDeps struct {
 
 	// Gate is the hub's gate config, from which the prompt renders the fixer's `webster-fix` gate call.
 	Gate gateslot.Config
+
+	// Register registers a spawned fixer strand with runproc by guid; nil leaves it unregistered, as a standalone or prime run does.
+	Register func(guid string) error
 }
 
 // FixVerifyResult is what one FixVerifyAwait call hands back.
@@ -70,13 +75,71 @@ type FixVerifyResult struct {
 	Warnings []string
 }
 
+// verifyFixerStore adapts a State's VerifyFixers to gatefixer.Store.
+// Webster derives the report and reply paths from its geometry, so a saved record keeps neither.
+type verifyFixerStore struct {
+	st *State
+}
+
+// Live returns the last VerifyFixers record when it is not terminal, and nil otherwise.
+func (s *verifyFixerStore) Live() (*gatefixer.Record, error) {
+	n := len(s.st.VerifyFixers)
+	if n == 0 || s.st.VerifyFixers[n-1].Status != "" {
+		return nil, nil
+	}
+	return fixerRecord(s.st.VerifyFixers[n-1]), nil
+}
+
+// Save appends rec to VerifyFixers.
+func (s *verifyFixerStore) Save(rec *gatefixer.Record) error {
+	s.st.VerifyFixers = append(s.st.VerifyFixers, &VerifyFixerState{
+		StrandGUID:    rec.StrandGUID,
+		SessionID:     rec.SessionID,
+		Engine:        rec.Engine,
+		SpawnedAt:     rec.SpawnedAt,
+		ShuttleRunDir: rec.ShuttleRunDir,
+		EventsPath:    rec.EventsPath,
+		EventsOffset:  rec.EventsOffset,
+		Status:        rec.Status,
+		DeadReason:    rec.DeadReason,
+	})
+	return nil
+}
+
+// fixerRecord converts a verify fixer's state record to the record gatefixer works on, with replyPath empty.
+func fixerRecord(rec *VerifyFixerState) *gatefixer.Record {
+	return &gatefixer.Record{
+		StrandGUID:    rec.StrandGUID,
+		SessionID:     rec.SessionID,
+		Engine:        rec.Engine,
+		SpawnedAt:     rec.SpawnedAt,
+		ShuttleRunDir: rec.ShuttleRunDir,
+		EventsPath:    rec.EventsPath,
+		EventsOffset:  rec.EventsOffset,
+		Status:        rec.Status,
+		DeadReason:    rec.DeadReason,
+	}
+}
+
+// awaitFixerStrand waits on rec's strand through gatefixer.Await, with the given timeout and wait on clk, and prefixes each warning with label, the verb the fixer runs under.
+func awaitFixerStrand(engines AuditEngines, reed shuttleengine.ReedOps, stopper StrandStopper, rec *gatefixer.Record, label string, timeout, wait time.Duration, clk Clock) (*gatefixer.Result, error) {
+	result, err := gatefixer.Await(gatefixer.Deps{Stopper: stopper, Reed: reed, Engines: engines, Clock: clk}, rec, timeout, wait)
+	if err != nil {
+		return nil, fmt.Errorf("webster: %s: %w", label, err)
+	}
+	for i, warning := range result.Warnings {
+		result.Warnings[i] = label + ": " + warning
+	}
+	return result, nil
+}
+
 // FixVerifySpawnOrAttach returns the cold fixer strand fix-verify waits on, and whether this call spawned it into st.
 // A last record of st.VerifyFixers that is not terminal is attached to as it stands.
-// Otherwise it spawns a strand at the recovery role with the cold verify-fix prompt, whose shuttle output file is the reply file, and appends its record to st.VerifyFixers;
+// Otherwise it spawns a strand at the recovery role with the cold verify-fix prompt, whose shuttle output file is the reply file, registers it through deps.Register when set, and appends its record to st.VerifyFixers;
 // the caller saves st.
 // It refuses, spawning nothing, when no verify-gate report is on disk, when the recovery role's engine cannot audit forks, and when the gate config has no `webster-fix` key.
 // A stale reply file is removed before the spawn.
-// A spawned strand whose run cannot be resolved is stopped, since no record of it will be saved.
+// A spawned strand whose run cannot be resolved, registered or recorded is stopped, since no record of it will be saved.
 func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFixerState, bool, error) {
 	if n := len(st.VerifyFixers); n > 0 && st.VerifyFixers[n-1].Status == "" {
 		return st.VerifyFixers[n-1], false, nil
@@ -122,8 +185,22 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 		return nil, false, fmt.Errorf("webster: resolve cold fixer reply path: %w", err)
 	}
 
-	notePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix-cold")
-	prompt, err := RenderVerifyFixColdPrompt(reportPath, replyPath, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, notePath, fixGate, patternChanges, deps.Geom.ParentName)
+	// The friction directive is rendered by gatefixer.RenderPrompt from the note path, so the body's own values carry none.
+	bodyValues, err := verifyFixValues(reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, "", fixGate, verifyFixBodyStencil)
+	if err != nil {
+		return nil, false, err
+	}
+	prompt, err := gatefixer.RenderPrompt(gatefixer.PromptInputs{
+		StencilsDir:    deps.Geom.StencilsDir,
+		BodyStencil:    verifyFixBodyStencil,
+		BodyValues:     bodyValues,
+		ReportPath:     reportPath,
+		ReplyPath:      replyPath,
+		RepoRoot:       deps.Geom.RepoRoot,
+		PatternChanges: patternChanges,
+		ParentName:     deps.Geom.ParentName,
+		NotePath:       friction.NotePath(deps.FrictionDir, "webster-verify-fix-cold"),
+	})
 	if err != nil {
 		return nil, false, err
 	}
@@ -131,41 +208,30 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	if err := os.MkdirAll(deps.Geom.ScratchDir, 0o755); err != nil {
 		return nil, false, fmt.Errorf("webster: create webster scratch dir %s: %w", deps.Geom.ScratchDir, err)
 	}
-	if err := os.Remove(replyPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, false, fmt.Errorf("webster: remove stale cold fixer reply %s: %w", replyPath, err)
-	}
 
-	spec := shuttleengine.Spec{
-		Prompt:      string(prompt),
-		OutputFiles: []string{replyPath},
+	_, spawned, err := gatefixer.SpawnOrAttach(gatefixer.Deps{
+		Starter:    deps.Starter,
+		Stopper:    deps.Stopper,
+		Reed:       deps.Reed,
+		Engines:    deps.Engines,
+		ShuttleCfg: deps.ShuttleCfg,
+		AnchorRoot: deps.Geom.AnchorRoot,
+		Clock:      clk,
+		Register:   deps.Register,
+	}, &verifyFixerStore{st: st}, gatefixer.Spec{
+		Prompt:      prompt,
+		ReportPath:  reportPath,
+		ReplyPath:   replyPath,
+		Role:        gatefixer.RoleVerifyFixer,
 		ModelChoice: choice,
 		Skills:      languageconfig.AppendSkills(roleSkills, deps.LanguageSkills),
-		Role:        verifyFixerStrandRole,
 		Segment:     segmentcolor.Webster,
 		Timeout:     time.Duration(deps.Config.RecoveryTimeoutMin) * time.Minute,
-	}
-	run, err := deps.Starter.Start(spec)
+	})
 	if err != nil {
-		return nil, false, fmt.Errorf("webster: start the cold verify-gate fixer: %w; way forward: transient, re-run `%s`", shuttleengine.ModelKey{Module: "webster", Key: string(RoleRecovery)}.Wrap(err), fixVerifyCommand)
+		return nil, false, fmt.Errorf("webster: spawn the cold verify-gate fixer: %w; way forward: transient, re-run `%s`", shuttleengine.ModelKey{Module: "webster", Key: string(RoleRecovery)}.Wrap(err), fixVerifyCommand)
 	}
-	runState, runDir, err := shuttleengine.FindRun(deps.ShuttleCfg, deps.Geom.AnchorRoot, run.StrandGUID())
-	if err != nil {
-		// The strand is live but no record of it will be saved, so nothing later could stop it.
-		stopErr := deps.Stopper.StopStrand(run.StrandGUID())
-		return nil, false, errors.Join(fmt.Errorf("webster: resolve spawned cold fixer run: %w; way forward: transient, re-run `%s`", err, fixVerifyCommand), stopErr)
-	}
-
-	rec := &VerifyFixerState{
-		StrandGUID:    run.StrandGUID(),
-		SessionID:     runState.SessionID,
-		Engine:        runState.Engine,
-		SpawnedAt:     clk.Now().UTC().Format(time.RFC3339),
-		ShuttleRunDir: runDir,
-		EventsPath:    runState.EventsPath,
-		EventsOffset:  runState.PromptOffset,
-	}
-	st.VerifyFixers = append(st.VerifyFixers, rec)
-	return rec, true, nil
+	return st.VerifyFixers[len(st.VerifyFixers)-1], spawned, nil
 }
 
 // FixVerifyAwait blocks up to wait for rec's cold fixer to reach a terminal classification, polling on the shared tick.
@@ -175,18 +241,9 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 // A failed stop, reply read or removal is a warning.
 // The caller holds no state-mutation lease across it.
 func FixVerifyAwait(deps FixVerifyDeps, rec *VerifyFixerState, wait time.Duration, clk Clock) (*FixVerifyResult, error) {
-	strand := coldFixerStrand{
-		label:         "fix-verify",
-		strandGUID:    rec.StrandGUID,
-		sessionID:     rec.SessionID,
-		engine:        rec.Engine,
-		spawnedAt:     rec.SpawnedAt,
-		shuttleRunDir: rec.ShuttleRunDir,
-		eventsPath:    rec.EventsPath,
-		eventsOffset:  rec.EventsOffset,
-		replyPath:     VerifyFixReplyPath(deps.Geom.ScratchDir),
-	}
-	waited, err := awaitColdFixer(deps.Engines, deps.Reed, deps.Stopper, strand, time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
+	strand := fixerRecord(rec)
+	strand.ReplyPath = VerifyFixReplyPath(deps.Geom.ScratchDir)
+	waited, err := awaitFixerStrand(deps.Engines, deps.Reed, deps.Stopper, strand, "fix-verify", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
 	if err != nil {
 		return nil, err
 	}

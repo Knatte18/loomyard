@@ -71,6 +71,9 @@ type loomCLI struct {
 	// empty when the worktree has no resolvable parent.
 	// Every role loom wires renders its parent directive from it.
 	parentName string
+	// endFixers, when set, is what an admitted goto calls to end the pair's gate fixers; nil means endRunFixers.
+	// Tests set it to record the call.
+	endFixers func() error
 	// runner is the constructed shuttle runner, carried onto the struct so run.go can pass it to
 	// landingDeps as the landing seam's Shuttle value.
 	runner *shuttleengine.Runner

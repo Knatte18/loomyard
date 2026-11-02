@@ -80,7 +80,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		discussionCfg := cfg
 		discussionCfg.DiscussionInteractive = interactive
 		return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
-			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), discussionCfg, reg, "add-json-flag")
+			return DiscussionTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), discussionCfg, reg, "add-json-flag", false)
 		}, parent)
 	}
 
@@ -90,7 +90,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 		"discussion-autonomous":  func(parent string) ([]string, string, error) { return leadOf(false, parent) },
 		"plan": func(parent string) ([]string, string, error) {
 			return leadOfTable(func(stencilsDir string) (seatengine.Table, error) {
-				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
+				return PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 			}, parent)
 		},
 	}

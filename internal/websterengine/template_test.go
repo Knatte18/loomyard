@@ -20,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -324,13 +325,19 @@ func assertCardPointerIsRelative(t *testing.T, got, sourcePath string) {
 // renderFork renders the fork prompt for batch with the shared placeholder paths; root is both the
 // anchor root and the prompt worktree root, and the plan directory is derived under it.
 func renderFork(batch batcher.Batch, root, stencilsDir, specsDir, prevDigest string, selfFixCap int, notePath string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath)
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, prevDigest, "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, selfFixCap, notePath, false)
+	return string(prompt), err
+}
+
+// renderForkWithCardFixer renders the fork prompt for batch as renderFork does, for a pair whose card gate goes through a cold fixer.
+func renderForkWithCardFixer(batch batcher.Batch, root, stencilsDir, specsDir string) (string, error) {
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, "none", nil, testOutcomePath, testSummaryPath, 2, "", true)
 	return string(prompt), err
 }
 
 // renderForkWithLists renders the fork prompt for batch as renderFork does, with the given gate tiers and rename tools.
 func renderForkWithLists(batch batcher.Batch, root, stencilsDir, specsDir, gateTiers string, renameTools []string) (string, error) {
-	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "")
+	prompt, err := websterengine.RenderForkPrompt(batch, testCardGates, testBatchGate, "", "/reports/01-alpha.yaml", filepath.Join(root, "_lym", "plan"), root, stencilsDir, specsDir, gateTiers, renameTools, testOutcomePath, testSummaryPath, 2, "", false)
 	return string(prompt), err
 }
 
@@ -351,7 +358,13 @@ func renderRecovery(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, spec
 
 // renderRecoveryWithUncommitted is renderRecovery with the caller-rendered uncommitted-paths block, the hub's verify tiers and the declared PATTERN changes.
 func renderRecoveryWithUncommitted(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir, failureDigest, uncommittedPaths, notePath, parent, gateTiers string, renameTools, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent)
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", failureDigest, uncommittedPaths, "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, gateTiers, renameTools, patternChanges, 2, notePath, parent, false)
+	return string(got), err
+}
+
+// renderRecoveryWithCardFixer renders the recovery prompt for batch as renderRecovery does, for a pair whose card gate goes through a cold fixer.
+func renderRecoveryWithCardFixer(batch batcher.Batch, repoRoot, anchorRoot, stencilsDir, specsDir string) (string, error) {
+	got, err := websterengine.RenderRecoveryPrompt(batch, testCardGates, testBatchGate, "", "", "", "/reports/01-alpha.yaml", repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), anchorRoot, stencilsDir, specsDir, "none", nil, nil, 2, "", "", true)
 	return string(got), err
 }
 
@@ -372,12 +385,33 @@ func renderVerifyFix(reportPath, anchorRoot, stencilsDir, notePath string) (stri
 	return string(got), err
 }
 
-// testReplyPath is the placeholder reply path passed as RenderVerifyFixColdPrompt's replyPath parameter.
+// testReplyPath is the placeholder reply path the cold fixer prompts are rendered with: the verify fixer's through gatefixer.RenderPrompt and the plan fixer's through RenderPlanFixPrompt.
 const testReplyPath = "/lym/webster/verify-fix-reply.md"
 
-// renderVerifyFixCold renders the cold fixer prompt for reportPath with the shared placeholder paths, testReplyPath and testFixGate.
-func renderVerifyFixCold(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
-	got, err := websterengine.RenderVerifyFixColdPrompt(reportPath, testReplyPath, anchorRoot, repoRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, notePath, testFixGate, patternChanges, parent)
+// coldFixerInputs returns the gatefixer.PromptInputs of the cold verify fixer for reportPath, with the shared placeholder paths, testReplyPath, testFixGate and webster's verify-fix body.
+func coldFixerInputs(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) gatefixer.PromptInputs {
+	return gatefixer.PromptInputs{
+		StencilsDir: stencilsDir,
+		BodyStencil: "webster-body-verify-fix",
+		BodyValues: map[string]string{
+			"worktree_root": anchorRoot,
+			"plan_dir":      "_lym/plan",
+			"outcome_path":  testOutcomePath,
+			"summary_path":  testSummaryPath,
+			"fix_gate":      testFixGate,
+		},
+		ReportPath:     reportPath,
+		ReplyPath:      testReplyPath,
+		RepoRoot:       repoRoot,
+		PatternChanges: patternChanges,
+		ParentName:     parent,
+		NotePath:       notePath,
+	}
+}
+
+// renderColdFixer renders the cold verify fixer prompt for reportPath through gatefixer.RenderPrompt.
+func renderColdFixer(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent string, patternChanges []string) (string, error) {
+	got, err := gatefixer.RenderPrompt(coldFixerInputs(reportPath, repoRoot, anchorRoot, stencilsDir, notePath, parent, patternChanges))
 	return string(got), err
 }
 
@@ -484,14 +518,14 @@ func TestTemplates_FillRequiresEveryRequiredMarker(t *testing.T) {
 			name:     "fork",
 			template: mustForkTemplate,
 			values:   forkTemplateMarkerValues,
-			optional: []string{"friction_directive"},
+			optional: []string{"friction_directive", "card_gate_fixer"},
 			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "gate_tiers", "rename_tools", "outcome_path", "summary_path"},
 		},
 		{
 			name:     "recovery",
 			template: mustRecoveryTemplate,
 			values:   recoveryTemplateMarkerValues,
-			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "friction_directive", "parent_directive"},
+			optional: []string{"pattern_directive", "failure_digest", "uncommitted_paths", "card_gate_fixer", "friction_directive", "parent_directive"},
 			required: []string{"card_pointers", "card_gates", "batch_gate", "report_path", "self_fix_cap", "worktree_root", "prev_digest", "specs_dir", "gate_tiers", "rename_tools", "edit_directive"},
 		},
 	}
@@ -628,6 +662,31 @@ func TestRenderPrompts(t *testing.T) {
 			return promptCheck{text: text, err: err,
 				contains:    []string{testCardGates, testBatchGate},
 				notContains: []string{"{{.card_gates}}", "{{.batch_gate}}"}}
+		}},
+		{"fork with the card fixer on carries its paragraph after the card gates", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderForkWithCardFixer(alpha, root, stencilsDir, newTestSpecsDir(t))
+			return promptCheck{text: text, err: err,
+				inOrder:     []string{testCardGates + "\n\n   A card gate call that fails has already been through a cold fixer", "\n\n   A failing gate call closes"},
+				notContains: []string{"{{"}}
+		}},
+		{"recovery with the card fixer on carries its paragraph after the card gates", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			text, err := renderRecoveryWithCardFixer(alpha, root, root, stencilsDir, newTestSpecsDir(t))
+			return promptCheck{text: text, err: err,
+				inOrder:     []string{testCardGates + "\n\n   A card gate call that fails has already been through a cold fixer", "\n\n   A failing gate call closes"},
+				notContains: []string{"{{"}}
+		}},
+		{"fork and recovery with the card fixer off carry no paragraph", func(t *testing.T) promptCheck {
+			root, stencilsDir := testLayout(t)
+			fork, err := renderFork(alpha, root, stencilsDir, newTestSpecsDir(t), "", 2, "")
+			if err != nil {
+				return promptCheck{err: err}
+			}
+			recovery, err := renderRecovery(alpha, root, root, stencilsDir, newTestSpecsDir(t), "", "", "")
+			return promptCheck{text: fork + recovery, err: err,
+				contains:    []string{testCardGates + "\n\n   A failing gate call closes"},
+				notContains: []string{"cold fixer", "{{"}}
 		}},
 		{"fork self-fix section carries the self-fix cap", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
@@ -916,19 +975,21 @@ func TestRenderPrompts(t *testing.T) {
 		{"cold fixer prompt names the gate report, the reply file and the contract files", func(t *testing.T) promptCheck {
 			const reportPath = "/lym/webster/reports/verify-gate.yaml"
 			root, stencilsDir := testLayout(t)
-			text, err := renderVerifyFixCold(reportPath, root, root, stencilsDir, "", "", nil)
+			text, err := renderColdFixer(reportPath, root, root, stencilsDir, "", "", nil)
 			return promptCheck{text: text, err: err,
 				contains:    []string{reportPath, testReplyPath, testOutcomePath, testSummaryPath, "_lym/plan", testFixGate},
 				notContains: []string{"{{", "## Constraints"}}
 		}},
 		{"cold fixer prompt carries a declared PATTERN change when PATTERN is active", func(t *testing.T) promptCheck {
 			root, stencilsDir := patternActiveLayout(t)
-			text, err := renderVerifyFixCold("/reports/verify-gate.yaml", root, root, stencilsDir, "", "", []string{"- `PATTERN-x` adds: a rule"})
+			text, err := renderColdFixer("/reports/verify-gate.yaml", root, root, stencilsDir, "", "", []string{"- `PATTERN-x` adds: a rule"})
 			return promptCheck{text: text, err: err, contains: []string{"some constraints"}, inOrder: []string{"### Declared PATTERN changes", "- `PATTERN-x` adds: a rule"}}
 		}},
 		{"cold fixer prompt refuses an empty reply path", func(t *testing.T) promptCheck {
 			root, stencilsDir := testLayout(t)
-			_, err := websterengine.RenderVerifyFixColdPrompt("/reports/verify-gate.yaml", "", root, root, filepath.Join(root, "_lym", "plan"), stencilsDir, testOutcomePath, testSummaryPath, "", testFixGate, nil, "")
+			inputs := coldFixerInputs("/reports/verify-gate.yaml", root, root, stencilsDir, "", "", nil)
+			inputs.ReplyPath = ""
+			_, err := gatefixer.RenderPrompt(inputs)
 			return promptCheck{err: err, wantErr: true}
 		}},
 	}
@@ -969,8 +1030,8 @@ func TestRenderPrompts_FrictionDirective(t *testing.T) {
 		{"verify-fix", "webster-prefix-verify-fix-fork", "webster-verify-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			return renderVerifyFix("/reports/verify-gate.yaml", anchorRoot, stencilsDir, notePath)
 		}},
-		{"verify-fix-cold", "webster-prefix-verify-fix-cold", "webster-verify-fix-cold.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
-			return renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
+		{"verify-fix-cold", gatefixer.FrameStencil, "webster-verify-fix-cold.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
+			return renderColdFixer("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, notePath, "", nil)
 		}},
 		{"plan-fix", "webster-template-plan-fix", "webster-plan-fix.md", func(anchorRoot, stencilsDir, notePath string) (string, error) {
 			got, err := websterengine.RenderPlanFixPrompt("/lym/webster/plan-conflict.md", testReplyPath, anchorRoot, filepath.Join(anchorRoot, "_lym", "plan"), stencilsDir, filepath.Join(anchorRoot, "specs"), notePath, "")
@@ -1033,9 +1094,9 @@ func TestRenderPrompts_ParentDirective(t *testing.T) {
 	}
 
 	coldFixer := func(parent string) string {
-		got, err := renderVerifyFixCold("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, "", parent, nil)
+		got, err := renderColdFixer("/reports/verify-gate.yaml", anchorRoot, anchorRoot, stencilsDir, "", parent, nil)
 		if err != nil {
-			t.Fatalf("RenderVerifyFixColdPrompt() = _, %v; want nil error", err)
+			t.Fatalf("gatefixer.RenderPrompt() = _, %v; want nil error", err)
 		}
 		return got
 	}

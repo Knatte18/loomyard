@@ -86,7 +86,13 @@ type GateKey struct {
 	Scope string `yaml:"scope"`
 	// Lints are the lint steps the key's call runs after its tiers, in order, each LintComments or LintPattern; empty runs none.
 	Lints []string `yaml:"lints"`
+	// Fixer is the model-spec of the cold fixer an agent's red call of this key hands its verdict to; empty turns the fixer off.
+	// Only the card key may hold one.
+	Fixer string `yaml:"fixer"`
 }
+
+// cardGateKey is the name of the gate.yaml key that runs a card's gate, the one key whose agent call may hold a fixer.
+const cardGateKey = "card"
 
 // Scope values a gate key may hold.
 const (

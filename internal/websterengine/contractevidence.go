@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
@@ -43,7 +44,7 @@ const (
 	// writerFork names a fork as the last writer of a contract file.
 	writerFork = "a fork"
 	// writerRecovery names a recovery session or a cold verify-gate fixer session as the last writer of a contract file.
-	writerRecovery = "a recovery or verify-fixer session"
+	writerRecovery = "a recovery or " + gatefixer.RoleVerifyFixer + " session"
 )
 
 // contractFileStatus reports whether path is one of this run's contract files, and whether the audit finding on it is cleared.

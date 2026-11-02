@@ -617,6 +617,14 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		return err
 	}
 
+	// A pair run's row gates may hand a failure to a cold fixer; the prime and a run outside a hub have no pair to own one.
+	pairSlug, err := pairSlugOf(location)
+	if err != nil {
+		logger.Warn("loomcli: could not read the fabric origin record; the row gate fixers are off for this wiring", "cause", err)
+		pairSlug = ""
+	}
+	planDir := planparser.PlanDir(anchorPath)
+
 	c.env = shedrecipe.Env{
 		PreflightBatcher: preflightBatcher,
 		Cwd:              cwd,
@@ -634,6 +642,34 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		VerifyMergeBase: verifyMergeBase,
 		ReviewBase:      verifyMergeBase,
 		VerifyHold:      verifytree.NewPauseHold(pauseGeom, nil),
+		// GateFixer wraps the Darn-Write, Plan-Write and Discussion-Write gates of a pair run with a cold fixer; it reads every value here at wire time and opens nothing.
+		GateFixer: gateFixerSeam(gateFixerInputs{
+			pairSlug:           pairSlug,
+			runProcDir:         fabricengine.RunProcDir(location.HubPath),
+			starter:            runner,
+			stopper:            runner,
+			reed:               reedEngine,
+			engines:            engines,
+			shuttleCfg:         shuttleCfg,
+			anchorRoot:         reedGeom.AnchorPath,
+			registry:           registry,
+			gate:               gateCfg,
+			stencilsDir:        websterGeom.StencilsDir,
+			repoRoot:           location.WorktreePath(),
+			languageSkills:     languageSkills,
+			parentName:         c.parentName,
+			frictionDir:        frictionDir,
+			scratchDir:         shedrun.ScratchDir(location, c.runID),
+			statusPath:         statusPath,
+			statusLockPath:     statusLockPath,
+			patternRecordPath:  patternRecordPath,
+			worktreeRoot:       location.WorktreePath(),
+			decisionRecordPath: record.path,
+			supportLogPath:     record.supportLog,
+			relevantPath:       loomengine.DiscussionRelevant(location),
+			planDir:            planDir,
+			lensReviewPath:     filepath.Join(planDir, planparser.LensReviewFileName),
+		}),
 		WebsterRecord: func() string {
 			return loomshed.WebsterRecordNote(anchorPath)
 		},
@@ -689,7 +725,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// Nothing compares it against the mode a live run was started with:
 		// the resume decision is made purely on live-agent evidence, so flipping the key between a crash and a resume is permitted and benign -- it means only that the next spawn is interviewed differently.
 		DiscussionTable: func() (seatengine.Table, error) {
-			table, err := loomengine.DiscussionTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, seedSlug(location.WorktreeName))
+			fixerOn, err := writerFixerOn(c.recipe, discussionWriteEngine, discussionGateEntry, c.env.Setting, pairSlug)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			table, err := loomengine.DiscussionTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, seedSlug(location.WorktreeName), fixerOn)
 			if err != nil {
 				return seatengine.Table{}, err
 			}
@@ -753,7 +793,11 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// PlanTable is evaluated per Call, not resolved here, so the stencil is read at call time -- what the Stencil Ownership Invariant requires.
 		// It takes no autonomous argument: the Plan producer is autonomous by design and its table is never interactive.
 		PlanTable: func() (seatengine.Table, error) {
-			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, gateTiers)
+			fixerOn, err := writerFixerOn(c.recipe, planWriteEngine, planGateEntry, c.env.Setting, pairSlug)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			return loomengine.PlanTable(location, fabricengine.ConfigDirs(location), websterGeom.StencilsDir, websterGeom.SpecsDir, loomCfg, registry, gateTiers, fixerOn)
 		},
 		// CommitPlan mirrors CommitDiscussion above: it keeps the working tree clean for the rows
 		// that follow, makes the artifact durable across a crash or a resume, and sweeps the

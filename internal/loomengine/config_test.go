@@ -99,6 +99,7 @@ func templateConfig() Config {
 		ReviewerModel:            burlerengine.ModelSpecList{"opus[medium]"},
 		FixerModel:               burlerengine.ModelSpecList{"opus[medium]"},
 		DiscussionLenses:         "twill-discussion",
+		DiscussionGateFixer:      "sonnet[medium]",
 		SubagentModel:            "sonnet",
 		DiscussionReviewerModel:  burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
 		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
@@ -244,6 +245,11 @@ review_timeout_min: 240
 			mutate: func(c *Config) {
 				c.DiscussionAdvisors = DiscussionAdvisorList{{Name: "critic", Model: "sonnet[low]"}, {Name: "skeptic", Model: "opus[high]"}}
 			},
+		},
+		{
+			name:   "empty discussion_gate_fixer turns the fixer off",
+			values: map[string]string{"discussion_gate_fixer": `""`},
+			mutate: func(c *Config) { c.DiscussionGateFixer = "" },
 		},
 		{
 			name:   "empty friction turns Tier 2 off",
@@ -585,6 +591,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed code_judge spec", "code_judge", `"opus[effort"`, nil, ""},
 		{"malformed discussion_seed spec", "discussion_seed", `"opus[effort"`, nil, ""},
 		{"malformed code_seed spec", "code_seed", `"opus[effort"`, nil, ""},
+		{"malformed discussion_gate_fixer spec", "discussion_gate_fixer", `"opus[effort"`, []string{"lym config loom"}, ""},
 		{"malformed friction spec", "friction", `"opus[effort"`, nil, ""},
 		{"malformed driver spec", "driver", `"opus[effort"`, nil, ""},
 		{"zero review_circling_checkpoint", "review_circling_checkpoint", "0", []string{positiveIntegerForward}, ""},

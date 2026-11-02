@@ -239,6 +239,8 @@ func (c *websterCLI) wireHub(loc *lymcwd.Location, stencilsDir, planDir, targetD
 		}
 		return origin.ParentBranch, nil
 	}
+	c.runProcDir = fabricengine.RunProcDir(loc.HubPath)
+	c.pairSlugRead = func() string { return originPairSlug(loc) }
 	c.batcher = activeBatcher
 	c.languageSkills = languageSkills
 	c.gateTiers = gateTiers

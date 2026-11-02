@@ -11,6 +11,41 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// TestGateFixerSetting covers the setting each writer row's gate element names for its cold fixer, an element that names none, and the refusals of a recipe or engine that does not exist.
+func TestGateFixerSetting(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		recipe  string
+		engine  string
+		gate    string
+		want    string
+		wantErr bool
+	}{
+		{name: "tapestry plan", recipe: shedrun.RecipeTapestry, engine: "PlanWrite", gate: "plan", want: "tapestry.plan_gate_fixer"},
+		{name: "tapestry discussion", recipe: shedrun.RecipeTapestry, engine: "DiscussionWrite", gate: "discussion", want: "loom.discussion_gate_fixer"},
+		{name: "darn verify", recipe: shedrun.RecipeDarn, engine: "DarnWrite", gate: "verify", want: "darn.gate_fixer"},
+		{name: "an element without a fixer", recipe: shedrun.RecipeDarn, engine: "DarnWrite", gate: "clean", want: ""},
+		{name: "an empty recipe name reads as tapestry", recipe: "", engine: "PlanWrite", gate: "plan", want: "tapestry.plan_gate_fixer"},
+		{name: "an unknown recipe", recipe: "no-such-recipe", engine: "PlanWrite", gate: "plan", wantErr: true},
+		{name: "a recipe with no row of the engine", recipe: shedrun.RecipeDarn, engine: "PlanWrite", gate: "plan", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := GateFixerSetting(tt.recipe, tt.engine, tt.gate)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("GateFixerSetting(%q, %q, %q) error = %v; want error %v", tt.recipe, tt.engine, tt.gate, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("GateFixerSetting(%q, %q, %q) = %q; want %q", tt.recipe, tt.engine, tt.gate, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRecipeKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

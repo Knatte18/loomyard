@@ -55,6 +55,12 @@ var planSkills = []string{"scribe:prose", "scribe:testing"}
 // planStencil is the stencil that opens the Plan-Write lead seat.
 const planStencil = "loom-template-plan"
 
+// planSelfCheckStencil and planSelfCheckGatedStencil are the fragments that fill the plan template's self-check step, the first for a writer that runs the validator itself and the second for one whose gate has a cold fixer.
+const (
+	planSelfCheckStencil      = "loom-fragment-self-check-plan"
+	planSelfCheckGatedStencil = "loom-fragment-self-check-plan-gated"
+)
+
 // PlanTable builds the seatengine.Table of one Plan-Write run: a lead that writes the plan directory's cards and, last, its overview.
 // When cfg.PlanLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs; otherwise the prompt keeps its bytes.
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
@@ -63,7 +69,8 @@ const planStencil = "loom-template-plan"
 // cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
-func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string) (seatengine.Table, error) {
+// fixerOn reports that a cold fixer clears the row's plan gate, so the prompt tells the writer to run no validator and the twill directive asks for none; false renders today's prompt.
+func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string, fixerOn bool) (seatengine.Table, error) {
 	choice, err := resolveModelChoice(cfg.Plan, reg)
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: plan role model-spec: %w", err)
@@ -89,14 +96,18 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 		frictionDirective = ""
 	}
 
+	selfCheck, err := selfCheckBlock(stencilsDir, fixerOn, planSelfCheckStencil, planSelfCheckGatedStencil)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("loom: PlanTable: self-check step: %w", err)
+	}
 	forks := cfg.PlanLenses != ""
-	var leadValues map[string]string
+	leadValues := map[string]string{"self_check": selfCheck}
 	if forks {
-		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses)
+		lensDirective, err := planLensDirective(layout, dirs, stencilsDir, specsDir, cfg.PlanLenses, fixerOn)
 		if err != nil {
 			return seatengine.Table{}, fmt.Errorf("loom: PlanTable: %w", err)
 		}
-		leadValues = map[string]string{twilldirective.MarkerName: setOffParagraph(lensDirective)}
+		leadValues[twilldirective.MarkerName] = setOffParagraph(lensDirective)
 	}
 
 	lead := seatengine.Seat{

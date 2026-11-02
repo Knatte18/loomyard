@@ -1,7 +1,8 @@
-// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-prefix-verify-fix-fork.md, webster-prefix-verify-fix-cold.md, webster-body-verify-fix.md, webster-template-plan-fix.md),
+// render.go implements the producer prompt assets webster composes and renders (webster-prefix-fork.md, webster-prefix-recovery.md, webster-body-implementer.md, webster-template-master.md, webster-prefix-verify-fix-fork.md, webster-body-verify-fix.md, webster-template-plan-fix.md),
 // and the rendering functions that fill them.
 // RenderForkPrompt is called by begin-batch immediately before each in-session fork, RenderRecoveryPrompt by recover-batch immediately before spawning the separate cold recovery strand, and RenderMasterPrompt by run at Master's own spawn.
-// RenderVerifyFixPrompt is called by run for the verify-gate fixer fork Merriam spawns on a gate failure, and RenderVerifyFixColdPrompt by fix-verify for the cold verify-gate fixer strand.
+// RenderVerifyFixPrompt is called by run for the verify-gate fixer fork Merriam spawns on a gate failure.
+// fix-verify renders the cold verify-gate fixer strand's prompt through gatefixer.RenderPrompt, the shared frame first and webster-body-verify-fix as the body, so this file composes only the in-session fixer fork's prompt.
 // RenderPlanFixPrompt is called by fix-plan for the cold plan fixer strand.
 // The file also holds the two sequenced-execution-order renderers those prompts embed (RenderBatchIndex, RenderProgress).
 // Every asset ships as an embedded default in the top-level stencils package and is read from a
@@ -22,17 +23,17 @@
 // stencil carries a `lym-stencil:` stamp: stencil.Fill strips only one leading banner from the
 // joined text, so an unstripped second asset's banner would otherwise reach the LLM verbatim as if
 // it were instruction text.
-// The two verify-gate fixer prompts are composed the same way, from webster-body-verify-fix plus webster-prefix-verify-fix-fork for the in-session fixer fork or webster-prefix-verify-fix-cold for the cold fixer strand.
+// The in-session fixer fork's prompt is composed the same way, from webster-body-verify-fix plus webster-prefix-verify-fix-fork.
 // Card content reaches both prompts as a worktree-relative card-file pointer
 // (planparser.Card.SourcePath, `_lym/plan/NN-<slug>.md`) rendered verbatim by renderCardPointers,
 // never as inlined What/file-op fields — the implementer reads its own card file in its own turn
 // instead of trusting a Go-rendered paraphrase of it.
 //
 // Each of the Render*Prompt functions also takes a notePath parameter (the composed friction note path from friction.NotePath, or "" when Tier 2 is off) and injects {{.friction_directive}} into its own values map.
-// RenderForkPrompt, RenderRecoveryPrompt, RenderVerifyFixPrompt and RenderVerifyFixColdPrompt resolve friction.RoleImplementer;
+// RenderForkPrompt, RenderRecoveryPrompt and RenderVerifyFixPrompt resolve friction.RoleImplementer;
 // RenderMasterPrompt resolves friction.RoleOrchestrator, since Master never edits code and only forks.
 // A non-nil friction.Directive error is swallowed — logged at Warn via internal/logger, never wrapped and returned — exactly as if Tier 2 were off, per the composer-swallows-a-friction-error Shared Decision;
-// this is deliberately unlike the pattern.Directive error handling sitting beside it in RenderRecoveryPrompt, RenderVerifyFixColdPrompt and RenderMasterPrompt, which does propagate.
+// this is deliberately unlike the pattern.Directive error handling sitting beside it in RenderRecoveryPrompt and RenderMasterPrompt, which does propagate.
 //
 // RenderForkPrompt and RenderRecoveryPrompt each also take a specsDir parameter, immediately after
 // their stencilsDir parameter, filled into the shared implementer-job body's required specs_dir
@@ -124,6 +125,22 @@ func RecoveryTemplate(stencilsDir string) ([]byte, error) {
 	return composeRecoveryTemplate(stencilsDir)
 }
 
+// cardGateFixerMarker is the implementer body's optional marker the card-gate fixer paragraph fills, right after the card gates.
+const cardGateFixerMarker = "card_gate_fixer"
+
+// cardGateFixerParagraph returns the text the card_gate_fixer marker takes: the fragment webster-fragment-card-fixer, led by the blank line that sets it off from the card gates, when cardFixer is set, and "" otherwise.
+// An empty value keeps the rendered prompt as it is without the fixer.
+func cardGateFixerParagraph(stencilsDir string, cardFixer bool) (string, error) {
+	if !cardFixer {
+		return "", nil
+	}
+	fragment, err := stencilstore.Read(stencilsDir, "webster-fragment-card-fixer")
+	if err != nil {
+		return "", fmt.Errorf("webster: read the card-gate fixer fragment: %w", err)
+	}
+	return "\n\n" + strings.Trim(stencil.StripLeadingComment(string(fragment)), "\n"), nil
+}
+
 // noPrecedingBatchDigest is the literal sentinel RenderForkPrompt and
 // RenderRecoveryPrompt render into {{.prev_digest}} when prevDigest is
 // empty: the first executed batch has no preceding batch, and a
@@ -167,8 +184,9 @@ func cardPointerPath(c planparser.Card, planDirDisplay string) string {
 // cardGates is the caller-rendered per-card gate step list (renderCardGates), filled into the body's required card_gates marker.
 // batchGate is the caller-rendered batch gate call (renderBatchGate), filled into the body's required batch_gate marker.
 // outcomePath and summaryPath are Merriam's two contract files, filled into the fork prefix's outcome_path and summary_path markers so the fork is told never to write them.
+// cardFixer says a failed card gate call goes through a cold fixer first, which renders the card-gate fixer paragraph after the card gates; false renders today's text.
 // The plan is not a parameter, per the fork-context-hygiene rule.
-func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath string) ([]byte, error) {
+func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, reportPath, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools []string, outcomePath, summaryPath string, selfFixCap int, notePath string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -178,6 +196,11 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 	if err != nil {
 		logger.Warn("webster: friction directive failed, continuing without one", "role", "implementer", "stencil", "webster-prefix-fork", "error", err)
 		directive = ""
+	}
+
+	cardFixerText, err := cardGateFixerParagraph(stencilsDir, cardFixer)
+	if err != nil {
+		return nil, err
 	}
 
 	values := map[string]string{
@@ -194,13 +217,14 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 		"outcome_path":      outcomePath,
 		"summary_path":      summaryPath,
 		friction.MarkerName: directive,
+		cardGateFixerMarker: cardFixerText,
 	}
 	template, err := composeForkTemplate(stencilsDir)
 	if err != nil {
 		return nil, fmt.Errorf("webster: read fork template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-fork", directive)
-	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName, cardGateFixerMarker})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill fork template: %w", err)
 	}
@@ -230,7 +254,8 @@ func RenderForkPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, rep
 // it fills the optional failure_digest marker, rendered as "none" when empty, and being optional it leaves an older deployed stencil rendering.
 // uncommittedPaths is the caller-rendered block of the worktree's uncommitted paths grouped by who wrote them, or "" for a clean tree;
 // it fills the optional uncommitted_paths marker the same way.
-func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string) ([]byte, error) {
+// cardFixer says a failed card gate call goes through a cold fixer first, which renders the card-gate fixer paragraph after the card gates; false renders today's text.
+func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest, failureDigest, uncommittedPaths, reportPath, repoRoot, planDir, promptWorktreeRoot, stencilsDir, specsDir, gateTiers string, renameTools, patternChanges []string, selfFixCap int, notePath, parentName string, cardFixer bool) ([]byte, error) {
 	digestLine := prevDigest
 	if strings.TrimSpace(digestLine) == "" {
 		digestLine = noPrecedingBatchDigest
@@ -265,6 +290,11 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		frictionDirective = ""
 	}
 
+	cardFixerText, err := cardGateFixerParagraph(stencilsDir, cardFixer)
+	if err != nil {
+		return nil, err
+	}
+
 	values := map[string]string{
 		"card_pointers":     renderCardPointers(batch.Cards, masterPlanDirDisplay(promptWorktreeRoot, planDir)),
 		"card_gates":        cardGates,
@@ -273,6 +303,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		"self_fix_cap":      fmt.Sprintf("%d", selfFixCap),
 		"worktree_root":     promptWorktreeRoot,
 		"prev_digest":       digestLine,
+		cardGateFixerMarker: cardFixerText,
 		"failure_digest":    failureLine,
 		"uncommitted_paths": uncommittedLine,
 		"pattern_directive": directive,
@@ -289,7 +320,7 @@ func RenderRecoveryPrompt(batch batcher.Batch, cardGates, batchGate, prevDigest,
 		return nil, fmt.Errorf("webster: read recovery template: %w", err)
 	}
 	friction.WarnIfMarkerAbsent(template, "webster-prefix-recovery", frictionDirective)
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", friction.MarkerName, parentdirective.MarkerName})
+	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", "failure_digest", "uncommitted_paths", cardGateFixerMarker, friction.MarkerName, parentdirective.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill recovery template: %w", err)
 	}
@@ -302,7 +333,7 @@ func composeVerifyFixTemplate(stencilsDir, prefix string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	body, err := stencilstore.Read(stencilsDir, "webster-body-verify-fix")
+	body, err := stencilstore.Read(stencilsDir, verifyFixBodyStencil)
 	if err != nil {
 		return nil, err
 	}
@@ -362,49 +393,6 @@ func RenderVerifyFixPrompt(reportPath, worktreeRoot, planDir, stencilsDir, outco
 	prompt, err := stencil.FillOptional(template, values, []string{friction.MarkerName})
 	if err != nil {
 		return nil, fmt.Errorf("webster: fill verify-fix template: %w", err)
-	}
-	return prompt, nil
-}
-
-// RenderVerifyFixColdPrompt fills webster-prefix-verify-fix-cold joined ahead of webster-body-verify-fix for the cold verify-gate fixer strand, read from stencilsDir.
-// It takes RenderVerifyFixPrompt's parameters, plus replyPath, the reply file the strand writes as its final action, which must be non-empty.
-// repoRoot and patternChanges render the PATTERN directive, whose error is returned;
-// parentName renders the parent directive, an empty one its no-parent variant.
-func RenderVerifyFixColdPrompt(reportPath, replyPath, worktreeRoot, repoRoot, planDir, stencilsDir, outcomePath, summaryPath, notePath, fixGate string, patternChanges []string, parentName string) ([]byte, error) {
-	const prefix = "webster-prefix-verify-fix-cold"
-	if strings.TrimSpace(replyPath) == "" {
-		return nil, fmt.Errorf("webster: render %s prompt: reply path is empty", prefix)
-	}
-	values, err := verifyFixValues(reportPath, worktreeRoot, planDir, stencilsDir, outcomePath, summaryPath, notePath, fixGate, prefix)
-	if err != nil {
-		return nil, err
-	}
-
-	patternDirective, err := pattern.Directive(repoRoot, stencilsDir, pattern.RoleImplementer, patternChanges)
-	if err != nil {
-		return nil, fmt.Errorf("webster: cold fixer prompt directive: %w", err)
-	}
-	parentDirective, err := parentdirective.Directive(stencilsDir, parentName, false)
-	if err != nil {
-		return nil, fmt.Errorf("webster: cold fixer prompt parent directive: %w", err)
-	}
-	editDirective, err := editdirective.Directive(stencilsDir)
-	if err != nil {
-		return nil, fmt.Errorf("webster: cold fixer prompt edit directive: %w", err)
-	}
-	values["reply_path"] = replyPath
-	values["pattern_directive"] = patternDirective
-	values[parentdirective.MarkerName] = parentDirective
-	values[editdirective.MarkerName] = editDirective
-
-	template, err := composeVerifyFixTemplate(stencilsDir, prefix)
-	if err != nil {
-		return nil, fmt.Errorf("webster: read cold fixer template: %w", err)
-	}
-	friction.WarnIfMarkerAbsent(template, prefix, values[friction.MarkerName])
-	prompt, err := stencil.FillOptional(template, values, []string{"pattern_directive", friction.MarkerName, parentdirective.MarkerName})
-	if err != nil {
-		return nil, fmt.Errorf("webster: fill cold fixer template: %w", err)
 	}
 	return prompt, nil
 }

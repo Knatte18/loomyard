@@ -461,7 +461,7 @@ func (c *loomCLI) specFor(verb string) shedverbs.Spec {
 		})
 		spec.Hooks.AfterInterrupt = c.loomAfterInterrupt
 		spec.Hooks.ConsumeAttempt = c.loomConsumeAttempt
-		spec.GotoGuard = c.settledGuard()
+		spec.GotoGuard = c.gotoGuardEndingFixers(c.settledGuard())
 	}
 	if recipeIsLoom(c.recipe) {
 		// A fixer escalate halt goes to the arbiter first on a loom run, so a driver's build re-launch leaves it alone.

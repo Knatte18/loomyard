@@ -94,6 +94,10 @@ type websterCLI struct {
 	// parentBranch lazily reads the pair's recorded parent branch from fabric's origin record, for record-batch's and recover-batch's clean-parent-merge rule.
 	// It is a closure for the same reason openFabric is, and stays nil in standalone, where no merge commit is accepted.
 	parentBranch websterengine.ParentBranchFunc
+	// runProcDir is the hub-level directory holding the owner records of a run's processes, set by wireHub and empty in standalone.
+	// pairSlugRead lazily reads the worktree's pair slug from fabric's origin record, as parentBranch reads the parent; it stays nil in standalone.
+	runProcDir   string
+	pairSlugRead func() string
 
 	// batcher is the load-time-resolved, config-selected batchifier.
 	batcher batcher.Batcher

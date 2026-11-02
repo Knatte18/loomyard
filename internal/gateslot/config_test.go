@@ -4,6 +4,7 @@ package gateslot
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -64,9 +66,9 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 }
 
 var templateDefaults = Config{
-	Slots: 2, BusyQuitSec: 120,
+	Slots: 2, BusyQuitSec: 120, FixerTimeoutMin: 30,
 	Gates: map[string]GateKey{
-		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}},
+		"card":            {Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"},
 		"batch":           {Tiers: []int{0}, Scope: "card"},
 		"webster":         {Tiers: []int{0}, Scope: "all"},
 		"parent-align":    {Tiers: []int{0}, Scope: "all"},
@@ -91,6 +93,12 @@ func hubWith(mutate func(*Config)) Config {
 	cfg.TierParallel = map[string]int{}
 	mutate(&cfg)
 	return cfg
+}
+
+// unparsableFixerRefusal is the refusal of a card key whose fixer is the model-spec text spec, which modelspec.Parse rejects.
+func unparsableFixerRefusal(spec string) string {
+	_, err := modelspec.Parse(spec)
+	return fmt.Sprintf(`gate config key "gates.card.fixer": %q is no model-spec: %v; set a model-spec such as sonnet[medium], or "" to turn the fixer off, with "lym config gate" from the prime%s`, spec, err, roleClause)
 }
 
 // fixIt is the way forward every key refusal of a load carries.
@@ -164,10 +172,23 @@ func TestLoadConfig(t *testing.T) {
 			"gate keys naming an undeclared tier still load, a tuned key keeping the template's lints", baseKeys + "gates:\n  card: {tiers: [3], scope: card}\n  push: {tiers: [0, 1], scope: diff}\n",
 			hubWith(func(c *Config) {
 				c.Gates = maps.Clone(templateDefaults.Gates)
-				c.Gates["card"] = GateKey{Tiers: []int{3}, Scope: "card", Lints: []string{"comments", "pattern"}}
+				c.Gates["card"] = GateKey{Tiers: []int{3}, Scope: "card", Lints: []string{"comments", "pattern"}, Fixer: "sonnet[medium]"}
 				c.Gates["push"] = GateKey{Tiers: []int{0, 1}, Scope: "diff"}
 			}), "",
 		},
+		{
+			"a card key with fixer empty loads the fixer off", baseKeys + "gates:\n  card: {fixer: \"\"}\n",
+			hubWith(func(c *Config) {
+				c.Gates = maps.Clone(templateDefaults.Gates)
+				c.Gates["card"] = GateKey{Tiers: []int{0}, Scope: "card", Lints: []string{"comments", "pattern"}}
+			}), "",
+		},
+		{
+			"a fixer on a key but card", baseKeys + "gates:\n  webster: {tiers: [0], scope: all, fixer: \"sonnet[medium]\"}\n", Config{},
+			`gate config key "gates.webster.fixer": a fixer is only for the card key, since only its agent call hands a red verdict to a fixer; remove fixer from that key with "lym config gate" from the prime` + roleClause,
+		},
+		{"an unparsable fixer on the card key", baseKeys + "gates:\n  card: {fixer: \"???\"}\n", Config{}, unparsableFixerRefusal("???")},
+		{"fixer_timeout_min zero", baseKeys + "fixer_timeout_min: 0\n", Config{}, `gate config key "fixer_timeout_min": 0; want at least 1` + fixIt},
 		{"scope card on a key but card and batch", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: card}\n", Config{}, `gate config key "gates.parent-align": scope card is only for the card and batch keys` + fixIt},
 		{"an unknown scope", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: some}\n", Config{}, `gate config key "gates.parent-align": scope "some"; want card, diff or all` + fixIt},
 		{"an unknown lint", baseKeys + "gates:\n  parent-align: {tiers: [0], scope: all, lints: [spelling]}\n", Config{}, `gate config key "gates.parent-align": lint "spelling"; want comments or pattern` + fixIt},
@@ -468,6 +489,12 @@ func TestTemplateConfigAndLimits(t *testing.T) {
 	want := Limits{Slots: 2, BusyQuit: 120 * time.Second}
 	if got := cfg.Limits(); got != want {
 		t.Errorf("Limits() = %+v; want %+v", got, want)
+	}
+	if cfg.FixerTimeoutMin != 30 {
+		t.Errorf("FixerTimeoutMin = %d; want 30", cfg.FixerTimeoutMin)
+	}
+	if got := cfg.FixerTimeout(); got != 30*time.Minute {
+		t.Errorf("FixerTimeout() = %v; want 30m", got)
 	}
 
 	board, anchor := seedGateConfig(t, baseKeys+`tiers: {tier0: {command: x, timeout_min: 5, counter: vstest, parallel: 4}}`), seedGateConfig(t, "")

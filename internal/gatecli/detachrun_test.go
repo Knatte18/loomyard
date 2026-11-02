@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -19,6 +20,12 @@ func TestGateRunner_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	// A refusal ends before the run is claimed, so it never reaches the card fixer's seams.
+	seams := defaultDetachSeams()
+	seams.cardFixer = func(detachRequest) (cardFixerKit, bool, error) {
+		t.Error("a refused run built a card fixer")
+		return cardFixerKit{}, false, nil
+	}
 	validRequest := detachRequest{Verb: verbTest, Cwd: "/work"}
 	tests := []struct {
 		name string
@@ -57,7 +64,8 @@ func TestGateRunner_Refusals(t *testing.T) {
 			tt.prepare(t, detachRun{dir: dir})
 
 			var out bytes.Buffer
-			if code := RunCLIIn(dir, &out, []string{"run-detached", dir}); code != 1 {
+			command := newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay, seams)
+			if code := clihelp.ExecuteIn(command, dir, &out, []string{"run-detached", dir}); code != 1 {
 				t.Errorf("run-detached exit = %d, stdout %q; want 1", code, out.String())
 			}
 			for _, want := range []string{tt.want, "lym gate test", "lym gate card-verify"} {

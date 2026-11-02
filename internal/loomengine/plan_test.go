@@ -5,6 +5,7 @@
 package loomengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,7 +84,7 @@ func TestPlanTable(t *testing.T) {
 			cfg := planTableConfig(tt.lenses)
 			dirs := configengine.Dirs{Anchor: layout.AnchorPath()}
 
-			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg, "none")
+			table, err := PlanTable(layout, dirs, stencilsDir, specsDir, cfg, reg, "none", false)
 			if err != nil {
 				t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 			}
@@ -185,7 +186,7 @@ func TestPlanTable(t *testing.T) {
 				}
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, "none")
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, "none", false)
 				if err != nil {
 					t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 				}
@@ -226,7 +227,7 @@ func TestPlanTable(t *testing.T) {
 			}
 			writeDeclaredPatternRecord(t, layout, body)
 
-			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, "none")
+			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, newTestStencilsDir(t), newTestSpecsDir(t), planTableConfig(""), reg, "none", false)
 			if malformed {
 				if err == nil || !strings.Contains(err.Error(), "lym loom validate-discussion") {
 					t.Errorf("PlanTable(malformed section) = _, %v; want an error naming lym loom validate-discussion", err)
@@ -255,7 +256,7 @@ func TestPlanTable(t *testing.T) {
 			if enabled {
 				cfg.Friction = "sonnet[medium]"
 			}
-			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
+			table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 			if err != nil {
 				t.Fatalf("PlanTable(friction=%v) = _, %v; want nil error", enabled, err)
 			}
@@ -279,12 +280,48 @@ func TestPlanTable(t *testing.T) {
 		cfg := planTableConfig("")
 		cfg.Friction = "sonnet[medium]"
 
-		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
+		table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 		if err != nil {
 			t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 		}
 		if _, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table); err != nil {
 			t.Fatalf("seatengine.Prompts() = _, %v; want every prompt composed", err)
+		}
+	})
+
+	// A fixer clearing the plan gate drops the validator loop from the prompt: the self-check step's command block, the spawn point's validator clause and the closing step.
+	// The dispute-evidence phrase naming the validator's output stays in both.
+	t.Run("fixer on", func(t *testing.T) {
+		t.Parallel()
+		loopLines := []string{"```bash\nlym loom validate-plan\n```", "`lym loom validate-plan` passes per", "again until it passes"}
+		for _, fixerOn := range []bool{false, true} {
+			t.Run(fmt.Sprintf("fixerOn=%v", fixerOn), func(t *testing.T) {
+				t.Parallel()
+				layout := planTableLayout(t, "")
+				stencilsDir := newTestStencilsDir(t)
+
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(templatePlanFan), reg, "none", fixerOn)
+				if err != nil {
+					t.Fatalf("PlanTable(fixerOn=%v) = _, %v; want nil error", fixerOn, err)
+				}
+				prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
+				if err != nil {
+					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
+				}
+				prompt := prompts[""]
+
+				for _, line := range loopLines {
+					if has := strings.Contains(prompt, line); has == fixerOn {
+						t.Errorf("prompt carries %q = %v; want it exactly when the fixer is off", line, has)
+					}
+				}
+				if has := strings.Contains(prompt, "Run no validator yourself"); has != fixerOn {
+					t.Errorf("prompt carries the gated self-check step = %v; want %v", has, fixerOn)
+				}
+				if want := "or the `lym loom validate-plan` output"; !strings.Contains(prompt, want) {
+					t.Errorf("prompt lacks the dispute-evidence phrase %q", want)
+				}
+			})
 		}
 	})
 
@@ -316,7 +353,7 @@ func TestPlanTable(t *testing.T) {
 				stencilsDir := newTestStencilsDir(t)
 				specsDir := newTestSpecsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, specsDir, planTableConfig(templatePlanFan), reg, "none")
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, specsDir, planTableConfig(templatePlanFan), reg, "none", false)
 				if err != nil {
 					t.Fatalf("PlanTable(twill) = _, %v; want nil error", err)
 				}
@@ -402,7 +439,7 @@ func TestPlanTable(t *testing.T) {
 				layout := planTableLayout(t, "")
 				stencilsDir := newTestStencilsDir(t)
 
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, tt.tiers)
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), planTableConfig(""), reg, tt.tiers, false)
 				if err != nil {
 					t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 				}
@@ -462,7 +499,7 @@ func TestPlanTable(t *testing.T) {
 				cfg.Plan = tt.plan
 
 				// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
-				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none")
+				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 				if err == nil {
 					err = table.Validate(stencilsDir)
 				}

@@ -1,5 +1,5 @@
 <!-- This is the shared job body of webster's two verify-gate fixers: the fixer fork Merriam spawns in its own session, and the cold fixer strand `lym webster fix-verify` spawns at the recovery role.
-     RenderVerifyFixPrompt joins it behind webster-prefix-verify-fix-fork, and RenderVerifyFixColdPrompt behind webster-prefix-verify-fix-cold (render.go), then fills it via internal/stencil.
+     RenderVerifyFixPrompt joins it behind webster-prefix-verify-fix-fork (render.go), and internal/gatefixer's RenderPrompt behind the shared cold frame gatefix-frame-cold, then fills it via internal/stencil.
      Its six markers are required top-level {{.X}} substitutions ({{.report_path}}, {{.plan_dir}}, {{.worktree_root}}, {{.outcome_path}}, {{.summary_path}}, {{.fix_gate}});
      stencil.FillOptional requires all of them non-empty.
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
@@ -21,6 +21,8 @@ Your session's working directory already is the worktree root, `{{.worktree_root
 Paths you pass to the Read, Write and Edit tools stay absolute.
 You never run a Bash call in the background, and you end your turn only after your final action.
 
+- Read `_lym/plan/00-overview.md` before you edit anything: the task framing and `## Shared Decisions` say what the plan intends, which is what a test must assert.
+- Never run a `lym webster` command: those are Merriam's verbs, driven by a session you are not part of, and you write no batch report.
 - Fix the cause in source.
 - A decision notice in your context, the one your parent directive admits, is your parent's call for this run: where it touches your fix, follow it over the plan.
 - Never delete, skip or weaken a test to make it pass: no `t.Skip`, no loosened assertion, no removed case.

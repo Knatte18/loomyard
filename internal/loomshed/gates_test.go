@@ -1106,6 +1106,31 @@ func TestNewPlanGate_ParsePlanSplit(t *testing.T) {
 // TestHasBlockingFinding_AgainstTheGate exercises the same fail-closed severity table planvalidate_test.go's TestHasBlockingFinding_UnrecognizedSeverityFailsClosed pins, asserted here against the exact predicate NewPlanGate's own pass/fail split calls: an unrecognized or zero-value Severity fails the gate closed rather than silently passing, because planindex.Severity is an open string type and neither shape can occur through a real resolve-backed findings set -- only a hand-built Finding, or a future producer that forgets to stamp one, can carry either.
 //
 //testtiming:keep pins that an unrecognized or zero severity fails the plan gate closed, which TestNewPlanGate never asserts
+func TestLensReviewOnly(t *testing.T) {
+	tiergate.Require(t, 0)
+	lensMissing := planindex.Finding{Check: "lens-review-missing", Detail: "no lens review is recorded; record it", Severity: planindex.SeverityBlocking}
+	other := planindex.Finding{Check: "glyph-not-found", Card: "1-first", Detail: "no such symbol", Severity: planindex.SeverityBlocking}
+	informational := planindex.Finding{Check: "create-new-unit", Card: "2-second", Detail: "new unit", Severity: planindex.SeverityInformational}
+	for _, tt := range []struct {
+		name     string
+		findings []planindex.Finding
+		want     bool
+	}{
+		{"only the lens review blocking", []planindex.Finding{lensMissing}, true},
+		{"another blocking finding beside it", []planindex.Finding{other, lensMissing}, false},
+		{"an informational finding beside it", []planindex.Finding{informational, lensMissing}, true},
+		{"no blocking finding", []planindex.Finding{informational}, false},
+		{"no finding", nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			text := formatPlanFindings(tt.findings)
+			if got := LensReviewOnly(text); got != tt.want {
+				t.Errorf("LensReviewOnly(%q) = %v; want %v", text, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestHasBlockingFinding_AgainstTheGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {

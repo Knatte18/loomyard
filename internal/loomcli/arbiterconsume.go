@@ -25,6 +25,6 @@ func (c *loomCLI) loomConsumeAttempt(_ context.Context, attempt string) error {
 		Producers:               c.routing.Producers,
 		RunID:                   shedrun.ResolveRunID(c.location, c.runID),
 		MissingStatusWayForward: c.shedPaths.MissingStatusWayForward,
-		Guard:                   c.settledGuard(),
+		Guard:                   c.gotoGuardEndingFixers(c.settledGuard()),
 	})
 }

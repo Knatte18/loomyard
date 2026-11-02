@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -187,18 +188,17 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 // A fixed verdict from a fixer that moved HEAD or left an uncommitted change on a path that was clean at the spawn is overruled to PlanFixVerdictPlanWriter, with a warning naming why, since the fixer's one job is the plan.
 // The caller holds no state-mutation lease across it.
 func FixPlanAwait(deps FixPlanDeps, rec *PlanFixerState, wait time.Duration, clk Clock) (*FixPlanResult, error) {
-	strand := coldFixerStrand{
-		label:         "fix-plan",
-		strandGUID:    rec.StrandGUID,
-		sessionID:     rec.SessionID,
-		engine:        rec.Engine,
-		spawnedAt:     rec.SpawnedAt,
-		shuttleRunDir: rec.ShuttleRunDir,
-		eventsPath:    rec.EventsPath,
-		eventsOffset:  rec.EventsOffset,
-		replyPath:     PlanFixReplyPath(deps.Geom.ScratchDir),
+	strand := &gatefixer.Record{
+		StrandGUID:    rec.StrandGUID,
+		SessionID:     rec.SessionID,
+		Engine:        rec.Engine,
+		SpawnedAt:     rec.SpawnedAt,
+		ShuttleRunDir: rec.ShuttleRunDir,
+		EventsPath:    rec.EventsPath,
+		EventsOffset:  rec.EventsOffset,
+		ReplyPath:     PlanFixReplyPath(deps.Geom.ScratchDir),
 	}
-	waited, err := awaitColdFixer(deps.Engines, deps.Reed, deps.Stopper, strand, time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
+	waited, err := awaitFixerStrand(deps.Engines, deps.Reed, deps.Stopper, strand, "fix-plan", time.Duration(deps.Config.RecoveryTimeoutMin)*time.Minute, wait, clk)
 	if err != nil {
 		return nil, err
 	}

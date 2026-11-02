@@ -101,6 +101,14 @@
 // DriftVerify takes a required "subject", the optional "gate_key" and a "gates" list of exactly one entry, named `verify`, which the agent's table runs once the session committed code.
 // An unknown key, a missing or unknown subject and a gates list of another shape are refused naming the way forward.
 //
+// # The gate fixer element
+//
+// An element of a "gates" list may carry the optional key "fixer", a `<module>.<key>` setting read through Env.Setting that holds a model-spec; an empty value turns the fixer off.
+// Only the DarnWrite, PlanWrite and DiscussionWrite entries read it, and every other row refuses it as an unknown key.
+// At most one element of a list carries it, and a malformed reference, an unreadable setting and an unparsable value refuse when the row is built.
+// A row whose element names a fixer hands its finished gate spec to Env.GateFixer in a GateFixerRequest, and runs the spec the seam returns.
+// A nil Env.GateFixer, and an empty setting value, leave the row's gates as written.
+//
 // # Segment settings and row settings
 //
 // A Constructor is handed its row's RowIdentity, the row's name and its recipe segment: value.

@@ -140,4 +140,27 @@ func TestDarnWriteEntry_HappyPath(t *testing.T) {
 	}
 	_, pointer, _ := producer.Call(context.Background())
 	requireNamesFindingsFile(t, env, "Row", pointer.Reason)
+
+	// A fixer element hands the seam the finished spec, re-prompt lines included, and names verify.
+	fixerCfg := Config{"gates": []any{
+		map[string]any{"name": "verify", "attempts": 2, "fixer": "darn.gate_fixer"},
+		map[string]any{"name": "description", "attempts": 2},
+	}}
+	env.Setting = fakeSetting(map[string]any{"darn.gate_fixer": "opus"})
+	calls := recordGateFixer(&env)
+	if _, err := darnWriteEntry(RowIdentity{Name: "Row"}, fixerCfg, env); err != nil {
+		t.Fatalf("darnWriteEntry() error = %v; want nil", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("GateFixer called %d times; want 1", len(*calls))
+	}
+	req := (*calls)[0]
+	if req.Row != "Row" || req.Entry != "verify" || req.Model.Alias != "opus" || len(req.Spec) != 2 {
+		t.Fatalf("request = %+v; want row Row, entry verify, alias opus and both gate entries", req)
+	}
+	for _, entry := range req.Spec {
+		if entry.Reprompt == nil {
+			t.Errorf("request spec entry %q Reprompt = nil; want the darn line", entry.Name)
+		}
+	}
 }

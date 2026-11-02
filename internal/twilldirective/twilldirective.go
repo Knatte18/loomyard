@@ -21,6 +21,15 @@ const directiveStencil = "twill-directive"
 // writerForkStencil names the part stencil Directive reads when a writer fork is asked for.
 const writerForkStencil = "twill-writer-fork"
 
+// writerForkGatedStencil names the part stencil Directive reads when a writer fork is asked for and the host's files are checked by a gate after the turn ends.
+const writerForkGatedStencil = "twill-writer-fork-gated"
+
+// gatedClosingStep is the closing step of a directive whose writer runs no self-check.
+const gatedClosingStep = "6. End your turn: the reviewed files are checked once it ends, so run no validator."
+
+// ungatedCheckedClause is what the writer-fork boilerplate says of the reviewed files when the writer ran a self-check before the forks were spawned.
+const ungatedCheckedClause = " and passed the self-check"
+
 // relaunchStencil names the part stencil Directive reads when no writer fork is asked for.
 const relaunchStencil = "twill-relaunch"
 
@@ -54,10 +63,12 @@ type Values struct {
 	FormatStep string
 	// SelfCheckStep names the host step that tells the writer to run the self-check.
 	SelfCheckStep string
-	// SelfCheckCommand is the command the writer runs as the self-check.
+	// SelfCheckCommand is the command the writer runs as the self-check; it may be empty only when Gated is set and WriterFork is set.
 	SelfCheckCommand string
-	// FinalSelfCheckCommand is the command the writer runs as the final self-check, after the lens review is recorded.
+	// FinalSelfCheckCommand is the command the writer runs as the final self-check, after the lens review is recorded; it may be empty only when Gated is set.
 	FinalSelfCheckCommand string
+	// Gated reports that a gate checks the reviewed files once the writer ends its turn, so the writer runs no validator: the writer-fork part drops its self-check steps and the directive ends the turn without a final self-check.
+	Gated bool
 	// DispositionPlace names where the writer records the lens review.
 	DispositionPlace string
 	// LensReportPath is the path the writer saves each fork's report at, with `<lens>` standing for the lens name.
@@ -96,25 +107,37 @@ type WriterFork struct {
 // Every marker is required: an empty value, or an empty Lenses, fails the fill with an error naming the marker.
 // With v.WriterFork set the directive carries the writer-fork part, otherwise the relaunch paragraphs.
 // With v.CriticalJudge set it carries the critical-judge part, otherwise the plain-judge part.
+// With v.Gated set the writer runs no validator: the writer-fork part is the one without its self-check steps, the closing step ends the turn without a final self-check, and the reviewed files are not said to have passed one.
 // Every error names the stencil it comes from.
 func Directive(stencilsDir string, v Values) (string, error) {
+	closingStep := "6. Run `" + v.FinalSelfCheckCommand + "` again until it passes, then end your turn."
+	checkedClause := ungatedCheckedClause
+	writerForkPart := writerForkStencil
+	if v.Gated {
+		closingStep = gatedClosingStep
+		checkedClause = ""
+		writerForkPart = writerForkGatedStencil
+	} else if v.FinalSelfCheckCommand == "" {
+		return "", fmt.Errorf("twilldirective: fill stencil %s: marker %q has no value", directiveStencil, "final_self_check_command")
+	}
 	values := map[string]string{
-		"reviewed_files":           v.ReviewedFiles,
-		"spawn_point":              v.SpawnPoint,
-		"rejection_rule":           v.RejectionRule,
-		"severity_rule":            v.SeverityRule,
-		"rubric_path":              v.RubricPath,
-		"lens_list":                bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),
-		"format_step":              v.FormatStep,
-		"self_check_step":          v.SelfCheckStep,
-		"self_check_command":       v.SelfCheckCommand,
-		"final_self_check_command": v.FinalSelfCheckCommand,
-		"disposition_place":        v.DispositionPlace,
-		"lens_report_path":         v.LensReportPath,
-		"lens_report_spec_path":    v.LensReportSpecPath,
+		"reviewed_files":        v.ReviewedFiles,
+		"spawn_point":           v.SpawnPoint,
+		"rejection_rule":        v.RejectionRule,
+		"severity_rule":         v.SeverityRule,
+		"rubric_path":           v.RubricPath,
+		"lens_list":             bulletList(v.Lenses, func(l Lens) string { return l.Name + ": " + strings.Join(strings.Fields(l.Text), " ") }),
+		"format_step":           v.FormatStep,
+		"self_check_step":       v.SelfCheckStep,
+		"self_check_command":    v.SelfCheckCommand,
+		"closing_step":          closingStep,
+		"checked_clause":        checkedClause,
+		"disposition_place":     v.DispositionPlace,
+		"lens_report_path":      v.LensReportPath,
+		"lens_report_spec_path": v.LensReportSpecPath,
 	}
 	if v.WriterFork != nil {
-		part, err := fillPart(stencilsDir, writerForkStencil, mergedValues(values, map[string]string{
+		part, err := fillPart(stencilsDir, writerForkPart, mergedValues(values, map[string]string{
 			"explore_step": v.WriterFork.ExploreStep,
 			"input_record": v.WriterFork.InputRecord,
 			"last_file":    v.WriterFork.LastFile,
@@ -136,7 +159,7 @@ func Directive(stencilsDir string, v Values) (string, error) {
 		return "", err
 	}
 	values["judge_steps"] = judge
-	return fillPart(stencilsDir, directiveStencil, values, []string{"writer_fork", "relaunch_rules"})
+	return fillPart(stencilsDir, directiveStencil, values, []string{"writer_fork", "relaunch_rules", "checked_clause"})
 }
 
 // judgePart returns the judge part for the host: the critical judge filled over values and the critical judge's own values when critical is set, otherwise the plain judge filled over values.

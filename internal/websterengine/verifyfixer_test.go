@@ -3,12 +3,14 @@
 package websterengine_test
 
 import (
+	"errors"
 	"os"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shuttlefake"
@@ -141,9 +143,31 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 		}
 	})
 
+	t.Run("a failed registration stops the strand and records nothing", func(t *testing.T) {
+		t.Parallel()
+		fx, deps := newFixVerifyFixture(t, true)
+		deps.Register = func(string) error { return errors.New("no pane process") }
+		st := &websterengine.State{}
+		_, spawned, err := websterengine.FixVerifySpawnOrAttach(deps, st, &recoverFakeClock{now: time.Unix(0, 0)})
+		if err == nil || !strings.Contains(err.Error(), "no pane process") || !strings.Contains(err.Error(), "way forward: transient, re-run `lym webster fix-verify`") {
+			t.Fatalf("FixVerifySpawnOrAttach() error = %v; want the registration failure with its transient way forward", err)
+		}
+		if spawned || len(st.VerifyFixers) != 0 {
+			t.Errorf("spawned = %v, records = %d; want no record", spawned, len(st.VerifyFixers))
+		}
+		if len(fx.Reed.AddedSpecs) != 1 || len(fx.Reed.RemovedGUIDs) != 1 {
+			t.Errorf("AddStrand calls = %d, RemoveStrand calls = %v; want the one spawned strand removed", len(fx.Reed.AddedSpecs), fx.Reed.RemovedGUIDs)
+		}
+	})
+
 	t.Run("spawns at the recovery role, records the strand and attaches on the next call", func(t *testing.T) {
 		t.Parallel()
 		fx, deps := newFixVerifyFixture(t, true)
+		var registered []string
+		deps.Register = func(guid string) error {
+			registered = append(registered, guid)
+			return nil
+		}
 		replyPath := websterengine.VerifyFixReplyPath(deps.Geom.ScratchDir)
 		if err := os.WriteFile(replyPath, []byte("stale"), 0o644); err != nil {
 			t.Fatalf("seed stale reply: %v", err)
@@ -159,7 +183,10 @@ func TestFixVerifySpawnOrAttach(t *testing.T) {
 			t.Errorf("stat stale reply = %v; want it removed before the spawn", err)
 		}
 		spec := fx.Engine.LastSpec
-		if spec.Role != "verify-fixer" || spec.ModelChoice.Model != "recovery-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
+		if !slices.Equal(registered, []string{rec.StrandGUID}) {
+			t.Errorf("registered = %v; want the spawned strand %q", registered, rec.StrandGUID)
+		}
+		if spec.Role != gatefixer.RoleVerifyFixer || spec.ModelChoice.Model != "recovery-model" || !slices.Equal(spec.OutputFiles, []string{replyPath}) {
 			t.Errorf("spec role %q, model %q, output files %v; want verify-fixer, recovery-model, [%s]", spec.Role, spec.ModelChoice.Model, spec.OutputFiles, replyPath)
 		}
 		if !slices.Contains(spec.Skills, "scribe:prose") {

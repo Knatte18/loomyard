@@ -118,6 +118,26 @@ var LoomFragmentPartsLight []byte
 //go:embed loom/loom-fragment-parts-medium.md
 var LoomFragmentPartsMedium []byte
 
+// LoomFragmentSelfCheckPlan is the Plan-Write prompt's self-check step body that has the writer run the plan validator, filled in when the plan gate has no cold fixer.
+//
+//go:embed loom/loom-fragment-self-check-plan.md
+var LoomFragmentSelfCheckPlan []byte
+
+// LoomFragmentSelfCheckPlanGated is the Plan-Write prompt's self-check step body that has the writer run no validator, filled in when the plan gate has a cold fixer.
+//
+//go:embed loom/loom-fragment-self-check-plan-gated.md
+var LoomFragmentSelfCheckPlanGated []byte
+
+// LoomFragmentSelfCheckDiscussion is the Discussion-Write prompt's self-check step body that has the writer run the discussion validator, filled in when the discussion gate has no cold fixer.
+//
+//go:embed loom/loom-fragment-self-check-discussion.md
+var LoomFragmentSelfCheckDiscussion []byte
+
+// LoomFragmentSelfCheckDiscussionGated is the Discussion-Write prompt's self-check step body that has the writer run no validator, filled in when the discussion gate has a cold fixer.
+//
+//go:embed loom/loom-fragment-self-check-discussion-gated.md
+var LoomFragmentSelfCheckDiscussionGated []byte
+
 // LoomTemplatePartWriter is a part writer's shipped-default opening prompt: the seat that turns one part of the parts file into plan cards.
 //
 //go:embed loom/loom-template-part-writer.md
@@ -273,7 +293,7 @@ var TreadleTemplateTargeting []byte
 //go:embed webster/webster-template-master.md
 var WebsterTemplateMaster []byte
 
-// WebsterBodyVerifyFix is webster's shipped-default shared verify-gate fixer body, composed with both WebsterPrefixVerifyFixFork and WebsterPrefixVerifyFixCold.
+// WebsterBodyVerifyFix is webster's shipped-default shared verify-gate fixer body, composed with WebsterPrefixVerifyFixFork for the fixer fork and with GatefixFrameCold for the cold fixer strand.
 //
 //go:embed webster/webster-body-verify-fix.md
 var WebsterBodyVerifyFix []byte
@@ -282,11 +302,6 @@ var WebsterBodyVerifyFix []byte
 //
 //go:embed webster/webster-prefix-verify-fix-fork.md
 var WebsterPrefixVerifyFixFork []byte
-
-// WebsterPrefixVerifyFixCold is webster's shipped-default cold verify-gate fixer prompt prefix, joined ahead of WebsterBodyVerifyFix to compose the cold fixer strand's prompt.
-//
-//go:embed webster/webster-prefix-verify-fix-cold.md
-var WebsterPrefixVerifyFixCold []byte
 
 // WebsterTemplatePlanFix is webster's shipped-default cold plan fixer prompt, which matches a plan-conflict's cards to the tree.
 //
@@ -304,6 +319,11 @@ var WebsterPrefixFork []byte
 //
 //go:embed webster/webster-prefix-recovery.md
 var WebsterPrefixRecovery []byte
+
+// WebsterFragmentCardFixer is the paragraph WebsterBodyImplementer's card_gate_fixer marker takes when a failed card gate call goes through a cold fixer first.
+//
+//go:embed webster/webster-fragment-card-fixer.md
+var WebsterFragmentCardFixer []byte
 
 // WebsterBodyImplementer is webster's shipped-default shared implementer-job body, composed with
 // both WebsterPrefixFork and WebsterPrefixRecovery.
@@ -461,6 +481,11 @@ var TwillDirective []byte
 //go:embed twill/twill-writer-fork.md
 var TwillWriterFork []byte
 
+// TwillWriterForkGated is the twill writer-fork part's shipped default for a host whose reviewed files a gate checks once the writer's turn ends: the same procedure with no validator run.
+//
+//go:embed twill/twill-writer-fork-gated.md
+var TwillWriterForkGated []byte
+
 // TwillRelaunch is the twill relaunch part's shipped default: the host-neutral paragraphs that say what a writer relaunched around its lens spawn call does.
 //
 //go:embed twill/twill-relaunch.md
@@ -501,6 +526,31 @@ var SeatDirectiveWriter []byte
 //go:embed seat/seat-directive-writer-chair.md
 var SeatDirectiveWriterChair []byte
 
+// GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with, joined ahead of one caller body stencil.
+//
+//go:embed gatefix/gatefix-frame-cold.md
+var GatefixFrameCold []byte
+
+// GatefixBodyDarn is the job body of the cold fixer for the Darn-Write row's gate, joined behind GatefixFrameCold.
+//
+//go:embed gatefix/gatefix-body-darn.md
+var GatefixBodyDarn []byte
+
+// GatefixBodyPlan is the job body of the cold fixer for the Plan-Write row's gate, joined behind GatefixFrameCold.
+//
+//go:embed gatefix/gatefix-body-plan.md
+var GatefixBodyPlan []byte
+
+// GatefixBodyDiscussion is the job body of the cold fixer for the Discussion-Write row's gate, joined behind GatefixFrameCold.
+//
+//go:embed gatefix/gatefix-body-discussion.md
+var GatefixBodyDiscussion []byte
+
+// GatefixBodyCard is the job body of the cold fixer for a Webster card gate's red agent call, joined behind GatefixFrameCold.
+//
+//go:embed gatefix/gatefix-body-card.md
+var GatefixBodyCard []byte
+
 // registryEntry pairs one stencil's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -530,6 +580,10 @@ var entries = []registryEntry{
 	{"loom-template-parts", &LoomTemplateParts},
 	{"loom-fragment-parts-light", &LoomFragmentPartsLight},
 	{"loom-fragment-parts-medium", &LoomFragmentPartsMedium},
+	{"loom-fragment-self-check-plan", &LoomFragmentSelfCheckPlan},
+	{"loom-fragment-self-check-plan-gated", &LoomFragmentSelfCheckPlanGated},
+	{"loom-fragment-self-check-discussion", &LoomFragmentSelfCheckDiscussion},
+	{"loom-fragment-self-check-discussion-gated", &LoomFragmentSelfCheckDiscussionGated},
 	{"loom-template-part-writer", &LoomTemplatePartWriter},
 	{"loom-template-parts-chair", &LoomTemplatePartsChair},
 	{"loom-template-arbiter", &LoomTemplateArbiter},
@@ -562,11 +616,11 @@ var entries = []registryEntry{
 	{"webster-template-master", &WebsterTemplateMaster},
 	{"webster-body-verify-fix", &WebsterBodyVerifyFix},
 	{"webster-prefix-verify-fix-fork", &WebsterPrefixVerifyFixFork},
-	{"webster-prefix-verify-fix-cold", &WebsterPrefixVerifyFixCold},
 	{"webster-template-plan-fix", &WebsterTemplatePlanFix},
 	{"webster-prefix-fork", &WebsterPrefixFork},
 	{"webster-prefix-recovery", &WebsterPrefixRecovery},
 	{"webster-body-implementer", &WebsterBodyImplementer},
+	{"webster-fragment-card-fixer", &WebsterFragmentCardFixer},
 	{"orch-template-start", &OrchTemplateStart},
 	{"orch-template-handoff", &OrchTemplateHandoff},
 	{"orch-template-resume", &OrchTemplateResume},
@@ -597,6 +651,7 @@ var entries = []registryEntry{
 	{"edit-directive", &EditDirective},
 	{"twill-directive", &TwillDirective},
 	{"twill-writer-fork", &TwillWriterFork},
+	{"twill-writer-fork-gated", &TwillWriterForkGated},
 	{"twill-relaunch", &TwillRelaunch},
 	{"twill-judge-critical", &TwillJudgeCritical},
 	{"twill-judge-plain", &TwillJudgePlain},
@@ -605,6 +660,11 @@ var entries = []registryEntry{
 	{"seat-directive-writer", &SeatDirectiveWriter},
 	{"seat-directive-writer-chair", &SeatDirectiveWriterChair},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
+	{"gatefix-frame-cold", &GatefixFrameCold},
+	{"gatefix-body-darn", &GatefixBodyDarn},
+	{"gatefix-body-plan", &GatefixBodyPlan},
+	{"gatefix-body-discussion", &GatefixBodyDiscussion},
+	{"gatefix-body-card", &GatefixBodyCard},
 }
 
 // roleOpeningStencils maps each spawned role other than the orch to the stencils that open its session.
@@ -619,8 +679,9 @@ var roleOpeningStencils = map[string][]string{
 	"plan":               {"loom-template-plan"},
 	"webster-master":     {"webster-template-master"},
 	"webster-recovery":   {"webster-prefix-recovery"},
-	"verify-fixer":       {"webster-prefix-verify-fix-cold"},
+	"verify-fixer":       {"gatefix-frame-cold"},
 	"plan-fixer":         {"webster-template-plan-fix"},
+	"gate-fixer":         {"gatefix-frame-cold"},
 	"burler-review":      {"burler-template-reviewer"},
 	"burler-fix":         {"burler-template-fixer"},
 	"conflict":           {"landing-template-conflict"},

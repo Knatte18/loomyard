@@ -109,6 +109,10 @@ type Env struct {
 	// VerifyHold is the told pause hold of the worktree's verify sites, read by the gate resolver's "verify" gate.
 	// Nil holds nothing.
 	VerifyHold *verifytree.PauseHold
+	// GateFixer is the told wrap that hands a row's gate failure to a cold fixer, read by the Darn-Write, Plan-Write and Discussion-Write entries when an element of their "gates" list carries a "fixer" key.
+	// It receives the row's complete gate spec and returns the spec the row runs.
+	// Nil leaves every gate as written, and is legal for a caller whose rows run no fixer.
+	GateFixer func(GateFixerRequest) (shuttleengine.GateSpec, error)
 	// WebsterRecord returns the webster run-record note the Plan-Review rubric renders, read by the BurlerReview and Bouncer entries each time a segment builds its producers.
 	// Nil renders `none`.
 	WebsterRecord func() string

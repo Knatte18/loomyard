@@ -444,6 +444,9 @@ type Config struct {
 	// It names the writer's lens fan, not the Discussion-Review perch's DiscussionReviewerFan.
 	DiscussionLenses string `yaml:"discussion_lenses"`
 
+	// DiscussionGateFixer is the model-spec of the cold fixer of Discussion-Write's discussion gate; empty turns the fixer off.
+	DiscussionGateFixer string `yaml:"discussion_gate_fixer"`
+
 	// SubagentModel is the model name the Plan, Discussion-Write and darn writers pass to the Agent tool for the fresh subagents they hand lookups to.
 	SubagentModel string `yaml:"subagent_model"`
 
@@ -551,6 +554,7 @@ func ConfigSpec() configengine.Spec {
 			"discussion_interactive":     none,
 			"discussion_advisors":        guard,
 			"discussion_lenses":          guard,
+			"discussion_gate_fixer":      none,
 			subagentModelKey:             none,
 			"reviewer_model":             none,
 			"fixer_model":                none,
@@ -1181,6 +1185,13 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 		if _, err := modelspec.Parse(override.value); err != nil {
 			return Config{}, fmt.Errorf("loom config key %q: %w", override.key, err)
+		}
+	}
+
+	// An empty discussion_gate_fixer turns the fixer off and must load cleanly.
+	if cfg.DiscussionGateFixer != "" {
+		if _, err := modelspec.Parse(cfg.DiscussionGateFixer); err != nil {
+			return Config{}, fmt.Errorf("loom config key %q: %w; set a model-spec with \"lym config loom\", or \"\" to turn the fixer off", "discussion_gate_fixer", err)
 		}
 	}
 

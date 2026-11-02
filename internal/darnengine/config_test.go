@@ -33,7 +33,7 @@ func seedDarnConfig(t *testing.T, baseDir, contents string) {
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
 	cfg := Config{
-		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3,
+		Writer: "opus[medium]", WriterTimeoutMin: 180, VerifyAttempts: 3, GateFixer: "sonnet[medium]",
 		TreeScope: map[string]string{},
 	}
 	mutate(&cfg)
@@ -96,6 +96,16 @@ func TestLoadConfig(t *testing.T) {
 			name: "invalid writer spec", seed: true,
 			contents: strings.Replace(ConfigTemplate(), "writer: opus[medium]", "writer: \"opus[medium\"", 1),
 			wantErr:  []string{"writer"},
+		},
+		{
+			name: "an empty gate_fixer loads the fixer off", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "gate_fixer: sonnet[medium]", "gate_fixer: \"\"", 1),
+			want:     templateConfig(func(c *Config) { c.GateFixer = "" }),
+		},
+		{
+			name: "invalid gate_fixer spec", seed: true,
+			contents: strings.Replace(ConfigTemplate(), "gate_fixer: sonnet[medium]", "gate_fixer: \"opus[medium\"", 1),
+			wantErr:  []string{`"gate_fixer"`, `"lym config darn"`},
 		},
 		{name: "not initialized", wantErr: []string{`not initialized here; run "lym fabric reconcile"`}},
 	}

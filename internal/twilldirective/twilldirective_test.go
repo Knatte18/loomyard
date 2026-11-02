@@ -57,6 +57,10 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 	withWriterFork.WriterFork = filledWriterFork()
 	withWriterFork.CriticalJudge = filledCriticalJudge()
 	withWriterFork.RelaunchFiles = ""
+	gatedWriterFork := withWriterFork
+	gatedWriterFork.Gated = true
+	gatedWriterFork.SelfCheckCommand = ""
+	gatedWriterFork.FinalSelfCheckCommand = ""
 	tests := []struct {
 		name   string
 		values Values
@@ -77,8 +81,10 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"REJECTION-RULE-SENTENCE",
 				"the PLACE section",
 				"finishes writing RELAUNCH-FILES per",
+				"lym check --final",
+				"were written and passed the self-check before you were spawned",
 			},
-			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE"},
+			wantNots: []string{"fork0", "GOVERNING-INPUT", "DISPUTE-EVIDENCE", "run no validator"},
 		},
 		{
 			name:   "with a writer fork",
@@ -91,8 +97,27 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"Spawn one fork, fork0",
 				"GOVERNING-INPUT",
 				"DISPUTE-EVIDENCE",
+				"lym check --final",
+				"lym check --now",
+				"were written and passed the self-check before you were spawned",
 			},
-			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES"},
+			wantNots: []string{"died before its Agent call", "REJECTION-RULE-SENTENCE", "RELAUNCH-FILES", "run no validator"},
+			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
+		},
+		{
+			name:   "with a gated writer fork",
+			values: gatedWriterFork,
+			wants: []string{
+				"EXPLORE-STEP",
+				"INPUT-RECORD",
+				"LAST-FILE",
+				"FILES-DIR",
+				"Spawn one fork, fork0",
+				"GOVERNING-INPUT",
+				"were written before you were spawned",
+				"6. End your turn: the reviewed files are checked once it ends, so run no validator.",
+			},
+			wantNots: []string{"lym check --final", "lym check --now", "passed the self-check", "died before its Agent call", "RELAUNCH-FILES"},
 			inOrder:  []string{"SPAWN-POINT-SENTENCE", "Spawn one fork, fork0"},
 		},
 	}
@@ -111,7 +136,6 @@ func TestDirective_RendersEveryValueVerbatim(t *testing.T) {
 				"SEVERITY-RULE-PHRASE",
 				"/abs/rubric.md",
 				"- alpha: Look at A. Then at B.\n- beta: Look at C.",
-				"lym check --final",
 				"the PLACE section",
 				"save each fork's final message verbatim to `/abs/one.lens-<lens>.md`",
 				"in the format `/abs/report-spec.md` defines",
@@ -204,6 +228,8 @@ func TestDirective_MissingStencilNamesIt(t *testing.T) {
 
 	withWriterFork := filledValues()
 	withWriterFork.WriterFork = filledWriterFork()
+	gatedWriterFork := withWriterFork
+	gatedWriterFork.Gated = true
 	withCriticalJudge := filledValues()
 	withCriticalJudge.CriticalJudge = filledCriticalJudge()
 	tests := []struct {
@@ -215,6 +241,8 @@ func TestDirective_MissingStencilNamesIt(t *testing.T) {
 	}{
 		{"the directive", filledValues(), directiveStencil, false},
 		{"the writer-fork part with a writer fork", withWriterFork, writerForkStencil, false},
+		{"the gated writer-fork part with a gated writer fork", gatedWriterFork, writerForkGatedStencil, false},
+		{"the writer-fork part with a gated writer fork", gatedWriterFork, writerForkStencil, true},
 		{"the relaunch part without a writer fork", filledValues(), relaunchStencil, false},
 		{"the relaunch part with a writer fork", withWriterFork, relaunchStencil, true},
 		{"the writer-fork part without a writer fork", filledValues(), writerForkStencil, true},

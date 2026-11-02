@@ -37,6 +37,9 @@ type TapestryConfig struct {
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"plan_lenses"`
 
+	// PlanGateFixer is the model-spec of the cold fixer of Plan-Write's plan gate; empty turns the fixer off.
+	PlanGateFixer string `yaml:"plan_gate_fixer"`
+
 	// PlanReviewerModel and PlanFixerModel are the Plan-Review segment's own model lists; an unset list takes loom.yaml's shared one.
 	PlanReviewerModel burlerengine.ModelSpecList `yaml:"plan_reviewer_model"`
 	PlanFixerModel    burlerengine.ModelSpecList `yaml:"plan_fixer_model"`
@@ -145,6 +148,7 @@ func TapestryConfigSpec() configengine.Spec {
 			"plan_timeout_min":    none,
 			"implementer":         none,
 			"plan_lenses":         guard,
+			"plan_gate_fixer":     none,
 			"plan_reviewer_model": none,
 			"plan_fixer_model":    none,
 			"plan_reviewer_fan":   guard,
@@ -204,6 +208,13 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 
 	if _, err := modelspec.Parse(cfg.Plan); err != nil {
 		return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w", "plan", err)
+	}
+
+	// An empty plan_gate_fixer turns the fixer off and must load cleanly.
+	if cfg.PlanGateFixer != "" {
+		if _, err := modelspec.Parse(cfg.PlanGateFixer); err != nil {
+			return TapestryConfig{}, fmt.Errorf("tapestry config key %q: %w; set a model-spec with \"lym config tapestry\", or \"\" to turn the fixer off", "plan_gate_fixer", err)
+		}
 	}
 
 	for _, list := range []struct {

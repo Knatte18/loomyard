@@ -352,6 +352,8 @@
 // Bound: the inherited-slot branch is reached only by a hand-set slot variable beside a strand, since every lym path that holds a slot runs its child without the strand; it stays so the choice is complete, and the standing agent deny on the variable keeps an agent from reaching it.
 //
 // A call's key is a hash of the verb, the resolved run directory and the call's words, and the key directory `detach/<key>` under the worktree's gate directory holds the key's lock, its `current.json` naming the current run id and one subdirectory per run.
+// A call from a fixer strand, a role `gatefixer.IsFixerRole` matches, adds its strand name to the hashed words, so a fixer's own gate call never joins the run waiting on it and two fixer strands never share one.
+// The front parses the strand's role through `strandRole` and writes it to the request as `role`, since the runner's environment carries no strand name; a request without a role reads as one from a strand that is no fixer.
 // The front counts its cap from its own start and catches terminating signals, which end the front alone with 128 plus the signal number while the runner goes on.
 // It takes the key directory's lock, trying once a second only while at least the lock margin of its cap remains; past that it answers as at a passed cap in the phase `starting`.
 // Under the lock it joins the key's current run when `joinable` holds, else it starts a fresh one.
@@ -373,6 +375,22 @@
 // Bound: an estimate from a few earlier calls can mis-pick, which costs cache money only, never a verdict.
 // Bound: the join compares the tree and the dirty paths, not the dirty files' content, so an edit to an already-dirty file between two calls with the same words gets the earlier content's run, and a second call with the same words after another took the result starts a fresh run.
 // Bound: the plan lives under `_lym`, which neither `headIdentity` nor `verifytree.DirtyPaths` reads, so a `--card` call made after an edit of the plan, with the same words and an unchanged code tree, joins the run of the plan as it was while its lease holds; the edit costs at most the earlier plan's verdict for the remaining lease, after which the same command starts afresh.
+//
+// # Card fixer
+//
+// A red `lym gate test --gate <key>` agent call hands its failure to a cold fixer when the key's `fixer` is set, and answers with the re-run's result.
+// Config load allows `fixer` on the `card` key alone, so only the Webster card gate hands off; only a capped call reaches a runner, so an operator's call, a `--wait` call and a call inside an enclosing slot never do.
+// `handsOff` decides it from the request: the verb is `test`, the request's role is no fixer role, the call names a gate key whose `fixer` is non-empty, and the pair has a slug.
+// `newCardFixer` builds the kit: a strand fixer over the worktree's reed geometry, registered under the slug with the gate fixer role, the model choice the key's `fixer` names, the gate config's fixer timeout, the stencils directory and the hub's language skills.
+// A call outside a hub, with no slug, or for a key or role `handsOff` turns down ends as it does without a fixer, and so does a kit that cannot be built, after the runner logs why.
+// `runWithFixer` runs in place of `runRequest`:
+// before the gate runs it waits on a live fixer record of an earlier run in the key directory's `fixer.json`, and when it cannot attach it stops the strand through `fixerStopper` and marks the record dead only once the stop succeeded, ending with exit 1 and the way forward when the stop failed;
+// on a red verdict, after `runRequest` released its slots, it writes the phase `fixing`, the stderr report to `fixer-report.md`, spawns one fixer with the shared cold frame and the card body, waits on it, rewrites `tree.json` and runs `runRequest` again, then marks the fixer's record terminal, so a restart during the re-run still finds it live, and appends the fixer's reply or the dead note to the re-run's stderr under `## Cold fixer reply`.
+// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a `card-verify` request and a spawn that failed end with the first run's result, the last with a stderr line saying no fixer ran.
+// A passed lease or a terminating signal during the phase stops the fixer, marks its record dead once the stop succeeded and ends the run abandoned.
+// A run in the phase `fixing` is joinable under changed dirty paths, so a caller's repeated call joins whatever tree the fixer is changing; from the re-run's start the rewritten `tree.json` holds the rule again.
+// Bound: one fixer per red call, which Go bounds; the number of red calls per card rests on the Webster fork prompt's self-fix cap.
+// Bound: a fixer's own gate call never hands off, and its strand name keys it apart from the call waiting on it.
 //
 // # Report
 //

@@ -1,11 +1,11 @@
 // strand_test.go covers StrandLive against a shuttlefake.Reed (present/live, present/not-live, absent) and TurnEndedAfter against a shuttlefake.Engine (newest stop event, no stop event, missing events file, a ParseEvents error, the load-turn offset).
-// Tier 1: no git, only local fakes.
 
-package websterengine
+package gatefixer
 
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,13 +16,12 @@ import (
 )
 
 // TestStrandLive pins StrandLive's live, not-live, absent and probe-error results.
-//
-//testtiming:keep pins StrandLive's own live/not-live/absent results and wrapped probe error, which the recover-batch tests only observe as a classification
 func TestStrandLive(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	t.Run("guid present and live", func(t *testing.T) {
+		t.Parallel()
 		reed := &shuttlefake.Reed{Strands: []reedengine.StrandStatus{
 			{GUID: "other", Live: false},
 			{GUID: "target", Live: true},
@@ -37,6 +36,7 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid present and not live", func(t *testing.T) {
+		t.Parallel()
 		reed := &shuttlefake.Reed{Strands: []reedengine.StrandStatus{{GUID: "target", Live: false}}}
 		live, err := StrandLive(reed, "target")
 		if err != nil {
@@ -48,6 +48,7 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("guid absent from Status is false, nil", func(t *testing.T) {
+		t.Parallel()
 		reed := &shuttlefake.Reed{Strands: []reedengine.StrandStatus{{GUID: "someone-else", Live: true}}}
 		live, err := StrandLive(reed, "target")
 		if err != nil {
@@ -59,6 +60,7 @@ func TestStrandLive(t *testing.T) {
 	})
 
 	t.Run("reed Status error propagates", func(t *testing.T) {
+		t.Parallel()
 		wantErr := errors.New("reed unreachable")
 		_, err := StrandLive(&shuttlefake.Reed{StatusErr: wantErr}, "target")
 		if err == nil {
@@ -70,25 +72,26 @@ func TestStrandLive(t *testing.T) {
 	})
 }
 
-// TestTurnEnded pins TurnEndedAfter over an engine without the SessionSignalParser capability: the newest ParseEvents event decides, and the offset skips the load turns.
-func TestTurnEnded(t *testing.T) {
+// TestTurnEndedAfter pins TurnEndedAfter over an engine without the SessionSignalParser capability: the newest ParseEvents event decides, and the offset skips the load turns.
+func TestTurnEndedAfter(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	dir := t.TempDir()
-	eventsPath := dir + "/events.jsonl"
+	eventsPath := filepath.Join(dir, "events.jsonl")
 	// turnEnded reads the events from the start of the file.
 	turnEnded := func(path string, engine shuttleengine.Engine) (bool, error) {
 		return TurnEndedAfter(path, 0, engine, TurnEndRead{})
 	}
 
 	t.Run("missing events file is false, nil", func(t *testing.T) {
-		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{})
+		t.Parallel()
+		ended, err := turnEnded(filepath.Join(dir, "absent.jsonl"), &shuttlefake.Engine{})
 		if err != nil {
-			t.Fatalf("TurnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEndedAfter() error = %v; want nil", err)
 		}
 		if ended {
-			t.Errorf("TurnEnded() = true for a missing events file; want false")
+			t.Errorf("TurnEndedAfter() = true for a missing events file; want false")
 		}
 	})
 
@@ -97,42 +100,46 @@ func TestTurnEnded(t *testing.T) {
 	}
 
 	t.Run("no Stop event is false", func(t *testing.T) {
+		t.Parallel()
 		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{{Kind: shuttleengine.EventAsk, Message: "still working"}}})
 		if err != nil {
-			t.Fatalf("TurnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEndedAfter() error = %v; want nil", err)
 		}
 		if ended {
-			t.Errorf("TurnEnded() = true with only an EventAsk; want false")
+			t.Errorf("TurnEndedAfter() = true with only an EventAsk; want false")
 		}
 	})
 
 	t.Run("a newest Stop event is true", func(t *testing.T) {
+		t.Parallel()
 		ended, err := turnEnded(eventsPath, &shuttlefake.Engine{Events: []shuttleengine.Event{
 			{Kind: shuttleengine.EventAsk, Message: "mid-turn probe"},
 			{Kind: shuttleengine.EventStop, Message: "final message"},
 		}})
 		if err != nil {
-			t.Fatalf("TurnEnded() error = %v; want nil", err)
+			t.Fatalf("TurnEndedAfter() error = %v; want nil", err)
 		}
 		if !ended {
-			t.Errorf("TurnEnded() = false with a Stop event present; want true")
+			t.Errorf("TurnEndedAfter() = false with a Stop event present; want true")
 		}
 	})
 
 	t.Run("a ParseEvents error propagates", func(t *testing.T) {
+		t.Parallel()
 		wantErr := errors.New("boom")
 		_, err := turnEnded(eventsPath, &shuttlefake.Engine{EventsErr: wantErr})
 		if err == nil {
-			t.Fatalf("TurnEnded() error = nil; want a wrapped error")
+			t.Fatalf("TurnEndedAfter() error = nil; want a wrapped error")
 		}
 		if !errors.Is(err, wantErr) {
-			t.Errorf("TurnEnded() error = %v; want it to wrap %v", err, wantErr)
+			t.Errorf("TurnEndedAfter() error = %v; want it to wrap %v", err, wantErr)
 		}
 	})
 
 	t.Run("a skill-load turn end before the offset is not counted", func(t *testing.T) {
+		t.Parallel()
 		loadTurn := "load-turn-stop\n"
-		path := dir + "/offset-events.jsonl"
+		path := filepath.Join(dir, "offset-events.jsonl")
 		if err := os.WriteFile(path, []byte(loadTurn+"prompt-turn-working\n"), 0o644); err != nil {
 			t.Fatalf("write events file %s: %v", path, err)
 		}

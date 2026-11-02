@@ -119,9 +119,12 @@ producers:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
       # reaches the row below.
+      # fixer names the setting holding the model-spec of a cold fixer that clears a failing
+      # discussion gate before the writer hears of it; an empty value turns the fixer off.
       gates:
         - name: discussion
           attempts: 3
+          fixer: loom.discussion_gate_fixer
 
   - name: Discussion-Bouncer
     engine: Bouncer
@@ -265,9 +268,12 @@ producers:
       # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
       # validator and re-prompts the live session up to its attempts times, so a failure never
       # reaches the row below.
+      # fixer names the setting holding the model-spec of a cold fixer that clears a failing plan
+      # gate before the writer hears of it; an empty value turns the fixer off.
       gates:
         - name: plan
           attempts: 3
+          fixer: tapestry.plan_gate_fixer
 
   - name: Plan-Bouncer
     engine: Bouncer

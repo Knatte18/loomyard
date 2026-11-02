@@ -40,6 +40,8 @@
 // IsLoom, HasEngine, RecordEngine, VerifySource and RetiredRows answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name, so a consumer reads the recipe's rows and keys instead of comparing its name.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
+// GateFixerSetting answers which setting a writer row's gate element names for its cold fixer's model-spec, so a caller reads whether a row's fixer is on from the recipe's own `fixer` key rather than from a row name.
+//
 // CodePerchGate answers the entry gate of a recipe's Code-Review Bouncer row, built over a told Env, and nil for a recipe whose perch carries none (tapestry, darn, pawl):
 // a reader of whether the perch is off follows that gate as well as the budget.
 //

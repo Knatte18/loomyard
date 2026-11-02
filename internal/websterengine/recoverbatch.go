@@ -1,4 +1,4 @@
-// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate process — escalating a batch a fork reported stuck, or never reported at all, to a cold implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork prompt, since the recovery strand inherits no session context, per the fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over webster's own classification machinery — Classify/PollUntilTerminal/TurnEndedAfter/StrandLive), and PersistRecoveryTerminal (the terminal digest merge into a freshly reloaded state).
+// recoverbatch.go implements webster's re-entrant, blocking exception-path verb as three lease-scoped phases: RecoverSpawnOrAttach (the only place webster spawns a genuinely separate process — escalating a batch a fork reported stuck, or never reported at all, to a cold implementer strand at the recovery role, rendering the SEPARATE, full cold-start recovery prompt via RenderRecoveryPrompt — deliberately distinct from RenderForkPrompt's thin in-session fork prompt, since the recovery strand inherits no session context, per the fork-context-hygiene Shared Decision), RecoverAwait (the bounded wait, over webster's Classify and PollUntilTerminal, reading a strand through gatefixer's TurnEndedAfter and StrandLive), and PersistRecoveryTerminal (the terminal digest merge into a freshly reloaded state).
 // First call spawns and records;
 // the call that spawns the recovery strand first waits for its provider to come up (normally
 // seconds, bounded by startup_timeout_s), and every call then blocks for RecoveryWaitBudget and
@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/friction"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -107,6 +108,9 @@ type RecoverDeps struct {
 
 	// Gate is the hub's gate config, from which the recovery prompt renders its card and batch gate calls.
 	Gate gateslot.Config
+
+	// CardFixer says a failed card gate call goes through a cold fixer first, so the recovery prompt says so.
+	CardFixer bool
 }
 
 // RecoverResult is what one RecoverAwait call hands back: Digest (nil while Running), Running (true if wait elapsed non-terminal), ElapsedS (since spawn), and Warnings (non-fatal substrate-cleanup failures, plus the moved-HEAD notice when only merge commits sit between the report's head_sha and the worktree's HEAD).
@@ -311,7 +315,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -545,7 +549,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 			return nil, false, &recoveryNeedsFreshError{msg: fmt.Sprintf("webster: batch %02d failed on findings recovery cannot check: %s; %s", batchNumber, strings.Join(what, ", "), wayForward)}
 		}
 		if len(contracts.Uncleared) > 0 {
-			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork, recovery or verify-fixer session wrote last: %s", batchNumber, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lym webster recover-batch %d", batchNumber)))
+			return nil, false, fmt.Errorf("webster: batch %02d failed on contract file(s) a fork, recovery or %s session wrote last: %s", batchNumber, gatefixer.RoleVerifyFixer, contractDeleteClause(contracts.Uncleared, fmt.Sprintf("lym webster recover-batch %d", batchNumber)))
 		}
 	}
 
@@ -823,11 +827,11 @@ func awaitTerminal(deps RecoverDeps, batch batcher.Batch, bs *BatchState, wait t
 			return Digest{}, false, fmt.Errorf("webster: stat batch report %s: %w", reportPath, statErr)
 		}
 
-		turnEnded, err := TurnEndedAfter(bs.EventsPath, bs.EventsOffset, engine, TurnEndRead{Now: clk.Now()})
+		turnEnded, err := gatefixer.TurnEndedAfter(bs.EventsPath, bs.EventsOffset, engine, gatefixer.TurnEndRead{Now: clk.Now()})
 		if err != nil {
 			return Digest{}, false, err
 		}
-		strandLive, err := StrandLive(deps.Reed, bs.StrandGUID)
+		strandLive, err := gatefixer.StrandLive(deps.Reed, bs.StrandGUID)
 		if err != nil {
 			return Digest{}, false, err
 		}

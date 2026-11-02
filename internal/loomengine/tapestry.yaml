@@ -2,6 +2,7 @@ plan: opus[medium]  # model-spec for the plan-phase producer agent (see contract
 plan_timeout_min: 120  # minutes the plan agent's shuttle run is allowed to run (a shorter ceiling than the discussion run)
 implementer: webster  # engine of the Webster row, the implementer that builds the approved plan on the task branch and batches it its own way; webster, the only value, runs the Merriam session with one fork per batch
 plan_lenses: twill-plan  # fan name from lenses.yaml that has the Plan-Write lead explore, have one fork write the plan, then fork itself once per lens of the fan to review it before it finishes; twill-plan is the default, and empty turns the forks off; this names the writer's lens fan, not the plan_reviewer_fan of the Plan-Review perch
+plan_gate_fixer: sonnet[medium]  # model-spec for the cold fixer of Plan-Write's plan gate, which clears the plan check's mechanical findings before the writer hears of them; empty turns the fixer off
 plan_split: false  # true turns the Parts-Write and Parts-Plan-Write rows on and Plan-Write off, so the plan is written in parts by one writer each and joined by a chair; false, the default, runs Plan-Write alone
 parts_depth: light  # reading depth of the Parts-Write agent: light reads the decision record, relevant.md and lym quarry glyphs over the packages the record names; medium adds lym quarry toc of each package the task touches and lym quarry expand of the types the record names
 parts_max: 6  # the most parts a parts file may hold; the parts check refuses more

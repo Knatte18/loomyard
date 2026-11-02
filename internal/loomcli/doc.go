@@ -18,6 +18,11 @@
 // A run's decision record follows its recipe's rows through `runRecordOf`: a recipe with a Beam-Await row keeps the beam's project record under the beam's slug, and every other recipe the discussion record.
 // A task run's review rows are told its record as the PATTERN declaration path, a beam's project record declares none, and a loom recipe holds a landing's escalate halt for the arbiter first.
 //
+// `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
+// The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.
+// A fixer's records live in the run's scratch directory under `gatefix`, in a directory `rowVisitDir` keys by the row and the status history's length and newest repeat count, so a crash re-step finds the fixer it left and a goto or a fresh entry starts clean.
+// `fixerSpec` renders the prompt from the shared cold frame and one body stencil per gate entry, `gatefix-body-darn`, `gatefix-body-plan` or `gatefix-body-discussion`.
+//
 // The `lym loom` verbs serve loom runs only.
 // `arm`, the subtree's entry, sets `loomPath` before `armAt` and `armAt` then refuses, right after the recipe is resolved and before any wiring, a recipe that does not declare the loom contract: an embedded non-loom recipe is refused naming the `lym shed` verbs, and a seed naming no embedded recipe naming the re-seed.
 // It then refuses `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` on a recipe with no Plan-Write row, which has no plan, `validate-parts` on a recipe with no Parts-Write row, which writes no parts file, and `join-parts` on a recipe with no Parts-Plan-Write row, which has no parts to join.
@@ -217,6 +222,7 @@
 // the Finalize arm refuses a goto onto the Finalize row while the parent's code checkout holds tracked dirt, naming the checkout, the paths and the goto and resume that retry it;
 // the settled-segment arm refuses a goto onto a review or fix row whose verdict is settled.
 // The Finalize arm admits the row when the parent pair cannot be read or holds a fabric merge record, since Finalize's own merge guard then words the problem.
+// The guard is wrapped so that once both arms admit a goto, or a consume's target, every fixer role registered under the pair is ended before the move is written.
 //
 // A pair's session end ends a live arbiter strand with the pair's other strands.
 //

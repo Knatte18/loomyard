@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -80,6 +81,7 @@ func TestJoinable(t *testing.T) {
 		{name: "DeliveredRun", state: withExit(running, detachExit{}, true), wantNoProbe: true},
 		{name: "ChangedTreeWithTheSameDirtyPaths", state: withCurrent(running, treeRecord{Tree: "tree-two", Dirty: tree.Dirty}), reading: readsStart("start-a")},
 		{name: "ChangedDirtyPathsOnTheSameTree", state: withCurrent(running, treeRecord{Tree: tree.Tree, Dirty: []string{"a.go"}}), reading: readsStart("start-a")},
+		{name: "FixingRunUnderChangedDirtyPaths", state: withFixing(withCurrent(running, treeRecord{Tree: tree.Tree, Dirty: []string{"a.go"}})), reading: readsStart("start-a"), want: true},
 		{name: "UnreadableTree", state: withCurrent(joinState{lease: running.lease, process: running.process, hasProcess: true}, treeRecord{}), reading: readsStart("start-a")},
 	}
 	for _, tt := range tests {
@@ -105,6 +107,12 @@ func TestJoinable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// withFixing returns state with its run in the fixing phase.
+func withFixing(state joinState) joinState {
+	state.fixing = true
+	return state
 }
 
 // withExit returns state with an exit file holding exit, and delivered as given.
@@ -390,6 +398,80 @@ func TestFrontReplay_NamesALongStdoutOnStderrInsteadOfPrintingIt(t *testing.T) {
 	}
 	if _, err := os.Stat(run.path(deliveredFile)); err != nil {
 		t.Errorf("delivered mark: %v; want the run marked delivered", err)
+	}
+}
+
+func TestCallKeyDir(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "work"}
+	call := func(strand string) frontCall {
+		return frontCall{
+			verb: verbTest, words: []string{"--gate=card", "--card=1"}, dir: location.WorktreePath(),
+			location: location, strand: strand, role: strandRole(strand),
+		}
+	}
+	plain := detachKeyDir(location.AnchorPath(), verbTest, location.WorktreePath(), []string{"--gate=card", "--card=1"})
+
+	if got := callKeyDir(call("lym:work:implementer")); got != plain {
+		t.Errorf("callKeyDir(implementer) = %q; want %q", got, plain)
+	}
+	fixers := []string{"lym:work:gate-fixer", "lym:work:gate-fixer-2", "lym:work:verify-fixer"}
+	seen := map[string]string{plain: "implementer"}
+	for _, strand := range fixers {
+		got := callKeyDir(call(strand))
+		if other, dup := seen[got]; dup {
+			t.Errorf("callKeyDir(%s) = %q, the key of %s", strand, got, other)
+		}
+		seen[got] = strand
+	}
+
+	roles := []struct {
+		strand string
+		want   string
+	}{
+		{"lym:work:gate-fixer", "gate-fixer"},
+		{"lym:orch", "orch"},
+		{"not a name", ""},
+		{"", ""},
+	}
+	for _, tt := range roles {
+		if got := strandRole(tt.strand); got != tt.want {
+			t.Errorf("strandRole(%q) = %q; want %q", tt.strand, got, tt.want)
+		}
+	}
+}
+
+func TestWriteNewRun_RecordsTheCallersRole(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	for _, tt := range []struct {
+		strand string
+		want   string
+	}{
+		{"lym:work:gate-fixer-2", "gate-fixer-2"},
+		{"lym:work:implementer", "implementer"},
+	} {
+		t.Run(tt.want, func(t *testing.T) {
+			t.Parallel()
+			front := &front{
+				call:     frontCall{verb: verbTest, words: []string{"--gate=card", "--card=1"}, cwd: "/work", strand: tt.strand, role: strandRole(tt.strand)},
+				keyDir:   t.TempDir(),
+				deadline: time.Now().Add(time.Minute),
+			}
+
+			run, err := front.writeNewRun(treeRecord{})
+			if err != nil {
+				t.Fatalf("writeNewRun() error = %v; want none", err)
+			}
+
+			request, found := readRunFile[detachRequest](run.path(requestFile))
+			if !found || request.Role != tt.want {
+				t.Errorf("request role = %q (found %v); want %q", request.Role, found, tt.want)
+			}
+		})
 	}
 }
 

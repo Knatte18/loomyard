@@ -76,6 +76,8 @@ The vocabulary is `clean`, `discussion`, `plan`, `parts`, `description` and `ver
 `verify` lints the comments, then runs the verify command the wiring tells in `Env.VerifyCommand`, which it requires.
 `Env.VerifyTreeScope`, when set, selects the darn form, which runs the tree-scoped command it answers for a diff wholly under the configured trees and the impact-scoped command otherwise, and the round form is the default.
 `Env.VerifyMergeBase`, when set, is the base of the headroom lint, which runs before the comment lint, or of both lints under the darn form, which requires it.
+A gate element of the `DarnWrite`, `PlanWrite` and `DiscussionWrite` rows also takes the optional `fixer` key: a `<module>.<key>` setting holding a model-spec, or `""` to turn the fixer off.
+Any other row refuses `fixer` as an unknown key.
 
 ## The recipe loader/builder
 

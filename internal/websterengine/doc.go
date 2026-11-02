@@ -77,6 +77,8 @@
 // After the last card the fork runs the batch gate once;
 // Go never runs it, and Webster's plan-level `webster` gate catches a fork that skips it.
 // The fork runs every card gate step, `lym gate card-verify` call and the batch gate in the foreground under the gate rule in its system prompt and never backgrounds a call, so its only turn end is its final report.
+// When the hub's `card` gate key carries a `fixer` and the worktree has a pair slug, the fork and recovery prompts render the card-gate fixer paragraph (`webster-fragment-card-fixer`) into the body's optional `card_gate_fixer` marker right after the card gates.
+// It says a failed card gate call has already been through a cold fixer whose reply the report carries, and that the strand reads the uncommitted diff the fixer left before it commits and fixes what is left under its self-fix cap; with the fixer off the marker renders nothing and the prompt is as it was.
 // A card's own gate, which begin-batch and recover-batch render into the fork's prompt, is the hub's `card` gate call, `lym gate test --gate card --card <card id>` from `gateslot.Config.AgentGateCall`, which carries no `--wait` since an agent runs it, as its one step; the call itself runs the lint steps the hub's `card` key lists, the template's being the comment line-break lint and the PATTERN headroom lint.
 // The gate call computes the card's packages and runs the guard step itself, so Go renders no package list and scans for no guard test.
 // The batch gate is the hub's `batch` gate call, `lym gate test --gate batch`, over every card of the batch, `--card <card id>` once per card.
@@ -420,7 +422,7 @@
 // `--to pre-fix` removes none.
 // Merriam runs the call as a backgrounded Bash command, ends its turn and acts on the completion notification.
 // Only an operator's shorter --wait can return a running snapshot.
-// A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal and nothing keeps it waiting (TurnEndedAfter):
+// A recovery strand's turn end with no report classifies dead/asking only when it is the strand's newest turn signal and nothing keeps it waiting (gatefixer's TurnEndedAfter):
 // a later turn start is the strand working again, and a plain turn end counts only after it has stood a few seconds, because a background shell that finished just before the turn ended starts the next turn through its completion notification (issue #498).
 // A turn end left waiting on any task, a shell of either signal or a fork, never counts, so recovery_timeout_min bounds that strand and a report present before it classifies done.
 // This mirrors classify.go's dead/timeout/stuck classification.
@@ -557,7 +559,9 @@
 // # The cold verify-gate fixer
 //
 // For a cold failure, Merriam runs `lym webster fix-verify` as a backgrounded Bash command, which Master's spawn declares an awaited shell prefix beside recover-batch, ends its turn, and on its completion notification, whatever its exit, rewrites its outcome and summary files as after a fork.
-// FixVerifySpawnOrAttach spawns the cold fixer as its own strand, role `verify-fixer`, at RoleRecovery's model choice, with RenderVerifyFixColdPrompt's prompt: the shared body behind a cold prefix carrying the parent, edit, PATTERN and friction directives and its own orientation steps.
+// internal/gatefixer owns the cold fixer's spawn, wait and runproc registration, and webster adapts it through a store over State.VerifyFixers.
+// FixVerifySpawnOrAttach spawns the cold fixer as its own strand through it, role `verify-fixer`, at RoleRecovery's model choice, with gatefixer.RenderPrompt's prompt: the shared body behind the shared cold frame, which carries the parent, edit, PATTERN and friction directives and the orientation steps.
+// The strand is registered with runproc under the worktree's pair slug when the run has one, so the run's end verbs stop it.
 // It refuses, spawning nothing, with no verify-gate report on disk, a recovery role whose engine cannot audit forks, or a gate config with no `webster-fix` key.
 // The fixer's final action is its reply file in the scratch dir (VerifyFixReplyPath), the strand's shuttle output file; a stale one is removed at spawn.
 // Each spawn appends a VerifyFixerState to State.VerifyFixers, which the verb saves and fabric-commits at once;
