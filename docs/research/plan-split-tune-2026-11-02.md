@@ -1,8 +1,8 @@
-# Plan split tune: round 1 changes, replays pending
+# Plan split tune: round 1 changes and their replay
 
-2026-11-02, hub `loomyard-LYMHUB`, task `plan-split-tune`.
-The report records the round-1 changes to the plan-split writers and why each was made.
-It holds no replay results: those are pending the follow-up task `plan-split-replay`.
+2026-11-02, hub `loomyard-LYMHUB`, tasks `plan-split-tune` and `plan-split-replay`.
+The report records the round-1 changes to the plan-split writers and why each was made, then the replay of those changes on the installed `lym`.
+The replay figures record one run per input on one machine and are not claiming to stay true.
 
 ## Question
 
@@ -34,16 +34,66 @@ The parent recorded the split in the decision record: this run lands round 1's c
 - No gate check enforces `PATTERN-cli-cobra`'s constructor name; that defect rests on the new Parts-Write step alone.
   The replays are what will show whether the step is enough.
 
-## Pending: replays
+## Replay
 
-`plan-split-replay` runs the loop this task planned, on the installed `lym` once this lands:
+`plan-split-replay` ran the loop on the installed `lym`, built after the round-1 changes landed on `main`.
+Files: `plan-split-replay-2026-11-02/` holds each split plan's `plandag` report and its Plan-Review round.
 
-- Inputs: `warp-visibility` (code `d407ef69`, record weft `576c4b3a31`) and `run-verbs-shared` (code `52b69848`, record weft `b8a86e5c59`), as in the bench.
-- One round: replay Parts-Write and Parts-Plan-Write on both inputs with `plan_split` on, and record per input whether the parts joined, which gates refused, and every hand edit needed.
-- At most 3 rounds, so at most 6 split writings, and one Plan-Review round per input on the last round's plans only.
-- The loop ends early at the first round where both inputs join and pass their gates with no hand edit.
+### Method
 
-| round | input | joined | gates that refused | hand edits | cost |
+- Inputs: the bench's `warp-visibility` and `run-verbs-shared` records.
+  The 2026-11-02 author rewrite changed every commit SHA, so the bench's SHAs no longer resolve; the orch mapped each by date to its rewritten equivalent.
+
+  | input | bench code | rewritten code | bench record weft | rewritten record weft |
+  |---|---|---|---|---|
+  | `warp-visibility` | `d407ef69` | `f91866f5` | `576c4b3a31` | `62083317f4` |
+  | `run-verbs-shared` | `52b69848` | `273ea6ca` | `b8a86e5c59` | `4e6d7e3783` |
+
+- Two scratch worktrees made by the orch with `lym fabric add --local`: `psr-wv` and `psr-rv`, each with `plan_split: true` in its own `_lym/config/tapestry.yaml`, `_lym/discussion` and `_lym/reviews/discussion` taken from the record commit.
+- As in the bench, each run was seeded with `lym shed seed self --recipe tapestry --driver go --param parent=main`, stepped through Preflight, and its `status.json` edited onto `Parts-Write` with Discussion-Write and Discussion-Bouncer recorded done.
+  `lym shed pause --after Parts-Plan-Write` stopped each run after the join; a second pause after `Plan-Burler-Review` and `lym loom resume` ran the one Plan-Review round, which stopped at the fixer.
+- The hub's config of the day set models, efforts and fans; the two runs ran at once, so wall times include contention.
+- Cost and time: `go run ./tools/tokencount -hub ~/Code/loomyard-LYMHUB -detail psr-wv psr-rv`.
+
+### Round 1
+
+| input | joined | gates that refused | hand edits | writing cost | writing wall | cards |
+|---|---|---|---|---|---|---|
+| `warp-visibility` | yes | `plan-part` once, on the `entry-merge` part: `handle-dangling` for `plan:internal/boardengine#FabricReplay.Replay`; the part writer fixed it on the gate's re-prompt | none | $18.69 | 24m08s | 36 |
+| `run-verbs-shared` | yes | none | none | $29.36 | 29m07s | 37 |
+
+Writing cost and wall cover Parts-Write, the part writers and the chair.
+The parts gate refused nothing on either input, and `join-parts` joined both without a hand edit, so the loop ended after round 1 of the cap of 2.
+The `status.json` edits and pauses are the bench's harness steps, not repairs of a writer's output.
+The `loom-crash-resume.md` friction note in `psr-wv` comes from the `status.json` edit made while the run was parked at `Parts-Write`.
+
+### Plan-Review, one round on round 1's plans
+
+| input | cost | findings | blocking | medium | low |
 |---|---|---|---|---|---|
-| 1 | `warp-visibility` | pending | pending | pending | pending |
-| 1 | `run-verbs-shared` | pending | pending | pending | pending |
+| `warp-visibility` | $7.92 | 8 | 0 | 5 | 3 |
+| `run-verbs-shared` | $7.38 | 12 | 0 | 4 | 8 |
+
+The cost covers the reviewer, its forks and the seed, to the round's end; the fixer did not run.
+
+### Card overlap
+
+| input | cards | direct dependencies | critical path | widest level |
+|---|---|---|---|---|
+| `warp-visibility` | 36 | 60 | 8 | 15 |
+| `run-verbs-shared` | 37 | 119 | 20 | 7 |
+
+### Reading
+
+- Both defects the bench's hand edits repaired did not recur: no `heddlecli#NewCommand`-style export, no vocabulary-barred export name, and no `part-export-missing` through three attempts on `run-verbs-shared`, which now joined.
+  The new Parts-Write step and the parts gate's checks are consistent with that, on one run per input.
+- The bench's `warp-visibility` split cost $16.69 to write with 34 cards and 80 dependencies; this run cost $18.69 with 36 cards and 60 dependencies.
+  The bench's `run-verbs-shared` plan arm cost $28.03 for 19 cards; the split arm now cost $29.36 for 37.
+- Plan-Review found no blocking finding on either plan, against 3 to 4 on the bench's `warp-visibility` arms and 2 on its `run-verbs-shared` plan arm; the reviewers read different plans, so the counts are not paired.
+- No later round was needed, so nothing waits on a tuning that has not landed, and no next replay needs a check.
+
+### Deviations
+
+- Drift-Baseline was not run, as in the bench.
+- One run per input, no repeat: a direction, not an effect.
+- The Plan-Review fixer was not run, so the review findings are unresolved.
