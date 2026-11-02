@@ -63,3 +63,21 @@ func (b *Board) ParentBeamOf(slug string) (string, error) {
 	}
 	return ParentBeam(store.tasks, slug), nil
 }
+
+// BeamUnder returns the beam an entry whose project link is project belongs to, "" meaning the prime, persisting nothing.
+// It is project itself when project is an open beam project, and otherwise the beam ParentBeamOf answers for project.
+// An empty project, and one the board does not hold, read as the prime.
+// It answers for an entry the board does not yet hold as written, such as a new entry or one whose project link a write is about to change.
+func (b *Board) BeamUnder(project string) (string, error) {
+	if project == "" {
+		return "", nil
+	}
+	entry, found, err := b.GetTask(project)
+	if err != nil || !found {
+		return "", err
+	}
+	if entry.Kind == KindProject && entry.Beam && !isDone(entry) {
+		return project, nil
+	}
+	return b.ParentBeamOf(project)
+}

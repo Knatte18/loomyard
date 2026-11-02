@@ -63,7 +63,9 @@
 // It must be an object of module name to keys, and `configreg.PrepareRunSettings` migrates and validates it; a refusal names the module and the key, and the board stores the migrated result.
 // A payload's `profile` is checked on the same paths: it must be a string, and a non-empty one must name a run profile in the hub's `profiles.yaml` (`runprofile.Load` over the board dir), else the refusal names the known profiles and the way forward; `""` clears it.
 // Whether the profile holds a block for the task's recipe is checked at Seed-Child, which resolves the recipe.
-// A change to either stored value is refused from a session whose `LYM_STRAND_NAME` carries a task slug (`agentname.TaskSlug`), the same guard as a hub-wide config write, and names the operator or the hub orch as the way forward.
+// A change to either stored value is refused from a session whose `LYM_STRAND_NAME` carries a slug, and names the operator, the hub orch or the orch of the entry's beam as the way forward.
+// A beam's orch, its strand carrying the beam's slug and the orch role, is the exception: it changes either value on an entry that belongs to its beam both as stored and after the write.
+// The entry's beam is read through its project link by `boardengine.Board.BeamUnder`.
 // The guard reads outside the write lock and stops a mistaken write, not a determined one.
 // A change on an entry held by a run past `Worktree-Create` and `Seed-Child` still succeeds and adds a `notice` field to the envelope:
 // it applies to the next run's Seed-Child, and the running pair takes it through `lym config <module> --layer local --set` in the pair.

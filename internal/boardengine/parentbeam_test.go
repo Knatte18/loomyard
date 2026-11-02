@@ -117,6 +117,23 @@ func TestParentBeam(t *testing.T) {
 		}
 	})
 
+	t.Run("BeamUnderAnswersFromTheProjectLink", func(t *testing.T) {
+		t.Parallel()
+		b := newProjectBoard(t, func(cfg *boardengine.Config) {
+			seedBoardJSON(t, cfg.Path,
+				`{"id":0,"slug":"beam","title":"Beam","kind":"project","labels":["bug"],"beam":true}`,
+				`{"id":1,"slug":"group","title":"Group","kind":"project","labels":["bug"],"project":"beam"}`,
+				`{"id":2,"slug":"closed","title":"Closed","kind":"project","labels":["bug"],"beam":true,"status":"done"}`,
+				`{"id":3,"slug":"loose","title":"Loose","kind":"project","labels":["bug"]}`,
+			)
+		})
+		for project, want := range map[string]string{"beam": "beam", "group": "beam", "closed": "", "loose": "", "ghost": "", "": ""} {
+			if got, err := b.BeamUnder(project); err != nil || got != want {
+				t.Errorf("BeamUnder(%q) = %q, %v; want %q", project, got, err, want)
+			}
+		}
+	})
+
 	t.Run("AFailingSeamLeavesTheCellEmptyAndTheListSucceeds", func(t *testing.T) {
 		t.Parallel()
 		errSeam := errors.New("origin record unreadable")

@@ -715,7 +715,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepRunSettings pins run_settings and profile on the upsert verbs: a valid setting or known profile is stored, each refusal names the module, the key or the profile, a task session's change is refused while an identical re-write passes, and a change on an entry past Seed-Child returns the notice.
+// stepRunSettings pins run_settings and profile on the upsert verbs: a valid setting or known profile is stored, each refusal names the module, the key or the profile, a task session's change is refused while an identical re-write passes, a beam's orch changes the entries of its own beam and no other, and a change on an entry past Seed-Child returns the notice.
 func stepRunSettings(t *testing.T, f *cliFixture) {
 	const loomBounces = `{"slug":"rs","title":"RS","kind":"task","labels":["bug"],"run_settings":{"loom":{"review_max_bounces":2}}}`
 
@@ -785,6 +785,48 @@ func stepRunSettings(t *testing.T, f *cliFixture) {
 		result = runJSON(t, 1, "upsert", `{"slug":"rs","profile":"light"}`)
 		if message, _ := result["error"].(string); !strings.Contains(message, "ly:task-a:loom") {
 			t.Errorf("profile change error %q does not name the session", message)
+		}
+	})
+
+	t.Run("a beam's orch changes the entries of its own beam only", func(t *testing.T) {
+		f.reset(t)
+		seedBoardFile(t, f.cwd, `{"version":1,"entries":[`+
+			`{"id":0,"slug":"bm","title":"Beam","kind":"project","labels":["bug"],"beam":true},`+
+			`{"id":1,"slug":"grp","title":"Group","kind":"project","labels":["bug"],"project":"bm"},`+
+			`{"id":2,"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"bm"},`+
+			`{"id":3,"slug":"outside","title":"Outside","kind":"task","labels":["bug"]}]}`)
+		t.Setenv(agentname.StrandNameEnv, "ly:bm:orch")
+		runJSON(t, 0, "upsert", `{"slug":"new","title":"New","kind":"task","labels":["bug"],"project":"bm","profile":"docs"}`)
+		runJSON(t, 0, "upsert", `{"slug":"deep","title":"Deep","kind":"task","labels":["bug"],"project":"grp","profile":"docs"}`)
+		runJSON(t, 0, "upsert", `{"slug":"member","profile":"light"}`)
+		if task, _ := runJSON(t, 0, "get", `{"slug":"new"}`)["task"].(map[string]any); task["profile"] != "docs" {
+			t.Errorf("stored task = %v, want profile docs", task)
+		}
+		t.Setenv(agentname.StrandNameEnv, "ly:bm:orch-2")
+		runJSON(t, 0, "upsert", `{"slug":"member","profile":"speed"}`)
+
+		refusals := []struct {
+			name    string
+			strand  string
+			payload string
+		}{
+			{name: "an entry outside the beam", strand: "ly:bm:orch", payload: `{"slug":"outside","profile":"docs"}`},
+			{name: "a new entry under no project", strand: "ly:bm:orch", payload: `{"slug":"loose","title":"Loose","kind":"task","labels":["bug"],"profile":"docs"}`},
+			{name: "a member moved out of the beam", strand: "ly:bm:orch", payload: `{"slug":"member","project":"","profile":"solid"}`},
+			{name: "an entry moved into the beam", strand: "ly:bm:orch", payload: `{"slug":"outside","project":"bm","profile":"docs"}`},
+			{name: "a project link that is not a string", strand: "ly:bm:orch", payload: `{"slug":"member","project":5,"profile":"docs"}`},
+			{name: "the beam itself", strand: "ly:bm:orch", payload: `{"slug":"bm","profile":"docs"}`},
+			{name: "another role in the beam", strand: "ly:bm:loom", payload: `{"slug":"member","profile":"solid"}`},
+			{name: "the orch of another beam", strand: "ly:other:orch", payload: `{"slug":"member","profile":"solid"}`},
+		}
+		for _, tt := range refusals {
+			t.Run("refuses "+tt.name, func(t *testing.T) {
+				t.Setenv(agentname.StrandNameEnv, tt.strand)
+				result := runJSON(t, 1, "upsert", tt.payload)
+				if message, _ := result["error"].(string); !strings.Contains(message, tt.strand) || !strings.Contains(message, "the orch of the entry's beam") {
+					t.Errorf("error %q does not name the session and the way forward", message)
+				}
+			})
 		}
 	})
 

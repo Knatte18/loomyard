@@ -22,8 +22,8 @@ import (
 // run_settings must be an object of module name to keys; configreg.PrepareRunSettings migrates and validates it,
 // and the migrated documents replace the payload's value so the board stores the migrated result.
 // profile must be a string, and a non-empty one must name a run profile loadProfiles returns.
-// A change to either stored value is refused from a session whose strand name carries a task slug, and returns a notice when the stored status says a run is past Seed-Child.
-// The slug guard reads outside the board's write lock and guards a mistaken write, not a determined one.
+// A change to either stored value is refused from a session refuseRunSettingsCaller refuses, and returns a notice when the stored status says a run is past Seed-Child.
+// The caller guard reads outside the board's write lock and guards a mistaken write, not a determined one.
 func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName string, loadProfiles func() (runprofile.Profiles, error)) (string, error) {
 	settingsValue, settingsPresent := fields["run_settings"]
 	profileValue, profilePresent := fields["profile"]
@@ -71,14 +71,49 @@ func prepareRunSettings(b *boardengine.Board, fields map[string]any, strandName 
 	if !changed {
 		return "", nil
 	}
-	if agentname.TaskSlug(strandName) != "" {
-		return "", fmt.Errorf("a run_settings or profile change is refused from the task session %s; way forward: the operator or the hub orch makes the change", strandName)
+	if err := refuseRunSettingsCaller(b, strandName, fields, stored); err != nil {
+		return "", err
 	}
 	producer, running := boardengine.RunStatusProducer(stored.Status)
 	if running && producer != battenrecipe.NameWorktreeCreate && producer != battenrecipe.NameSeedChild {
 		return fmt.Sprintf("the run_settings or profile change of %q applies to the next run's Seed-Child; the running pair takes it through `lym config <module> --layer local --set` in the pair", slug), nil
 	}
 	return "", nil
+}
+
+// refuseRunSettingsCaller refuses a run_settings or profile change on one entry from a session that may not make it.
+// A session whose strand name carries no slug, the operator's or the hub orch's, may.
+// A beam's orch, whose strand name carries the beam's slug and the orch role, may when the entry belongs to that beam both as stored and as the payload leaves its project link.
+// It sets the profile of the tasks it files under its beam but moves no change past the beam's edge.
+// Every other session whose strand name carries a slug is refused.
+// stored is the zero entry when the board does not yet hold the entry.
+func refuseRunSettingsCaller(b *boardengine.Board, strandName string, fields map[string]any, stored boardengine.Task) error {
+	name, err := agentname.Parse(strandName)
+	if err != nil || name.Slug == "" {
+		return nil
+	}
+	refusal := fmt.Errorf("a run_settings or profile change is refused from the session %s, which is no orch of the entry's beam; way forward: the operator, the hub orch or the orch of the entry's beam makes the change", strandName)
+	if !agentname.MatchesRole(name.Role, agentname.RoleOrch) {
+		return refusal
+	}
+	project := stored.Project
+	if value, present := fields["project"]; present {
+		project, _ = value.(string)
+	}
+	links := []string{project}
+	if stored.Slug != "" && stored.Project != project {
+		links = append(links, stored.Project)
+	}
+	for _, link := range links {
+		beam, err := b.BeamUnder(link)
+		if err != nil {
+			return err
+		}
+		if beam != name.Slug {
+			return refusal
+		}
+	}
+	return nil
 }
 
 // migrateRunSettings returns a payload's run_settings value migrated and validated, as module name to keys.
