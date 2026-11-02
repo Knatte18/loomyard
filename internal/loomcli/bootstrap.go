@@ -10,6 +10,7 @@ package loomcli
 import (
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -20,15 +21,25 @@ import (
 // The reed engine's add operation has no upsert semantics and refuses an add whose explicit role another strand already holds.
 // Every add and every lookup must use this exact constant,
 // so the bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of having its add refused.
-const statusStrandDisplayName = "loom-status"
+const statusStrandDisplayName = loomengine.LoomStatusStrandName
 
-// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command: the session's overview window, with no size and no segment, so its window button takes the plain style.
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command, placed by the session's strands.
+// It takes the session's overview window, unless strands hold a beam's runs strand, which holds that window in a beam's session.
+// There it takes a window of its own that never takes the viewer, since reed refuses a second overview strand.
+// Either way it has no size and no segment, so its window button takes the plain style.
 // IfAbsent stays false because ensureStatusStrand does its own keep/replace/add dance.
-func statusStrandAddSpec(cmd string) reedengine.AddSpec {
+func statusStrandAddSpec(cmd string, strands []reedengine.StrandStatus) reedengine.AddSpec {
+	display := render.Display{Anchor: render.AnchorOverview}
+	for _, s := range strands {
+		if agentname.Matches(s.Name, orchcli.RunsStrandName) {
+			display = render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}
+			break
+		}
+	}
 	return reedengine.AddSpec{
 		NameOverride: statusStrandDisplayName,
 		Cmd:          cmd,
-		Display:      render.Display{Anchor: render.AnchorOverview},
+		Display:      display,
 	}
 }
 

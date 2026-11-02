@@ -10,6 +10,7 @@
 // The hub-scope origin reconcile runs from the prime whichever orch is brought up.
 // After the refusals `BeamUp` starts this worktree's dobby through `dobbyengine.EnsureLive`, only when it is not live, as the first step of the pair it brings up with the runs strand, the orch and its watcher.
 // A dobby that does not start never stops the bring-up: it becomes a warning naming the cause and `lym beam start`.
+// The runs strand holds the session's one overview window: it replaces a `loom-status` strand a pawl run's `lym loom start` put there first, and a runs strand it could not add, replace or record is a warning on the report naming the cause and `lym beam start`, never a stop.
 // `BeamUpWorktree` is the bring-up for any other verb that needs a worktree's dobby live: it names the worktree from the prime, runs `BeamUp` without `Prepare`, and returns a dobby that was refused or failed as an error, so no verb starts a dobby without its orch.
 // `BeamDown` removes the orch strand, after which the watcher exits on its own, and ends the worktree's dobby through `runproc.EndRole`, so no other process of the beam is signalled; each part stops only when live.
 // `OrchLive` is the liveness predicate other modules call: the worktree's orch state records a strand that reed tracks and reports live.

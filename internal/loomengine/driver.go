@@ -4,6 +4,7 @@
 // Unlike ReviewSettings, the driver's resolved choice carries no Timeout: shuttleengine.Spec.Timeout feeds
 // Run.deadline, which only Wait reads, and the driver path deliberately never calls Wait, so a
 // timeout key would configure nothing.
+// It also pins the roles of the strands a loom bootstrap adds: the driver's and the status strand's.
 
 package loomengine
 
@@ -20,6 +21,11 @@ import (
 // Every add and every lookup must use this exact constant, or a re-entrant bootstrap misses the driver already running and its add is refused.
 // It lives here rather than in loomcli so batten can look the driver up without importing another CLI package.
 const LoomDriverStrandName = agentname.RoleDriver
+
+// LoomStatusStrandName is the role of the strand `lym loom start` adds to draw a run's gate checklist.
+// It is pinned because reed's add refuses an add whose explicit role another strand already holds, so every add and lookup must use it,
+// and a beam's orch bring-up reads it to take the session's overview window from that strand.
+const LoomStatusStrandName = "loom-status"
 
 // LegacyLoomDriverStrandName names a driver strand recorded before agent names existed.
 // No add ever uses it.

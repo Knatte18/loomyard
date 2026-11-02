@@ -291,6 +291,8 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 		wantCalls    []string
 		// wantSidecarGUID is the guid the sidecar holds after start, empty for none.
 		wantSidecarGUID string
+		// wantWarning, when set, is a warning the report carries.
+		wantWarning string
 	}{
 		{
 			name:            "no runs strand adds one before the orch starts",
@@ -320,9 +322,30 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 			wantSidecarGUID: "replaced-runs",
 		},
 		{
-			name:      "a failing add leaves start a success with the orch launched",
-			addErr:    errors.New("reed refused"),
-			wantCalls: []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			name:            "a loom status strand holding the overview is replaced by the runs strand",
+			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "loom-status", Live: true}},
+			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantSidecarGUID: "replaced-runs",
+		},
+		{
+			name:            "a stale runs strand is replaced when a loom status strand precedes it",
+			strands:         []reedengine.StrandStatus{{GUID: "s1", Name: "loom-status", Live: true}, {GUID: "r1", Name: "runs"}},
+			sidecarGUID:     "r1",
+			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantSidecarGUID: "replaced-runs",
+		},
+		{
+			name:            "a stale runs strand is replaced when a loom status strand follows it",
+			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "runs"}, {GUID: "s1", Name: "loom-status", Live: true}},
+			sidecarGUID:     "r1",
+			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantSidecarGUID: "replaced-runs",
+		},
+		{
+			name:        "a failing add leaves start a success with the orch launched and the failure on the report",
+			addErr:      errors.New("reed refused"),
+			wantCalls:   []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantWarning: "could not add the runs strand, so the beam overview is missing (reed refused); way forward: fix the cause it names, then run `lym beam start`",
 		},
 	}
 	for _, tt := range tests {
@@ -343,8 +366,12 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 				}
 			}
 
-			if code, env := h.run(t); code != 0 || env["ok"] != true {
+			code, env := h.run(t)
+			if code != 0 || env["ok"] != true {
 				t.Fatalf("start = exit %d, %v; want a success", code, env)
+			}
+			if warnings, _ := env["warnings"].([]any); tt.wantWarning != "" && !slices.Contains(warnings, any(tt.wantWarning)) {
+				t.Errorf("report warnings = %v; want one %q", warnings, tt.wantWarning)
 			}
 
 			if !slices.Equal(h.calls, tt.wantCalls) {

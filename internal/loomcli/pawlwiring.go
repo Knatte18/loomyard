@@ -1,4 +1,4 @@
-// pawlwiring.go holds the wiring only a pawl run needs beyond the BeamDescribe row: the seams of Beam-Up, Beam-Await and Beam-Down over the hub, the landing re-check Beam-Await runs, and the blocker read Finalize's land check backstops it with.
+// pawlwiring.go holds the wiring only a pawl run needs beyond the BeamDescribe row: the seams of Beam-Up, Beam-Await and Beam-Down over the hub, the notice of Beam-Up's warnings, the landing re-check Beam-Await runs, and the blocker read Finalize's land check backstops it with.
 
 package loomcli
 
@@ -42,6 +42,10 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	}
 
 	prime := func() (*lymcwd.Location, error) { return primeOfHub(location) }
+	notify := func(line string) error {
+		_, err := orchcli.NotifyOrchAt(location, pawlProgram, line)
+		return err
+	}
 	return pawlengine.Deps{
 		Slug:  slug,
 		Paths: hubgeom.PawlPaths(location),
@@ -99,8 +103,9 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Steps: []pawlengine.Step{{
 			Name: "bring up the beam's dobby and orch",
 			Run: func() error {
-				_, err := orchcli.BeamUp(location, orchcli.BeamUpOptions{Prepare: false})
-				return err
+				return runBeamUpStep(func() (orchcli.BeamUpReport, error) {
+					return orchcli.BeamUp(location, orchcli.BeamUpOptions{Prepare: false})
+				}, notify, slug)
 			},
 		}},
 		StopDobby: func() error {
@@ -129,10 +134,7 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return dobbyengine.Live(geometry)
 		},
 		Recheck: func() ([]string, error) { return pawlRecheck(location, slug) },
-		Notify: func(line string) error {
-			_, err := orchcli.NotifyOrchAt(location, pawlProgram, line)
-			return err
-		},
+		Notify:  notify,
 		Down: func() error {
 			_, err := orchcli.BeamDown(location)
 			return err
@@ -140,6 +142,41 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Now:   time.Now,
 		Sleep: sleepContext,
 	}, nil
+}
+
+// runBeamUpStep brings the beam slug up through beamUp and surfaces the warnings of its report through notify.
+// An error from beamUp is returned and halts the row; the warnings never do.
+func runBeamUpStep(beamUp func() (orchcli.BeamUpReport, error), notify func(line string) error, slug string) error {
+	report, err := beamUp()
+	if err != nil {
+		return err
+	}
+	surfaceBeamUpWarnings(notify, slug, report.Warnings)
+	return nil
+}
+
+// surfaceBeamUpWarnings logs each warning the bring-up of the beam slug reported and posts them through notify as one notice to the beam's orch,
+// so a dobby that did not start or a missing overview reaches the operator without halting the row.
+// A notice that cannot be posted is logged, since the warnings are already in the log.
+func surfaceBeamUpWarnings(notify func(line string) error, slug string, warnings []string) {
+	line := beamUpWarningLine(slug, warnings)
+	if line == "" {
+		return
+	}
+	for _, warning := range warnings {
+		logger.Warn("loom: Beam-Up brought the beam up with a warning", "slug", slug, "warning", warning)
+	}
+	if err := notify(line); err != nil {
+		logger.Warn("loom: Beam-Up could not post its warnings to the beam's orch", "slug", slug, "cause", err)
+	}
+}
+
+// beamUpWarningLine words the notice of the warnings the bring-up of the beam slug reported, empty when it reported none.
+func beamUpWarningLine(slug string, warnings []string) string {
+	if len(warnings) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Beam-Up brought the beam %s up with warnings: %s", slug, strings.Join(warnings, "; "))
 }
 
 // openLandRequestWatch returns a channel that delivers a value whenever the land request changes, or nil when no watch can be opened, which leaves Beam-Await on its timer.

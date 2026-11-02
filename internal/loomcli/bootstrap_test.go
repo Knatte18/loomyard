@@ -665,23 +665,32 @@ func plantedGate(seed shedrun.Seed) bool { return seed.Driver == shedrun.DriverL
 
 func TestStatusStrandAddSpec(t *testing.T) {
 	tiergate.Require(t, 0)
-	t.Run("fields", func(t *testing.T) {
-		got := statusStrandAddSpec("watch-cmd")
-		if got.NameOverride != statusStrandDisplayName {
-			t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
-		}
-		if got.Cmd != "watch-cmd" {
-			t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
-		}
-		if got.IfAbsent {
-			t.Error("IfAbsent = true; want false")
-		}
-		wantDisplay := render.Display{Anchor: render.AnchorOverview}
-		if got.Display != wantDisplay {
-			t.Errorf("Display = %+v; want %+v", got.Display, wantDisplay)
-		}
-		if got.Display.Focus {
-			t.Error("Display.Focus = true; want false")
-		}
-	})
+	t.Parallel()
+	tests := []struct {
+		name        string
+		strands     []reedengine.StrandStatus
+		wantDisplay render.Display
+	}{
+		{"NoStrandsTakesTheOverview", nil, render.Display{Anchor: render.AnchorOverview}},
+		{"OtherStrandsLeaveItTheOverview", []reedengine.StrandStatus{{GUID: "o", Name: "tst:main:orch", Live: true}}, render.Display{Anchor: render.AnchorOverview}},
+		{"ABeamRunsStrandSendsItToAWindowOfItsOwn", []reedengine.StrandStatus{{GUID: "r", Name: "runs", Live: true}}, render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := statusStrandAddSpec("watch-cmd", tt.strands)
+			if got.NameOverride != statusStrandDisplayName {
+				t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
+			}
+			if got.Cmd != "watch-cmd" {
+				t.Errorf("Cmd = %q; want %q", got.Cmd, "watch-cmd")
+			}
+			if got.IfAbsent {
+				t.Error("IfAbsent = true; want false")
+			}
+			if got.Display != tt.wantDisplay {
+				t.Errorf("Display = %+v; want %+v", got.Display, tt.wantDisplay)
+			}
+		})
+	}
 }

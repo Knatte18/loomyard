@@ -2,6 +2,7 @@
 // On the start side, an llm-seeded start keeps exactly one status strand.
 // On the step side, "lym loom step" and "lym shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
 // A start re-arms the session's follow state and selects the run's relevant window, and a resume leaves a follow-off session off.
+// A start in a session whose overview window a runs strand holds adds the status strand in a window of its own.
 // ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
 // what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
 //
@@ -18,7 +19,9 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -56,23 +59,29 @@ func windowID(t *testing.T, eng *reedengine.Engine, target string) string {
 	return strings.TrimSpace(string(out))
 }
 
-// statusStrandPane returns the pane id of eng's status strand.
-func statusStrandPane(t *testing.T, eng *reedengine.Engine) string {
+// strandPane returns the pane id of eng's strand named name.
+func strandPane(t *testing.T, eng *reedengine.Engine, name string) string {
 	t.Helper()
 	status, err := eng.Status()
 	if err != nil {
 		t.Fatalf("reed status: %v", err)
 	}
 	for _, s := range status.Strands {
-		if agentname.Matches(s.Name, statusStrandDisplayName) {
+		if agentname.Matches(s.Name, name) {
 			return s.PaneID
 		}
 	}
-	t.Fatalf("reed status holds no %s strand", statusStrandDisplayName)
+	t.Fatalf("reed status holds no %s strand", name)
 	return ""
 }
 
-// TestSmokeStatusStrandAcrossDriverSeeds drives the step verbs, and an llm-seeded start, over one pair per driver seed, in this order.
+// statusStrandPane returns the pane id of eng's status strand.
+func statusStrandPane(t *testing.T, eng *reedengine.Engine) string {
+	t.Helper()
+	return strandPane(t, eng, statusStrandDisplayName)
+}
+
+// TestSmokeStatusStrandAcrossDriverSeeds drives the step verbs, and an llm-seeded start, over one pair per driver seed, in this order, then a start over a pair whose session holds a runs strand.
 // A run's seed cannot be rewritten to the other driver, so each driver gets its own pair, and the steps of one pair share its reed session.
 // The step that adds a status strand builds on the reed session the step before it brought up, and the strand it adds stays for the steps after it.
 func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
@@ -114,7 +123,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			if _, err := eng.Up(); err != nil {
 				t.Fatalf("reed up: %v", err)
 			}
-			added, err := eng.AddStrand(statusStrandAddSpec("sleep 3600"))
+			added, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", nil))
 			if err != nil {
 				t.Fatalf("add status strand: %v", err)
 			}
@@ -163,6 +172,40 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		})
 	})
 
+	// A beam's session holds a runs strand in the overview window, so a start there adds the status strand in a window of its own.
+	t.Run("start beside a runs strand adds the status strand in its own window", func(t *testing.T) {
+		_, loc, worktree, _ := newWiredPairFixture(t)
+		registerBootstrapTeardown(t, loc, worktree)
+		seedLLMDriver(t, loc)
+
+		eng := probeReedEngine(t, loc)
+		if _, err := eng.Up(); err != nil {
+			t.Fatalf("reed up: %v", err)
+		}
+		runsSpec := reedengine.AddSpec{
+			NameOverride: orchcli.RunsStrandName,
+			Cmd:          "sleep 3600",
+			Display:      render.Display{Anchor: render.AnchorOverview},
+		}
+		if _, err := eng.AddStrand(runsSpec); err != nil {
+			t.Fatalf("add runs strand: %v", err)
+		}
+
+		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
+		if err != nil {
+			t.Fatalf("lym loom start --no-attach: %v; output: %s", err, out)
+		}
+
+		if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
+			t.Fatalf("status strands after the start = %d; want 1; output: %s", count, out)
+		}
+		statusWindow := windowID(t, eng, statusStrandPane(t, eng))
+		runsWindow := windowID(t, eng, strandPane(t, eng, orchcli.RunsStrandName))
+		if statusWindow == runsWindow {
+			t.Errorf("status strand window = %s, the runs strand's window; want a window of its own; output: %s", statusWindow, out)
+		}
+	})
+
 	t.Run("llm driver", func(t *testing.T) {
 		_, loc, worktree, _ := newWiredPairFixture(t)
 		registerBootstrapTeardown(t, loc, worktree)
@@ -183,7 +226,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			if _, err := eng.Up(); err != nil {
 				t.Fatalf("reed up: %v", err)
 			}
-			if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600")); err != nil {
+			if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", nil)); err != nil {
 				t.Fatalf("add status strand: %v", err)
 			}
 			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {

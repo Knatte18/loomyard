@@ -480,7 +480,9 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	if err := c.reedUp(); err != nil {
 		return report, err
 	}
-	c.ensureRunsStrand()
+	if warning := c.ensureRunsStrand(); warning != "" {
+		report.Warnings = append(report.Warnings, warning)
+	}
 
 	index := opts.Index
 	if index == nil {

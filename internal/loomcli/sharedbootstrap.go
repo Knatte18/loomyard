@@ -276,7 +276,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	if err != nil {
 		return err
 	}
-	addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe))
+	addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe), statusResult.Strands)
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot. A failure is
