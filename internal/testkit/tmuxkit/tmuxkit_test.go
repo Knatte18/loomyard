@@ -5,16 +5,23 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lymtemp"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestCheckSocketPath(t *testing.T) {
 	tiergate.Require(t, 0)
+	runDir, err := lymtemp.Dir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const tenDigitUID = 1856216086
 	tests := []struct {
 		name    string
 		dir     string
@@ -24,7 +31,8 @@ func TestCheckSocketPath(t *testing.T) {
 		{"short directory", "/tmp/lym123", 1000, false},
 		{"directory at the limit", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000, false},
 		{"directory one byte over", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes+1), 1000, true},
-		{"run directory of the widest uid", "/tmp/lym-4294967295/r0a1b2c", 4294967295, false},
+		{"run directory of the widest uid", "/tmp/lym-4294967295/r0a1b", 4294967295, false},
+		{"run directory of a ten-digit uid under /dev/shm", filepath.Join("/dev/shm", "lym-"+strconv.Itoa(tenDigitUID), filepath.Base(runDir)), tenDigitUID, false},
 		{"longer uid widens the path", "/tmp/" + strings.Repeat("d", 107-len("/tmp/")-len("/tmux-1000/")-maxKeyBytes), 1000000, true},
 	}
 	for _, tt := range tests {

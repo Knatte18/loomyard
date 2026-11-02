@@ -29,8 +29,8 @@ func TestNewRun_HoldsItsLockUntilRemoved(t *testing.T) {
 	if filepath.Dir(created.dir) != root.Path() || !strings.HasPrefix(filepath.Base(created.dir), runPrefix) {
 		t.Fatalf("run directory = %q, want a %q-prefixed child of %q", created.dir, runPrefix, root.Path())
 	}
-	if !regexp.MustCompile(`^r[0-9a-f]{6}$`).MatchString(filepath.Base(created.dir)) {
-		t.Errorf("run directory name %q does not match r plus six hex digits", filepath.Base(created.dir))
+	if !regexp.MustCompile(`^r[0-9a-z]{4}$`).MatchString(filepath.Base(created.dir)) {
+		t.Errorf("run directory name %q does not match r plus four lower-case letters or digits", filepath.Base(created.dir))
 	}
 	info, err := os.Stat(created.dir)
 	if err != nil {

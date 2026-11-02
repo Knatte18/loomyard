@@ -4,7 +4,7 @@ A temp file or directory lym or its tests create lives in the process run direct
 
 - The root is `<system temp>/lym-<uid>` off Windows and `<system temp>\lym` on Windows, where the system temp directory is already per user.
   It is created 0700 and refused unless it is a real directory owned by the user; a refused root creates nothing.
-- Each process has one run directory below the root, `r` plus six random hex digits, created 0700 with `os.Mkdir`, a taken name retried up to a bound and then refused naming the root, holding a lock file its process holds until it removes the directory.
+- Each process has one run directory below the root, `r` plus four random lower-case letters or digits, created 0700 with `os.Mkdir`, a taken name retried up to a bound and then refused naming the root, holding a lock file its process holds until it removes the directory.
   `lymtemp.MkdirTemp` and `lymtemp.CreateTemp` create below it.
 - A process whose system temp directory is already a run directory under a lym root takes that root as its own and makes its run directory beside the parent's, so nesting never pushes a tmux socket path past the `sun_path` limit.
   No code hands a child a `TMPDIR` that is not a run directory.

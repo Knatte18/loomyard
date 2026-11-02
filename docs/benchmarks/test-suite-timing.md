@@ -765,3 +765,59 @@ The default run's package wall, 351.85 s, matches the 348.72 s of `test-time-aud
 
 A permanent setting is not worth a task of its own yet.
 What stands in the way is the socket directory name in `tmuxkit` (the 107-byte limit against `lym-<uid>/r<hex>` and the socket name), which a task would shorten, for example by naming the socket directory outside the uid-long root, before `TMPDIR=/dev/shm` can be tried again.
+
+## tmuxkit-short-socket-path: `internal/fabricengine` `tier1` on `/dev/shm`, measured
+
+A measurement report on OSL-1046: it records one set of runs and is not meant to stay true.
+It answers the two questions `fabricengine-shm-bench` could not: can `internal/fabricengine` `tier1` run with its temp root on `/dev/shm`, and does that avoid the Cortex XDR scan.
+
+### Setup
+
+```yaml
+machine: Intel Core Ultra 7 366H, 16 cores, 30 GB, /dev/shm 16 GB, OSL-1046
+security: Cortex XDR installed
+go: go1.26.9 linux/amd64
+revision: e1770b2a
+uid: 1856216086
+command: lym gate test --wait --tier 1 ./internal/fabricengine -- -count=1
+shm setting: TMPDIR=/dev/shm for the run only, no symlink, no config change
+gate slots: 3 in the hub, shared with other worktrees' runs
+```
+
+The fix shortens the run directory name of `internal/lymtemp` from `r` plus six hex digits to `r` plus four lower-case letters or digits.
+For this uid the longest socket path under `/dev/shm` is now 107 bytes, at the limit, and `tmuxkit.Main` starts.
+Each pair's two runs were started by one command that backgrounded both, and that command sampled `df` of `/dev/shm`, `du` and `find -type f` of `/dev/shm/lym-<uid>` every two seconds.
+
+### Runs
+
+| Pair | Run | Started first | Gate wall | Package wall | Result | Load at start | Load at end | `/dev/shm` use before, peak, after |
+|---|---|---|---|---|---|---|---|---|
+| 1 | default | yes | 537.7 s | 522.40 s | passed, 1600 of 1759 | 5.92 10.88 17.89 | 54.66 38.74 28.01 | 291, 509, 282 MB |
+| 1 | shm | no | 528.1 s | 512.88 s | passed, 1600 of 1759 | 5.92 10.88 17.89 | 57.38 38.71 27.88 | 291, 509, 282 MB |
+| 2 | shm | yes | 454.9 s | 447.53 s | passed, 1600 of 1759 | 46.05 37.62 27.82 | 41.40 36.37 30.00 | 282, 494, 280 MB |
+| 2 | default | no | 350.2 s | 343.22 s | passed, 1600 of 1759 | 46.05 37.62 27.82 | 45.49 36.15 30.93 | 282, 494, 280 MB |
+| 3 | default | yes | 504.3 s | 498.01 s | passed, 1600 of 1759 | 36.94 34.72 30.54 | 55.79 39.05 32.81 | 280, 431, 280 MB |
+| 3 | shm | no | 470.6 s | 464.23 s | passed, 1600 of 1759 | 36.94 34.72 30.54 | 53.13 36.66 31.84 | 280, 431, 280 MB |
+
+The `/dev/shm` columns are the machine's whole use, shared by the two runs of a pair.
+The temp root under `/dev/shm` held at most 8704 files and 35 MB in every shm run, and went back to empty after it; both figures are the largest of the two-second `find -type f` and `du` samples of `/dev/shm/lym-<uid>`.
+
+| Pair | shm package wall / default package wall | Concurrent |
+|---|---|---|
+| 1 | 0.982 | yes |
+| 2 | 1.304 | no |
+| 3 | 0.932 | yes |
+
+Pair 2 measured nothing.
+Another worktree held one of the hub's three gate slots, so its default run waited for a slot and the two runs did not run side by side for their whole length; the table records no clock times, so the overlap is not checkable from this report, and the default run's 343.22 s is not a pair partner's wall.
+Pairs 1 and 3 ran side by side for their whole length.
+
+### Answer
+
+- **Can `/dev/shm` be the work directory?** Yes. With `TMPDIR=/dev/shm` all three shm runs passed the same 1600 tests as the default runs, and memory is no obstacle: the package's files took 35 MB, and the machine's `/dev/shm` peaked at 509 MB of 16 GB.
+- **Does it avoid the Cortex slowdown?** No. In the two concurrent pairs the shm run was 2% and 7% faster than the default run, far short of the gap to the 45.7 s of the machine without Cortex XDR. Either Cortex XDR scans `tmpfs` as well, or the slowdown does not come from the files the tests create; these runs cannot tell which.
+
+### Note for the operator
+
+A permanent `/dev/shm` setting is not worth a task: it gains a few percent at most.
+A lead worth testing is the cost of the processes the tests start, such as each `git` and `tmux` exec Cortex XDR may inspect, rather than the files they write.

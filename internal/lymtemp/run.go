@@ -9,6 +9,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/lock"
 )
@@ -16,6 +17,13 @@ import (
 const (
 	// runPrefix starts every run directory's name; the sweep considers no other entry.
 	runPrefix = "r"
+
+	// runNameAlphabet holds the characters a run directory name draws after runPrefix.
+	runNameAlphabet = "0123456789abcdefghijklmnopqrstuvwxyz"
+
+	// runNameLength is how many characters a run directory name draws after runPrefix.
+	// Four keeps a tmux socket path under `/dev/shm` with a ten-digit uid at the 107-byte sun_path limit.
+	runNameLength = 4
 
 	// runNameAttempts bounds how many names newRun draws before it gives up on a root full of taken ones.
 	runNameAttempts = 16
@@ -58,10 +66,15 @@ func (r *Root) newRun() (*run, error) {
 	return &run{dir: dir, lock: held}, nil
 }
 
-// randomRunName returns runPrefix followed by six random lower-case hex digits.
+// randomRunName returns runPrefix followed by runNameLength random lower-case letters and digits.
 // The short name keeps a tmux socket path below a run directory under the sun_path limit.
 func randomRunName() string {
-	return fmt.Sprintf("%s%06x", runPrefix, rand.Uint32N(1<<24))
+	var name strings.Builder
+	name.WriteString(runPrefix)
+	for range runNameLength {
+		name.WriteByte(runNameAlphabet[rand.IntN(len(runNameAlphabet))])
+	}
+	return name.String()
 }
 
 // remove releases the lock, then deletes the directory, since Windows cannot delete a locked file.
