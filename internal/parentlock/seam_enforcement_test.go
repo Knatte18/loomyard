@@ -12,6 +12,7 @@ import (
 
 // parentlockAllowedImports are the only non-stdlib import paths production code in this package may use.
 var parentlockAllowedImports = []string{
+	"github.com/Knatte18/loomyard/internal/fswatch",
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/proc",
 	"github.com/Knatte18/loomyard/internal/lymdirs",

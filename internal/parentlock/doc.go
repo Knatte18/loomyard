@@ -21,15 +21,18 @@
 //
 // Every read-modify-write runs under a file lock on `<Dir>/<hex(branch)>.lock`, so two acquirers never both win.
 // TryAcquire takes a free record, a record whose owner is not alive and a record naming the acquirer's own run, which rewrites the owner process.
-// A free or stale record goes to the oldest live ticket, kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`.
-// An acquirer that is not first in the queue keeps its ticket and is not granted; a dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
-// A run a pause covers, as Store.Covered tells, yields the queue: it keeps its ticket and place and is not granted, unless the record already names its own run, and the queue head is the oldest live ticket of an uncovered run.
+// A free or stale record goes to the head of the queue, the live tickets kept at `<Dir>/<hex(branch)>.tickets/<pid>-<start>.json`:
+// tickets at the front first, then the rest, each part oldest first.
+// An acquirer that is not the head keeps its ticket and is not granted; a dead waiter's ticket is removed in the attempt that finds it, and a granted acquirer's own ticket is removed.
+// A run a pause covers, as Store.Covered tells, yields the queue: it keeps its ticket and place and is not granted, unless the record already names its own run, and the queue head is the first live ticket of an uncovered run.
 // A covered waiter still first in the queue at the resume is granted next.
 //
 // # Waiting
 //
-// Acquire loops TryAcquire until granted, with no time limit, polling from one second and doubling to thirty seconds while the holder is unchanged.
-// A Waiter tells it three optional seams: OnWait when the wait starts and the holder changes, Paused before every sleep, and Sleep in place of the timer.
+// Acquire loops attempts until granted, with no time limit, polling from one second and doubling to thirty seconds while the holder is unchanged.
+// It watches the branch's record file through internal/fswatch, so a release or any other change to the record ends the poll delay early, still a second after the last attempt began; a watch that cannot open leaves the poll alone.
+// A Waiter tells it optional seams: OnWait when the wait starts and the holder changes, Paused before every sleep, Sleep in place of the timer and Now in place of the clock.
+// Its Front queues the caller at the front, for a run taking back a lock it freed to work outside it, so runs that queued meanwhile wait behind it.
 // A pause, a cancelled context and an attempt error each return with the caller's ticket removed.
 // The wait only waits and takes; it never frees another owner's live record.
 // A caller keeps its wait on disk as a Wait record at WaitRecordPath, which ReadWait ignores once its writing process is dead.

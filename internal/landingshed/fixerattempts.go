@@ -35,6 +35,9 @@ type FixerAttempts struct {
 	// AcceptedHead is the HEAD the operator accepted the entry's change at after that halt, so the entry lands that change with Findings open; empty when none was accepted.
 	// A change at any other HEAD is not covered by the acceptance.
 	AcceptedHead string `json:"accepted_head,omitempty"`
+	// Judged is the HEAD at which the entry's fixer change was last let through, within the caps, approved or accepted; empty when none was.
+	// A later merge of the parent onto it moves Baseline past the parent's commits.
+	Judged string `json:"judged,omitempty"`
 }
 
 // FixerAttemptsPath is the attempt record's path for row under scratchDir: one file per row.

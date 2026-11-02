@@ -60,7 +60,7 @@ func TestParentGuard_EnsureTakesFreeLockAndWaitsBehindAnother(t *testing.T) {
 		t.Parallel()
 		g, store, marks := newGuardFixture(t)
 
-		reason, err := g.ensure(context.Background(), "Publish")
+		reason, err := g.ensure(context.Background(), "Publish", false)
 		if reason != "" || err != nil {
 			t.Fatalf("ensure() = %q, %v; want held", reason, err)
 		}
@@ -93,7 +93,7 @@ func TestParentGuard_EnsureTakesFreeLockAndWaitsBehindAnother(t *testing.T) {
 		}
 		done := make(chan outcome, 1)
 		go func() {
-			reason, err := g.ensure(context.Background(), "Publish")
+			reason, err := g.ensure(context.Background(), "Publish", false)
 			done <- outcome{reason, err}
 		}()
 
@@ -116,6 +116,31 @@ func TestParentGuard_EnsureTakesFreeLockAndWaitsBehindAnother(t *testing.T) {
 		}
 		if want := []string{"parent lock main", ""}; strings.Join(*marks, "|") != strings.Join(want, "|") {
 			t.Errorf("marks = %q; want set then cleared %q", *marks, want)
+		}
+	})
+
+	t.Run("a wait at the front is granted ahead of a ticket queued before it", func(t *testing.T) {
+		t.Parallel()
+		g, store, _ := newGuardFixture(t)
+		queued := parentlock.Owner{Slug: "queued", Pair: "/p/queued", RunID: "r5", PID: 333, StartTime: "t3"}
+		if _, err := store.TryAcquire("main", guardOwnerOther); err != nil {
+			t.Fatal(err)
+		}
+		if attempt, err := store.TryAcquire("main", queued); err != nil || attempt.Granted {
+			t.Fatalf("TryAcquire(queued) = %+v, %v; want a queued ticket", attempt, err)
+		}
+		g.sleep = func(context.Context, time.Duration) error {
+			_, err := store.Release("main", guardOwnerOther)
+			return err
+		}
+
+		reason, err := g.ensure(context.Background(), "Finalize", true)
+
+		if reason != "" || err != nil {
+			t.Fatalf("ensure() = %q, %v; want held", reason, err)
+		}
+		if rec, found, _ := store.Read("main"); !found || !rec.Owner.SameProcess(guardOwnerMe) {
+			t.Errorf("record = %+v, %v; want it owned by the run waiting at the front", rec, found)
 		}
 	})
 }
@@ -172,7 +197,7 @@ func TestParentGuard_EnsureReasonsAndErrors(t *testing.T) {
 			g, store, _ := newGuardFixture(t)
 			ctx := tt.arrange(t, &g, store)
 
-			reason, err := g.ensure(ctx, "Publish")
+			reason, err := g.ensure(ctx, "Publish", false)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("ensure() error = %v; want %v", err, tt.wantErr)
 			}

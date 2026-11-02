@@ -13,7 +13,9 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/mergeresolve"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -200,6 +202,18 @@ func (fx *finalizeGateFixture) requireLanded(t *testing.T, outcome shedengine.Ou
 	}
 }
 
+// countingResolver counts the merges of the parent and answers each as merged.
+type countingResolver struct {
+	calls int
+	// onMerge, when set, runs on every merge with its 1-based number and answers whether the merge found the task already holding the parent's tip.
+	onMerge func(call int) (alreadyUpToDate bool)
+}
+
+func (r *countingResolver) Resolve(context.Context, string, string) (mergeresolve.Result, error) {
+	r.calls++
+	return resolved(r.onMerge != nil && r.onMerge(r.calls)), nil
+}
+
 // TestFinalize_GateAndFixer pins Finalize's landing gate and its finalize-mode fixer:
 // when the fixer spawns, how its attempts and its Baseline are kept across resumes, and where a spent cap, an over-cap change and an escalate report lead.
 func TestFinalize_GateAndFixer(t *testing.T) {
@@ -207,6 +221,294 @@ func TestFinalize_GateAndFixer(t *testing.T) {
 	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
 	passing := verifytree.Result{Status: verifytree.StatusPassed}
 	small := fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
+
+	t.Run("a failing gate frees the parent lock for the fixer, and the run takes it again to merge and verify before it lands", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			gates []verifytree.Result
+			// wantMerges is how many times the parent is merged into the task: once per pass under the lock.
+			wantMerges int
+			// wantAttempts is the gate attempts each fixer session gets.
+			wantAttempts []int
+			// wantLineChanges are the ranges the fixer's change is measured over, which never span a merge of the parent.
+			wantLineChanges string
+		}{
+			{
+				name:            "a fix that verifies green after the second merge lands",
+				gates:           []verifytree.Result{failing, passing},
+				wantMerges:      2,
+				wantAttempts:    []int{2},
+				wantLineChanges: "t2..f1",
+			},
+			{
+				name:            "a second failed verify spawns the fixer on the attempts left, measured from the merge",
+				gates:           []verifytree.Result{failing, passing, failing, passing},
+				wantMerges:      3,
+				wantAttempts:    []int{2, 1},
+				wantLineChanges: "t2..f1,f1..f2",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				fx := newFinalizeGateFixture(t)
+				g, store, _ := newGuardFixture(t)
+				fx.fz.guard = g
+				resolver := &countingResolver{}
+				fx.fz.resolver = resolver
+				fx.lineChange = small
+				fx.scriptGate(tt.gates...)
+				sessions := 0
+				var heldDuringFix []bool
+				fx.seats.turns = []func(){func() {
+					_, found, err := store.Read("main")
+					if err != nil {
+						t.Errorf("read the lock record during the fixer's turn: %v", err)
+					}
+					heldDuringFix = append(heldDuringFix, found)
+					sessions++
+					fx.turn(t, fixedReport, fmt.Sprintf("f%d", sessions))()
+				}}
+
+				outcome, ptr := fx.call(t)
+
+				fx.requireLanded(t, outcome, ptr)
+				for i, held := range heldDuringFix {
+					if held {
+						t.Errorf("fixer session %d ran under the parent lock; want it freed", i+1)
+					}
+				}
+				var attempts []int
+				for _, table := range fx.seats.tables {
+					attempts = append(attempts, table.Gate[0].Attempts)
+				}
+				if fmt.Sprint(attempts) != fmt.Sprint(tt.wantAttempts) {
+					t.Errorf("fixer gate attempts = %v; want %v", attempts, tt.wantAttempts)
+				}
+				if resolver.calls != tt.wantMerges {
+					t.Errorf("merges of the parent = %d; want %d", resolver.calls, tt.wantMerges)
+				}
+				if got := strings.Join(fx.lineChangeCalls, ","); got != tt.wantLineChanges {
+					t.Errorf("LineChange calls = %q; want %q", got, tt.wantLineChanges)
+				}
+				if _, found, _ := store.Read("main"); found {
+					t.Error("the parent lock outlived the landing")
+				}
+			})
+		}
+	})
+
+	t.Run("a pass after the lock was taken again judges the fixer's change from the right baseline", func(t *testing.T) {
+		tests := []struct {
+			name string
+			// fixerHead is the task head the fixer's turn leaves.
+			fixerHead string
+			// secondMergeHead is the task head the second merge of the parent leaves, as a merge that brings parent commits does.
+			secondMergeHead string
+			// secondMergeUpToDate makes the second merge find the task already holding the parent's tip.
+			secondMergeUpToDate bool
+			// headBeforeSecondMerge is a task head that appears between the two passes, as a commit made while the run queued.
+			headBeforeSecondMerge string
+			// wantLineChanges are the ranges the fixer's change is measured over.
+			wantLineChanges string
+		}{
+			{
+				name:            "a fixer turn that commits nothing is not charged with the commits the next merge brings",
+				fixerHead:       "t2",
+				secondMergeHead: "m1",
+			},
+			{
+				name:                "a no-op merge leaves the baseline where it was",
+				fixerHead:           "f1",
+				secondMergeUpToDate: true,
+				wantLineChanges:     "t2..f1,t2..f1",
+			},
+			{
+				name:                  "a head that moved since the change was let through leaves the baseline where it was",
+				fixerHead:             "f1",
+				headBeforeSecondMerge: "x1",
+				wantLineChanges:       "t2..f1,t2..x1",
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				fx := newFinalizeGateFixture(t)
+				g, _, _ := newGuardFixture(t)
+				fx.fz.guard = g
+				fx.fz.resolver = &countingResolver{onMerge: func(call int) bool {
+					if call != 2 {
+						return false
+					}
+					if tt.secondMergeHead != "" {
+						fx.head = tt.secondMergeHead
+					}
+					return tt.secondMergeUpToDate
+				}}
+				if tt.headBeforeSecondMerge != "" {
+					fetches := 0
+					readTips := fx.fz.deps.ReadParentTips
+					fx.fz.deps.ReadParentTips = func(fetch bool) (fabricengine.ParentTips, error) {
+						if fetch {
+							fetches++
+							if fetches == 2 {
+								fx.head = tt.headBeforeSecondMerge
+							}
+						}
+						return readTips(fetch)
+					}
+				}
+				fx.lineChange = small
+				fx.scriptGate(failing, passing)
+				fx.seats.turns = []func(){fx.turn(t, fixedReport, tt.fixerHead)}
+
+				outcome, ptr := fx.call(t)
+
+				fx.requireLanded(t, outcome, ptr)
+				if got := strings.Join(fx.lineChangeCalls, ","); got != tt.wantLineChanges {
+					t.Errorf("LineChange calls = %q; want %q", got, tt.wantLineChanges)
+				}
+			})
+		}
+	})
+
+	t.Run("a fix review over a passing gate runs with the parent lock freed, and its approval moves the baseline at the next merge", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		g, store, _ := newGuardFixture(t)
+		fx.fz.guard = g
+		fx.head = "f1"
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.merger.pushErr = errors.New("push refused")
+		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2"})
+		fx.scriptGate(passing)
+		var heldDuringReview []bool
+		fx.seats.reviewTurns = []func(){func() {
+			_, found, err := store.Read("main")
+			if err != nil {
+				t.Errorf("read the lock record during the fix review: %v", err)
+			}
+			heldDuringReview = append(heldDuringReview, found)
+			fx.review(t, approvedReview)()
+		}}
+
+		// The refused push stops the landing after the merge, which keeps the record the landing would otherwise remove.
+		fx.call(t)
+
+		if len(heldDuringReview) != 1 || heldDuringReview[0] {
+			t.Errorf("lock held during each fix review session = %v; want one session with the lock freed", heldDuringReview)
+		}
+		rec, found := fx.attempts(t)
+		if !found || rec.Reviewed != "f1" || rec.Judged != "f1" || rec.Baseline != "f1" {
+			t.Errorf("attempt record = %+v, %v; want Reviewed and Judged f1 and the baseline moved to f1 by the next merge", rec, found)
+		}
+	})
+
+	t.Run("an operator's acceptance is kept as the change let through, so a later merge moves the baseline past it", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		fx.fz.resolver = &countingResolver{onMerge: func(call int) bool {
+			if call == 2 {
+				fx.head = "m1"
+			}
+			return false
+		}}
+		fx.head = "f1"
+		fx.lineChange = fabricengine.LineChange{Lines: 500, Paths: []string{"a/a.go"}}
+		fx.merger.pushErr = errors.New("push refused")
+		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Halt: fixerHaltReviewCapped, ReviewRounds: 2, Findings: []string{"f1 loosens the assertion"}, AcceptedHead: "f1"})
+		fx.scriptGate(passing)
+
+		// The refused push stops the first Call after the merge, which keeps the record for the second.
+		fx.call(t)
+		if rec, found := fx.attempts(t); !found || rec.Judged != "f1" {
+			t.Fatalf("attempt record = %+v, %v; want Judged f1, the HEAD the operator accepted", rec, found)
+		}
+		fx.merger.pushErr = nil
+		outcome, ptr := fx.call(t)
+
+		if outcome != shedengine.Done {
+			t.Fatalf("second Call() = %q, %+v; want Done", outcome, ptr)
+		}
+		if got := strings.Join(fx.lineChangeCalls, ","); got != "t2..f1" {
+			t.Errorf("LineChange calls = %q; want only the first Call's t2..f1, the second measuring from the merged head", got)
+		}
+		if len(fx.seats.tables) != 0 {
+			t.Errorf("sessions = %q; want none after the acceptance", fx.sessionRoles())
+		}
+	})
+
+	t.Run("a fixer that runs in the retry after a merge-in-required error frees the lock, and the run takes it again before it lands", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		g, store, _ := newGuardFixture(t)
+		fx.fz.guard = g
+		resolver := &countingResolver{}
+		fx.fz.resolver = resolver
+		fx.merger.results = []mergeCallResult{
+			{err: &fabricengine.ErrMergeInRequired{Source: "main"}},
+			{result: fabricengine.MergeResult{Committed: true}},
+		}
+		var heldAtRecordsCommit []bool
+		fx.fz.deps.CommitParentRecords = func() error {
+			_, found, _ := store.Read("main")
+			heldAtRecordsCommit = append(heldAtRecordsCommit, found)
+			return nil
+		}
+		fx.lineChange = small
+		fx.scriptGate(passing, failing, passing)
+		var heldDuringFix []bool
+		fx.seats.turns = []func(){func() {
+			_, found, err := store.Read("main")
+			if err != nil {
+				t.Errorf("read the lock record during the fixer's turn: %v", err)
+			}
+			heldDuringFix = append(heldDuringFix, found)
+			fx.turn(t, fixedReport, "f1")()
+		}}
+
+		outcome, ptr := fx.call(t)
+
+		if outcome != shedengine.Done || len(fx.merger.calls) != 2 {
+			t.Fatalf("Call() = %q, %+v with %d parent-side merge(s); want Done after the refused one and the landing", outcome, ptr, len(fx.merger.calls))
+		}
+		if len(heldDuringFix) != 1 || heldDuringFix[0] {
+			t.Errorf("lock held during each fixer session = %v; want one session with the lock freed", heldDuringFix)
+		}
+		if resolver.calls != 3 {
+			t.Errorf("merges of the parent = %d; want 3: the first pass, its retry and the pass after the fixer", resolver.calls)
+		}
+		if fmt.Sprint(heldAtRecordsCommit) != "[true true]" {
+			t.Errorf("lock held at each parent-records commit = %v; want it held in the first pass and again in the pass after the fixer", heldAtRecordsCommit)
+		}
+	})
+
+	t.Run("a resumed Finalize whose attempt record shows a fixer's change let through queues at the front", func(t *testing.T) {
+		fx := newFinalizeGateFixture(t)
+		g, store, _ := newGuardFixture(t)
+		older := parentlock.Owner{Slug: "older", Pair: "/p/older", RunID: "r5", PID: 333, StartTime: "t3"}
+		for _, owner := range []parentlock.Owner{guardOwnerOther, older} {
+			if _, err := store.TryAcquire("main", owner); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sleeps := 0
+		g.sleep = func(context.Context, time.Duration) error {
+			sleeps++
+			if sleeps > 1 {
+				return errors.New("queued behind the older ticket")
+			}
+			_, err := store.Release("main", guardOwnerOther)
+			return err
+		}
+		fx.fz.guard = g
+		fx.head = "f1"
+		fx.lineChange = small
+		fx.seed(t, FixerAttempts{Entry: 1, Spent: 1, Baseline: "t2", Judged: "f1"})
+		fx.scriptGate(passing)
+
+		outcome, ptr := fx.call(t)
+
+		fx.requireLanded(t, outcome, ptr)
+		if sleeps != 1 {
+			t.Errorf("queue waits = %d; want 1: granted ahead of the older ticket when the holder released", sleeps)
+		}
+	})
 
 	t.Run("a darn Finalize gates through the command its verify source answers", func(t *testing.T) {
 		const treeScoped = "lym gate test --wait --tier 0 --tree-scoped"

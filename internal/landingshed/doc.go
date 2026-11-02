@@ -46,6 +46,15 @@
 // Finalize's constructor refuses a nil Deps.Lock.Store, a nil Deps.Lock.Owner and a nil Deps.ReadParentTips, and a row built without its guard, as a struct-literal test builds it, takes no lock.
 // Finalize takes the lock first, after parsing the change description and committing the status file and before anything reads or moves the parent, and releases it on every way out of its Call: Done, a Stuck and an error.
 // A lock a dead Finalize left is taken over at the next acquire, since the lock store grants a record whose owner process no longer lives.
+// Finalize frees the lock before its merge fixer or a fix review starts, since neither touches the parent, so other runs land on the parent meanwhile; a Finalize with no lock store frees nothing.
+// Once their change is let through, Finalize takes the lock again at the front of the queue, ahead of runs that queued while it fixed, and runs every step under the lock again from the pull-request step on:
+// it merges the parent anew and verifies under the lock as on its first try, a no-op merge and a skipped verify when nothing landed meanwhile.
+// A failed verify on such a pass spawns the fixer on the attempts the entry has left, never a fresh cap.
+// A Finalize resumed with an attempt record that shows a fixer's change let through queues at the front as well, whatever halted it, since the record keeps that change until a Done.
+// The attempt record keeps the HEAD at which the fixer's change was last let through, and a pass whose merge brings parent commits onto that HEAD moves the entry's Baseline to the merged head, so the parent's commits never count as the fixer's change.
+// Bound: a fixer change let through before such a merge and one made after it are each judged against the caps alone.
+// While the fixer works `lym loom status` shows its session, and while the run queues again it shows the parent lock wait.
+// A hub pause that covers the run holds the fixer's gate calls and the requeue wait like any other run's, since the run holds no lock then.
 // Under that lock it runs the same run-scope origin reconcile and maps its ended and stopped verdicts as Parent-Align does, then the owner checks.
 // It then opens the parent pair and syncs it before any merge: a pair that is missing, mid-merge or holding tracked dirt in its code checkout is Stuck with its way forward, whether the parent is behind, equal, without an upstream or under the push skip.
 // With no push skip a parent behind its upstream is fast-forwarded in its own pair, which moves it to the upstream tip and touches no local commit, and one ahead of, diverged from or no longer a fast-forward of its upstream is Stuck, since Finalize never pushes or rewrites the parent here.
@@ -92,7 +101,7 @@
 // a session that ends without a verdict runs again;
 // each review spends one of `finalize_fix_review_rounds`, and a review that does not approve on the last round halts with LandingStopPrefix, noting `review-capped` and the open findings in the record, with `lym loom circling accept` or a fix on the task branch as the way forward;
 // a session that dirties the tree or moves the task head halts with LandingStopPrefix, and one that fails to start is a transient error.
-// Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, under the parent lock, for at most `finalize_fix_review_rounds` review sessions of `fixer_timeout_min` each, with the fixer's turns between them.
+// Bound: the fix review lets an over-cap fixer change land behind one reviewer's explicit approval of the fixer's own commits instead of the run's full Code review, with the parent lock freed, for at most `finalize_fix_review_rounds` review sessions of `fixer_timeout_min` each, with the fixer's turns between them.
 // AcceptFixReview is the operator's acceptance after that halt: it appends the open findings to the change description under `## Unresolved fix review findings` and records the task HEAD it accepted at, and the resume lands the change as it stands at that HEAD.
 // A resume with no acceptance clears the note and the rounds and runs the fix reviews afresh over the change as it then stands.
 // A spent cap keeps the fixer's commits and halts with LandingStopPrefix, naming the commits and noting `spent` in the record's Halt.

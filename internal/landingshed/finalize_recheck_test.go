@@ -1,4 +1,4 @@
-// finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store, with the fixer's turn standing in for whatever releases the record between the acquire and the re-check.
+// finalize_recheck_test.go drives Finalize's lock re-check before the landing over a real parentlock.Store, with the parent-records commit standing in for whatever releases the record between the acquire and the re-check.
 
 package landingshed
 
@@ -12,28 +12,27 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
-	"github.com/Knatte18/loomyard/internal/verifytree"
 )
 
 // TestFinalize_LockRecheckAndLanding pins what Finalize does when the parent lock record no longer names the run just before the landing:
 // it lands nothing, halts with LandingStopPrefix and takes no lock, and its resume re-runs from step 1 under a lock taken afresh.
-// The fixer's turn releases the record, so the release happens between the guard's acquire and the re-check within one Call.
+// The parent-records commit runs release, so the release happens between the guard's acquire and the re-check within one Call.
 func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 	tiergate.Require(t, 0)
-	failing := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1}
-	passing := verifytree.Result{Status: verifytree.StatusPassed}
 
-	// newFixture builds a Finalize whose first gate fails, so the fixer runs, and whose fixer's turn runs release after it commits its fix.
-	newFixture := func(t *testing.T, release func(fx *finalizeGateFixture)) *finalizeGateFixture {
+	// newFixture builds a Finalize over a passing gate whose parent-records commit runs release at its call numbered at, counted from one, and at no other.
+	newFixture := func(t *testing.T, at int, release func(fx *finalizeGateFixture)) *finalizeGateFixture {
 		t.Helper()
 		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
 		fx.fz.guard = newParentGuard(fx.deps)
-		fixed := fx.turn(t, fixedReport, "f1")
-		fx.seats.turns = []func(){func() {
-			fixed()
-			release(fx)
-		}}
+		calls := 0
+		fx.fz.deps.CommitParentRecords = func() error {
+			calls++
+			if calls == at {
+				release(fx)
+			}
+			return nil
+		}
 		return fx
 	}
 	releaseOwn := func(fx *finalizeGateFixture) {
@@ -64,9 +63,8 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 		}},
 	}
 	for _, tt := range releases {
-		t.Run("a record "+tt.name+" while the fixer waited halts before the landing, and the resume lands under a fresh lock", func(t *testing.T) {
-			fx := newFixture(t, tt.release)
-			fx.scriptGate(failing, passing)
+		t.Run("a record "+tt.name+" before the landing halts it, and the resume lands under a fresh lock", func(t *testing.T) {
+			fx := newFixture(t, 1, tt.release)
 
 			outcome, ptr := fx.call(t)
 
@@ -78,7 +76,6 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 				t.Error("the halted Finalize holds the parent lock; want it to have taken none")
 			}
 
-			fx.scriptGate(passing)
 			outcome, ptr = fx.call(t)
 
 			fx.requireLanded(t, outcome, ptr)
@@ -92,15 +89,13 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 	}
 
 	t.Run("a run owned by another machine on the resume stops at the owner check without landing", func(t *testing.T) {
-		fx := newFixture(t, releaseOwn)
-		fx.scriptGate(failing, passing)
+		fx := newFixture(t, 1, releaseOwn)
 		outcome, ptr := fx.call(t)
 		requireHalt(t, outcome, ptr, haltFragments...)
 
 		fx.fz.deps.Reconcile = func() (fabricengine.OriginReport, error) {
 			return fabricengine.OriginReport{Entries: []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryOwnedElsewhere, Owner: "other-box"}}}, nil
 		}
-		fx.scriptGate(passing)
 		outcome, ptr = fx.call(t)
 
 		if outcome != shedengine.Stuck || !ptr.Halt || !strings.HasPrefix(ptr.Reason, OwnerHaltPrefix) || !strings.Contains(ptr.Reason, `"other-box"`) {
@@ -112,16 +107,8 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 	})
 
 	t.Run("a release during the retry after a merge-in-required error halts before the retry's landing", func(t *testing.T) {
-		fx := newFinalizeGateFixture(t)
-		fx.lineChange = fabricengine.LineChange{Lines: 3, Paths: []string{"a/a.go"}}
-		fx.fz.guard = newParentGuard(fx.deps)
+		fx := newFixture(t, 2, releaseOwn)
 		fx.merger.results = []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{Source: fx.deps.TaskBranch}}, {result: fabricengine.MergeResult{Committed: true}}}
-		fixed := fx.turn(t, fixedReport, "f1")
-		fx.seats.turns = []func(){func() {
-			fixed()
-			releaseOwn(fx)
-		}}
-		fx.scriptGate(passing, failing, passing)
 
 		outcome, ptr := fx.call(t)
 
@@ -132,13 +119,12 @@ func TestFinalize_LockRecheckAndLanding(t *testing.T) {
 	})
 
 	t.Run("an unreadable record halts naming the release verb", func(t *testing.T) {
-		fx := newFixture(t, func(fx *finalizeGateFixture) {
+		fx := newFixture(t, 1, func(fx *finalizeGateFixture) {
 			recordFile := filepath.Join(fx.deps.Lock.Store.Dir, hex.EncodeToString([]byte("main"))+".json")
 			if err := os.WriteFile(recordFile, []byte("{nope"), 0o644); err != nil {
 				t.Error(err)
 			}
 		})
-		fx.scriptGate(failing, passing)
 
 		outcome, ptr := fx.call(t)
 

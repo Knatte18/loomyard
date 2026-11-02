@@ -30,14 +30,14 @@ func newParentGuard(deps Deps) parentGuard {
 	}
 }
 
-// ensure takes the parent lock for the run, waiting in the queue while another run holds it.
+// ensure takes the parent lock for the run, waiting in the queue while another run holds it, at the front of the queue when front is set.
 // While it waits it keeps the run's wait record and the driver strand's pane mark, and removes both on every way out.
 //
 // It returns "" once the lock is held, and a non-empty Stuck reason when the operator halted the wait or the lock record is unreadable;
 // a caller returns either reason as a Stuck with Halt set.
 // A cancellation and every other failure are returned as an error.
 // A guard with no lock store takes no lock.
-func (g parentGuard) ensure(ctx context.Context, producer string) (string, error) {
+func (g parentGuard) ensure(ctx context.Context, producer string, front bool) (string, error) {
 	if g.lock.Store == nil {
 		return "", nil
 	}
@@ -61,6 +61,7 @@ func (g parentGuard) ensure(ctx context.Context, producer string) (string, error
 		},
 		Paused: func() bool { return g.pauseRequested(&pauseFailures) },
 		Sleep:  g.sleep,
+		Front:  front,
 	}
 	_, err = g.lock.Store.Acquire(ctx, g.parentBranch, owner, waiter)
 	if waiting {

@@ -242,7 +242,7 @@ func (m *ParentAlign) mergeTip(ctx context.Context) (string, string, error) {
 		}
 	}
 
-	reason, err := m.guard.ensure(ctx, parentAlignName)
+	reason, err := m.guard.ensure(ctx, parentAlignName, false)
 	if err != nil || reason != "" {
 		return "", reason, err
 	}

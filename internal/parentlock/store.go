@@ -63,9 +63,11 @@ type Record struct {
 }
 
 // Ticket is one waiter's place in a branch's queue.
+// A ticket at the Front queues ahead of every ticket that is not.
 type Ticket struct {
 	Owner    Owner     `json:"owner"`
 	QueuedAt time.Time `json:"queued_at"`
+	Front    bool      `json:"front,omitempty"`
 }
 
 // Entry is one lock record as List reports it.
@@ -102,7 +104,7 @@ type Store struct {
 	// Now stamps AcquiredAt and ticket times; nil selects time.Now.
 	Now func() time.Time
 	// Covered reports whether a pause covers the run of slug; nil covers nothing.
-	// A covered run keeps its ticket and place but is never granted, and the queue head is the oldest live ticket of an uncovered run.
+	// A covered run keeps its ticket and place but is never granted, and the queue head is the first live ticket of an uncovered run.
 	Covered func(slug string) bool
 }
 
@@ -124,8 +126,13 @@ func (s *Store) now() time.Time {
 	return time.Now()
 }
 
+// recordName is the base name of branch's record file.
+func (s *Store) recordName(branch string) string {
+	return hex.EncodeToString([]byte(branch)) + recordSuffix
+}
+
 func (s *Store) recordPath(branch string) string {
-	return filepath.Join(s.Dir, hex.EncodeToString([]byte(branch))+recordSuffix)
+	return filepath.Join(s.Dir, s.recordName(branch))
 }
 
 func (s *Store) lockPath(branch string) string {
@@ -200,7 +207,7 @@ func (s *Store) Read(branch string) (Record, bool, error) {
 	return readRecordFile(s.recordPath(branch))
 }
 
-// liveTickets returns branch's tickets oldest first.
+// liveTickets returns branch's tickets in queue order: those at the front first, and oldest first within each part.
 // A ticket whose owner is not alive, or that cannot be decoded, is dropped from the result and removed from disk when prune is set.
 func (s *Store) liveTickets(branch string, prune bool) ([]Ticket, error) {
 	dir := s.ticketsDir(branch)
@@ -230,15 +237,26 @@ func (s *Store) liveTickets(branch string, prune bool) ([]Ticket, error) {
 		}
 		tickets = append(tickets, ticket)
 	}
-	sort.SliceStable(tickets, func(i, j int) bool { return tickets[i].QueuedAt.Before(tickets[j].QueuedAt) })
+	sort.SliceStable(tickets, func(i, j int) bool {
+		if tickets[i].Front != tickets[j].Front {
+			return tickets[i].Front
+		}
+		return tickets[i].QueuedAt.Before(tickets[j].QueuedAt)
+	})
 	return tickets, nil
 }
 
 // TryAcquire makes one attempt to take branch's lock for owner.
-// A free record, a record whose owner process is not alive and a record naming owner's run are each taken; a free or stale record goes to the oldest live ticket, so an acquirer that is not first in the queue keeps its ticket and is not granted.
-// An acquirer whose run is covered keeps its ticket and is not granted, unless the record already names its own run; the queue head is then the oldest live ticket of an uncovered run, so a covered waiter is passed over and keeps its place.
+// A free record, a record whose owner process is not alive and a record naming owner's run are each taken; a free or stale record goes to the head of the queue, so an acquirer that is not the head keeps its ticket and is not granted.
+// An acquirer whose run is covered keeps its ticket and is not granted, unless the record already names its own run; the queue head is then the first live ticket of an uncovered run, so a covered waiter is passed over and keeps its place.
 // A record that cannot be read returns an error wrapping ErrUnreadable and changes nothing.
 func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
+	return s.tryAcquire(branch, owner, false)
+}
+
+// tryAcquire is TryAcquire for an acquirer that queues at the front when front is set:
+// it passes every ticket not at the front, and waits only behind an older front ticket of an uncovered run.
+func (s *Store) tryAcquire(branch string, owner Owner, front bool) (Attempt, error) {
 	var attempt Attempt
 	err := s.withLock(branch, func() error {
 		record, found, err := s.Read(branch)
@@ -248,11 +266,11 @@ func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 		ownRecord := found && record.Owner.SameRun(owner)
 		if found && !ownRecord && s.alive(record.Owner) {
 			attempt.Holder = record
-			return s.keepTicket(branch, owner)
+			return s.keepTicket(branch, owner, front)
 		}
 		if !ownRecord {
 			if s.covered(owner.Slug) {
-				return s.keepTicket(branch, owner)
+				return s.keepTicket(branch, owner, front)
 			}
 			tickets, err := s.liveTickets(branch, true)
 			if err != nil {
@@ -262,8 +280,11 @@ func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 				if s.covered(ticket.Owner.Slug) {
 					continue
 				}
+				if front && !ticket.Front {
+					break
+				}
 				if !ticket.Owner.SameProcess(owner) {
-					return s.keepTicket(branch, owner)
+					return s.keepTicket(branch, owner, front)
 				}
 				break
 			}
@@ -280,8 +301,8 @@ func (s *Store) TryAcquire(branch string, owner Owner) (Attempt, error) {
 	return attempt, err
 }
 
-// keepTicket writes owner's ticket unless it already holds one, so a waiter keeps its place in the queue.
-func (s *Store) keepTicket(branch string, owner Owner) error {
+// keepTicket writes owner's ticket, at the front when front is set, unless it already holds one, so a waiter keeps its place in the queue.
+func (s *Store) keepTicket(branch string, owner Owner, front bool) error {
 	path := s.ticketPath(branch, owner)
 	if _, err := os.Stat(path); err == nil {
 		return nil
@@ -289,7 +310,7 @@ func (s *Store) keepTicket(branch string, owner Owner) error {
 	if err := os.MkdirAll(s.ticketsDir(branch), 0o755); err != nil {
 		return fmt.Errorf("create parent lock ticket directory: %w", err)
 	}
-	if err := writeJSONAtomic(path, Ticket{Owner: owner, QueuedAt: s.now()}); err != nil {
+	if err := writeJSONAtomic(path, Ticket{Owner: owner, QueuedAt: s.now(), Front: front}); err != nil {
 		return fmt.Errorf("write parent lock ticket: %w", err)
 	}
 	return nil
