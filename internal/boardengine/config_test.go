@@ -120,6 +120,33 @@ func writeBoardConfig(t *testing.T, content string) string {
 	return tmpDir
 }
 
+// TestLoadConfig_DefaultRecipe asserts default_recipe resolves to the template's darn when absent and to the hub's own value when set.
+func TestLoadConfig_DefaultRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{"absent takes the template", "readme: Home.md\n", "darn"},
+		{"hub choice", "default_recipe: tapestry\n", "tapestry"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: writeBoardConfig(t, tt.content)}, "board")
+			if err != nil {
+				t.Fatalf("LoadConfig: %v", err)
+			}
+			if cfg.DefaultRecipe != tt.want {
+				t.Errorf("DefaultRecipe = %q; want %q", cfg.DefaultRecipe, tt.want)
+			}
+			if got := cfg.Outputs().DefaultRecipe; got != tt.want {
+				t.Errorf("Outputs().DefaultRecipe = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestLoadConfig_LabelMaps asserts both label maps resolve in file order with their descriptions.
 func TestLoadConfig_LabelMaps(t *testing.T) {
 	tiergate.Require(t, 0)

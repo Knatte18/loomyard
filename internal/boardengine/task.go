@@ -25,7 +25,7 @@ type Task struct {
 	Kind      string   `json:"kind"`             // KindTask, KindNote or KindProject
 	Labels    []string `json:"labels"`           // type and plain labels, validated against the board's Vocabulary
 	Issues    []int    `json:"issues"`           // numbers of the GitHub issues this entry records; a number is not checked against GitHub
-	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty means "tapestry". Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
+	Recipe    string   `json:"recipe,omitempty"` // recipe name for the task's child worktree; empty takes the board's default_recipe. Resolved (and validated against the recipe vocabulary) at the seeding site, not here.
 	Priority  string   `json:"priority,omitempty"`
 	DependsOn []string `json:"depends_on"`
 	Isolated  bool     `json:"isolated"`

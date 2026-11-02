@@ -85,7 +85,6 @@ func TestSeedChild_RecipeFromTheBoardTypeAndDriverFromChildDriver(t *testing.T) 
 	}{
 		{name: "TwoSourceSplit", typeAtWiring: "batten", typeAtCall: "batten", wantRecipe: "batten"},
 		{name: "BoardTypeCorrectedAfterWiringIsHonoured", typeAtWiring: "tapestry", typeAtCall: "batten", wantRecipe: "batten"},
-		{name: "EmptyBoardTypeDefaultsToLoom", typeAtWiring: "", typeAtCall: "", wantRecipe: defaultChildRecipe},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -373,6 +372,7 @@ func TestSeedChild_RunSettings(t *testing.T) {
 		},
 		{
 			name:        "AbsentSettingsRemoveEveryLocalFile",
+			boardType:   "tapestry",
 			wantRecipe:  "tapestry",
 			wantOutcome: shedengine.Done,
 			wantEvents:  []string{"remove", "driver", "seed"},

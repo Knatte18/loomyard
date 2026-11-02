@@ -29,6 +29,9 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
+	// DefaultRecipe is the recipe a task with no recipe field runs: tapestry, darn or sampler.
+	// The template names darn.
+	DefaultRecipe string `yaml:"default_recipe"`
 	// Types are the type labels;
 	// Labels are every other configured label, both in board.yaml order.
 	// LoadConfig decodes them from the yaml node tree,
@@ -80,6 +83,8 @@ func labelNames(labels []Label) []string {
 type Outputs struct {
 	Readme       string
 	DesignPrefix string
+	// DefaultRecipe is the recipe the Recipe cell shows for a task with no recipe field.
+	DefaultRecipe string
 	// Types is the configured type-label order, which the renderer sorts Notes sections by.
 	Types []string
 }
@@ -87,9 +92,10 @@ type Outputs struct {
 // Outputs returns the Outputs derived from a Config.
 func (c Config) Outputs() Outputs {
 	return Outputs{
-		Readme:       c.Readme,
-		DesignPrefix: c.DesignPrefix,
-		Types:        labelNames(c.Types),
+		Readme:        c.Readme,
+		DesignPrefix:  c.DesignPrefix,
+		DefaultRecipe: c.DefaultRecipe,
+		Types:         labelNames(c.Types),
 	}
 }
 
@@ -124,10 +130,11 @@ func ConfigSpec() configengine.Spec {
 		OpenMaps: ConfigOpenMaps(),
 		HubWide:  true,
 		Categories: map[string]configengine.Category{
-			"readme":        configengine.CategoryCrossPair,
-			"design_prefix": configengine.CategoryCrossPair,
-			"types":         configengine.CategoryCrossPair,
-			"labels":        configengine.CategoryCrossPair,
+			"readme":         configengine.CategoryCrossPair,
+			"design_prefix":  configengine.CategoryCrossPair,
+			"default_recipe": configengine.CategoryCrossPair,
+			"types":          configengine.CategoryCrossPair,
+			"labels":         configengine.CategoryCrossPair,
 		},
 	}
 }

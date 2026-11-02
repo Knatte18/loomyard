@@ -494,7 +494,7 @@ Optional fields:
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — replaces the list; a task needs a type label, a note exactly one
-  "recipe"    string — "darn" or "tapestry", the default
+  "recipe"    string — "darn" or "tapestry", or default_recipe
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
   "issues"     array  — the hub's issue numbers

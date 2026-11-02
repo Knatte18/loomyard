@@ -476,7 +476,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	}
 }
 
-// TestBoardRecipe asserts the recipe Seed-Child seeds: pawl for a project entry, the entry's own recipe field otherwise, and that boardengine's project recipe is the shedrun one.
+// TestBoardRecipe asserts the recipe Seed-Child seeds: pawl for a project entry, the entry's own recipe field otherwise or the board's default_recipe when it is empty, and that boardengine's project recipe is the shedrun one.
 func TestBoardRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -485,6 +485,7 @@ func TestBoardRecipe(t *testing.T) {
 		t.Errorf("boardengine.ProjectRecipe = %q; want %q", boardengine.ProjectRecipe, shedrun.RecipePawl)
 	}
 
+	board := boardengine.New(boardengine.Config{DefaultRecipe: shedrun.RecipeDarn})
 	tests := []struct {
 		name string
 		task boardengine.Task
@@ -493,12 +494,13 @@ func TestBoardRecipe(t *testing.T) {
 		{"ProjectSeedsPawl", boardengine.Task{Kind: boardengine.KindProject}, shedrun.RecipePawl},
 		{"ProjectIgnoresItsRecipeField", boardengine.Task{Kind: boardengine.KindProject, Recipe: shedrun.RecipeDarn}, shedrun.RecipePawl},
 		{"TaskWithDarnRecipe", boardengine.Task{Kind: boardengine.KindTask, Recipe: shedrun.RecipeDarn}, shedrun.RecipeDarn},
-		{"TaskWithNoRecipe", boardengine.Task{Kind: boardengine.KindTask}, ""},
+		{"TaskWithTapestryRecipe", boardengine.Task{Kind: boardengine.KindTask, Recipe: shedrun.RecipeTapestry}, shedrun.RecipeTapestry},
+		{"TaskWithNoRecipeTakesTheBoardDefault", boardengine.Task{Kind: boardengine.KindTask}, shedrun.RecipeDarn},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := boardRecipe(tt.task); got != tt.want {
+			if got := boardRecipe(board, tt.task); got != tt.want {
 				t.Errorf("boardRecipe(%+v) = %q; want %q", tt.task, got, tt.want)
 			}
 		})

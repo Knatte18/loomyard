@@ -13,10 +13,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
-// defaultChildRecipe is the recipe a child worktree seeds when the Board task's own "type" field
-// is empty.
-const defaultChildRecipe = "tapestry"
-
 // seedChildProducer writes, commits and pushes the child worktree's own seed file, deriving its
 // recipe from the Board task's own type and its driver from the prime seed's typed child_driver, else the recipe's driver_kind, then shed.yaml's.
 type seedChildProducer struct {
@@ -48,8 +44,8 @@ func NewSeedChild(name, slug string, deps SeedChildDeps, scratchDir string) shed
 // Call implements shedengine.ShedProducer.
 //
 // It reads the Board task's own type fresh at Call time -- never a value captured at wiring time,
-// so a type corrected after prime was seeded is still honoured -- defaulting an empty value to
-// defaultChildRecipe. It then writes the task worktree's local config overrides from the Board task's run settings, reads the driver after them so a driver_kind in those settings is seen, then writes, commits and pushes the seed, in that order.
+// so a type corrected after prime was seeded is still honoured.
+// It then writes the task worktree's local config overrides from the Board task's run settings, reads the driver after them so a driver_kind in those settings is seen, then writes, commits and pushes the seed, in that order.
 //
 // Verdicts: Done on a successful write-and-commit; Stuck on an unreadable Board, run settings that do not validate, a refused recipe
 // (a deps.WriteSeed error wrapping ErrUnknownRecipe, ErrUnsupportedChildRecipe, or
@@ -66,7 +62,7 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	boardType, err := p.deps.ReadBoardType(ctx)
+	recipe, err := p.deps.ReadBoardType(ctx)
 	if err != nil {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr
@@ -75,11 +71,6 @@ func (p *seedChildProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		reportStuck(p.name, reason, p.scratchDir, "slug", p.slug)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	}
-	recipe := boardType
-	if recipe == "" {
-		recipe = defaultChildRecipe
-	}
-
 	if reason, err := p.writeRunSettings(ctx, recipe); err != nil || reason != "" {
 		if cerr := cancelErr(ctx, p.name); cerr != nil {
 			return "", shedengine.OutputPointer{}, cerr

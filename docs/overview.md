@@ -361,6 +361,7 @@ User-facing modules each get one `lym <module>` namespace:
 - **board** — the task-tracker board, which is also the roadmap (`internal/boardcli` + `internal/boardengine`).
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
   `types` and `labels` in `board.yaml` are maps from label to description, and `lym board labels` prints both in file order.
+  `default_recipe` names the recipe a task with no recipe field runs, `darn` in the template.
   `lym board intake` lists the open issues of the hub's own GitHub repository not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The hub's repository is the one its recorded binding names, else its origin remote, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, each subsection one numbered table that links each slug to its design doc;
@@ -676,7 +677,7 @@ User-facing modules each get one `lym <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See the board's `hardener` note.
-- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`tapestry`, `darn` for a darn child or `sampler` for a sampler child, empty meaning `tapestry`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lym batten run|step|status|pause|goto|cancel <run-id>`, `lym batten lock list|release` for the hub's parent locks, and `lym batten cleanup [--apply]`).
+- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`tapestry`, `darn` for a darn child or `sampler` for a sampler child, empty meaning `board.yaml`'s `default_recipe`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lym batten run|step|status|pause|goto|cancel <run-id>`, `lym batten lock list|release` for the hub's parent locks, and `lym batten cleanup [--apply]`).
   `lym batten cancel <slug> [--remove]` ends a run for good from the prime, whatever its state, leaving its claim `draft` and removing its records, and with `--remove` its pair and task branches.
   The hidden `lym batten overview` is the pane process of the `runs` strand of the prime and of each beam, which `lym beam start` ensures, in the beam's window named `beam: prime` or `beam: <slug>`.
   Ensuring it replaces a `loom-status` strand a pawl run's `lym loom start` put in the overview window first, and a failure to add, replace or record it is a warning on the bring-up report, never a stop.

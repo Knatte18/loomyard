@@ -518,12 +518,12 @@ func childRefusalKind(childOutput string) string {
 	return ""
 }
 
-// boardRecipe returns the recipe Seed-Child seeds for task: pawl for a project entry, the entry's own recipe field otherwise.
-func boardRecipe(task boardengine.Task) string {
+// boardRecipe returns the recipe Seed-Child seeds for task: pawl for a project entry, otherwise the entry's own recipe field or, when it is empty, board's default_recipe.
+func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 	if task.Kind == boardengine.KindProject {
 		return shedrun.RecipePawl
 	}
-	return task.Recipe
+	return board.RecipeOf(task)
 }
 
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
@@ -1300,9 +1300,12 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			},
 		},
 		SeedChild: battenshed.SeedChildDeps{
-			// ReadBoardType opens the Board fresh on every Call, over fabricengine.BoardDir(location.HubPath), and returns the recipe boardRecipe answers for the entry -- never a value captured at wiring time, so a recipe corrected after prime was seeded is still honoured.
+			// ReadBoardType opens the hub's Board with its board.yaml fresh on every Call and returns the recipe boardRecipe answers for the entry -- never a value captured at wiring time, so a recipe or default_recipe corrected after prime was seeded is still honoured.
 			ReadBoardType: func(ctx context.Context) (string, error) {
-				b := boardengine.New(boardengine.Config{Path: fabricengine.BoardDir(location.HubPath)})
+				b, err := boardengine.OpenHub(location.HubPath)
+				if err != nil {
+					return "", err
+				}
 				task, found, err := b.GetTask(slug)
 				if err != nil {
 					return "", err
@@ -1310,7 +1313,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if !found {
 					return "", fmt.Errorf("battencli: board task %q not found", slug)
 				}
-				return boardRecipe(task), nil
+				return boardRecipe(b, task), nil
 			},
 			// ChildDriver is the "child_driver" param of prime's own seed when the operator typed one, otherwise the child recipe's resolved driver_kind (childDriverFrom).
 			// The kind is read from the task worktree's config layers, and SeedChild calls this after writing that worktree's local layer, so a driver_kind from the run settings is seen.

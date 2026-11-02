@@ -243,7 +243,7 @@ func recordExists(path string) (bool, error) {
 
 // peerRecipe returns the name of the recipe a peer's run follows, the tapestry recipe's for an empty name.
 // A peer whose worktree is on this machine and holds a self-run seed follows the seed's recipe.
-// Otherwise it follows the recipe Seed-Child seeds for the board entry, pawl for a project entry and the entry's recipe field for any other.
+// Otherwise it follows the recipe Seed-Child seeds for the board entry, pawl for a project entry and the entry's recipe field for any other, which the board closure of `hubPeersDeps` has already filled from the board's default_recipe where the entry names none.
 // That is the rule `boardRecipe` in `internal/battencli/wire.go` applies; a cli package never imports another, so the rule is restated here.
 // A nil peer is a worktree that is not on this machine.
 func peerRecipe(peer *lymcwd.Location, task boardengine.Task) string {
@@ -288,7 +288,13 @@ func hubPeersDeps(location *lymcwd.Location) peersDeps {
 				return nil, false, err
 			}
 			tasks, err := board.ListTasksFull()
-			return tasks, true, err
+			if err != nil {
+				return nil, true, err
+			}
+			for i := range tasks {
+				tasks[i].Recipe = board.RecipeOf(tasks[i])
+			}
+			return tasks, true, nil
 		},
 		caller: func() (string, error) { return callerSlug(location) },
 		readPeer: func(slug string) peerLine {

@@ -49,7 +49,7 @@ Every entry carries `labels`, validated against two maps in the hub's `board.yam
 Run `lym board labels` before choosing labels: it prints both maps in file order with their descriptions.
 Beside its type label, every entry carries a label for each lym module it touches; an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused; add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
-A recipe name goes in `recipe`, never in a label: `tapestry` or `darn`, empty meaning `tapestry`.
+A recipe name goes in `recipe`, never in a label: `tapestry` or `darn`, empty meaning the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
 A run profile goes in `profile`, never in `run_settings`: `lym board profiles` prints the hub's profiles with one settings block per recipe, and a task without one takes its recipe's default profile, listed under `defaults`.
 
 ## Verbs

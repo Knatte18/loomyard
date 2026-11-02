@@ -861,7 +861,7 @@ func TestRenderReadmeGolden(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := boardengine.Render(tt.tasks, tt.primeOwner, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes}, renderTime)
+			result, err := boardengine.Render(tt.tasks, tt.primeOwner, boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "tapestry"}, renderTime)
 			if err != nil {
 				t.Fatalf("Render: %v", err)
 			}
@@ -892,6 +892,26 @@ func TestRenderReadmeGolden(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRenderRecipeCellTakesTheDefaultRecipe pins that a task with no recipe shows Outputs.DefaultRecipe in its Recipe cell and a task naming a recipe shows its own.
+func TestRenderRecipeCellTakesTheDefaultRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tasks := []boardengine.Task{
+		{ID: 1, Handle: "T1", Slug: "plain", Title: "Plain", Kind: boardengine.KindTask, Labels: []string{"bug"}},
+		{ID: 2, Handle: "T2", Slug: "named", Title: "Named", Kind: boardengine.KindTask, Labels: []string{"bug"}, Recipe: "tapestry"},
+	}
+	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}, renderTime)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	got := result["README.md"]
+	for _, want := range []string{"| T1 | **Plain** | `plain` | darn |", "| T2 | **Named** | `named` | tapestry |"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("README lacks row %q:\n%s", want, got)
+		}
 	}
 }
 

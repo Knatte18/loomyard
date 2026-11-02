@@ -47,7 +47,8 @@ func TestHubPeersDeps_OverRealHub(t *testing.T) {
 	boardConfig.Path = h.BoardDir()
 	board := boardengine.New(boardConfig)
 	for _, slug := range []string{"caller", "peer", "no-origin", "ghost"} {
-		if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Title of " + slug, "kind": "task", "labels": []string{"bug"}}); err != nil {
+		// The recipe is named, since an entry with none runs the board's default_recipe, darn in the template, which has no Plan-Write row.
+		if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Title of " + slug, "kind": "task", "recipe": shedrun.RecipeTapestry, "labels": []string{"bug"}}); err != nil {
 			t.Fatalf("seed board task %q: %v", slug, err)
 		}
 		if err := board.SetRunStatus(slug, "running · Plan-Write"); err != nil {

@@ -9,7 +9,7 @@
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
-// every Tasks table adds the recipe after the slug, tapestry for an empty one;
+// every Tasks table adds the recipe after the slug, the configured default recipe for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
@@ -189,9 +189,6 @@ const cellBreak = "<br>"
 
 // renderedTimeLayout is the UTC date and time the README states it was rendered at.
 const renderedTimeLayout = "2006-01-02 15:04 UTC"
-
-// defaultRecipe is the recipe the Recipe cell shows for a task with no recipe, since an empty recipe runs tapestry.
-const defaultRecipe = "tapestry"
 
 // recipeProfileSeparator stands between the recipe and the run profile in one Recipe cell.
 const recipeProfileSeparator = " · "
@@ -468,7 +465,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 	}
 	types := b.out.Types
 	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
-		return []string{entryCell(t), recipeCell(t), b.afterCell(t)}
+		return []string{entryCell(t), recipeCell(t, b.out.DefaultRecipe), b.afterCell(t)}
 	}}
 
 	var tasks []TaskWithLayer
@@ -490,7 +487,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, countedHeading(sublevel, runningSection.name, len(running)), "", runningSection.meaning, "")
 		lines = append(lines, b.table(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
-			return []string{entryCell(t), recipeCell(t), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
+			return []string{entryCell(t), recipeCell(t, b.out.DefaultRecipe), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
 		}})...)
 	}
 	ready := byLayer(readyLayer)
@@ -741,10 +738,10 @@ func codeSpan(s string) string {
 	return fence + s + fence
 }
 
-// recipeCell is the recipe the task runs, tapestry when its recipe field is empty, followed by the run profile it names, if any.
+// recipeCell is the recipe the task runs, defaultRecipe when its recipe field is empty, followed by the run profile it names, if any.
 // A task naming no profile takes its recipe's default profile, so the cell shows the recipe alone.
-func recipeCell(t Task) string {
-	recipe := defaultRecipe
+func recipeCell(t Task, defaultRecipe string) string {
+	recipe := cellText(defaultRecipe)
 	if t.Recipe != "" {
 		recipe = cellText(t.Recipe)
 	}

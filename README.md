@@ -55,8 +55,10 @@ A project groups entries, and a project can become a beam, described below.
 A task carries a title, a body that says what is wanted, labels and a **recipe**.
 The recipe names the kind of run the task gets:
 
-- `tapestry`, the default, for a task big enough to need a discussion and a plan.
-- `darn`, for a smaller change that one writer can make, test and commit.
+- `darn`, the default, for a change that one writer can make, test and commit.
+- `tapestry`, for a task big enough to need a discussion and a plan.
+
+A task with no recipe runs the recipe `default_recipe` names in the hub's `board.yaml`, which is `darn` unless the hub changed it.
 
 A new task is a draft, and nothing starts it until you release it.
 
