@@ -693,9 +693,9 @@ func TestBuildConflictSpec_SkillsAndParentDirective(t *testing.T) {
 		language   []string
 		wantSkills string
 	}{
-		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, "scribe:prose,scribe:code-quality"},
-		{"no parent", "", "No parent is recorded", nil, "scribe:prose,scribe:code-quality"},
-		{"language skills follow its own", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:prose,scribe:code-quality,scribe:golang-testing"},
+		{"with parent", "ab:cd:webster", "ab:cd:webster", nil, "scribe:prose,scribe:code-quality,scribe:testing"},
+		{"no parent", "", "No parent is recorded", nil, "scribe:prose,scribe:code-quality,scribe:testing"},
+		{"language skills follow its own", "", "No parent is recorded", []string{"scribe:golang-testing", "scribe:code-quality"}, "scribe:prose,scribe:code-quality,scribe:testing,scribe:golang-testing"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

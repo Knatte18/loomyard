@@ -20,8 +20,8 @@ const Role = "sampler"
 // stencilName is the registered name of the sampler agent's opening prompt.
 const stencilName = "sampler-template-agent"
 
-// skills are the skills the sampler session loads before its prompt.
-var skills = []string{"scribe:prose", "scribe:conversation"}
+// skills are the skills the sampler session loads before its prompt: it talks with the operator and writes code and tests.
+var skills = []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}
 
 // SessionInputs are the values SessionSpec is told; none is derived here.
 type SessionInputs struct {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -29,6 +30,9 @@ const fixerStencilName = "landing-template-fixer"
 
 // fixerRole is the agent-name role the merge fixer's spawn carries.
 const fixerRole = "fixer"
+
+// fixerSkills are the skills the merge fixer loads before the run's language skills: it edits code and tests.
+var fixerSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // FixerInputs carries the told values one merge fixer session needs.
 // Every field is required except PlanDir, FailureRecordPath, FixReviewPath and LanguageSkills; AlignedTip is required in parent-align mode only.
@@ -61,7 +65,7 @@ type FixerInputs struct {
 	ParentBranch string
 	// Slug is the task's slug.
 	Slug string
-	// LanguageSkills are the run's language skills the session loads before its prompt.
+	// LanguageSkills are the run's language skills the session loads after its own, before its prompt.
 	LanguageSkills []string
 }
 
@@ -130,7 +134,7 @@ func FixerTable(in FixerInputs, cfg Config, reg modelspec.Registry) (seatengine.
 			Stencil:     fixerStencilName,
 			ModelChoice: shuttleengine.NewModelChoice(resolved),
 			Outputs:     []string{in.ReportPath},
-			Skills:      in.LanguageSkills,
+			Skills:      languageconfig.AppendSkills(fixerSkills, in.LanguageSkills),
 		}},
 	}, nil
 }

@@ -91,7 +91,7 @@ func TestMergeIn_ConflictSessionLoadsLanguageSkills(t *testing.T) {
 		if len(shuttle.Specs) != 1 {
 			t.Fatalf("fake shuttle Run() called %d time(s); want exactly 1 conflict-resolution session", len(shuttle.Specs))
 		}
-		if want := []string{"scribe:prose", "scribe:code-quality", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
+		if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}; !slices.Equal(shuttle.Specs[0].Skills, want) {
 			t.Errorf("conflict session Skills = %v; want %v", shuttle.Specs[0].Skills, want)
 		}
 	})

@@ -42,7 +42,7 @@ func TestSessionSpec(t *testing.T) {
 		if spec.Role != Role || spec.Segment != segmentcolor.Darn {
 			t.Errorf("SessionSpec() Role, Segment = %q, %q; want %q, %q", spec.Role, spec.Segment, Role, segmentcolor.Darn)
 		}
-		if want := []string{"scribe:prose", "scribe:conversation"}; !slices.Equal(spec.Skills, want) {
+		if want := []string{"scribe:prose", "scribe:conversation", "scribe:code-quality", "scribe:testing"}; !slices.Equal(spec.Skills, want) {
 			t.Errorf("SessionSpec() Skills = %v; want %v", spec.Skills, want)
 		}
 		directive, err := parentdirective.Directive(stencilsDir, "hub:orch", true)

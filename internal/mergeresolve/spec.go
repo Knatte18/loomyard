@@ -26,7 +26,7 @@ const conflictStencilName = "landing-template-conflict"
 const ConflictRole = "conflict"
 
 // conflictSkills are the skills the conflict-resolution session loads before its prompt.
-var conflictSkills = []string{"scribe:prose", "scribe:code-quality"}
+var conflictSkills = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
 
 // reportNamePrefix is the filename prefix every attempt's resolution report shares, followed by the attempt number and ".md".
 // The report path builder and Resolve's stale-report glob both use it.

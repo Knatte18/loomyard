@@ -71,8 +71,8 @@ func TestFixerTable(t *testing.T) {
 			if want := []string{in.ReportPath}; !slices.Equal(lead.Outputs, want) {
 				t.Errorf("lead outputs = %v; want %v", lead.Outputs, want)
 			}
-			if !slices.Equal(lead.Skills, in.LanguageSkills) {
-				t.Errorf("lead skills = %v; want %v", lead.Skills, in.LanguageSkills)
+			if want := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-build"}; !slices.Equal(lead.Skills, want) {
+				t.Errorf("lead skills = %v; want %v", lead.Skills, want)
 			}
 			if table.Values["mode"] != string(mode) || table.Values["aligned_tip"] != "aligned123" || table.Values["merged_tip"] != "merged456" {
 				t.Errorf("table values mode/aligned_tip/merged_tip = %q/%q/%q; want %q/aligned123/merged456", table.Values["mode"], table.Values["aligned_tip"], table.Values["merged_tip"], mode)
