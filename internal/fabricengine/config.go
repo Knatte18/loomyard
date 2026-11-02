@@ -29,7 +29,7 @@ func (c Config) Dirs() []string {
 	return strings.Fields(c.Pathspec)
 }
 
-// WarpExcludePaths returns the warp exclude list as a slice of paths relative to a warp worktree's root, split on whitespace.
+// WarpExcludePaths returns the warp exclude list as a slice of paths relative to a warp worktree's anchor, split on whitespace.
 // They are excluded through the warp repository's info/exclude and are never wired as junctions.
 func (c Config) WarpExcludePaths() []string {
 	return strings.Fields(c.WarpExclude)

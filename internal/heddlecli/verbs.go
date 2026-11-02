@@ -292,7 +292,7 @@ Example:
 			if clihelp.ShouldAbort(cmd.Context()) {
 				return nil
 			}
-			text, err := c.renderer.Show(c.boltDir, args[0], c.location.WorktreePath())
+			text, err := c.renderer.Show(c.boltDir, args[0], c.location.AnchorPath())
 			if err != nil {
 				return c.fail(cmd, fmt.Errorf("heddle: %w", err))
 			}
@@ -308,8 +308,8 @@ func (c *heddleCLI) renderCmd() *cobra.Command {
 		Use:         "render [<worktree>]",
 		Short:       "render every file target into a worktree of the hub",
 		Annotations: operatorAnnotation,
-		Long: `Renders every file target into the named worktree of the current hub, the
-current one by default. The name is the last element of a path lym fabric list
+		Long: `Renders every file target into the anchor directory of the named worktree of
+the current hub, the current one by default. The name is the last element of a path lym fabric list
 prints. The worktree's exclude lines are seeded first, and the files written
 and removed and the render's warnings are printed.
 
@@ -333,7 +333,7 @@ Example:
 				return c.fail(cmd, fmt.Errorf("heddle: seed the exclude lines of %s: %w", location.WorktreeName, err))
 			}
 			report, err := c.renderer.Render(heddleengine.RenderRequest{
-				Root:       event.Root,
+				Anchor:     event.Anchor,
 				ScratchDir: event.ScratchDir,
 				BoltDir:    event.BoltDir,
 				Excluded:   event.Excluded,

@@ -1,4 +1,4 @@
-// render_test.go drives Render, Show and Passages over temporary directories standing in for a worktree's root, its scratch directory and the Bolt checkout.
+// render_test.go drives Render, Show and Passages over temporary directories standing in for a worktree's anchor, its scratch directory and the Bolt checkout.
 
 package heddleengine
 
@@ -22,7 +22,7 @@ const observeWindow = 50 * time.Millisecond
 
 // renderFixture is the three directories a render works over, with the exclude list a seeded worktree holds.
 type renderFixture struct {
-	root     string
+	anchor   string
 	scratch  string
 	bolt     string
 	excluded []string
@@ -31,7 +31,7 @@ type renderFixture struct {
 func newRenderFixture(t *testing.T, store Store) renderFixture {
 	t.Helper()
 	fixture := renderFixture{
-		root:     t.TempDir(),
+		anchor:   t.TempDir(),
 		scratch:  t.TempDir(),
 		bolt:     t.TempDir(),
 		excluded: []string{"CLAUDE.local.md", "AGENTS.override.md", ".heddle"},
@@ -41,12 +41,12 @@ func newRenderFixture(t *testing.T, store Store) renderFixture {
 }
 
 func (f renderFixture) request(only ...string) RenderRequest {
-	return RenderRequest{Root: f.root, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded, Only: only}
+	return RenderRequest{Anchor: f.anchor, ScratchDir: f.scratch, BoltDir: f.bolt, Excluded: f.excluded, Only: only}
 }
 
-func (f renderFixture) writeRoot(t *testing.T, rel, content string) {
+func (f renderFixture) writeAnchor(t *testing.T, rel, content string) {
 	t.Helper()
-	path := filepath.Join(f.root, filepath.FromSlash(rel))
+	path := filepath.Join(f.anchor, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -55,17 +55,17 @@ func (f renderFixture) writeRoot(t *testing.T, rel, content string) {
 	}
 }
 
-func (f renderFixture) readRoot(t *testing.T, rel string) string {
+func (f renderFixture) readAnchor(t *testing.T, rel string) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(f.root, filepath.FromSlash(rel)))
+	data, err := os.ReadFile(filepath.Join(f.anchor, filepath.FromSlash(rel)))
 	if err != nil {
 		t.Fatalf("read %s: %v", rel, err)
 	}
 	return string(data)
 }
 
-func (f renderFixture) rootHas(rel string) bool {
-	_, err := os.Lstat(filepath.Join(f.root, filepath.FromSlash(rel)))
+func (f renderFixture) anchorHas(rel string) bool {
+	_, err := os.Lstat(filepath.Join(f.anchor, filepath.FromSlash(rel)))
 	return err == nil
 }
 
@@ -202,7 +202,7 @@ func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 			}
 			r := Renderer{}
 
-			shown, err := r.Show(f.bolt, "claude-prompt", f.root)
+			shown, err := r.Show(f.bolt, "claude-prompt", f.anchor)
 			if err != nil || shown != tt.wantPrompt {
 				t.Errorf("Show(claude-prompt) = %q, %v; want %q", shown, err, tt.wantPrompt)
 			}
@@ -210,7 +210,7 @@ func TestShowAndPassagesReadTheShippedLayerFirst(t *testing.T) {
 			if want := strings.Split(tt.wantPrompt, "\n\n"); err != nil || !slices.Equal(passages, want) {
 				t.Errorf("Passages(claude) = %q, %v; want %q", passages, err, want)
 			}
-			shown, err = r.Show(f.bolt, "claude-file", f.root)
+			shown, err = r.Show(f.bolt, "claude-file", f.anchor)
 			if want := strings.Join([]string{Marker, shippedHeading, tt.wantFileText}, "\n\n") + "\n"; err != nil || shown != want {
 				t.Errorf("Show(claude-file) = %q, %v; want %q", shown, err, want)
 			}
@@ -231,13 +231,13 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
 		report := mustRender(t, f)
-		if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
-			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+		if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
 		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || len(report.Warnings) != 0 {
 			t.Errorf("report = %+v; want only CLAUDE.local.md written", report)
 		}
-		if f.rootHas(".heddle") {
+		if f.anchorHas(".heddle") {
 			t.Error(".heddle left behind")
 		}
 	})
@@ -260,11 +260,11 @@ func TestRender(t *testing.T) {
 				t.Parallel()
 				f := newRenderFixture(t, Store{Entries: []Entry{entryFor("only", "text", 1, "claude-file")}})
 				for _, rel := range tt.files {
-					f.writeRoot(t, rel, "base\n")
+					f.writeAnchor(t, rel, "base\n")
 				}
 				mustRender(t, f)
-				if want := claudeFileWant(tt.want, "text"); f.readRoot(t, "CLAUDE.local.md") != want {
-					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+				if want := claudeFileWant(tt.want, "text"); f.readAnchor(t, "CLAUDE.local.md") != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 				}
 			})
 		}
@@ -273,10 +273,10 @@ func TestRender(t *testing.T) {
 	t.Run("CodexFileOpensWithRootAgents", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex text", 1, "codex-file")}})
-		f.writeRoot(t, "AGENTS.md", "repository rules\n")
+		f.writeAnchor(t, "AGENTS.md", "repository rules\n")
 		mustRender(t, f)
-		if want := Marker + "\n\nrepository rules\n\ncodex text\n"; f.readRoot(t, "AGENTS.override.md") != want {
-			t.Errorf("AGENTS.override.md = %q; want %q", f.readRoot(t, "AGENTS.override.md"), want)
+		if want := Marker + "\n\nrepository rules\n\ncodex text\n"; f.readAnchor(t, "AGENTS.override.md") != want {
+			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
 		}
 	})
 
@@ -284,10 +284,10 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{})
 		report := mustRender(t, f)
-		if want := claudeFileWant(""); f.readRoot(t, "CLAUDE.local.md") != want {
-			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+		if want := claudeFileWant(""); f.readAnchor(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || f.rootHas("AGENTS.override.md") {
+		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || f.anchorHas("AGENTS.override.md") {
 			t.Errorf("report = %+v; want only CLAUDE.local.md written", report)
 		}
 	})
@@ -296,8 +296,8 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{Entries: []Entry{entryFor(shippedStore.Ordered()[0].Slug, "mine", 1, "claude-file")}})
 		mustRender(t, f)
-		if want := claudeFileWant("", "mine"); f.readRoot(t, "CLAUDE.local.md") != want {
-			t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+		if want := claudeFileWant("", "mine"); f.readAnchor(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
 	})
 
@@ -329,7 +329,7 @@ func TestRender(t *testing.T) {
 				if tt.wantOverride {
 					want = strings.Replace(want, shipped.Text, "tuned text", 1)
 				}
-				if got := f.readRoot(t, "CLAUDE.local.md"); got != want {
+				if got := f.readAnchor(t, "CLAUDE.local.md"); got != want {
 					t.Errorf("CLAUDE.local.md = %q; want %q", got, want)
 				}
 			})
@@ -357,8 +357,8 @@ func TestRender(t *testing.T) {
 					t.Fatal(err)
 				}
 				report := mustRender(t, f)
-				if want := claudeFileWant(""); f.readRoot(t, "CLAUDE.local.md") != want {
-					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+				if want := claudeFileWant(""); f.readAnchor(t, "CLAUDE.local.md") != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 				}
 				if len(report.Warnings) != 0 {
 					t.Errorf("warnings = %v; want none", report.Warnings)
@@ -387,8 +387,8 @@ func TestRender(t *testing.T) {
 					t.Fatal(err)
 				}
 				report := mustRender(t, f)
-				if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
-					t.Errorf("CLAUDE.local.md = %q; want %q", f.readRoot(t, "CLAUDE.local.md"), want)
+				if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
+					t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 				}
 				if tt.wantWarning {
 					if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], OverrideFileName) {
@@ -405,9 +405,9 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{})
 		f.excluded = nil
-		f.writeRoot(t, "AGENTS.override.md", Marker+"\n\nold\n")
+		f.writeAnchor(t, "AGENTS.override.md", Marker+"\n\nold\n")
 		report := mustRender(t, f)
-		if f.rootHas("AGENTS.override.md") || !slices.Equal(report.Removed, []string{"AGENTS.override.md"}) {
+		if f.anchorHas("AGENTS.override.md") || !slices.Equal(report.Removed, []string{"AGENTS.override.md"}) {
 			t.Errorf("stale render kept or not reported: removed %v", report.Removed)
 		}
 	})
@@ -415,9 +415,9 @@ func TestRender(t *testing.T) {
 	t.Run("UnmarkedFileIsLeftAlone", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		f.writeRoot(t, "CLAUDE.local.md", "mine\n")
+		f.writeAnchor(t, "CLAUDE.local.md", "mine\n")
 		report := mustRender(t, f)
-		if f.readRoot(t, "CLAUDE.local.md") != "mine\n" {
+		if f.readAnchor(t, "CLAUDE.local.md") != "mine\n" {
 			t.Error("unmarked CLAUDE.local.md was overwritten")
 		}
 		if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], "CLAUDE.local.md") {
@@ -425,9 +425,9 @@ func TestRender(t *testing.T) {
 		}
 
 		f = newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex", 1, "codex-file")}})
-		f.writeRoot(t, "CLAUDE.local.md", "mine\n")
+		f.writeAnchor(t, "CLAUDE.local.md", "mine\n")
 		mustRender(t, f)
-		if f.readRoot(t, "CLAUDE.local.md") != "mine\n" {
+		if f.readAnchor(t, "CLAUDE.local.md") != "mine\n" {
 			t.Error("unmarked CLAUDE.local.md was removed")
 		}
 	})
@@ -448,7 +448,7 @@ func TestRender(t *testing.T) {
 				f := newRenderFixture(t, claudeStore)
 				f.excluded = tt.excluded
 				report := mustRender(t, f)
-				if f.rootHas("CLAUDE.local.md") || f.rootHas(".heddle") {
+				if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
 					t.Error("a file was written although the exclude list lacks a path")
 				}
 				if !slices.Contains(report.Warnings, tt.want) {
@@ -464,8 +464,8 @@ func TestRender(t *testing.T) {
 			name  string
 			setup func(f renderFixture, t *testing.T)
 		}{
-			{"File", func(f renderFixture, t *testing.T) { f.writeRoot(t, ".heddle", "x") }},
-			{"DirWithOtherFile", func(f renderFixture, t *testing.T) { f.writeRoot(t, ".heddle/notes.txt", "x") }},
+			{"File", func(f renderFixture, t *testing.T) { f.writeAnchor(t, ".heddle", "x") }},
+			{"DirWithOtherFile", func(f renderFixture, t *testing.T) { f.writeAnchor(t, ".heddle/notes.txt", "x") }},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -473,7 +473,7 @@ func TestRender(t *testing.T) {
 				f := newRenderFixture(t, claudeStore)
 				tt.setup(f, t)
 				report := mustRender(t, f)
-				if f.rootHas("CLAUDE.local.md") {
+				if f.anchorHas("CLAUDE.local.md") {
 					t.Error("CLAUDE.local.md written although .heddle is blocked")
 				}
 				if len(report.Warnings) != 1 || !strings.Contains(report.Warnings[0], ".heddle") || !strings.Contains(report.Warnings[0], "lym heddle render") {
@@ -486,9 +486,9 @@ func TestRender(t *testing.T) {
 	t.Run("LeftoverTempFileIsOverwritten", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		f.writeRoot(t, ".heddle/CLAUDE.local.md.tmp", "half a render")
+		f.writeAnchor(t, ".heddle/CLAUDE.local.md.tmp", "half a render")
 		mustRender(t, f)
-		if !strings.HasPrefix(f.readRoot(t, "CLAUDE.local.md"), Marker) || f.rootHas(".heddle") {
+		if !strings.HasPrefix(f.readAnchor(t, "CLAUDE.local.md"), Marker) || f.anchorHas(".heddle") {
 			t.Error("leftover temp file not overwritten, or .heddle left behind")
 		}
 	})
@@ -497,7 +497,7 @@ func TestRender(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, Store{Entries: []Entry{entryFor("both", "t", 1, "claude-file", "codex-file")}})
 		mustRender(t, f, "codex-file")
-		if f.rootHas("CLAUDE.local.md") || !f.rootHas("AGENTS.override.md") {
+		if f.anchorHas("CLAUDE.local.md") || !f.anchorHas("AGENTS.override.md") {
 			t.Error("Only codex-file did not leave CLAUDE.local.md unwritten and AGENTS.override.md written")
 		}
 	})
@@ -514,7 +514,7 @@ func TestRender(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "lym heddle render") {
 			t.Errorf("Render() = %v; want an error naming lym heddle render", err)
 		}
-		if f.rootHas("CLAUDE.local.md") || f.rootHas(".heddle") {
+		if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
 			t.Error("a failed render wrote something")
 		}
 	})
@@ -531,7 +531,7 @@ func TestRender(t *testing.T) {
 		}
 		done := renderInBackground(Renderer{BoltLockWait: 30 * time.Second}, f.request())
 		requireStillBlocked(t, done)
-		if f.rootHas("CLAUDE.local.md") {
+		if f.anchorHas("CLAUDE.local.md") {
 			t.Error("a file was written while the Bolt lock was held")
 		}
 		saveStore(t, f.bolt, claudeStore)
@@ -539,8 +539,8 @@ func TestRender(t *testing.T) {
 			t.Fatal(err)
 		}
 		requireFinished(t, done)
-		if want := claudeFileWant("", "one", "two"); f.readRoot(t, "CLAUDE.local.md") != want {
-			t.Errorf("CLAUDE.local.md = %q; want the new store's text", f.readRoot(t, "CLAUDE.local.md"))
+		if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
+			t.Errorf("CLAUDE.local.md = %q; want the new store's text", f.readAnchor(t, "CLAUDE.local.md"))
 		}
 	})
 
@@ -557,14 +557,14 @@ func TestRender(t *testing.T) {
 		}
 		done := renderInBackground(Renderer{}, f.request())
 		requireStillBlocked(t, done)
-		if f.rootHas("CLAUDE.local.md") || f.rootHas(".heddle") {
+		if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
 			t.Error("a render wrote while another held the render lock")
 		}
 		if err := held.Release(); err != nil {
 			t.Fatal(err)
 		}
 		requireFinished(t, done)
-		if !f.rootHas("CLAUDE.local.md") {
+		if !f.anchorHas("CLAUDE.local.md") {
 			t.Error("the render did not complete after the render lock was released")
 		}
 	})
@@ -577,15 +577,15 @@ func TestRender(t *testing.T) {
 			entryFor("c", "file text", 3, "claude-file"),
 		}})
 		r := Renderer{}
-		shown, err := r.Show(f.bolt, "claude-file", f.root)
+		shown, err := r.Show(f.bolt, "claude-file", f.anchor)
 		if err != nil || shown != claudeFileWant("", "file text") {
 			t.Errorf("Show(claude-file) = %q, %v", shown, err)
 		}
-		shown, err = r.Show(f.bolt, "claude-prompt", f.root)
+		shown, err = r.Show(f.bolt, "claude-prompt", f.anchor)
 		if err != nil || shown != "prompt one\n\nprompt two" {
 			t.Errorf("Show(claude-prompt) = %q, %v", shown, err)
 		}
-		if _, err := r.Show(f.bolt, "nope", f.root); err == nil || !strings.Contains(err.Error(), "claude-file") {
+		if _, err := r.Show(f.bolt, "nope", f.anchor); err == nil || !strings.Contains(err.Error(), "claude-file") {
 			t.Errorf("Show(nope) = %v; want an error naming the valid targets", err)
 		}
 		claude, err := r.Passages(f.bolt, "claude", "")
@@ -596,7 +596,7 @@ func TestRender(t *testing.T) {
 		if err != nil || len(codex) != 0 {
 			t.Errorf("Passages(codex) = %v, %v; want none", codex, err)
 		}
-		if f.rootHas("CLAUDE.local.md") || f.rootHas(".heddle") {
+		if f.anchorHas("CLAUDE.local.md") || f.anchorHas(".heddle") {
 			t.Error("Show or Passages wrote a file")
 		}
 	})
@@ -628,7 +628,7 @@ func TestRender(t *testing.T) {
 				t.Errorf("%s: Passages(%q, %q) = %v, %v; want %v", tt.name, tt.engine, tt.role, got, err, tt.want)
 			}
 		}
-		shown, err := r.Show(f.bolt, "orch-prompt", f.root)
+		shown, err := r.Show(f.bolt, "orch-prompt", f.anchor)
 		if err != nil || shown != "orch rule\n\nshared rule" {
 			t.Errorf("Show(orch-prompt) = %q, %v; want the two orch passages", shown, err)
 		}

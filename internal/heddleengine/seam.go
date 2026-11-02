@@ -3,6 +3,9 @@
 package heddleengine
 
 import (
+	"fmt"
+	"path"
+	"path/filepath"
 	"slices"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -17,20 +20,25 @@ type Seam struct {
 
 var _ fabricengine.WorktreeSeam = Seam{}
 
-// Made renders every file target into the event's root.
+// Made renders every file target into the event's anchor.
 func (s Seam) Made(ev fabricengine.WorktreeEvent) error {
 	return s.render(requestOf(ev, nil))
 }
 
-// TookIn renders the file targets whose re-render paths include one of the event's paths.
+// TookIn renders the file targets whose re-render paths, taken under the event's anchor, include one of the event's root-relative paths.
 // With none selected it renders nothing and takes no lock.
 func (s Seam) TookIn(ev fabricengine.WorktreeEvent) error {
+	anchorRel, err := filepath.Rel(ev.Root, ev.Anchor)
+	if err != nil {
+		return fmt.Errorf("place the anchor %s within the worktree %s: %w", ev.Anchor, ev.Root, err)
+	}
+	anchorPrefix := filepath.ToSlash(anchorRel)
 	var selected []string
 	for _, target := range targetTable {
 		if target.Delivery != DeliveryFile {
 			continue
 		}
-		if slices.ContainsFunc(ev.Paths, func(path string) bool { return slices.Contains(target.ReRender, path) }) {
+		if slices.ContainsFunc(target.ReRender, func(rel string) bool { return slices.Contains(ev.Paths, path.Join(anchorPrefix, rel)) }) {
 			selected = append(selected, target.Name)
 		}
 	}
@@ -40,16 +48,16 @@ func (s Seam) TookIn(ev fabricengine.WorktreeEvent) error {
 	return s.render(requestOf(ev, selected))
 }
 
-// render runs the render and logs each of its warnings at Warn, naming the worktree.
+// render runs the render and logs each of its warnings at Warn, naming the anchor.
 func (s Seam) render(req RenderRequest) error {
 	report, err := s.Renderer.Render(req)
 	for _, warning := range report.Warnings {
-		logger.Warn("heddleengine: render warning (non-fatal)", "worktree", req.Root, "warning", warning)
+		logger.Warn("heddleengine: render warning (non-fatal)", "anchor", req.Anchor, "warning", warning)
 	}
 	return err
 }
 
-// requestOf copies the event's root, scratch directory, Bolt checkout and exclude list into a render request for the targets only names.
+// requestOf copies the event's anchor, scratch directory, Bolt checkout and exclude list into a render request for the targets only names.
 func requestOf(ev fabricengine.WorktreeEvent, only []string) RenderRequest {
-	return RenderRequest{Root: ev.Root, ScratchDir: ev.ScratchDir, BoltDir: ev.BoltDir, Excluded: ev.Excluded, Only: only}
+	return RenderRequest{Anchor: ev.Anchor, ScratchDir: ev.ScratchDir, BoltDir: ev.BoltDir, Excluded: ev.Excluded, Only: only}
 }

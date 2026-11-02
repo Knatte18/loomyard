@@ -582,6 +582,32 @@ func TestHeddleCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("RenderWritesFileTargetsAtTheAnchor", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		cwd := primeCwd(h)
+		seedStore(t, h, map[string][]string{"rules": {"claude-file", "codex-file"}})
+		c := (&recorder{}).cli()
+
+		requireOK(t, runVerb(c, cwd, "", "render"))
+
+		for _, name := range []string{"CLAUDE.local.md", "AGENTS.override.md"} {
+			data, err := os.ReadFile(filepath.Join(h.Location.AnchorPath(), name))
+			if err != nil || !strings.HasPrefix(string(data), heddleengine.Marker) {
+				t.Errorf("%s at the anchor = %q, %v; want a rendered file", name, data, err)
+			}
+			if _, err := os.Stat(filepath.Join(h.PrimeWorktree(), name)); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("stat %s at the worktree root: %v; want no file written", name, err)
+			}
+		}
+
+		writeFile(t, filepath.Join(h.Location.AnchorPath(), "AGENTS.md"), "agents text at the anchor\n")
+		run := runVerb(c, cwd, "", "show", "codex-file")
+		if run.code != 0 || !strings.Contains(run.out, "agents text at the anchor") {
+			t.Errorf("show codex-file: exit %d, output %q; want the AGENTS.md at the anchor in the rendered text", run.code, run.out)
+		}
+	})
+
 	t.Run("RenderWarnsOfAnUnmarkedFile", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})

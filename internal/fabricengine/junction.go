@@ -145,7 +145,7 @@ func wireJunctionSet(rec *Mutations, l *lymcwd.Location, slug string, names []st
 		return err
 	}
 
-	return seedWarpExcludeLines(rec, WorktreePath(l, slug), cfg.WarpExcludePaths())
+	return seedWarpExcludeLines(rec, WorktreePath(l, slug), l.AnchorRel, cfg.WarpExcludePaths())
 }
 
 // WireJunctions is WireJunctionsWith's nil-recorder delegation, kept only because roughly fifty

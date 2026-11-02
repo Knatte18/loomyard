@@ -465,8 +465,8 @@
 // repo-wide flock across read, rewrite and write and replaces the file by same-directory rename, so
 // a concurrent reader sees either the whole old file or the whole new one.
 //
-// The warp exclude list, fabric.yaml's `warp_exclude` key, names paths at a warp worktree's root that lym's instruction files occupy.
-// Wiring seeds each as an anchored `/<path>` line into the same `info/exclude` and never removes one, since the file is shared by every worktree;
+// The warp exclude list, fabric.yaml's `warp_exclude` key, names paths under a warp worktree's anchor that lym's instruction files occupy.
+// Wiring seeds each as a root-anchored `/<anchor>/<path>` line, `/<path>` for anchor `.`, into the same `info/exclude` and never removes one, since the file is shared by every worktree;
 // `SeedWarpExclude` seeds it on demand, and `ExcludeWayForward` is the refusal text for a path off the list.
 // The list is separate from `pathspec` and is never folded into the wired junction names, so health and drift checks never ask for a junction of it.
 //

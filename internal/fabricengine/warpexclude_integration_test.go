@@ -1,5 +1,5 @@
 // warpexclude_integration_test.go covers the warp exclude list.
-// Wiring and SeedWarpExclude seed its anchored lines into the shared info/exclude exactly once, never into the weft or the wired junction names, and removing a pair keeps them.
+// Wiring and SeedWarpExclude seed its lines, under the worktree's anchor, into the shared info/exclude exactly once, never into the weft or the wired junction names, and removing a pair keeps them.
 
 package fabricengine_test
 
@@ -44,6 +44,7 @@ func requireWarpExcludeOnce(t *testing.T, dir string) {
 // A pair's warp exclude holds each listed path once however often wiring and SeedWarpExclude run.
 // The weft exclude and the wired names hold none, and removing the pair keeps the lines.
 // A re-wired pair gets stripped lines back, AddLocal seeds them, and an unparseable fabric config fails the wiring before it seeds anything.
+// In a hub with an anchor every line names the anchor and none names the root.
 //
 //testtiming:keep the warp exclude lines seeded once into the warp only, outside the wired names and surviving Remove, re-seeded by Reconcile's re-wire and AddLocal, and an unparseable config failing wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
@@ -134,6 +135,49 @@ func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 			t.Fatalf("AddLocal: %v", err)
 		}
 		requireWarpExcludeOnce(t, fabricengine.WorktreePath(h.Location, slug))
+	})
+
+	t.Run("anchored_hub_seeds_the_lines_under_the_anchor", func(t *testing.T) {
+		t.Parallel()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		if _, err := fabricengine.SeedWarpExclude(h.Location); err != nil {
+			t.Fatalf("SeedWarpExclude: %v", err)
+		}
+		lines := gitkit.ExcludeLines(t, h.PrimeWorktree())
+		for _, rootLine := range warpExcludeLines {
+			if got := countLine(lines, "/backend"+rootLine); got != 1 {
+				t.Errorf("exclude holds %q %d times; want 1 (lines: %v)", "/backend"+rootLine, got, lines)
+			}
+			if got := countLine(lines, rootLine); got != 0 {
+				t.Errorf("exclude holds the root line %q %d times; want 0 (lines: %v)", rootLine, got, lines)
+			}
+		}
+	})
+
+	t.Run("anchored_hub_wiring_seeds_the_lines_under_the_anchor", func(t *testing.T) {
+		t.Parallel()
+		const slug = "anchoredwirepair"
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend"})
+		hubforge.AddPair(t, h, slug)
+		l := h.Location
+
+		names, err := fabricengine.WiredNames(fabricengine.ConfigDirs(l))
+		if err != nil {
+			t.Fatalf("WiredNames: %v", err)
+		}
+		if err := fabricengine.WireJunctions(l, slug, names); err != nil {
+			t.Fatalf("WireJunctions: %v", err)
+		}
+
+		lines := gitkit.ExcludeLines(t, fabricengine.WorktreePath(l, slug))
+		for _, rootLine := range warpExcludeLines {
+			if got := countLine(lines, "/backend"+rootLine); got != 1 {
+				t.Errorf("exclude holds %q %d times; want 1 (lines: %v)", "/backend"+rootLine, got, lines)
+			}
+			if got := countLine(lines, rootLine); got != 0 {
+				t.Errorf("exclude holds the root line %q %d times; want 0 (lines: %v)", rootLine, got, lines)
+			}
+		}
 	})
 
 	t.Run("unparseable_config_fails_wiring_and_seeds_nothing", func(t *testing.T) {

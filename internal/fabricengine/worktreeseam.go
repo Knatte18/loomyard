@@ -14,11 +14,12 @@ import (
 )
 
 // WorktreeEvent is what the worktree seam is told about one worktree.
-// Root is the worktree's root, and ScratchDir is the pair's never-tracked `.lym` directory.
-// BoltDir is the hub's Bolt checkout, and Excluded the paths the warp exclude list names, already seeded into the repository's exclude file.
-// Paths are the paths that differ between the old and the new head, empty for "made".
+// Root is the worktree's root, Anchor its anchor directory, where the repository's own files sit and equal to Root in a worktree with no anchor, and ScratchDir the pair's never-tracked `.lym` directory.
+// BoltDir is the hub's Bolt checkout, and Excluded the anchor-relative paths the warp exclude list names, already seeded into the repository's exclude file.
+// Paths are the root-relative paths that differ between the old and the new head, empty for "made".
 type WorktreeEvent struct {
 	Root       string
+	Anchor     string
 	ScratchDir string
 	BoltDir    string
 	Excluded   []string
@@ -55,6 +56,7 @@ func EventFor(l *lymcwd.Location, paths []string) (WorktreeEvent, error) {
 	}
 	return WorktreeEvent{
 		Root:       l.WorktreePath(),
+		Anchor:     l.AnchorPath(),
 		ScratchDir: filepath.Join(RecordsWorktreePath(l, l.WorktreeName), l.AnchorRel, lymdirs.DotLymDirName),
 		BoltDir:    BoltDir(l.HubPath),
 		Excluded:   excluded,

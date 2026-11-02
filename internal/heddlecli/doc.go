@@ -25,7 +25,7 @@
 //
 // # Who may write
 //
-// The operator audience annotation is help text and denies nothing, so any lym caller in the hub can change the text later launches append to a session's system prompt and later renders write into a worktree's root.
+// The operator audience annotation is help text and denies nothing, so any lym caller in the hub can change the text later launches append to a session's system prompt and later renders write into a worktree's anchor directory.
 // A write lands only through the store's validation under the Bolt write lock, and the board's sync commits it to Bolt's history, where it can be read and reverted.
 //
 // # Wiring

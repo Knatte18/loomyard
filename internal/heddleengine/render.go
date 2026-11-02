@@ -1,4 +1,4 @@
-// render.go renders heddle's file targets into a worktree's root and reads the prompt passages of a prompt target.
+// render.go renders heddle's file targets into a worktree's anchor directory and reads the prompt passages of a prompt target.
 
 package heddleengine
 
@@ -23,7 +23,7 @@ const Marker = "<!-- rendered by lym heddle: change it with lym heddle set, neve
 const DefaultBoltLockWait = 30 * time.Second
 
 const (
-	// tempDirName is the directory at a worktree's root a render writes its files into before renaming them onto their targets.
+	// tempDirName is the directory at a worktree's anchor a render writes its files into before renaming them onto their targets.
 	tempDirName = ".heddle"
 	// tempSuffix ends the name of a file inside tempDirName.
 	tempSuffix = ".tmp"
@@ -34,17 +34,18 @@ const (
 )
 
 // RenderRequest is one worktree to render.
-// Root is the worktree's root and ScratchDir the pair's never-tracked directory, BoltDir the Bolt checkout holding the store, and Excluded the paths fabric's exclude list names.
+// Anchor is the worktree's anchor directory, where the file targets render and the repository's own CLAUDE and AGENTS files are read; it is the worktree's root in a worktree with no anchor.
+// ScratchDir is the pair's never-tracked directory, BoltDir the Bolt checkout holding the store, and Excluded the anchor-relative paths fabric's exclude list names.
 // Only names the file targets to render, all of them when empty.
 type RenderRequest struct {
-	Root       string
+	Anchor     string
 	ScratchDir string
 	BoltDir    string
 	Excluded   []string
 	Only       []string
 }
 
-// Report lists the files a render wrote and removed, as root-relative paths, and the warnings it raised.
+// Report lists the files a render wrote and removed, as anchor-relative paths, and the warnings it raised.
 type Report struct {
 	Written  []string
 	Removed  []string
@@ -57,7 +58,7 @@ type Renderer struct {
 	BoltLockWait time.Duration
 }
 
-// Render writes the file targets of req into its root from the entries of the shipped layer and the store.
+// Render writes the file targets of req into its anchor from the entries of the shipped layer and the store.
 // It holds the worktree's render lock for the whole read and write, so two renders of one worktree serialize and the last one's text stands whole.
 // A target with no entry loses its marked file; a target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
 // The lock wait running out fails the render before it writes anything.
@@ -82,7 +83,7 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 	}
 	entries := layers.Ordered()
 
-	tempDir := filepath.Join(req.Root, tempDirName)
+	tempDir := filepath.Join(req.Anchor, tempDirName)
 	blocked, err := tempDirBlocked(tempDir)
 	if err != nil {
 		return report, err
@@ -95,11 +96,11 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		if target.Delivery != DeliveryFile || (len(req.Only) > 0 && !slices.Contains(req.Only, target.Name)) {
 			continue
 		}
-		text, held, err := fileText(target, req.Root, entries)
+		text, held, err := fileText(target, req.Anchor, entries)
 		if err != nil {
 			return report, err
 		}
-		path := filepath.Join(req.Root, target.File)
+		path := filepath.Join(req.Anchor, target.File)
 		existing, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return report, fmt.Errorf("read %s: %w", path, err)
@@ -221,11 +222,11 @@ func removeTempDir(dir string) error {
 	return nil
 }
 
-// fileText builds the text a file target renders to at root from the layered entries that name it, and reports false when none does.
+// fileText builds the text a file target renders to at anchor from the layered entries that name it, and reports false when none does.
 // It opens with Marker.
 // The shipped layer's texts follow under their own heading, then the repository's, under a heading of their own only when shipped texts precede them.
-// The claude-file target imports the AGENTS.md files the root holds when the root holds no CLAUDE.md, and the codex-file target opens with the root's AGENTS.md.
-func fileText(target Target, root string, entries []LayeredEntry) (string, bool, error) {
+// The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md, and the codex-file target opens with the anchor's AGENTS.md.
+func fileText(target Target, anchor string, entries []LayeredEntry) (string, bool, error) {
 	var shipped, repository []string
 	for _, entry := range entries {
 		if !slices.Contains(entry.Targets, target.Name) {
@@ -252,10 +253,10 @@ func fileText(target Target, root string, entries []LayeredEntry) (string, bool,
 	parts := []string{Marker}
 	switch target.Name {
 	case "claude-file":
-		if !fileExists(filepath.Join(root, "CLAUDE.md")) && !fileExists(filepath.Join(root, ".claude", "CLAUDE.md")) {
+		if !fileExists(filepath.Join(anchor, "CLAUDE.md")) && !fileExists(filepath.Join(anchor, ".claude", "CLAUDE.md")) {
 			var imports []string
 			for _, agents := range []string{"AGENTS.md", ".claude/AGENTS.md"} {
-				if fileExists(filepath.Join(root, filepath.FromSlash(agents))) {
+				if fileExists(filepath.Join(anchor, filepath.FromSlash(agents))) {
 					imports = append(imports, "@"+agents)
 				}
 			}
@@ -264,7 +265,7 @@ func fileText(target Target, root string, entries []LayeredEntry) (string, bool,
 			}
 		}
 	case "codex-file":
-		content, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+		content, err := os.ReadFile(filepath.Join(anchor, "AGENTS.md"))
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return "", false, fmt.Errorf("read AGENTS.md: %w", err)
 		}
@@ -281,9 +282,9 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// Show returns the text the named target renders to now for root, from the shipped layer and the store, and writes nothing.
+// Show returns the text the named target renders to now for the worktree anchor, from the shipped layer and the store, and writes nothing.
 // A prompt target gives its passages joined by blank lines, and a target with no entry gives no text.
-func (r Renderer) Show(boltDir, target, root string) (string, error) {
+func (r Renderer) Show(boltDir, target, anchor string) (string, error) {
 	named, ok := LookupTarget(target)
 	if !ok {
 		return "", fmt.Errorf("unknown target %q; way forward: use one of %s", target, strings.Join(TargetNames(), ", "))
@@ -295,7 +296,7 @@ func (r Renderer) Show(boltDir, target, root string) (string, error) {
 	if named.Delivery == DeliveryPrompt {
 		return strings.Join(passagesOf(layers, named.Name), "\n\n"), nil
 	}
-	text, _, err := fileText(named, root, layers.Ordered())
+	text, _, err := fileText(named, anchor, layers.Ordered())
 	return text, err
 }
 

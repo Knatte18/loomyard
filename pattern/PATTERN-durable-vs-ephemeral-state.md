@@ -12,8 +12,8 @@ Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_ly
 - Weft content is per-branch and is never a merge participant in either direction.
 - `internal/logger`'s durable trace sink arms its cwd-anchored fallback only inside a worktree lym owns (`_lym` present at the anchor).
   A plain checkout gets no sink rather than a `.lym` lym does not own.
-- Heddle's rendered instruction files (`CLAUDE.local.md`, `AGENTS.override.md`) and the `.heddle` temporary directory sit at a warp worktree's root, outside `.lym`, untracked through the warp repository's `info/exclude` lines fabric seeds from its exclude-list key.
-  The agents' instruction loaders read only the worktree's root, and a rename onto the root must not cross a filesystem.
+- Heddle's rendered instruction files (`CLAUDE.local.md`, `AGENTS.override.md`) and the `.heddle` temporary directory sit at a warp worktree's anchor, outside `.lym`, untracked through the warp repository's `info/exclude` lines fabric seeds from its exclude-list key under the anchor.
+  The files sit beside the repository's own instruction files in the sessions' working directory, and the temporary directory beside them, so a rename onto them never crosses a filesystem.
 
 ## Single declarer
 

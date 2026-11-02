@@ -49,7 +49,7 @@ func commandOf(c *heddleCLI) *cobra.Command {
 		Long: `heddle delivers the instruction text agents get from two layers: the entries
 lym ships in its binary, read-only, and the repository's own in heddle.json in
 the hub's Bolt checkout. It renders file targets into git-excluded files at a
-worktree's root, the shipped entries first, and it appends prompt targets to
+worktree's anchor directory, the shipped entries first, and it appends prompt targets to
 the system prompt of the Claude sessions launched in the hub: claude-prompt to
 every one, orch-prompt to an orch session alone. A hub whose heddle.yaml sets
 lym_override may override a shipped entry's text with set --layer lym.

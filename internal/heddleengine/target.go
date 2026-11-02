@@ -10,7 +10,7 @@ import (
 
 // The deliveries a target has.
 const (
-	// DeliveryFile renders the target into a file at a worktree's root.
+	// DeliveryFile renders the target into a file at a worktree's anchor.
 	DeliveryFile = "file"
 	// DeliveryPrompt appends the target's passages to a session's system prompt.
 	DeliveryPrompt = "prompt"
@@ -20,8 +20,8 @@ const (
 const OrchPromptTarget = "orch-prompt"
 
 // Target is one place an entry's text is delivered to.
-// File is the root-relative path of a file target and empty for a prompt target.
-// ReRender lists the root-relative paths whose change re-renders a file target.
+// File is the anchor-relative path of a file target and empty for a prompt target.
+// ReRender lists the anchor-relative paths whose change re-renders a file target.
 // Engine and Role narrow the sessions a prompt target reaches: a session of that engine, and a session of that role or a numbered sibling of it; an empty field narrows nothing.
 type Target struct {
 	Name     string
