@@ -445,7 +445,9 @@ User-facing modules each get one `lym <module>` namespace:
   A failing segment never stops the later ones.
   ✅ Implemented. See the `internal/cleanupcli` package documentation.
 - **adopt** — the takeover of beam projects, or of root, and of the runs under them from another machine of the operator, as one verb (`internal/adoptcli`; `lym adopt <beam>...`, `lym adopt root` and `lym adopt --all`, with `--keep-local` and `--drop-local`, from the prime and from any beam).
-  It reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, adds the missing pairs, holds each moved run, and each unstarted released task of an adopted subject bar a front task, with a pause-record hold entry, then records this machine as the owner of the beams and of the prime in one pushed owner write; the subject's green adopt check lifts the holds.
+  It reconciles the hub against origin, stops a beam or a run under it whose pair holds local commits origin lacks or is live, adds the missing pairs, holds each moved run, and each unstarted released task of an adopted subject bar a front task, with a pause-record hold entry.
+  When the call records the prime's owner, the landing config deploys into the prime's branch and the prime's head is ahead of the running lym's build, the hub's landing deploy runs next, and a failed deploy refuses the verb with the holds standing.
+  It then records this machine as the owner of the beams and of the prime in one pushed owner write; the subject's green adopt check lifts the holds.
   A call then starts one adopt check per adopted subject and per named subject that still holds a run, detached, in that subject's worktree, which runs the hub's `adopt` gate there, reports each tier to the subject's orch, shows its tier in flight, time, tiers done and result on the prime's reed status bar, and shows in `lym beam status`, so a break this machine brings to the landed code shows at adopt time.
   It calls each owning module's function in-process and has no engine package of its own.
   ✅ Implemented. See the `internal/adoptcli` package documentation.

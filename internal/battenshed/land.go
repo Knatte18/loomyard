@@ -27,8 +27,8 @@ const (
 	primeDirtyWaitBound = 10 * time.Minute
 	// primeDirtyPollInterval is the pause between two reads of the prime's uncommitted tracked paths.
 	primeDirtyPollInterval = 5 * time.Second
-	// deployTimeout is how long the deploy command may run.
-	deployTimeout = 30 * time.Minute
+	// DeployTimeout is how long the deploy command may run.
+	DeployTimeout = 30 * time.Minute
 	// recordsStopMarkerLine is the row-notice marker line recording that the records-stop notice was posted.
 	recordsStopMarkerLine = "records-stop"
 )
@@ -258,12 +258,12 @@ func (p *landProducer) pullAndDeploy(ctx context.Context, parent string) (reason
 		return "deploy failed: " + err.Error(), recordsStop, nil
 	}
 	wayForward := fmt.Sprintf("log: %s; way forward: fix the cause, then run \"lym batten run %s\" from the prime", logPath, p.slug)
-	result, err := p.deps.RunDeploy(ctx, settings.Deploy, logPath, deployTimeout)
+	result, err := p.deps.RunDeploy(ctx, settings.Deploy, logPath, DeployTimeout)
 	switch {
 	case err != nil:
 		return fmt.Sprintf("deploy failed: the shell could not start (%s); %s", err.Error(), wayForward), recordsStop, nil
 	case result.TimedOut:
-		return fmt.Sprintf("deploy failed: timed out after %s; %s", deployTimeout, wayForward), recordsStop, nil
+		return fmt.Sprintf("deploy failed: timed out after %s; %s", DeployTimeout, wayForward), recordsStop, nil
 	case result.ExitCode != 0:
 		return fmt.Sprintf("deploy failed: exit code %d; %s", result.ExitCode, wayForward), recordsStop, nil
 	}

@@ -100,7 +100,7 @@ func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd
 			return battenshed.LandingSettings{Deploy: cfg.Deploy, DeployBranches: cfg.DeployBranches}, nil
 		},
 		RunDeploy: func(ctx context.Context, command, logPath string, timeout time.Duration) (battenshed.DeployResult, error) {
-			return runDeploy(ctx, location.WorktreePath(), command, logPath, timeout)
+			return RunDeploy(ctx, location.WorktreePath(), command, logPath, timeout)
 		},
 		PruneBoard: func() error {
 			board, err := boardengine.OpenHub(location.HubPath)
@@ -142,9 +142,9 @@ func pullStopOutcome(err error) (recordsStop string, pullErr error) {
 	return "", err
 }
 
-// runDeploy runs command through the platform shell in primeDir with its output in the file logPath, ending it after timeout.
+// RunDeploy runs command through the platform shell in primeDir with its output in the file logPath, ending it after timeout.
 // A command that outlives the timeout reports TimedOut; a shell that could not start, or a cancelled ctx, is the returned error.
-func runDeploy(ctx context.Context, primeDir, command, logPath string, timeout time.Duration) (battenshed.DeployResult, error) {
+func RunDeploy(ctx context.Context, primeDir, command, logPath string, timeout time.Duration) (battenshed.DeployResult, error) {
 	logFile, err := os.Create(logPath)
 	if err != nil {
 		return battenshed.DeployResult{}, err

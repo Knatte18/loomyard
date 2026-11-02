@@ -93,7 +93,7 @@ func (f *landFixture) deps() LandDeps {
 			f.calls = append(f.calls, "deploy")
 			f.deployedCommands = append(f.deployedCommands, command)
 			f.deployWithPrime = f.deployWithPrime || f.primeHeld
-			if !strings.HasPrefix(logPath, f.scratchDir) || timeout != deployTimeout {
+			if !strings.HasPrefix(logPath, f.scratchDir) || timeout != DeployTimeout {
 				return DeployResult{}, errors.New("deploy told the wrong log path or timeout")
 			}
 			return f.deployResult, f.deployErr

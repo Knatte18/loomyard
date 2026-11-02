@@ -1,6 +1,6 @@
 //go:build !windows
 
-// deploy_integration_test.go covers runDeploy against a real shell, which is why it sits in the integration tier.
+// deploy_integration_test.go covers RunDeploy against a real shell, which is why it sits in the integration tier.
 
 package battencli
 
@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts runDeploy writes the command's output to the log, reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
+// TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout asserts RunDeploy writes the command's output to the log, reports a non-zero exit code, and reports TimedOut for a command that outlives a short timeout.
 func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -40,12 +40,12 @@ func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 			dir := t.TempDir()
 			logPath := filepath.Join(dir, "deploy.log")
 
-			result, err := runDeploy(context.Background(), dir, tt.command, logPath, tt.timeout)
+			result, err := RunDeploy(context.Background(), dir, tt.command, logPath, tt.timeout)
 			if err != nil {
-				t.Fatalf("runDeploy() error = %v; want nil", err)
+				t.Fatalf("RunDeploy() error = %v; want nil", err)
 			}
 			if result.ExitCode != tt.wantExitCode || result.TimedOut != tt.wantTimedOut {
-				t.Errorf("runDeploy() = %+v; want exit code %d, timed out %v", result, tt.wantExitCode, tt.wantTimedOut)
+				t.Errorf("RunDeploy() = %+v; want exit code %d, timed out %v", result, tt.wantExitCode, tt.wantTimedOut)
 			}
 			logged, err := os.ReadFile(logPath)
 			if err != nil {
@@ -58,7 +58,7 @@ func TestRunDeploy_WritesTheLogAndReportsExitCodeAndTimeout(t *testing.T) {
 	}
 }
 
-// TestCommandRunners_DropTheStrand asserts runDeploy and runRowCommand run their command without the strand-name variable and with the rest of the environment.
+// TestCommandRunners_DropTheStrand asserts RunDeploy and runRowCommand run their command without the strand-name variable and with the rest of the environment.
 // It does not run in parallel: it sets the process environment.
 func TestCommandRunners_DropTheStrand(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -67,9 +67,9 @@ func TestCommandRunners_DropTheStrand(t *testing.T) {
 	const command = `test -z "$LYM_STRAND_NAME" && test "$LYM_STRAND_KEPT" = kept`
 
 	dir := t.TempDir()
-	deploy, err := runDeploy(context.Background(), dir, command, filepath.Join(dir, "deploy.log"), time.Minute)
+	deploy, err := RunDeploy(context.Background(), dir, command, filepath.Join(dir, "deploy.log"), time.Minute)
 	if err != nil || deploy.ExitCode != 0 {
-		t.Errorf("runDeploy() = %+v, %v; want exit code 0", deploy, err)
+		t.Errorf("RunDeploy() = %+v, %v; want exit code 0", deploy, err)
 	}
 	row, err := runRowCommand(context.Background(), dir, command, filepath.Join(dir, "row.log"), time.Minute)
 	if err != nil || row.ExitCode != 0 {

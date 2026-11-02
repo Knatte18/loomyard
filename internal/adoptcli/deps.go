@@ -1,4 +1,4 @@
-// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift and hold, the holds and tries files, the beam steps, the landing-hold read, the adopt check start and the reads behind the run reports.
+// deps.go fills adoptDeps over a real hub: the origin reconcile with the live-pair reading adopt needs, the pair add, the owner write, the pause lift and hold, the holds and tries files, the deploy, the beam steps, the landing-hold read, the adopt check start and the reads behind the run reports.
 
 package adoptcli
 
@@ -159,6 +159,8 @@ func hubDepsAs(prime *lymcwd.Location, machine func() (string, error)) (adoptDep
 			return record.State, nil
 		},
 		EscalationEligible: hubEscalationEligible(prime),
+		DeployState:        func() (deployState, error) { return readDeployState(prime, runningLymBuild) },
+		RunDeploy:          func(command string) (string, error) { return runAdoptDeploy(prime, command) },
 		StartSuite: func(subject string) (suiteStart, error) {
 			dir := subjectDir(prime.HubPath, subject)
 			resolve := func() error {

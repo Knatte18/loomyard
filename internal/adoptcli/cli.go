@@ -37,16 +37,16 @@ Steps, in order:
   3. the pair of a beam or run this machine lacks is added
   4. each run this call takes over, and each unstarted released task of an adopted subject
      bar a front task, is held until its subject's adopt check is green
-  5. one owner write for every beam not stopped, and for the prime with root
-  6. the beam steps of the prime with root and of each adopted beam: its dobby and orch
-  7. one adopt check per subject, root first, starts detached in that subject's worktree;
-     a green check lifts the subject's holds and starts its runs, and a red one files a
-     fix task, up to adopt_fix_tries
+  5. with root, when the prime's head is ahead of the running lym's build, the landing
+     deploy runs; a failed one refuses with the holds standing
+  6. one owner write for every beam not stopped, and for the prime with root
+  7. the beam steps of the prime with root and of each adopted beam: its dobby and orch
+  8. one adopt check per subject, root first, starts detached in that subject's worktree;
+     a green check lifts its holds and starts its runs, a red one files a fix task
 
-The envelope carries reconcile, mutations, partial, per slug what happened and its
-beam_steps, prime_beam_steps, warnings, and checks with message, or check_warnings. A
-slug's error never stops the others. runs holds one item per run under the named
-subjects, sorted by slug, with its state and a plain line.
+The envelope carries per slug what happened, the deploy, the beam steps, the checks
+and one runs item per run under the named subjects; the package doc lists every field.
+A slug's error never stops the others.
 
 Example:
   lym adopt payments
@@ -112,6 +112,9 @@ func adoptFields(result outcome) map[string]any {
 		"slugs":          result.Slugs,
 		"prime_recorded": result.PrimeRecorded,
 		"runs":           runs,
+	}
+	if result.Deploy != nil {
+		fields["deploy"] = result.Deploy
 	}
 	if result.PrimeLost != "" {
 		fields["prime_lost_to"] = result.PrimeLost

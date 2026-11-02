@@ -1,4 +1,4 @@
-// cli_test.go pins the fields of the adopt envelope that depend on the outcome of the adopt checks' start and on the reconcile's warnings.
+// cli_test.go pins the fields of the adopt envelope that depend on the outcome of the adopt checks' start, on the reconcile's warnings and on the deploy.
 
 package adoptcli
 
@@ -44,6 +44,10 @@ func TestAdoptFields(t *testing.T) {
 			result:   outcome{Runs: []runReport{{Slug: "t1", State: runStateWaitingForCheck, Line: "t1: waiting for the adopt check"}}},
 			wantRuns: []runReport{{Slug: "t1", State: runStateWaitingForCheck, Line: "t1: waiting for the adopt check"}},
 		},
+		{
+			name:   "ARunDeployIsTheDeployField",
+			result: outcome{Deploy: &deployOutcome{Installed: "87553450ec14", Head: "2d319fe5", Log: "deploy.log"}},
+		},
 		{name: "NoCheckCarriesNoneAndAnEmptyRunsArray"},
 	}
 	for _, tt := range tests {
@@ -73,6 +77,9 @@ func TestAdoptFields(t *testing.T) {
 			}
 			if runs, hasRuns := fields["runs"]; !hasRuns || !reflect.DeepEqual(runs, wantRuns) {
 				t.Errorf("adoptFields()[runs] = %v, present %v; want %v", runs, hasRuns, wantRuns)
+			}
+			if deploy, hasDeploy := fields["deploy"]; hasDeploy != (tt.result.Deploy != nil) || (hasDeploy && deploy != tt.result.Deploy) {
+				t.Errorf("adoptFields()[deploy] = %v, present %v; want %v", deploy, hasDeploy, tt.result.Deploy)
 			}
 			for _, retired := range []string{"suite", "suite_warning"} {
 				if _, present := fields[retired]; present {

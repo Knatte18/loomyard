@@ -1,4 +1,4 @@
-// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits and adds the missing pair, holds the runs and released tasks it takes over, records this machine as owner of the projects, runs the beam steps of each adopted beam and starts one adopt check per subject; a subject's green check lifts its holds and starts its runs.
+// adopt.go is the takeover sequence of "lym adopt": it validates the request, reconciles the hub against origin, then per adopted beam project and per run under it or under root drops or keeps local commits and adds the missing pair, holds the runs and released tasks it takes over, deploys when root comes here under a lym older than the prime's head, records this machine as owner of the projects, runs the beam steps of each adopted beam and starts one adopt check per subject; a subject's green check lifts its holds and starts its runs.
 
 package adoptcli
 
@@ -106,11 +106,12 @@ type suiteStart struct {
 	AlreadyRunning bool `json:"already_running,omitempty"`
 }
 
-// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the prime's owner write, each entry's slugOutcome, the warnings on branches the reconcile left unmoved, the beam steps of the prime and the warning of a prime start that failed, and the adopt checks started, root's first, with their plain message, the warning of each start that failed, and the report of each run under the named subjects.
+// outcome is the verb's envelope: the reconcile's report, the mutation record of every step, whether that record is non-empty, the deploy run when root came here under an older lym, the prime's owner write, each entry's slugOutcome, the warnings on branches the reconcile left unmoved and on a deploy state that did not read, the beam steps of the prime and the warning of a prime start that failed, and the adopt checks started, root's first, with their plain message, the warning of each start that failed, and the report of each run under the named subjects.
 type outcome struct {
 	Reconcile        fabricengine.OriginReport
 	Mutations        []fabricengine.Mutation
 	Partial          bool
+	Deploy           *deployOutcome
 	PrimeRecorded    bool
 	PrimeLost        string
 	Slugs            []slugOutcome
@@ -146,6 +147,8 @@ type holdStore struct {
 // StartSuite starts the adopt check of a subject, a beam slug or `root`, in the subject's worktree as a detached process, or finds the one already running, and returns at once, so a break this machine brings to the landed code shows at adopt time; it runs last, once for root when the prime's owner was recorded, once for each adopted beam whose owner write stood and once for each named subject that still holds a run.
 // CheckState reads the state of a subject's adopt check record: running, green, failed, ended without a verdict (a running record whose process is gone) or none.
 // EscalationEligible reports whether the run of a slug that is awaiting stands at a producer whose escalation the arbiter admits.
+// DeployState reads the landing deploy command for the prime's branch, the running lym's build and whether the prime's head is ahead of it; nil reads as nothing to deploy.
+// RunDeploy runs the deploy command in the prime and returns its log's path, an error for a deploy that did not end with exit code 0.
 // HubPath roots the mutation record.
 type adoptDeps struct {
 	Machine            func() (string, error)
@@ -171,6 +174,8 @@ type adoptDeps struct {
 	PrimeName          string
 	CheckState         func(subject string) (string, error)
 	EscalationEligible func(slug string) bool
+	DeployState        func() (deployState, error)
+	RunDeploy          func(command string) (logPath string, err error)
 	HubPath            string
 }
 
@@ -323,6 +328,16 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 		return finish(), fmt.Errorf("lym adopt: %w; %s", err, reentry)
 	}
 
+	// The deploy runs after the hold and before the owner write, so a failed one leaves the runs held and the beam steps and checks below start the new lym.
+	var deployWarning string
+	if rootGoing {
+		result.Deploy, deployWarning, err = deployStale(deps)
+		if err != nil {
+			result.Slugs = collect(slugs, outcomes)
+			return finish(), err
+		}
+	}
+
 	var adopted []string
 	if len(adoptable) > 0 || rootGoing {
 		write, err := deps.SetOwners(boardengine.OwnerRequest{Machine: here, Slugs: adoptable, Prime: rootGoing, Takeover: true, ParentOf: deps.ParentOf})
@@ -368,6 +383,9 @@ func adopt(deps adoptDeps, req request) (outcome, error) {
 	}
 
 	result.Warnings = reconcileWarnings(report, adopted, outcomes, req)
+	if deployWarning != "" {
+		result.Warnings = append(result.Warnings, deployWarning)
+	}
 
 	if len(adopted) > 0 || result.PrimeRecorded || len(heldSubjects) > 0 {
 		for _, subject := range checkSubjects(result.PrimeRecorded, adopted, heldSubjects) {

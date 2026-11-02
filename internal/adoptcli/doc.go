@@ -56,6 +56,18 @@
 // A held slug's outcome reads `run` `held` with `held` true and a `pause_standing` line saying it starts by itself once the subject's check is green and that a re-run of `lym adopt <subject>` checks again.
 // A re-run reports each slug its subject's `holds.json` lists and a live `HoldCaller` entry of its own scope still covers as held, whether or not this call held it.
 //
+// # The deploy
+//
+// The reconcile may move the prime past the commit the running lym was built from, and a run let go under that lym fails on code it does not know, such as a stencil marker it never fills.
+// So when the owner write below records the prime, `deployStale` runs between the hold and the owner write.
+// `readDeployState` reads the hub's `landing` config: with an empty `deploy`, or `deploy_branches` not listing the branch the prime is on, nothing more is read and nothing runs, as at the Land row.
+// Otherwise it reads the VCS stamp of the running lym through `buildvcs.OfFile` and the prime's head, and `installedBehind` reads the build as behind when its revision is a commit the prime holds, is not the head and is an ancestor of it; a build of a commit the prime lacks, as of unpushed local work, is not behind.
+// A behind build runs the `deploy` command in the prime through `battencli.RunDeploy` under `battenshed.DeployTimeout`, with its output in `deploy.log` in root's adopt scratch directory; the envelope's `deploy` names the build it replaced, the prime's head and the log.
+// A deploy that fails, times out or cannot start refuses the verb before the owner write, naming the log and the re-run: the holds stay, so no run goes on under the old lym, and the re-run judges the build again.
+// A state that does not read, as of a lym with no VCS stamp, is a line in `warnings` naming the hand deploy, and the adopt goes on.
+// The deploy runs before the beam steps and the adopt checks, so the dobby, the orch and the check this call starts run the new lym.
+// Bound: the deploy takes no land lock, so it can run beside a landing's own deploy; the deploy command is expected to install by rename, as the hub's own does.
+//
 // # Step 4: the owner write
 //
 // One `boardengine.SetOwners` call with `Takeover` records this machine as the owner of every adopted beam the earlier steps did not stop, and of the prime when `root` is adopted or when the board records no prime owner, and not while a stop holds root back.
@@ -184,7 +196,7 @@
 //
 // # The envelope
 //
-// It carries `reconcile`, `mutations` and `partial`, `warnings` for branches the reconcile left unmoved, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `checks` and `message`, or `check_warnings`, for the adopt checks, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run held for its subject's check, none, running here or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
+// It carries `reconcile`, `mutations` and `partial`, `deploy` for a deploy the call ran, `warnings` for branches the reconcile left unmoved and a deploy state that did not read, `prime_beam_steps` and `prime_beam_warning` for the prime's beam steps, `checks` and `message`, or `check_warnings`, for the adopt checks, and per slug what happened: a stop with its branches, pair added, owner recorded, pause lifted or standing, run held for its subject's check, none, running here or owned elsewhere by `owned_by`, the `beam_steps` run, the error, and a warning when this machine does not own the slug's parent, since that run halts at Finalize here; the warning names `lym adopt <project of the parent>`, `lym adopt root` for the prime.
 //
 // `runs` is always present, an empty array for none, and holds one `runReport` for each run under the named subjects, sorted by slug, beside the per-slug outcomes:
 // its `slug`, `state`, `row` (the batten run record's current producer, omitted for an entry with no record), `owned_by` when owned elsewhere, `caller` for `paused`, and a plain `line`.

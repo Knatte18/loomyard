@@ -69,6 +69,11 @@ type world struct {
 	afterReconcile func(*boardengine.Owners)
 	// race, when set, runs on the owners right after the owner write lands, as another machine's write does.
 	race func(*boardengine.Owners)
+	// deploy is what the deploy-state read answers and deployStateErr what it fails with; deployErr is what the deploy fails with, and deployed the commands it ran, each also appended to order as deploy.
+	deploy         deployState
+	deployStateErr error
+	deployErr      error
+	deployed       []string
 }
 
 // newWorld returns a hub this machine owns the prime of, with two beam projects owned by another machine, each with a pair and a running pawl run, an idle task, a done task and a note.
@@ -229,6 +234,12 @@ func (w *world) deps() adoptDeps {
 			return checkStateNone, nil
 		},
 		EscalationEligible: func(slug string) bool { return w.escalation[slug] },
+		DeployState:        func() (deployState, error) { return w.deploy, w.deployStateErr },
+		RunDeploy: func(command string) (string, error) {
+			w.order = append(w.order, "deploy")
+			w.deployed = append(w.deployed, command)
+			return deployLogName, w.deployErr
+		},
 		StartSuite: func(subject string) (suiteStart, error) {
 			w.order = append(w.order, "suite:"+subject)
 			if err := w.suiteErr[subject]; err != nil {
@@ -292,6 +303,17 @@ func TestAdopt(t *testing.T) {
 		delete(w.owners.Entries, "beta")
 		delete(w.runs, "alpha")
 		delete(w.runs, "beta")
+	}
+
+	// staleBuild is a deploy state whose prime head is ahead of the running lym's build, with a deploy command set.
+	staleBuild := deployState{Command: "go run ./tools/deploy", Installed: "87553450ec14", Head: "2d319fe5", Behind: true}
+
+	// requireNoDeploy fails the test when the deploy ran or the envelope names one.
+	requireNoDeploy := func(t *testing.T, w *world, got outcome) {
+		t.Helper()
+		if len(w.deployed) != 0 || got.Deploy != nil {
+			t.Errorf("deployed %v, envelope deploy %+v; want no deploy", w.deployed, got.Deploy)
+		}
 	}
 
 	// requireNothingRan fails the test when a step ran, which a refusal ahead of the origin reconcile leaves undone.
@@ -877,6 +899,66 @@ func TestAdopt(t *testing.T) {
 			}
 			if alpha := slugOf(t, got, "alpha"); !alpha.OwnerRecorded || !alpha.Held || alpha.Error != "" {
 				t.Errorf("alpha = %+v, want it adopted and held beside the failed check start", alpha)
+			}
+		}},
+		{name: "RootDeploysALymOlderThanThePrimesHeadBeforeTheOwnerWriteWhenThisMachineAlreadyOwnsThePrime", req: request{Root: true}, setup: func(w *world) { w.deploy = staleBuild }, check: func(t *testing.T, w *world, got outcome) {
+			if !slices.Equal(w.deployed, []string{staleBuild.Command}) {
+				t.Errorf("deployed %v; want %q once", w.deployed, staleBuild.Command)
+			}
+			deploy, owners := slices.Index(w.order, "deploy"), slices.Index(w.order, "owners")
+			if deploy < 0 || owners < deploy {
+				t.Errorf("steps = %v; want the deploy before the owner write", w.order)
+			}
+			want := deployOutcome{Installed: staleBuild.Installed, Head: staleBuild.Head, Log: deployLogName}
+			if got.Deploy == nil || *got.Deploy != want || !got.PrimeRecorded {
+				t.Errorf("deploy = %+v, prime recorded = %v; want %+v and the prime recorded", got.Deploy, got.PrimeRecorded, want)
+			}
+		}},
+		{name: "AFailedDeployRefusesBeforeTheOwnerWriteWithTheHoldsStanding", req: request{Slugs: []string{"alpha"}, Root: true}, setup: func(w *world) {
+			w.deploy = staleBuild
+			w.deployErr = errors.New("exit code 1")
+			w.report.Mutations.AppendRef(fabricengine.KindRemoteBranchUpdated, "main", "")
+		}, wantErr: "the landing deploy failed: exit code 1; log: deploy.log", check: func(t *testing.T, w *world, got outcome) {
+			if wantMutations := []fabricengine.Mutation{{Kind: fabricengine.KindRemoteBranchUpdated, Target: "main"}}; !got.Partial || !reflect.DeepEqual(got.Mutations, wantMutations) {
+				t.Errorf("partial = %v, mutations = %+v; want partial and the reconcile's %+v on the refusal", got.Partial, got.Mutations, wantMutations)
+			}
+			if w.ownerReq.Machine != "" || slices.ContainsFunc(w.order, func(step string) bool { return strings.HasPrefix(step, "suite:") || strings.HasPrefix(step, "beamup:") }) {
+				t.Errorf("owner request = %+v, steps = %v; want no owner write, beam steps or check after a failed deploy", w.ownerReq, w.order)
+			}
+			if !slices.Equal(w.holds["alpha"], []string{"alpha"}) || got.Deploy == nil {
+				t.Errorf("holds = %v, deploy = %+v; want alpha's run still held and the deploy named", w.holds, got.Deploy)
+			}
+		}},
+		{name: "AStopHoldingRootBackDeploysNothingAndWritesNoOwner", req: request{Root: true}, setup: func(w *world) {
+			withoutAlphaAndBeta(w)
+			w.owners.Prime = there
+			w.owners.Entries["kid1"] = boardengine.OwnerEntry{IsTask: true, RunHeld: true}
+			w.runs["kid1"] = running
+			w.pairs["kid1"] = true
+			w.report.Entries = append(w.report.Entries, fabricengine.EntryOutcome{Slug: "kid1", State: fabricengine.EntryOwnedElsewhere, Owner: there})
+			w.stopBranch("kid1", fabricengine.BranchDiverged)
+			w.deploy = staleBuild
+		}, check: func(t *testing.T, w *world, got outcome) {
+			requireNoDeploy(t, w, got)
+			if kid1 := slugOf(t, got, "kid1"); !kid1.Stopped || w.ownerReq.Machine != "" || got.PrimeRecorded {
+				t.Errorf("kid1 = %+v, owner request = %+v, prime recorded = %v; want kid1 stopped under root, no owner write and the prime left", kid1, w.ownerReq, got.PrimeRecorded)
+			}
+		}},
+		{name: "ALymBuiltFromThePrimesHeadIsNotDeployed", req: request{Root: true}, setup: func(w *world) {
+			w.deploy = staleBuild
+			w.deploy.Behind = false
+		}, check: requireNoDeploy},
+		{name: "NoDeployCommandForThePrimesBranchDeploysNothing", req: request{Root: true}, setup: func(w *world) {
+			w.deploy = staleBuild
+			w.deploy.Command = ""
+		}, check: requireNoDeploy},
+		{name: "ABeamAdoptUnderAPrimeOwnedHereDeploysNothing", req: request{Slugs: []string{"alpha"}}, setup: func(w *world) { w.deploy = staleBuild }, check: requireNoDeploy},
+		{name: "AnUnreadableDeployStateIsAWarningAndTheAdoptGoesOn", req: request{Root: true}, setup: func(w *world) { w.deployStateErr = errors.New("the installed lym carries no VCS stamp") }, check: func(t *testing.T, w *world, got outcome) {
+			requireNoDeploy(t, w, got)
+			if !got.PrimeRecorded || !slices.ContainsFunc(got.Warnings, func(line string) bool {
+				return strings.Contains(line, "could not be read (the installed lym carries no VCS stamp)") && strings.Contains(line, "run the hub's landing deploy")
+			}) {
+				t.Errorf("prime recorded = %v, warnings = %q; want the prime recorded and a warning naming the hand deploy", got.PrimeRecorded, got.Warnings)
 			}
 		}},
 	}

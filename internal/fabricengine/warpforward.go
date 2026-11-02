@@ -36,6 +36,12 @@ func (f *Fabric) IsAncestor(sha, ref string) (bool, error) {
 	return f.code.IsAncestor(sha, ref)
 }
 
+// CommitExists reports whether the warp checkout holds the commit sha.
+// It is a thin, read-only delegation to gitrepo.Repo.SHAExists on f.code, so an invalid SHA and a read error read as absent.
+func (f *Fabric) CommitExists(sha string) bool {
+	return f.code.SHAExists(sha)
+}
+
 // MergeBase returns the SHA of the best common ancestor of the warp checkout's HEAD and ref, where ref is a branch, a remote-tracking ref or a SHA.
 // It is a read-only delegation to gitrepo.Repo.MergeBase on f.code, so a caller reads the task branch's fork point without naming a fabric side.
 func (f *Fabric) MergeBase(ref string) (string, error) {

@@ -33,5 +33,5 @@ Deviations:
 - `tendercli` uses `tenderengine`, and mounts one root command, `tender`.
 - `shortcutcli` mounts one root command per shortcut from its embedded file, with no `Command()` or `RunCLI`; a shortcut is an alias stretched to a sequence of argvs, so the module guards skip its group.
 - `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lymtemp`, with no engine package of its own.
-- `adoptcli` calls the takeover functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli` and `landingshed`, with no engine package of its own.
+- `adoptcli` calls the functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli`, `battenshed`, `buildvcs` and `landingshed`, with no engine package of its own.
 - `beamcli` calls the functions of `fabricengine`, `boardengine`, `hubgeom` and `battencli`, with no engine package of its own.
