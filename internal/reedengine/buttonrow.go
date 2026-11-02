@@ -31,7 +31,7 @@ type buttonSpec struct {
 	Shell string `json:"shell"`
 	// Flag is the flag that makes Shell run its next argument as a command line.
 	Flag string `json:"flag"`
-	// Dir is the run directory.
+	// Dir is the run directory as rendered; a click runs in the current anchor of the worktree holding it.
 	Dir string `json:"dir"`
 	// Entries are the drawn buttons, entry N being drawn as the range buttonRangePrefix followed by N.
 	Entries []buttonSpecEntry `json:"entries"`

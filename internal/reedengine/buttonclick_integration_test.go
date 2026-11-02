@@ -53,7 +53,12 @@ func TestRunButton_RealTmux(t *testing.T) {
 	if err := e.tmux.run("set-option", "-t", exactSessionWindowTarget(e.SessionName()), buttonSpecOption, string(specJSON)); err != nil {
 		t.Fatalf("set the spec option: %v", err)
 	}
-	deps := buttonDeps{run: runButtonScript, executablePath: func() (string, error) { return recorder, nil }, sh: shell.Posix()}
+	deps := buttonDeps{
+		run:            runButtonScript,
+		executablePath: func() (string, error) { return recorder, nil },
+		anchorOf:       func(dir string) (string, error) { return dir, nil },
+		sh:             shell.Posix(),
+	}
 	request := func(rangeName string) ButtonRequest {
 		return ButtonRequest{TmuxPath: e.cfg.Tmux, SocketPath: "", Session: e.SessionName(), Range: rangeName, Client: client}
 	}

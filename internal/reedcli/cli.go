@@ -137,7 +137,7 @@ rather than booting substrate it cannot reach.`,
 			// Guard: skip cwd/location/config resolution entirely when the reed group command itself is invoked (bare listing or unknown-subcommand error path via GroupRunE), or when the watchdog daemon, the switch verb, the follow verb, the button verb or the window verb is invoked.
 			// The daemon is told its hub path on its own flags and must never be reached through c.eng.
 			// Letting it run the normal pre-run would make it refuse to start outside a worktree and hold a geometry it must not use.
-			// switch is told its socket and client the same way, follow its socket and session, and button its socket, session and clicked range: the verb resolves no location and loads no config, so a reed.yaml that fails to load cannot abort a click.
+			// switch is told its socket and client the same way, follow its socket and session, and button its socket, session and clicked range: the verb resolves no location from its cwd and loads no config, so a reed.yaml that fails to load cannot abort a click.
 			// window is told a worktree directory that may lie outside the hub's worktrees, so resolving a location would refuse it.
 			if cmd.Name() == "reed" || cmd.Name() == "watchdog" || cmd.Name() == "switch" || cmd.Name() == "follow" || cmd.Name() == "button" || cmd.Name() == "window" {
 				return nil

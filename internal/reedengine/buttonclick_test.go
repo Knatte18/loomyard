@@ -6,6 +6,7 @@ package reedengine
 import (
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -58,6 +59,9 @@ func TestRunButtonVia(t *testing.T) {
 		runCode     int
 		runErr      error
 		removeDir   bool
+		anchorMoved bool
+		anchorGone  bool
+		anchorErr   error
 		messageErr  bool
 		wantRun     bool
 		wantRunText string
@@ -74,7 +78,7 @@ func TestRunButtonVia(t *testing.T) {
 		{name: "StrandEntryWithAnEmptyReadRunsNothing", entry: stranded, wantMessage: "lym: go needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"},
 		{name: "StrandEntryWithAFailedReadRunsNothing", entry: stranded, strandErr: errors.New("no client"), wantMessage: "lym: go needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"},
 		{name: "ConfirmEntryRaisesThePromptAndRunsNothing", entry: confirming, wantConfirm: promptFor(confirming, "drop it? (y/n)", "")},
-		{name: "ConfirmEntryWithAnUnresolvableExecutableRaisesNothing", entry: confirming, exeErr: errors.New("no exe"), wantMessage: "lym: go could not raise its prompt; see the lym log in DIR/.lym/logs"},
+		{name: "ConfirmEntryWithAnUnresolvableExecutableRaisesNothing", entry: confirming, exeErr: errors.New("no exe"), anchorMoved: true, wantMessage: "lym: go could not raise its prompt; see the lym log in ANCHOR/.lym/logs"},
 		{name: "ConfirmedCallWithTheMatchingHashRuns", entry: confirming, confirmed: true, hash: buttonRunHash(confirming.Run), wantRun: true, wantRunText: "rm x"},
 		{name: "ConfirmedCallWithAnotherHashRunsNothing", entry: confirming, confirmed: true, hash: "other", wantMessage: "lym: the buttons changed since go asked; click again"},
 		{name: "ConfirmedStrandThatIsNoNameRunsNothing", entry: strandedConfirming, confirmed: true, hash: buttonRunHash(strandedConfirming.Run), strand: "not a name", wantMessage: "lym: go: the strand name not a name is not a strand name; click the button again from the agent pane"},
@@ -82,6 +86,10 @@ func TestRunButtonVia(t *testing.T) {
 		{name: "PromptDoublesHashAndPercentOfAStrandValue", entry: strandedConfirming, strandRead: "a#b%c", wantConfirm: promptFor(strandedConfirming, "kill a##b%%c? (y/n)", "a#b%c")},
 		{name: "RemovedDirectoryOfAPlainEntryRunsNothing", entry: plain, removeDir: true, wantMessage: "lym: go: DIR is gone; the row re-renders at the session's next attach"},
 		{name: "RemovedDirectoryOfAConfirmEntryRaisesNoPrompt", entry: confirming, removeDir: true, wantMessage: "lym: go: DIR is gone; the row re-renders at the session's next attach"},
+		{name: "AnchorMovedAfterTheRenderRunsInTheCurrentAnchor", entry: plain, anchorMoved: true, wantRun: true, wantRunText: "echo hi"},
+		{name: "AnchorMovedAfterTheRenderPromptsWithALineOpeningInTheCurrentAnchor", entry: confirming, anchorMoved: true, wantConfirm: promptFor(confirming, "drop it? (y/n)", "")},
+		{name: "AnchorDirectoryThatIsGoneRunsNothingAndRaisesNoPrompt", entry: confirming, anchorGone: true, wantMessage: "lym: go: the anchor directory ANCHOR is gone; point the worktree's anchor at an existing directory"},
+		{name: "UnresolvableAnchorRunsNothing", entry: plain, anchorErr: errors.New("no repository"), wantMessage: "lym: go: the anchor of DIR does not resolve: no repository"},
 		{name: "NonZeroExitShowsTheFirstOutputLine", entry: plain, runOut: "first\nsecond", runCode: 3, wantRun: true, wantRunText: "echo hi", wantMessage: "lym: go failed (exit 3): first"},
 		{name: "LabelAndOutputAreShownLiterally", entry: buttonSpecEntry{Index: 0, Label: "a#b", Run: "echo hi"}, runOut: "100% done", runCode: 1, wantRun: true, wantRunText: "echo hi", wantMessage: "lym: a##b failed (exit 1): 100%% done"},
 		{name: "SpawnFailureShowsItsError", entry: plain, runCode: -1, runErr: errors.New("fork failed"), wantRun: true, wantRunText: "echo hi", wantMessage: "lym: go failed (exit -1): fork failed"},
@@ -92,6 +100,15 @@ func TestRunButtonVia(t *testing.T) {
 			dir := t.TempDir()
 			if tt.removeDir {
 				dir = filepath.Join(dir, "gone")
+			}
+			runDir := dir
+			if tt.anchorMoved || tt.anchorGone {
+				runDir = filepath.Join(dir, "backend")
+			}
+			if tt.anchorMoved {
+				if err := os.MkdirAll(runDir, 0o755); err != nil {
+					t.Fatalf("create the moved anchor: %v", err)
+				}
 			}
 			spec := buttonSpec{Shell: "/bin/sh", Flag: "-c", Dir: dir, Entries: []buttonSpecEntry{tt.entry}}
 			specJSON, err := json.Marshal(spec)
@@ -124,7 +141,13 @@ func TestRunButtonVia(t *testing.T) {
 					return tt.runOut, tt.runCode, tt.runErr
 				},
 				executablePath: func() (string, error) { return exe, tt.exeErr },
-				sh:             posix,
+				anchorOf: func(specDir string) (string, error) {
+					if specDir != dir {
+						t.Errorf("anchorOf(%q), want it asked for the rendered directory %q", specDir, dir)
+					}
+					return runDir, tt.anchorErr
+				},
+				sh: posix,
 			}
 			rangeName := tt.rangeName
 			if rangeName == "" {
@@ -139,7 +162,7 @@ func TestRunButtonVia(t *testing.T) {
 
 			wantRuns := []buttonRunCall(nil)
 			if tt.wantRun {
-				wantRuns = []buttonRunCall{{"/bin/sh", "-c", tt.wantRunText, dir}}
+				wantRuns = []buttonRunCall{{"/bin/sh", "-c", tt.wantRunText, runDir}}
 			}
 			if !slices.Equal(runs, wantRuns) {
 				t.Errorf("process runs = %+v, want %+v", runs, wantRuns)
@@ -156,7 +179,7 @@ func TestRunButtonVia(t *testing.T) {
 			}
 			var wantMessages []string
 			if tt.wantMessage != "" {
-				wantMessages = []string{strings.ReplaceAll(tt.wantMessage, "DIR", dir)}
+				wantMessages = []string{strings.NewReplacer("DIR", dir, "ANCHOR", runDir).Replace(tt.wantMessage)}
 			}
 			if !slices.Equal(messages, wantMessages) {
 				t.Errorf("messages shown = %q, want %q", messages, wantMessages)
@@ -168,7 +191,7 @@ func TestRunButtonVia(t *testing.T) {
 					t.Errorf("confirm-before calls = %v, want none", confirms)
 				}
 			} else {
-				want := tt.wantConfirm(dir)
+				want := tt.wantConfirm(runDir)
 				if len(confirms) != 1 || !slices.Equal(confirms[0], want) {
 					t.Errorf("confirm-before calls = %q, want exactly %q", confirms, want)
 				}

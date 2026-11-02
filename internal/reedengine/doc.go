@@ -84,11 +84,13 @@
 //
 // RunButton (buttonclick.go) is the engine-less function behind `lym reed button`: it addresses a told session of a told server by socket path, reads the session's @lym_button_spec and runs the entry the clicked range `lymbtnN` names.
 // It reads no config and no reed state, and returns nothing: a failure is shown on the clicking client with display-message, and is logged.
-// The checks come in order: a spec that is missing, empty or not JSON, a range with no entry, a `{strand}` entry whose name cannot be read, a run directory that is gone.
+// The checks come in order: a spec that is missing, empty or not JSON, a range with no entry, a `{strand}` entry whose name cannot be read, a run directory that is gone, a run directory whose worktree's anchor does not resolve.
 // A `{strand}` entry reads the clicking client's active pane for @lym_strand_name.
-// An entry with a confirm text raises `confirm-before` on the clicking client, whose command is a line (composeConfirmedButtonLine) that opens in the run directory and calls the verb again with `--confirmed`, the hash of the entry's run text and the strand name, discarding the output of the directory change and of the verb and ending with status zero.
+// The entry runs in the current anchor of the worktree holding the rendered run directory, read at the click through the anchor reader RunButton is told:
+// the render is frozen until the next attach while an anchor marker can change after it, and a lym verb refuses anywhere but its worktree's anchor.
+// An entry with a confirm text raises `confirm-before` on the clicking client, whose command is a line (composeConfirmedButtonLine) that opens in that anchor and calls the verb again with `--confirmed`, the hash of the entry's run text and the strand name, discarding the output of the directory change and of the verb and ending with status zero.
 // A confirmed call runs the entry only when its hash still matches, so no run text crosses tmux's parsing.
-// The entry runs as `<shell> <flag> <run>` in the run directory (runButtonScript), waits with no timeout, and logs its spawn and end at Info with its exit code and combined output; it sets no caller identity and is registered in no process table.
+// The entry runs as `<shell> <flag> <run>` in that anchor (runButtonScript), waits with no timeout, and logs its spawn and end at Info with its exit code and combined output; it sets no caller identity and is registered in no process table.
 // A non-zero exit or a failed start shows `lym: <label> failed (exit <code>): <first output line>`.
 // The verb runs only what the session's spec holds at the clicked index; anything that can run it against the socket can run an entry as itself, adding nothing over running the command directly.
 //

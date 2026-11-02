@@ -8,6 +8,7 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/spf13/cobra"
@@ -32,6 +33,16 @@ func validateButtonFlags(req reedengine.ButtonRequest) error {
 	return nil
 }
 
+// buttonRunDirectory returns the anchored directory, as recorded now, of the worktree holding dir, which a click runs its entry in.
+// It applies no cwd gate and spawns no git.
+func buttonRunDirectory(dir string) (string, error) {
+	location, err := lymcwd.ResolveWorktree(dir)
+	if err != nil {
+		return "", err
+	}
+	return location.AnchorPath(), nil
+}
+
 // buttonCmd builds the `button` subcommand.
 func (c *reedCLI) buttonCmd() *cobra.Command {
 	var req reedengine.ButtonRequest
@@ -41,8 +52,9 @@ func (c *reedCLI) buttonCmd() *cobra.Command {
 		Short: "run a clicked status-bar button of a tmux session",
 		Long: `button runs the status-bar button that the told range names in the told
 session: it reads the session's rendered button spec, asks the entry's
-confirm prompt when it has one, runs the entry's command in the session's
-run directory, logs it and shows a failure on the clicking client.
+confirm prompt when it has one, runs the entry's command in the current
+anchor of the worktree holding the session's run directory, logs it and
+shows a failure on the clicking client.
 It reads no working directory, no config and no reed state, and prints
 nothing: the status bar's click binding and a button's confirm prompt call
 it through tmux's run-shell.
@@ -62,7 +74,7 @@ Example:
 				clihelp.SetExit(cmd.Context(), output.Err(cmd.OutOrStdout(), err.Error()))
 				return nil
 			}
-			reedengine.RunButton(req)
+			reedengine.RunButton(req, buttonRunDirectory)
 			return nil
 		},
 	}

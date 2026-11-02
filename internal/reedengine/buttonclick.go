@@ -1,5 +1,5 @@
 // buttonclick.go implements the engine-less click of a status-bar button: it finds the clicked entry in the session's spec option, confirms when the entry asks, runs it, logs it and shows a failure on the clicking client.
-// It reads no config and no reed state, only the session's @lym_button_spec and, for {strand}, the clicking client's active pane.
+// It reads no config and no reed state, only the session's @lym_button_spec, through the told anchor reader the current anchor of the worktree holding its run directory, and, for {strand}, the clicking client's active pane.
 
 package reedengine
 
@@ -43,23 +43,28 @@ type buttonDeps struct {
 	run func(shellPath, flag, script, dir string) (output string, exitCode int, err error)
 	// executablePath resolves the running binary, which the confirmed line invokes.
 	executablePath func() (string, error)
+	// anchorOf returns the anchored directory, as recorded now, of the worktree holding dir.
+	anchorOf func(dir string) (string, error)
 	// sh is the dialect the run and confirm text and the confirmed line are quoted in.
 	sh shell.Shell
 }
 
 // RunButton handles one click of a status-bar button on the told server.
 // It builds its tmux command from the told paths and reads nothing else of reed's.
+// anchorOf returns the anchored directory, as recorded now, of the worktree holding a directory;
+// the entry runs there rather than in the rendered run directory, which goes stale when an anchor marker changes after the render.
 // It returns nothing: every failure is shown to the clicking client or logged, so the click verb always exits 0.
-func RunButton(req ButtonRequest) {
+func RunButton(req ButtonRequest, anchorOf func(dir string) (string, error)) {
 	runButtonVia(newTmuxCmdForSocketPath(req.TmuxPath, req.SocketPath), req, buttonDeps{
 		run:            runButtonScript,
 		executablePath: os.Executable,
+		anchorOf:       anchorOf,
 		sh:             shell.ForGOOS(),
 	})
 }
 
 // runButtonVia is RunButton's implementation over an already-built tmux command and its process-level calls, so a test can drive it through the execHook seam.
-// A clicked range with no entry, an unrendered spec, a gone run directory and a failed run each show one message on the clicking client and run nothing further.
+// A clicked range with no entry, an unrendered spec, a gone run directory, a run directory whose anchor does not resolve, an anchor directory that is gone and a failed run each show one message on the clicking client and run nothing further.
 // An entry with a confirm text raises a prompt whose answer re-enters through a confirmed request, which runs the entry only when its run text still hashes to the prompt's hash.
 func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 	say := func(text string) {
@@ -97,6 +102,21 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 		say("lym: " + entry.Label + ": " + spec.Dir + " is gone; the row re-renders at the session's next attach")
 		return
 	}
+	// The rendered directory is frozen at the last attach while an anchor marker can change after it,
+	// and a lym verb refuses anywhere but its worktree's anchor, so the entry runs in the anchor read now.
+	runDir, err := deps.anchorOf(spec.Dir)
+	if err != nil {
+		logger.Warn("reed: could not read the anchor of a button's run directory", "label", entry.Label, "dir", spec.Dir, "err", err)
+		say("lym: " + entry.Label + ": the anchor of " + spec.Dir + " does not resolve: " + err.Error())
+		return
+	}
+	if info, err := os.Stat(runDir); err != nil || !info.IsDir() {
+		say("lym: " + entry.Label + ": the anchor directory " + runDir + " is gone; point the worktree's anchor at an existing directory")
+		return
+	}
+	if runDir != spec.Dir {
+		logger.Info("reed: a button runs in its worktree's current anchor, which differs from the rendered run directory", "label", entry.Label, "rendered", spec.Dir, "anchor", runDir)
+	}
 
 	hash := buttonRunHash(entry.Run)
 	if req.Confirmed && req.Hash != hash {
@@ -107,17 +127,17 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 		exe, err := deps.executablePath()
 		if err != nil {
 			logger.Warn("reed: could not resolve this binary, raising no button prompt", "label", entry.Label, "err", err)
-			say("lym: " + entry.Label + " could not raise its prompt; see the lym log in " + spec.Dir + "/.lym/logs")
+			say("lym: " + entry.Label + " could not raise its prompt; see the lym log in " + runDir + "/.lym/logs")
 			return
 		}
-		line := composeConfirmedButtonLine(deps.sh, exe, req, spec.Dir, hash, values["strand"])
+		line := composeConfirmedButtonLine(deps.sh, exe, req, runDir, hash, values["strand"])
 		if err := cmd.run("confirm-before", "-t", req.Client, "-p", confirm+" (y/n)", "run-shell -b "+tmuxQuote(line)); err != nil {
 			logger.Warn("reed: could not raise a button prompt", "label", entry.Label, "client", req.Client, "err", err)
 		}
 		return
 	}
 
-	output, exitCode, err := deps.run(spec.Shell, spec.Flag, run, spec.Dir)
+	output, exitCode, err := deps.run(spec.Shell, spec.Flag, run, runDir)
 	switch {
 	case err != nil:
 		say("lym: " + entry.Label + " failed (exit " + strconv.Itoa(exitCode) + "): " + err.Error())

@@ -30,6 +30,7 @@
 //
 // `button` runs the status-bar button that `--range` names in the session told by `--session`, on the server told by `--socket` and `--tmux`, for the client `--client`.
 // It reads no working directory, config or state, skips the root pre-run's stencil-seed pass and the reed pre-run's location and config resolution, and prints nothing: the click binding and a button's confirm prompt run it through run-shell.
+// It runs the entry in the anchor recorded now for the worktree holding the session's rendered run directory, read through `lymcwd.ResolveWorktree` with no cwd gate, so an anchor marker changed after the render needs no reattach.
 // A missing required flag, or `--confirmed` without `--hash`, is an error envelope with a non-zero exit; every other outcome, a failed button included, exits 0 and shows its message on the clicking client.
 // `--confirmed`, `--hash` and `--strand` are passed by the confirm prompt's own line and are not meant for a hand call.
 //
