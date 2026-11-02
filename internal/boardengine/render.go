@@ -465,7 +465,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 	}
 	types := b.out.Types
 	waitTable := readmeTable{columns: []string{columnTask, columnRecipe, columnAfter}, cells: func(t Task) []string {
-		return []string{entryCell(t), recipeCell(t, b.out.DefaultRecipe), b.afterCell(t)}
+		return []string{entryCell(t), recipeCell(t, b.out), b.afterCell(t)}
 	}}
 
 	var tasks []TaskWithLayer
@@ -487,7 +487,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 	if running := byLayer(runningLayer); len(running) > 0 {
 		lines = append(lines, countedHeading(sublevel, runningSection.name, len(running)), "", runningSection.meaning, "")
 		lines = append(lines, b.table(running, readmeTable{columns: []string{columnTask, columnRecipe, columnAt, columnOwner}, cells: func(t Task) []string {
-			return []string{entryCell(t), recipeCell(t, b.out.DefaultRecipe), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
+			return []string{entryCell(t), recipeCell(t, b.out), atCell(*t.Status), cellText(b.ownerOf(t.Slug))}
 		}})...)
 	}
 	ready := byLayer(readyLayer)
@@ -738,13 +738,10 @@ func codeSpan(s string) string {
 	return fence + s + fence
 }
 
-// recipeCell is the recipe the task runs, defaultRecipe when its recipe field is empty, followed by the run profile it names, if any.
+// recipeCell is the recipe the task runs, the default recipe of out when its recipe field is empty, followed by the run profile it names, if any.
 // A task naming no profile takes its recipe's default profile, so the cell shows the recipe alone.
-func recipeCell(t Task, defaultRecipe string) string {
-	recipe := cellText(defaultRecipe)
-	if t.Recipe != "" {
-		recipe = cellText(t.Recipe)
-	}
+func recipeCell(t Task, out Outputs) string {
+	recipe := cellText(out.recipeOf(t))
 	if t.Profile == "" {
 		return recipe
 	}

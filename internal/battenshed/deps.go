@@ -316,8 +316,8 @@ const (
 // substitutes with a stub closure, per the seed-encoding-stays-behind-a-seam-in-battenshed Shared
 // Decision -- this type never imports internal/shedrun itself.
 type SeedChildDeps struct {
-	// ReadBoardType returns the Board task's own "recipe" field, evaluated fresh on every Call -- never captured at wiring time -- so a recipe corrected after prime was seeded is still honoured.
-	// A task with no recipe field is already resolved to the board's default_recipe, so the value is never empty.
+	// ReadBoardType returns the recipe the Board task runs, its own "recipe" field or else the board's default_recipe, so the value is never empty.
+	// It is evaluated fresh on every Call -- never captured at wiring time -- so a recipe corrected after prime was seeded is still honoured.
 	ReadBoardType func(ctx context.Context) (string, error)
 	// ChildDriver returns the child's driver for the recipe SeedChild resolved: the prime seed's typed child_driver, else the child recipe's driver_kind, else shed.yaml's.
 	// SeedChild calls it after the local overrides are written, so the recipe's driver_kind is read from the layer just written.

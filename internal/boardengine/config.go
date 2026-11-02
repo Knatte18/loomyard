@@ -29,8 +29,7 @@ type Config struct {
 	Path         string `yaml:"-"`
 	Readme       string `yaml:"readme"`
 	DesignPrefix string `yaml:"design_prefix"`
-	// DefaultRecipe is the recipe a task with no recipe field runs: tapestry, darn or sampler.
-	// The template names darn.
+	// DefaultRecipe is the recipe a task with no recipe field runs.
 	DefaultRecipe string `yaml:"default_recipe"`
 	// Types are the type labels;
 	// Labels are every other configured label, both in board.yaml order.
@@ -83,7 +82,7 @@ func labelNames(labels []Label) []string {
 type Outputs struct {
 	Readme       string
 	DesignPrefix string
-	// DefaultRecipe is the recipe the Recipe cell shows for a task with no recipe field.
+	// DefaultRecipe is the recipe a task with no recipe field runs.
 	DefaultRecipe string
 	// Types is the configured type-label order, which the renderer sorts Notes sections by.
 	Types []string
@@ -97,6 +96,15 @@ func (c Config) Outputs() Outputs {
 		DefaultRecipe: c.DefaultRecipe,
 		Types:         labelNames(c.Types),
 	}
+}
+
+// recipeOf returns the recipe task runs: its own recipe field, or DefaultRecipe when the field is empty.
+// It is the one place an empty recipe field is resolved, so the README and the run's seeding agree.
+func (o Outputs) recipeOf(task Task) string {
+	if task.Recipe != "" {
+		return task.Recipe
+	}
+	return o.DefaultRecipe
 }
 
 // Vocabulary is the one answer to "is this a type label" and "is this label configured".

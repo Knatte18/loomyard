@@ -123,6 +123,7 @@ func writeBoardConfig(t *testing.T, content string) string {
 // TestLoadConfig_DefaultRecipe asserts default_recipe resolves to the template's darn when absent and to the hub's own value when set.
 func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	tests := []struct {
 		name    string
 		content string
@@ -133,6 +134,7 @@ func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: writeBoardConfig(t, tt.content)}, "board")
 			if err != nil {
 				t.Fatalf("LoadConfig: %v", err)

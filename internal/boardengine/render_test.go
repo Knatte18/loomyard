@@ -264,7 +264,7 @@ func readmeFixture() []boardengine.Task {
 // It pins that among the root's tables only the Notes tables carry the priority column, headed Prio, H for high, L for low and blank for normal.
 // It pins that a pipe in a title is escaped and a line break in a brief becomes a space, so each row stays one table row.
 // The same row pins that each run setting stacks as a code-span bullet in the entry cell after any brief, sorted, a nested key as its dotted path, a non-string value as JSON and a pipe escaped, adding no column.
-// Every Tasks table pins a Recipe column after the slug, tapestry for an empty recipe and the stored name otherwise, followed by ` · ` and the profile, pipe escaped, when the task names one, and the Notes and Done tables pin its absence.
+// Every Tasks table pins a Recipe column after the slug, the fixture's default recipe for an empty recipe and the stored name otherwise, followed by ` · ` and the profile, pipe escaped, when the task names one, and the Notes and Done tables pin its absence.
 // Every README pins the root's own sections under the root project's heading, P0 linked to project-root.md and counting its open entries, then its facts line naming only the prime owner, one heading level below a project file's.
 // Every README pins the render time at its top and the prime owner under it, the machine in a code span and none recorded when the board records none;
 // every table pins the one column before Labels holding the age above the time since revision, as of that time and blank for unknown dates.

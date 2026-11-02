@@ -52,10 +52,7 @@ func New(cfg Config) *Board {
 
 // RecipeOf returns the recipe task runs: its own recipe field, or the board's default_recipe when the field is empty.
 func (b *Board) RecipeOf(task Task) string {
-	if task.Recipe != "" {
-		return task.Recipe
-	}
-	return b.out.DefaultRecipe
+	return b.out.recipeOf(task)
 }
 
 // noWrite is returned as a mutation's result to end boardCriticalSection without a save, render or sync;
