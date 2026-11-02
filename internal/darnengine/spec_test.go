@@ -33,6 +33,7 @@ func newSpecInputs(t *testing.T) DarnInputs {
 		StopMarkerPath:     filepath.Join(t.TempDir(), "stop-marker"),
 
 		ConditionStopMarkerPath: filepath.Join(t.TempDir(), "condition-stop-marker"),
+		SubagentModel:           "haiku",
 	}
 }
 
@@ -83,7 +84,7 @@ func TestDarnSpec(t *testing.T) {
 			configure:  func(in *DarnInputs) {},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath}
+				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`}
 			},
 			wantNone:     1,
 			wantNoParent: true,
@@ -195,6 +196,7 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"empty DecisionRecordPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.DecisionRecordPath = "" }, "DecisionRecordPath"},
 		{"empty StopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.StopMarkerPath = "" }, "StopMarkerPath"},
 		{"empty ConditionStopMarkerPath", func(t *testing.T, in *DarnInputs, cfg *Config) { in.ConditionStopMarkerPath = "" }, "ConditionStopMarkerPath"},
+		{"empty SubagentModel", func(t *testing.T, in *DarnInputs, cfg *Config) { in.SubagentModel = "" }, "SubagentModel"},
 		{"malformed writer spec", func(t *testing.T, in *DarnInputs, cfg *Config) { cfg.Writer = "opus[effort=high" }, "writer model-spec"},
 		{"missing stencil", func(t *testing.T, in *DarnInputs, cfg *Config) { stencilkit.Remove(t, in.StencilsDir, darnStencilName) }, darnStencilName},
 	}

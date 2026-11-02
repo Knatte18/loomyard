@@ -9,7 +9,8 @@
      parent_directive is a third optional marker, rendered by internal/parentdirective.
      twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
      it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
-     edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
+     edit_directive is a required marker, rendered unconditionally by internal/editdirective.
+     subagent_model is a required marker, filled from loom.yaml's subagent_model. -->
 
 # Plan — read the decision record, write a plan-format flat-card plan
 
@@ -51,7 +52,7 @@ A follow-up a card files goes on the board as a note, never as a task, and no ca
 
 Before planning, start from the code the relevant list names, then read the other relevant parts of the codebase: check recent commits, and follow existing patterns and any PATTERN entries in this prompt rather than inventing new ones.
 
-Hand a batch of independent lookups, such as where a symbol is used or which files follow a pattern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "sonnet"`, all launched together in one message.
+Hand a batch of independent lookups, such as where a symbol is used or which files follow a pattern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
 A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and members.
 Keep in this session the reading the plan's design needs: the decision record, the relevant list and the code your cards change.
 

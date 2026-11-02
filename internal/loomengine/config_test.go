@@ -99,6 +99,7 @@ func templateConfig() Config {
 		ReviewerModel:            burlerengine.ModelSpecList{"opus[medium]"},
 		FixerModel:               burlerengine.ModelSpecList{"opus[medium]"},
 		DiscussionLenses:         "twill-discussion",
+		SubagentModel:            "sonnet",
 		DiscussionReviewerModel:  burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
 		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
 		CodeReviewerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
@@ -547,6 +548,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		lensesYAML string
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
+		{"empty subagent_model", "subagent_model", `""`, []string{"must not be empty", "lym config loom --set subagent_model=sonnet"}, ""},
 		{"malformed reviewer_model spec", "reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed fixer_model spec", "fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later reviewer_model entry", "reviewer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},

@@ -71,6 +71,7 @@ func discussionTableConfig(advisors int, interactive bool) Config {
 		DiscussionTimeoutMin:  480,
 		DiscussionInteractive: interactive,
 		DiscussionAdvisors:    discussionTableAdvisors[:advisors],
+		SubagentModel:         "haiku",
 	}
 }
 
@@ -184,7 +185,7 @@ func TestDiscussionTable(t *testing.T) {
 					t.Fatalf("seatengine.Prompts() = _, %v; want nil error", err)
 				}
 
-				chairWants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive)}
+				chairWants := []string{"`ly:orch`", discussionTableSlug, DiscussionDecisionRecord(layout), DiscussionSupportLog(layout), discussionTableSpecsDir, modeRules(!interactive), `model: "haiku"`}
 				for n, notes := range wantNotes {
 					chairWants = append(chairWants, "ly:"+discussionTableSlug+":discussion-"+discussionTableAdvisors[n].Name, notes)
 				}

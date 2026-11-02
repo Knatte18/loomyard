@@ -13,6 +13,7 @@
      twill_directive is a fourth optional marker, rendered by internal/twilldirective through internal/loomengine;
      it sits on the line that would otherwise be blank, so an empty value leaves the blank line and the prompt's bytes unchanged.
      edit_directive is a required marker, rendered unconditionally by internal/editdirective.
+     subagent_model is a required marker, filled from loom.yaml's subagent_model.
      The literal `{` / `}` characters around {{.slug}} in the board-read example below are ordinary JSON punctuation, not template syntax — only `{{` begins a template action. -->
 
 # Discussion — interview, then write the decision record
@@ -57,6 +58,11 @@ Only unresolved design questions belong in the interview.
 
 This exploration is bounded, the same way Step 3's interview categories are: at a coarse level you MAY establish which module boundary the work falls under and whether the design conflicts with an existing pattern.
 You MUST NOT gather exact signatures, `file:line` citations, interface shapes, or dependency lists, and you MUST NOT do exhaustive existing-pattern research — that class of fact is computed fresh at Plan time.
+
+You may hand a batch of independent lookups, such as where a symbol is used or which module owns a concern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+Whether to is your call: it pays off for a broad search where you need only the conclusion, while a lookup you judge small, or code you need to see yourself, stays in this session.
+A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and spans.
+A fork does not serve here: it inherits this session's whole context.
 
 A factual question the design rests on is settled here, never deferred.
 Such a question asks a fact, not a choice: which version of a tool or dependency has a feature, how an upstream project behaves, what the code does today.

@@ -49,7 +49,7 @@ func TestProducerSpecs_SkillsAndParentDirective(t *testing.T) {
 
 	worktreeRoot := filepath.Join("home", "user", "repo")
 	layout := &lymcwd.Location{HubPath: filepath.Dir(worktreeRoot), WorktreeName: filepath.Base(worktreeRoot)}
-	cfg := Config{Discussion: "opus[effort=high]", Plan: "opus[effort=high]"}
+	cfg := Config{Discussion: "opus[effort=high]", Plan: "opus[effort=high]", SubagentModel: "sonnet"}
 	reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
 	if err != nil {
 		t.Fatalf("modelspec.LoadRegistry(t.TempDir()) = _, %v; want nil error", err)

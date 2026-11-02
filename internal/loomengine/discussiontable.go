@@ -64,6 +64,7 @@ func resolveModelChoice(raw string, reg modelspec.Registry) (shuttleengine.Model
 // DiscussionTable builds the seatengine.Table of one Discussion-Write run: a lead that writes the decision record, the support log and the relevant list, and one advisor per entry of cfg.DiscussionAdvisors, named by the entry, that writes its notes file for the lead to read.
 // When cfg.DiscussionLenses is set the lead alone is authorized to spawn fork subagents and carries the twill lens review directive, whose fan is resolved through lenses.yaml under dirs; the advisors never fork.
 // The seats' opening stencils are read at call time from stencilsDir, the lead's prompt points at the format spec under specsDir, and every seat's parent directive is rendered by the seat engine from its geometry.
+// cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
 // A lead with no advisors decides each question itself, as its prompt says.
 // The PATTERN directive renders the PATTERN changes the decision record declares; a malformed section fails the table, naming the way forward.
@@ -152,6 +153,7 @@ func DiscussionTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDi
 			"decision_record_path": DiscussionDecisionRecord(layout),
 			"support_log_path":     DiscussionSupportLog(layout),
 			"relevant_path":        DiscussionRelevant(layout),
+			subagentModelKey:       cfg.SubagentModel,
 			"mode_rules":           discussionModeRules(!cfg.DiscussionInteractive, len(cfg.DiscussionAdvisors) > 0),
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,

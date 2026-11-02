@@ -39,7 +39,7 @@ func planTableLayout(t *testing.T, anchorRel string) *lymcwd.Location {
 
 // planTableConfig returns a config whose plan_lenses key is lenses.
 func planTableConfig(lenses string) Config {
-	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanLenses: lenses}
+	return Config{Plan: "opus[effort=high]", PlanTimeoutMin: 120, PlanLenses: lenses, SubagentModel: "haiku"}
 }
 
 // templatePlanFan is the fan the embedded lenses template defines for the Plan-Write lead's lens forks.
@@ -136,7 +136,7 @@ func TestPlanTable(t *testing.T) {
 			prompt := prompts[""]
 
 			wantPlanDir := filepath.Join(layout.AnchorPath(), lymdirs.LymDirName, planparser.PlanDirName)
-			for _, want := range []string{"`ly:orch`", DiscussionDecisionRecord(layout), planparser.PlanDir(layout.AnchorPath()), planparser.PlanOverview(layout.AnchorPath()), wantPlanDir, specsDir} {
+			for _, want := range []string{"`ly:orch`", DiscussionDecisionRecord(layout), planparser.PlanDir(layout.AnchorPath()), planparser.PlanOverview(layout.AnchorPath()), wantPlanDir, specsDir, `model: "haiku"`} {
 				if !strings.Contains(prompt, want) {
 					t.Errorf("lead prompt does not contain %q", want)
 				}

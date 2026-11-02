@@ -21,6 +21,7 @@
 // discussion_lenses names the lenses.yaml fan whose lenses the Discussion-Write lead forks itself for once its output is written and self-checked; empty, the default, turns the forks off.
 // It is not the discussion_reviewer_fan of a review perch, and the key is closed to the local layer.
 // The retired discussion_producer and plan_producer keys are rewritten by MigrateConfig into discussion_lenses and plan_lenses.
+// subagent_model is the model name the Plan, Discussion-Write and darn writers pass to the Agent tool for the fresh subagents they hand lookups to; an empty value is refused.
 // seed, discussion_judge, code_judge, discussion_seed and code_seed are role model-specs validated only when non-empty, an empty value meaning the fallback:
 // a per-segment judge takes judge, a per-segment seed takes seed, and seed takes that segment's resolved judge.
 // The retired driver_kind, tackler and arbiter keys are refused here, since shed.yaml holds them.
@@ -443,6 +444,9 @@ type Config struct {
 	// It names the writer's lens fan, not the Discussion-Review perch's DiscussionReviewerFan.
 	DiscussionLenses string `yaml:"discussion_lenses"`
 
+	// SubagentModel is the model name the Plan, Discussion-Write and darn writers pass to the Agent tool for the fresh subagents they hand lookups to.
+	SubagentModel string `yaml:"subagent_model"`
+
 	// PlanLenses names the lenses.yaml fan whose lenses the Plan-Write lead forks itself for once its plan is written and self-checked; empty turns the forks off.
 	// It names the writer's lens fan, not the Plan-Review perch's PlanReviewerFan.
 	PlanLenses string `yaml:"-"`
@@ -547,6 +551,7 @@ func ConfigSpec() configengine.Spec {
 			"discussion_interactive":     none,
 			"discussion_advisors":        guard,
 			"discussion_lenses":          guard,
+			subagentModelKey:             none,
 			"reviewer_model":             none,
 			"fixer_model":                none,
 			"discussion_reviewer_model":  none,
@@ -620,6 +625,8 @@ const (
 	discussionAdvisorsKey = "discussion_advisors"
 	// discussionLensesKey is the loom.yaml key naming the fan the Discussion-Write lead forks its lenses from.
 	discussionLensesKey = "discussion_lenses"
+	// subagentModelKey is the loom.yaml key naming the model of the writers' lookup subagents, and the stencil marker its value fills.
+	subagentModelKey = "subagent_model"
 	// planLensesKey is the tapestry.yaml key naming the fan the Plan-Write lead forks its lenses from.
 	// MigrateConfig still writes it into a loom.yaml document, which the reconcile then moves to tapestry.yaml.
 	planLensesKey = "plan_lenses"
@@ -1114,6 +1121,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Discussion); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "discussion", err)
+	}
+
+	if cfg.SubagentModel == "" {
+		return Config{}, fmt.Errorf("loom config key %q must not be empty: it names the model of the writers' lookup subagents; set it with lym config loom --set %s=sonnet", subagentModelKey, subagentModelKey)
 	}
 
 	if err := burlerengine.ValidateModelSpecList(loomModule, "reviewer_model", cfg.ReviewerModel); err != nil {

@@ -54,6 +54,8 @@ type DarnInputs struct {
 	PriorWork string
 	// LanguageSkills are the hub's language skills the writer loads after its own; empty for none.
 	LanguageSkills []string
+	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
+	SubagentModel string
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -72,6 +74,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		{"DecisionRecordPath", in.DecisionRecordPath},
 		{"StopMarkerPath", in.StopMarkerPath},
 		{"ConditionStopMarkerPath", in.ConditionStopMarkerPath},
+		{"SubagentModel", in.SubagentModel},
 	}
 	for _, r := range required {
 		if r.value == "" {
@@ -110,6 +113,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"condition_stop_marker_path": in.ConditionStopMarkerPath,
 			"specs_dir":                  in.SpecsDir,
 			"prior_work":                 orNone(in.PriorWork),
+			"subagent_model":             in.SubagentModel,
 			"pattern_directive":          patternDirective,
 			friction.MarkerName:          frictionDirective,
 		},

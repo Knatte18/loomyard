@@ -223,7 +223,8 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 // wireDarn fills the Env fields a recipe with a Darn-Write row reads beyond the ones wire and wireTreeScope fill: the writer's seams and its table.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
-func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir string, registry modelspec.Registry) error {
+// subagentModel is loom.yaml's subagent_model, the model the writer's prompt names for the subagents it hands work to.
+func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir, subagentModel string, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -246,6 +247,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			StopMarkerPath:     shedrun.StopMarker(location, c.runID),
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
+			SubagentModel:      subagentModel,
 
 			ConditionStopMarkerPath: shedrun.ConditionStopMarker(location, c.runID),
 		}, cfg, registry)

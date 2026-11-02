@@ -8,7 +8,8 @@
      decision_record_path is a required marker, naming the decision record the writer reads as its scope; stop_marker_path is a required marker, naming the file the writer creates when it stops;
      condition_stop_marker_path is a required marker, naming the second file the writer creates when it stops on a condition the task's body names.
      prior_work is never empty: DarnTable fills it with (none) when it has nothing to tell.
-     edit_directive is a required marker, rendered unconditionally by internal/editdirective. -->
+     edit_directive is a required marker, rendered unconditionally by internal/editdirective.
+     subagent_model is a required marker, filled from loom.yaml's subagent_model. -->
 
 # Darn — make the change a board entry asks for, in one session
 
@@ -59,7 +60,7 @@ Check whether landed work, another board entry or another run overtook or contra
 1. Edit the repository to make the change.
    Follow the existing patterns, and the PATTERN entries in this prompt.
    Each commit is one change, with its own reads, edits and gate run.
-2. Hand work that needs no overview of the change to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "sonnet"`: a batch of lookups, and per-package work whose edits you have already decided, one subagent per package, each owning its own files.
+2. Hand work that needs no overview of the change to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`: a batch of lookups, and per-package work whose edits you have already decided, one subagent per package, each owning its own files.
    Launch every subagent of a batch together in one message.
    A fresh subagent sees none of this session, so each prompt names the files the subagent owns, the edits to make, and the gate rule from your system prompt with its Bash tool timeout, for the subagent to run on its own package.
    Keep in this session the work that needs the overview: the design, a change that spans packages, the commits and the change description.

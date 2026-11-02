@@ -60,6 +60,7 @@ const planStencil = "loom-template-plan"
 // specsDir is told, never derived: this package is bound by the Told-Geometry Invariant.
 // The seat's opening stencil is read at call time from stencilsDir, and the seat engine renders the parent and edit directives from its geometry.
 // gateTiers is the hub's rendered tier and gate-list lines, or "none" when no tier is declared; it fills the prompt's gate_tiers marker verbatim.
+// cfg.SubagentModel names the model of the fresh subagents the lead's prompt tells it to hand lookups to.
 // The table carries no gate; the producer entry sets it.
 // A PATTERN directive that cannot be rendered fails the table; a friction directive that cannot be rendered is left empty, the failure logged.
 func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, specsDir string, cfg Config, reg modelspec.Registry, gateTiers string) (seatengine.Table, error) {
@@ -124,6 +125,7 @@ func PlanTable(layout *lymcwd.Location, dirs configengine.Dirs, stencilsDir, spe
 			"overview_path":        overviewPath,
 			"specs_dir":            specsDir,
 			"gate_tiers":           gateTiers,
+			subagentModelKey:       cfg.SubagentModel,
 			"pattern_directive":    patternDirective,
 			friction.MarkerName:    frictionDirective,
 		},
