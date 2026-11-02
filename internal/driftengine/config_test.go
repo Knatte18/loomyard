@@ -133,6 +133,11 @@ func TestLoadConfig(t *testing.T) {
 			want:     templateConfig(func(c *Config) { c.Enabled = true }),
 		},
 		{
+			name: "verify_interactive loads", seed: true,
+			contents: withKey(t, "verify_interactive", "verify_interactive: true"),
+			want:     templateConfig(func(c *Config) { c.VerifyInteractive = true }),
+		},
+		{
 			name: "a capture without the baseline placeholder", seed: true,
 			contents: withKey(t, "capture", "capture: {command: profile, timeout_min: 30}"),
 			wantErr:  []string{"capture.command", "{baseline_dir}", "lym config drift"},

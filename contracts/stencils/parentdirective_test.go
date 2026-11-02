@@ -2,7 +2,7 @@
 // renders the parent directive, and no stencil outside the orch family tells an agent to ask the
 // operator in its pane.
 // It also pins the entry's edit-directive clause: every opening stencil renders the edit directive, and no other stencil restates the rule.
-// The scans read stencil text only; the discussion role's interactive questions come from the
+// The scans read stencil text only; an interactive role's questions, the Discussion chair's and the Drift-Verify seat's under verify_interactive, come from the
 // `{{.mode_rules}}` marker, whose text is Go, never from a stencil.
 
 package stencils

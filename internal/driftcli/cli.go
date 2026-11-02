@@ -116,7 +116,10 @@ compare skips the test from then on. The Drift-Verify agent accepts while its
 session runs; under scope full its acceptances stay unruled until the run's
 parent rules at a decision halt. The parent uses accept at a halt, where it is
 the only way to re-accept a test it withdrew. A halt that is no decision halt
-refuses the parent's accept of a withdrawn test or under scope full.
+refuses the parent's accept of a withdrawn test or under scope full. With
+drift.yaml's verify_interactive set, the agent's session has the operator in
+its pane, and each acceptance it records is the operator's decision: ruled
+under scope full, and admitted for a withdrawn test.
 
 Example:
   lym drift accept parser_roundtrip --reason "the format changed on purpose"`,
@@ -148,8 +151,9 @@ func withdrawCmd() *cobra.Command {
 		Long: `withdraw moves an accepted test back to the compare, so its drift is judged
 again. The run's parent uses it at a Drift-Verify halt to overrule an
 acceptance; the agent then fixes the drift or reports it in verify-report.md,
-and only the parent re-accepts the test at a decision halt. A test that is not
-accepted is refused; lym drift status lists the accepted tests.
+and only the parent at a decision halt, or the operator in a verify_interactive
+session, re-accepts the test. A test that is not accepted is refused; lym drift
+status lists the accepted tests.
 
 Example:
   lym drift withdraw parser_roundtrip`,

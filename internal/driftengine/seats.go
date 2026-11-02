@@ -1,6 +1,6 @@
 // seats.go — the seat tables of the two drift agents, the baseline agent and the verify agent, and the told inputs they are built from.
 //
-// Each agent is one non-interactive lead seat whose one output is its report.
+// Each agent is one lead seat whose one output is its report, interactive for the verify seat when drift.yaml sets verify_interactive.
 // The builders are pure: they stat nothing they were not told to read, and spawn nothing.
 
 package driftengine
@@ -44,6 +44,19 @@ const (
 var (
 	baselineSkills = []string{"scribe:prose"}
 	verifySkills   = []string{"scribe:prose", "scribe:code-quality", "scribe:testing"}
+)
+
+// The verify stencil's mode and judging text, autonomous and with the operator in the pane.
+const (
+	autonomousVerifyMode = "No operator is present, so make best-judgment calls and never block on a dialog."
+	operatorVerifyMode   = "The operator is present at your pane and decides each drift: you present it, discuss it and record what the operator decides.\n" +
+		"Ask in plain text in the pane and wait for the operator's typed reply; never call the `AskUserQuestion` tool, whose modal dialog the run cannot drive."
+	autonomousVerifyJudging = "Accept a drifted test with `lym drift accept <test> --reason <text>`, giving the reason the drift is intended.\n" +
+		"The run's parent can withdraw an acceptance; a withdrawn test is refused to you, so fix its drift or report it in the report."
+	operatorVerifyJudging = "Present the drift to the operator one test at a time: for each quantity that drifted, its baseline value, its current value and the size of the deviation, then the baseline report's expectation for the test and your own judgment with its reason.\n" +
+		"Discuss it with the operator, who decides whether the test's drift is accepted or fixed, and go on to the next test only once the operator has decided.\n" +
+		"Record each acceptance the operator decides with `lym drift accept <test> --reason <text>`, giving the operator's reason, and never accept a test the operator has not decided on.\n" +
+		"Each test the operator decides to fix, you fix in Step 3."
 )
 
 // subjectFields are the told values the task's subject is read from.
@@ -184,6 +197,7 @@ type VerifyInputs struct {
 
 // VerifyTable builds the seatengine.Table of one Drift-Verify spawn: one lead whose only output is verify-report.md.
 // An empty required field of in is refused by name, and cfg.VerifyModel is resolved against reg.
+// With cfg.VerifyInteractive the lead is interactive, and its prompt has it present the drift to the operator and record the operator's decisions instead of judging alone.
 // The agent changes code, so the table also renders the PATTERN implementer directive.
 // The table carries no gate; the producer sets it.
 func VerifyTable(in VerifyInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
@@ -212,12 +226,19 @@ func VerifyTable(in VerifyInputs, cfg Config, reg modelspec.Registry) (seatengin
 	if err != nil {
 		return seatengine.Table{}, fmt.Errorf("drift: VerifyTable: %w", err)
 	}
+	mode, judging := autonomousVerifyMode, autonomousVerifyJudging
+	if cfg.VerifyInteractive {
+		mode, judging = operatorVerifyMode, operatorVerifyJudging
+	}
 
 	return seatengine.Table{
-		RolePrefix: verifyRole,
-		Segment:    segmentcolor.Review,
-		Timeout:    verifyTimeout,
+		RolePrefix:  verifyRole,
+		Segment:     segmentcolor.Review,
+		Timeout:     verifyTimeout,
+		Interactive: cfg.VerifyInteractive,
 		Values: map[string]string{
+			"mode_rules":        mode,
+			"judging_rules":     judging,
 			"subject_reading":   reading,
 			"compare_log":       in.CompareLog,
 			"scope_path":        in.ScopePath,

@@ -29,13 +29,15 @@ const (
 	AcceptedByAgent = "agent"
 	// AcceptedByCaller marks an acceptance a caller at a halt made.
 	AcceptedByCaller = "caller"
+	// AcceptedByOperator marks an acceptance the operator decided in an interactive Drift-Verify session.
+	AcceptedByOperator = "operator"
 )
 
 // Whether an acceptance under scope full was ruled on by the run's parent.
 const (
 	// RulingUnruled marks an acceptance the Drift-Verify agent session made that the run's parent has not yet ruled on.
 	RulingUnruled = "unruled"
-	// RulingRuled marks an acceptance the run's parent has ruled on or made itself.
+	// RulingRuled marks an acceptance the run's parent has ruled on or made itself, or the operator decided.
 	RulingRuled = "ruled"
 )
 
@@ -55,7 +57,7 @@ type Acceptance struct {
 	Test string `json:"test"`
 	// Reason is why the drift is intended.
 	Reason string `json:"reason"`
-	// By is AcceptedByAgent or AcceptedByCaller.
+	// By is AcceptedByAgent, AcceptedByOperator or AcceptedByCaller.
 	By string `json:"by"`
 	// Ruling is RulingUnruled or RulingRuled under scope full, and empty otherwise.
 	Ruling string `json:"ruling"`
@@ -130,6 +132,8 @@ type runsRecord struct {
 	Count       int    `json:"count"`
 	Head        string `json:"head"`
 	SessionOpen bool   `json:"session_open"`
+	// Operator is true for a session spawned interactive, with the operator in its pane.
+	Operator bool `json:"operator"`
 }
 
 // ErrRunsSpent marks a run refused because the agent session's run budget is spent.
@@ -226,11 +230,11 @@ func TakeRun(p Paths, max int) (int, error) {
 	return taken, nil
 }
 
-// ResetRuns zeroes the run count, records head as the attempt's start and opens the agent-session mark.
+// ResetRuns zeroes the run count, records head as the attempt's start and opens the agent-session mark, recording whether the session is the operator's.
 // Drift-Verify calls it at each fresh spawn of its agent.
-func ResetRuns(p Paths, head string) error {
+func ResetRuns(p Paths, head string, operator bool) error {
 	return updateRuns(p, func(runsRecord, bool) (runsRecord, error) {
-		return runsRecord{Head: head, SessionOpen: true}, nil
+		return runsRecord{Head: head, SessionOpen: true, Operator: operator}, nil
 	})
 }
 
@@ -260,4 +264,10 @@ func CloseAgentSession(p Paths) error {
 func AgentSessionOpen(p Paths) (bool, error) {
 	rec, _, err := readRuns(p)
 	return rec.SessionOpen, err
+}
+
+// OperatorSessionOpen reports whether the agent-session mark is open on a session spawned with the operator in its pane, and false when no attempt was recorded.
+func OperatorSessionOpen(p Paths) (bool, error) {
+	rec, _, err := readRuns(p)
+	return rec.SessionOpen && rec.Operator, err
 }

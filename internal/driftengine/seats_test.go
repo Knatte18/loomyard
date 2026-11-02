@@ -231,4 +231,41 @@ func TestSeatTables(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("verify_interactive makes the verify lead the operator's session", func(t *testing.T) {
+		t.Parallel()
+		in := verify(t)
+		operatorCfg := cfg
+		operatorCfg.VerifyInteractive = true
+		rows := []struct {
+			name        string
+			cfg         Config
+			interactive bool
+			want        []string
+			absent      []string
+		}{
+			{"autonomous", cfg, false, []string{autonomousVerifyMode, "giving the reason the drift is intended"}, []string{"Present the drift to the operator"}},
+			{"with the operator", operatorCfg, true, []string{"Present the drift to the operator", "for each quantity that drifted", "the baseline report's expectation", "giving the operator's reason", "`AskUserQuestion`"}, []string{autonomousVerifyMode}},
+		}
+		for _, row := range rows {
+			table, err := VerifyTable(in, row.cfg, seatRegistry(t))
+			if err != nil {
+				t.Fatalf("%s: VerifyTable() = _, %v; want nil error", row.name, err)
+			}
+			if table.Interactive != row.interactive {
+				t.Errorf("%s: table.Interactive = %v; want %v", row.name, table.Interactive, row.interactive)
+			}
+			prompt := seatPrompt(t, in.StencilsDir, in.WorktreeRoot, in.Slug, table)
+			for _, want := range row.want {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("%s: verify prompt lacks %q", row.name, want)
+				}
+			}
+			for _, absent := range row.absent {
+				if strings.Contains(prompt, absent) {
+					t.Errorf("%s: verify prompt holds %q", row.name, absent)
+				}
+			}
+		}
+	})
 }

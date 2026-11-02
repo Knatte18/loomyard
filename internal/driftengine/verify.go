@@ -66,7 +66,7 @@ func NewDriftVerify(name string, row Row, verify shuttleengine.GateEntry, deps D
 // Otherwise it settles the agent session an interrupted entry left and rules the acceptances the parent stood by.
 // It halts for the parent on an unruled acceptance under scope full and on a missing baseline.
 // It checks that the tree is clean and that the agent's commits pass the verify gate, then runs the compare.
-// A passing compare is Done; a failing one spawns one agent whose table gates on a clean tree, on the verify entry and on a final compare.
+// A passing compare is Done; a failing one spawns one agent, with the operator in its pane under verify_interactive, whose table gates on a clean tree, on the verify entry and on a final compare.
 // Every Stuck under scope full, and under scope partial the missing-baseline halt and a failing final compare while a test is withdrawn, opens with shedadapters.DecisionHaltPrefix.
 func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -494,13 +494,19 @@ func (p *DriftVerify) compareEntry(ctx context.Context) shuttleengine.GateEntry 
 func (p *DriftVerify) runAgent(ctx context.Context, told VerifyTold) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	seats := &recordingSeats{inner: d.Seats}
-	tables := func() (seatengine.Table, error) { return p.tableFor(ctx, told) }
+	// The mode recorded at a fresh spawn is the mode of the table that spawns, so the two never disagree.
+	interactive := false
+	tables := func() (seatengine.Table, error) {
+		table, err := p.tableFor(ctx, told)
+		interactive = table.Interactive
+		return table, err
+	}
 	prepare := func() (string, error) {
 		head, err := d.Head()
 		if err != nil {
 			return "", err
 		}
-		return "", ResetRuns(d.Paths, head)
+		return "", ResetRuns(d.Paths, head, interactive)
 	}
 	agent := shedadapters.NewMultiLLMProducerSourced(p.name, tables, seats, d.Now, prepare).KeepGateFindings(d.GateFindingsFile)
 	outcome, pointer, err := agent.Call(ctx)

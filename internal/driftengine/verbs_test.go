@@ -120,6 +120,7 @@ func TestAcceptWithdraw(t *testing.T) {
 	decisionHalt := shedadapters.DecisionHaltPrefix + "bouncer Drift-Verify: round 2"
 	scoped := func(scope string) *ScopeRecord { return &ScopeRecord{Scope: scope} }
 	withdrawn := func(scope string) *ScopeRecord { return &ScopeRecord{Scope: scope, Withdrawn: []string{"t1"}} }
+	operator := func(st VerbStatus) VerbStatus { st.OperatorSession = true; return st }
 
 	t.Run("Accept", func(t *testing.T) {
 		t.Parallel()
@@ -134,6 +135,10 @@ func TestAcceptWithdraw(t *testing.T) {
 		}{
 			{name: "agent under partial", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), before: scoped(ScopePartial), wantBy: AcceptedByAgent},
 			{name: "agent under full is unruled", st: statusAt("Drift-Verify", shedengine.StateRunning, "", true), before: scoped(ScopeFull), wantBy: AcceptedByAgent, wantRuling: RulingUnruled},
+			{name: "operator session under partial", st: operator(statusAt("Drift-Verify", shedengine.StateRunning, "", true)), before: scoped(ScopePartial), wantBy: AcceptedByOperator},
+			{name: "operator session under full is ruled", st: operator(statusAt("Drift-Verify", shedengine.StateRunning, "", true)), before: scoped(ScopeFull), wantBy: AcceptedByOperator, wantRuling: RulingRuled},
+			{name: "operator session takes a test off withdrawn", st: operator(statusAt("Drift-Verify", shedengine.StateRunning, "", true)), before: withdrawn(ScopePartial), wantBy: AcceptedByOperator, wantNoWd: true},
+			{name: "operator mark with the session closed is the row's own work", st: operator(statusAt("Drift-Verify", shedengine.StateRunning, "", false)), before: scoped(ScopePartial), wantErr: []string{"wait for the row's halt"}},
 			{name: "caller at a halt under partial", st: statusAt("Drift-Verify", shedengine.StateBlocked, "stuck", false), before: scoped(ScopePartial), wantBy: AcceptedByCaller},
 			{name: "caller at a decision halt under full is ruled", st: statusAt("Drift-Verify", shedengine.StateBlocked, decisionHalt, false), before: scoped(ScopeFull), wantBy: AcceptedByCaller, wantRuling: RulingRuled},
 			{name: "caller at a decision halt takes a test off withdrawn", st: statusAt("Drift-Verify", shedengine.StateBlocked, decisionHalt, false), before: withdrawn(ScopePartial), wantBy: AcceptedByCaller, wantNoWd: true},

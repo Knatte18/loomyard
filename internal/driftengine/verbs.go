@@ -28,11 +28,18 @@ type VerbStatus struct {
 	CaptureHeld bool
 	// AgentSession is true when the agent-session mark reads open.
 	AgentSession bool
+	// OperatorSession is true when the open agent session was spawned with the operator in its pane.
+	OperatorSession bool
 }
 
 // AtAgentSession reports whether the caller is the Drift-Verify row's live agent session: the status is running at Drift-Verify and the mark is open.
 func (s VerbStatus) AtAgentSession() bool {
 	return s.Status.CurrentProducer == verifyRow && s.Status.State == shedengine.StateRunning && s.AgentSession
+}
+
+// AtOperatorSession reports whether the caller is the Drift-Verify row's live agent session and that session has the operator in its pane.
+func (s VerbStatus) AtOperatorSession() bool {
+	return s.AtAgentSession() && s.OperatorSession
 }
 
 // AtDecisionHalt reports whether the run is blocked on a Drift-Verify decision halt.
@@ -73,13 +80,16 @@ func RecordScope(p Paths, st VerbStatus, scope string, skip []string) error {
 // Accept records one drifted test as intended, on behalf of the Drift-Verify agent session or of a caller at a halt.
 // It is admitted only at Drift-Verify, from a running status with the agent-session mark open or a blocked status;
 // a running status with the mark closed is the row's own work, and any other state is an error or a transient stop that only lym loom resume settles.
-// A withdrawn test is accepted again only by a caller at a decision halt, and under scope full so is every test a caller accepts.
+// A session with the operator in its pane records the operator's decision, which is ruled under scope full and may accept a withdrawn test again.
+// Otherwise a withdrawn test is accepted again only by a caller at a decision halt, and under scope full so is every test a caller accepts.
 func Accept(p Paths, st VerbStatus, test, reason string) error {
 	if st.Status.CurrentProducer != verifyRow {
 		return wrongRow("accept", verifyRow, st)
 	}
 	by := AcceptedByCaller
 	switch {
+	case st.AtOperatorSession():
+		by = AcceptedByOperator
 	case st.AtAgentSession():
 		by = AcceptedByAgent
 	case st.Status.State == shedengine.StateBlocked:
@@ -104,9 +114,9 @@ func Accept(p Paths, st VerbStatus, test, reason string) error {
 
 		acceptance := Acceptance{Test: test, Reason: reason, By: by, At: stamp(time.Now())}
 		if cur.Scope == ScopeFull {
-			acceptance.Ruling = RulingUnruled
-			if by == AcceptedByCaller {
-				acceptance.Ruling = RulingRuled
+			acceptance.Ruling = RulingRuled
+			if by == AcceptedByAgent {
+				acceptance.Ruling = RulingUnruled
 			}
 		}
 		kept := slices.DeleteFunc(slices.Clone(cur.Accepted), func(existing Acceptance) bool { return existing.Test == test })

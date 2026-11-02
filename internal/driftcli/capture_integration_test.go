@@ -218,7 +218,7 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 		}
 
 		writeDrift("true {baseline_dir}")
-		if err := driftengine.ResetRuns(paths, "head"); err != nil {
+		if err := driftengine.ResetRuns(paths, "head", false); err != nil {
 			t.Fatal(err)
 		}
 		for range 2 {

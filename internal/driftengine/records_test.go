@@ -42,7 +42,7 @@ func TestCountedCapture(t *testing.T) {
 	}
 }
 
-// TestTakeRun covers taking runs up to the budget, the refusal wrapping ErrRunsSpent leaving the count, ResetRuns admitting again, AttemptHead and the agent-session mark.
+// TestTakeRun covers taking runs up to the budget, the refusal wrapping ErrRunsSpent leaving the count, ResetRuns admitting again, AttemptHead, the agent-session mark and the operator's session.
 func TestTakeRun(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -61,8 +61,11 @@ func TestTakeRun(t *testing.T) {
 		t.Fatalf("CloseAgentSession() with no record wrote one")
 	}
 
-	if err := ResetRuns(p, "abc"); err != nil {
+	if err := ResetRuns(p, "abc", false); err != nil {
 		t.Fatalf("ResetRuns() = %v; want nil", err)
+	}
+	if operator, err := OperatorSessionOpen(p); err != nil || operator {
+		t.Errorf("OperatorSessionOpen() after an autonomous ResetRuns = %v, %v; want false", operator, err)
 	}
 	for want := 1; want <= 2; want++ {
 		if got, err := TakeRun(p, 2); err != nil || got != want {
@@ -89,8 +92,11 @@ func TestTakeRun(t *testing.T) {
 		t.Errorf("TakeRun() after CloseAgentSession = %v; want the count kept, refusing at 3", err)
 	}
 
-	if err := ResetRuns(p, "def"); err != nil {
+	if err := ResetRuns(p, "def", true); err != nil {
 		t.Fatalf("ResetRuns() = %v; want nil", err)
+	}
+	if operator, err := OperatorSessionOpen(p); err != nil || !operator {
+		t.Errorf("OperatorSessionOpen() after an operator ResetRuns = %v, %v; want true", operator, err)
 	}
 	if got, err := TakeRun(p, 3); err != nil || got != 1 {
 		t.Errorf("TakeRun() after ResetRuns = %d, %v; want 1, nil", got, err)
@@ -100,5 +106,11 @@ func TestTakeRun(t *testing.T) {
 	}
 	if open, _ := AgentSessionOpen(p); !open {
 		t.Errorf("AgentSessionOpen() after ResetRuns = false; want true")
+	}
+	if err := CloseAgentSession(p); err != nil {
+		t.Fatalf("CloseAgentSession() = %v; want nil", err)
+	}
+	if operator, _ := OperatorSessionOpen(p); operator {
+		t.Errorf("OperatorSessionOpen() after CloseAgentSession = true; want false")
 	}
 }

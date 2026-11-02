@@ -61,18 +61,21 @@ type Config struct {
 	BaselineModel string
 	// VerifyModel is the model-spec of the Drift-Verify agent.
 	VerifyModel string
+	// VerifyInteractive makes the Drift-Verify agent a session with the operator in its pane, who decides each acceptance and fix.
+	VerifyInteractive bool
 	// VerifyMaxRuns is how many compare or side-capture runs one Drift-Verify agent session may take.
 	VerifyMaxRuns int
 }
 
 // configFile is drift.yaml as it is spelled, before defaults and validation.
 type configFile struct {
-	Enabled       bool     `yaml:"enabled"`
-	Capture       stepFile `yaml:"capture"`
-	Compare       stepFile `yaml:"compare"`
-	BaselineModel string   `yaml:"baseline_model"`
-	VerifyModel   string   `yaml:"verify_model"`
-	VerifyMaxRuns int      `yaml:"verify_max_runs"`
+	Enabled           bool     `yaml:"enabled"`
+	Capture           stepFile `yaml:"capture"`
+	Compare           stepFile `yaml:"compare"`
+	BaselineModel     string   `yaml:"baseline_model"`
+	VerifyModel       string   `yaml:"verify_model"`
+	VerifyInteractive bool     `yaml:"verify_interactive"`
+	VerifyMaxRuns     int      `yaml:"verify_max_runs"`
 }
 
 // stepFile is a command step as drift.yaml spells it; TimeoutMin is a pointer so a missing key reads apart from a zero.
@@ -102,12 +105,13 @@ func ConfigSpec() configengine.Spec {
 			stepCompare: yamlengine.ShapeOf(stepFile{}),
 		},
 		Categories: map[string]configengine.Category{
-			"enabled":         configengine.CategoryNone,
-			stepCapture:       configengine.CategoryExecutable,
-			stepCompare:       configengine.CategoryExecutable,
-			"baseline_model":  configengine.CategoryNone,
-			"verify_model":    configengine.CategoryNone,
-			"verify_max_runs": configengine.CategoryNone,
+			"enabled":            configengine.CategoryNone,
+			stepCapture:          configengine.CategoryExecutable,
+			stepCompare:          configengine.CategoryExecutable,
+			"baseline_model":     configengine.CategoryNone,
+			"verify_model":       configengine.CategoryNone,
+			"verify_interactive": configengine.CategoryNone,
+			"verify_max_runs":    configengine.CategoryNone,
 		},
 	}
 }
@@ -147,12 +151,13 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		}
 	}
 	return Config{
-		Enabled:       file.Enabled,
-		Capture:       capture,
-		Compare:       compare,
-		BaselineModel: file.BaselineModel,
-		VerifyModel:   file.VerifyModel,
-		VerifyMaxRuns: file.VerifyMaxRuns,
+		Enabled:           file.Enabled,
+		Capture:           capture,
+		Compare:           compare,
+		BaselineModel:     file.BaselineModel,
+		VerifyModel:       file.VerifyModel,
+		VerifyInteractive: file.VerifyInteractive,
+		VerifyMaxRuns:     file.VerifyMaxRuns,
 	}, nil
 }
 

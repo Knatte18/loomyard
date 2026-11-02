@@ -49,7 +49,7 @@ func (w *worktree) config() (driftengine.Config, error) {
 	return driftengine.LoadConfig(fabricengine.ConfigDirs(w.location))
 }
 
-// verbStatus reads the run status under its lock, the capture lock and the agent-session mark.
+// verbStatus reads the run status under its lock, the capture lock, the agent-session mark and whether the session is the operator's.
 func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(w.location, shedrun.SelfRunID), shedrun.StatusLock(w.location, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -66,10 +66,15 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	if err != nil {
 		return driftengine.VerbStatus{}, err
 	}
+	operatorSession, err := driftengine.OperatorSessionOpen(w.paths)
+	if err != nil {
+		return driftengine.VerbStatus{}, err
+	}
 	return driftengine.VerbStatus{
-		Status:       status,
-		CaptureHeld:  captureHeld,
-		AgentSession: agentSession,
+		Status:          status,
+		CaptureHeld:     captureHeld,
+		AgentSession:    agentSession,
+		OperatorSession: operatorSession,
 	}, nil
 }
 

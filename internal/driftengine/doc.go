@@ -1,7 +1,7 @@
 // Package driftengine owns regression around a task: the hub-wide `drift` config module, the drift paths, and the records and runs the Drift rows read and write.
 // Regression is no test tier: it records a profile of the suite's behavior on the task's branch point and compares the task's code against it, and `lym gate test` never runs it.
 //
-// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; and `verify_max_runs`, the run budget of one Drift-Verify agent session.
+// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; `verify_interactive`, which makes the Drift-Verify agent a session with the operator in its pane; and `verify_max_runs`, the run budget of one Drift-Verify agent session.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from, and may hold `{skip_file}`, a file naming one skipped test per line.
 // `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
 // Once a step is declared, `--set` also changes one of its keys alone, as in `--set capture.env.NAME=1` or `--set compare.timeout_min=10`, and refuses a key a step lacks;
@@ -16,9 +16,9 @@
 // The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named and the time of the last gate halt.
 // The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, times, exit code, reason and log.
 // CountedCapture decides whether a capture counts as the baseline: a passed record with an `awaited_at` in the scope record.
-// The run counter (`runs.json`) holds how many compare or side-capture runs the current Drift-Verify agent session took, the commit its attempt started at and whether the agent-session mark is open.
+// The run counter (`runs.json`) holds how many compare or side-capture runs the current Drift-Verify agent session took, the commit its attempt started at, whether the agent-session mark is open and whether the session has the operator in its pane.
 // TakeRun refuses once the budget is spent, ResetRuns starts a fresh attempt with the whole budget, and CloseAgentSession closes the mark while keeping the count and the attempt's head.
-// A verb reads the mark with AgentSessionOpen to tell the agent session from the row's own mechanical work.
+// A verb reads the mark with AgentSessionOpen to tell the agent session from the row's own mechanical work, and with OperatorSessionOpen to tell the operator's session from an autonomous one.
 //
 // # Capture
 //
@@ -48,7 +48,8 @@
 // A verb run at a row it does not admit refuses naming that row and `lym loom status`, and a refused verb writes nothing.
 // RecordScope writes the scope record once, at Drift-Baseline, and refuses a skip list outside scope partial and a partial scope without one.
 // Accept admits the agent session and a caller at a halt; a running status with the mark closed is the row's own work and refuses, and any other state refuses naming `lym loom resume`.
-// Under scope full the agent's acceptances are unruled and a caller's are ruled; a withdrawn test, and under scope full any test, is accepted by a caller only at a decision halt, and never by the agent session.
+// Under scope full the agent's acceptances are unruled and a caller's are ruled; a withdrawn test, and under scope full any test, is accepted by a caller only at a decision halt, and never by an autonomous agent session.
+// An acceptance in a session with the operator in its pane is the operator's decision: it is ruled under scope full and may accept a withdrawn test again.
 // Withdraw moves an accepted test to the withdrawn list, and RunCount reads the agent session's run count.
 // Defer sets awaited_at with deferred while blocked at Drift-Await or at a Drift-Baseline capture halt, and refuses while the capture lock is held.
 // Waive records a waiver at a blocked Drift-Verify only when no counted capture exists.
@@ -56,7 +57,9 @@
 //
 // # Agents
 //
-// The Drift-Baseline and Drift-Verify agents are each one non-interactive lead seat, built by BaselineTable and VerifyTable over the stencils `drift-template-baseline` and `drift-template-verify`, which the seat engine reads at call time and renders with the parent and edit directives.
+// The Drift-Baseline and Drift-Verify agents are each one lead seat, built by BaselineTable and VerifyTable over the stencils `drift-template-baseline` and `drift-template-verify`, which the seat engine reads at call time and renders with the parent and edit directives.
+// The baseline seat is never interactive.
+// The verify seat is interactive under `verify_interactive`, and its stencil's mode and judging text then has it present the drift per test and per quantity, with the baseline agent's expectation, to the operator, and record each acceptance or fix the operator decides.
 // The baseline seat's only output is `baseline.md` and the verify seat's `verify-report.md`: the scope record is Go-written, and a fresh spawn archives its outputs.
 // The task's subject is read from the decision record in a tapestry run (SubjectDecisionRecord) and from the board entry in a darn run (SubjectBoardEntry), the record's `Added after Discussion` entries winning in both.
 // The seats take the `plan` and `review` segment colors, their models from `baseline_model` and `verify_model`, and session timeouts that are package constants, since drift.yaml declares no timeout key.
@@ -97,7 +100,7 @@
 // an undeclared compare is a Stuck naming `lym config drift`;
 // a dirty tracked tree is a Stuck, and a resume from a gate halt runs the told verify entry once over the agent's commits;
 // then the compare runs, and a pass is Done.
-// A failing compare resets the run counter at the current HEAD and spawns one agent whose table gates, in order, on a clean tree, on the verify entry, which runs only once the session committed code, and on a final compare that ends the session when drift remains.
+// A failing compare resets the run counter at the current HEAD, recording whether `verify_interactive` puts the operator in the session, and spawns one agent whose table gates, in order, on a clean tree, on the verify entry, which runs only once the session committed code, and on a final compare that ends the session when drift remains.
 // The agent's end closes the mark; a Done under scope full is checked again for unruled acceptances.
 //
 // A Stuck opens with shedadapters.DecisionHaltPrefix, so the stop chain hands it to the parent, under scope full, for the missing counted capture, and under scope partial for a failing final compare while a test is withdrawn.

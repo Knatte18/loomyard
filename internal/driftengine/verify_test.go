@@ -160,7 +160,11 @@ func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verify
 	}
 	d.VerifyTable = func(told VerifyTold) (seatengine.Table, error) {
 		f.told = append(f.told, told)
-		return seatengine.Table{Seats: []seatengine.Seat{{Outputs: []string{f.paths.VerifyReport}}}}, nil
+		cfg, err := f.deps.Config()
+		if err != nil {
+			return seatengine.Table{}, err
+		}
+		return seatengine.Table{Interactive: cfg.VerifyInteractive, Seats: []seatengine.Seat{{Outputs: []string{f.paths.VerifyReport}}}}, nil
 	}
 	d.Compare = func(context.Context) (CompareResult, error) {
 		f.events = append(f.events, "compare")
@@ -197,6 +201,25 @@ func (f *verifyFixture) stuckHistory(at, lastAt string) {
 func (f *verifyFixture) agentAccept() func() {
 	return func() {
 		if err := Accept(f.paths, statusAt("Drift-Verify", shedengine.StateRunning, "", true), "t1", "intended"); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+}
+
+// sessionAccept is the action of the agent session accepting test t1, with the session read from the run counter as `lym drift accept` reads it.
+func (f *verifyFixture) sessionAccept() func() {
+	return func() {
+		open, err := AgentSessionOpen(f.paths)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		operator, err := OperatorSessionOpen(f.paths)
+		if err != nil {
+			f.t.Fatal(err)
+		}
+		st := statusAt("Drift-Verify", shedengine.StateRunning, "", open)
+		st.OperatorSession = operator
+		if err := Accept(f.paths, st, "t1", "intended"); err != nil {
 			f.t.Fatal(err)
 		}
 	}
@@ -318,7 +341,7 @@ func TestDriftVerify(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t, partial, nil)
 		f.compares = []CompareResult{failingCompare, passingCompare}
-		if err := ResetRuns(f.paths, "old"); err != nil {
+		if err := ResetRuns(f.paths, "old", false); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := TakeRun(f.paths, 8); err != nil {
@@ -459,7 +482,7 @@ func TestDriftVerify(t *testing.T) {
 		seed := func(f *verifyFixture, attemptHead string, headNow string) {
 			f.t.Helper()
 			f.head = headNow
-			if err := ResetRuns(f.paths, attemptHead); err != nil {
+			if err := ResetRuns(f.paths, attemptHead, false); err != nil {
 				f.t.Fatal(err)
 			}
 			if err := CloseAgentSession(f.paths); err != nil {
@@ -528,7 +551,7 @@ func TestDriftVerify(t *testing.T) {
 			if _, _, err := f.call(); err != nil {
 				t.Fatal(err)
 			}
-			if err := ResetRuns(f.paths, "aaa"); err != nil {
+			if err := ResetRuns(f.paths, "aaa", false); err != nil {
 				t.Fatal(err)
 			}
 			if err := CloseAgentSession(f.paths); err != nil {
@@ -593,7 +616,7 @@ func TestDriftVerify(t *testing.T) {
 		t.Parallel()
 		arrange := func(f *verifyFixture) {
 			f.t.Helper()
-			if err := ResetRuns(f.paths, "aaa"); err != nil {
+			if err := ResetRuns(f.paths, "aaa", false); err != nil {
 				f.t.Fatal(err)
 			}
 			if err := os.MkdirAll(f.paths.LogsDir, 0o755); err != nil {
@@ -606,25 +629,52 @@ func TestDriftVerify(t *testing.T) {
 			}
 		}
 
-		t.Run("a live chair is resumed before any check", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, partial, nil)
-			arrange(f)
-			f.liveChair = true
-			requireDone(f)
-			if want := []string{"probe", "probe", "resume"}; !slices.Equal(f.events[:3], want) {
-				t.Errorf("events = %v; want the two probes and the resume first, before any dirty check, verify gate or compare", f.events)
-			}
-			if f.seats.Calls != 0 || f.seats.ResumeCalls != 1 {
-				t.Errorf("runs %d, resumes %d; want the live chair resumed and none started", f.seats.Calls, f.seats.ResumeCalls)
-			}
-			if want := filepath.Join(f.paths.LogsDir, "compare-20260102T000000.000Z.log"); len(f.told) == 0 || f.told[0].CompareLog != want {
-				t.Errorf("told = %v; want the newest compare log %s", f.told, want)
-			}
-			if open, _ := AgentSessionOpen(f.paths); open {
-				t.Errorf("the agent-session mark reads open after the agent's end")
-			}
-		})
+		resumeRows := []struct {
+			name     string
+			operator bool
+		}{
+			{"a live chair is resumed before any check", false},
+			{"a live operator chair is resumed keeping its mode while the config no longer asks for it", true},
+		}
+		for _, tt := range resumeRows {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t, partial, nil)
+				arrange(f)
+				if err := ResetRuns(f.paths, "aaa", tt.operator); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := TakeRun(f.paths, 8); err != nil {
+					t.Fatal(err)
+				}
+				f.liveChair = true
+				operatorAtResume := false
+				resume := f.seats.ResumeFn
+				f.seats.ResumeFn = func(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
+					operatorAtResume, _ = OperatorSessionOpen(f.paths)
+					return resume(table, live)
+				}
+				requireDone(f)
+				if want := []string{"probe", "probe", "resume"}; !slices.Equal(f.events[:3], want) {
+					t.Errorf("events = %v; want the two probes and the resume first, before any dirty check, verify gate or compare", f.events)
+				}
+				if f.seats.Calls != 0 || f.seats.ResumeCalls != 1 {
+					t.Errorf("runs %d, resumes %d; want the live chair resumed and none started", f.seats.Calls, f.seats.ResumeCalls)
+				}
+				if operatorAtResume != tt.operator {
+					t.Errorf("OperatorSessionOpen() at the resume = %v; want the spawned mode %v kept", operatorAtResume, tt.operator)
+				}
+				if count, err := RunCount(f.paths); err != nil || count != 1 {
+					t.Errorf("RunCount() = %d, %v; want the run counter left as it was", count, err)
+				}
+				if want := filepath.Join(f.paths.LogsDir, "compare-20260102T000000.000Z.log"); len(f.told) == 0 || f.told[0].CompareLog != want {
+					t.Errorf("told = %v; want the newest compare log %s", f.told, want)
+				}
+				if open, _ := AgentSessionOpen(f.paths); open {
+					t.Errorf("the agent-session mark reads open after the agent's end")
+				}
+			})
+		}
 
 		t.Run("no live chair closes the mark and goes on to the compare", func(t *testing.T) {
 			t.Parallel()
@@ -747,6 +797,22 @@ func TestDriftVerify(t *testing.T) {
 			requireStuck(t, outcome, pointer, err, true, "t1")
 			if f.compareCalls != compares {
 				t.Errorf("the resumed entry ran %d more compares; want it to halt before any compare", f.compareCalls-compares)
+			}
+		})
+
+		t.Run("an operator session's acceptances are ruled, so its end is Done with no halt", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t, full, nil)
+			f.compares = []CompareResult{failingCompare, passingCompare}
+			f.deps.Config = func() (Config, error) {
+				return Config{Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}, VerifyInteractive: true}, nil
+			}
+			f.seats = gateLoopSeats(t, []func(){f.sessionAccept()})
+			f.deps.Seats = f.seats
+			requireDone(f)
+			scope := f.scope()
+			if len(scope.Accepted) != 1 || scope.Accepted[0].By != AcceptedByOperator || scope.Accepted[0].Ruling != RulingRuled {
+				t.Errorf("accepted = %+v; want t1 accepted by the operator and ruled", scope.Accepted)
 			}
 		})
 	})
