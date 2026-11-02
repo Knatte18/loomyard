@@ -38,7 +38,8 @@ Method throughout: median of 3 warm runs per tier, `go build ./...` first.
 | Ryzen AI 7 445, Linux (bare metal) | none | 1.03 s | 4.97 s | 2026-07-13 |
 | Ryzen AI 7 445, Linux (bare metal, after test-seam fixes) | none | 3.86 s | 6.48 s | 2026-08-01 |
 
-The work laptop OSL-1046, an Intel Core Ultra 7 366H on bare-metal Ubuntu 24.04 with Cortex XDR, is measured through `lym gate test` instead, before and after the gate's `-trimpath`, in [gate-test-xdr.md](gate-test-xdr.md).
+The work laptop OSL-1046, an Intel Core Ultra 7 366H on bare-metal Ubuntu 24.04 with Cortex XDR, is measured through `lym gate test` instead.
+[gate-test-xdr.md](gate-test-xdr.md) holds the runs before and after the gate's `-trimpath`, and [test-time-audit-3](#test-time-audit-3-the-suite-on-osl-1046-after-the-test-binary-cuts) the full suite per tier after the test-binary cuts.
 
 ## What the spread shows
 
@@ -605,3 +606,106 @@ Each line is a lead for a prune task under `PATTERN-test-speed`, not a verdict; 
 - `cmd/lym` in `tier0`, 5.82 s and +6 tests since the first audit, the guard tests the new PATTERN entries added; it is the `tier0` floor.
 - The first audit's growth leads `internal/boardengine/boardtest`, `internal/shell`, `internal/battenrecipe` and `internal/shedrun` need no action: by declaration they changed by 0 (and `internal/battenrecipe` by -1) since `ba2a346b`.
 - `internal/battenshed` fell by 4 declarations, and `internal/landingshed` and `internal/loomcli` rose by 5 and 4: no lead, the size of change tracks new behavior.
+
+## test-time-audit-3: the suite on OSL-1046 after the test-binary cuts
+
+The third run of the recurring audit, and the first on the work laptop OSL-1046, after `6c5727df` cut the test binaries: a test's tier is chosen at run time, so each package builds one test binary that holds every tier's tests, and the hub's `gate.yaml` no longer passes `-tags` to any tier.
+It follows the method of `test-time-audit-2`, so the counts compare and the walls compare only where the notes below say so.
+This section is a measurement report: it records one run and is not meant to stay true.
+
+### Audit state (2026-11-02)
+
+```yaml
+machine: Intel Core Ultra 7 366H, 16 cores, OSL-1046 (the operator's work laptop)
+os: Ubuntu 24.04.5 LTS, Linux 7.0.0-42-generic, bare metal
+security: Cortex XDR installed
+go: go1.26.9 linux/amd64
+revision: b5e0ed26
+load_average_before: 2.57 2.22 1.85
+load_average_peak: 25.84 (1 minute, read before the third warm tier1 run)
+load_average_after: 12.38 14.61 14.36
+tier0_top_level_tests: 3902
+tier1_top_level_tests: 937
+tier2_top_level_tests: 72
+tier0_wall: 27.4 s
+tier1_wall: 388.6 s
+tier2_wall: 124.7 s
+```
+
+Route and method are the second audit's: every wall is the gate's summary-line wall for `lym gate test --tier N --all -- -count=1`, with one untracked file in the worktree for the length of the measurement so the gate reads no green record, removed afterwards.
+Per tier, one cold run discarded and three warm runs, the median of the three taken; twelve runs in all, no repeats.
+`tier0` runs were 45.6 (discarded), 35.8, 26.8 and 27.4 s.
+`tier1` runs were 393.6 (discarded), 387.0, 388.6 and 412.2 s.
+`tier2` runs were 127.9 (discarded), 127.1, 124.7 and 123.2 s.
+All twelve passed with no failed test.
+The gate counts `discovered` including subtests: `tier0` 23668 with 22622 passed and 1046 skipped, `tier1` 7822 with 3815 passed and 4007 skipped, `tier2` 5140 with 268 passed and 4872 skipped.
+Top-level counts are the `--- PASS` and `--- FAIL` lines without a subtest path in the median-wall run's gate log; no top-level test failed.
+They leave out the `--- SKIP` lines, which under one binary per package are mostly the other tiers' tests: the skips of each tier equal the passes of the other two plus 33 tests of `tier3`, which no tier here runs.
+
+#### Machine state
+
+`lym tender status` and `lym gate status` ran before the first run and `lym gate status` before every run after the first: no gate slot was held or awaited by anyone else, and the only slot a status call showed held was the measured run's own.
+The orch was awaiting input, this task's darn writer was the one busy session, and the registered dobby, sync, driver, loop and push processes ran no test.
+This machine was far from idle during the longer tiers: the load average rose to 25.84 during the `tier1` runs, against a peak of 11.6 in the second audit, and most of that is the gate's own `-p=4` test load, since no other session ran tests.
+The spread within each tier's three warm runs is 9.0 s for `tier0`, 25.2 s for `tier1` and 3.9 s for `tier2`.
+The first warm `tier0` run, 35.8 s, is 9 s above the other two; the cause was not isolated.
+The gate answered `done: false` once per `tier1` run when its keep-warm cap of 4 min 10 s passed, and the same command run again joined that run and printed its result, so each `tier1` result above is one run.
+
+### Wall time against the second audit and earlier OSL-1046 runs
+
+The second audit ran on the Ryzen AI 7 445 under Linux with no endpoint security, so its walls say little about this machine:
+
+| Tier | `test-time-audit-2`, Ryzen | Now, OSL-1046 |
+|---|---|---|
+| `tier0` | 19.6 s | 27.4 s |
+| `tier1` | 62.9 s | 388.6 s |
+| `tier2` | 50.5 s | 124.7 s |
+
+The nearest OSL-1046 figures are the `tier_parallel` 4 row of [gate-test-xdr.md](gate-test-xdr.md#refill-after-a-change-to-internallogger), 2026-10-29, before the binary cuts:
+
+| Tier | Wall, 2026-10-29 refill | Wall now |
+|---|---|---|
+| `tier0` | 79.7 s | 27.4 s |
+| `tier1` | 292.6 s | 388.6 s |
+| `tier2` | 122.0 s | 124.7 s |
+
+That row is not like for like.
+It ran the packages that import `internal/logger`, about 130 per tier, as one gate call, on binaries whose hashes Cortex XDR had not seen, at the head of an earlier revision.
+These runs cover every package of the tier, `-count=1` after one discarded cold run, so the binaries had been linked and run once before each timed run.
+Read the table as an order of magnitude: `tier0` and `tier2` lie close to it and `tier1` is above it, and the table cannot say how much of the difference is the binary cuts, the larger scope, the warm binaries, the revision or the load.
+
+Where the new gate setup makes the audits not comparable:
+
+- **Counts of discovered tests.** Every package's one binary holds every tier's tests, and a test of another tier is reported as a skip, so the gate's `discovered` and `skipped` totals of a tier now include the other tiers' tests: `tier0` shows 1046 skipped where the second audit showed 1. Only the top-level pass counts below are comparable.
+- **Test binaries.** The second audit's tags built separate binaries per tier; one binary now serves all three tiers, so each tier's `-count=1` run links no binary the previous tier did not already link, and a cold run is the only one that pays for the link. The discarded cold run is the one that did, 45.6 s for `tier0` against 27.4 s warm.
+- **The `tier1` command.** It runs `go build ./...`, one `go vet` and then `go test`, where the second audit's `tier1` ran `go vet` under each of four tags; its wall is not the `go test` time alone.
+- **The machine.** Cortex XDR holds a binary it has not seen for seconds before it runs, and the machine's 16 cores and its load differ from the Ryzen's; a wall here and a wall in the second audit differ for these reasons as well as for the code.
+
+The packages with the longest `ok` time in each tier, from the median-wall run:
+
+| Tier | Package | Time now | Time 2026-10-31, Ryzen |
+|---|---|---|---|
+| `tier0` | `cmd/lym` | 6.73 s | 5.82 s |
+| `tier0` | `internal/lymcwd` | 2.66 s | 1.70 s |
+| `tier0` | `internal/websterengine` | 2.08 s | not listed |
+| `tier1` | `internal/fabricengine` | 348.72 s | 45.69 s |
+| `tier1` | `internal/battencli` | 62.18 s | not listed |
+| `tier1` | `internal/fabriccli` | 40.08 s | 17.46 s |
+| `tier2` | `internal/loomcli` | 110.40 s | 40.78 s |
+| `tier2` | `internal/reedcli` | 84.05 s | 39.03 s |
+| `tier2` | `internal/reedengine` | 65.94 s | 12.75 s |
+
+`internal/fabricengine` takes 348.72 s of the `tier1` wall of 388.6 s, so it binds the tier as it did on the Ryzen, at 7.6 times that machine's time.
+The three `tier2` packages run together and bind its wall of 124.7 s, as in the second audit.
+Package times are inflated by the contention of the packages running at once, as the older sections note; the table is attribution, not cost.
+
+### Test counts against the second audit
+
+| Tier | 2026-10-31 | 2026-11-02 | Change |
+|---|---|---|---|
+| `tier0` | 3769 | 3902 | +133 |
+| `tier1` | 907 | 937 | +30 |
+| `tier2` | 70 | 72 | +2 |
+
+The three tiers together went from 4746 to 4911 top-level tests, +165 over two days, against +41 over the three days before.
+The second audit's counts include the few top-level skips of its own run, and these leave skips out, so each change is exact to within that small difference.
