@@ -119,6 +119,11 @@ func TestValidatePartsCmd(t *testing.T) {
 	}{
 		{name: "AValidPartsFilePasses", partsText: splitPartsText, partsMax: "6", wantExit: 0, wantInBody: "parts_path"},
 		{name: "ACheckFindingFails", partsText: splitPartsText, partsMax: "1", wantExit: 1, wantErrMsg: "loom: parts file is not yet valid", wantInBody: "parts-over-max: "},
+		{
+			name:      "AnExportTheWorktreeHoldsFails",
+			partsText: strings.Replace(splitPartsText, "  - `plan:internal/x#NewThing`\n", "  - `plan:internal/x#NewThing`\n  - `internal/x/x.go`\n", 1),
+			partsMax:  "6", wantExit: 1, wantErrMsg: "loom: parts file is not yet valid", wantInBody: "export-existing",
+		},
 		{name: "AnInvalidPartsMaxIsTheConfigError", partsText: splitPartsText, partsMax: "0", wantExit: 1, wantErrMsg: "parts_max"},
 	}
 	for _, tt := range tests {

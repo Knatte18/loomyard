@@ -116,7 +116,7 @@ func checkJoinable(parts []JoinPart, plans []*Plan) error {
 	for i, part := range parts {
 		for _, export := range part.Exports {
 			if !ExportMet(plans[i], export) {
-				return refuseJoin("part %q: no card creates, re-signs or deletes its export %q; way forward: add the card to part %q's plan, then run lym loom join-parts again", part.Name, export, part.Name)
+				return refuseJoin("part %q: no card creates its export %q; way forward: add the card to part %q's plan, then run lym loom join-parts again", part.Name, export, part.Name)
 			}
 		}
 	}
@@ -159,14 +159,15 @@ func createdRefs(plan *Plan) []string {
 	return refs
 }
 
-// ExportMet reports whether a card of the plan creates the export (a Create target or Rename New side), re-signs it (an Edit arrow target) or deletes it (a Delete target).
+// ExportMet reports whether a card of the plan creates the export: a Create target or a Rename New side.
+// An existing member a card re-signs or deletes is never an export, since the parts check refuses an export that already exists.
 // A path export is met by its disk path, a glyph exactly, and a `plan:` handle exactly or by the declaration it names: a handle whose body ParseRef reads with the same Unit and Name as the export's.
 // The resolve pass canonicalizes a declared handle by spelling its owner chain from the declaration head, so the canonical spelling on disk still meets an export written as drafted.
 func ExportMet(plan *Plan, export string) bool {
 	for _, card := range plan.Cards {
 		for _, group := range card.TargetGroups {
 			switch group.Type {
-			case CardTypeCreate, CardTypeDelete:
+			case CardTypeCreate:
 				for _, ref := range group.Refs {
 					if refsMatch(plan, ref, export) {
 						return true
@@ -175,12 +176,6 @@ func ExportMet(plan *Plan, export string) bool {
 			case CardTypeRename:
 				for _, pair := range group.Pairs {
 					if refsMatch(plan, pair.New, export) {
-						return true
-					}
-				}
-			case CardTypeEdit:
-				for _, resign := range group.Resigns {
-					if resign.Target == export {
 						return true
 					}
 				}

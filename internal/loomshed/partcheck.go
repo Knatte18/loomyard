@@ -23,11 +23,11 @@ var ErrPartUnknown = errors.New("loomshed: no such part")
 const partExportMissingCheck = "part-export-missing"
 
 // NewPartsGate returns the Parts-Write row's `parts` gate closure.
-// It runs partsparser.Validate over the parts file under anchorPath, the decision record at recordPath and the most parts max allows, and maps no finding to a pass and findings to a failed gate carrying one `check[/part]: detail` line each.
+// It runs partsparser.Validate over the parts file under anchorPath, the files under worktreeRoot, the decision record at recordPath and the most parts max allows, and maps no finding to a pass and findings to a failed gate carrying one `check[/part]: detail` line each.
 // A returned error is the gate's error.
-func NewPartsGate(anchorPath, recordPath string, max int) shuttleengine.Gate {
+func NewPartsGate(anchorPath, worktreeRoot, recordPath string, max int) shuttleengine.Gate {
 	return func() (shuttleengine.GateResult, error) {
-		findings, err := partsparser.Validate(anchorPath, recordPath, max)
+		findings, err := partsparser.Validate(anchorPath, worktreeRoot, recordPath, max)
 		if err != nil {
 			return shuttleengine.GateResult{}, err
 		}
@@ -90,7 +90,7 @@ func partScope(parts *partsparser.Parts, part string) *planparser.PartScope {
 	return scope
 }
 
-// checkPartPlan returns the findings of one part's parsed plan: the index's format findings under the part scope, the context checks without the decision record, and one blocking part-export-missing per contract export no card meets.
+// checkPartPlan returns the findings of one part's parsed plan: the index's format findings under the part scope, the context checks without the decision record, and one blocking part-export-missing per contract export no card creates.
 // The decision record is left out because pattern-changes-mismatch and pattern-line-unprescribed rest on the joined overview, which the part has none of; the joined plan's gate runs them.
 func checkPartPlan(plan *planparser.Plan, parts *partsparser.Parts, contract partsparser.Part, worktreeRoot string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	plan.Part = partScope(parts, contract.Name)
@@ -110,7 +110,7 @@ func checkPartPlan(plan *planparser.Plan, parts *partsparser.Parts, contract par
 		}
 		findings = append(findings, planindex.Finding{
 			Check:    partExportMissingCheck,
-			Detail:   fmt.Sprintf("part %q's contract exports %q, and no card of the part creates, re-signs or deletes it; way forward: create the export on a card of the part, declaring a `plan:` export on a **Create:** bullet with the parts file's spelling, or re-sign or delete it on a card; when the part's area cannot meet it, message the chair naming the contract line", contract.Name, export),
+			Detail:   fmt.Sprintf("part %q's contract exports %q, and no card of the part creates it; way forward: create the export on a card of the part, declaring a `plan:` export on a **Create:** bullet with the parts file's spelling; when the part's area cannot meet it, message the chair naming the contract line", contract.Name, export),
 			Severity: planindex.SeverityBlocking,
 		})
 	}
@@ -118,7 +118,7 @@ func checkPartPlan(plan *planparser.Plan, parts *partsparser.Parts, contract par
 }
 
 // ValidatePart is the part check shared by `lym loom validate-plan --part`, the part plan gate and a part writer's Accept.
-// It reads the part's contract from the parts file under anchorPath, parses the part's plan directory with a part scope and returns the findings of the format check over worktreeRoot, the context checks without the decision record, and a blocking part-export-missing finding for each export of the contract the plan does not meet.
+// It reads the part's contract from the parts file under anchorPath, parses the part's plan directory with a part scope and returns the findings of the format check over worktreeRoot, the context checks without the decision record, and a blocking part-export-missing finding for each export of the contract no card creates.
 // An absent or malformed parts file, a part the file does not hold (an error wrapping ErrPartUnknown) and a part directory that cannot be read as a plan are errors, each naming its way forward.
 func ValidatePart(anchorPath, worktreeRoot, part string, index planindex.Index, pc PlanContext) ([]planindex.Finding, error) {
 	parts, err := readParts(anchorPath)

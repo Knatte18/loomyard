@@ -24,18 +24,7 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 	var findings []ValidationError
 	for _, card := range plan.Cards {
 		for _, handle := range OwnedHandles(card) {
-			unit, unitOK := HandleUnit(handle)
-			member, memberOK := HandleMember(handle)
-			last, lastOK := HandleIdentifier(handle)
-			if !unitOK || !memberOK || !lastOK || unit == "" {
-				continue
-			}
-			if body, _ := HandleBody(handle); body != "" {
-				if parsed, err := ParseRef(plan, body); err == nil && parsed.Name != "" {
-					last, _, _ = strings.Cut(parsed.Name, "<")
-				}
-			}
-			broken := brokenFabricVocabularyRule(unit, member, last, plan.GoToolchain())
+			member, broken := fabricVocabularyBreak(plan, handle)
 			if broken == "" {
 				continue
 			}
@@ -50,6 +39,23 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 		}
 	}
 	return findings
+}
+
+// fabricVocabularyBreak returns handle's member half and the rule that member breaks as a phrase, read under plan's language.
+// broken is "" when the member breaks no rule or the handle does not split into a unit and a member.
+func fabricVocabularyBreak(plan *Plan, handle string) (member, broken string) {
+	unit, unitOK := HandleUnit(handle)
+	member, memberOK := HandleMember(handle)
+	last, lastOK := HandleIdentifier(handle)
+	if !unitOK || !memberOK || !lastOK || unit == "" {
+		return member, ""
+	}
+	if body, _ := HandleBody(handle); body != "" {
+		if parsed, err := ParseRef(plan, body); err == nil && parsed.Name != "" {
+			last, _, _ = strings.Cut(parsed.Name, "<")
+		}
+	}
+	return member, brokenFabricVocabularyRule(unit, member, last, plan.GoToolchain())
 }
 
 // brokenFabricVocabularyRule names the rule a declared member breaks as a phrase, or returns "" when it breaks none.

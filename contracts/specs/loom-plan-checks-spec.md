@@ -181,7 +181,7 @@ The other PATTERN checks are *loomshed*'s, and run only in a worktree with a `PA
   Way forward: restore the card file; a fix to its work is a follow-up card after the last begun batch, with its Card Index line.
 - `part-spot-target` — under a part scope: a card's target is a shared spot's path.
   Way forward: drop the target and say in the card's `**Intent:**` what it needs from the spot.
-- `part-export-missing` *(loomshed, `--part` only)* — an export of the part's contract that no card of the part creates, re-signs or deletes.
-  Way forward: create the export on a card of the part, a `plan:` export declared on a `**Create:**` bullet with the parts file's spelling, or re-sign or delete it; when the part's area cannot meet it, message the chair naming the contract line.
+- `part-export-missing` *(loomshed, `--part` only)* — an export of the part's contract that no card of the part creates.
+  Way forward: create the export on a card of the part, a `plan:` export declared on a `**Create:**` bullet with the parts file's spelling; when the part's area cannot meet it, message the chair naming the contract line.
 
 `loom-parts-spec.md` defines the part scope and the join.

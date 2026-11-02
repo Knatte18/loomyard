@@ -40,6 +40,7 @@ Create `{{.plan_dir}}` if it does not exist, and write your part there as a plan
 
 - Write cards for your own part only, and only into `{{.plan_dir}}`: never edit another part's cards, the parts file or the joined plan.
 - Create every export your contract names, spelled exactly as the parts file spells it; a `plan:` export is declared on a `**Create:**` bullet with that same handle.
+  Every export is new: an existing member your cards re-sign or delete is in your contract's `Delivers`, never its exports, and a later part uses it by the spelling `lym quarry` gives it.
 - Use another part's or a shared spot's export by the name the parts file gives it, and only an export of a part you depend on or of a shared spot that names your part; the part check counts those as declared.
 - Leave every shared spot to the chair: no card of yours targets a shared spot's path, and a card that needs something from one says what in its `**Intent:**`.
 - Leave `## PATTERN changes` out of your overview, since the chair writes it into the joined plan.
@@ -56,7 +57,7 @@ Create `{{.plan_dir}}` if it does not exist, and write your part there as a plan
 
 Write `{{.overview_path}}` only after every card file of your part exists.
 Then run `lym loom validate-plan --part {{.part_name}}` and fix every finding until it passes.
-It checks your part as the plan gate checks a plan, counts the exports of the parts you depend on and of the shared spots that name your part as declared, refuses a card that targets a shared spot, and refuses an export of your contract that no card of yours creates, re-signs or deletes.
+It checks your part as the plan gate checks a plan, counts the exports of the parts you depend on and of the shared spots that name your part as declared, refuses a card that targets a shared spot, and refuses an export of your contract that no card of yours creates.
 Your output existing with that check passed is what tells the chair your part is ready.
 
 One finding is not yours to fix in your cards: a refusal saying the parts file is gone or malformed.

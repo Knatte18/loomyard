@@ -60,8 +60,8 @@ func TestJoinParts(t *testing.T) {
 					}(),
 				},
 			}), Exports: []string{"internal/a/one.go"}},
-			{Name: "beta", Dir: writePart(t, root, "beta", plankit.Plan{Cards: []plankit.Card{partCard(1, "resign", "Edit", resignArrow)}}), Exports: []string{"internal/b#Member"}},
-			{Name: "gamma", Dir: writePart(t, root, "gamma", plankit.Plan{Cards: []plankit.Card{partCard(1, "remove", "Delete", "internal/c/gone.go")}}), Exports: []string{"internal/c/gone.go"}},
+			{Name: "beta", Dir: writePart(t, root, "beta", plankit.Plan{Cards: []plankit.Card{partCard(1, "resign", "Edit", resignArrow)}})},
+			{Name: "gamma", Dir: writePart(t, root, "gamma", plankit.Plan{Cards: []plankit.Card{partCard(1, "remove", "Delete", "internal/c/gone.go")}})},
 			{Name: "delta", Dir: writePart(t, root, "delta", plankit.Plan{Cards: []plankit.Card{partCard(1, "declare", "Create", declaration)}}), Exports: []string{"plan:internal/d#Foo"}},
 			{Name: "epsilon", Dir: writePart(t, root, "epsilon", plankit.Plan{
 				Sections: []plankit.Section{{Heading: "Rename mechanic", Body: "this part's own text"}},
@@ -164,7 +164,25 @@ func TestJoinParts(t *testing.T) {
 					{Name: "alpha", Dir: writePart(t, root, "alpha", plankit.Plan{Cards: []plankit.Card{partCard(1, "a", "Create", "internal/a/a.go")}}), Exports: []string{"internal/a/missing.go"}},
 				}
 			},
-			wantIn: []string{`"alpha"`, `"internal/a/missing.go"`},
+			wantIn: []string{`"alpha"`, `"internal/a/missing.go"`, "no card creates its export"},
+		},
+		{
+			name: "an export its only card deletes",
+			parts: func(t *testing.T, root string) []planparser.JoinPart {
+				return []planparser.JoinPart{
+					{Name: "alpha", Dir: writePart(t, root, "alpha", plankit.Plan{Cards: []plankit.Card{partCard(1, "a", "Delete", "internal/a/gone.go")}}), Exports: []string{"internal/a/gone.go"}},
+				}
+			},
+			wantIn: []string{`"alpha"`, `"internal/a/gone.go"`, "no card creates its export"},
+		},
+		{
+			name: "an export its only card re-signs",
+			parts: func(t *testing.T, root string) []planparser.JoinPart {
+				return []planparser.JoinPart{
+					{Name: "alpha", Dir: writePart(t, root, "alpha", plankit.Plan{Cards: []plankit.Card{partCard(1, "a", "Edit", resignArrow)}}), Exports: []string{"internal/b#Member"}},
+				}
+			},
+			wantIn: []string{`"alpha"`, `"internal/b#Member"`, "no card creates its export"},
 		},
 		{
 			name: "a new file path two parts create",

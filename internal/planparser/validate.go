@@ -686,7 +686,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 	for _, c := range plan.Cards {
 		for _, raw := range c.CreateRaw {
 			findings = append(findings, ValidationError{
-				Check: "handle-malformed",
+				Check: handleMalformedCheck,
 				Card:  cardID(c),
 				Detail: fmt.Sprintf(
 					"card %d Create: entry %q does not match the required `plan:<handle>` -> `<declaration head>` grammar",
@@ -703,7 +703,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 				unit, ok := handleUnit(r)
 				if !ok {
 					findings = append(findings, ValidationError{
-						Check: "handle-malformed",
+						Check: handleMalformedCheck,
 						Card:  cardID(c),
 						Detail: fmt.Sprintf(
 							"card %d handle %q carries no \"#\" after %q and therefore names no unit",
@@ -714,7 +714,7 @@ func checkHandleMalformed(plan *Plan) []ValidationError {
 				}
 				if goToolchain && strings.HasSuffix(unit, ".go") && fileUnitRuleApplies(claims[r]) {
 					findings = append(findings, ValidationError{
-						Check: "handle-malformed",
+						Check: handleMalformedCheck,
 						Card:  cardID(c),
 						Detail: fmt.Sprintf(
 							"card %d handle %q names the file %q as its unit; a symbol's unit is its package directory (e.g. %q) — a file-unit member spelling can never resolve",

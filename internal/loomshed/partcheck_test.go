@@ -144,7 +144,7 @@ func TestNewPartsGate(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
 		writeSplit(t, anchorPath, splitPartsFile("plan:internal/x#NewThing"))
-		result, err := NewPartsGate(anchorPath, recordPath, 6)()
+		result, err := NewPartsGate(anchorPath, t.TempDir(), recordPath, 6)()
 		if err != nil || !result.Passed {
 			t.Errorf("gate() = %+v, %v; want a pass", result, err)
 		}
@@ -154,7 +154,7 @@ func TestNewPartsGate(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
 		writeSplit(t, anchorPath, splitPartsFile("plan:internal/x#NewThing"))
-		result, err := NewPartsGate(anchorPath, recordPath, 1)()
+		result, err := NewPartsGate(anchorPath, t.TempDir(), recordPath, 1)()
 		if err != nil || result.Passed {
 			t.Fatalf("gate() = %+v, %v; want a failed gate", result, err)
 		}
@@ -163,11 +163,27 @@ func TestNewPartsGate(t *testing.T) {
 		}
 	})
 
+	t.Run("an export the worktree root holds fails the gate", func(t *testing.T) {
+		t.Parallel()
+		anchorPath, worktreeRoot := t.TempDir(), t.TempDir()
+		if err := os.MkdirAll(filepath.Join(worktreeRoot, "internal", "x"), 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		if err := os.WriteFile(filepath.Join(worktreeRoot, "internal", "x", "newfile.go"), []byte("package x\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v; want nil", err)
+		}
+		writeSplit(t, anchorPath, splitPartsFile("plan:internal/x#NewThing", "internal/x/newfile.go"))
+		result, err := NewPartsGate(anchorPath, worktreeRoot, recordPath, 6)()
+		if err != nil || result.Passed || !strings.Contains(result.Findings, "export-existing") {
+			t.Errorf("gate() = %+v, %v; want a failed gate with an export-existing finding", result, err)
+		}
+	})
+
 	t.Run("an unreadable record is the gate's error", func(t *testing.T) {
 		t.Parallel()
 		anchorPath := t.TempDir()
 		writeSplit(t, anchorPath, splitPartsFile())
-		if _, err := NewPartsGate(anchorPath, filepath.Join(t.TempDir(), "absent.md"), 6)(); err == nil {
+		if _, err := NewPartsGate(anchorPath, t.TempDir(), filepath.Join(t.TempDir(), "absent.md"), 6)(); err == nil {
 			t.Errorf("gate() error = nil; want the record's read error")
 		}
 	})
@@ -207,8 +223,12 @@ func TestValidatePart(t *testing.T) {
 			cards: map[string][]plankit.Card{"core": {splitCard(1, "core", "Create", "plan:internal/x#NewThing` -> `func NewThing()")}},
 		},
 		{
-			name: "export a card re-signs", parts: splitPartsFile("internal/x#Existing"), part: "core",
+			name: "export a card only re-signs", parts: splitPartsFile("internal/x#Existing"), part: "core", wantCheck: "part-export-missing",
 			cards: map[string][]plankit.Card{"core": {splitCard(1, "core", "Edit", "internal/x#Existing` -> `func Existing(a int)")}},
+		},
+		{
+			name: "export a card only deletes", parts: splitPartsFile("internal/x/x.go"), part: "core", wantCheck: "part-export-missing",
+			cards: map[string][]plankit.Card{"core": {splitCard(1, "core", "Delete", "internal/x/x.go")}},
 		},
 		{
 			name: "handle export spelled without the owner chain a card declares with it", parts: splitPartsFile("plan:internal/d#Foo"), part: "core",

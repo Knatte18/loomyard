@@ -260,6 +260,7 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"LoomDiscussionRelativeWorktreeRoot", gatesCfg("discussion", 1), "WorktreeRoot"},
 		{"PartsEmptyAnchorPath", gatesCfg("parts", 1), "AnchorPath"},
 		{"PartsEmptyDecisionRecordPath", gatesCfg("parts", 1), "DecisionRecordPath"},
+		{"PartsRelativeWorktreeRoot", gatesCfg("parts", 1), "WorktreeRoot"},
 		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
 		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
 		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan_gate_fixer"}}}, "fixer"},
@@ -280,6 +281,9 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 			case "PartsEmptyDecisionRecordPath":
 				env.Setting = partsMaxSetting(6)
 				env.DecisionRecordPath = ""
+			case "PartsRelativeWorktreeRoot":
+				env.Setting = partsMaxSetting(6)
+				env.WorktreeRoot = "relative/worktree"
 			case "PartsMaxBelowOne":
 				env.Setting = partsMaxSetting(0)
 			}

@@ -17,7 +17,7 @@ type Parts struct {
 }
 
 // Part is one part of the split: the contract its writer works to.
-// Exports are the refs the part's cards create, re-sign or delete for other parts to use, and Area the packages and files the part's cards touch.
+// Exports are the refs the part's cards create for other parts to use, and Area the packages and files the part's cards touch.
 type Part struct {
 	Name      string
 	Decisions []string

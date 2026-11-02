@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 )
 
@@ -35,6 +37,7 @@ const (
 	checkSpotExportOrder     = "spot-export-order"
 	checkExportClaimedTwice  = "export-claimed-twice"
 	checkSpotInArea          = "spot-in-area"
+	checkExportExisting      = "export-existing"
 	checkDecisionUnnamed     = "decision-unnamed"
 	checkDecisionUnknown     = "decision-unknown"
 )
@@ -46,7 +49,8 @@ type decisionHolder struct {
 }
 
 // Check judges parts against the record's decision ids and the most parts max allows, and returns one Finding per violation.
-func Check(parts *Parts, decisionIDs []string, max int) []Finding {
+// exists reports whether a repository-relative path names a file or directory in the worktree, so an export of an existing file is refused.
+func Check(parts *Parts, decisionIDs []string, max int, exists func(path string) bool) []Finding {
 	var findings []Finding
 	add := func(check, part, detail string) {
 		findings = append(findings, Finding{Check: check, Part: part, Detail: detail})
@@ -145,6 +149,13 @@ func Check(parts *Parts, decisionIDs []string, max int) []Finding {
 		}
 	}
 
+	for _, part := range parts.Parts {
+		findings = append(findings, checkExports(fmt.Sprintf("part %q", part.Name), part.Name, part.Exports, exists)...)
+	}
+	for _, spot := range parts.Spots {
+		findings = append(findings, checkExports(fmt.Sprintf("shared spot %q", spot.Path), spot.Path, spot.Exports, exists)...)
+	}
+
 	named := map[string]bool{}
 	var holders []decisionHolder
 	for _, part := range parts.Parts {
@@ -173,10 +184,34 @@ func Check(parts *Parts, decisionIDs []string, max int) []Finding {
 	return findings
 }
 
-// Validate is the one parts check the parts gate and `lym loom validate-parts` run: it reads the parts file under anchorPath, parses it, reads the decision record at recordPath and checks the parts against its decision ids and the most parts max allows.
+// checkExports returns the findings on the exports of one part or shared spot, owner naming it in a Detail and label in a Finding's Part.
+// An export is what the cards create, so one that is no `plan:` handle must be a file path that does not exist yet.
+// A `plan:` handle must pass the name checks its declaring card will face.
+func checkExports(owner, label string, exports []string, exists func(string) bool) []Finding {
+	var findings []Finding
+	for _, export := range exports {
+		if planparser.IsHandleRef(export) {
+			for _, finding := range planparser.CheckExportName(export) {
+				findings = append(findings, Finding{Check: finding.Check, Part: label, Detail: owner + ": " + finding.Detail})
+			}
+			continue
+		}
+		if strings.Contains(export, "#") || exists(export) {
+			findings = append(findings, Finding{
+				Check: checkExportExisting,
+				Part:  label,
+				Detail: fmt.Sprintf("%s exports %q, which is no `plan:` handle and names an existing member or file, and Exports lists only what the cards create, a `plan:` handle or a new file path; "+
+					"way forward: spell a new member as a `plan:` handle, and drop an existing member or file, which a later part uses by the spelling lym quarry gives it, saying in Delivers when the cards re-sign or delete it", owner, export),
+			})
+		}
+	}
+	return findings
+}
+
+// Validate is the one parts check the parts gate and `lym loom validate-parts` run: it reads the parts file under anchorPath, parses it, reads the decision record at recordPath and checks the parts against its decision ids, the most parts max allows and the files under worktreeRoot.
 // An absent parts file is a parts-missing finding and a file Parse refuses is a parts-malformed finding.
 // Any read error, an absent record included, is returned: the record is Discussion-Write's committed output, which the Parts-Write agent cannot write.
-func Validate(anchorPath, recordPath string, max int) ([]Finding, error) {
+func Validate(anchorPath, worktreeRoot, recordPath string, max int) ([]Finding, error) {
 	record, err := os.ReadFile(recordPath)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -195,5 +230,9 @@ func Validate(anchorPath, recordPath string, max int) ([]Finding, error) {
 	if err != nil {
 		return []Finding{{Check: checkPartsMalformed, Detail: err.Error()}}, nil
 	}
-	return Check(parts, discussionparser.DecisionIDs(record), max), nil
+	exists := func(path string) bool {
+		_, err := os.Stat(filepath.Join(worktreeRoot, filepath.FromSlash(path)))
+		return err == nil
+	}
+	return Check(parts, discussionparser.DecisionIDs(record), max, exists), nil
 }

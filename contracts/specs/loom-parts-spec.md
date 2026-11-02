@@ -55,6 +55,8 @@ A field is a top-level bullet `- <Label>: <value>`.
 `Decisions`, `Needed by` and `Depends on` hold comma-separated values.
 `Takes in`, `Delivers` and `Needs` hold prose that may continue on indented lines.
 `Exports`, `Area` and `Uses` hold indented sub-bullets of one backticked ref each.
+`Exports` holds only what the cards create: a `plan:` handle or a file path the worktree does not hold yet.
+An existing member or file is never an export, whether the cards keep, re-sign or delete it.
 A part requires `Decisions`, `Takes in`, `Delivers` and `Area`; a shared spot requires `Needed by` and `Needs`.
 Every other field is optional and is left out when empty, never written as `none`.
 Lines inside fenced blocks are read as text.
@@ -89,10 +91,13 @@ Each finding names the part, or the shared spot's path, and ends in its way forw
 | `spot-export-order` | a spot whose `Uses` holds an export of a part that comes after the first part its `Needed by` names, since no card position satisfies both; an export of that first part itself, or of an earlier part, passes | reorder the parts or move the dependency into a part |
 | `export-claimed-twice` | a ref two parts, two spots, or a part and a spot both export | keep it on one of them |
 | `spot-in-area` | a spot path a part's `Area` lists as a file entry of its own; a spot inside a package directory an area names passes | drop it from the area |
+| `export-existing` | a part's or spot's export that is no `plan:` handle and names a member (it holds `#`) or a path the worktree already holds | spell a new member as a `plan:` handle, and drop an existing member or file, saying in `Delivers` when the cards re-sign or delete it |
+| `handle-malformed` | a `plan:` export with no unit, or with a file as its unit, judged as a part's Create declaration under the plan format's default language | spell it `plan:<package directory>#<Name>` |
+| `fabric-vocabulary-name` | a `plan:` export whose member `loom-plan-checks-spec.md`'s check of that name refuses | rename the member |
 | `decision-unnamed` | a decision id of the record no part or spot names | name it in the part or spot that carries it |
 | `decision-unknown` | a named id the record does not hold | drop or correct it |
 
-`Validate` reads the parts file, parses it, reads the decision record and runs the checks over the record's decision ids.
+`Validate` reads the parts file, parses it, reads the decision record and runs the checks over the record's decision ids and the worktree's files.
 An absent record is not a finding: it is Discussion-Write's committed output, which the `Parts-Write` agent cannot write, so the gate ends at once with an error naming `lym loom validate-discussion` for the parent.
 
 ## Part plans
@@ -107,7 +112,7 @@ An ordinary plan has no scope.
 - `path-missing` counts a listed path as satisfied, as a `Create` target is, and `glyph-not-found` leaves out a target path the part's external exports hold.
 - `caller-uncovered` is not reported, since its verdict rests on cards outside the part; the joined plan's gate checks it.
 - `part-spot-target` refuses a card's target, never a `Uses` entry, that is a shared spot's path, since the chair writes the spots' cards.
-- `part-export-missing` refuses an export of the part's contract that no card of the part creates, re-signs or deletes.
+- `part-export-missing` refuses an export of the part's contract that no card of the part creates.
 
 ### Joining the parts' plans
 
@@ -116,8 +121,8 @@ It parses each part's plan in the parts file's order and refuses, before writing
 
 - a part's plan does not parse;
 - two parts' overviews differ in `language:` or `root:`;
-- a part's export is not met: no card creates it (a `Create` target or `Rename` destination), re-signs it or deletes it.
-  A path export is met by its disk path, a glyph exactly, and a `plan:` handle exactly or by a declared handle that reads to the same unit and name;
+- a part's export is not met: no card creates it (a `Create` target or `Rename` destination).
+  A path export is met by its disk path, and a `plan:` handle exactly or by a declared handle that reads to the same unit and name;
 - a `plan:` handle or a new file path is created by cards of two parts, exported or not.
 
 Otherwise it numbers the cards from 1 in part order.

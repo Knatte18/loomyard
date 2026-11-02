@@ -9,10 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/fabricvocab"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 var validDecisionIDs = []string{"D1", "D2", "D3"}
+
+// existingFile is the one path TestCheck's worktree holds.
+const existingFile = "internal/x/existing.go"
 
 func checkNames(findings []Finding) []string {
 	names := make([]string, len(findings))
@@ -26,6 +30,7 @@ func TestCheck(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	side := fabricvocab.SideTokens()[0]
 	tests := []struct {
 		name    string
 		mutate  func(*Parts)
@@ -55,6 +60,9 @@ func TestCheck(t *testing.T) {
 		{name: "export-claimed-twice, by two parts", mutate: func(p *Parts) { p.Parts[1].Exports = []string{"internal/x/newfile.go"} }, ids: validDecisionIDs, max: 6, want: []string{"export-claimed-twice"}, wantIn: "keep the export on one of them"},
 		{name: "export-claimed-twice, by a part and a spot", mutate: func(p *Parts) { p.Spots[0].Exports = append(p.Spots[0].Exports, "plan:internal/x#NewThing") }, ids: validDecisionIDs, max: 6, want: []string{"export-claimed-twice"}},
 		{name: "spot-in-area", mutate: func(p *Parts) { p.Parts[1].Area = append(p.Parts[1].Area, "cmd/main.go") }, ids: validDecisionIDs, max: 6, want: []string{"spot-in-area"}, wantIn: "drop it from the area", wantFor: "wiring"},
+		{name: "export-existing, a member glyph", mutate: func(p *Parts) { p.Parts[0].Exports = append(p.Parts[0].Exports, "internal/x#Existing") }, ids: validDecisionIDs, max: 6, want: []string{"export-existing"}, wantIn: "drop an existing member or file", wantFor: "core"},
+		{name: "export-existing, a file the worktree holds", mutate: func(p *Parts) { p.Spots[0].Exports = append(p.Spots[0].Exports, existingFile) }, ids: validDecisionIDs, max: 6, want: []string{"export-existing"}, wantFor: "internal/reg/reg.go"},
+		{name: "a handle export's name check", mutate: func(p *Parts) { p.Parts[0].Exports = append(p.Parts[0].Exports, "plan:internal/x#"+side+"Thing") }, ids: validDecisionIDs, max: 6, want: []string{"fabric-vocabulary-name"}, wantIn: `part "core": `, wantFor: "core"},
 		{name: "decision-unnamed", ids: append([]string{"D4"}, validDecisionIDs...), max: 6, want: []string{"decision-unnamed"}, wantIn: "D4"},
 		{name: "decision-unknown", mutate: func(p *Parts) { p.Parts[0].Decisions = []string{"D1", "D9"} }, ids: validDecisionIDs, max: 6, want: []string{"decision-unknown"}, wantIn: "drop or correct the id", wantFor: "core"},
 	}
@@ -65,7 +73,7 @@ func TestCheck(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(parts)
 			}
-			got := Check(parts, tt.ids, tt.max)
+			got := Check(parts, tt.ids, tt.max, func(path string) bool { return path == existingFile })
 			if names := checkNames(got); !slices.Equal(names, tt.want) {
 				t.Fatalf("Check() findings = %v; want %v", names, tt.want)
 			}
@@ -118,18 +126,31 @@ func TestValidate(t *testing.T) {
 		name       string
 		recordText string
 		partsText  string
-		want       []string
+		// worktreeFile is a repository-relative file the worktree holds, or empty for none.
+		worktreeFile string
+		want         []string
 	}{
 		{name: "a valid file and record", recordText: record, partsText: validParts},
 		{name: "an absent parts file", recordText: record, want: []string{"parts-missing"}},
 		{name: "a malformed parts file", recordText: record, partsText: "not a parts file\n", want: []string{"parts-malformed"}},
 		{name: "a check finding passes through", recordText: record + "\n### D4 — d\n\nw.\n", partsText: validParts, want: []string{"decision-unnamed"}},
+		{name: "an exported path the worktree already holds", recordText: record, partsText: validParts, worktreeFile: "internal/x/newfile.go", want: []string{"export-existing"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			anchor, recordPath := seed(t, tt.recordText, tt.partsText)
-			got, err := Validate(anchor, recordPath, 6)
+			worktree := t.TempDir()
+			if tt.worktreeFile != "" {
+				path := filepath.Join(worktree, filepath.FromSlash(tt.worktreeFile))
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatalf("MkdirAll() = %v; want nil", err)
+				}
+				if err := os.WriteFile(path, []byte("package x\n"), 0o644); err != nil {
+					t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+				}
+			}
+			got, err := Validate(anchor, worktree, recordPath, 6)
 			if err != nil {
 				t.Fatalf("Validate() = _, %v; want nil error", err)
 			}
@@ -142,7 +163,7 @@ func TestValidate(t *testing.T) {
 	t.Run("an absent record is an error naming validate-discussion", func(t *testing.T) {
 		t.Parallel()
 		anchor, recordPath := seed(t, "", validParts)
-		findings, err := Validate(anchor, recordPath, 6)
+		findings, err := Validate(anchor, t.TempDir(), recordPath, 6)
 		if err == nil || !strings.Contains(err.Error(), "lym loom validate-discussion") {
 			t.Errorf("Validate() = %v, %v; want an error naming lym loom validate-discussion", findings, err)
 		}

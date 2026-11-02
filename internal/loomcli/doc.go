@@ -163,7 +163,7 @@
 // It runs alone: combined with any other mode flag it is refused before the parts file is read.
 // It is refused on a recipe with no Parts-Plan-Write row, read from the recipe's rows.
 //
-// `lym loom validate-parts` runs `partsparser.Validate`, the check the parts gate runs, over the parts file with the most parts `parts_max` allows; it runs on the lightweight wiring, reads the decision record, and changes nothing.
+// `lym loom validate-parts` runs `partsparser.Validate`, the check the parts gate runs, over the parts file with the most parts `parts_max` allows; it runs on the lightweight wiring, reads the decision record and the worktree, and changes nothing.
 //
 // `lym loom join-parts` is the chair's one call that joins the parts' plans into the plan directory: it re-checks every part with `loomshed.ValidatePart` and writes the joined plan through `loomshed.JoinParts`.
 // It runs on the full wiring and refuses unless the run's status is at the running Parts-Plan-Write row and the caller's `LYM_STRAND_NAME` is the strand name the seat engine gives that row's chair, so a halted or later run, a part writer, a Plan-Burler-Fix fixer and Webster cannot reach it.
