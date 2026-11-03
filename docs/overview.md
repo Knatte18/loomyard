@@ -313,6 +313,7 @@ github.com/Knatte18/loomyard/
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
 ├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status` and the hidden `watch`), their hub wiring and the daemon and `systemctl` spawns
 ├── internal/hibernateengine/     the hibernate request file and the submit, cancel, status and daemon sequences over seams
+├── internal/hibernateconfig/     the hub-wide `hibernate.yaml` config: whether the wake from a `lym hibernate request` lifts the hub pause that request added
 ├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring and the delivery adapter over reed and shuttle
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders for a strand without hook delivery, the per-strand mail flags, the tool-boundary and Stop claim, the idle waiter and bell, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
 ├── internal/output/              shared JSON output
@@ -484,9 +485,10 @@ User-facing modules each get one `lym <module>` namespace:
   An agent may pause, resume or revive only its own pair; the orchestrator and an external caller may do each for the hub or any pair.
   Every lym process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
-- **hibernate** — a queued hibernate of the machine that lym's own Go code carries out once every session in the hub is safely paused, so no LLM session runs it (`internal/hibernatecli` + `internal/hibernateengine`; `lym hibernate request [--after <slug>] [--after-all]`, `lym hibernate cancel` and `lym hibernate status`, from any worktree of the hub; Linux only).
+- **hibernate** — a queued hibernate of the machine that lym's own Go code carries out once every session in the hub is safely paused, so no LLM session runs it (`internal/hibernatecli` + `internal/hibernateengine` + `internal/hibernateconfig`; `lym hibernate request [--after <slug>] [--after-all] [--resume-on-wake]`, `lym hibernate cancel` and `lym hibernate status`, from any worktree of the hub; Linux only).
   `request` records the hub's one request and spawns a detached daemon, the hidden `lym hibernate watch`, then returns; the trigger is at once, the end of one batten run's Land row, or no batten run in flight.
-  The daemon waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and lifts its own pause entry by identity, then posts creel mail to the orch when it is done or failed.
+  The daemon waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and reconciles the hub with origin, then posts creel mail to the orch when it is done or failed.
+  The wake lifts the daemon's own pause entry by identity only when the request resumes on wake, chosen by `--resume-on-wake` or else the hub-wide `hibernate.yaml`'s `resume_on_wake`, off by default; otherwise the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it, and a new request is refused meanwhile.
   `cancel` ends the request, stops the daemon and lifts the entry, and is refused while the machine is going into hibernation; `status` changes nothing and any caller may run it.
   Only the orch or an external caller may request or cancel; an agent asks its parent session.
   Bounds: the daemon waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.

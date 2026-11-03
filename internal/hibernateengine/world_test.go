@@ -466,12 +466,13 @@ func (w *fakeWorld) deps() Deps {
 }
 
 // ownRequest is a waiting request whose daemon is the world's own process.
+// It resumes on wake, so the wake rows pin the lift; the rows that keep the pause clear it.
 func (w *fakeWorld) ownRequest(trigger Trigger, slug string) Request {
 	requester := w.requester
 	if requester == "" {
 		requester = requesterExternal
 	}
-	return Request{Trigger: trigger, Slug: slug, Requester: requester, RequestedAt: w.now(), DaemonPID: w.selfPID, DaemonStart: w.selfStart, Phase: PhaseWaiting}
+	return Request{Trigger: trigger, Slug: slug, Requester: requester, RequestedAt: w.now(), DaemonPID: w.selfPID, DaemonStart: w.selfStart, ResumeOnWake: true, Phase: PhaseWaiting}
 }
 
 // seed writes r as the request file.

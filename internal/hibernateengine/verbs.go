@@ -57,11 +57,32 @@ type SubmitRequest struct {
 	After string
 	// AfterAll waits for every batten run to be out of flight.
 	AfterAll bool
+	// ResumeOnWake makes the wake lift the request's pause, so paused runs go on by themselves.
+	ResumeOnWake bool
+}
+
+// refuseKeptPause refuses over a terminal request whose owned pause entry is still live, since replacing the request would lose the only record that lets "lym hibernate cancel" lift it.
+// A request that owns no entry, and one whose entry is already lifted, pass.
+func refuseKeptPause(deps Deps, r Request) error {
+	if r.Owned == nil {
+		return nil
+	}
+	status, err := deps.TenderStatus()
+	if err != nil {
+		return fmt.Errorf(`hibernate: read the hub to check the previous request's pause: %w; way forward: fix what breaks the hub reading, as "lym tender status" shows, then request again`, err)
+	}
+	for _, entry := range status.Live {
+		if entry.Scope == r.Owned.Scope && entry.Caller == r.Owned.Caller && entry.PausedAt.Equal(r.Owned.PausedAt) {
+			return fmt.Errorf(`hibernate: the previous request ended %s and its pause entry is still live; way forward: run "lym hibernate cancel" or "lym tender resume" to lift it, then request again`, r.Phase)
+		}
+	}
+	return nil
 }
 
 // Submit records the hub's hibernate request and spawns the daemon that carries it out, returning once the daemon is spawned.
 // The pending-request check, the spawn and the write share one hold of the request lock, so two racing submits spawn one daemon.
 // A pending request whose daemon is dead is replaced after its owned pause entry is lifted.
+// A terminal request whose owned pause entry is still live is refused, so the entry a wake kept is not forgotten.
 func Submit(deps Deps, req SubmitRequest) (Request, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
 		return Request{}, err
@@ -96,18 +117,24 @@ func Submit(deps Deps, req SubmitRequest) (Request, error) {
 				return Request{}, err
 			}
 		}
+		if found && cur.Terminal() {
+			if err := refuseKeptPause(deps, cur); err != nil {
+				return Request{}, err
+			}
+		}
 		pid, start, err := deps.Spawn()
 		if err != nil {
 			return Request{}, fmt.Errorf("hibernate: spawn the daemon: %w", err)
 		}
 		submitted = Request{
-			Trigger:     trigger,
-			Slug:        req.After,
-			Requester:   requesterLabel(deps),
-			RequestedAt: deps.Now(),
-			DaemonPID:   pid,
-			DaemonStart: start,
-			Phase:       PhaseWaiting,
+			Trigger:      trigger,
+			Slug:         req.After,
+			Requester:    requesterLabel(deps),
+			RequestedAt:  deps.Now(),
+			DaemonPID:    pid,
+			DaemonStart:  start,
+			ResumeOnWake: req.ResumeOnWake,
+			Phase:        PhaseWaiting,
 		}
 		return submitted, nil
 	})
@@ -169,7 +196,7 @@ func Cancel(deps Deps) (CancelReport, error) {
 		}
 		live := daemonLive(deps, cur)
 		if live && cur.Phase == PhaseHibernating {
-			return Request{}, errors.New(`hibernate: the machine is going into hibernation; way forward: none until it wakes, when the daemon lifts its own pause; run "lym hibernate status" to follow it`)
+			return Request{}, errors.New(`hibernate: the machine is going into hibernation; way forward: none until it wakes; run "lym hibernate status" to follow it, and once the request has ended "lym hibernate cancel" lifts a pause the wake kept`)
 		}
 		report.Cancelled, report.Phase = true, cur.Phase
 		if live {

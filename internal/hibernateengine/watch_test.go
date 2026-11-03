@@ -37,6 +37,15 @@ func watchNow(t *testing.T, w *fakeWorld) (Request, error) {
 	return Watch(w.deps())
 }
 
+// watchKeeping seeds a now request owned by the world's own daemon that keeps its pause after the wake, and runs Watch over it.
+func watchKeeping(t *testing.T, w *fakeWorld) (Request, error) {
+	t.Helper()
+	request := w.ownRequest(TriggerNow, "")
+	request.ResumeOnWake = false
+	w.seed(request)
+	return Watch(w.deps())
+}
+
 // resumeLive lifts the live hub entry that caller added.
 func resumeLive(t *testing.T, w *fakeWorld, caller string) {
 	t.Helper()
@@ -557,6 +566,134 @@ func TestWatch(t *testing.T) {
 				t.Errorf("exempted %+v, live %+v; want the owned hub entry exempted and then lifted", w.exempted, w.liveEntries())
 			}
 			requireNotice(t, w, "its pause was lifted.")
+		}},
+		{"a request that keeps its pause still reconciles and holds runs, ends done with its hub entry live and owned, and names the resume", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.reconcileResult = WakeReconcile{Runs: []WakeRun{{Slug: "p1", WayForward: "fix p1"}}}
+
+			got, err := watchKeeping(t, w)
+
+			final := w.request()
+			var scopes []string
+			for _, entry := range w.liveEntries() {
+				scopes = append(scopes, entry.Scope)
+			}
+			slices.Sort(scopes)
+			if err != nil || got.Phase != PhaseDone || final.Phase != PhaseDone || final.Owned == nil || final.Owned.Scope != pauserecord.ScopeHub || w.reconcileCalls != 1 {
+				t.Errorf("got %+v, %v, final %+v, reconciles %d; want done after one reconcile with the hub entry still owned", got, err, final, w.reconcileCalls)
+			}
+			if want := []string{pauserecord.ScopeHub, "p1"}; !slices.Equal(scopes, want) {
+				t.Errorf("live scopes = %v; want %v, the hub entry kept beside the pair entry", scopes, want)
+			}
+			requireNotice(t, w, "woke from hibernation; "+keptPauseOutcome, "fix p1; then `lym tender resume p1`")
+		}},
+		{"a failure at the wake of a request that keeps its pause leaves the entry live and the notice says so", func(t *testing.T) {
+			w := newFakeWorld(t)
+			// Calls 0 and 1 are the confirmation and the check before the hibernate, call 2 the wake's read.
+			w.readings = []statusReading{{}, {}, {err: errors.New("status broke")}}
+
+			got, err := watchKeeping(t, w)
+
+			live := w.liveEntries()
+			if err != nil || got.Phase != PhaseFailed || len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || live[0].Caller != PauseCaller {
+				t.Errorf("got %+v, %v, live %+v; want failed with the owned hub entry live", got, err, live)
+			}
+			requireNotice(t, w, "The hibernate request failed: read the hub at the wake: status broke; "+keptPauseOutcome)
+		}},
+		{"a failure before the hibernate lifts the entry of a request that keeps its pause after the wake", func(t *testing.T) {
+			for _, tc := range []struct {
+				name  string
+				setup func(w *fakeWorld)
+			}{
+				{"a pause error", func(w *fakeWorld) { w.pauseErr = errors.New("tender down") }},
+				{"a hibernate error", func(w *fakeWorld) { w.hibernateErr = errors.New("job refused") }},
+			} {
+				w := newFakeWorld(t)
+				tc.setup(w)
+
+				got, err := watchKeeping(t, w)
+
+				if err != nil || got.Phase != PhaseFailed || len(w.liveEntries()) != 0 {
+					t.Errorf("%s: got %+v, %v, live %+v; want failed with the entry lifted", tc.name, got, err, w.liveEntries())
+				}
+				requireNotice(t, w, "The hibernate request failed", "its pause was lifted.")
+			}
+		}},
+		{"a request that keeps its pause and cannot write the resuming phase leaves the entry live and the notice says so", func(t *testing.T) {
+			w := newFakeWorld(t)
+			broken := false
+			w.onSleep = func() {
+				if broken || w.hibernates() == 0 {
+					return
+				}
+				broken = true
+				if err := os.Remove(w.requestPath); err != nil {
+					t.Error(err)
+				}
+				if err := os.Mkdir(w.requestPath, 0o755); err != nil {
+					t.Error(err)
+				}
+			}
+
+			_, err := watchKeeping(t, w)
+
+			live := w.liveEntries()
+			if err == nil || len(live) != 1 || live[0].Scope != pauserecord.ScopeHub || live[0].Caller != PauseCaller {
+				t.Errorf("err %v, live %+v; want the write's error and the owned hub entry live", err, live)
+			}
+			requireNotice(t, w, "The hibernate request failed", keptPauseOutcome)
+		}},
+		{"a request that keeps its pause and lost its owned record at the wake ends done with the kept entry recorded as owned", func(t *testing.T) {
+			w := newFakeWorld(t)
+			cleared := false
+			w.onSleep = func() {
+				if cleared || w.hibernates() == 0 {
+					return
+				}
+				cleared = true
+				err := updateRequest(w.requestPath, func(cur Request, found bool) (Request, error) {
+					cur.Owned = nil
+					return cur, nil
+				})
+				if err != nil {
+					t.Error(err)
+				}
+			}
+
+			got, err := watchKeeping(t, w)
+
+			final, live := w.request(), w.liveEntries()
+			if err != nil || got.Phase != PhaseDone || final.Owned == nil || final.Owned.Scope != pauserecord.ScopeHub || final.Owned.Caller != PauseCaller || len(live) != 1 {
+				t.Errorf("got %+v, %v, final %+v, live %+v; want done with the hub entry live and recorded as owned", got, err, final, live)
+			}
+			requireNotice(t, w, "woke from hibernation; "+keptPauseOutcome)
+		}},
+		{"a request that keeps its pause and owns none ends done with a notice saying it owned no pause", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.addHubEntry("EXTERNAL")
+
+			got, err := watchKeeping(t, w)
+
+			if err != nil || got.Phase != PhaseDone || got.Owned != nil || w.request().Owned != nil || len(w.liveEntries()) != 1 {
+				t.Errorf("got %+v, %v, live %+v; want done, nothing owned and the entry live", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "it owned no pause, so the hub pause that stood before the request still stands.")
+			if strings.Contains(w.noticeList()[0], keptPauseOutcome) {
+				t.Errorf("notice = %q; want no claim that a pause was kept", w.noticeList()[0])
+			}
+		}},
+		{"a failure at the wake of a request that keeps its pause and owns none says it owned no pause to lift", func(t *testing.T) {
+			w := newFakeWorld(t)
+			w.addHubEntry("EXTERNAL")
+			// Calls 0 and 1 are the confirmation and the check before the hibernate, call 2 the wake's read.
+			w.readings = []statusReading{{}, {}, {err: errors.New("status broke")}}
+
+			got, err := watchKeeping(t, w)
+
+			if err != nil || got.Phase != PhaseFailed || len(w.liveEntries()) != 1 {
+				t.Errorf("got %+v, %v, live %+v; want failed with the other entry live", got, err, w.liveEntries())
+			}
+			requireNotice(t, w, "The hibernate request failed: read the hub at the wake: status broke; it owned no pause to lift.")
 		}},
 		{"a wake under an operator's hub pause skips the reconcile, exempts nothing, leaves that entry live and names it and the resume", func(t *testing.T) {
 			w := newFakeWorld(t)

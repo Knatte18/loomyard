@@ -1,0 +1,1 @@
+resume_on_wake: false  # whether the wake from a `lym hibernate request` lifts the hub pause that request added, so paused runs go on by themselves; off keeps the hub paused after the wake until `lym tender resume` or `lym hibernate cancel` lifts it; `lym hibernate request --resume-on-wake` or `--resume-on-wake=false` overrides it for one request

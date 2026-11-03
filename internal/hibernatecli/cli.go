@@ -8,10 +8,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
+	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hibernateconfig"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 )
+
+// resumeOnWakeFlag is the `hibernate request` flag that chooses, for one request, whether its wake lifts the hub pause.
+const resumeOnWakeFlag = "resume-on-wake"
 
 // Command returns the cobra command for `lym hibernate`: the bare group and its request, cancel, status and watch verbs.
 func Command() *cobra.Command {
@@ -29,7 +35,7 @@ withdraws it and status shows it. Linux only.`,
 }
 
 // runVerb resolves the hub from the command's cwd, fills the engine's Deps for it and prints what run returns under key in the standard envelope, or a refusal through output.Err.
-func runVerb(cmd *cobra.Command, key string, run func(hibernateengine.Deps) (any, error)) error {
+func runVerb(cmd *cobra.Command, key string, run func(*lymcwd.Location, hibernateengine.Deps) (any, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
 	}
@@ -51,7 +57,7 @@ func runVerb(cmd *cobra.Command, key string, run func(hibernateengine.Deps) (any
 	if err != nil {
 		return fail(err)
 	}
-	result, err := run(deps)
+	result, err := run(location, deps)
 	if err != nil {
 		return fail(err)
 	}
@@ -64,6 +70,7 @@ func requestCmd() *cobra.Command {
 	var (
 		after    string
 		afterAll bool
+		resume   bool
 	)
 	cmd := &cobra.Command{
 		Use:         "request",
@@ -71,27 +78,50 @@ func requestCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `request records the hub's one hibernate request and spawns a detached daemon,
 then returns. The daemon waits for the trigger, pauses the hub, confirms every
-session paused, hibernates the machine, and on wake lifts its own pause. It
-posts creel mail to the orch when it is done or failed.
+session paused, hibernates the machine, and on wake reconciles the hub with
+origin. It posts creel mail to the orch when it is done or failed.
 
-With no flag the trigger holds at once. --after <slug> waits until that batten
-run has finished its Land row; --after-all waits until no batten run is in
-flight. The two are exclusive. Only the orch or an external caller may request;
-an agent asks its parent session.
+The wake lifts the daemon's pause only when hibernate.yaml's resume_on_wake is
+on or --resume-on-wake is given; --resume-on-wake=false keeps the pause for this
+request whatever the config holds. A kept pause stands until "lym tender resume"
+or "lym hibernate cancel" lifts it, and a new request is refused meanwhile.
+
+With no trigger flag the trigger holds at once. --after <slug> waits until that
+batten run has finished its Land row; --after-all waits until no batten run is
+in flight. The two are exclusive. Only the orch or an external caller may
+request; an agent asks its parent session.
 
 Example:
   lym hibernate request
-  lym hibernate request --after my-task`,
+  lym hibernate request --after my-task
+  lym hibernate request --resume-on-wake`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "request", func(deps hibernateengine.Deps) (any, error) {
-				return hibernateengine.Submit(deps, hibernateengine.SubmitRequest{After: after, AfterAll: afterAll})
+			return runVerb(cmd, "request", func(location *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
+				resumeOnWake, err := chooseResumeOnWake(cmd.Flags().Changed(resumeOnWakeFlag), resume, fabricengine.ConfigDirs(location))
+				if err != nil {
+					return nil, err
+				}
+				return hibernateengine.Submit(deps, hibernateengine.SubmitRequest{After: after, AfterAll: afterAll, ResumeOnWake: resumeOnWake})
 			})
 		},
 	}
 	cmd.Flags().StringVar(&after, "after", "", "hibernate once the batten run of this slug has finished its Land row")
 	cmd.Flags().BoolVar(&afterAll, "after-all", false, "hibernate once no batten run is in flight")
+	cmd.Flags().BoolVar(&resume, resumeOnWakeFlag, false, "lift the hub pause on the wake, so paused runs go on by themselves; overrides hibernate.yaml's resume_on_wake for this request")
 	return cmd
+}
+
+// chooseResumeOnWake is a request's choice of whether its wake lifts the hub pause: the flag's value when the flag was given, else hibernate.yaml's resume_on_wake under dirs.
+func chooseResumeOnWake(flagGiven, flag bool, dirs configengine.Dirs) (bool, error) {
+	if flagGiven {
+		return flag, nil
+	}
+	cfg, err := hibernateconfig.LoadConfig(dirs)
+	if err != nil {
+		return false, err
+	}
+	return cfg.ResumeOnWake, nil
 }
 
 // cancelCmd returns the `hibernate cancel` verb.
@@ -103,15 +133,15 @@ func cancelCmd() *cobra.Command {
 		Long: `cancel ends the pending request, stops its daemon and lifts the pause entry the
 request added. No request, and one that has ended, succeed with nothing
 cancelled, and one that has ended still has the pause entry it added lifted
-when its daemon left that entry live. Once the machine is going into hibernation cancel is refused: the
-daemon lifts its own pause on wake. Only the orch or an external caller may
-cancel.
+when its daemon left that entry live or its wake kept it. Once the machine is
+going into hibernation cancel is refused until the wake. Only the orch or an
+external caller may cancel.
 
 Example:
   lym hibernate cancel`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "cancel", func(deps hibernateengine.Deps) (any, error) {
+			return runVerb(cmd, "cancel", func(_ *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
 				return hibernateengine.Cancel(deps)
 			})
 		},
@@ -131,7 +161,7 @@ Example:
   lym hibernate status`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "status", func(deps hibernateengine.Deps) (any, error) {
+			return runVerb(cmd, "status", func(_ *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
 				return hibernateengine.Status(deps)
 			})
 		},
@@ -149,7 +179,7 @@ and is what "lym hibernate request" spawns. Run by hand with no request, or
 beside a live daemon, it returns at once and does nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "watch", func(deps hibernateengine.Deps) (any, error) {
+			return runVerb(cmd, "watch", func(_ *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
 				return hibernateengine.Watch(deps)
 			})
 		},

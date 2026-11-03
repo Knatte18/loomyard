@@ -120,6 +120,17 @@ func TestSubmit(t *testing.T) {
 				}
 			}
 		}},
+		{"the resume-on-wake choice is written into the request", func(t *testing.T) {
+			for _, resume := range []bool{true, false} {
+				w := newFakeWorld(t)
+
+				got, err := Submit(w.deps(), SubmitRequest{ResumeOnWake: resume})
+
+				if err != nil || got.ResumeOnWake != resume || w.request().ResumeOnWake != resume {
+					t.Errorf("Submit(ResumeOnWake %v) = %+v, %v, written %+v; want the choice returned and written", resume, got, err, w.request())
+				}
+			}
+		}},
 		{"an agent caller is refused naming the parent session, the prime's orch, a beam's orch and an external caller are not", func(t *testing.T) {
 			for _, tc := range []struct {
 				caller  string
@@ -204,6 +215,44 @@ func TestSubmit(t *testing.T) {
 				if err != nil || len(w.spawned) != 1 || got.Phase != PhaseWaiting || got.Reason != "" {
 					t.Errorf("replacing %s: got %+v, %v, spawned %v; want one spawn and a fresh waiting request", phase, got, err, w.spawned)
 				}
+			}
+		}},
+		{"a terminal request whose owned entry is still live is refused and left as it was, and one whose entry was lifted is replaced", func(t *testing.T) {
+			for _, phase := range []Phase{PhaseDone, PhaseFailed} {
+				w := newFakeWorld(t)
+				entry := w.addHubEntry(PauseCaller)
+				w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: phase, Owned: refOf(entry)})
+				before := readBytes(t, w.requestPath)
+
+				_, err := Submit(w.deps(), SubmitRequest{})
+
+				requireRefusal(t, err, "lym hibernate cancel", "lym tender resume", string(phase))
+				if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 || len(w.liveEntries()) != 1 {
+					t.Errorf("%s: request changed, a daemon spawned (%v) or the entry lifted; want none of them", phase, w.spawned)
+				}
+
+				if _, err := w.lift(*refOf(entry)); err != nil {
+					t.Fatal(err)
+				}
+				got, err := Submit(w.deps(), SubmitRequest{})
+
+				if err != nil || got.Phase != PhaseWaiting || len(w.spawned) != 1 {
+					t.Errorf("%s with the entry lifted: got %+v, %v, spawned %v; want a fresh waiting request", phase, got, err, w.spawned)
+				}
+			}
+		}},
+		{"a terminal request that owns an entry is refused with a way forward when the hub cannot be read", func(t *testing.T) {
+			w := newFakeWorld(t)
+			entry := w.addHubEntry(PauseCaller)
+			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseDone, Owned: refOf(entry)})
+			before := readBytes(t, w.requestPath)
+			w.readings = []statusReading{{err: errors.New("pane read failed")}}
+
+			_, err := Submit(w.deps(), SubmitRequest{})
+
+			requireRefusal(t, err, "pane read failed", "way forward", "lym tender status")
+			if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 {
+				t.Errorf("request changed or a daemon spawned (%v); want neither", w.spawned)
 			}
 		}},
 		{"two submits in parallel spawn one daemon and refuse the other", func(t *testing.T) {

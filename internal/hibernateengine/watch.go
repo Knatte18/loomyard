@@ -1,4 +1,4 @@
-// watch.go implements the daemon's sequence: wait for the trigger, pause the hub, confirm the pause, hibernate the machine, detect the wake and lift the daemon's own pause entry.
+// watch.go implements the daemon's sequence: wait for the trigger, pause the hub, confirm the pause, hibernate the machine, detect the wake and lift or keep the daemon's own pause entry.
 
 package hibernateengine
 
@@ -47,6 +47,9 @@ const (
 	noticeRetryWindow = 10 * time.Minute
 )
 
+// keptPauseOutcome is the tail of a notice whose request kept its owned pause entry live after the wake.
+const keptPauseOutcome = "it kept its pause, as the request asked, so the hub stays paused; `lym tender resume` lifts it."
+
 // runGoneError means the batten status an after trigger waits for no longer exists.
 type runGoneError struct{ slug string }
 
@@ -56,7 +59,9 @@ func (e runGoneError) Error() string {
 
 // Watch runs the daemon's sequence for the request whose daemon is the running process, and returns the request as it ended.
 // It acts only for a non-terminal request carrying the process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
-// After the wake it reconciles the hub with origin and then lifts its own pause entry whatever the reconcile found, and a failed write of the request or a refused notice never keeps that entry live.
+// After the wake it reconciles the hub with origin.
+// A request that resumes on wake then has its own pause entry lifted whatever the reconcile found, and a failed write of the request or a refused notice never keeps that entry live.
+// A request that does not keeps the entry live on every path after the wake, a failure included, so the hub stays paused until the operator lifts it.
 // A request cancelled meanwhile ends the sequence quietly, since the cancel lifts the owned pause entry.
 // The daemon sends no key and no text of its own: every interrupt and resume line is tender's.
 func Watch(deps Deps) (Request, error) {
@@ -133,7 +138,7 @@ func Watch(deps Deps) (Request, error) {
 
 	resuming, ok, err := advance(deps, PhaseResuming, "")
 	if err != nil {
-		return fail(deps, r, kept, err.Error())
+		return failAtWake(deps, r, kept, err.Error())
 	}
 	if !ok {
 		return r, nil
@@ -146,19 +151,28 @@ func Watch(deps Deps) (Request, error) {
 	}
 	detail, err := reconcileAtWake(deps, target)
 	if err != nil {
-		return fail(deps, r, kept, err.Error())
+		return failAtWake(deps, r, kept, err.Error())
 	}
-	lifted, err := liftOwned(deps, target)
-	if err != nil {
-		return fail(deps, r, kept, err.Error())
+	outcome := keptOutcome(target)
+	var recordErr error
+	switch {
+	case r.ResumeOnWake:
+		lifted, err := liftOwned(deps, target)
+		if err != nil {
+			return fail(deps, r, kept, err.Error())
+		}
+		outcome = wakeOutcome(lifted)
+	case r.Owned == nil && kept != nil:
+		// The kept entry stays live, and recording it lets the finished request name it to a cancel.
+		recordErr = recordOwned(deps, *kept)
 	}
 	r, writeErr := finish(deps, r, PhaseDone, "")
-	headline := "[lym hibernate] The machine woke from hibernation; " + wakeOutcome(lifted)
+	headline := "[lym hibernate] The machine woke from hibernation; " + outcome
 	line := headline
 	if detail != "" {
 		line += " " + detail
 	}
-	return r, errors.Join(writeErr, sendNotice(deps, line, headline))
+	return r, errors.Join(recordErr, writeErr, sendNotice(deps, line, headline))
 }
 
 // sendNotice queues line for the orch, queueing it again after a doubling wait while it is refused, until the waits add up to noticeRetryWindow, since right after a wake the orch's session may not be listed yet.
@@ -204,6 +218,14 @@ func wakeOutcome(lifted *tenderengine.ResumeReport) string {
 		return "its pause had already been lifted."
 	}
 	return "its pause was lifted."
+}
+
+// keptOutcome says what became of the pause entry of r, a request that keeps it after the wake, as the tail of the wake notice.
+func keptOutcome(r Request) string {
+	if r.Owned == nil {
+		return wakeOutcome(nil)
+	}
+	return keptPauseOutcome
 }
 
 // ours reports whether r is the request of the running daemon.
@@ -276,9 +298,19 @@ func finish(deps Deps, r Request, phase Phase, reason string) (Request, error) {
 }
 
 // fail ends the request failed with reason, lifts the entry it owns and queues one notice.
-// When the request records no owned entry the entry kept from the pause is lifted instead.
-// The lift and the notice run even when the failed write itself fails, and the write's error is returned.
 func fail(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Request, error) {
+	return failRequest(deps, r, kept, reason, true)
+}
+
+// failAtWake ends the request failed with reason after the wake, lifts the entry it owns only when r resumes on wake, and queues one notice.
+func failAtWake(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Request, error) {
+	return failRequest(deps, r, kept, reason, r.ResumeOnWake)
+}
+
+// failRequest ends the request failed with reason, lifts the entry it owns when lift is set, and queues one notice naming what became of that entry.
+// When the request records no owned entry the entry kept from the pause stands in for it.
+// The lift and the notice run even when the failed write itself fails, and the write's error is returned.
+func failRequest(deps Deps, r Request, kept *tenderengine.EntryRef, reason string, lift bool) (Request, error) {
 	r, writeErr := finish(deps, r, PhaseFailed, reason)
 	target := r.Owned
 	if current, found, err := readRequest(deps.RequestPath); err == nil && found && current.Owned != nil {
@@ -289,7 +321,11 @@ func fail(deps Deps, r Request, kept *tenderengine.EntryRef, reason string) (Req
 	}
 	var liftErr error
 	outcome := "it owned no pause to lift."
-	if target != nil {
+	switch {
+	case target == nil:
+	case !lift:
+		outcome = keptPauseOutcome
+	default:
 		if _, liftErr = deps.Lift(*target); liftErr == nil {
 			outcome = "its pause was lifted."
 		} else {

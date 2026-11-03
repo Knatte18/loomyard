@@ -59,7 +59,9 @@ type Request struct {
 	DaemonStart string `json:"daemon_start"`
 	// Owned names the pause entry the daemon added, nil until it adds one.
 	Owned *tenderengine.EntryRef `json:"owned,omitempty"`
-	Phase Phase                  `json:"phase"`
+	// ResumeOnWake reports whether the wake lifts the owned entry; false keeps it live once the request has ended.
+	ResumeOnWake bool  `json:"resume_on_wake"`
+	Phase        Phase `json:"phase"`
 	// Reason is the last reason, empty when none.
 	Reason string `json:"reason"`
 }

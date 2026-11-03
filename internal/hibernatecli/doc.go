@@ -1,4 +1,4 @@
-// Package hibernatecli builds the `lym hibernate` group with `lym hibernate request [--after <slug>] [--after-all]`, `lym hibernate cancel`, `lym hibernate status` and the hidden `lym hibernate watch` over internal/hibernateengine.
+// Package hibernatecli builds the `lym hibernate` group with `lym hibernate request [--after <slug>] [--after-all] [--resume-on-wake]`, `lym hibernate cancel`, `lym hibernate status` and the hidden `lym hibernate watch` over internal/hibernateengine.
 // The engine's sequence, the request file and the callers it refuses are documented there; this package wires it to the hub.
 //
 // Every verb runs from any worktree of the hub and resolves it with lymcwd.Resolve.
@@ -13,6 +13,7 @@
 // The pause, tender status and lift seams each build tendercli.HubDeps at the call, so every reading sees the hub's current pairs, and the daemon's pause entry carries the caller label the engine names.
 // `status` builds no tender wiring, since those seams run only when called.
 // The daemon's notice is creel mail to the orch signed as `HIBERNATE`, never keys typed into the orch's pane.
+// `request` hands the engine whether the wake lifts the pause: `--resume-on-wake` when the flag is given, either way, and otherwise the hub's hibernate.yaml read through internal/hibernateconfig, off when the hub holds no such file.
 //
 // # Spawns
 //

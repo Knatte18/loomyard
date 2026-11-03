@@ -468,7 +468,7 @@ func buildConfigLong() string {
 		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
 		"name it edits that module directly; `lym config menu` is the interactive\n" +
-		"picker, which lists the modules and edits the one you choose. The editor is\n" +
+		"picker. The editor is\n" +
 		"resolved from $VISUAL or $EDITOR;\n" +
 		"with neither set it uses `code --wait` when code is on PATH, else\n" +
 		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
