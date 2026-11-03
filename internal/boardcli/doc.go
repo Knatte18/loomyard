@@ -23,7 +23,7 @@
 // The addressing verbs, `set-deps` and merge's `set_status` included, take exactly one of a `slug`, a numeric `id` or a `handle` such as `B4`, the selector group `entrySelector` declares.
 // The pre-run fills three seams of the board's config from the resolved location, none of them on the `--board-path` path:
 // `ValidateSlug` applies fabric's pair slug rule, with the hub's configured junction names, to every task or project slug a write makes, a promote and a rename included;
-// `PairExists` reports whether a directory stands at the slug's pair worktree path, for the refusal of a project change or rename on an entry with a pair;
+// `PairExists` reports whether the slug's task worktree stands as a registered worktree, so a leftover directory that is no worktree reads as no pair, for the refusal of a project change or rename on an entry with a pair;
 // `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
 // `get` emits a beam's `beam_color`, which only the owner setter writes, so `upsert` refuses a payload naming it as an unknown field.
 // `upsert` takes `front`, `on_land` and `discussed` only as the entry's stored values, since only lym writes them.

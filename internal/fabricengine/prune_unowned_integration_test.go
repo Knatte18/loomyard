@@ -126,6 +126,93 @@ func TestPrune_RefusesUnrelatedGitCloneInHub(t *testing.T) {
 	}
 }
 
+// TestPrune_ReportsANonWorktreeDirectoryAtAPairPath parks a directory of build output at a pair slug's path, as a late writer leaves one after a removal.
+// It asserts every mode reports the directory Unowned with the way to clear it and never deletes it.
+func TestPrune_ReportsANonWorktreeDirectoryAtAPairPath(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	stray := fabricengine.WorktreePath(l, "leftover-task")
+	buildOutput := filepath.Join(stray, "src", "App", "obj", "project.assets.json")
+	if err := os.MkdirAll(filepath.Dir(buildOutput), 0o755); err != nil {
+		t.Fatalf("create %s: %v", stray, err)
+	}
+	if err := os.WriteFile(buildOutput, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", buildOutput, err)
+	}
+
+	for _, mode := range []struct {
+		name         string
+		apply, force bool
+	}{
+		{name: "dry-run", apply: false, force: false},
+		{name: "apply", apply: true, force: false},
+		{name: "apply+force", apply: true, force: true},
+	} {
+		result, err := h.Topology.Prune(l, mode.apply, mode.force)
+		if err != nil {
+			t.Fatalf("%s: Prune error = %v", mode.name, err)
+		}
+
+		var entry *fabricengine.PruneEntry
+		for i := range result.Entries {
+			if filepath.Clean(filepath.FromSlash(result.Entries[i].CodeWorktree)) == filepath.Clean(stray) {
+				entry = &result.Entries[i]
+			}
+		}
+		if entry == nil {
+			t.Fatalf("%s: Prune entries = %+v; want one for %s", mode.name, result.Entries, stray)
+		}
+		if !entry.Unowned || entry.Removed {
+			t.Errorf("%s: Unowned, Removed = %v, %v for %s; want true, false", mode.name, entry.Unowned, entry.Removed, stray)
+		}
+		if !strings.Contains(entry.Error, "save anything worth keeping from it, then delete it") {
+			t.Errorf("%s: Error = %q; want it to name the way to clear the directory", mode.name, entry.Error)
+		}
+		if _, statErr := os.Stat(buildOutput); statErr != nil {
+			t.Fatalf("%s: prune deleted a directory it does not own: %v", mode.name, statErr)
+		}
+	}
+}
+
+// TestPrune_IgnoresDirectoriesThatAreNoPairPath asserts the pass over pair paths reports no entry for a live pair's directory, a hidden directory, a weft-suffixed directory and a reserved hub name.
+func TestPrune_IgnoresDirectoriesThatAreNoPairPath(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	hubforge.AddPairWith(t, h, "live-pair", fabricengine.AddOptions{SkipPush: true})
+
+	livePair := fabricengine.WorktreePath(l, "live-pair")
+	parked := []string{
+		filepath.Join(l.HubPath, ".hidden"),
+		filepath.Join(l.HubPath, "notes-weft"),
+		filepath.Join(l.HubPath, "_portals"),
+	}
+	for _, path := range parked {
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatalf("create %s: %v", path, err)
+		}
+	}
+	notReported := append([]string{livePair}, parked...)
+
+	result, err := h.Topology.Prune(l, false, false)
+	if err != nil {
+		t.Fatalf("Prune error = %v", err)
+	}
+	for _, entry := range result.Entries {
+		got := filepath.Clean(filepath.FromSlash(entry.CodeWorktree))
+		for _, path := range notReported {
+			if got == filepath.Clean(path) {
+				t.Errorf("Prune reported %+v; want no entry for %s", entry, path)
+			}
+		}
+	}
+}
+
 // TestPrune_StillRemovesAStaleWeftWorktreeItOwns is the ownership gate's counter-test: a genuine
 // stale pair — a weft worktree the hub's weft repo really does register — must still be removed by
 // --apply, so the gate refuses only what fabric does not own rather than disabling prune outright.

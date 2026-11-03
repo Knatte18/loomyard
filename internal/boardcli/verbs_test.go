@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -463,7 +464,8 @@ func stepRemoveCommandParses(t *testing.T, f *cliFixture) {
 // stepProjects drives the project kind through a seeded hub:
 // list and get carry parent_beam, empty under a grouping project and the beam once the project is hand-marked a beam.
 // A task slug ending in the records suffix and one equal to a configured junction name are refused with fabric's reason.
-// A member's project change is refused naming `lym batten cancel <slug> --remove` while a directory stands at its pair worktree path.
+// A member's project change is refused naming `lym batten cancel <slug> --remove` while a worktree stands at its pair path;
+// a plain directory at another entry's pair path is no pair, so its project change and rename go through.
 func stepProjects(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`)
@@ -515,12 +517,30 @@ func stepProjects(t *testing.T, f *cliFixture) {
 		}
 	}
 
-	if err := os.Mkdir(filepath.Join(filepath.Dir(f.cwd), "member"), 0o755); err != nil {
-		t.Fatalf("create the pair worktree directory: %v", err)
+	pairDir := filepath.Join(filepath.Dir(f.cwd), "member")
+	for _, args := range [][]string{
+		{"-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "--allow-empty", "-m", "init"},
+		{"worktree", "add", "--detach", pairDir},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", f.cwd}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
 	result := runJSON(t, 1, "upsert", `{"slug":"member","project":"other"}`)
 	if msg, _ := result["error"].(string); !strings.Contains(msg, "lym batten cancel member --remove") {
 		t.Errorf("upsert a project change on an entry with a pair: error = %q, want it to name `lym batten cancel member --remove`", msg)
+	}
+
+	strayDir := filepath.Join(filepath.Dir(f.cwd), "strayed", "obj")
+	if err := os.MkdirAll(strayDir, 0o755); err != nil {
+		t.Fatalf("create a plain directory at a pair's path: %v", err)
+	}
+	mustUpsert(t, `{"slug":"strayed","title":"Strayed","kind":"task","labels":["bug"]}`)
+	if task, _ := runJSON(t, 0, "upsert", `{"slug":"strayed","project":"other"}`)["task"].(map[string]any); task["project"] != "other" {
+		t.Errorf("upsert a project change on an entry whose pair path holds a plain directory: task = %v, want project other", task)
+	}
+	if task, _ := runJSON(t, 0, "rename", `{"slug":"strayed","to":"strayed-again"}`)["task"].(map[string]any); task["slug"] != "strayed-again" {
+		t.Errorf("rename an entry whose pair path holds a plain directory: task = %v, want slug strayed-again", task)
 	}
 }
 

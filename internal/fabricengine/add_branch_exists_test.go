@@ -66,7 +66,7 @@ func TestAdd_LeftoverWorktreeDirErrorNamesRemedy(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Add(%q) error = nil; want worktree-directory-already-exists rejection", slug)
 	}
-	for _, want := range []string{"already exists", "leftover", "remove the directory and retry"} {
+	for _, want := range []string{"already exists", "leftover", "lym fabric prune", "delete it and retry"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Add(%q) error = %q; want substring %q", slug, err.Error(), want)
 		}

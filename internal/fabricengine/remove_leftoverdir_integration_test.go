@@ -1,4 +1,5 @@
-// remove_leftoverdir_integration_test.go covers Remove finishing a pair worktree directory that `git worktree remove` deregistered but left on disk, on either side of the pair.
+// remove_leftoverdir_integration_test.go covers Remove finishing a pair worktree directory that `git worktree remove` deregistered but left on disk, on either side of the pair,
+// or that a late writer refilled after the removal, and PairWorktreeStands never reading such a directory as a pair.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -157,6 +159,130 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 			}
 			if !slices.Contains(res.Steps, tt.wantStep) {
 				t.Errorf("Steps = %v; want it to hold %q", res.Steps, tt.wantStep)
+			}
+		})
+	}
+}
+
+// TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval asserts Remove deletes a directory a late writer refills at the task worktree's path once the task worktree's removal is over, and reports no StrayPath.
+// It sets the process-global teardown hook, so it is not parallel.
+func TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	const slug = "refilled-late"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	l := h.Location
+	dir := fabricengine.WorktreePath(l, slug)
+	refilled := false
+	fabricengine.SetTeardownHooksForTest(t, nil, func() { refilled = refillWithLockFile(t, dir) })
+
+	res, err := h.Topology.Remove(l, slug, false, false)
+	if err != nil {
+		t.Fatalf("Remove error = %v; want the refilled directory deleted", err)
+	}
+	if !refilled {
+		t.Fatalf("no late writer refilled %s; want the refill after the teardown", dir)
+	}
+	if _, statErr := os.Lstat(dir); !os.IsNotExist(statErr) {
+		t.Errorf("%s still on disk after Remove (stat error = %v)", dir, statErr)
+	}
+	if res.StrayPath != "" {
+		t.Errorf("StrayPath = %q; want empty once the refilled directory is deleted", res.StrayPath)
+	}
+	rel, relErr := filepath.Rel(l.HubPath, dir)
+	if relErr != nil {
+		t.Fatalf("relate %s to the hub: %v", dir, relErr)
+	}
+	want := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
+	if !slices.Contains(res.Mutations.Entries(), want) {
+		t.Errorf("mutation record = %+v; want it to hold %+v", res.Mutations.Entries(), want)
+	}
+}
+
+// TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCannotBeDeleted asserts Remove still succeeds when the directory a late writer refilled at the task worktree's path cannot be deleted, leaves it on disk and reports its path in StrayPath.
+// It sets the process-global teardown hook, so it is not parallel.
+func TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCannotBeDeleted(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	const slug = "refilled-late-kept"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	l := h.Location
+	dir := fabricengine.WorktreePath(l, slug)
+	refilled := false
+	fabricengine.SetTeardownHooksForTest(t, nil, func() { refilled = refillWithLockFile(t, dir) })
+	fabricengine.SetLeftoverSeamForTest(h.Topology,
+		func(container, target string) (bool, bool, error) {
+			return false, false, &os.PathError{Op: "unlinkat", Path: target, Err: fs.ErrPermission}
+		},
+		func(time.Duration) {})
+
+	res, err := h.Topology.Remove(l, slug, false, false)
+	if err != nil {
+		t.Fatalf("Remove error = %v; want success, since the pair is gone", err)
+	}
+	if !refilled {
+		t.Fatalf("no late writer refilled %s; want the refill after the teardown", dir)
+	}
+	if res.StrayPath != dir {
+		t.Errorf("StrayPath = %q; want %q", res.StrayPath, dir)
+	}
+	if _, statErr := os.Lstat(dir); statErr != nil {
+		t.Errorf("%s is gone after a failed delete (stat error = %v); want it on disk", dir, statErr)
+	}
+	rel, relErr := filepath.Rel(l.HubPath, dir)
+	if relErr != nil {
+		t.Fatalf("relate %s to the hub: %v", dir, relErr)
+	}
+	removed := fabricengine.Mutation{Kind: fabricengine.KindPathRemoved, Target: filepath.ToSlash(rel), Detail: "recursive"}
+	if slices.Contains(res.Mutations.Entries(), removed) {
+		t.Errorf("mutation record = %+v; want no removal of %s", res.Mutations.Entries(), dir)
+	}
+}
+
+// refillWithLockFile plays a late writer: it writes a lock file under dir, recreating dir, and reports whether it did.
+func refillWithLockFile(t *testing.T, dir string) bool {
+	t.Helper()
+
+	lockFile := filepath.Join(dir, ".lym", "reed.lock")
+	if err := os.MkdirAll(filepath.Dir(lockFile), 0o755); err != nil {
+		t.Errorf("refill %s: %v", dir, err)
+		return false
+	}
+	if err := os.WriteFile(lockFile, nil, 0o644); err != nil {
+		t.Errorf("refill %s: %v", dir, err)
+		return false
+	}
+	return true
+}
+
+// TestPairWorktreeStands_ReadsOnlyARegisteredWorktree asserts a registered task worktree reads as standing, while a plain directory at a pair's path and an absent path do not.
+func TestPairWorktreeStands_ReadsOnlyARegisteredWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "standing", fabricengine.AddOptions{})
+	l := h.Location
+	if err := os.MkdirAll(filepath.Join(fabricengine.WorktreePath(l, "stray"), "obj"), 0o755); err != nil {
+		t.Fatalf("create a plain directory at a pair's path: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		slug string
+		want bool
+	}{
+		{"RegisteredWorktree", "standing", true},
+		{"PlainDirectory", "stray", false},
+		{"AbsentPath", "absent", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := fabricengine.PairWorktreeStands(l, tt.slug); got != tt.want {
+				t.Errorf("PairWorktreeStands(%q) = %v; want %v", tt.slug, got, tt.want)
 			}
 		})
 	}

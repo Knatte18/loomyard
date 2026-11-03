@@ -145,10 +145,7 @@ available subcommands without requiring a git repo.
 			}
 			cfg.Path = boardDir
 			cfg.ParentOf = func(slug string) (string, error) { return hubgeom.ParentOf(layout, slug) }
-			cfg.PairExists = func(slug string) bool {
-				info, err := os.Stat(fabricengine.WorktreePath(layout, slug))
-				return err == nil && info.IsDir()
-			}
+			cfg.PairExists = func(slug string) bool { return fabricengine.PairWorktreeStands(layout, slug) }
 			cfg.ValidateSlug = func(slug string) error {
 				fabricConfig, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(layout))
 				if err != nil {

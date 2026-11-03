@@ -659,6 +659,7 @@ func nothingLeft(slug string) error {
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first, then archives and deletes the task branch while one is left.
 // A pair with nothing left reads as removed.
+// A directory the removal left at the pair's path, which is no worktree, is named in a warning with the way to clear it, since it blocks the slug's next run.
 func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDeps) error {
 	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true})
 	report.SnapshotTag = result.SnapshotTag
@@ -666,6 +667,9 @@ func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDe
 		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	report.PairRemoved = true
+	if result.StrayPath != "" {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("the directory %s stays at the pair's path and is not a worktree; save anything worth keeping from it, then delete it before %s runs again", result.StrayPath, slug))
+	}
 
 	parts, err := deps.PairParts()
 	if err != nil {

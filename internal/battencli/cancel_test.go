@@ -676,6 +676,22 @@ func TestCancelRun(t *testing.T) {
 			marker:  "left",
 		},
 		{
+			name:   "RemoveLeavingAStrayDirectoryWarnsOfIt",
+			remove: true,
+			setup: func(f *cancelFake) {
+				f.parts = fabricengine.PairParts{TaskWorktree: true}
+				f.removeResult = fabricengine.RemoveResult{StrayPath: "/hub/some-slug"}
+			},
+			wantCalls: []string{"RemovePair", "RemoveRecords", "ClearClaim"},
+			marker:    "removed",
+			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
+				want := "the directory /hub/some-slug stays at the pair's path and is not a worktree; save anything worth keeping from it, then delete it before some-slug runs again"
+				if !r.PairRemoved || !slices.Contains(r.Warnings, want) {
+					t.Errorf("report pair removed, warnings = %v, %q; want true and a warning %q", r.PairRemoved, r.Warnings, want)
+				}
+			},
+		},
+		{
 			name:   "RemoveWithNoLocalPartLeftReadsPairNotFoundAsDone",
 			remove: true,
 			setup: func(f *cancelFake) {

@@ -75,10 +75,10 @@ type ErrTaskPathTaken struct {
 // Error implements the error interface, naming the directory and the ways out.
 func (e *ErrTaskPathTaken) Error() string {
 	// Name the recovery path, since a directory here is not always a live pair.
-	// An empty leftover stranded by an interrupted remove/reconcile is invisible to `lym fabric list`/`prune` (they enumerate only git-registered worktrees), so an operator hitting one otherwise has no clue why the slug is blocked.
+	// A leftover, such as a directory a late writer refilled after a remove, is invisible to `lym fabric list`, which enumerates only git-registered worktrees, so the message names `lym fabric prune`, which reports it.
 	// If it IS a live pair, a different slug is the answer.
 	return fmt.Sprintf(
-		"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory from an interrupted remove/reconcile (which `lym fabric list` and `prune` cannot see, as they list only git-registered worktrees), remove the directory and retry",
+		"worktree directory %q already exists; if it is a live pair, use a different slug; if it is a leftover directory that is not a worktree, which `lym fabric prune` reports, save anything worth keeping from it, delete it and retry",
 		e.Path)
 }
 

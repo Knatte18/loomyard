@@ -19,6 +19,10 @@
 // This is the same rule removeWarpWorktreeDir applies on the warp side, and it exists for the same
 // reason: `git worktree remove` refusing a path is not licence to delete it.
 //
+// A third pass reports every hub directory whose name is a valid pair slug and that no worktree registration covers.
+// Such a directory is, for example, a task worktree path a late writer refilled after a removal.
+// It blocks a new pair of its slug and nothing proves it fabric's, so it is reported Unowned in both modes and never removed.
+//
 // Prune removes weft worktrees only and deletes no weft branch — orphaned branches are left for Cleanup — so it needs no archiveWeftTip step; the archive belongs to the verbs that delete a branch.
 //
 // The verdict is computed identically in both modes, so a dry run's Protected and Unowned flags
@@ -52,11 +56,11 @@ type PruneEntry struct {
 	// that force was not given to discard.
 	// It is computed in both modes, so a dry run answers the question --apply would act on.
 	Protected bool `json:"protected,omitempty"`
-	// Unowned reports that the enumerated path is not a linked worktree of this hub's weft repo,
-	// so fabric will not remove it in any mode — force included.
+	// Unowned reports that the enumerated path is not a linked worktree of this hub's repositories.
+	// Fabric will not remove it in any mode, force included.
 	// The orphan pass enumerates on directory NAME alone, so an ordinary user directory or an
 	// unrelated git clone whose name happens to end in the weft suffix is reported here rather
-	// than deleted.
+	// than deleted, and so is a directory at a pair's task worktree path that no registration covers.
 	// Like Protected, it is computed in both modes.
 	Unowned bool `json:"unowned,omitempty"`
 	// Error is non-empty when this entry was not removed and the operator needs to know why:
@@ -83,6 +87,7 @@ type PruneResult struct {
 // A weft worktree carrying uncommitted tracked changes is protected unless force is true, since the
 // removal is a forced one that would discard them without a trace.
 // Per-entry removal errors and protection reasons are recorded in PruneEntry.Error.
+// A hub directory named as a pair slug that is not a registered worktree is reported Unowned, with the way to clear it in PruneEntry.Error, and never removed.
 func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -173,6 +178,27 @@ func (t *Topology) Prune(l *lymcwd.Location, apply, force bool) (res PruneResult
 		}
 
 		result.Entries = append(result.Entries, pe)
+	}
+
+	// No pair slug starts with a dot, and a hidden hub directory is tooling's, not a pair's.
+	for _, dirEntry := range hubEntries {
+		name := dirEntry.Name()
+		if !dirEntry.IsDir() || liveWarpSlugs[name] || strings.HasPrefix(name, ".") {
+			continue
+		}
+		if validateWorktreeSlug(name, t.cfg.Dirs()) != nil {
+			continue
+		}
+		strayPath := filepath.Join(l.HubPath, name)
+		result.Entries = append(result.Entries, PruneEntry{
+			CodeWorktree:    filepath.ToSlash(strayPath),
+			RecordsWorktree: filepath.ToSlash(RecordsWorktreePath(l, name)),
+			Reason:          "directory at a pair's task worktree path is not a worktree",
+			Unowned:         true,
+			Error: fmt.Sprintf(
+				"%q is not a worktree of this hub's repository, so fabric will not remove it, and it blocks a new pair of %q: save anything worth keeping from it, then delete it",
+				strayPath, name),
+		})
 	}
 
 	return result, nil

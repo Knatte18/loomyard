@@ -79,7 +79,8 @@ type RemoveResult struct {
 	Steps []string `json:"steps"`
 	// Finished is true when the task worktree was already gone at entry, so the call completed a half-removed pair.
 	Finished bool `json:"finished"`
-	// StrayPath names a path at the task worktree's location that is not a registered linked worktree; Remove reports it and never deletes it.
+	// StrayPath names a path at the task worktree's location that is not a registered linked worktree:
+	// one found there at entry, which Remove never deletes, or a directory a late writer refilled after the task worktree's removal and that a last removal could not delete.
 	StrayPath string `json:"stray_path,omitempty"`
 	// RemoteBranchDeleted reports whether the pair's weft branch was observably removed from the
 	// remote. It is true only when the remote deletion was attempted and actually removed a ref.
@@ -156,6 +157,8 @@ type RemoveResult struct {
 // With nothing of the pair left it returns an error wrapping ErrPairNotFound.
 // A sibling branch present only on origin is archived from there by the child and, with remote, deleted there; without remote it stays.
 // A path at the task worktree's location that is not a registered linked worktree is reported in StrayPath and never deleted.
+// A directory a late writer, such as a build server or a session's exit hooks, refills at the task worktree's path after its removal is removed once more after the sibling's teardown;
+// one that cannot be is logged and reported in StrayPath, and Remove still succeeds, since the pair is gone.
 // After the refusals and the pair inspection, and before its first mutation, Remove has the teardown child take the pair's teardown lock exclusive, waiting at most the topology's teardown wait for a push of the pair to let go of it;
 // when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning.
 // The child holds the lock past the remote steps, and a failure after taking it that leaves a worktree of the pair in place releases the lock and respawns the pair's push.
@@ -321,6 +324,16 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		removeAfterTeardownHook()
 	}
 
+	// A late writer can refill the task worktree's directory after its removal finished, and a directory left there blocks the slug's next pair.
+	// This call's own removal of the registered worktree is the ownership proof, as it is for the finish right after git.
+	refilledKept := false
+	if pair.taskWorktree && pathPresent(target) && !isRegisteredLinkedWorktree(l, target) {
+		if leftoverErr := removeWorktreeLeftover(rec, l.HubPath, target, t.leftover); leftoverErr != nil {
+			logger.Warn("fabricengine: a directory refilled at a removed task worktree's path was not deleted", "slug", slug, "path", target, "error", leftoverErr)
+			refilledKept = true
+		}
+	}
+
 	warpDeleted, warpKeptReason := deleteWarpBranch(rec, l, warpBranch, parentBranch)
 	if warpDeleted {
 		steps = append(steps, RemoveStepTaskBranch)
@@ -342,7 +355,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	strayPath := ""
-	if pair.strayPath {
+	if pair.strayPath || refilledKept {
 		strayPath = target
 	}
 	res = RemoveResult{
@@ -981,6 +994,21 @@ func removeWarpWorktreeDir(rec *Mutations, l *lymcwd.Location, target string, fo
 // where a blind directory removal is least defensible.
 func isRegisteredLinkedWorktree(l *lymcwd.Location, target string) bool {
 	return isRegisteredLinkedWorktreeIn(l.WorktreePath(), target)
+}
+
+// PairWorktreeStands reports whether the task worktree of slug stands on disk as a registered linked worktree of l's repository.
+// A directory at its path that git does not register, such as one a removal left holding build output, reads false, as do an absent path and a registration whose directory is gone.
+// A path that is present while the repository's worktrees cannot be listed reads true, since the answer guards refusals and an unlistable repository must keep refusing.
+func PairWorktreeStands(l *lymcwd.Location, slug string) bool {
+	target := WorktreePath(l, slug)
+	if !pathPresent(target) {
+		return false
+	}
+	entries, err := List(l.WorktreePath())
+	if err != nil {
+		return true
+	}
+	return listsLinkedWorktree(entries, target)
 }
 
 // isRegisteredLinkedWorktreeIn is the repo-agnostic form of isRegisteredLinkedWorktree: it asks the

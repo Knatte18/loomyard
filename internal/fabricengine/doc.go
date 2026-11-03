@@ -609,6 +609,9 @@
 // `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin whether or not its work is landed: it tags the local tip `archive/<slug>/<first 12 hex>` and deletes the local branch under that tag, and its teardown child pushes the tags, archiving only the containing tip when one tip holds the other, and deletes the branch on origin under them.
 // A failed local tag deletes nothing and wraps `ErrArchiveFailed`, and a refused gate is returned as an error naming the branch.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
+// After the sibling's teardown `Remove` looks at the task worktree's path once more and removes a directory a late writer refilled there since its removal; one it cannot remove is reported in `StrayPath`.
+// `PairWorktreeStands` reports whether a slug's task worktree stands as a registered linked worktree, so a caller never reads such a leftover directory as a pair.
+// `Prune` reports every hub directory named as a pair slug that no registration covers as `Unowned`, naming the way to clear it, and never removes one.
 // With `remote`, `Remove`'s teardown child also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is logged as kept and is no failure.
 // The result names the code branch's fate in `CodeBranchDeleted` and `CodeBranchKeptReason` (JSON `code_branch_deleted`, `code_branch_kept_reason`, `remote_code_branch_deleted`, `remote_code_branch_kept_reason`).
 // `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).

@@ -333,7 +333,9 @@ func reconcileTaskPair(prime *lymcwd.Location, slug string) error {
 // A task branch left from an earlier pair of the slug, locally or on origin, is settled by the cancel verb, which archives and deletes it.
 // fabric words that leftover refusal for a caller inside a pair ("lym fabric checkout"), which from prime would switch prime's own pair onto the task's branches, so its text is replaced.
 // A remote leftover on any other branch, the records side included, passes through.
-func createRefusal(err error, slug, taskBranch string) error {
+// A directory at the task worktree's path is reached only when it does not resolve as a worktree, such as one a cancel's late writer refilled, so it is settled by deleting it.
+// taskPathStands reports whether that path holds a registered worktree, and is asked only for that refusal: such a path is settled by removing the pair, not by deleting a plain directory.
+func createRefusal(err error, slug, taskBranch string, taskPathStands func() bool) error {
 	leftoverWayForward := fmt.Sprintf(`run "lym batten cancel %s --remove" from the prime, which archives and deletes it, then "lym batten run %s"`, slug, slug)
 
 	var sourceDirty *fabricengine.ErrSourceDirty
@@ -357,6 +359,21 @@ func createRefusal(err error, slug, taskBranch string) error {
 		return &battenshed.PreconditionError{
 			Unmet:      fmt.Sprintf("task branch %s is left on origin from an earlier pair of this slug", remoteLeftover.Branch),
 			WayForward: leftoverWayForward,
+			Err:        err,
+		}
+	}
+	var pathTaken *fabricengine.ErrTaskPathTaken
+	if errors.As(err, &pathTaken) {
+		if taskPathStands() {
+			return &battenshed.PreconditionError{
+				Unmet:      fmt.Sprintf("the task worktree %s is registered but does not resolve as a worktree", pathTaken.Path),
+				WayForward: incompletePairRemedy(slug, taskBranch) + ", then resume this run to create it fresh",
+				Err:        err,
+			}
+		}
+		return &battenshed.PreconditionError{
+			Unmet:      fmt.Sprintf("the directory %s stands where the task worktree goes and is not a worktree", pathTaken.Path),
+			WayForward: fmt.Sprintf(`save anything worth keeping from it, then delete it, and run "lym batten run %s" again`, slug),
 			Err:        err,
 		}
 	}
@@ -974,7 +991,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
-				return createRefusal(err, slug, cfg.BranchPrefix+slug)
+				return createRefusal(err, slug, cfg.BranchPrefix+slug, func() bool { return fabricengine.PairWorktreeStands(location, slug) })
 			}
 			// The beam's accept may have written its hold while the pair was being made, so the member's beam is read again before anything more is done to the pair.
 			if err := c.refuseHeldMember(ctx, location, slug); err != nil {

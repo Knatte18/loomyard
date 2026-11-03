@@ -722,7 +722,7 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 	}
 }
 
-// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lym fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
+// TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout asserts the create closure maps a dirty source, a task branch left locally and one left on origin, a non-worktree directory at the task worktree's path, and a registered worktree there that does not resolve, to a precondition error naming their way forward -- the cancel verb for a leftover branch, never "lym fabric checkout", which from prime switches prime itself -- while every other create error, a remote leftover on another branch included, passes through unchanged.
 func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	tiergate.Require(t, 0)
 	const taskBranch = "lym-some-slug"
@@ -738,19 +738,23 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 		err         error
 		wantContain []string
 		wantSame    bool
+		// taskPathStands is whether the task worktree's path holds a registered worktree.
+		taskPathStands bool
 	}{
-		{"LeftoverBranch", leftover, append([]string{"task branch " + taskBranch + " is left from an earlier pair of this slug"}, leftoverWayForward...), false},
-		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), leftoverWayForward, false},
-		{"BareSourceDirty", dirty, []string{"uncommitted tracked changes: a.go, dir/b.go", "commit or revert", `"lym batten run some-slug" again`}, false},
-		{"WrappedSourceDirty", fmt.Errorf("create: %w", dirty), []string{"a.go, dir/b.go", "commit or revert"}, false},
-		{"RemoteLeftoverOnTheTaskBranch", remoteOnTask, append([]string{"task branch " + taskBranch + " is left on origin"}, leftoverWayForward...), false},
-		{"RemoteLeftoverOnAnotherBranch", remoteOnRecords, nil, true},
-		{"OtherError", other, nil, true},
-		{"NilError", nil, nil, true},
+		{"LeftoverBranch", leftover, append([]string{"task branch " + taskBranch + " is left from an earlier pair of this slug"}, leftoverWayForward...), false, false},
+		{"WrappedLeftoverBranch", fmt.Errorf("create: %w", leftover), leftoverWayForward, false, false},
+		{"BareSourceDirty", dirty, []string{"uncommitted tracked changes: a.go, dir/b.go", "commit or revert", `"lym batten run some-slug" again`}, false, false},
+		{"WrappedSourceDirty", fmt.Errorf("create: %w", dirty), []string{"a.go, dir/b.go", "commit or revert"}, false, false},
+		{"RemoteLeftoverOnTheTaskBranch", remoteOnTask, append([]string{"task branch " + taskBranch + " is left on origin"}, leftoverWayForward...), false, false},
+		{"TaskPathTaken", &fabricengine.ErrTaskPathTaken{Path: "/hub/some-slug"}, []string{"the directory /hub/some-slug stands where the task worktree goes and is not a worktree", "delete it", `"lym batten run some-slug" again`}, false, false},
+		{"TaskPathTakenByARegisteredWorktree", &fabricengine.ErrTaskPathTaken{Path: "/hub/some-slug"}, []string{"the task worktree /hub/some-slug is registered but does not resolve as a worktree", `"lym fabric remove --force some-slug"`, "then resume this run to create it fresh"}, false, true},
+		{"RemoteLeftoverOnAnotherBranch", remoteOnRecords, nil, true, false},
+		{"OtherError", other, nil, true, false},
+		{"NilError", nil, nil, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := createRefusal(tt.err, "some-slug", taskBranch)
+			got := createRefusal(tt.err, "some-slug", taskBranch, func() bool { return tt.taskPathStands })
 			if tt.wantSame {
 				if got != tt.err {
 					t.Fatalf("createRefusal(%v) = %v; want the same error passed through", tt.err, got)
