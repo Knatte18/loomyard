@@ -14,7 +14,11 @@
 // A hold never extends run.deadline: a held run is bounded by its caller's own Spec.Timeout (run_timeout_min only where that is zero), and by the liveness check, which still classifies a dead pane.
 // A turn end that leaves a fork or an awaited shell outstanding while an output file is missing is a wait, never a held stop, and expires into no hold or notice.
 // It is bounded only by the run's own deadline and the liveness check, so a shell that never ends ends the run OutcomeTimeout, and lym reaps no shell.
-// A turn end whose only outstanding work is shells the session does not await is no work product's wait: a gated run judges it as a plain turn end at once, and an ungated run with an output file missing holds it once every such shell has been outstanding for the shell wait bound, which notifies the parent once.
+// A turn end whose only outstanding work is shells the session does not await is no work product's wait.
+// A gated run with an output file missing holds it at once.
+// A gated run with every output file present does not count it Done while such a shell runs, since the shell may hold a commit or a gate run whose result the session never read:
+// it tells the agent once per shell to wait for the shell and read its result, and counts the turn end Done through the gate once every such shell has been outstanding for the shell wait bound.
+// An ungated run with an output file missing holds it once every such shell has been outstanding for the shell wait bound, which notifies the parent once.
 // A gated run's waiting turn end on a fork or an awaited shell is never an arrival: it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
 // At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, and finalize evaluates the gate once more over the tree as it stands.
 // Every shell outstanding when the run ends, by whatever exit, is recorded in Result.EndedShells.
@@ -387,6 +391,7 @@ func (run *Run) Wait() (Result, error) {
 			}
 		}
 
+		run.sendShellNudge()
 		run.settleDeferredHold()
 		run.watchDialog()
 		run.logSessionState("", tick%livenessEvery == 0)
@@ -858,8 +863,11 @@ func startupCaptureExcerpt(capture string) string {
 // An EventWaiting is the one Kind that is not held at once: the session is waiting on its own background work,
 // so the tick returns what expiredTurnEnd answers, which is nothing while the work is outstanding and the files are missing;
 // an ungated one with an empty outstanding list and every output file present is done at once.
-// A gated run whose outstanding list holds only shells the session does not await is judged as a plain turn end instead:
-// done when every output file exists, so the gate runs as at any turn end, and held at once when one is missing.
+// A gated run whose outstanding list holds only shells the session does not await is held at once when an output file is missing.
+// With every output file present it keeps waiting when a turn start past the waiting turn end is already read, since the next turn is under way;
+// otherwise it returns what expiredTurnEnd answers, queueing the shell nudge only while that is nothing:
+// nothing while a shell is inside the bound, and done once every shell has been outstanding for it, so the gate runs as at any turn end.
+// A turn start read past a recorded waiting turn end clears it, so no expiry counts the run done in a turn already under way.
 // A fork and an awaited shell keep the turn waiting however long they run.
 // A hold never extends run.deadline, so a held run is bounded by its caller's own deadline and by the liveness check.
 // A waiting turn end on a fork or an awaited shell is bounded only by the run's own deadline and the liveness check, and lym reaps no shell.
@@ -892,6 +900,14 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 	}
 	// The reference is the held turn end on show; a held turn end this tick returns replaces it below.
 	run.turnStartRead = run.wait.heldOffset > 0 && turnStartAfter(turnStarts, run.wait.heldOffset)
+	if run.waitingTurnEnd != nil && turnStartAfter(turnStarts, run.waitingTurnEnd.offset) {
+		// The next turn is under way, so the recorded waiting turn end no longer expires.
+		// Its tasks stay in countedTasks for the run's record.
+		if len(run.waitingTasks) > 0 {
+			run.countedTasks = run.waitingTasks
+		}
+		run.waitingTasks, run.waitingTurnEnd = nil, nil
+	}
 	if len(events) == 0 {
 		return run.expiredTurnEnd()
 	}
@@ -906,12 +922,23 @@ func (run *Run) pollEventsTick() (Outcome, *heldTurnEnd, error) {
 			return OutcomeDone, nil, nil
 		}
 		if len(run.gate) != 0 && run.unawaitedShellsOnly(run.waitingTasks) {
-			// A shell the session does not await is no work product, so the turn end is judged as a plain one.
 			held := run.waitingTurnEnd
-			run.countedTasks, run.waitingTasks = run.waitingTasks, nil
 			if allOutputFilesExist(run.spec.OutputFiles) {
-				return OutcomeDone, nil, nil
+				if turnStartAfter(turnStarts, held.offset) {
+					// The next turn is already under way, so the shell is neither named nor waited on.
+					run.countedTasks, run.waitingTasks, run.waitingTurnEnd = run.waitingTasks, nil, nil
+					return "", nil, nil
+				}
+				// The shell may hold a commit or a gate run whose result the session never read, so Done waits on it up to the bound.
+				// A turn end that counts Done here is not nudged: the line would claim the run is not done.
+				outcome, _, err := run.expiredTurnEnd()
+				if outcome == "" {
+					run.queueShellNudge()
+				}
+				return outcome, nil, err
 			}
+			// A shell the session does not await is no work product, so the turn end is held as a plain one.
+			run.countedTasks, run.waitingTasks = run.waitingTasks, nil
 			run.turnStartRead = turnStartAfter(turnStarts, held.offset)
 			return "", held, nil
 		}
@@ -1061,7 +1088,8 @@ func (run *Run) shellWaitBound() time.Duration {
 }
 
 // ShellWaitBound returns how long a background shell of either signal stays outstanding before the wait logs it and shows it in the wait marker, cfg.BackgroundShellWaitMin, flooring a non-positive hand-built value to the template default as pollInterval does.
-// It is also the bound after which an ungated waiting turn end whose every outstanding task is a non-awaited shell, with an output file missing, expires into a held turn end.
+// It is also the bound after which a waiting turn end whose every outstanding task is a non-awaited shell expires:
+// an ungated one with an output file missing into a held turn end, and a gated one with every output file present into a Done.
 func ShellWaitBound(cfg Config) time.Duration {
 	minutes := cfg.BackgroundShellWaitMin
 	if minutes <= 0 {
@@ -1088,14 +1116,16 @@ func awaitedLabel(label string, prefixes []string) bool {
 	return false
 }
 
-// expiredTurnEnd decides the recorded waiting turn end: it counts it as a Done at once, expires it into a held turn end, or keeps it waiting.
+// expiredTurnEnd decides the recorded waiting turn end: it counts it as a Done at once, expires it into a held turn end or a Done, or keeps it waiting.
 // An ungated run counts it at once whenever every output file exists, whatever is outstanding.
 // An ungated run with an output file missing expires it into the held turn end of that waiting turn end once every outstanding task is a non-awaited shell and each has been outstanding for the bound;
 // a fork or an awaited shell outstanding keeps it waiting however long it runs.
-// A gated run's waiting turn end here holds a fork or an awaited shell, and is never an arrival, because the output files may be left over from an earlier arrival while the session works on in the background;
+// A gated run with every output file present expires it into a Done once every outstanding task is a non-awaited shell and each has been outstanding for the bound.
+// Any other gated waiting turn end here is never an arrival, because the output files may be left over from an earlier arrival while the session works on in the background;
 // it waits until the task's completion starts the next turn, the run's deadline or the liveness check.
 // A shell outstanding past the bound is logged once per shell.
-// Counting or expiring a turn end clears the waiting list and keeps its tasks in countedTasks for the run's record.
+// Counting or expiring a turn end clears the waiting list and keeps its tasks in countedTasks for the run's record;
+// a turn start read past the recorded turn end clears it the same way before this runs.
 // Returns outcome == "" and a nil held turn end while the turn keeps waiting.
 func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	if len(run.waitingTasks) == 0 {
@@ -1108,17 +1138,17 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 			run.logPayloadShellPastBound(task, now.Sub(run.shellFirstSeen[task.ID]), bound)
 		}
 	}
+	filesExist := allOutputFilesExist(run.spec.OutputFiles)
 	if len(run.gate) != 0 {
-		return "", nil, nil
-	}
-	if !allOutputFilesExist(run.spec.OutputFiles) {
-		if !run.unawaitedShellsOnly(run.waitingTasks) || run.waitingTurnEnd == nil {
+		if !filesExist || !run.unawaitedShellsPastBound(now) {
 			return "", nil, nil
 		}
-		for _, task := range run.waitingTasks {
-			if now.Sub(run.shellFirstSeen[task.ID]) < bound {
-				return "", nil, nil
-			}
+		run.countedTasks, run.waitingTasks = run.waitingTasks, nil
+		return OutcomeDone, nil, nil
+	}
+	if !filesExist {
+		if run.waitingTurnEnd == nil || !run.unawaitedShellsPastBound(now) {
+			return "", nil, nil
 		}
 		held := run.waitingTurnEnd
 		run.countedTasks, run.waitingTasks = run.waitingTasks, nil
@@ -1127,6 +1157,70 @@ func (run *Run) expiredTurnEnd() (Outcome, *heldTurnEnd, error) {
 	run.countedTasks = run.waitingTasks
 	run.waitingTasks = nil
 	return OutcomeDone, nil, nil
+}
+
+// unawaitedShellsPastBound reports whether every outstanding task of the recorded waiting turn end is a non-awaited shell outstanding for at least the shell wait bound at now.
+func (run *Run) unawaitedShellsPastBound(now time.Time) bool {
+	if !run.unawaitedShellsOnly(run.waitingTasks) {
+		return false
+	}
+	bound := run.shellWaitBound()
+	for _, task := range run.waitingTasks {
+		if now.Sub(run.shellFirstSeen[task.ID]) < bound {
+			return false
+		}
+	}
+	return true
+}
+
+// queueShellNudge queues the line naming each shell of the recorded waiting turn end that no sent line of this Wait named.
+// It queues nothing when every shell was named before, so an agent that ends its turn again over the same shell is not told twice.
+// The shells count as named only once sendShellNudge has sent the line.
+func (run *Run) queueShellNudge() {
+	var ids, labels []string
+	for _, task := range run.waitingTasks {
+		if run.nudgedShells[task.ID] {
+			continue
+		}
+		ids = append(ids, task.ID)
+		labels = append(labels, delimitedAgentText(task.Label))
+	}
+	if len(labels) > 0 {
+		run.shellNudge, run.shellNudgeIDs = shellNudgeText(labels), ids
+	}
+}
+
+// shellNudgeText returns the one line that tells an agent its turn ended while background shells whose results it never read still run, naming each by its delimited label.
+func shellNudgeText(labels []string) string {
+	return "[lym] Your turn ended while these background shells still run: " + strings.Join(labels, ", ") +
+		". The run does not count as done while one runs: wait for each to finish, read its result and act on it before you end your turn."
+}
+
+// sendShellNudge types the queued shell nudge into the run's pane through the gated send and clears it, marking the shells it named as named once the send succeeds.
+// While a pause covers the run it drops the line unsent.
+// A failed send is logged at Info and not retried in place, since the shell's completion still starts the session's next turn.
+// A dropped or failed line leaves its shells unnamed, so the next waiting turn end over them queues it again.
+func (run *Run) sendShellNudge() {
+	text, ids := run.shellNudge, run.shellNudgeIDs
+	if text == "" {
+		return
+	}
+	run.shellNudge, run.shellNudgeIDs = "", nil
+	if run.covered {
+		logger.Info("shuttle: shell nudge dropped under a pause", "strandGUID", run.state.StrandGUID)
+		return
+	}
+	if err := run.sendWithin(text); err != nil {
+		logger.Info("shuttle: shell nudge not sent", "strandGUID", run.state.StrandGUID, "error", err)
+		return
+	}
+	if run.nudgedShells == nil {
+		run.nudgedShells = map[string]bool{}
+	}
+	for _, id := range ids {
+		run.nudgedShells[id] = true
+	}
+	logger.Info("shuttle: told the agent to read the background shells its turn end left running", "strandGUID", run.state.StrandGUID)
 }
 
 // unawaitedShellsOnly reports whether tasks is non-empty and holds no fork and no shell the spec's AwaitedShellPrefixes names.

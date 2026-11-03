@@ -36,7 +36,8 @@ const runLockName = "run.lock"
 
 // masterAwaitedShellPrefixes are Master's backgrounded, blocking verbs: the failure ladder's recovery verb, the verify gate's cold fixer verb and the plan-conflict rung's plan fixer verb.
 // A prefix keeps its verb out of the background-shell wait marker;
-// it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells is judged as a plain turn end.
+// it is also what keeps the verb holding a gated turn end, which one waiting only on non-awaited shells does not:
+// that one is held when an output file is missing and is not counted done inside background_shell_wait_min.
 var masterAwaitedShellPrefixes = []string{"lym webster recover-batch", fixVerifyCommand, fixPlanCommand}
 
 // ErrRunBusy marks Run's fail-fast refusal when another invocation already holds scratchDir's

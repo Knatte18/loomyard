@@ -1,6 +1,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -202,12 +203,14 @@ var (
 )
 
 // TestPollEventsTick_OutstandingBackgroundWork covers a waiting turn end whose outstanding list is background work, one rule for a shell of either signal:
-// with an output file missing a fork or an awaited shell keeps the turn waiting however long it runs, and is never held;
-// a non-awaited shell alone expires an ungated wait into the held turn end once every shell has been outstanding for the bound, and a gated run judges the turn end as a plain one at once, held when an output file is missing;
-// with every output file present an ungated run finishes done at once whatever is outstanding,
-// and a gated run finishes done through the gate unless a fork or an awaited shell is outstanding, which it waits on until the next real turn end.
+// with an output file missing a fork or an awaited shell keeps the turn waiting however long it runs, and is never held.
+// With an output file missing, a non-awaited shell alone expires an ungated wait into the held turn end once every shell has been outstanding for the bound.
+// With an output file missing, a gated run holds the turn end at once.
+// With every output file present an ungated run finishes done at once whatever is outstanding.
+// With every output file present, a gated run waiting on non-awaited shells alone finishes done only once every shell has been outstanding for the bound.
+// With every output file present, a gated run waiting on a fork or an awaited shell waits until the next real turn end.
 //
-//testtiming:keep pins that a fork or an awaited shell never expires at a waiting turn end, and that a non-awaited shell alone expires the ungated wait at the bound and leaves a gated waiting turn end judged as a plain turn end
+//testtiming:keep pins that a fork or an awaited shell never expires at a waiting turn end, that a non-awaited shell alone expires the ungated wait at the bound, and that a gated run is not done while a non-awaited shell is inside the bound
 func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 	tiergate.Require(t, 0)
 	const waitLine = "WAIT:background work\n"
@@ -230,6 +233,8 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 		wantHeldAtOnce bool
 		// wantHeldPastBound expects nothing until every shell has been outstanding for the bound, then the held turn end, then nothing on a further idle tick.
 		wantHeldPastBound bool
+		// wantDonePastBound expects nothing until every shell has been outstanding for the bound, then done with the tasks counted and the waiting list cleared.
+		wantDonePastBound bool
 	}{
 		{name: "a transcript-reported shell expires into the held turn end at the bound while an output file is missing", tasks: []BackgroundTask{transcriptShellTask}, wantHeldPastBound: true},
 		{name: "a payload-reported shell expires into the held turn end at the bound while an output file is missing", tasks: []BackgroundTask{payloadShellTask}, wantHeldPastBound: true},
@@ -239,8 +244,9 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 		{name: "an ungated run with outputs and a transcript-reported shell finishes done", tasks: []BackgroundTask{transcriptShellTask}, touchOutput: true, wantDone: true},
 		{name: "an ungated run with outputs and a fork finishes done", tasks: []BackgroundTask{fork}, touchOutput: true, wantDone: true},
 		{name: "an ungated run with outputs and nothing outstanding finishes done", touchOutput: true, wantDone: true},
-		{name: "a gated run with outputs and a transcript-reported shell finishes done", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true, wantDone: true},
-		{name: "a gated run with outputs and a payload-reported shell finishes done", tasks: []BackgroundTask{payloadShellTask}, gated: true, touchOutput: true, wantDone: true},
+		{name: "a gated run with outputs and a transcript-reported shell finishes done at the bound", tasks: []BackgroundTask{transcriptShellTask}, gated: true, touchOutput: true, wantDonePastBound: true},
+		{name: "a gated run with outputs and a payload-reported shell finishes done at the bound", tasks: []BackgroundTask{payloadShellTask}, gated: true, touchOutput: true, wantDonePastBound: true},
+		{name: "a gated run with outputs and two shells finishes done only once the later one passes the bound", tasks: []BackgroundTask{transcriptShellTask, secondShell}, gated: true, touchOutput: true, staggered: true, wantDonePastBound: true},
 		{name: "a gated run with an output file missing and a shell is held at once", tasks: []BackgroundTask{transcriptShellTask}, gated: true, wantHeldAtOnce: true},
 		{name: "a fork beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, fork}, gated: true, touchOutput: true},
 		{name: "an awaited shell beside a shell keeps the gated run waiting", tasks: []BackgroundTask{payloadShellTask, awaitedShell}, spec: awaitedSpec, gated: true, touchOutput: true},
@@ -288,6 +294,18 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 				if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
 					t.Errorf("idle tick after the hold = (%q, %+v, %v), want nothing: the held wait is not restarted", outcome, held, err)
 				}
+			case tt.wantDonePastBound:
+				if err != nil || outcome != "" || held != nil {
+					t.Fatalf("first tick = (%q, %+v, %v), want still waiting", outcome, held, err)
+				}
+				fc.Sleep(bound - time.Second)
+				if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
+					t.Fatalf("tick inside the bound = (%q, %+v, %v), want still waiting", outcome, held, err)
+				}
+				fc.Sleep(time.Second)
+				if outcome, held, err := run.pollEventsTick(); err != nil || outcome != OutcomeDone || held != nil || !slices.Equal(run.countedTasks, tt.tasks) || len(run.waitingTasks) != 0 {
+					t.Fatalf("tick at the bound = (%q, %+v, %v) with counted %v and waiting %v, want done with the tasks counted and the waiting list cleared", outcome, held, err, run.countedTasks, run.waitingTasks)
+				}
 			default:
 				if err != nil || outcome != "" || held != nil {
 					t.Fatalf("first tick = (%q, %+v, %v), want still waiting", outcome, held, err)
@@ -298,6 +316,40 @@ func TestPollEventsTick_OutstandingBackgroundWork(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestPollEventsTick_TurnStartEndsTheGatedShellWait pins that a gated run whose waiting turn end lists an unawaited shell does not count Done once the bound passes in a turn already under way:
+// a turn start read after the waiting turn end clears the wait, and the next turn end finishes done.
+//
+//testtiming:keep pins that a turn start past a gated shell wait clears it before the bound can count the run done
+func TestPollEventsTick_TurnStartEndsTheGatedShellWait(t *testing.T) {
+	tiergate.Require(t, 0)
+	outputFile := filepath.Join(t.TempDir(), "out.md")
+	touchOutputFile(t, outputFile)
+	fx := newFixture(t, &fakeReed{StatusQueue: liveStrandStatus(true)}, &sessionFakeEngine{waitingEngine: waitingEngine{outstanding: []BackgroundTask{transcriptShellTask}}}, withConfig(gateConfig))
+	fc := newFakeClock(time.Now())
+	run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+		withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1"}),
+		withRunEvents("WAIT:background work\n"),
+		withRunClock(fc, fc.Now().Add(time.Hour)),
+		withRunGate(GateSpec{{Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }, Attempts: 1}}))
+
+	if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
+		t.Fatalf("first tick = (%q, %+v, %v), want still waiting", outcome, held, err)
+	}
+	appendEventsLine(t, run.state.EventsPath, "START")
+	fc.Sleep(run.shellWaitBound() + time.Second)
+	if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil || len(run.waitingTasks) != 0 {
+		t.Fatalf("tick past the bound after a turn start = (%q, %+v, %v) with waiting %v, want nothing and the waiting list cleared", outcome, held, err, run.waitingTasks)
+	}
+	fc.Sleep(time.Minute)
+	if outcome, held, err := run.pollEventsTick(); err != nil || outcome != "" || held != nil {
+		t.Fatalf("idle tick mid-turn = (%q, %+v, %v), want nothing", outcome, held, err)
+	}
+	appendEventsLine(t, run.state.EventsPath, "STOP:done")
+	if outcome, _, err := run.pollEventsTick(); err != nil || outcome != OutcomeDone {
+		t.Errorf("tick at the turn end = (%q, %v), want %q", outcome, err, OutcomeDone)
 	}
 }
 
@@ -312,7 +364,7 @@ func (c *jumpClock) Sleep(time.Duration) { c.fakeClock.Sleep(c.jump) }
 // TestWait_RecordsEndedShells pins that every end of a run with a shell outstanding records it in Result.EndedShells with its time outstanding:
 // an ungated at-once finish logs that the strand removal ended the shell,
 // and a run deadline and a liveness end log that the run ended with the shell outstanding and the strand left to its caller.
-// An ungated at-once finish records every outstanding shell with its own signal, a gated run ends done at a waiting turn end whose only shell is unawaited and records it,
+// An ungated at-once finish records every outstanding shell with its own signal, a gated run ends done once its waiting turn end's only unawaited shell outlasts the bound and records it,
 // and an awaited shell the wait holds never lands there once the next turn ends, and lands there when the deadline ends the run.
 // It captures the process-global logger, so it does not run in parallel.
 //
@@ -371,10 +423,10 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 			wantNoLog: []string{removed, left},
 		},
 		{
-			name: "a gated run with its outputs present ends done at the waiting turn end through the gate and records the unawaited shell", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
-			tasks: []BackgroundTask{transcriptShellTask}, gated: true, wantGateCalls: 1,
-			wantOutcome: OutcomeDone,
-			wantLog:     []string{removed}, wantNoLog: []string{left},
+			name: "a gated run with its outputs present ends done through the gate once the unawaited shell outlasts the bound and records it", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
+			tasks: []BackgroundTask{transcriptShellTask}, gated: true, wantGateCalls: 1, jump: 6 * time.Minute,
+			wantOutcome: OutcomeDone, wantOutstanding: 12 * time.Minute,
+			wantLog: []string{removed}, wantNoLog: []string{left},
 		},
 		{
 			name: "a gated run with its outputs present holds an awaited shell to the deadline and records it", cfg: gateConfig, touchOutput: true, status: liveStrandStatus(true),
@@ -456,6 +508,143 @@ func TestWait_RecordsEndedShells(t *testing.T) {
 				if strings.Contains(buf.String(), line) {
 					t.Errorf("log should not hold %q; log:\n%s", line, buf.String())
 				}
+			}
+		})
+	}
+}
+
+// TestWait_GatedShellNudge drives a gated run whose output files exist and whose turn ends over an unawaited shell before a plain turn end.
+// A waiting turn end types one line naming the shell into the pane, and a later waiting turn end over the same shell types nothing once that line was sent.
+// A turn start past the waiting turn end types nothing, and a line dropped under a pause or lost to a failed send is not retried in place but queued again by the next waiting turn end.
+// A waiting turn end over a shell already past the bound counts done and types no nudge, even after the failed gate's re-prompt.
+// Every other row finishes done through the gate at the plain turn end with no shell left over.
+// It stubs the package-level input sleep, so it does not run in parallel.
+func TestWait_GatedShellNudge(t *testing.T) {
+	tiergate.Require(t, 0)
+	type step = func(t *testing.T, eventsPath string, resume func())
+	appendLine := func(line string) step {
+		return func(t *testing.T, eventsPath string, _ func()) { appendEventsLine(t, eventsPath, line) }
+	}
+	resumePause := step(func(_ *testing.T, _ string, resume func()) { resume() })
+	idle := step(func(*testing.T, string, func()) {})
+	// ageShellThen ages the clock past the shell wait bound, then runs next.
+	// shellAger, set per subtest, advances that subtest's clock.
+	var shellAger func()
+	ageShellThen := func(next step) step {
+		return func(t *testing.T, eventsPath string, resume func()) {
+			shellAger()
+			next(t, eventsPath, resume)
+		}
+	}
+	tests := []struct {
+		name string
+		// events seeds the events file.
+		events string
+		// covered has a hub-wide pause cover the run until a step resumes it.
+		covered bool
+		// sendErr fails every send into the pane.
+		sendErr error
+		// steps run one per clock tick, after the tick's sleep.
+		steps []step
+		// gateFailsOnce makes the gate's first evaluation fail with attempts left, so the run re-prompts.
+		gateFailsOnce bool
+		// wantSent is how many shell nudges the run types into the pane.
+		wantSent int
+		// wantDoneOverShell expects the run to count done at a waiting turn end with the shell still outstanding.
+		wantDoneOverShell bool
+	}{
+		{
+			name: "a shell is named once across two waiting turn ends", events: "WAIT:background work\n",
+			steps: []step{appendLine("WAIT:background work"), appendLine("STOP:done")}, wantSent: 1,
+		},
+		{
+			name: "a turn start past the waiting turn end types nothing", events: "WAIT:background work\nSTART\n",
+			steps: []step{appendLine("STOP:done")}, wantSent: 0,
+		},
+		{
+			name: "a pause covering the run drops the line and the next waiting turn end queues it again", events: "WAIT:background work\n", covered: true,
+			steps: []step{resumePause, appendLine("WAIT:background work"), appendLine("STOP:done")}, wantSent: 1,
+		},
+		{
+			name: "a failed send is not retried in place and the next waiting turn end sends again", events: "WAIT:background work\n", sendErr: errors.New("pane swallowed input"),
+			steps: []step{idle, appendLine("WAIT:background work"), appendLine("STOP:done")}, wantSent: 2,
+		},
+		{
+			name: "a waiting turn end over a shell already past the bound counts done and types no nudge after the failed gate's re-prompt", events: "WAIT:background work\nSTART\n",
+			steps:         []step{ageShellThen(appendLine("WAIT:background work")), appendLine("STOP:done")},
+			gateFailsOnce: true, wantSent: 0, wantDoneOverShell: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runDir := t.TempDir()
+			eventsPath := filepath.Join(runDir, eventsFileName)
+			outputFile := filepath.Join(runDir, "out.md")
+			touchOutputFile(t, outputFile)
+			if err := os.WriteFile(eventsPath, []byte(tt.events), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+			wantText := shellNudgeText([]string{delimitedAgentText(transcriptShellTask.Label)})
+			reed := &fakeReed{
+				StatusQueue:  liveStrandStatus(true),
+				CaptureQueue: []string{"idle pane", "idle pane", wantText},
+				SendTextErr:  tt.sendErr,
+			}
+			engine := &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}, outstanding: []BackgroundTask{transcriptShellTask}}}
+			fx := newFixture(t, reed, engine, withConfig(gateConfig))
+			stubInputSleep(t)
+			gateCalls := 0
+			gate := GateSpec{{Gate: func() (GateResult, error) {
+				gateCalls++
+				if tt.gateFailsOnce && gateCalls == 1 {
+					return GateResult{Passed: false, Findings: "bad"}, nil
+				}
+				return GateResult{Passed: true}, nil
+			}, Attempts: 2}}
+			fc := newFakeClock(time.Now())
+			shellAger = func() { fc.asleep(ShellWaitBound(gateConfig)) }
+			resume := func() {}
+			if tt.covered {
+				geometry, resumeCoverage := coverHub(t, fc.Now())
+				fx.Runner.SetPause(geometry)
+				resume = func() { resumeCoverage(fc.Now()) }
+			}
+			clockSteps := make([]func(), len(tt.steps))
+			for i, step := range tt.steps {
+				clockSteps[i] = func() { step(t, eventsPath, resume) }
+			}
+			mc := &multiStepClock{fakeClock: fc, steps: clockSteps}
+			run := fx.newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour, KeepPane: true},
+				withRunDir(runDir),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", EventsPath: eventsPath}),
+				withRunClock(mc, fc.Now().Add(time.Hour)),
+				withRunGate(gate))
+
+			result, err := run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if result.Outcome != OutcomeDone {
+				t.Errorf("Outcome = %q, want %q at the plain turn end", result.Outcome, OutcomeDone)
+			}
+			wantGateCalls := 1
+			if tt.gateFailsOnce {
+				wantGateCalls = 2
+			}
+			if gateCalls != wantGateCalls {
+				t.Errorf("gate evaluated %d times, want %d: only the plain turn end and a shell past the bound are arrivals", gateCalls, wantGateCalls)
+			}
+			if !tt.wantDoneOverShell && len(result.EndedShells) != 0 {
+				t.Errorf("EndedShells = %+v, want none: the plain turn end left nothing outstanding", result.EndedShells)
+			}
+			nudges := 0
+			for _, call := range reed.SendTextCalls {
+				if call.Text == wantText {
+					nudges++
+				}
+			}
+			if nudges != tt.wantSent {
+				t.Fatalf("SendText calls = %+v, want %d nudges", reed.SendTextCalls, tt.wantSent)
 			}
 		})
 	}

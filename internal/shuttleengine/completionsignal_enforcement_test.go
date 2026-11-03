@@ -186,7 +186,7 @@ var auditedNegativeVerdictReturns = map[string]int{
 // blocking call),
 // plus expiredTurnEnd, whose waiting turn end counts as a Done only after consulting the files, and otherwise keeps waiting.
 // pollEventsTick's second site counts an ungated waiting turn end with nothing outstanding as a Done only after consulting the files,
-// and its third judges a gated waiting turn end on non-awaited shells as a plain turn end, Done only after consulting the files.
+// and its third holds a gated waiting turn end on non-awaited shells when an output file is missing, and otherwise leaves the Done to expiredTurnEnd, which consults the files.
 // The last site is stopOutcome, whose stopped answer consults the files first.
 // checkLivenessTick holds a third site, its gone-session branch, which consults the files before answering died.
 // attach holds a site that skips the requirements check for a run whose files are all on disk, since harvesting it drives no further turn.

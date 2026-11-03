@@ -637,11 +637,13 @@
 //
 // Master's spawn declares its awaited shell prefixes, `masterAwaitedShellPrefixes`: the backgrounded recovery verb of the failure ladder, the backgrounded cold fixer verb of the gate-failure section and the backgrounded plan fixer verb of the plan-conflict rung;
 // recovery_timeout_min already bounds each verb, so the prefixes keep them out of the background-shell wait marker and are what keeps them holding a gated turn end.
-// A gated turn end waiting only on non-awaited shells is judged as a plain turn end: done when Master's output files exist, held when one is missing.
+// A gated turn end waiting only on non-awaited shells is held when one of Master's output files is missing.
+// With every output file present it is not done while such a shell runs, since the shell may hold a commit or a gate run whose result Master never read:
+// shuttle tells Master once per shell to wait for it and read its result, and counts the turn end done once every such shell has been outstanding for `background_shell_wait_min`.
 // A gated turn end waiting on an awaited verb or on a fork is never an arrival, and neither expires.
 // The run ends on the next turn end with nothing outstanding, the run deadline, the liveness check or a stop;
 // a deadline still ends it done through shuttle's satisfied file contract with the gate run once at finalize, and the shell's result is then never read.
-// `background_shell_wait_min` sets when a long-running shell is logged and shown in the wait marker, and expires an ungated wait on non-awaited shells into a held turn end.
+// `background_shell_wait_min` sets when a long-running shell is logged and shown in the wait marker.
 // Every shell outstanding when the run ends comes back on shuttle's `Result.EndedShells`, whatever ends the run.
 // lym does not stop such a shell.
 // What ends the shell follows the run's final outcome.

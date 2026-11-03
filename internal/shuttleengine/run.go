@@ -380,6 +380,12 @@ type Run struct {
 	shellFirstSeen map[string]time.Time
 	// payloadShellLogged holds the shell ids, of either signal, already logged as outstanding past background_shell_wait_min, so each is logged once.
 	payloadShellLogged map[string]bool
+	// shellNudge is the queued line telling the agent to wait for and read the shells its waiting turn end left running, empty when none is queued.
+	shellNudge string
+	// shellNudgeIDs holds the shell ids the queued shell nudge names, empty when none is queued.
+	shellNudgeIDs []string
+	// nudgedShells holds the shell ids a sent shell nudge named, so each shell is named once.
+	nudgedShells map[string]bool
 	// wait is the wait marker and pane mark this run has on show, display only.
 	wait waitState
 	// eventsRead is true when the latest pollEventsTick parsed at least one event, which ends a held wait.

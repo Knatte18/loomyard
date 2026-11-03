@@ -426,16 +426,21 @@
 //
 // A turn end that leaves background work outstanding (EventWaiting) is judged by the output files and by what is outstanding, in two rules.
 // A turn end whose outstanding tasks are all shells the session does not await, a shell of either signal that no Spec.AwaitedShellPrefixes entry names, is no work product's wait.
-// A gated run judges it as a plain turn end at once: Done through the gate when every output file exists, and held when one is missing.
+// A gated run with an output file missing judges it as a plain turn end and holds it at once.
+// A gated run with every output file present does not count it Done while such a shell runs, since the shell may hold a commit or a gate run whose result the session never read.
+// It types one line into the pane naming each such shell no sent line of the wait named, telling the agent to wait for each, read its result and act on it before it ends its turn;
+// a send that fails is logged and not retried in place, since the shell's completion starts the session's next turn anyway,
+// and a line dropped under a pause or lost to a failed send is queued again by the next waiting turn end over the shell.
+// It counts the turn end Done through the gate once every such shell has been outstanding for Config.BackgroundShellWaitMin.
 // An ungated run with every output file present finishes Done at that turn end, whatever is outstanding;
 // with an output file missing it keeps waiting until every such shell has been outstanding for Config.BackgroundShellWaitMin, then holds the turn end once and notifies the parent once.
 // A turn end with a fork or an awaited shell outstanding keeps waiting on every outstanding task with an output file missing, never held and never notified, bounded only by the run's own Timeout and the liveness check, and lym reaps no shell.
 // A gated run's waiting turn end on a fork or an awaited shell is never an arrival, because the output files may predate the session's background work;
 // it waits until the task's completion starts the next turn, bounded by the run deadline and the liveness check.
 // At the deadline classifyDeadlineExpiry ends the run OutcomeDone when the output files exist, finalize evaluates the gate once more over the tree as it stands, and the shell lands in Result.EndedShells with its result never read by the run.
-// Spec.AwaitedShellPrefixes keeps a shell out of the background-shell wait marker, out of the plain-turn-end judgment and out of the ungated expiry;
+// Spec.AwaitedShellPrefixes keeps a shell out of the background-shell wait marker, out of the gated nudge and expiry and out of the ungated expiry;
 // the prefixes are caller data, which Spec.validate does not inspect.
-// Config.BackgroundShellWaitMin is the expiry of that ungated wait and the threshold at which a shell outstanding that long is logged once at Warn and shown in the wait marker, which shows only while non-awaited shells are outstanding at staggered first-seen times.
+// Config.BackgroundShellWaitMin is the expiry of the gated Done's wait and of that ungated wait, and the threshold at which a shell outstanding that long is logged once at Warn and shown in the wait marker, which shows only while non-awaited shells are outstanding at staggered first-seen times.
 // Result.EndedShells records each shell outstanding when the run ends, whatever ends it, whose result the run never read, with its label, id, signal and how long it was outstanding, and finalize logs the record at Info.
 // lym kills no shell, since the provider reports no pid: strand removal ends the shells it can, and a shell detached from the pane's process tree survives it.
 // ShellWaitBound exports the threshold.
