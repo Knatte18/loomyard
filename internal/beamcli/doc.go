@@ -23,6 +23,8 @@
 //     A beam recorded here with no colour runs the step again.
 //  3. `battencli.StartFirstPass` starts the beam's batten run as a detached first pass recording the anchor, driven on by the parent's dobby.
 //     A run in flight, a batten status file not done, is reported live and starts nothing; a flagged beam with no run status, or a legacy beam with a marked pair and no pawl run, gets its pawl run.
+//     A done run whose pair is gone is first passed to `battencli.ClearMotifRun`, which removes it when its child ran the motif recipe, so a project split after its motif run starts its pawl run under the same slug; the envelope says so with `motif_run_cleared`.
+//     Any other done run stays, and the first pass refuses it naming `lym batten cleanup --apply`.
 //     A first pass whose envelope is not ok, such as one a covering pause refused, is the verb's error carrying the envelope's error and leaves no run.
 //
 // The verb makes, marks and pushes no pair itself: the run's Worktree-Create makes the pair from the parent beam, unmarked, at the anchor the run's seed records, its Record-Write writes the project record from the entry's body, and its Beam-Up marks the pair and starts the beam's dobby and orch.

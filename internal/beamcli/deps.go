@@ -60,6 +60,9 @@ func hubCreateDeps(prime *lymcwd.Location) (createDeps, error) {
 			}
 			return status.State, found, err
 		},
+		ClearMotifRun: func(slug string) (bool, error) {
+			return battencli.ClearMotifRun(prime, slug)
+		},
 		StartRun: func(slug, anchor string) (map[string]any, error) {
 			return battencli.StartFirstPass(prime, slug, battencli.FirstPassOptions{Anchor: anchor})
 		},

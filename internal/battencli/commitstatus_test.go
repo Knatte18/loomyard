@@ -133,7 +133,7 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	}
 }
 
-// TestBattenRunCommitPaths asserts a status transition commits the run's seed and dobby's run notice marker alongside its status once each exists, and commits the status alone while neither does.
+// TestBattenRunCommitPaths asserts a status transition commits the run's seed, dobby's run notice marker, the settle records and the child-recipe record alongside its status once each exists, and commits the status alone while none does.
 // A run directory is durable, fabric-synced state: a status committed without its seed leaves a resumed machine able to read how far the run came but not what it is running.
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
@@ -175,5 +175,13 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	got = battenRunCommitPaths(loc, runID)
 	if want = append(want, shedrun.SettleRecordsRel(loc, runID)); !reflect.DeepEqual(got, want) {
 		t.Errorf("battenRunCommitPaths with settle records on disk = %v; want %v", got, want)
+	}
+
+	if err := shedrun.WriteChildRecipe(loc, runID, shedrun.RecipeMotif); err != nil {
+		t.Fatalf("write child recipe: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	if want = append(want, shedrun.ChildRecipeRel(loc, runID)); !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with a child-recipe record on disk = %v; want %v", got, want)
 	}
 }

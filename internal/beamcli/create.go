@@ -17,6 +17,7 @@ import (
 // PairPresent reports whether this machine holds the slug's pair worktree.
 // BranchOnOrigin reports whether the slug's task branch is on origin.
 // RunStatus reads the state of the slug's batten run, found false when it has no status file.
+// ClearMotifRun removes the slug's batten run records when that run is done and ran the motif recipe, and reports whether it did.
 // StartRun starts the slug's batten run as a detached first pass recording anchor, and returns the envelope of that start.
 type createDeps struct {
 	Acting         string
@@ -29,20 +30,23 @@ type createDeps struct {
 	BranchOnOrigin func(slug string) (bool, error)
 	SetOwners      func(req boardengine.OwnerRequest) (boardengine.OwnerWrite, error)
 	RunStatus      func(slug string) (state shedengine.State, found bool, err error)
+	ClearMotifRun  func(slug string) (cleared bool, err error)
 	StartRun       func(slug, anchor string) (map[string]any, error)
 	WorktreePath   func(slug string) string
 }
 
 // createResult is the verb's envelope: what each step did, the beam's worktree, the first pass's envelope and the next step.
 type createResult struct {
-	Slug          string         `json:"slug"`
-	Worktree      string         `json:"worktree"`
-	RootClaimed   bool           `json:"root_claimed,omitempty"`
-	OwnerRecorded bool           `json:"owner_recorded,omitempty"`
-	RunStarted    bool           `json:"run_started,omitempty"`
-	RunLive       bool           `json:"run_live,omitempty"`
-	FirstPass     map[string]any `json:"first_pass,omitempty"`
-	WayForward    string         `json:"way_forward,omitempty"`
+	Slug          string `json:"slug"`
+	Worktree      string `json:"worktree"`
+	RootClaimed   bool   `json:"root_claimed,omitempty"`
+	OwnerRecorded bool   `json:"owner_recorded,omitempty"`
+	// MotifRunCleared reports that the slug's done motif run was removed before the pawl run started.
+	MotifRunCleared bool           `json:"motif_run_cleared,omitempty"`
+	RunStarted      bool           `json:"run_started,omitempty"`
+	RunLive         bool           `json:"run_live,omitempty"`
+	FirstPass       map[string]any `json:"first_pass,omitempty"`
+	WayForward      string         `json:"way_forward,omitempty"`
 }
 
 // create makes the project entry slug a beam on this machine and starts its pawl run, and returns what each step did.
@@ -139,6 +143,8 @@ func judgeParentOwner(deps createDeps, owners boardengine.Owners, here, slug str
 // The owner step records this machine as the beam's owner with the beam flag and the pawl recipe in one write, and a colour for the beam's VS Code windows when it has none;
 // a beam recorded here with no colour runs the step again to get one.
 // The run is the last step, so a beam's pair is made by the run's own Worktree-Create and marked by its Beam-Up.
+// A done run whose pair is gone is first offered to ClearMotifRun, since a motif run that wrote the project's decision record leaves a done record under the same slug;
+// any other done run stays, and the start refuses it.
 func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor string, result *createResult) error {
 	rerun := "run `lym beam create " + slug + "` again"
 
@@ -174,6 +180,13 @@ func createSteps(deps createDeps, owners boardengine.Owners, here, slug, anchor 
 	state, found, err := deps.RunStatus(slug)
 	if err != nil {
 		return fmt.Errorf("lym beam create: read the pawl run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
+	}
+	if found && state == shedengine.StateDone && !deps.PairPresent(slug) {
+		cleared, err := deps.ClearMotifRun(slug)
+		if err != nil {
+			return fmt.Errorf("lym beam create: remove the done motif run of %s: %w; way forward: fix the cause it names, then %s", slug, err, rerun)
+		}
+		result.MotifRunCleared = cleared
 	}
 	if found && state != shedengine.StateDone {
 		result.RunLive = true

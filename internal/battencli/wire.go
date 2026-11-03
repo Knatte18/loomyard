@@ -1413,7 +1413,8 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					}
 					return err
 				}
-				return nil
+				// Batten's own run directory keeps the child's recipe, which the next status commit carries, so a done run still tells a motif child once the pair is gone.
+				return shedrun.WriteChildRecipe(location, slug, recipe)
 			},
 			// CommitSeed commits the child's own seed onto the child's own fabric pair -- a
 			// one-off write, distinct from CommitStatus below, which commits prime's own batten

@@ -493,6 +493,10 @@ finishes a stopped create:
      drives on: its Worktree-Create makes the pair, and its Beam-Up marks it and
      starts the beam's dobby and orch
 
+Before step 3 it removes a done batten run under the same slug whose pair is gone and
+whose child ran motif, and the envelope reports it as "motif_run_cleared". Any other done
+run is still refused, naming "lym batten cleanup --apply".
+
 A pawl run in flight is reported live and starts nothing. A first pass a covering
 pause refused leaves no run, and the same "lym beam create <slug> [--anchor <dir>]"
 after the lift starts it. A flagged beam left by a first pass that died takes the same

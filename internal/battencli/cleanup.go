@@ -1,4 +1,5 @@
-// cleanup.go implements "lym batten cleanup": the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
+// cleanup.go implements "lym batten cleanup", the dry-run-by-default removal of finished runs' records and scratch from the hub's prime worktree.
+// It also holds ClearMotifRun, the removal of one slug's done motif run that "lym beam create" makes before the project's own run.
 //
 // Cleanup is the one function the verb and "lym cleanup" both call; every refusal and skip lives in cleanup, so neither caller can remove more than cleanup decides.
 // It deletes only a done slug's records run directory and the scratch contents beside its lock files, or an aged orphan's scratch contents.
@@ -21,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -98,6 +100,92 @@ func Cleanup(location *lymcwd.Location, apply bool) (CleanupReport, error) {
 		return CleanupReport{}, err
 	}
 	return cleanup(prime, apply, fabricCleanupDeps(prime))
+}
+
+// ClearMotifRun removes the records run directory and scratch contents of slug's batten run when that run is done and its task worktree ran the motif recipe, and reports whether it removed them.
+// A motif run is the planned first step of a project split, so its done record must not block the project's own run under the same slug.
+// It runs from the prime worktree and from a beam, acting on the prime's location, and refuses elsewhere.
+// A run whose run lock is held, that is not done, or whose child-recipe record names another recipe or none, is left alone with cleared false.
+// A removal that fails before its records commit lands is returned after the run's status and child-recipe records are written back, so a re-run finds the run again.
+// A failed push spawn or scratch emptying only warns, since the done record is gone either way.
+func ClearMotifRun(location *lymcwd.Location, slug string) (cleared bool, err error) {
+	prime, err := ResolveBattenPrime(location)
+	if err != nil {
+		return false, err
+	}
+	return clearMotifRun(prime, slug, fabricCleanupDeps(prime))
+}
+
+// clearMotifRun is ClearMotifRun over injected deps.
+// It judges and removes while holding the slug's run lock and status lock, so a run started meanwhile is never removed.
+func clearMotifRun(location *lymcwd.Location, slug string, deps cleanupDeps) (cleared bool, err error) {
+	scratchDir := shedrun.ScratchDir(location, slug)
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return false, fmt.Errorf("battencli: create the scratch directory of %s: %w", slug, err)
+	}
+	runLock, free, err := lock.TryAcquireWriteLock(shedrun.RunLock(location, slug))
+	if err != nil {
+		return false, fmt.Errorf("battencli: take the run lock of %s: %w", slug, err)
+	}
+	if !free {
+		return false, nil
+	}
+	defer releaseLock(runLock)
+	statusLock, err := lock.AcquireWriteLock(shedrun.StatusLock(location, slug))
+	if err != nil {
+		return false, fmt.Errorf("battencli: take the status lock of %s: %w", slug, err)
+	}
+	defer releaseLock(statusLock)
+
+	data, err := os.ReadFile(shedrun.StatusFile(location, slug))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("battencli: read the status of %s: %w", slug, err)
+	}
+	if done, _, _ := judgeStatus(data, "", slug); !done {
+		return false, nil
+	}
+	recipe, err := shedrun.ReadChildRecipe(location, slug)
+	if err != nil {
+		return false, fmt.Errorf("battencli: read the child recipe of %s: %w", slug, err)
+	}
+	if recipe != shedrun.RecipeMotif {
+		return false, nil
+	}
+
+	committed, err := removeRunRecords(location, slug, "beam create: remove the done motif run of "+slug, deps)
+	var emptyErr scratchEmptyError
+	switch {
+	case errors.As(err, &emptyErr):
+		logger.Warn("battencli: the done motif run's records are removed but its scratch is not emptied", "slug", slug, "error", err.Error())
+	case err != nil:
+		return false, errors.Join(err, restoreMotifRunRecords(location, slug, data, recipe))
+	}
+	if committed {
+		if err := deps.Spawn(); err != nil {
+			logger.Warn("battencli: the push of the motif run's removal did not spawn; the next records sync carries it", "slug", slug, "error", err.Error())
+		}
+	}
+	return true, nil
+}
+
+// restoreMotifRunRecords writes back the status and child-recipe records of slug's run after a removal that failed before its records commit,
+// so the run reads as a done motif run again and a re-run of the removal finishes it.
+// The caller holds the slug's status lock.
+func restoreMotifRunRecords(location *lymcwd.Location, slug string, status []byte, recipe string) error {
+	statusFile := shedrun.StatusFile(location, slug)
+	if err := os.MkdirAll(filepath.Dir(statusFile), 0o755); err != nil {
+		return fmt.Errorf("battencli: restore the status of %s: %w", slug, err)
+	}
+	if err := os.WriteFile(statusFile, status, 0o644); err != nil {
+		return fmt.Errorf("battencli: restore the status of %s: %w", slug, err)
+	}
+	if err := shedrun.WriteChildRecipe(location, slug, recipe); err != nil {
+		return fmt.Errorf("battencli: restore the child recipe of %s: %w", slug, err)
+	}
+	return nil
 }
 
 // cleanup is Cleanup over injected deps.
@@ -433,7 +521,7 @@ on the records side, empties that run's scratch beside its lock files, empties t
 any orphan (a scratch directory with no records run directory, untouched for a day), and then
 spawns the push of the records. A run that is running, paused, blocked, awaiting or failed, or whose run
 lock is held, is skipped and reported with its reason. It never touches a pair, a branch, a
-lock file or another run.
+lock file or another run. A done motif run is also cleared by "lym beam create".
 
 Output: {"applied", "removed", "emptied", "skipped", "push_spawned", "push_error"}.
 push_spawned says the push was started, not that origin took it; "lym fabric status" lists a push origin refused under failed_pushes.

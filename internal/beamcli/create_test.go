@@ -32,6 +32,8 @@ type createWorld struct {
 	acting      string
 	// runs holds the state of each slug's batten run; a slug with no entry has no status file.
 	runs map[string]shedengine.State
+	// motifRuns holds each slug whose done batten run ran the motif recipe.
+	motifRuns map[string]bool
 	// envelope is what the first pass answers, and startErr what its start fails with.
 	envelope map[string]any
 	startErr error
@@ -51,13 +53,14 @@ func newCreateWorld() *createWorld {
 			"note1":  {},
 			"old":    {IsProject: true, Done: true},
 		}},
-		beams:    map[string]string{},
-		parents:  map[string]string{},
-		pairs:    map[string]bool{},
-		onOrigin: map[string]bool{},
-		runs:     map[string]shedengine.State{},
-		acting:   primeName,
-		envelope: map[string]any{"ok": true, "pid": float64(4242)},
+		beams:     map[string]string{},
+		parents:   map[string]string{},
+		pairs:     map[string]bool{},
+		onOrigin:  map[string]bool{},
+		runs:      map[string]shedengine.State{},
+		motifRuns: map[string]bool{},
+		acting:    primeName,
+		envelope:  map[string]any{"ok": true, "pid": float64(4242)},
 	}
 }
 
@@ -102,6 +105,14 @@ func (w *createWorld) deps() createDeps {
 		RunStatus: func(slug string) (shedengine.State, bool, error) {
 			state, found := w.runs[slug]
 			return state, found, nil
+		},
+		ClearMotifRun: func(slug string) (bool, error) {
+			w.calls = append(w.calls, "clear")
+			if !w.motifRuns[slug] {
+				return false, nil
+			}
+			delete(w.runs, slug)
+			return true, nil
 		},
 		StartRun: func(slug, anchor string) (map[string]any, error) {
 			w.calls = append(w.calls, "start")
@@ -287,6 +298,51 @@ func TestCreate(t *testing.T) {
 			},
 		},
 		{
+			name: "DoneMotifRunWithItsPairGoneIsClearedBeforeThePawlRunStarts",
+			slug: "group",
+			setup: func(w *createWorld) {
+				w.runs["group"] = shedengine.StateDone
+				w.motifRuns["group"] = true
+			},
+			wantCalls:   []string{"owner", "clear", "start"},
+			wantAnchors: []string{""},
+			check: func(t *testing.T, got createResult) {
+				if !got.MotifRunCleared || !got.RunStarted {
+					t.Errorf("create envelope = %+v; want the motif run cleared and the pawl run started", got)
+				}
+			},
+		},
+		{
+			name: "DoneRunOfAnotherRecipeIsLeftForTheStartToRefuse",
+			slug: "group",
+			setup: func(w *createWorld) {
+				w.runs["group"] = shedengine.StateDone
+			},
+			wantCalls:   []string{"owner", "clear", "start"},
+			wantAnchors: []string{""},
+			check: func(t *testing.T, got createResult) {
+				if got.MotifRunCleared {
+					t.Errorf("create envelope = %+v; want no run cleared", got)
+				}
+			},
+		},
+		{
+			name: "DoneRunWhosePairIsStillHereIsNotOfferedForClearing",
+			slug: "group",
+			setup: func(w *createWorld) {
+				w.runs["group"] = shedengine.StateDone
+				w.motifRuns["group"] = true
+				w.pairs["group"] = true
+			},
+			wantCalls:   []string{"owner", "start"},
+			wantAnchors: []string{""},
+			check: func(t *testing.T, got createResult) {
+				if got.MotifRunCleared {
+					t.Errorf("create envelope = %+v; want no run cleared while the pair stands", got)
+				}
+			},
+		},
+		{
 			name: "RefusedFirstPassIsTheVerbsErrorCarryingTheEnvelopesError",
 			slug: "group",
 			setup: func(w *createWorld) {
@@ -366,6 +422,15 @@ func TestCreate_StepFailureNamesTheRerun(t *testing.T) {
 				deps.StartRun = func(string, string) (map[string]any, error) { return nil, errors.New("arm failed") }
 			},
 			want:      "arm failed",
+			wantOwner: true,
+		},
+		{
+			name: "MotifRunClearFailure",
+			fail: func(deps *createDeps) {
+				deps.RunStatus = func(string) (shedengine.State, bool, error) { return shedengine.StateDone, true, nil }
+				deps.ClearMotifRun = func(string) (bool, error) { return false, errors.New("records commit refused") }
+			},
+			want:      "records commit refused",
 			wantOwner: true,
 		},
 	}

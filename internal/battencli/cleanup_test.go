@@ -43,11 +43,13 @@ type cleanupStubs struct {
 	committed map[string][]byte
 	// committedErr, when set, is what the Committed stub returns.
 	committedErr error
-	commits      [][]string
-	messages     []string
-	spawns       int
-	spawnErr     error
-	commitHook   func()
+	// commitErr, when set, is what the Commit stub fails with, recording no commit.
+	commitErr  error
+	commits    [][]string
+	messages   []string
+	spawns     int
+	spawnErr   error
+	commitHook func()
 }
 
 func newCleanupStubs() *cleanupStubs {
@@ -63,6 +65,9 @@ func (s *cleanupStubs) deps() cleanupDeps {
 		Commit: func(relPaths []string, msg string) (bool, error) {
 			if s.commitHook != nil {
 				s.commitHook()
+			}
+			if s.commitErr != nil {
+				return false, s.commitErr
 			}
 			s.commits = append(s.commits, relPaths)
 			s.messages = append(s.messages, msg)
@@ -536,5 +541,141 @@ func TestCleanup_HoldsTheStatusLockUntilTheCommitAndLeavesTheSlugRunnable(t *tes
 	found, err := armed.checkRunStatus()
 	if err != nil || found {
 		t.Errorf("checkRunStatus = (%v, %v), want (false, nil) so the slug can run again", found, err)
+	}
+}
+
+func TestClearMotifRun_RemovesOnlyADoneMotifRun(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// runState is the state of the slug's status; empty means no status file.
+		runState string
+		// childRecipe is the child-recipe record; empty means none.
+		childRecipe string
+		holdRunLock bool
+		// commitErr is what the records commit fails with; the run then stays and the error is returned.
+		commitErr error
+		// spawnErr is what the push spawn fails with; the run is still removed.
+		spawnErr error
+		// blockScratch makes a directory under the run's scratch unreadable, so emptying the scratch fails after the commit.
+		blockScratch bool
+		// untracked leaves the run out of the records HEAD, so its removal makes no commit.
+		untracked   bool
+		wantCleared bool
+	}{
+		{name: "DoneMotifRunIsRemovedCommittedAndPushed", runState: "done", childRecipe: shedrun.RecipeMotif, wantCleared: true},
+		{name: "RecordsCommitFailureReturnsTheErrorAndKeepsTheRun", runState: "done", childRecipe: shedrun.RecipeMotif, commitErr: errors.New("records commit refused")},
+		{name: "PushSpawnFailureStillClearsTheRun", runState: "done", childRecipe: shedrun.RecipeMotif, spawnErr: errors.New("remote refused"), wantCleared: true},
+		{name: "ScratchEmptyFailureStillClearsTheRun", runState: "done", childRecipe: shedrun.RecipeMotif, blockScratch: true, wantCleared: true},
+		{name: "DoneMotifRunTheRecordsHeadDoesNotTrackIsRemovedWithNoCommit", runState: "done", childRecipe: shedrun.RecipeMotif, untracked: true, wantCleared: true},
+		{name: "DoneDarnRunStays", runState: "done", childRecipe: shedrun.RecipeDarn},
+		{name: "DoneRunWithNoChildRecipeRecordStays", runState: "done"},
+		{name: "RunningMotifRunStays", runState: "running", childRecipe: shedrun.RecipeMotif},
+		{name: "SlugWithNoStatusStays"},
+		{name: "DoneMotifRunWhoseRunLockIsHeldStays", runState: "done", childRecipe: shedrun.RecipeMotif, holdRunLock: true},
+	}
+	for _, tt := range tests {
+		// Windows does not enforce directory permissions, so it generates no subtest for a blocking row.
+		if tt.blockScratch && runtime.GOOS == "windows" {
+			continue
+		}
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.blockScratch && os.Geteuid() == 0 {
+				t.Skip("directory permissions are not enforced for root")
+			}
+			location := newCleanupLocation(t)
+			stubs := newCleanupStubs()
+			stubs.commitErr = tt.commitErr
+			stubs.spawnErr = tt.spawnErr
+			const slug = "codex-engine"
+			if tt.runState != "" {
+				writeCleanupFile(t, shedrun.StatusFile(location, slug), statusJSON(t, tt.runState))
+				if !tt.untracked {
+					stubs.committed[shedrun.StatusRel(location, slug)] = statusJSON(t, tt.runState)
+				}
+			}
+			if tt.blockScratch {
+				blocked := filepath.Join(shedrun.ScratchDir(location, slug), "steps")
+				writeCleanupFile(t, filepath.Join(blocked, "record.json"), []byte("x"))
+				if err := os.Chmod(blocked, 0o000); err != nil {
+					t.Fatalf("chmod: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+			}
+			if tt.childRecipe != "" {
+				if err := shedrun.WriteChildRecipe(location, slug, tt.childRecipe); err != nil {
+					t.Fatalf("write child recipe: %v", err)
+				}
+			}
+			if tt.holdRunLock {
+				writeCleanupFile(t, shedrun.RunLock(location, slug), nil)
+				held, err := lock.AcquireWriteLock(shedrun.RunLock(location, slug))
+				if err != nil {
+					t.Fatalf("hold run lock: %v", err)
+				}
+				t.Cleanup(func() { _ = held.Release() })
+			}
+
+			cleared, err := clearMotifRun(location, slug, stubs.deps())
+			if !errors.Is(err, tt.commitErr) {
+				t.Fatalf("clearMotifRun() error = %v; want it to wrap %v", err, tt.commitErr)
+			}
+			if cleared != tt.wantCleared {
+				t.Errorf("clearMotifRun() cleared = %v; want %v", cleared, tt.wantCleared)
+			}
+			wantCommits, wantSpawns := 0, 0
+			if tt.wantCleared && !tt.untracked {
+				wantCommits, wantSpawns = 1, 1
+			}
+			if len(stubs.commits) != wantCommits {
+				t.Fatalf("commits = %v; want %d", stubs.commits, wantCommits)
+			}
+			if wantCommits == 1 && !slices.Equal(stubs.commits[0], []string{shedrun.RunDirRel(location, slug)}) {
+				t.Errorf("commit paths = %v; want the run directory %q", stubs.commits[0], shedrun.RunDirRel(location, slug))
+			}
+			if stubs.spawns != wantSpawns {
+				t.Errorf("spawns = %d; want %d", stubs.spawns, wantSpawns)
+			}
+			if tt.runState != "" {
+				if gone := !entryExists(shedrun.RunDir(location, slug)); gone != tt.wantCleared {
+					t.Errorf("run directory removed = %v; want %v", gone, tt.wantCleared)
+				}
+			}
+		})
+	}
+}
+
+func TestClearMotifRun_FinishesTheRemovalOfARunWhoseRecordsCommitFailed(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	location := newCleanupLocation(t)
+	stubs := newCleanupStubs()
+	const slug = "codex-engine"
+	writeCleanupFile(t, shedrun.StatusFile(location, slug), statusJSON(t, "done"))
+	stubs.committed[shedrun.StatusRel(location, slug)] = statusJSON(t, "done")
+	if err := shedrun.WriteChildRecipe(location, slug, shedrun.RecipeMotif); err != nil {
+		t.Fatalf("write child recipe: %v", err)
+	}
+
+	stubs.commitErr = errors.New("records commit refused")
+	cleared, err := clearMotifRun(location, slug, stubs.deps())
+	if !errors.Is(err, stubs.commitErr) || cleared {
+		t.Fatalf("clearMotifRun() with a failing commit = (%v, %v); want false and an error wrapping %v", cleared, err, stubs.commitErr)
+	}
+
+	stubs.commitErr = nil
+	cleared, err = clearMotifRun(location, slug, stubs.deps())
+	if err != nil || !cleared {
+		t.Fatalf("clearMotifRun() on the re-run = (%v, %v); want true and nil", cleared, err)
+	}
+	if len(stubs.commits) != 1 {
+		t.Errorf("commits = %v; want the re-run's one removal commit", stubs.commits)
+	}
+	if entryExists(shedrun.RunDir(location, slug)) {
+		t.Errorf("run directory %s still exists after the re-run; want it removed", shedrun.RunDir(location, slug))
 	}
 }

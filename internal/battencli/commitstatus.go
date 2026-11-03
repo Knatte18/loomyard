@@ -53,7 +53,7 @@ type commitStatusDeps struct {
 var spawnStatusPush = fabricengine.SpawnStatusPush
 
 // battenRunCommitPaths returns the anchor-relative paths a status transition commits: the run's
-// status file, and its seed, dobby's run notice marker and the settle records whenever each is on disk.
+// status file, and its seed, dobby's run notice marker, the settle records and the child-recipe record whenever each is on disk.
 //
 // Both belong on the pair because a run directory is durable, fabric-synced state -- a status
 // committed without its seed leaves a resumed machine able to read how far the run came but not
@@ -75,6 +75,9 @@ func battenRunCommitPaths(location *lymcwd.Location, runID string) []string {
 	}
 	if _, err := os.Stat(shedrun.SettleRecords(location, runID)); err == nil {
 		paths = append(paths, shedrun.SettleRecordsRel(location, runID))
+	}
+	if _, err := os.Stat(shedrun.ChildRecipeFile(location, runID)); err == nil {
+		paths = append(paths, shedrun.ChildRecipeRel(location, runID))
 	}
 	return paths
 }

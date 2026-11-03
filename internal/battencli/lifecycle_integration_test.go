@@ -398,6 +398,10 @@ func stepSeedChild_WritesASeedTheChildBootstrapAgreesWith(t *testing.T, h *hubfo
 	if !seedFound {
 		t.Fatalf("Seed-Child wrote no child seed")
 	}
+	// Batten's own run directory keeps the recipe the child was seeded with, which a done run needs once the pair is gone.
+	if got, err := shedrun.ReadChildRecipe(h.Location, slug); err != nil || got != seed.Recipe {
+		t.Errorf("batten's child-recipe record = %q, %v; want the child seed's recipe %q and nil", got, err, seed.Recipe)
+	}
 	if origin.ParentWorktree != h.Location.WorktreeName {
 		t.Errorf("child origin ParentWorktree = %q; want the prime %q", origin.ParentWorktree, h.Location.WorktreeName)
 	}
@@ -442,6 +446,9 @@ func stepSeedChild_WriteSeedRewrapsARealDisagreeingChildSeed(t *testing.T, h *hu
 	err = c.env.SeedChild.WriteSeed(context.Background(), shedrun.RecipeTapestry, shedrun.DriverGo)
 	if !errors.Is(err, battenshed.ErrDisagreeingChildSeed) {
 		t.Fatalf("WriteSeed() error = %v; want it to wrap battenshed.ErrDisagreeingChildSeed", err)
+	}
+	if got, err := shedrun.ReadChildRecipe(h.Location, slug); err != nil || got != "" {
+		t.Errorf("batten's child-recipe record = %q, %v after a refused seed; want none and nil", got, err)
 	}
 }
 

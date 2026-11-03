@@ -9,6 +9,7 @@
 // and "the hub's prime worktree" instead.
 //
 // "lym batten cleanup [--apply]" (cleanup.go) removes done runs' records and scratch and aged orphan scratch, as a dry run unless given --apply.
+// `ClearMotifRun` (cleanup.go) removes one slug's records the same way, only when its run is done and the child-recipe record that Seed-Child writes in batten's run directory names motif.
 //
 // "lym batten cancel <slug> [--remove]" (cancel.go, cancelcmd.go) ends a run for good from the prime, whatever its state.
 // It refuses first, with nothing ended: a hub pause, work that reached the parent, an owner on another machine, a stopped origin entry, a cancel already under way and a slug with nothing left.
