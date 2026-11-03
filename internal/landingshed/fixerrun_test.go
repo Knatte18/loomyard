@@ -289,7 +289,8 @@ func TestFixerRun_Outcomes(t *testing.T) {
 				fx.seats.turns = []func(){func() { fx.writeReport(t, fixedReport) }}
 			},
 			wantEnd: fixerEndDirty, wantSpent: fixerTestCap, wantTurns: 1,
-			wantReason: []string{LandingStopPrefix, "(dirty)", "`lym loom resume`"},
+			wantReason:  []string{LandingStopPrefix, "after its last turn: a.go;", fakeFixerRunDir, "commit or remove them on the task branch", "`lym loom resume`"},
+			avoidReason: []string{"without a usable turn"},
 		},
 		{
 			name: "a remote tip that moved during the session is the pushed end",
@@ -406,7 +407,7 @@ func TestFixerRun_Outcomes(t *testing.T) {
 		if err == nil || shedengine.TransientOf(err) != shedengine.TransientAgentStart {
 			t.Fatalf("run() error = %v; want one the transient mark classifies as %q", err, shedengine.TransientAgentStart)
 		}
-		if !reflect.DeepEqual(rec, start) || outcome != (fixerOutcome{}) {
+		if !reflect.DeepEqual(rec, start) || !reflect.DeepEqual(outcome, fixerOutcome{}) {
 			t.Errorf("run() = %+v, %+v; want the record as it was and no outcome", outcome, rec)
 		}
 		onDisk, readErr := ReadFixerAttempts(FixerAttemptsPath(fx.deps.ScratchDir, fixerTestRow), 1)

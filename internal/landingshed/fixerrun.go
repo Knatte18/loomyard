@@ -70,6 +70,8 @@ type fixerOutcome struct {
 	conflict string
 	// pushedRef is the remote ref that moved, with its new tip; set for a pushed end.
 	pushedRef string
+	// dirty lists the uncommitted or untracked paths the last turn left; set for a dirty end.
+	dirty []string
 }
 
 // fixerRun runs the merge fixer for one row.
@@ -256,6 +258,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 	}
 	if len(dirty) > 0 {
 		if s.rec.Spent >= s.cap {
+			s.outcome.dirty = dirty
 			return s.halt(fixerEndDirty, dirtyReason(point, dirty))
 		}
 		if err := s.chargeTurn(); err != nil {
@@ -324,9 +327,12 @@ func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 		} else {
 			wayForward = "settle the conflict on the task branch, then `lym loom resume`"
 		}
-	case fixerEndTimeout, fixerEndNoReport, fixerEndDirty:
+	case fixerEndTimeout, fixerEndNoReport:
 		cause = fmt.Sprintf("the fixer session of %s ended without a usable turn (%s); session log: %s; report: %s", row, o.end, o.sessionLog, o.reportPath)
 		wayForward = "fix or clean the task branch, then `lym loom resume`"
+	case fixerEndDirty:
+		cause = fmt.Sprintf("the fixer session of %s left uncommitted or untracked paths in the task worktree after its last turn: %s; session log: %s; report: %s", row, listShown(o.dirty), o.sessionLog, o.reportPath)
+		wayForward = "commit or remove them on the task branch, then `lym loom resume`"
 	case fixerEndPushed:
 		cause = fmt.Sprintf("the fixer session of %s pushed %s; session log: %s", row, o.pushedRef, o.sessionLog)
 		wayForward = "check the pushed commits are the task's, then `lym loom resume`"
