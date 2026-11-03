@@ -218,7 +218,12 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 	if record.State == CapturePassed {
 		return shedengine.Done, done, nil
 	}
-	reason := fmt.Sprintf("%sthe capture ended %s (%s), log %s; way forward: lym drift capture followed by lym loom resume to capture again, or lym drift defer followed by lym loom resume to go on with regression deferred", CaptureHaltPrefix, record.State, record.Reason, record.Log)
+	ways := "lym drift capture followed by lym loom resume to capture again, or lym drift defer followed by lym loom resume to go on with regression deferred"
+	if emptyUnderSkips(record) {
+		// The capture ran past its precondition, so HEAD is on the branch point.
+		ways = rescopeWaysForward(true)
+	}
+	reason := fmt.Sprintf("%sthe capture ended %s (%s), log %s; way forward: %s", CaptureHaltPrefix, record.State, record.Reason, record.Log, ways)
 	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 }
 

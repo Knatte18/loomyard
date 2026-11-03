@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"time"
 
@@ -130,10 +131,30 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		if wrote {
 			rec.State = CapturePassed
 		} else {
-			rec.State, rec.Reason = CaptureFailed, "exit 0 but wrote no file to "+p.BaselineDir
+			rec.State, rec.Reason, rec.WroteNoFile = CaptureFailed, noFileReason(p.BaselineDir, req.Skip), true
 		}
 	}
 	return rec, WriteCapture(p, rec)
+}
+
+// noFileReason is the reason of a capture that exited 0 and wrote no file under baselineDir.
+// Under skipped tests it names the scope and the count, since a skip list covering every test the command runs leaves the harness nothing to profile.
+func noFileReason(baselineDir string, skip []string) string {
+	reason := "exit 0 but wrote no file to " + baselineDir
+	if len(skip) == 0 {
+		return reason
+	}
+	distinct := len(slices.Compact(slices.Sorted(slices.Values(skip))))
+	tests := "tests"
+	if distinct == 1 {
+		tests = "test"
+	}
+	return fmt.Sprintf("%s while scope %s skipped %d %s, so every test the capture command ran may have been skipped", reason, ScopePartial, distinct, tests)
+}
+
+// emptyUnderSkips reports whether capture exited 0 with no file written while it skipped tests, the failure a scope change settles and a plain capture repeats.
+func emptyUnderSkips(capture CaptureRecord) bool {
+	return capture.WroteNoFile && len(capture.Skip) > 0
 }
 
 // failCapture records rec as failed because err stopped the capture, and returns both.

@@ -5,6 +5,8 @@ package driftengine
 import (
 	"context"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -73,8 +75,9 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, err
 	}
 
+	rescope := captureFound && emptyUnderSkips(capture)
 	stuck := func(what string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("drift: %s; way forward: %s", what, awaitWaysForward(head == branchPoint))}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("drift: %s; way forward: %s", what, awaitWaysForward(head == branchPoint, rescope))}, nil
 	}
 	switch {
 	case !captureFound:
@@ -101,14 +104,31 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 	return shedengine.Done, shedengine.OutputPointer{}, nil
 }
 
+// deferWay is the way forward that goes on with regression deferred, offered by every capture Stuck.
+const deferWay = "lym drift defer followed by lym loom resume, which goes on with regression deferred"
+
 // awaitWaysForward names the ways forward of a Drift-Await Stuck.
-// A capture is one of them only while HEAD is on the branch point.
-func awaitWaysForward(onBranchPoint bool) string {
-	deferring := "lym drift defer followed by lym loom resume, which goes on with regression deferred"
-	if !onBranchPoint {
-		return deferring
+// A capture is one of them only while HEAD is on the branch point;
+// after a capture that wrote nothing under skipped tests, rescope is true and a scope change replaces the plain capture, which would fail the same way.
+func awaitWaysForward(onBranchPoint, rescope bool) string {
+	switch {
+	case rescope:
+		return rescopeWaysForward(onBranchPoint)
+	case onBranchPoint:
+		return "lym drift capture followed by lym loom resume, which captures again on the branch point and re-enters this row, or " + deferWay
+	default:
+		return deferWay
 	}
-	return "lym drift capture followed by lym loom resume, which captures again on the branch point and re-enters this row, or " + deferring
+}
+
+// rescopeWaysForward names the ways forward after a capture that wrote nothing under skipped tests.
+// A scope comparing more tests, then a capture, is one of them only while HEAD is on the branch point.
+func rescopeWaysForward(onBranchPoint bool) string {
+	ways := []string{"lym drift scope --scope off followed by lym loom resume, which goes on with no regression for this task", deferWay}
+	if onBranchPoint {
+		ways = slices.Insert(ways, 0, "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume, which captures again under the new scope")
+	}
+	return strings.Join(ways, ", or ")
 }
 
 // logClause returns ", log <path>", or nothing when log is empty.

@@ -125,6 +125,8 @@ type CaptureRecord struct {
 	ExitCode int `json:"exit_code"`
 	// Reason is why a capture failed.
 	Reason string `json:"reason"`
+	// WroteNoFile is true for a failed capture whose command exited 0 and wrote no file under the baseline directory.
+	WroteNoFile bool `json:"wrote_no_file"`
 	// Log is the capture command's log file.
 	Log string `json:"log"`
 }

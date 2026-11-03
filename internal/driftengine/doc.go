@@ -19,7 +19,7 @@
 //
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
 // The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named and the time of the last gate halt.
-// The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, the tests it skipped, times, exit code, reason and log.
+// The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, the tests it skipped, times, exit code, reason, whether it exited 0 with no file written, and log.
 // CountedCapture decides whether a capture counts as the baseline: a passed record with an `awaited_at` in the scope record.
 // The run counter (`runs.json`) holds how many compare or side-capture runs the current Drift-Verify agent session took, the commit its attempt started at, whether the agent-session mark is open and whether the session has the operator in its pane.
 // TakeRun refuses once the budget is spent, ResetRuns starts a fresh attempt with the whole budget, and CloseAgentSession closes the mark while keeping the count and the attempt's head.
@@ -31,6 +31,8 @@
 // It moves a non-empty baseline directory to the first free numbered backup beside it, writes the skip file, waits for one gate slot as a non-tier holder with no deadline, and runs the declared command in its shell with `{baseline_dir}` and `{skip_file}` rendered as quoted paths and the command's stdout and stderr the open log file.
 // A timeout, counted from the command's start, kills the command's whole tree.
 // The record ends `passed` for exit 0 with at least one file under the baseline directory, else `failed` with the reason, and then the slot and the lock are released.
+// An exit 0 with no file marks the record `wrote_no_file`, and under skipped tests its reason names scope partial, the count of skipped tests and that every test the capture command ran may have been skipped.
+// A Stuck over such a record, at Drift-Baseline or Drift-Await, names in place of a plain capture, which would fail the same way, `lym drift scope --scope full` or a shorter `--skip` list followed by `lym drift capture` and `lym loom resume` while HEAD is the branch point, and `lym drift scope --scope off` followed by `lym loom resume`, besides `lym drift defer`.
 // RunCapture holds no job object of its own, since it also runs in a row's step process; the detached child holds the capture's named job (CaptureJobName) around it.
 // RunSideCapture takes no lock and writes no record: it runs the same command into the next free numbered directory under the side directory.
 // CheckMainCapture is the main capture's precondition: the run is at Drift-Baseline, or blocked at Drift-Await, HEAD equals the branch point and the tracked tree is clean; each refusal names its way forward.
@@ -100,6 +102,7 @@
 // A missing record, a failed one, and a running one whose lock is free are Stuck, naming the log when there is one, as is a passed record taken at another commit than HEAD.
 // While HEAD is the branch point a Stuck names `lym drift capture` followed by `lym loom resume`, which captures again and re-enters the row, and `lym drift defer` followed by `lym loom resume`;
 // once HEAD moved it names only `lym drift defer` followed by `lym loom resume`, since no capture may run on changed code.
+// A failed capture that wrote nothing under skipped tests swaps those ways for the scope changes the Capture section names.
 // No Stuck of the row carries the decision halt prefix, so the arbiter may settle one with the way forward it names.
 // An adopting machine has no `.lym/drift/`, so before awaited_at the row halts on the missing record and `lym drift capture` captures there.
 //

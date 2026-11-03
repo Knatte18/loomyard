@@ -99,11 +99,29 @@ func TestRunCapture(t *testing.T) {
 		wantReason string
 		wantFile   string
 		wantText   string
+		// wantNamed lists text the reason holds past its opening.
+		wantNamed       []string
+		wantWroteNoFile bool
 	}{
 		{name: "a command writing a file passes", command: "echo profile > {baseline_dir}/p.json", wantState: CapturePassed, wantFile: "p.json", wantText: "profile\n"},
 		{name: "the command sees the skip file with one test per line", command: "cat {skip_file} > {baseline_dir}/seen", skip: []string{"TestA", "TestB"}, wantState: CapturePassed, wantFile: "seen", wantText: "TestA\nTestB\n"},
 		{name: "the command sees an empty skip file when nothing is skipped", command: "cat {skip_file} > {baseline_dir}/seen", wantState: CapturePassed, wantFile: "seen", wantText: ""},
-		{name: "exit 0 with no file fails", command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to "},
+		{name: "exit 0 with no file fails", command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true},
+		{
+			name:    "exit 0 with no file under skipped tests names the scope, the count and the skips",
+			command: "true", skip: []string{"TestA", "TestB"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
+			wantNamed: []string{"scope partial skipped 2 tests", "every test the capture command ran may have been skipped"},
+		},
+		{
+			name:    "exit 0 with no file under one skipped test names the singular count",
+			command: "true", skip: []string{"TestA"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
+			wantNamed: []string{"scope partial skipped 1 test,"},
+		},
+		{
+			name:    "exit 0 with no file counts a repeated skip once",
+			command: "true", skip: []string{"TestA", "TestA"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
+			wantNamed: []string{"scope partial skipped 1 test,"},
+		},
 		{name: "a non-zero exit fails", command: "exit 3", wantState: CaptureFailed, wantReason: "exit 3"},
 	}
 	for _, tt := range outcomes {
@@ -118,6 +136,17 @@ func TestRunCapture(t *testing.T) {
 			}
 			if rec.State != tt.wantState || !strings.HasPrefix(rec.Reason, tt.wantReason) {
 				t.Errorf("RunCapture() record = %+v; want state %q and a reason opening %q", rec, tt.wantState, tt.wantReason)
+			}
+			for _, want := range tt.wantNamed {
+				if !strings.Contains(rec.Reason, want) {
+					t.Errorf("RunCapture() reason = %q; want it to name %q", rec.Reason, want)
+				}
+			}
+			if len(tt.wantNamed) == 0 && strings.Contains(rec.Reason, "skipped") {
+				t.Errorf("RunCapture() reason = %q; want no skips named when none were skipped", rec.Reason)
+			}
+			if rec.WroteNoFile != tt.wantWroteNoFile {
+				t.Errorf("RunCapture() wrote_no_file = %v; want %v", rec.WroteNoFile, tt.wantWroteNoFile)
 			}
 			if tt.wantFile != "" {
 				if got := readFile(t, filepath.Join(f.req.Paths.BaselineDir, tt.wantFile)); got != tt.wantText {

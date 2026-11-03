@@ -21,6 +21,12 @@ func TestDriftAwait(t *testing.T) {
 	passedAtHead := CaptureRecord{State: CapturePassed, Head: "aaa"}
 	capturePath := "lym drift capture followed by lym loom resume"
 	deferPath := "lym drift defer followed by lym loom resume"
+	rescopeCapturePath := "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume"
+	scopeOffPath := "lym drift scope --scope off followed by lym loom resume"
+	skippedAllCapture := CaptureRecord{
+		State: CaptureFailed, Skip: []string{"a", "b"}, WroteNoFile: true, Log: "capture.log",
+		Reason: "exit 0 but wrote no file to baseline while scope partial skipped 2 tests, so every test the capture command ran may have been skipped",
+	}
 
 	tests := []struct {
 		name        string
@@ -74,6 +80,47 @@ func TestDriftAwait(t *testing.T) {
 			},
 			want:       shedengine.Stuck,
 			wantReason: []string{"ended failed (exit 1)", "log capture.log", capturePath},
+		},
+		{
+			name: "a record that wrote nothing under skipped tests is Stuck naming the scope changes in place of a plain capture",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a", "b"}}, false)
+				f.writeCapture(skippedAllCapture)
+			},
+			want:       shedengine.Stuck,
+			wantReason: []string{"scope partial skipped 2 tests", "log capture.log", rescopeCapturePath, scopeOffPath, deferPath},
+			wantNoWays: []string{capturePath},
+		},
+		{
+			name: "a failed record under skipped tests that failed for another reason keeps the plain capture way",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a"}}, false)
+				f.writeCapture(CaptureRecord{State: CaptureFailed, Skip: []string{"a"}, Reason: "exit 3", Log: "capture.log"})
+			},
+			want:       shedengine.Stuck,
+			wantReason: []string{"exit 3", capturePath, deferPath},
+			wantNoWays: []string{"--scope"},
+		},
+		{
+			name: "a record that wrote nothing with no skipped tests keeps the plain capture way",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.writeCapture(CaptureRecord{State: CaptureFailed, WroteNoFile: true, Reason: "exit 0 but wrote no file to baseline", Log: "capture.log"})
+			},
+			want:       shedengine.Stuck,
+			wantReason: []string{"wrote no file", capturePath, deferPath},
+			wantNoWays: []string{"--scope"},
+		},
+		{
+			name: "a record that wrote nothing under skipped tests with HEAD moved names scope off and defer only",
+			setup: func(f *baselineFixture) {
+				f.head = "bbb"
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a", "b"}}, false)
+				f.writeCapture(skippedAllCapture)
+			},
+			want:       shedengine.Stuck,
+			wantReason: []string{scopeOffPath, deferPath},
+			wantNoWays: []string{"lym drift capture", "--scope full"},
 		},
 		{
 			name: "a timed-out record is Stuck naming the log",

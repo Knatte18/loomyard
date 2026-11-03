@@ -403,6 +403,20 @@ func TestDriftBaseline(t *testing.T) {
 			wantCommit: whole,
 		},
 		{
+			name: "a foreground capture that wrote nothing under skipped tests names the scope changes in place of a plain capture",
+			setup: func(f *baselineFixture) {
+				f.startErr = ErrBreakawayRefused
+				f.runRecord = CaptureRecord{State: CaptureFailed, Reason: "exit 0 but wrote no file to baseline while scope partial skipped 1 test", Skip: []string{"slow"}, WroteNoFile: true, Log: "capture.log"}
+			},
+			want:         shedengine.Stuck,
+			wantReason:   []string{CaptureHaltPrefix, "skipped 1 test", "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume", "lym drift scope --scope off followed by lym loom resume", "lym drift defer followed by lym loom resume"},
+			wantNoReason: []string{"lym drift capture followed by lym loom resume"},
+			wantAgents:   1,
+			wantStarts:   1,
+			wantRuns:     1,
+			wantCommit:   whole,
+		},
+		{
 			name: "a child that did not record its start is a capture halt naming the child's log, which lym drift defer settles",
 			setup: func(f *baselineFixture) {
 				f.startErr = startFailure(SpawnRequest{}, "child.log", "ended before it recorded its start")
