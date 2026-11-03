@@ -294,6 +294,11 @@ func landingDeps(
 // Each seam reads at call time, so a beam.yaml, board entry or origin changed after bootstrap is read as it stands.
 // SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
 func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
+	return pullRequestDepsGuardedBy(newPrePushCheck(l, shedrun.SelfRunID), l, parentBranch, pushSkipped, runner)
+}
+
+// pullRequestDepsGuardedBy is pullRequestDeps with the pre-push check injected as check.
+func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBranch string, pushSkipped bool, runner *shuttleengine.Runner) landingshed.PullRequestDeps {
 	slug := seedSlug(l.WorktreeName)
 	return landingshed.PullRequestDeps{
 		RecordPath:     shedrun.PullRequestRecord(l, shedrun.SelfRunID),
@@ -334,10 +339,11 @@ func pullRequestDeps(l *lymcwd.Location, parentBranch string, pushSkipped bool, 
 			}
 			return client, nil
 		},
-		PushTask: func() error {
+		// PushTask passes the run's pre-push check first, whose stop is returned as the push's error.
+		PushTask: check.guardedPush(func() error {
 			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
 			return err
-		},
+		}),
 		// CommitsMissing reads over the task pair, whose repository holds the merged head once the pair has fetched it.
 		CommitsMissing: func(merged, task string) ([]string, error) {
 			f, err := fabricengine.Open(l)

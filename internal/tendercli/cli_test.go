@@ -251,6 +251,23 @@ func TestPauseOwnedElsewhere_PausesTheSlugOnceUnderTheOwnerCaller(t *testing.T) 
 	}
 }
 
+func TestPausePair_PausesTheSlugOnceUnderTheDefaultCaller(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv(agentname.StrandNameEnv, "")
+	h := newHub(t)
+
+	for range 2 {
+		if err := PausePair(h.Location, pairSlug); err != nil {
+			t.Fatalf("PausePair() error = %v", err)
+		}
+	}
+
+	live, _ := liveEntries(t, h)
+	if len(live) != 1 || live[0].Scope != pairSlug || live[0].Caller == pauserecord.OwnerCaller {
+		t.Errorf("live entries = %+v; want one entry of the pair, not under the owner caller", live)
+	}
+}
+
 func TestPauseAndResume_ApplyTheCallerRules(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := newHub(t)

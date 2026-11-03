@@ -152,8 +152,8 @@ const (
 	BranchAnchorStopped BranchState = "anchor_stopped"
 )
 
-// stops reports whether a branch in this state stops its entry or the scope.
-func (s BranchState) stops() bool {
+// Stops reports whether a branch in this state stops its entry or the scope.
+func (s BranchState) Stops() bool {
 	switch s {
 	case BranchRewound, BranchRewritten, BranchDiverged, BranchGone, BranchDirty, BranchBusy, BranchLive, BranchAnchorStopped:
 		return true
@@ -273,7 +273,7 @@ func (r OriginReport) Summary() string {
 	}
 
 	for _, branch := range r.Branches {
-		if !branch.State.stops() {
+		if !branch.State.Stops() {
 			continue
 		}
 		line := fmt.Sprintf("stopped: %s (%s): %s", branch.Branch, branch.State, branch.WayForward)
@@ -413,7 +413,7 @@ func classifyEntry(f entryFacts) EntryState {
 	if f.OwnedElsewhere {
 		return EntryOwnedElsewhere
 	}
-	if f.D3Stop || slices.ContainsFunc(f.Branches, BranchState.stops) {
+	if f.D3Stop || slices.ContainsFunc(f.Branches, BranchState.Stops) {
 		return EntryStopped
 	}
 	return EntryActive
@@ -849,7 +849,7 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 	d3WayForward := ""
 	for _, branch := range branches {
 		shared := branch.Repo == failedPushSideBolt || (branch.Repo == failedPushSideRecords && branch.Prime)
-		if shared && branch.State.stops() && branch.State != BranchBusy && !d3Stop {
+		if shared && branch.State.Stops() && branch.State != BranchBusy && !d3Stop {
 			d3Stop = true
 			d3WayForward = branch.WayForward
 		}
@@ -865,7 +865,7 @@ func classifyEntries(scope ReconcileScope, recorded []string, branches []BranchO
 				continue
 			}
 			facts.Branches = append(facts.Branches, branch.State)
-			if wayForward == "" && branch.State.stops() {
+			if wayForward == "" && branch.State.Stops() {
 				wayForward = branch.WayForward
 			}
 		}

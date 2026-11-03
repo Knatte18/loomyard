@@ -277,6 +277,17 @@
 // A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
 // `lym loom commit-records` pushes the pair's records with its task branch; a push skipped while the slug's teardown lock is held exclusive is an ok envelope with `push_skipped`, its commit left local for the pair's next push.
 //
+// Every commit and push of a loom run's pair passes the pre-push check first: the per-transition status commit and push, `commit-records` and PR-Review's push of the task branch.
+// The check runs the run-scope origin reconcile from the prime, the one the landing rows run, which fetches what origin moved and fast-forwards or replays the run's own branches where it can.
+// It is skipped when pushes are off, in the prime, while a pause covers the run, whose network gate holds the push, and while the run stands at Finalize, which judges origin and its owners itself.
+// An unreachable origin, a failed check and a failed read of whether the parent holds the run's work let the push go, so the push's own failure is recorded.
+// A run another machine owns is paused under the owner, naming `lym adopt <subject>`;
+// a run a branch stops is paused naming each of its branches, and its parent branch, that stopped, the way forward and `lym tender resume <slug>`;
+// and a run origin ended is paused naming `lym cleanup --apply`, unless its parent already holds its work.
+// Each stop posts one notice line to the nearest live orch, and an active run whose own branches the reconcile moved posts one line naming them, and one whose parent branch origin moved past this machine's tip another.
+// A stopped status transition commits and pushes nothing, `commit-records` answers an ok envelope with `push_stopped` and pushes nothing after a stopped commit, and PR-Review halts on the stop as on any push refusal.
+// Bound: the check reads origin once per commit and push, so a move that lands between the check and the push is caught only by the push's own refusal.
+//
 // A hand-over runs only at a binary-eligible stop, once per stop key and build, over a clean tree outside the run's records and never under a pause.
 // It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lym loom drive` of the on-disk build, which re-steps;
 // a driver starting at a blocked Finalize stop first runs the Finalize arm and hands back, stepping nothing, while the parent's code checkout is dirty.

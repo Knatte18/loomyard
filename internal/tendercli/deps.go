@@ -207,8 +207,19 @@ func syncBoardIfOwed(ahead, uncommitted func() (bool, error), spawn func() error
 	return nil
 }
 
-// ownerPauseGrace is how long the running turns of a run owned by another machine get to finish before the Esc.
-const ownerPauseGrace = 10 * time.Second
+// pauseGrace is how long the running turns of a pair lym pauses on its own judgment get to finish before the Esc.
+const pauseGrace = 10 * time.Second
+
+// PausePair pauses the pair of slug in the hub location belongs to with a plain pair entry, for a run lym stopped because origin moved what it works on.
+// A slug whose entry already stands adds none, and the pair's running turns are interrupted after the grace.
+func PausePair(location *lymcwd.Location, slug string) error {
+	deps, _, err := HubDeps(location, os.Getenv(agentname.StrandNameEnv))
+	if err != nil {
+		return err
+	}
+	_, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: pauseGrace})
+	return err
+}
 
 // PauseOwnedElsewhere pauses the pair of slug in the hub location belongs to, because another machine owns its run.
 // The entry carries pauserecord.OwnerCaller, and the pair's running turns are interrupted after the grace.
@@ -220,7 +231,7 @@ func PauseOwnedElsewhere(location *lymcwd.Location, slug string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: ownerPauseGrace, Caller: pauserecord.OwnerCaller}); err != nil {
+	if _, err = tenderengine.Pause(deps, tenderengine.PauseRequest{Slug: slug, Grace: pauseGrace, Caller: pauserecord.OwnerCaller}); err != nil {
 		return err
 	}
 	ended, err := endOwnedElsewhere(location, slug)

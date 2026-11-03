@@ -32,6 +32,7 @@
 // A failed end also ends in the step that settles the run's batten record when `pairteardown.BattenFollowUp` words one, which the removal would otherwise leave standing.
 // A run whose Finalize is past its parent-side merge keeps its processes, since it finishes its landing on either machine; its pair's removal ends them.
 // A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
+// `PausePair` pauses a run with a plain pair entry, for a run lym stopped because origin moved what it works on; it ends nothing.
 // The end spares the calling process and its ancestors, so inside `lym batten run` batten survives its own probe's end, keeping its owner hold and probe, and the pair's removal ends it.
 // The hibernate wake fills its own end seam with `EndOwnedElsewhere`.
 //

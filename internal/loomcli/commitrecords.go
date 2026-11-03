@@ -27,6 +27,8 @@ const commitRecordsMessage = "loom: commit run records"
 // A mid-merge sibling is skipped exactly as the status seam skips it, as a success with committed false;
 // a probe error, a commit error and a push error are each an error envelope.
 // A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error: the envelope is ok with committed true and push_skipped carrying the reason, and the commit stays local for the pair's next push.
+// A commit or push the run's pre-push check stopped is no error either: the envelope is ok with push_stopped carrying the check's reason, the run is paused and the orch noticed;
+// committed is false when the check stopped the commit, which then pushes nothing, and true when it stopped the push after a commit.
 // A clean tree is not an error: committing an already-clean pathspec is a no-op.
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
@@ -40,12 +42,18 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		})
 	}
 	if _, err := d.Commit(commitRecordsMessage); err != nil {
+		if errors.Is(err, errPushStopped) {
+			return output.Ok(out, map[string]any{"committed": false, "push_stopped": err.Error()})
+		}
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lym loom commit-records")
 	}
 	if err := d.Push(); err != nil {
 		if errors.Is(err, fabricengine.ErrPairPushRunning) {
 			logger.Warn("loom: commit-records: the push was skipped; the commit stays local for the pair's next push", "error", err)
 			return output.Ok(out, map[string]any{"committed": true, "push_skipped": err.Error()})
+		}
+		if errors.Is(err, errPushStopped) {
+			return output.Ok(out, map[string]any{"committed": true, "push_stopped": err.Error()})
 		}
 		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
 		// A classified push failure's text already ends in its class's way forward.

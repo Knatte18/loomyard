@@ -43,6 +43,16 @@ const (
 	failedPushSideBolt    = "bolt"
 )
 
+// The repository sides a branch outcome or failed-push record names in its Repo field.
+const (
+	// RepoCode is the Repo of a branch of a pair's code repository.
+	RepoCode = failedPushSideCode
+	// RepoRecords is the Repo of a branch of a pair's records repository.
+	RepoRecords = failedPushSideRecords
+	// RepoBolt is the Repo of a branch of the records repository's board branch.
+	RepoBolt = failedPushSideBolt
+)
+
 // FailedPush is the record of a push origin refused, one per repository side and branch.
 // Repo is "code", "records" or "bolt", the last being the records repository's board branch.
 // CodeWorktree is set for a records record only: the pair's code worktree, where every fabric verb runs.

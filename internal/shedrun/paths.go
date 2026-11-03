@@ -187,6 +187,11 @@ func PullRequestRecordLock(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "pull-request.json.lock")
 }
 
+// ParentNoticeFile returns the path to the ephemeral file holding the key of the parent-branch notice a run's pre-push check last posted, pre-push-parent-notice under ScratchDir(l, runID).
+func ParentNoticeFile(l *lymcwd.Location, runID string) string {
+	return filepath.Join(ScratchDir(l, runID), "pre-push-parent-notice")
+}
+
 // SamplerRecord returns the path to the ephemeral, never-tracked record of the run's Sampler-Session row, sampler.json under ScratchDir(l, runID).
 func SamplerRecord(l *lymcwd.Location, runID string) string {
 	return filepath.Join(ScratchDir(l, runID), "sampler.json")

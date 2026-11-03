@@ -41,6 +41,7 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 		{"ordinary path commits then pushes", false, 1, 1, nil, nil},
 		{"mid-merge skips", true, 0, 0, []string{`"committed":false`, "mid-merge"}, nil},
 		{"push skipped under the teardown lock", false, 1, 1, []string{`"committed":true`, `"push_skipped"`}, fmt.Errorf("push: %w", fabricengine.ErrPairPushRunning)},
+		{"push stopped by the pre-push check", false, 1, 1, []string{`"committed":true`, `"push_stopped"`, "owned by machine"}, fmt.Errorf("%w: the run is owned by machine neve", errPushStopped)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -61,6 +62,49 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 	}
 }
 
+// TestCommitRecordsVerb_StoppedCommitPushesNothing asserts a commit the pre-push check stopped is an ok envelope with committed false and push_stopped, and that no push follows it.
+func TestCommitRecordsVerb_StoppedCommitPushesNothing(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	deps, commits, pushes := stubRecordsDeps(false, nil, fmt.Errorf("%w: the run is owned by machine neve", errPushStopped), nil)
+	var out bytes.Buffer
+
+	code := commitRecordsVerb(&out, deps)
+
+	if code != 0 {
+		t.Fatalf("exit = %d; want 0; output %s", code, out.String())
+	}
+	for _, want := range []string{`"committed":false`, `"push_stopped"`, "owned by machine neve"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output = %s; want it to contain %q", out.String(), want)
+		}
+	}
+	if *commits != 1 || *pushes != 0 {
+		t.Errorf("Commit/Push calls = %d/%d; want 1/0", *commits, *pushes)
+	}
+}
+
+// TestNewCommitStatusSeam_StoppedCommitStartsNoPush asserts a commit the pre-push check stopped is no hard error of the status transition and starts no push.
+func TestNewCommitStatusSeam_StoppedCommitStartsNoPush(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	spawns := 0
+	seam := newCommitStatusSeam(commitStatusDeps{
+		MergeActive: func() (bool, error) { return false, nil },
+		Commit: func(string) (bool, error) {
+			return false, fmt.Errorf("%w: the run is owned by machine neve", errPushStopped)
+		},
+		Spawn: func() error { spawns++; return nil },
+	})
+
+	if err := seam("Code-Review", "running"); err != nil {
+		t.Errorf("seam() = %v; want nil", err)
+	}
+	if spawns != 0 {
+		t.Errorf("Spawn calls = %d; want 0", spawns)
+	}
+}
+
 func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 	tiergate.Require(t, 0)
 	boom := errors.New("boom")
@@ -72,15 +116,15 @@ func TestCommitRecordsVerb_ErrorEnvelopes(t *testing.T) {
 		pushFailedPrefix    = "the commit landed locally but the push failed: "
 	)
 	gone := &fabricengine.PushFailedError{
-		Record: fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureGone},
+		Record: fabricengine.FailedPush{Repo: fabricengine.RepoRecords, RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureGone},
 		Err:    fabricengine.ErrBranchGone,
 	}
 	rewound := &fabricengine.PushFailedError{
-		Record: fabricengine.FailedPush{Repo: "code", RepoPath: "/hub/t", Branch: "t", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}},
+		Record: fabricengine.FailedPush{Repo: fabricengine.RepoCode, RepoPath: "/hub/t", Branch: "t", Class: fabricengine.PushFailureRewound, OriginHead: "abc123", Commits: []string{"def456"}},
 		Err:    errors.New("push held back"),
 	}
 	auth := &fabricengine.PushFailedError{
-		Record: fabricengine.FailedPush{Repo: "records", RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureAuth},
+		Record: fabricengine.FailedPush{Repo: fabricengine.RepoRecords, RepoPath: "/hub/t-records", CodeWorktree: "/hub/t", Branch: "t-records", Class: fabricengine.PushFailureAuth},
 		Err:    gitrepo.ErrPushAuthRefused,
 	}
 	goneLine := "way forward: " + fabricengine.FailedPushWayForward(gone.Record)

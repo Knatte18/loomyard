@@ -1,8 +1,12 @@
 # PATTERN-owner-machine
 
-Starting, resuming or landing a run, bar the rest of a Finalize already past its parent-side merge, or acting on an entry after a wake: only on a machine that does not read the entry as owned by another, where owners sit only on the root project and on beam projects, a beam project with no owner recorded reads as owned by its parent's owner, every other entry reads as owned by its parent's owner, and the root of a hub with no prime owner recorded reads as owned by no other machine; its owner written only by `boardengine`'s owner setter; the owner verdict that gates a resume, a wake or a landing judged against origin inside `ReconcileOrigin`, a start's read from the Bolt it just pulled, the re-read after an owner write's push from the Bolt it just pushed, the landing's parent-owner read from the Bolt its reconcile left, and a resume with origin unreachable reading the local Bolt; this machine's name only from `internal/machinename`.
+Starting, resuming, pushing or landing a run, bar the rest of a Finalize already past its parent-side merge, or acting on an entry after a wake: only on a machine that does not read the entry as owned by another, where owners sit only on the root project and on beam projects, a beam project with no owner recorded reads as owned by its parent's owner, every other entry reads as owned by its parent's owner, and the root of a hub with no prime owner recorded reads as owned by no other machine; its owner written only by `boardengine`'s owner setter; the owner verdict that gates a resume, a wake, a push or a landing judged against origin inside `ReconcileOrigin`, a start's read from the Bolt it just pulled, the re-read after an owner write's push from the Bolt it just pushed, the landing's parent-owner read from the Bolt its reconcile left, and a resume with origin unreachable reading the local Bolt; this machine's name only from `internal/machinename`.
 
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
+- A loom run's commit and push of its pair proceed only after a run-scope origin reconcile reads its entry as active, bar those with git or pushes off, in the prime, at Finalize, which judges itself, and under a pause.
+  The reconcile judges, and the push also goes when the check itself fails: an unreachable origin, a failed reconcile, a failed read of whether the check applies, or a failed read of whether the parent holds the run's work.
+  An ended entry whose parent already holds the run's work goes on too, as after its own landing.
+  An entry owned elsewhere is paused under the owner naming `lym adopt`; one a branch stops, or origin ended while the parent lacks its work, is paused naming what moved.
 - The rest of a Finalize already past its parent-side merge finishes on either machine, so a landing in flight is never stranded.
 - An owner is recorded for a beam project as `owner_machine` and for the root as `prime_owner`; both are written only by `boardengine`'s owner setter, which takes a project another machine owns only when `lym adopt` asks for it.
   A task and a grouping project record none, and a load drops the key an older machine recorded on one.
@@ -10,7 +14,7 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
   A run status on an entry does not change whose owner it reads.
   The parent comes through `hubgeom.ParentOf` alone, the one resolver every owner reader is handed, which reads the entry's origin record and, with none, the local board's beam chain.
 - Adopting a beam moves the beam only: a member reads its beam's owner through that one resolver.
-- The verdict that gates a resume, a wake or a landing is judged against origin inside `ReconcileOrigin`.
+- The verdict that gates a resume, a wake, a push or a landing is judged against origin inside `ReconcileOrigin`.
   A start reads it from the Bolt it just pulled, the re-read after an owner write's push reads the Bolt it just pushed, and the landing's parent-owner read uses the Bolt its reconcile left.
   A resume with origin unreachable reads the local Bolt.
 - This machine's name comes only from `internal/machinename`.
@@ -18,6 +22,7 @@ Starting, resuming or landing a run, bar the rest of a Finalize already past its
 ## Origin reconcile first
 
 Acting on a run or a hub after an absence starts with `fabricengine`'s origin reconcile, so every verdict above reads the state origin holds.
+A loom run's commit and push of its pair start with the run-scope origin reconcile too.
 The one exception is a resume at Worktree-Teardown whose task worktree is gone: it runs no origin reconcile, judges the owner on the local board alone and writes no origin-owed marker, since the teardown only finishes what is left of the pair.
 
 ## Passes
@@ -33,5 +38,5 @@ A run is driven in passes, one `lym batten run` each, and a pass is either full 
 ## Enforcement
 
 - `internal/machinename`'s sole-source scan fails on a production file outside the package that reads the hostname.
-- The reconcile, batten, loom, `InnerRun` and Finalize tests reach each check: `ReconcileOrigin`'s owned-elsewhere outcome, batten's start, resume and claim refusals, loom's `owned_elsewhere` start refusal, `InnerRun`'s owner pause and Finalize's `owner check:` halts.
+- The reconcile, batten, loom, `InnerRun` and Finalize tests reach each check: `ReconcileOrigin`'s owned-elsewhere outcome, batten's start, resume and claim refusals, loom's `owned_elsewhere` start refusal, `InnerRun`'s owner pause, Finalize's `owner check:` halts and loom's pre-push stops.
 - Review covers the rest: who writes an owner, and which Bolt each verdict reads.

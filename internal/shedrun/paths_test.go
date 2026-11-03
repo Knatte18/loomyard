@@ -76,6 +76,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json") }},
 		{"PullRequestRecordLock", func(l *lymcwd.Location) string { return PullRequestRecordLock(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pull-request.json.lock") }},
+		{"ParentNoticeFile", func(l *lymcwd.Location) string { return ParentNoticeFile(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "pre-push-parent-notice") }},
 		{"SamplerRecord", func(l *lymcwd.Location) string { return SamplerRecord(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "sampler.json") }},
 		{"SamplerRecordLock", func(l *lymcwd.Location) string { return SamplerRecordLock(l, "self") },
