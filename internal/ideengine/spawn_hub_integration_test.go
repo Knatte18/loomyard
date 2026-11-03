@@ -1,5 +1,5 @@
 // spawn_hub_integration_test.go holds the Spawn and OpenTask checks that run against the prime and against a task pair of one hubforge hub:
-// the prime opens the lym-generated hub workspace, a task slug still opens its bare folder, and the window command follows a launch.
+// the prime opens the lym-generated hub workspace, a beam its own workspace, a task slug and a beam with no readable origin record open their bare folder, and the window command follows a launch.
 // Each check is a step of a scenario in spawn_scenario_integration_test.go, which names why they run serially.
 
 package ideengine
@@ -10,6 +10,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/vscode"
 )
 
@@ -198,6 +200,105 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	workspaceAfter, workspaceExists := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
 	if workspaceExists != workspaceExisted || !bytes.Equal(workspaceAfter, workspaceBefore) {
 		t.Errorf("workspace file changed by a task seed and spawn: existed %v then, %v now; bytes before %q, after %q", workspaceExisted, workspaceExists, workspaceBefore, workspaceAfter)
+	}
+}
+
+// checkBeamOpensBeamWorkspace asserts a beam seed regenerates the beam's workspace file with its workspace title and launches nothing,
+// and a beam spawn regenerates that file, launches it with the beam as its first folder and runs the window command once.
+func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
+	resetPrimeEditorState(t, h)
+	l := h.Location
+	launched := recordLauncher(t)
+	hubforge.AddPair(t, h, slug)
+	if marked, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Path), l, slug); err != nil || !marked {
+		t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
+	}
+	markerPath := setDesktopWindowCommand(t, h)
+	beamPath := fabricengine.BeamWorkspacePath(l, slug)
+
+	if _, err := Seed(l, slug); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+	if len(*launched) != 0 {
+		t.Errorf("CodeLauncher calls after Seed = %v, want none", *launched)
+	}
+	if want, got := "TST: "+slug+" workspace", readWorkspaceLook(t, beamPath).Title; got != want {
+		t.Errorf("beam workspace window.title = %q, want %q", got, want)
+	}
+	if err := os.Remove(beamPath); err != nil {
+		t.Fatalf("remove beam workspace: %v", err)
+	}
+
+	if _, err := Spawn(l, slug); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if len(*launched) != 1 || (*launched)[0] != beamPath {
+		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, beamPath)
+	}
+	if runs := windowCommandRuns(t, markerPath); runs != 1 {
+		t.Errorf("window command runs after a beam Spawn = %d; want 1", runs)
+	}
+	data, err := os.ReadFile(beamPath)
+	if err != nil {
+		t.Fatalf("read beam workspace: %v", err)
+	}
+	var ws struct {
+		Folders []struct {
+			Name string `json:"name"`
+		} `json:"folders"`
+	}
+	if err := json.Unmarshal(data, &ws); err != nil {
+		t.Fatalf("beam workspace is not valid JSON: %v\n%s", err, data)
+	}
+	if len(ws.Folders) == 0 || ws.Folders[0].Name != slug {
+		t.Errorf("beam workspace folders = %+v, want %q first", ws.Folders, slug)
+	}
+}
+
+// checkBeamWithoutReadableOriginOpensBareFolder asserts Spawn returns no error and launches the pair's bare anchor folder, never a workspace file.
+// It covers a marked beam whose origin record cannot be read because its records worktree's lock directory is missing, and one whose record is absent.
+// It restores the lock directory before returning, so later steps regenerate the hub workspace over a readable pair.
+func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
+	resetPrimeEditorState(t, h)
+	l := h.Location
+	launched := recordLauncher(t)
+	hubforge.AddPair(t, h, slug)
+	if marked, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Path), l, slug); err != nil || !marked {
+		t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
+	}
+	setDesktopWindowCommand(t, h)
+	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
+	if err != nil {
+		t.Fatalf("NamedWorktree(%q): %v", slug, err)
+	}
+	lockDir := fabricengine.RecordsLockDirPath(fabricengine.RecordsWorktreePath(pair, slug))
+	bareFolder := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+
+	if _, err := os.Stat(lockDir); err != nil {
+		t.Fatalf("records lock directory %s missing before the check removes it: %v", lockDir, err)
+	}
+	if err := os.RemoveAll(lockDir); err != nil {
+		t.Fatalf("remove records lock directory: %v", err)
+	}
+	if _, err := Spawn(l, slug); err != nil {
+		t.Fatalf("Spawn with a missing records lock directory: %v", err)
+	}
+	if err := os.MkdirAll(lockDir, 0o755); err != nil {
+		t.Fatalf("restore records lock directory: %v", err)
+	}
+
+	if err := os.Remove(fabricengine.OriginRecordPathFor(pair, slug)); err != nil {
+		t.Fatalf("remove origin record: %v", err)
+	}
+	if _, err := Spawn(l, slug); err != nil {
+		t.Fatalf("Spawn with an absent origin record: %v", err)
+	}
+
+	if want := []string{bareFolder, bareFolder}; !slices.Equal(*launched, want) {
+		t.Errorf("CodeLauncher calls = %v, want %v", *launched, want)
+	}
+	if _, err := os.Stat(fabricengine.BeamWorkspacePath(l, slug)); !os.IsNotExist(err) {
+		t.Errorf("beam workspace file written for a beam with no readable origin record (stat err = %v)", err)
 	}
 }
 

@@ -71,6 +71,16 @@ func TestSpawnScenario(t *testing.T) {
 	}) {
 		return
 	}
+	if !step("beam opens the beam workspace", func(t *testing.T) {
+		checkBeamOpensBeamWorkspace(t, h, "beam-workspace")
+	}) {
+		return
+	}
+	if !step("beam without a readable origin record opens the bare folder", func(t *testing.T) {
+		checkBeamWithoutReadableOriginOpensBareFolder(t, h, "beam-no-origin")
+	}) {
+		return
+	}
 	if !step("prime writes the hub workspace", func(t *testing.T) {
 		checkPrimeWritesHubWorkspace(t, h)
 	}) {

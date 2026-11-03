@@ -399,7 +399,8 @@ User-facing modules each get one `lym <module>` namespace:
   ✅ Implemented; see the `internal/fabricengine` package documentation for rationale.
 - **ide** — one-shot VS Code launcher with interactive menu.
   `lym ide spawn <prime>` opens the hub workspace `<hub>/<RepoName>.code-workspace` (the prime, `Bolt` and every task pair) whose `settings` carry the prime's `.vscode/settings.json`.
-  The file is lym-owned and regenerated on each prime spawn, overwriting any edit made in it;
+  `lym ide spawn <beam>` opens the beam's workspace `<hub>/<RepoName>-<beam>.code-workspace` (the beam, its parent, `Bolt` and the beam's pairs) the same way.
+  The files are lym-owned and regenerated on each prime or beam spawn, overwriting any edit made in them;
   a task slug still opens its bare folder.
   The generated `tasks.json` holds one on-demand `reed attach` task, with the `lym` path stamped absolute at generation time, reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.

@@ -3,7 +3,8 @@
 // after a launch it runs the machine's desktop window command through internal/desktophook;
 // it regenerates tasks.json on every call and keeps .vscode/ out of git through info/exclude.
 // A task slug opens its bare folder.
-// The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn or seed.
+// The prime instead opens the lym-generated hub workspace <hub>/<RepoName>.code-workspace (prime, Bolt, every task pair), regenerated on every prime spawn or seed,
+// and a beam opens its own lym-generated workspace <hub>/<RepoName>-<beam>.code-workspace, regenerated on every beam spawn or seed.
 
 package ideengine
 
@@ -35,8 +36,9 @@ var KeybindingsPath = vscode.UserKeybindingsPath
 // Spawn writes the window title and colours and the .vscode/ config of the worktree slug and the user's lym key bindings, then launches VS Code and runs the machine's desktop window command.
 // A task slug launches its bare folder <hub>/<slug>/<its own anchor>.
 // When slug names the prime, Spawn first regenerates the hub workspace file <hub>/<RepoName>.code-workspace and launches that file instead;
-// every error on that path is returned, never degraded to the bare folder.
-// A failure to resolve the prime's name is logged and degrades to the bare-folder path.
+// when slug names a beam, one whose origin record carries the beam mark, it regenerates the same way and launches the beam's workspace file <hub>/<RepoName>-<beam>.code-workspace.
+// Every error on either path is returned, never degraded to the bare folder.
+// A failure to resolve the prime's name, or to read a pair's origin record, is logged and degrades to the bare-folder path.
 // It returns the keybindings seed's outcome beside the error; a skipped keybindings seed never fails the spawn.
 func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 	result, err := seed(l, slug)
@@ -53,8 +55,8 @@ func Spawn(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 // Seed writes the window title and colours and the .vscode/ config of the worktree slug, the prime or a pair, and launches nothing.
 // It keeps .vscode/ out of git through info/exclude and never writes a .gitignore;
 // a tracked .vscode/tasks.json is left alone with a warning.
-// When slug names the prime, Seed then regenerates the hub workspace file, whose settings carry the prime's with the workspace look, and returns any error on that path;
-// a task slug leaves the workspace file as it is.
+// When slug names the prime or a beam, Seed then regenerates the hub workspace file and every beam's, whose settings carry the prime's or the beam's with the workspace look, and returns any error on that path;
+// a task slug leaves the workspace files as they are.
 // It seeds the lym block of key bindings, the Alt-arrow keys the integrated terminal passes to reed, into the user's VS Code keybindings.json and returns the outcome beside the error;
 // a skipped keybindings seed never fails the seed.
 func Seed(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
@@ -63,15 +65,17 @@ func Seed(l *lymcwd.Location, slug string) (vscode.KeybindingsResult, error) {
 }
 
 // seedResult is what seed did: the keybindings seed's outcome, the path a launch of the worktree opens and the directory the opened window is on.
-// The window directory is the launch path itself unless that is the hub workspace file.
+// The window directory is the launch path itself unless that is a workspace file.
 type seedResult struct {
 	keybindings vscode.KeybindingsResult
 	launchPath  string
 	windowDir   string
 }
 
-// seed writes slug's .vscode/ config, seeds the user's keybindings.json and, for the prime, regenerates the hub workspace file, which is then the launch path;
-// a task's launch path is its bare folder at its own anchor.
+// seed writes slug's .vscode/ config, seeds the user's keybindings.json and, for the prime or a beam, regenerates the workspace files;
+// the launch path is then the hub workspace file for the prime and the beam's own for a beam.
+// A task's launch path is its bare folder at its own anchor.
+// The config is written before the regeneration, so a beam's file splices the settings just written.
 func seed(l *lymcwd.Location, slug string) (seedResult, error) {
 	own, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
@@ -85,15 +89,34 @@ func seed(l *lymcwd.Location, slug string) (seedResult, error) {
 
 	anchorPath := filepath.Join(worktreeDir, own.AnchorRel)
 	result := seedResult{keybindings: seedKeybindings(), launchPath: anchorPath, windowDir: anchorPath}
-	if primeResolved && slug == primeName {
-		workspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
-		if err != nil {
-			return result, err
-		}
-		result.launchPath = workspacePath
-		result.windowDir = filepath.Dir(workspacePath)
+	if !primeResolved {
+		return result, nil
 	}
+	isPrime := slug == primeName
+	if !isPrime && !isBeam(l, slug) {
+		return result, nil
+	}
+	hubWorkspacePath, err := fabricengine.RegenerateHubWorkspace(fabricengine.NewMutations(l.HubPath), l)
+	if err != nil {
+		return result, err
+	}
+	result.launchPath = hubWorkspacePath
+	if !isPrime {
+		result.launchPath = fabricengine.BeamWorkspacePath(l, slug)
+	}
+	result.windowDir = filepath.Dir(result.launchPath)
 	return result, nil
+}
+
+// isBeam reports whether the origin record of slug's pair carries the beam mark, the mark the workspace regeneration writes a beam's file by.
+// An unreadable record is logged at Warn and reads as a task, so the spawn degrades to the bare folder.
+func isBeam(l *lymcwd.Location, slug string) bool {
+	origin, found, err := fabricengine.ReadOriginFor(l, slug)
+	if err != nil {
+		logger.Warn("ide: read the origin record; opening the bare folder", "slug", slug, "error", err)
+		return false
+	}
+	return found && origin.Beam
 }
 
 // OpenTask launches VS Code on task slug's bare folder at the task's own anchor, as Spawn does for a task pair, runs the machine's desktop window command and writes nothing.

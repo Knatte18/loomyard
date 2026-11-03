@@ -2,7 +2,7 @@
 //
 // Command() returns the root "ide" command with four subcommands — spawn, menu, seed and open.
 // spawn and menu wrap the existing handler bodies;
-// seed writes an existing worktree's .vscode/ config, window title and colours, the hub workspace file for the prime, and the user's lym key bindings, and launches nothing;
+// seed writes an existing worktree's .vscode/ config, window title and colours, the workspace files for the prime or a beam, and the user's lym key bindings, and launches nothing;
 // with no slug it seeds the worktree it runs in, the prime included.
 // open starts VS Code on a pair's folder and takes a slug.
 // Layout resolution happens once in a PersistentPreRunE so that the no-arg "lym ide" listing never
