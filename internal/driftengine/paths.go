@@ -17,7 +17,7 @@ const driftDirName = "drift"
 type Paths struct {
 	// Scope is the durable scope record.
 	Scope string
-	// BaselineReport is the Drift-Baseline agent's report.
+	// BaselineReport is the Drift-Baseline agent's report, or a generated one that names only the scope when the drift config sets it.
 	BaselineReport string
 	// VerifyReport is the Drift-Verify agent's report.
 	VerifyReport string

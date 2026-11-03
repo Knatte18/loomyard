@@ -9,6 +9,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -30,7 +32,9 @@ func NewDriftBaseline(name string, row Row, deps Deps) *DriftBaseline {
 }
 
 // Call runs one Drift-Baseline pass and commits the drift records on every way out but one: with drift switched off it is Done at once, spawning, starting and committing nothing.
-// It has the baseline agent record the scope and write baseline.md when either is missing, then, by the recorded scope, takes the baseline capture:
+// When the drift config sets scope, it records that scope when none is recorded and writes baseline.md itself when missing, spawning no agent;
+// otherwise it has the baseline agent record the scope and write baseline.md when either is missing.
+// Then, by the recorded scope, it takes the baseline capture:
 // scope off, a set awaited_at and a passed capture take none, and a capture that holds the lock is left running.
 // Otherwise the capture is a detached child and the pass returns once the child's record exists;
 // when a detached start is refused breakaway, the capture runs in this process.
@@ -77,6 +81,16 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 	d := p.deps
 	done := shedengine.OutputPointer{Path: d.Paths.BaselineReport}
 
+	cfg, err := d.Config()
+	if err != nil {
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%v; then lym loom resume", err)}, nil
+	}
+	if cfg.Scope != "" {
+		if err := settleConfiguredScope(d.Paths, cfg); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+
 	scope, found, err := ReadScope(d.Paths)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -119,6 +133,46 @@ func (p *DriftBaseline) drive(ctx context.Context, commitAll *bool) (shedengine.
 		return shedengine.Done, done, nil
 	}
 	return p.captureAgain(ctx, commitAll)
+}
+
+// settleConfiguredScope records the scope cfg sets when no scope is recorded, and writes baseline.md from the recorded scope when it is missing, so the pass spawns no baseline agent.
+// A scope already recorded, by an earlier pass or the run's parent, is kept.
+func settleConfiguredScope(p Paths, cfg Config) error {
+	err := UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
+		if found {
+			return cur, errNoRecord
+		}
+		return ScopeRecord{Scope: cfg.Scope, Skip: cfg.Skip, RecordedAt: stamp(time.Now())}, nil
+	})
+	if err != nil && !errors.Is(err, errNoRecord) {
+		return err
+	}
+	if _, err := os.Stat(p.BaselineReport); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("drift: read %s: %w", p.BaselineReport, err)
+	}
+	scope, _, err := ReadScope(p)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(p.BaselineReport), 0o755); err != nil {
+		return fmt.Errorf("drift: create %s: %w", filepath.Dir(p.BaselineReport), err)
+	}
+	if err := os.WriteFile(p.BaselineReport, []byte(configuredBaselineReport(scope)), 0o644); err != nil {
+		return fmt.Errorf("drift: write %s: %w", p.BaselineReport, err)
+	}
+	return nil
+}
+
+// configuredBaselineReport renders a baseline.md written without a baseline agent, which names the scope and its skipped tests and predicts no drift per test.
+func configuredBaselineReport(scope ScopeRecord) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Drift baseline\n\nThis report was generated, so no baseline agent ran and it expects no particular drift per test.\n\nScope: %s\n", scope.Scope)
+	if len(scope.Skip) > 0 {
+		fmt.Fprintf(&b, "Skipped tests: %s\n", strings.Join(scope.Skip, ", "))
+	}
+	return b.String()
 }
 
 // captureAgain checks the capture's precondition and takes the capture, detached or in this process.

@@ -38,6 +38,9 @@ type baselineFixture struct {
 	// disabled switches drift off, and configErr fails the config load.
 	disabled  bool
 	configErr error
+	// configScope and configSkip are the drift config's scope and skip keys.
+	configScope string
+	configSkip  []string
 	// startErr is what StartCapture answers, and runRecord what RunCapture answers.
 	startErr  error
 	runRecord CaptureRecord
@@ -81,7 +84,7 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 			if f.configErr != nil {
 				return Config{}, f.configErr
 			}
-			cfg := Config{Enabled: !f.disabled}
+			cfg := Config{Enabled: !f.disabled, Scope: f.configScope, Skip: f.configSkip}
 			if f.declared {
 				cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
 			}
@@ -163,7 +166,25 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// TestDriftBaseline covers the producer's way through each scope, capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
+// checkRecordedScope fails t unless the scope record holds scope and skip and baseline.md holds each of report.
+func checkRecordedScope(t *testing.T, f *baselineFixture, scope string, skip []string, report ...string) {
+	t.Helper()
+	rec, found, err := ReadScope(f.paths)
+	if err != nil || !found || rec.Scope != scope || !slices.Equal(rec.Skip, skip) {
+		t.Errorf("ReadScope() = %+v, %v, %v; want scope %q skipping %q", rec, found, err, scope, skip)
+	}
+	data, err := os.ReadFile(f.paths.BaselineReport)
+	if err != nil {
+		t.Fatalf("read baseline.md: %v", err)
+	}
+	for _, want := range report {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("baseline.md = %q; want it to hold %q", data, want)
+		}
+	}
+}
+
+// TestDriftBaseline covers the producer's way through each scope, a scope the drift config sets, capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
 func TestDriftBaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -203,6 +224,64 @@ func TestDriftBaseline(t *testing.T) {
 			wantAgents: 1,
 			wantStarts: 1,
 			wantCommit: scopeAndReport,
+		},
+		{
+			name:       "a configured scope full is recorded and captured with no agent",
+			setup:      func(f *baselineFixture) { f.configScope = ScopeFull },
+			want:       shedengine.Done,
+			wantStarts: 1,
+			wantCommit: scopeAndReport,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, ScopeFull, nil, "no baseline agent ran", "Scope: full")
+			},
+		},
+		{
+			name:       "a configured scope off is recorded with no agent or capture",
+			setup:      func(f *baselineFixture) { f.configScope = ScopeOff },
+			want:       shedengine.Done,
+			wantCommit: scopeAndReport,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, ScopeOff, nil, "Scope: off")
+			},
+		},
+		{
+			name:       "a configured scope partial records its skipped tests",
+			setup:      func(f *baselineFixture) { f.configScope, f.configSkip = ScopePartial, []string{"slow", "flaky"} },
+			want:       shedengine.Done,
+			wantStarts: 1,
+			wantCommit: scopeAndReport,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, ScopePartial, []string{"slow", "flaky"}, "Scope: partial", "Skipped tests: slow, flaky")
+			},
+		},
+		{
+			name: "a recorded scope wins over the configured one, and baseline.md names it with no agent",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}, false)
+				f.configScope = ScopeFull
+			},
+			want:       shedengine.Done,
+			wantStarts: 1,
+			wantCommit: scopeAndReport,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, ScopePartial, []string{"slow"}, "Scope: partial", "Skipped tests: slow")
+			},
+		},
+		{
+			name: "an existing baseline.md is kept under a configured scope, with no agent",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.configScope = ScopeFull
+			},
+			want:       shedengine.Done,
+			wantStarts: 1,
+			wantCommit: scopeAndReport,
+			check: func(t *testing.T, f *baselineFixture) {
+				data, err := os.ReadFile(f.paths.BaselineReport)
+				if err != nil || string(data) != "expected drift" {
+					t.Errorf("baseline.md = %q, %v; want the seeded report untouched", data, err)
+				}
+			},
 		},
 		{
 			name: "a scope record without baseline.md spawns the agent with the scope note",

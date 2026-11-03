@@ -1,7 +1,9 @@
 // Package driftengine owns regression around a task: the hub-wide `drift` config module, the drift paths, and the records and runs the Drift rows read and write.
 // Regression is no test tier: it records a profile of the suite's behavior on the task's branch point and compares the task's code against it, and `lym gate test` never runs it.
 //
-// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; `verify_interactive`, which makes the Drift-Verify agent a session with the operator in its pane; and `verify_max_runs`, the run budget of one Drift-Verify agent session.
+// `drift.yaml` is a hub-wide config module with these keys: `enabled`, which switches the Drift rows on through their entry gate; `capture` and `compare`, each a command step written whole as `{command, dir, env, timeout_min}`; `baseline_model` and `verify_model`, the model-specs of the two agents; `verify_interactive`, which makes the Drift-Verify agent a session with the operator in its pane; `verify_max_runs`, the run budget of one Drift-Verify agent session;
+// and `scope` and `skip`, a task's regression scope and the tests scope partial leaves out, which a task sets in its board entry's `run_settings`.
+// LoadConfig refuses a scope other than empty, `off`, `partial` or `full`, a partial scope with no skipped test and a skipped test under any other scope.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from, and may hold `{skip_file}`, a file naming one skipped test per line.
 // A step's relative `dir` is joined onto the worktree's anchored directory, the one every drift run is told.
 // `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
@@ -49,7 +51,7 @@
 // The agent session is a running status at Drift-Verify with the mark open; a caller at a halt is a blocked status, and a decision halt is one whose error opens with shedadapters.DecisionHaltPrefix.
 // A verb run at a row it does not admit refuses naming that row and `lym loom status`, and a refused verb writes nothing.
 // RecordScope refuses a skip list outside scope partial and a partial scope without one.
-// The baseline agent writes the record once, at a running Drift-Baseline; the run's parent writes or replaces it at a blocked Drift-Baseline or Drift-Await, while the capture lock is free and before awaited_at is set.
+// The baseline agent writes the record once, at a running Drift-Baseline, and Drift-Baseline writes it itself from a configured `scope`; the run's parent writes or replaces it at a blocked Drift-Baseline or Drift-Await, while the capture lock is free and before awaited_at is set.
 // A replacement keeps the record's other fields and removes the capture record when the new scope compares a test the capture skipped, before it writes the scope.
 // Accept admits the agent session and a caller at a halt; a running status with the mark closed is the row's own work and refuses, and any other state refuses naming `lym loom resume`.
 // Under scope full the agent's acceptances are unruled and a caller's are ruled; a withdrawn test, and under scope full any test, is accepted by a caller only at a decision halt, and never by an autonomous agent session.
@@ -77,7 +79,8 @@
 // Row holds a row's portable config: the subject its agent reads the task from.
 // Each of the three producers reads `drift.enabled` at every pass and is Done at once, committing nothing, when it is off: the entry gate reads the switch only when the run first enters a row, so this lets a resume pass a row already entered once the switch goes off, in the hub or in the task's local layer.
 // A drift config that fails to load there is a Stuck naming `lym loom resume`.
-// DriftBaseline has the baseline agent record the scope and write baseline.md when either is missing, the agent spawned with a note that the scope is already recorded when it is, and a Done agent with no scope record is a Stuck.
+// When the drift config sets `scope`, DriftBaseline records it with its `skip` list when no scope is recorded, keeping one already recorded, and writes baseline.md naming the scope when it is missing, so it spawns no agent.
+// Otherwise it has the baseline agent record the scope and write baseline.md when either is missing, the agent spawned with a note that the scope is already recorded when it is, and a Done agent with no scope record is a Stuck.
 // Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is left running.
 // Otherwise it captures again: an undeclared capture command is a Stuck naming `lym config drift`, and a refusal of the capture's precondition is a Stuck whose reason opens with CaptureHaltPrefix and names `lym drift defer` with `lym loom resume`, and on a dirty tree restoring or stashing the listed paths.
 // The capture is the detached child: the pass returns Done once the child's record exists, and the recipe's Drift-Await row waits for the capture to end;

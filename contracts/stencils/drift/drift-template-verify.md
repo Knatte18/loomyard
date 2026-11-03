@@ -20,7 +20,7 @@ You are the drift verify agent: one session that judges the drift between the ta
 
 - The compare's log, which lists the drifted tests: `{{.compare_log}}`.
 - The scope record: `{{.scope_path}}`.
-- The baseline agent's report with the drift it expected: `{{.baseline_path}}`.
+- The baseline agent's report with the drift it expected: `{{.baseline_path}}`. When the report says no baseline agent ran, it names only the scope and its skipped tests, so no per-test drift is expected from it.
 - The task's subject: {{.subject_reading}}.
 - The baseline's commit: `{{.baseline_head}}`.
 

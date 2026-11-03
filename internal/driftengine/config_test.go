@@ -76,20 +76,46 @@ func seedDriftConfig(t *testing.T, baseDir, contents string) {
 // withKey returns the template with the line of key replaced by line.
 func withKey(t *testing.T, key, line string) string {
 	t.Helper()
+	return withKeys(t, map[string]string{key: line})
+}
+
+// withKeys returns the template with the line of each key of lines replaced by its line.
+func withKeys(t *testing.T, lines map[string]string) string {
+	t.Helper()
 	var out []string
-	replaced := false
+	replaced := map[string]bool{}
 	for _, templateLine := range strings.Split(ConfigTemplate(), "\n") {
-		if strings.HasPrefix(templateLine, key+":") {
+		key, _, _ := strings.Cut(templateLine, ":")
+		if line, ok := lines[key]; ok {
 			out = append(out, line)
-			replaced = true
+			replaced[key] = true
 			continue
 		}
 		out = append(out, templateLine)
 	}
-	if !replaced {
-		t.Fatalf("template holds no key %q", key)
+	for key := range lines {
+		if !replaced[key] {
+			t.Fatalf("template holds no key %q", key)
+		}
 	}
 	return strings.Join(out, "\n")
+}
+
+// seedLocalDrift seeds a board holding the template and an anchor whose local drift layer holds local, and returns their Dirs.
+func seedLocalDrift(t *testing.T, local string) configengine.Dirs {
+	t.Helper()
+	board, anchor := t.TempDir(), t.TempDir()
+	seedDriftConfig(t, board, ConfigTemplate())
+	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
+		}
+	}
+	localPath := configengine.LocalFile(anchor, "drift")
+	if err := os.WriteFile(localPath, []byte(local), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
+	}
+	return configengine.Dirs{Anchor: anchor, Board: board}
 }
 
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
@@ -136,6 +162,31 @@ func TestLoadConfig(t *testing.T) {
 			name: "verify_interactive loads", seed: true,
 			contents: withKey(t, "verify_interactive", "verify_interactive: true"),
 			want:     templateConfig(func(c *Config) { c.VerifyInteractive = true }),
+		},
+		{
+			name: "scope full loads", seed: true,
+			contents: withKey(t, "scope", "scope: full"),
+			want:     templateConfig(func(c *Config) { c.Scope = ScopeFull }),
+		},
+		{
+			name: "scope partial loads with its skipped tests", seed: true,
+			contents: withKeys(t, map[string]string{"scope": "scope: partial", "skip": "skip: [slow, flaky]"}),
+			want:     templateConfig(func(c *Config) { c.Scope, c.Skip = ScopePartial, []string{"slow", "flaky"} }),
+		},
+		{
+			name: "an unknown scope", seed: true,
+			contents: withKey(t, "scope", "scope: some"),
+			wantErr:  []string{`"scope"`, "run_settings", "lym config drift"},
+		},
+		{
+			name: "scope partial with no skipped test", seed: true,
+			contents: withKey(t, "scope", "scope: partial"),
+			wantErr:  []string{`"skip"`, "run_settings", "lym config drift"},
+		},
+		{
+			name: "a skipped test under scope full", seed: true,
+			contents: withKeys(t, map[string]string{"scope": "scope: full", "skip": "skip: [slow]"}),
+			wantErr:  []string{`"skip"`, "run_settings", "lym config drift"},
 		},
 		{
 			name: "a capture without the baseline placeholder", seed: true,
@@ -209,24 +260,23 @@ func TestLoadConfig(t *testing.T) {
 	} {
 		t.Run("a local "+key+" is refused naming the key", func(t *testing.T) {
 			t.Parallel()
-			board, anchor := t.TempDir(), t.TempDir()
-			seedDriftConfig(t, board, ConfigTemplate())
-			for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("MkdirAll(%q) = %v; want nil", dir, err)
-				}
-			}
-			localPath := configengine.LocalFile(anchor, "drift")
-			if err := os.WriteFile(localPath, []byte(local), 0o644); err != nil {
-				t.Fatalf("WriteFile(%q) = %v; want nil", localPath, err)
-			}
-
-			_, err := LoadConfig(configengine.Dirs{Anchor: anchor, Board: board})
+			_, err := LoadConfig(seedLocalDrift(t, local))
 			if !errors.Is(err, configengine.ErrInvalid) || !strings.Contains(err.Error(), key) {
 				t.Errorf("LoadConfig() error = %v; want ErrInvalid naming %q", err, key)
 			}
 		})
 	}
+
+	t.Run("a local scope with its skipped tests loads over the board's", func(t *testing.T) {
+		t.Parallel()
+		got, err := LoadConfig(seedLocalDrift(t, "scope: partial\nskip: [slow]\n"))
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		if got.Scope != ScopePartial || !reflect.DeepEqual(got.Skip, []string{"slow"}) {
+			t.Errorf("LoadConfig() scope, skip = %q, %q; want %q, [slow]", got.Scope, got.Skip, ScopePartial)
+		}
+	})
 
 	t.Run("Step returns a declared step and refuses an undeclared one", func(t *testing.T) {
 		t.Parallel()

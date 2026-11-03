@@ -218,6 +218,8 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
 - A task that needs other review rounds than its recipe's default profile names a profile of the ladder, `speed`, `light`, `solid` or `wide`, in its board entry's `profile` field through `lym board upsert`, before its batten run starts;
   it gets hand-written `run_settings` for its review bounds only when no profile fits.
   `lym board profiles` lists the hub's profiles and each recipe's default.
+- A task's regression scope that the operator decides while discussing it goes in its board entry's `run_settings`, as `{"drift": {"scope": "full"}}`, `{"drift": {"scope": "off"}}` or `{"drift": {"scope": "partial", "skip": ["<test>", ...]}}`, before its batten run starts;
+  Drift-Baseline then records it and spawns no agent, which otherwise decides the scope.
 
 ## Where a finding goes
 

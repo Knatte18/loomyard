@@ -38,8 +38,9 @@ func Command() *cobra.Command {
 	drift := &cobra.Command{
 		Use:   "drift",
 		Short: "record a task's regression scope, capture its baseline and compare its code against it",
-		Long: `drift runs regression around a task: the Drift-Baseline agent records the
-task's scope, a capture takes the suite's profile on the task's branch point,
+		Long: `drift runs regression around a task: Drift-Baseline records the task's
+scope, from drift.scope when the task's run_settings or the hub set it and
+through its agent otherwise, a capture takes the suite's profile on the task's branch point,
 and Drift-Verify compares the task's code against it. The verbs run inside a
 tapestry, arras or darn run's worktree and judge the run's status, so each refusal names
 its way forward. See lym config drift for the capture and compare commands.`,
@@ -82,7 +83,8 @@ func scopeCmd() *cobra.Command {
 nothing, full checks everything, and partial checks all but the tests --skip
 names, which it requires. The baseline agent runs it once, at a running
 Drift-Baseline; its second call is refused, and it then writes baseline.md
-alone and ends its turn. The run's parent records or replaces the scope at a
+alone and ends its turn. When drift.scope is set, Drift-Baseline records it
+and spawns no agent. The run's parent records or replaces the scope at a
 blocked Drift-Baseline or Drift-Await, while no capture runs and before the
 baseline wait is settled; a replacement that compares a test the capture
 skipped drops that capture. Run lym loom resume after it.
