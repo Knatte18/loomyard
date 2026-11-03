@@ -27,7 +27,7 @@ func rolePrefixKey(entry string, cfg Config) (string, error) {
 	return prefix, nil
 }
 
-// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from its segment's Bouncer pair and its hard cap from the segment's HardMaxBounces, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to env.ApprovePlan, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false), the optional boolean escalate_decisions key (default false; true makes a judged round whose review holds a decision-class finding escalate to the run's parent) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, resolves the optional subject key ("document" or "code") to the Env subject seams it names and tells the Bouncer the segment's amendment allowance, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, reads the optional reviewer_fan_setting key, a module.key setting reference whose list is the per-round fan list when it names a fan, reads the optional auto_accept_setting key, a module.key setting reference whose bool is the auto-accept flag (false for an absent key or a null), and returns shedadapters.NewBouncer(cfg).
+// bouncerEntry is the Constructor for the "Bouncer" registry row: it validates cfg and env, joins and creates the run directory a segment's Bouncer, BurlerReview and BurlerFix rows share, resolves artifact_paths against env.AnchorPath, takes the row's seed and judge models from its segment's Bouncer pair and its hard cap from the segment's HardMaxBounces, resolves the optional commit_seam key to one of env.CommitPlan or env.CommitDiscussion, resolves the optional approve_seam key to one of env.ApprovePlan or env.ApproveDiscussion, resolves the optional skip_seam key to env.SkipPlanReview, reads the optional boolean zero_rounds key (default false; true makes the Bouncer settle approved at once over any skip_seam, and the recipe declares it on no row because loomrecipe stamps it), reads the optional boolean blocking_escalates key (default false), the optional boolean escalate_decisions key (default false; true makes a judged round whose review holds a decision-class finding escalate to the run's parent) and the optional color_segment and role_prefix keys, reads the optional carry_over key, the segment name that selects env.CarryOver, resolves the optional subject key ("document" or "code") to the Env subject seams it names and tells the Bouncer the segment's amendment allowance, reads the optional boolean cluster_excludes key (default false) telling the judge whether its partner BurlerReview row has a cluster fan, reads the optional reviewer_fan_setting key, a module.key setting reference whose list is the per-round fan list when it names a fan, reads the optional auto_accept_setting key, a module.key setting reference whose bool is the auto-accept flag (false for an absent key or a null), and returns shedadapters.NewBouncer(cfg).
 func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	runSubdir, err := configString(cfg, "run_subdir", true)
 	if err != nil {
@@ -112,7 +112,7 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 
 	// commit_seam and approve_seam are two independent optional config keys: commit_seam names
 	// which of Env's two commit closures fills BouncerConfig.Commit, and approve_seam (below)
-	// resolves to env.ApprovePlan and nothing else, filling BouncerConfig.Approve. Absent
+	// resolves to one of env.ApprovePlan or env.ApproveDiscussion, filling BouncerConfig.Approve. Absent
 	// leaves the resolved closure nil -- "no seam configured" is a legitimate configuration and
 	// never an error, which is what keeps every existing Bouncer row valid unchanged. A present
 	// key is guarded by requireSeam on the named Env field rather than assigned directly: without
@@ -136,12 +136,10 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "commit_seam", "plan", "discussion", commitSeam)
 	}
 
-	// approve_seam names env.ApprovePlan and nothing else -- there is no discussion-side or
-	// webster-side approval flag, so a second accepted value would be a hypothetical. It mirrors
-	// commit_seam's switch one-for-one: absent leaves the resolved closure nil, which keeps every
-	// existing Bouncer row valid unchanged, and a present key is guarded by requireSeam for the
-	// same reason commit_seam's guard exists -- without it a nil Env closure would silently assign
-	// a nil Approve, reproducing the exact no-seam condition this key exists to eliminate.
+	// approve_seam names env.ApprovePlan or env.ApproveDiscussion -- there is no webster-side approval, so a third accepted value would be a hypothetical.
+	// It mirrors commit_seam's switch one-for-one: absent leaves the resolved closure nil, which keeps every existing Bouncer row valid unchanged.
+	// A present key is guarded by requireSeam for the same reason commit_seam's guard exists:
+	// without it a nil Env closure would silently assign a nil Approve, reproducing the exact no-seam condition this key exists to eliminate.
 	var approve func() error
 	switch approveSeam {
 	case "":
@@ -151,8 +149,13 @@ func bouncerEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer
 			return nil, err
 		}
 		approve = env.ApprovePlan
+	case "discussion":
+		if err := requireSeam("Bouncer", "ApproveDiscussion", env.ApproveDiscussion); err != nil {
+			return nil, err
+		}
+		approve = env.ApproveDiscussion
 	default:
-		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q, got %q", "approve_seam", "plan", approveSeam)
+		return nil, fmt.Errorf("shedrecipe: Bouncer: config key %q must be %q or %q, got %q", "approve_seam", "plan", "discussion", approveSeam)
 	}
 
 	// skip_seam names env.SkipPlanReview (rework-exempt) and mirrors approve_seam: absent leaves BouncerConfig.Skip nil,

@@ -15,6 +15,7 @@ package boardcli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -208,6 +209,11 @@ Refused, with nothing written, for an absent entry, an entry held by a run, and 
 empty, too long or already an entry's slug.
 Body and brief text is never rewritten: "mentions" lists the entries whose body or brief still name
 the old slug as a whole word, the renamed entry included, and is [] when none does.
+A discussed entry's decision record file moves with it. When that step fails after the write, the entry
+is renamed and the verb reports the error beside "task" and "mentions": "rename moved the entry but not its decision record" names the
+record file left at the old slug's name, which the entry's next Discussion approval stores again under the
+new slug; "rename saved the entry, but the orphaned decision record ... could not be removed" names the file
+at the new slug's name, to remove by hand.
 
 Fields:
   "slug"   string  — current slug (one of slug, id or handle)
@@ -233,6 +239,10 @@ Example:
 				return outputError(out, "to must be a string")
 			}
 			result, err := b.Rename(selector, to)
+			var recordErr *boardengine.DecisionRecordError
+			if errors.As(err, &recordErr) {
+				return output.ErrFields(out, err.Error(), map[string]any{"task": result.Task, "mentions": result.Mentions})
+			}
 			if err != nil {
 				return outputError(out, err.Error())
 			}
@@ -476,7 +486,7 @@ func storeVerbs(board func() *boardengine.Board, profiles func() (runprofile.Pro
 	// upsert subcommand: create or update a single task.
 	var bodyFile string
 	upsertCmd := &cobra.Command{
-		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?, front?, on_land?}",
+		Use:         "upsert {slug, title?, brief?, body?, depends_on?, isolated?, status?, kind?, labels?, recipe?, priority?, short_name?, issues?, created?, revised?, run_settings?, profile?, pull_request?, notify_on_land?, owner_machine?, project?, order?, beam?, front?, on_land?, discussed?}",
 		Short:       "create or update a single task",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Create or update a task identified by its slug.
@@ -508,11 +518,10 @@ Optional fields:
   "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs, in order
   "beam"       bool   — a project's beam flag; only the "lym beam" verbs set it
-  "front", "on_land" — a front task's mark and land action; only lym writes them
+  "front", "on_land", "discussed" — marks only lym writes: a front task, its land action, an approved Discussion
 
 Flag:
-  --body-file <path>  read "body" from the file, or from stdin for "-";
-                      refused when the payload also carries "body".
+  --body-file <path>  read "body" from the file, or "-" for stdin; not with "body".
 
 Example:
   lym board upsert '{"slug":"my-task","title":"My Task","brief":"Short summary","kind":"task","labels":["enhancement"]}'` + slugLimitNote(),
@@ -696,16 +705,19 @@ Examples:
 
 	// get subcommand: fetch a single task by slug or numeric id; returns task:null
 	// for a valid-but-absent target (not an error). Malformed payloads error.
-	var getBody bool
+	var getBody, getRecord bool
 	getCmd := &cobra.Command{
 		Use:         "get {slug|id|handle}",
-		Short:       "fetch a single task, or its body alone",
+		Short:       "fetch a single task, or its body or decision record alone",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Fetch a single task by slug, numeric ID or handle. Returns {"task":null} if not found (not an error).
 The result is the envelope {"task": {...}}, which the discussion stencil reads.
 A task's "owner_machine" is the machine that owns it: the owner it reads as through its beam, or through root.
 --body writes the entry's body alone, verbatim, with no envelope; an empty body writes nothing.
 With --body a target that does not exist is an error, since there is no task:null to print.
+A task whose run's Discussion was approved carries "discussed": true, and --record writes its stored
+decision record alone, verbatim, with no envelope. --record is an error for an absent entry, an entry
+that is not discussed, a discussed entry whose record file is missing, and beside --body.
 Editing a body as a file: lym board get ... --body > body.md, edit it, then feed it back with
 upsert --body-file body.md (merge --body-file takes the same file for a merged entry).
 
@@ -717,11 +729,15 @@ Fields:
 Examples:
   lym board get '{"id":96}'
   lym board get B4
-  lym board get '{"slug":"my-task"}' --body` + slugLimitNote(),
+  lym board get '{"slug":"my-task"}' --body
+  lym board get '{"slug":"my-task"}' --record` + slugLimitNote(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return clihelp.WrapRun(func(out io.Writer, args []string) int {
 				if len(args) == 0 {
 					return outputError(out, "json payload required")
+				}
+				if getBody && getRecord {
+					return outputError(out, "--body and --record each print one field: pass one of them")
 				}
 				selector, _, err := resolveLookup([]byte(args[0]), lookupPayload)
 				if err != nil {
@@ -736,6 +752,25 @@ Examples:
 						return outputError(out, fmt.Sprintf("no entry %v: check the slug, id or handle with lym board list", selector))
 					}
 					if _, err := io.WriteString(out, task.Body); err != nil {
+						return outputError(out, err.Error())
+					}
+					return 0
+				}
+				if getRecord {
+					if !found {
+						return outputError(out, fmt.Sprintf("no entry %v: check the slug, id or handle with lym board list", selector))
+					}
+					if !task.Discussed {
+						return outputError(out, fmt.Sprintf("entry %q has no decision record: lym stores one when its run's Discussion is approved, or with `lym loom decision store` on a run past that approval", task.Slug))
+					}
+					record, held, err := board().DecisionRecord(task.Slug)
+					if err != nil {
+						return outputError(out, err.Error())
+					}
+					if !held {
+						return outputError(out, fmt.Sprintf("entry %q is flagged discussed but has no %s: after a rename the record may remain at the old slug's %s, and the entry's next Discussion approval stores it again", task.Slug, boardengine.DecisionFileName(task.Slug), boardengine.DecisionFileName("<slug>")))
+					}
+					if _, err := out.Write(record); err != nil {
 						return outputError(out, err.Error())
 					}
 					return 0
@@ -757,6 +792,7 @@ Examples:
 		},
 	}
 	getCmd.Flags().BoolVar(&getBody, "body", false, "write the entry's body alone, verbatim, instead of the JSON envelope")
+	getCmd.Flags().BoolVar(&getRecord, "record", false, "write the entry's stored decision record alone, verbatim, instead of the JSON envelope")
 
 	// list subcommand: list all tasks with computed fields (layer, has_proposal).
 	var listText bool
@@ -1206,6 +1242,7 @@ func outputSuccessWithTask(out io.Writer, task boardengine.Task, notice string) 
 
 // outputGetTask writes {"ok":true,"task":{...},"parent_beam":"..."} with task as pointer (nil → null, and no parent_beam).
 // parentBeam is the slug of the beam the entry belongs to, empty when the prime is its parent.
+// The task carries "discussed": true when its run's Discussion was approved, and no discussed key otherwise.
 func outputGetTask(out io.Writer, task *boardengine.Task, parentBeam string) int {
 	envelope := map[string]any{"task": task}
 	if task != nil {

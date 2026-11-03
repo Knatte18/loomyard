@@ -26,7 +26,7 @@
 // `PairExists` reports whether a directory stands at the slug's pair worktree path, for the refusal of a project change or rename on an entry with a pair;
 // `ParentOf` is `hubgeom.ParentOf`, the one parent resolver.
 // `get` emits a beam's `beam_color`, which only the owner setter writes, so `upsert` refuses a payload naming it as an unknown field.
-// `upsert` takes `front` and `on_land` only as the entry's stored values, since only lym writes them.
+// `upsert` takes `front`, `on_land` and `discussed` only as the entry's stored values, since only lym writes them.
 // `get` carries the entry's `parent_beam` beside `task` in its envelope, the slug of the beam above it and empty when the prime is its parent, and gives a project its effective owner as it gives a task's; `list` carries `parent_beam` on each entry that has one.
 //
 // A payload argument that is a bare handle, in either letter case, reads as `{"handle":…}`, so `lym board get B4` works and a verb that needs further keys refuses it as missing them.
@@ -82,6 +82,9 @@
 // an empty body writes nothing,
 // and an absent target is an error.
 // Editing a body is a file round trip: `get --body > body.md`, edit the file, then `upsert --body-file body.md`.
+// A task whose run's Discussion was approved carries `"discussed": true` in `get`'s envelope, and `get --record` writes its stored decision record alone, verbatim.
+// `--record` refuses an absent entry, an entry that is not discussed, a discussed entry whose record file is missing, and `--body` beside it, each naming its way forward.
+// A saved `rename` can still report an error when the entry's decision record file could not follow it; the entry is renamed, and the error names the file to deal with.
 // `get`, `list-full` and the task envelope of `upsert`, `promote` and `merge` print an entry's kept keys, the board.json keys this binary does not know, while `list` and the README use known fields only.
 //
 // The intake verbs work on the hub's own GitHub repository, read through `internal/hubissues`: the repository `fabricengine.HubRepoURL` returns, the hub's recorded binding or else its origin remote, never selfreport's repository.

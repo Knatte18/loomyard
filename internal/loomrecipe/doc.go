@@ -47,6 +47,10 @@
 // IsLoom, HasEngine, RecordEngine, VerifySource and RetiredRows answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name, so a consumer reads the recipe's rows and keys instead of comparing its name.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
+// DiscussionApprovalRow answers the row that approves a recipe's discussion: the Bouncer row the DiscussionWrite row hands to, and none for a recipe without one.
+// PastDiscussionApproval answers whether a run standing at a row, mapped through RetiredRows, is past that approval: its row follows every row of the approval row's segment.
+// Both read the recipe's own rows and never its name, so darn, sampler and pawl answer no approval row; a row inside another task's sub-run block is not reached.
+//
 // ProfileRecipe answers which recipe's run-profile block and default profile a task running the named recipe takes: the recipe's `profile_recipe`, or its own name when it sets none, so every reader of a task's profile block resolves the recipe name through it.
 //
 // GateFixerSetting answers which setting a writer row's gate element names for its cold fixer's model-spec, so a caller reads whether a row's fixer is on from the recipe's own `fixer` key rather than from a row name.

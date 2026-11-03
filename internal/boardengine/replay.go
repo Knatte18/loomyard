@@ -26,9 +26,11 @@ import (
 // The board's file names a replay recognises: the rendered overview and the per-entry design files.
 // The per-project overview files take projectFilePrefix, and the entry store boardFile.
 const (
-	overviewFile     = "README.md"
-	designFilePrefix = "design-"
-	designFileSuffix = ".md"
+	overviewFile       = "README.md"
+	designFilePrefix   = "design-"
+	designFileSuffix   = ".md"
+	decisionFilePrefix = "decision-"
+	decisionFileSuffix = ".md"
 )
 
 // FabricReplay is the board's Bolt replayer, named board, and fabricengine's run ledger over this package's store.
@@ -38,13 +40,16 @@ type FabricReplay struct{}
 // Name returns the replayer's registry name.
 func (FabricReplay) Name() string { return "board" }
 
-// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board: the entry store, a rendered overview file or a design file.
+// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board: the entry store, a rendered overview file, a design file or a decision record.
 func (FabricReplay) Claims(path string) bool {
 	if path == boardFile || isBoardOverview(path) {
 		return true
 	}
-	_, design := boardDesignSlug(path)
-	return design
+	if _, design := boardDesignSlug(path); design {
+		return true
+	}
+	_, record := boardRecordSlug(path)
+	return record
 }
 
 // File returns the Bolt file holding the board's entries, the run ledger's file.
@@ -58,6 +63,17 @@ func boardDesignSlug(path string) (string, bool) {
 		return "", false
 	}
 	slug, found := strings.CutSuffix(name, designFileSuffix)
+	return slug, found && slug != ""
+}
+
+// boardRecordSlug returns the slug of the entry a decision record belongs to, and reports whether path is a decision record:
+// `decision-<slug>.md` at the Bolt root.
+func boardRecordSlug(path string) (string, bool) {
+	name, found := strings.CutPrefix(path, decisionFilePrefix)
+	if !found || strings.Contains(path, "/") {
+		return "", false
+	}
+	slug, found := strings.CutSuffix(name, decisionFileSuffix)
 	return slug, found && slug != ""
 }
 
@@ -103,13 +119,16 @@ func entriesBySlug(data []byte) (map[string]string, error) {
 }
 
 // CommitRuns returns the slugs of the entries a commit of paths changes, sorted:
-// each entry of `board.json` that differs between before and after, and each design file's entry.
+// each entry of `board.json` that differs between before and after, and each design file's and decision record's entry.
 // before and after are the entry store as the commit's parent and the commit hold it, read only when paths names the entry store.
 // An overview file names no entry.
 func (FabricReplay) CommitRuns(before, after []byte, paths []string) ([]string, error) {
 	slugs := map[string]bool{}
 	for _, path := range paths {
 		if slug, design := boardDesignSlug(path); design {
+			slugs[slug] = true
+		}
+		if slug, record := boardRecordSlug(path); record {
 			slugs[slug] = true
 		}
 	}
@@ -168,6 +187,7 @@ var replayFields = entrymerge.Table[Task]{
 		{Name: "beam", Get: func(t Task) any { return t.Beam }, Set: func(dst *Task, src Task) { dst.Beam = src.Beam }},
 		{Name: "front", Get: func(t Task) any { return t.Front }, Set: func(dst *Task, src Task) { dst.Front = src.Front }},
 		{Name: "on_land", Get: func(t Task) any { return t.OnLand }, Set: func(dst *Task, src Task) { dst.OnLand = src.OnLand }},
+		{Name: "discussed", Get: func(t Task) any { return t.Discussed }, Set: func(dst *Task, src Task) { dst.Discussed = src.Discussed }},
 		{Name: "beam_color", Get: func(t Task) any { return t.BeamColor }, Set: func(dst *Task, src Task) { dst.BeamColor = src.BeamColor }},
 	},
 }
@@ -265,7 +285,8 @@ type replayRun struct {
 	applied     bool
 }
 
-// Apply re-applies the request's commit onto the board directory by entry and design file, reading the entry store and the design files out of its files by path, and reports what it kept and what it set aside.
+// Apply re-applies the request's commit onto the board directory by entry, design file and decision record, reading the entry store, the design files and the decision records out of its files by path, and reports what it kept and what it set aside.
+// A decision record the commit writes for an entry origin does not hold is reported lost and not written; every other record file lands by the design-file rule.
 // It loads the board config from the request's directory and a store from origin's board.json there, and applies each change of the commit against its parent on its own, against the board as the kept changes before it left it.
 // The hub's prime_owner record replays like an entry field, reported lost under the entry name prime.
 // Where both sides changed the same field of an entry or the same design file since the merge base, or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
@@ -281,12 +302,14 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 	vocabulary := cfg.Vocabulary()
 
 	var baseJSON, parentJSON, commitJSON []byte
-	var designFiles []fabricengine.ReplayFile
+	var designFiles, recordFiles []fabricengine.ReplayFile
 	for _, file := range req.Files {
 		if file.Path == boardFile {
 			baseJSON, parentJSON, commitJSON = file.Base, file.Before, file.After
 		} else if _, design := boardDesignSlug(file.Path); design {
 			designFiles = append(designFiles, file)
+		} else if _, record := boardRecordSlug(file.Path); record {
+			recordFiles = append(recordFiles, file)
 		}
 	}
 
@@ -351,7 +374,20 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 
 	designsApplied := false
 	for _, file := range designFiles {
-		applied, err := run.applyDesignFile(req.Dir, file)
+		applied, err := run.applyDesignFile(req.Dir, "design file", file)
+		if err != nil {
+			return fabricengine.ReplayResult{}, err
+		}
+		designsApplied = designsApplied || applied
+	}
+	// Record files go after the entry changes, so origin's store already reflects them.
+	for _, file := range recordFiles {
+		slug, _ := boardRecordSlug(file.Path)
+		if _, _, held := run.originEntry(slug); !held && file.After != nil {
+			run.lost(file.Path, "decision record", "origin does not hold the entry", "")
+			continue
+		}
+		applied, err := run.applyDesignFile(req.Dir, "decision record", file)
 		if err != nil {
 			return fabricengine.ReplayResult{}, err
 		}
@@ -529,11 +565,12 @@ func (r *replayRun) removeEntry(before Task) {
 	r.applied = true
 }
 
-// applyDesignFile writes the commit's side of one design file into boardDir when origin's file is still as the merge base or the commit's parent had it, and reports whether it wrote.
+// applyDesignFile writes the commit's side of one design file or decision record into boardDir when origin's file is still as the merge base or the commit's parent had it, and reports whether it wrote.
+// It serves both kinds of file; label, "design file" or "decision record", is the kind a refusal, a loss or an error names.
 // A file origin changed too stays as origin holds it and is reported lost.
-func (r *replayRun) applyDesignFile(boardDir string, file fabricengine.ReplayFile) (bool, error) {
+func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.ReplayFile) (bool, error) {
 	if file.Path == "" || file.Path != filepath.Base(file.Path) {
-		r.refuse(file.Path, "design file", fmt.Errorf("design file name %q is not a plain file name", file.Path))
+		r.refuse(file.Path, label, fmt.Errorf("%s name %q is not a plain file name", label, file.Path))
 		return false, nil
 	}
 	path := filepath.Join(boardDir, file.Path)
@@ -542,23 +579,23 @@ func (r *replayRun) applyDesignFile(boardDir string, file fabricengine.ReplayFil
 		current, err = nil, nil
 	}
 	if err != nil {
-		return false, fmt.Errorf("read design file: %w", err)
+		return false, fmt.Errorf("read %s: %w", label, err)
 	}
 	if sameFile(current, file.After) {
 		return false, nil
 	}
 	if !sameFile(current, file.Base) && !sameFile(current, file.Before) {
-		r.lost(file.Path, "design file", "origin changed the file too", "")
+		r.lost(file.Path, label, "origin changed the file too", "")
 		return false, nil
 	}
 	if file.After == nil {
 		if err := os.Remove(path); err != nil {
-			return false, fmt.Errorf("remove design file: %w", err)
+			return false, fmt.Errorf("remove %s: %w", label, err)
 		}
 		return true, nil
 	}
 	if err := fsx.AtomicWrite(boardDir, file.Path, string(file.After)); err != nil {
-		return false, fmt.Errorf("write design file: %w", err)
+		return false, fmt.Errorf("write %s: %w", label, err)
 	}
 	return true, nil
 }

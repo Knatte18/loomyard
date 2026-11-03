@@ -114,7 +114,7 @@ func BoltDir(hub string) string {
 	return filepath.Join(hub, BoltDirName)
 }
 
-// BoardDir returns the absolute path to the board's own data (board.json, its overview and design files) inside hub.
+// BoardDir returns the absolute path to the board's own data (board.json, its overview and design files, and its decision records) inside hub.
 // Everything else the Bolt checkout holds lives under BoltDir.
 func BoardDir(hub string) string {
 	return filepath.Join(hub, BoardDirName)

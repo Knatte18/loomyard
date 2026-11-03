@@ -856,6 +856,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		ApprovePlan: func() error {
 			return planparser.SetApproved(planparser.PlanDir(location.AnchorPath()))
 		},
+		// ApproveDiscussion copies the discussion decision record onto the run's board entry on Discussion-Bouncer's approved settle, before its commit seam.
+		// Storing is idempotent, so the failed-settle resume path converges.
+		ApproveDiscussion: func() error { return approveDiscussion(location, c.runID) },
 		// CarryOver files each review segment's still-open findings in the decision record and commits that record alone, so no other dirty file rides along.
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
 		// The subject seams tell each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review.

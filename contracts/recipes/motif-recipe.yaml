@@ -40,6 +40,7 @@ producers:
         - _lym/discussion/support-log.md
       rubric_stencil: loom-rubric-discussion-review
       commit_seam: discussion
+      approve_seam: discussion
       carry_over: Discussion-Review
       escalate_decisions: true
 

@@ -102,6 +102,9 @@ lym board rename '{"slug":"old-name","to":"new-name"}'
 
 Prose is never rewritten: `mentions` lists the entries whose body or brief still name the old slug, so fix those by hand.
 A claimed entry cannot be renamed.
+A discussed entry's decision record file moves with it. When that step fails the entry is still renamed, and the verb reports one of two errors:
+`rename moved the entry but not its decision record` names the record file left at the old slug's name, which the entry's next Discussion approval stores again under the new slug;
+`rename saved the entry, but the orphaned decision record ... could not be removed` names the file at the new slug's name, to remove by hand.
 
 Find entries whose slug, title, brief or body contains the text, done entries included; `--label` narrows to entries carrying every named label and repeats:
 
@@ -119,6 +122,14 @@ lym board list --text --sort age
 lym board list --label bug --label enhancement
 lym board get '{"slug":"my-task"}'
 ```
+
+A task whose run's Discussion was approved shows `"discussed": true` in `get`, and `--record` prints its stored decision record alone, verbatim:
+
+```
+lym board get '{"slug":"my-task"}' --record
+```
+
+`--record` refuses an absent entry, an entry that is not discussed, a discussed entry whose record file is missing, and `--body` beside it.
 
 Remove every done entry:
 

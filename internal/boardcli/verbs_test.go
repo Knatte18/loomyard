@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 )
@@ -616,6 +617,52 @@ func stepGetBodyRoundTrip(t *testing.T, f *cliFixture) {
 	got := runJSON(t, 0, "get", `{"slug":"rt"}`)["task"].(map[string]any)
 	if got["body"] != body {
 		t.Fatalf("body after round trip = %q, want %q", got["body"], body)
+	}
+}
+
+// stepGetRecord shows the discussed flag in the envelope, prints the stored record byte for byte, and refuses each case that has no record to print.
+// The record is stored through the board engine on the fixture's hub board, which honours the BOARD_SKIP_GIT the test sets and spawns no sync.
+func stepGetRecord(t *testing.T, f *cliFixture) {
+	hub := filepath.Dir(f.cwd)
+	mustUpsert(t, `{"slug":"talked","title":"T","labels":["bug"]}`)
+	mustUpsert(t, `{"slug":"plain","title":"P","labels":["bug"]}`)
+	board, err := boardengine.OpenHub(hub)
+	if err != nil {
+		t.Fatalf("OpenHub: %v", err)
+	}
+	record := "# Decision record\n\nno trailing newline"
+	if err := board.StoreDecisionRecord("talked", []byte(record)); err != nil {
+		t.Fatalf("StoreDecisionRecord: %v", err)
+	}
+
+	if task := runJSON(t, 0, "get", `{"slug":"talked"}`)["task"].(map[string]any); task["discussed"] != true {
+		t.Errorf("get of a discussed entry: discussed = %v; want true", task["discussed"])
+	}
+	if task := runJSON(t, 0, "get", `{"slug":"plain"}`)["task"].(map[string]any); task["discussed"] != nil {
+		t.Errorf("get of an undiscussed entry: discussed = %v; want no key", task["discussed"])
+	}
+	if exitCode, stdout := runCLI(t, "get", `{"slug":"talked"}`, "--record"); exitCode != 0 || stdout != record {
+		t.Fatalf("get --record: exit %d, stdout %q; want 0 and %q", exitCode, stdout, record)
+	}
+
+	if err := os.Remove(filepath.Join(fabricengine.BoardDir(hub), "decision-talked.md")); err != nil {
+		t.Fatalf("remove decision-talked.md: %v", err)
+	}
+	refusals := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"UndiscussedEntry", []string{"get", `{"slug":"plain"}`, "--record"}, "lym loom decision store"},
+		{"AbsentEntry", []string{"get", `{"slug":"absent"}`, "--record"}, "check the slug, id or handle with lym board list"},
+		{"FlaggedEntryWhoseFileWasDeleted", []string{"get", `{"slug":"talked"}`, "--record"}, "has no decision-talked.md"},
+		{"BesideBody", []string{"get", `{"slug":"talked"}`, "--record", "--body"}, "pass one of them"},
+	}
+	for _, tt := range refusals {
+		result := runJSON(t, 1, tt.args...)
+		if msg, _ := result["error"].(string); !strings.Contains(msg, tt.wantErr) {
+			t.Errorf("%s: error = %q; want one containing %q", tt.name, msg, tt.wantErr)
+		}
 	}
 }
 

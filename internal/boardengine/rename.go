@@ -5,6 +5,7 @@
 package boardengine
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -23,14 +24,17 @@ type RenameResult struct {
 // The entry keeps its id, handle, position and every other field, and no entry's dates are revised by the rename.
 // It refuses an absent entry, an entry a run holds, and a target that is empty, longer than MaxSlugLength or already an entry's slug.
 // Body and brief text is never rewritten; the result names the entries that still mention the old slug.
+// Every refusal still comes before the save, and the entry's decision record file follows it: a record that cannot be moved, or an orphan at the new slug's name that cannot be removed, is returned as a *DecisionRecordError after the entry is saved under the new slug, and the result accompanies that error.
+// Any other error returns an empty result.
 func (b *Board) Rename(selector any, to string) (RenameResult, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		return store.Rename(selector, to)
 	}, nil)
-	if err != nil {
+	var recordErr *DecisionRecordError
+	if err != nil && !errors.As(err, &recordErr) {
 		return RenameResult{}, err
 	}
-	return result.(RenameResult), nil
+	return result.(RenameResult), err
 }
 
 // Rename changes the slug of the entry selector names to to and rewrites every other entry's depends_on, project and order to match.

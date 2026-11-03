@@ -455,9 +455,10 @@ type MergeStatusUpdate struct {
 // "id" and "handle" are assigned by the board and never accepted; "phase" and "group" are retired.
 // "owner_machine" is accepted only as the entry's effective owner, a no-op, and "beam" only as the entry's stored flag.
 // "front" and "on_land" are accepted only as the entry's stored values, as "beam" is.
+// "discussed" is accepted only as the entry's stored value too.
 // "beam_color" is output only: a beam carries it in what is read back, the owner setter records it, and an upsert naming it is refused as an unknown field.
 func UpsertPayloadKeys() (required, optional []string) {
-	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "notify_on_land", "owner_machine", "project", "order", "beam", "front", "on_land"}
+	return []string{"slug"}, []string{"title", "brief", "body", "depends_on", "isolated", "status", "kind", "labels", "recipe", "priority", "short_name", "issues", "created", "revised", "run_settings", "profile", "pull_request", "notify_on_land", "owner_machine", "project", "order", "beam", "front", "on_land", "discussed"}
 }
 
 // upsertAllowedKeys is the set of field names every upsert path accepts, enforced at the store boundary.
@@ -509,6 +510,9 @@ func (s *Store) UpsertTask(fields map[string]any) (Task, error) {
 		return Task{}, err
 	}
 	if err := checkFrontPayload(s, fields); err != nil {
+		return Task{}, err
+	}
+	if err := checkDiscussedPayload(s, fields); err != nil {
 		return Task{}, err
 	}
 
@@ -849,6 +853,9 @@ func (s *Store) UpsertTasksBatch(tasks []map[string]any) error {
 		if err := checkFrontPayload(s, fields); err != nil {
 			return err
 		}
+		if err := checkDiscussedPayload(s, fields); err != nil {
+			return err
+		}
 	}
 
 	snapshot := make([]Task, len(s.tasks))
@@ -1031,6 +1038,9 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	if err := checkFrontPayload(s, upsert); err != nil {
 		return Task{}, err
 	}
+	if err := checkDiscussedPayload(s, upsert); err != nil {
+		return Task{}, err
+	}
 
 	slugVal, hasSlug := upsert["slug"]
 	if !hasSlug {
@@ -1083,6 +1093,10 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 		return Task{}, err
 	}
 
+	// A removed entry the merge upserts again keeps its discussed flag, as it keeps its record file.
+	removedEntry, upsertedAgain := s.GetTask(slugStr)
+	keepDiscussed := upsertedAgain && removedEntry.Discussed && slices.Contains(removeSlugs, slugStr)
+
 	for _, slug := range removeSlugs {
 		s.RemoveTask(slug)
 	}
@@ -1090,6 +1104,11 @@ func (s *Store) MergeTasks(removeSlugs []string, upsert map[string]any, setStatu
 	upserted, err := s.UpsertTask(upsert)
 	if err != nil {
 		return Task{}, err
+	}
+	if keepDiscussed {
+		i, _ := s.index(upserted.Slug)
+		s.tasks[i].Discussed = true
+		upserted.Discussed = true
 	}
 	s.mergeOrders(removeSlugs, upserted.Slug)
 

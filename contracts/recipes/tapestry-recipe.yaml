@@ -145,6 +145,10 @@ producers:
       # and an overlay round runs no git at all, and nothing else in this segment commits, so without
       # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: discussion
+      # approve_seam: discussion copies the approved decision record onto the run's board entry. The
+      # approved settle runs it before commit_seam fires, and a test pins the key on the row that
+      # approves the discussion and on no other.
+      approve_seam: discussion
       # carry_over names this row's own segment: the Bouncer files the round's still-open findings
       # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Discussion-Review
@@ -300,9 +304,9 @@ producers:
       # approve_seam: plan is set on this row and no other -- it is the only row in the whole list
       # that knows the plan passed review. The approved settle writes the approval flag through
       # this seam immediately before commit_seam fires, so the flag lands inside the commit rather
-      # than as working-tree dirt afterwards. Neither Discussion-Bouncer nor Code-Bouncer gets
-      # this key: neither of their artifacts carries an approval flag, and an absent key leaves the
-      # seam nil exactly as an omitted commit_seam already does.
+      # than as working-tree dirt afterwards. Discussion-Bouncer carries approve_seam: discussion
+      # instead, and Code-Bouncer gets no approve_seam: its artifact carries no approval flag, and an
+      # absent key leaves the seam nil exactly as an omitted commit_seam already does.
       approve_seam: plan
       # skip_seam: rework-exempt lets a rework generation whose cards are all exempt pass without a
       # judge. Its inputs are agent-written -- the overview's first_card and a swept record.json --

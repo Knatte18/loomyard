@@ -126,6 +126,7 @@ func TestCLI(t *testing.T) {
 		{"MergeBodyFile", stepMergeBodyFile},
 		{"GetBody", stepGetBody},
 		{"GetBodyRoundTrip", stepGetBodyRoundTrip},
+		{"GetRecord", stepGetRecord},
 		{"LabelsMapShapedPrintsFileOrderWithDescriptions", stepLabelsMapShapedPrintsFileOrderWithDescriptions},
 		{"LabelsListShapedPrintsNamesWithEmptyDescriptions", stepLabelsListShapedPrintsNamesWithEmptyDescriptions},
 		{"RunSettings", stepRunSettings},

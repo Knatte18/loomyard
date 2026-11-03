@@ -420,11 +420,12 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitParts:     func() error { return nil },
-		CommitPartsPlan: func() error { return nil },
-		ApprovePlan:     func() error { return nil },
-		SkipPlanReview:  func() (bool, error) { return false, nil },
-		CarryOver:       func(discussionparser.CarryOver) error { return nil },
+		CommitParts:       func() error { return nil },
+		CommitPartsPlan:   func() error { return nil },
+		ApprovePlan:       func() error { return nil },
+		ApproveDiscussion: func() error { return nil },
+		SkipPlanReview:    func() (bool, error) { return false, nil },
+		CarryOver:         func(discussionparser.CarryOver) error { return nil },
 		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
 		},

@@ -64,9 +64,10 @@ type noWrite struct{ result any }
 type promoted struct{ task Task }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, migrates a board that has not been marked draft, calls fn to mutate it, gives a new task the draft status, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, migrates a board that has not been marked draft, calls fn to mutate it, gives a new task the draft status, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
 // fn returning a RenameResult judges the dates and the run lock against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
+// The record step's error, a *DecisionRecordError, does not stop the render or the sync; it is returned last, with the write saved and the mutation's result.
 // fn returning a noWrite skips every step after the mutation.
 func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSave func() error) (any, error) {
 	// Guard before any disk mutation: a Board built without output filenames
@@ -115,10 +116,10 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		result = p.task
 	}
 	// A renamed slug is the same entry, so the loaded entries are judged under the new slug.
-	renamedTo := ""
+	renamedFrom, renamedTo := "", ""
 	if r, ok := result.(RenameResult); ok {
 		renameSlug(loaded, r.From, r.Task.Slug)
-		renamedTo = r.Task.Slug
+		renamedFrom, renamedTo = r.From, r.Task.Slug
 	}
 	applyDraftRule(loaded, store.tasks)
 	stampDates(loaded, store.tasks, now, promotedSlug)
@@ -159,6 +160,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		}
 	}
 
+	recordErr := followDecisionRecords(b.boardPath, loaded, store.Tasks(), renamedFrom, renamedTo)
+
 	if err := RenderToDisk(b.boardPath, store.Tasks(), store.primeOwner, b.out, now); err != nil {
 		return nil, fmt.Errorf("render: %w", err)
 	}
@@ -167,7 +170,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		_ = spawnSync(b.boardPath)
 	}
 
-	return result, nil
+	return result, recordErr
 }
 
 // UpsertTask creates or updates the task identified by fields["slug"] under the write lock;

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -114,6 +115,15 @@ type decisionFake struct {
 	// amendCommitErr is what the amendment-only commit returns, and amendCommits counts its calls.
 	amendCommitErr error
 	amendCommits   int
+
+	// pastRows maps a run's current row to whether the run is past its Discussion approval there, and askedRows records every row the verb asked about.
+	pastRows  map[string]bool
+	askedRows []string
+	// storeErr is what the board copy returns, and stored records every record it was given.
+	storeErr error
+	stored   [][]byte
+	// hasApprovalRow is whether the fake's recipe has a Discussion approval row.
+	hasApprovalRow bool
 }
 
 // decisionPost is one notice the verb posted.
@@ -266,7 +276,26 @@ func (f *decisionFake) deps() decisionDeps {
 			f.amendCommits++
 			return f.amendCommitErr
 		},
+		pastApproval: func(currentRow string) bool {
+			f.askedRows = append(f.askedRows, currentRow)
+			return f.pastRows[currentRow]
+		},
+		storeRecord: func(record []byte) error {
+			if f.storeErr != nil {
+				return f.storeErr
+			}
+			f.stored = append(f.stored, record)
+			return nil
+		},
+		approvalRow: func() bool { return f.hasApprovalRow },
 	}
+}
+
+// atPastRow puts the fake's run at row, which the fake judges past the Discussion approval, and returns the fake.
+func (f *decisionFake) atPastRow(row string) *decisionFake {
+	f.status.CurrentProducer, f.found = row, true
+	f.pastRows = map[string]bool{row: true}
+	return f
 }
 
 // decisionBatchJSON is a --from file of two entries, the second with a PATTERN change.
@@ -1192,15 +1221,249 @@ func TestPostDecisionNotice_SignsByCaller(t *testing.T) {
 
 func TestDecisionVerb_CommitFailureNamesWayForward(t *testing.T) {
 	tiergate.Require(t, 0)
-	f := newDecisionFake(t)
-	f.commitErr = errors.New("index locked")
-	var out bytes.Buffer
-	if code := decisionVerb(&out, "task-a", f.deps(), goodDecisionInput()); code == 0 {
-		t.Fatalf("exit = 0; want a refusal when the commit fails")
+	t.Parallel()
+	const storeVerb = `"lym loom decision store"`
+	tests := []struct {
+		name string
+		past bool
+	}{
+		{"RowNotPast_NamesNoStoreVerb", false},
+		{"RowPast_NamesStoreAfterFabricCommit", true},
 	}
-	msg := envelope.Decode(t, out.String()).Error
-	if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lym refuses the verb from reports status: FAILED and the orch runs it") {
-		t.Errorf("message %q; want the commit error and a way forward naming the orch", msg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDecisionFake(t)
+			if tt.past {
+				f.atPastRow("Drift-Baseline")
+			}
+			f.commitErr = errors.New("index locked")
+			var out bytes.Buffer
+			if code := decisionVerb(&out, "task-a", f.deps(), goodDecisionInput()); code == 0 {
+				t.Fatalf("exit = 0; want a refusal when the commit fails")
+			}
+			msg := envelope.Decode(t, out.String()).Error
+			if !strings.Contains(msg, "index locked") || !strings.Contains(msg, "way forward:") || !strings.Contains(msg, "a session lym refuses the verb from reports status: FAILED and the orch runs it") {
+				t.Errorf("message %q; want the commit error and a way forward naming the orch", msg)
+			}
+			store, fabric := strings.Index(msg, storeVerb), strings.Index(msg, `"lym fabric commit"`)
+			if tt.past && (fabric < 0 || store < fabric) || !tt.past && store >= 0 {
+				t.Errorf("message %q; want the store verb named after \"lym fabric commit\" = %t", msg, tt.past)
+			}
+		})
+	}
+}
+
+// TestDecisionStoreVerb asserts the store verb copies the committed record for the callers it admits past the approval, and refuses every other caller and run with a way forward.
+func TestDecisionStoreVerb(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const (
+		pastRow   = "Drift-Baseline"
+		storeVerb = `"lym loom decision store"`
+	)
+	// reachStore makes f a run past its approval whose HEAD holds the record with the new entry.
+	reachStore := func(f *decisionFake) *decisionFake {
+		f.hasApprovalRow = true
+		f.committedCopy, f.committedFound = []byte(decisionEntryRecord), true
+		return f.atPastRow(pastRow)
+	}
+	tests := []struct {
+		name  string
+		darn  bool
+		setup func(f *decisionFake)
+		// want lists the fragments of a refusal; empty means the verb stores the committed record and exits 0.
+		want    []string
+		notWant []string
+		// wantRecordPath is whether a refusal must name the fake's record path.
+		wantRecordPath bool
+	}{
+		{name: "PastApproval_UnnamedShellStoresCommittedRecord", setup: func(f *decisionFake) { reachStore(f) }},
+		{name: "DarnRun_RefusedNamingRecordPath", darn: true, want: []string{"no Discussion approval", "way forward:"}, wantRecordPath: true},
+		{
+			name: "InsideDiscussionReview_RefusedNamingResumeAndCircling",
+			setup: func(f *decisionFake) {
+				reachStore(f).status.CurrentProducer = "Discussion-Burler-Fix"
+			},
+			want: []string{"has not passed its Discussion approval", "way forward:", "lym loom resume", "lym loom circling"},
+		},
+		{
+			name: "DoneEntry_RefusedKeepingItsLastRecord",
+			setup: func(f *decisionFake) {
+				reachStore(f).storeErr = fmt.Errorf("entry: %w", boardengine.ErrRecordEntryDone)
+			},
+			want: []string{"keeps the record it last stored", "nothing to store"},
+		},
+		{
+			name:  "CommittedRecordMissing_RefusedNamingFabricCommit",
+			setup: func(f *decisionFake) { reachStore(f).committedFound = false },
+			want:  []string{"no committed decision record", "way forward:", "lym fabric commit", storeVerb},
+		},
+		{
+			name:  "StatusReadError_RefusedNamingRerun",
+			setup: func(f *decisionFake) { reachStore(f).statusErr = errors.New("status boom") },
+			want:  []string{"read the run status: status boom", "way forward:", storeVerb},
+		},
+		{
+			name:  "StoreFails_RefusedNamingRerun",
+			setup: func(f *decisionFake) { reachStore(f).storeErr = errors.New("board down") },
+			want:  []string{"board down", "way forward:", storeVerb},
+		},
+		{
+			name: "NamedTaskSession_RefusedNamingTheParent",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName, f.parent = "hub:task-a:darn", hubgeom.Parent{Name: "hub:orch"}
+			},
+			want: []string{`the caller "hub:task-a:darn" is a task session`, "ask hub:orch to run", storeVerb, "unnamed shell"},
+		},
+		{
+			name: "NamedTaskSessionWithEmptyParentName_NamesOnlyTheUnnamedShell",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName = "hub:task-a:darn"
+			},
+			want:    []string{"is a task session", "unnamed shell may always run", storeVerb},
+			notWant: []string{"way forward: ask"},
+		},
+		{
+			name: "NamedSessionWithParentError_RefusedNamingTheError",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName, f.parentErr = "hub:task-a:darn", errors.New("no orch")
+			},
+			want: []string{"is a named session", "could not be resolved (no orch)", "unnamed shell may still run the verb"},
+		},
+		{
+			name: "ArbiterStrand_Stores",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName, f.arbiterName = "hub:task-a:arbiter", "hub:task-a:arbiter"
+			},
+		},
+		{
+			name: "ParentOrch_Stores",
+			setup: func(f *decisionFake) {
+				reachStore(f).strandName, f.parent = "hub:orch", hubgeom.Parent{Name: "hub:orch"}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDecisionFake(t)
+			if tt.darn {
+				f = newDarnDecisionFake(t)
+			}
+			if tt.setup != nil {
+				tt.setup(f)
+			}
+
+			var out bytes.Buffer
+			code := decisionStoreVerb(&out, "task-a", f.deps())
+			if len(tt.want) == 0 {
+				if code != 0 {
+					t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+				}
+				data := envelope.RequireOK(t, out.String()).Raw
+				if data["stored"] != true || data["slug"] != "task-a" || data["record"] != f.path {
+					t.Errorf("envelope = %v; want slug task-a, record %s and stored true", data, f.path)
+				}
+				if len(f.stored) != 1 || string(f.stored[0]) != decisionEntryRecord {
+					t.Errorf("stored = %q; want one copy of the committed record", f.stored)
+				}
+				return
+			}
+			if code == 0 {
+				t.Fatalf("exit = 0, out %s; want a refusal", out.String())
+			}
+			msg := envelope.Decode(t, out.String()).Error
+			for _, w := range tt.want {
+				if !strings.Contains(msg, w) {
+					t.Errorf("message %q lacks %q", msg, w)
+				}
+			}
+			for _, w := range tt.notWant {
+				if strings.Contains(msg, w) {
+					t.Errorf("message %q contains %q", msg, w)
+				}
+			}
+			if tt.wantRecordPath && !strings.Contains(msg, f.path) {
+				t.Errorf("message %q lacks the record path %q", msg, f.path)
+			}
+			if len(f.stored) != 0 {
+				t.Errorf("stored = %q; want nothing stored on a refusal", f.stored)
+			}
+		})
+	}
+}
+
+// TestDecisionVerb_CopiesRecordToBoard asserts the committed record is copied onto the board entry only at a row past the Discussion approval, and that a failed copy is reported on a successful envelope.
+func TestDecisionVerb_CopiesRecordToBoard(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const row = "Drift-Baseline"
+	tests := []struct {
+		name  string
+		setup func(f *decisionFake)
+		// wantStored is whether the committed record reaches the store.
+		wantStored bool
+		// wantError lists the fragments of record_store_error, empty when the envelope carries none; notWant lists fragments it must lack.
+		wantError []string
+		notWant   []string
+	}{
+		{name: "PastRow_StoresCommittedRecord", setup: func(f *decisionFake) { f.atPastRow(row) }, wantStored: true},
+		{name: "RowNotPast_StoresNothing", setup: func(f *decisionFake) { f.atPastRow(row).status.CurrentProducer = "Discussion-Burler-Fix" }},
+		{
+			name:      "StoreFails_ReportsErrorNamingStoreVerb",
+			setup:     func(f *decisionFake) { f.atPastRow(row).storeErr = errors.New("board down") },
+			wantError: []string{"board down", "way forward:", "lym loom decision store"},
+		},
+		{
+			name: "DoneEntry_ReportsLandedWithoutStoreVerb",
+			setup: func(f *decisionFake) {
+				f.atPastRow(row).storeErr = fmt.Errorf("entry: %w", boardengine.ErrRecordEntryDone)
+			},
+			wantError: []string{"has landed", "keeps the record it last stored"},
+			notWant:   []string{"lym loom decision store"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newDecisionFake(t)
+			tt.setup(f)
+
+			var out bytes.Buffer
+			if code := decisionVerb(&out, "task-a", f.deps(), goodDecisionInput()); code != 0 {
+				t.Fatalf("exit = %d, out %s; want 0", code, out.String())
+			}
+			if tt.wantStored {
+				if len(f.stored) != 1 || string(f.stored[0]) != decisionEntryRecord {
+					t.Errorf("stored = %q; want one copy of the committed record %q", f.stored, decisionEntryRecord)
+				}
+			} else if len(f.stored) != 0 {
+				t.Errorf("stored = %q; want nothing stored", f.stored)
+			}
+			for _, asked := range f.askedRows {
+				if asked != f.status.CurrentProducer {
+					t.Errorf("pastApproval asked about row %q; want the run's row %q", asked, f.status.CurrentProducer)
+				}
+			}
+			if len(f.askedRows) == 0 {
+				t.Error("pastApproval was never asked; want it asked about the run's current row")
+			}
+			got, hasError := envelope.RequireOK(t, out.String()).Raw["record_store_error"].(string)
+			if hasError != (len(tt.wantError) > 0) {
+				t.Fatalf("record_store_error = %q (present %t); want present %t", got, hasError, len(tt.wantError) > 0)
+			}
+			for _, w := range tt.wantError {
+				if !strings.Contains(got, w) {
+					t.Errorf("record_store_error %q lacks %q", got, w)
+				}
+			}
+			for _, w := range tt.notWant {
+				if strings.Contains(got, w) {
+					t.Errorf("record_store_error %q contains %q", got, w)
+				}
+			}
+		})
 	}
 }
 
@@ -1257,6 +1520,8 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 		wantCommits      int
 		wantAmendCommits int
 		wantCommitError  bool
+		// wantStores is how many times the committed record is copied onto the board entry.
+		wantStores int
 	}{
 		{
 			name:       "ApprovedPlan_LandsEntryAndTitleInOneCommit",
@@ -1393,6 +1658,27 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 			want:       []string{"index locked", "head boom", "way forward:", "lym fabric commit"},
 			wantTitles: []string{title}, entry: true, wantCommits: 1,
 		},
+		{
+			name: "CommitErrorWithHeadHoldingBothAtPastRow_StoresTheCommittedRecord",
+			setup: func(t *testing.T, f *decisionFake) {
+				f.atPastRow("Drift-Baseline")
+				f.commitErr = errors.New("index locked")
+				f.committedCopy, f.committedFound = []byte(decisionEntryRecord), true
+				f.amendCommittedCopy, f.amendCommittedFound = amendmentBytesAfterCall(t, f, title), true
+			},
+			wantTitles: []string{title}, entry: true, wantCommits: 1, wantCommitError: true, wantStores: 1,
+		},
+		{
+			name: "StatusCommitLandedAmendmentWithoutEntryAtPastRow_NamesStoreAfterFabricCommit",
+			setup: func(_ *testing.T, f *decisionFake) {
+				f.atPastRow("Drift-Baseline")
+				f.commitErr = errors.New("index locked")
+				f.statusCommitLanded = true
+				f.committedCopy, f.committedFound = []byte(decisionPriorRecord), true
+			},
+			want:       []string{"without the entry", "lym fabric commit", `then "lym loom decision store" once`},
+			wantTitles: []string{title}, entry: true, wantCommits: 1,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1460,6 +1746,9 @@ func TestDecisionVerb_AmendsPlan(t *testing.T) {
 			}
 			if f.commits != tt.wantCommits || f.amendCommits != tt.wantAmendCommits {
 				t.Errorf("record commits = %d, amendment commits = %d; want %d and %d", f.commits, f.amendCommits, tt.wantCommits, tt.wantAmendCommits)
+			}
+			if len(f.stored) != tt.wantStores || (tt.wantStores > 0 && string(f.stored[0]) != string(f.committedCopy)) {
+				t.Errorf("stored = %q; want %d copies of the committed record", f.stored, tt.wantStores)
 			}
 		})
 	}

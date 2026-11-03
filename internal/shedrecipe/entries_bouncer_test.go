@@ -911,6 +911,39 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 		}
 	})
 
+	t.Run("DiscussionResolvesToApproveDiscussion", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.Shuttle = judgeSeamShuttle()
+		writeStencil(t, env.StencilsDir, "bouncer-template-judge", "judge template, no markers\n")
+		approvePlanCalls, approveDiscussionCalls := 0, 0
+		env.ApprovePlan = func() error { approvePlanCalls++; return nil }
+		env.ApproveDiscussion = func() error { approveDiscussionCalls++; return nil }
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "discussion"
+		layoutBouncerRound1Report(t, env)
+
+		producer, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		if err != nil {
+			t.Fatalf("bouncerEntry() error = %v; want nil", err)
+		}
+		if _, _, err := producer.Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v; want nil", err)
+		}
+		if approveDiscussionCalls != 1 || approvePlanCalls != 0 {
+			t.Errorf("ApproveDiscussion/ApprovePlan call counts = %d/%d; want 1/0", approveDiscussionCalls, approvePlanCalls)
+		}
+	})
+
+	t.Run("NilApproveDiscussionRefused", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.ApproveDiscussion = nil
+		cfg := minimalBouncerConfig(t, env)
+		cfg["approve_seam"] = "discussion"
+
+		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
+		assertErrContains(t, err, "ApproveDiscussion")
+	})
+
 	t.Run("RetiredMergeIsAnUnknownValue", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
@@ -945,11 +978,12 @@ func TestBouncerEntry_ApproveSeam(t *testing.T) {
 	t.Run("UnrecognisedValueIsConstructionError", func(t *testing.T) {
 		env := newTestEnv(t)
 		cfg := minimalBouncerConfig(t, env)
-		cfg["approve_seam"] = "discussion"
+		cfg["approve_seam"] = "webster"
 
 		_, err := bouncerEntry(reviewRow("review-bounce"), cfg, env)
 		assertErrContains(t, err, "approve_seam")
 		assertErrContains(t, err, "plan")
+		assertErrContains(t, err, "discussion")
 	})
 
 	t.Run("PresentButMissingEnvClosureIsConstructionError", func(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -189,8 +190,20 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if err := validateTypeLetters(cfg.Types); err != nil {
 		return Config{}, err
 	}
+	if err := checkDesignPrefix(cfg.DesignPrefix); err != nil {
+		return Config{}, err
+	}
 
 	return cfg, nil
+}
+
+// checkDesignPrefix refuses a design_prefix that would render a design file onto a decision record's name, decision-<slug>.md:
+// a prefix that is a prefix of "decision-", the empty one included, and one that starts with it.
+func checkDesignPrefix(prefix string) error {
+	if strings.HasPrefix(decisionFilePrefix, prefix) || strings.HasPrefix(prefix, decisionFilePrefix) {
+		return fmt.Errorf("board.yaml: design_prefix %q would name a design file %s<slug>%s, the name of an entry's decision record: set design_prefix in board.yaml to another value, such as \"design-\", with \"lym config board --set design_prefix=design-\"", prefix, decisionFilePrefix, decisionFileSuffix)
+	}
+	return nil
 }
 
 // decodeLabels reads one board.yaml key into labels in file order.

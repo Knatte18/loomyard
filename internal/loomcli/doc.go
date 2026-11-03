@@ -17,6 +17,8 @@
 // `wireLanding`, which both the `run` and `step` building paths pass through and `status` and `pause` never do, fills the session's start and stop, its liveness and its process registration as for PR-Review's session, and the watch on the row's record that wakes the wait.
 // A run's decision record follows its recipe's rows through `runRecordOf`: a recipe with a Beam-Await row keeps the beam's project record under the beam's slug, and every other recipe the discussion record.
 // A task run's review rows are told its record as the PATTERN declaration path, a beam's project record declares none, and a loom recipe holds a landing's escalate halt for the arbiter first.
+// Discussion-Bouncer's approve seam stores the approved decision record on the run's board entry through the one `storeDecisionRecord` helper, logging and passing a done entry and failing the settle on any other store failure.
+// `decision add` copies the committed record onto the board entry after its commit once the run is past that approval, reporting a failed copy as `record_store_error` and never failing the verb, and `decision store` makes the same copy by hand, admitting the unnamed shell, the run's arbiter and its parent orch.
 //
 // `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
 // The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.
@@ -310,6 +312,12 @@
 // The verbs write nothing and read only the board, the peers' two records and self-run seed and git history through `internal/fabricengine`.
 // They resolve the location through `lymcwd` in the group's own pre-run, as the `review` and `decision` groups do; every loom verb is hub-only, so `internal/cliwire` does not apply.
 // A bare `lym loom peers` outside a lym worktree lists the group's verbs instead of resolving.
+//
+// # Decision add --from
+//
+// `lym loom decision add --from <file>` reads a JSON array of objects with the keys `title`, `decision`, `rationale` and optionally `pattern_entry`, `pattern_action` and `pattern_text`.
+// `--by` and `--amends-plan` apply to every entry, and all entries land in one write and one commit, or none does.
+// Each live agent gets one notice naming the headings (`headings`), and two entries may not share a title or a PATTERN entry.
 //
 // # Decision amends-plan
 //

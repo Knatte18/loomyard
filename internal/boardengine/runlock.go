@@ -184,7 +184,7 @@ func removedDoneSlugs(loaded, after []Task) map[string]bool {
 // Project, Order and Beam are compared, so a held entry takes no membership or beam change.
 // PullRequest is compared too, so a held entry takes no change to its pull-request override.
 // Front and OnLand are compared as Kind is: they never change after the filing, and a run-held entry takes no change to them.
-// RunSettings, Profile, NotifyOnLand and OwnerMachine are never compared: a run settings, profile, landing-notice or owner change is not a scope change, so a run-held entry takes it.
+// RunSettings, Profile, NotifyOnLand, OwnerMachine and Discussed are never compared: a run settings, profile, landing-notice, owner or discussed-flag change is not a scope change, so a run-held entry takes it.
 // Unknown is never compared either, since this binary cannot change a kept key.
 func scopeChanged(before, now Task, removedDone map[string]bool) bool {
 	dependsOn := slices.DeleteFunc(slices.Clone(before.DependsOn), func(slug string) bool {

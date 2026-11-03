@@ -149,6 +149,39 @@ func TestLoadConfig_DefaultRecipe(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_DesignPrefixRefused asserts a design_prefix that would name a design file decision-<slug>.md is refused with its way forward, and an ordinary prefix loads.
+func TestLoadConfig_DesignPrefixRefused(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		prefix  string
+		wantErr bool
+	}{
+		{"Decision", `"decision-"`, true},
+		{"Empty", `""`, true},
+		{"PrefixOfDecision", `"dec"`, true},
+		{"StartsWithDecision", `"decision-x-"`, true},
+		{"Design", `"design-"`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: "+tt.prefix+"\n")
+			_, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("LoadConfig(design_prefix %s): %v", tt.prefix, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "design_prefix") || !strings.Contains(err.Error(), "set design_prefix in board.yaml") {
+				t.Errorf("LoadConfig(design_prefix %s) error = %v; want a refusal naming design_prefix and its way forward", tt.prefix, err)
+			}
+		})
+	}
+}
+
 // TestLoadConfig_LabelMaps asserts both label maps resolve in file order with their descriptions.
 func TestLoadConfig_LabelMaps(t *testing.T) {
 	tiergate.Require(t, 0)

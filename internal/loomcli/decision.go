@@ -1,5 +1,5 @@
-// decision.go implements the `decision` loom subtree: the one verb, `add`, through which a design call made after the Discussion ended is recorded in the decision record.
-// The run's parent, or an operator, uses it to answer a question the record does not settle, so Plan-Write and a later reader see the call beside the decisions the Discussion made.
+// decision.go implements the `decision` loom subtree: the verb `add`, through which a design call made after the Discussion ended is recorded in the decision record, and the verb `store`, which re-copies the committed record onto the run's board entry.
+// The run's parent, or an operator, uses `add` to answer a question the record does not settle, so Plan-Write and a later reader see the call beside the decisions the Discussion made.
 // The verb appends one entry, or the batch a `--from` JSON file holds, through `discussionparser.AppendDecisions`, which writes once, re-runs the discussion check and restores the record on a finding, and then commits the record once.
 //
 // The group carries its own PersistentPreRunE, and the loom parent's pre-run skips it, for the reason review.go gives.
@@ -28,6 +28,14 @@
 // A batch's notice names only the headings, bar Master's, which inlines every entry's text.
 // With no live run nothing is sent: a later producer reads the record when it starts.
 // A failed listing or post is reported on the success envelope and never fails the verb, since the entry is already committed.
+//
+// On a run past its Discussion approval, the verb also copies the committed record onto the run's board entry, after the commit and before the notices.
+// A copy that fails never fails the verb, since the entry is already committed; the success envelope reports it as `record_store_error`.
+// A call landing while Discussion-Bouncer is settling is not copied, because the run is not past the approval yet, and `lym loom decision store` closes that window by hand.
+// A run a `lym loom goto` moved past Discussion-Bouncer counts as past, so its record is copied unapproved, as the parent's goto decided.
+//
+// `store` is the one idempotent way to make that copy by hand.
+// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch, refuses a recipe with no Discussion approval row and a run not yet past the approval, and changes nothing in the run: no commit, no routing and no notice.
 
 package loomcli
 
@@ -45,6 +53,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/creelengine"
@@ -100,6 +109,7 @@ const (
 	decisionWayFromTwice = `way forward: give each entry of the --from file its own title and its own PATTERN entry, or record the second in a later call`
 
 	decisionWayFabricCommit    = `way forward: run "lym fabric commit" to commit the record; a session lym refuses the verb from reports status: FAILED and the orch runs it`
+	decisionWayStore           = `way forward: once the cause above is cleared, run "lym loom decision store" to copy the committed record onto the board entry`
 	decisionWayAmendsPlanRetry = `way forward: the entry and the amendment record are restored and nothing landed; re-run "lym loom decision add ... --amends-plan"`
 	decisionWayPlanUnparsed    = `way forward: run "lym loom validate-plan" to show the plan's defect, and record the decision without --amends-plan until the plan parses`
 	decisionWayAmendsNoPlan    = `way forward: record the decision without --amends-plan; Plan-Write and Plan-Review read the decision record`
@@ -290,6 +300,12 @@ type decisionDeps struct {
 	committedAmendment func() ([]byte, bool, error)
 	// commitAmendment commits the amendment record alone.
 	commitAmendment func() error
+	// pastApproval reports whether the run standing at currentRow, empty for a run with no status file, has passed its Discussion approval.
+	pastApproval func(currentRow string) bool
+	// storeRecord copies record onto the run's board entry.
+	storeRecord func(record []byte) error
+	// approvalRow reports whether the run's recipe has a Discussion approval row.
+	approvalRow func() bool
 }
 
 // decisionNoticeError is one notice the verb could not send, reported on its success envelope.
@@ -480,6 +496,32 @@ func committedLacksEntry(deps decisionDeps, added []discussionparser.AddedDecisi
 	return "", nil
 }
 
+// copyRecordToBoard copies the committed decision record onto the run's board entry when the run standing at currentRow is past its Discussion approval, and returns the text the success envelope reports as record_store_error.
+// It returns "" when the run is not past the approval or the copy succeeded.
+// A done entry's refusal reports that the entry keeps the record it last stored, with no pointer at the store verb; any other failure, a missing committed record included, reports the error and the way forward of decisionWayStore.
+// Every failure is logged at Warn, and none fails the verb, since the entry is already committed.
+func copyRecordToBoard(deps decisionDeps, currentRow string) string {
+	if !deps.pastApproval(currentRow) {
+		return ""
+	}
+	committed, found, err := deps.committed()
+	if err == nil && !found {
+		err = errors.New("HEAD holds no decision record")
+	}
+	if err == nil {
+		err = deps.storeRecord(committed)
+	}
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, boardengine.ErrRecordEntryDone):
+		logger.Warn("loom: decision add did not copy the record: the board entry has landed", "error", err)
+		return "the entry has landed and keeps the record it last stored"
+	}
+	logger.Warn("loom: decision add could not copy the record onto the board entry", "error", err)
+	return err.Error() + "; " + decisionWayStore
+}
+
 // amendmentCall holds what a `--amends-plan` call must put back when its append or commit fails:
 // both records' bytes before the call, whether each existed, and the amendment record's bytes the call wrote.
 type amendmentCall struct {
@@ -576,21 +618,22 @@ func (a *amendmentCall) rollBackAppend(deps decisionDeps, appendErrored bool, ca
 // afterFailedCommit decides what a failed commit left at HEAD, which commitErr describes.
 // It reports landed when HEAD holds both this call's amendment record and every entry, so the commit went through despite its error.
 // Otherwise it returns the refusal text: both files are kept when HEAD holds the amendment record alone or cannot be read, and restored when HEAD differs.
-func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added []discussionparser.AddedDecision, commitErr error) (landed bool, refusal string) {
+// wayCommit is the way forward the refusals that keep the files end in.
+func (a *amendmentCall) afterFailedCommit(deps decisionDeps, added []discussionparser.AddedDecision, commitErr error, wayCommit string) (landed bool, refusal string) {
 	failed := fmt.Sprintf("the entry is appended but the commit failed: %s", commitErr)
 	committed, found, err := deps.committedAmendment()
 	if err != nil {
-		return false, fmt.Sprintf("%s; the amendment record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
+		return false, fmt.Sprintf("%s; the amendment record at HEAD could not be read: %s; %s", failed, err, wayCommit)
 	}
 	if found && bytes.Equal(committed, a.written) {
 		lacking, err := committedLacksEntry(deps, added)
 		switch {
 		case err != nil:
-			return false, fmt.Sprintf("%s; the decision record at HEAD could not be read: %s; %s", failed, err, decisionWayFabricCommit)
+			return false, fmt.Sprintf("%s; the decision record at HEAD could not be read: %s; %s", failed, err, wayCommit)
 		case lacking == "":
 			return true, ""
 		}
-		return false, fmt.Sprintf("%s; a status commit landed the amendment record without the entry; %s", failed, decisionWayFabricCommit)
+		return false, fmt.Sprintf("%s; a status commit landed the amendment record without the entry; %s", failed, wayCommit)
 	}
 	if err := a.restoreDecision(deps); err != nil {
 		return false, fmt.Sprintf("%s; the decision record at %s could not be restored: %s; %s", failed, deps.recordPath, err, decisionWayRestoreRecords)
@@ -684,6 +727,15 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	if found && st.State == shedengine.StateRunning && st.CurrentProducer == loomshed.NameDiscussionWrite {
 		return refuse("%s is running and owns the decision record; %s", loomshed.NameDiscussionWrite, decisionWayWriter)
 	}
+	currentRow := ""
+	if found {
+		currentRow = st.CurrentProducer
+	}
+	// A run past its Discussion approval has a board copy of the record to refresh once the commit lands.
+	wayCommit := decisionWayFabricCommit
+	if deps.pastApproval(currentRow) {
+		wayCommit += `, then "lym loom decision store" once "lym fabric commit" has landed the record`
+	}
 
 	hasPlan, err := deps.hasPlan()
 	if err != nil {
@@ -697,10 +749,6 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		return refuse("read the run's recipe: %s; %s", err, decisionWayRetry)
 	}
 	if rowWritten {
-		currentRow := ""
-		if found {
-			currentRow = st.CurrentProducer
-		}
 		refusal, err := checkDarnRecord(deps, currentRow)
 		if err != nil {
 			return refuse("read the darn run's decision record: %s; %s", err, decisionWayRetry)
@@ -781,10 +829,10 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 	}
 	commitErr := deps.commit()
 	if commitErr != nil && amendment == nil {
-		return refuse("the entry is appended but the commit failed: %s; %s", commitErr, decisionWayFabricCommit)
+		return refuse("the entry is appended but the commit failed: %s; %s", commitErr, wayCommit)
 	}
 	if commitErr != nil {
-		landed, refusal := amendment.afterFailedCommit(deps, added, commitErr)
+		landed, refusal := amendment.afterFailedCommit(deps, added, commitErr, wayCommit)
 		if !landed {
 			return refuse("%s", refusal)
 		}
@@ -798,6 +846,7 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 			return refuse("the committed record holds no entry under %q; %s", lacking, decisionWayEntryLost)
 		}
 	}
+	recordStoreError := copyRecordToBoard(deps, currentRow)
 	notified, noticeErrors := notifyLiveRuns(deps, added)
 	result := map[string]any{
 		"slug":          slug,
@@ -805,6 +854,9 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 		"headings":      headings,
 		"notified":      notified,
 		"notice_errors": noticeErrors,
+	}
+	if recordStoreError != "" {
+		result["record_store_error"] = recordStoreError
 	}
 	if len(patternBullets) > 0 {
 		result["pattern_changes"] = patternBullets
@@ -824,6 +876,61 @@ func decisionVerb(out io.Writer, slug string, deps decisionDeps, input decisionI
 // addedDecisionHeading is the heading AppendDecision writes for d, without its leading marker.
 func addedDecisionHeading(d discussionparser.AddedDecision) string {
 	return fmt.Sprintf("Added after Discussion (%s, %s): %s", strings.TrimSpace(d.By), d.Date.UTC().Format("2006-01-02"), strings.TrimSpace(d.Title))
+}
+
+// decisionStoreRetry is the way forward of a store refusal that clearing its cause fixes.
+const decisionStoreRetry = `way forward: re-run "lym loom decision store"`
+
+// decisionStoreVerb copies the committed decision record onto the run's board entry, or refuses with a way forward.
+// It admits the operator's own unnamed shell, the run's own arbiter strand and the run's parent orch, and refuses a run whose recipe has no Discussion approval row or that is not yet past the approval.
+// It changes nothing in the run: no commit, no routing and no notice.
+func decisionStoreVerb(out io.Writer, slug string, deps decisionDeps) int {
+	refuse := func(format string, args ...any) int {
+		return output.Err(out, fmt.Sprintf("loom: %s store: ", decisionGroup)+fmt.Sprintf(format, args...))
+	}
+
+	if deps.strandName != "" && !deps.arbiterStrand(deps.strandName) {
+		parent, err := deps.parent()
+		switch {
+		case err != nil:
+			return refuse("the caller %q is a named session; way forward: the run's parent could not be resolved (%s); the operator's own unnamed shell may still run the verb", deps.strandName, err)
+		case deps.strandName != parent.Name && parent.Name == "":
+			return refuse(`the caller %q is a task session; way forward: the operator's own unnamed shell may always run "lym loom decision store"`, deps.strandName)
+		case deps.strandName != parent.Name:
+			return refuse(`the caller %q is a task session; way forward: ask %s to run "lym loom decision store"; the operator's own unnamed shell may always run it`, deps.strandName, parent.Name)
+		}
+	}
+
+	st, found, err := deps.readStatus()
+	if err != nil {
+		return refuse("read the run status: %s; %s", err, decisionStoreRetry)
+	}
+	currentRow := ""
+	if found {
+		currentRow = st.CurrentProducer
+	}
+	if !deps.approvalRow() {
+		return refuse("the run's recipe has no Discussion approval, so its record is never stored on the board; way forward: read the record in the run's worktree at %s", deps.recordPath)
+	}
+	if !deps.pastApproval(currentRow) {
+		return refuse(`the run has not passed its Discussion approval, which stores the record itself; way forward: let the run settle Discussion-Review, by "lym loom resume" or, when it waits on an escalation, by answering it with the "lym loom circling" verb its escalation names, then re-run this verb if "lym loom status" shows it past Discussion-Bouncer without a stored record`)
+	}
+
+	committed, committedFound, err := deps.committed()
+	if err != nil {
+		return refuse("read the committed decision record: %s; %s", err, decisionStoreRetry)
+	}
+	if !committedFound {
+		return refuse(`the run has no committed decision record; way forward: run "lym fabric commit" to commit it, then re-run "lym loom decision store"; a session lym refuses "lym fabric commit" from reports status: FAILED and the orch runs it`)
+	}
+	err = deps.storeRecord(committed)
+	switch {
+	case errors.Is(err, boardengine.ErrRecordEntryDone):
+		return refuse("the entry has landed and keeps the record it last stored; nothing to store")
+	case err != nil:
+		return refuse("%s; %s", err, decisionStoreRetry)
+	}
+	return output.Ok(out, map[string]any{"slug": slug, "record": deps.recordPath, "stored": true})
 }
 
 // decisionState carries what the decision group's pre-run resolved for its verb.
@@ -943,6 +1050,19 @@ func (s *decisionState) preRun(cmd *cobra.Command, args []string) error {
 		commitAmendment: func() error {
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), target, []string{loomengine.LoomAmendmentRecordRel()}, fmt.Sprintf("loom: plan amendment record for %s", seedSlug(target.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
+		},
+		// resolveReviewTarget's recipeUnknown refusal, which runs before any dep is built, has refused every recipe the accessor cannot parse, so its error is dropped here.
+		// A recipe with no approval row (darn, sampler) answers false, and so does pawl, whose record is the beam's project record: none of those runs is copied.
+		pastApproval: func(currentRow string) bool {
+			past, _, _ := loomrecipe.PastDiscussionApproval(recipe, currentRow)
+			return past
+		},
+		storeRecord: func(record []byte) error {
+			return storeDecisionRecord(target, seedSlug(target.WorktreeName), record)
+		},
+		approvalRow: func() bool {
+			_, hasRow, _ := loomrecipe.DiscussionApprovalRow(recipe)
+			return hasRow
 		},
 	}
 	return nil
@@ -1096,7 +1216,8 @@ func (c *loomCLI) decisionCmd() *cobra.Command {
 		Use:   decisionGroup,
 		Short: "record a design call made after the Discussion",
 		Long: `decision holds the verb through which a design call made after the Discussion
-ended is recorded in the decision record. "decision add" is the only verb.
+ended is recorded in the decision record. "decision add" records it, and
+"decision store" re-copies the committed record onto the run's board entry.
 
 The verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. On a beam,
@@ -1124,15 +1245,17 @@ Example:
 		Long: `add appends an entry under an "Added after Discussion" heading, carrying the
 --by label and today's date, to the decision record's Decisions section,
 re-runs the discussion check (restoring the record on a finding) and commits.
-It resumes nothing and changes neither the support log nor the plan. It then
-notifies the run's other live agents ("notified", "notice_errors").
+It changes neither the support log nor the plan. On a run
+past its Discussion approval it also copies the committed record onto the run's
+board entry; a failed copy never fails the verb and is reported as
+"record_store_error". It then notifies the run's other live agents
+("notified", "notice_errors").
 
 --by is parent, operator or arbiter, the last only from the run's own arbiter
 strand. --title, --decision and --rationale are required unless --from is
 passed. A named session other than the run's parent orch, arbiter or, on a
-sampler run, its sampler session (with --by operator, for a call the operator
-settled in the pane) is refused. It is refused while Discussion-Write runs, and on a Record-Write
-record until Record-Write has committed it.
+sampler run, its sampler session (--by operator only) is refused. It is refused while Discussion-Write runs, and, on a Record-Write recipe,
+until it has committed the record.
 
 --amends-plan marks a decision that amends the approved plan: the call also
 appends the title to the plan amendment record in the same commit. It is
@@ -1145,15 +1268,13 @@ A decision on a PATTERN entry also passes --pattern-entry <PATTERN-id>,
 <new entry text>, which writes its bullet to the "## PATTERN changes" section.
 
 --from <file> records several decisions in place of the per-entry flags: a
-JSON array of objects with the keys title, decision, rationale and optionally
-pattern_entry, pattern_action and pattern_text. --by and --amends-plan apply
-to every entry. All land in one write and one commit, or none does, and each
-live agent gets one notice naming the headings ("headings"). Two entries may
-not share a title or a PATTERN entry.
+JSON array of objects with the keys title, decision, rationale and optional
+pattern_entry, pattern_action, pattern_text. --by and --amends-plan apply to
+every entry. All land in one commit or none does, the notice names the
+headings, and two entries may not share a title or a PATTERN entry.
 
 Example:
-  lym loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."
-  lym loom decision add <slug> --by parent --from decisions.json`,
+  lym loom decision add <slug> --by parent --title "Keep the cache" --decision "Keep the cache per run." --rationale "A shared cache races."`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -1173,6 +1294,33 @@ Example:
 	add.Flags().StringVar(&st.input.from, "from", "", "a JSON file of several decisions to record in one call, in place of the per-entry flags")
 	add.Flags().BoolVar(&st.input.amendsPlan, "amends-plan", false, "the decision amends the approved plan: also record it in the plan amendment record")
 
-	group.AddCommand(add)
+	store := &cobra.Command{
+		Use:         "store [<slug>]",
+		Short:       "copy the committed decision record onto the run's board entry",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `store copies the decision record as committed at HEAD onto the run's board
+entry, the same copy "decision add" makes after its commit. It is idempotent:
+a record the entry already holds is not written again. It takes no flags and
+changes nothing in the run: no commit, no routing and no notice.
+
+It works once the run is past its Discussion approval, and refuses a recipe
+with no Discussion approval, a run still inside Discussion-Review, a record
+HEAD does not hold and an entry that has landed, which keeps the record it
+last stored. The operator's own unnamed shell, the run's own arbiter strand
+and the run's parent orch may run it.
+
+Example:
+  lym loom decision store <slug>`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			clihelp.SetExit(cmd.Context(), decisionStoreVerb(cmd.OutOrStdout(), st.slug, st.deps))
+			return nil
+		},
+	}
+
+	group.AddCommand(add, store)
 	return group
 }

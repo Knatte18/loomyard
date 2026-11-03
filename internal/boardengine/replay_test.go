@@ -84,6 +84,22 @@ func asBeam(task *Task) { task.Beam = true }
 
 func asNotifyOnLand(task *Task) { task.NotifyOnLand = true }
 
+func asDiscussed(task *Task) { task.Discussed = true }
+
+// wantOriginFile returns a row check asserting that name in origin's board directory holds want, or is absent when want is empty.
+func wantOriginFile(name, want string) func(t *testing.T, dir string, got map[string]Task) {
+	return func(t *testing.T, dir string, _ map[string]Task) {
+		t.Helper()
+		got, err := os.ReadFile(filepath.Join(dir, name))
+		switch {
+		case want == "" && !os.IsNotExist(err):
+			t.Errorf("%s = %q, %v; want it absent", name, got, err)
+		case want != "" && (err != nil || string(got) != want):
+			t.Errorf("%s = %q, %v; want %q", name, got, err, want)
+		}
+	}
+}
+
 func withBeamColor(color string) func(*Task) {
 	return func(task *Task) { task.BeamColor = color }
 }
@@ -492,6 +508,100 @@ func TestFabricReplay(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:    "RecordFileAddedLandsWhenOriginLacksIt",
+			base:    []Task{replayEntry("a")},
+			origin:  []Task{replayEntry("a")},
+			parent:  []Task{replayEntry("a")},
+			commit:  []Task{replayEntry("a")},
+			designs: []fabricengine.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
+			check:   wantOriginFile("decision-a.md", "record"),
+		},
+		{
+			name:        "RecordFileChangedLandsWhenOriginHoldsTheParentsFile",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			originFiles: map[string]string{"decision-a.md": "base"},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			check:       wantOriginFile("decision-a.md", "local"),
+		},
+		{
+			name:        "RecordFileRemovedLandsWhenOriginsFileIsUntouched",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			originFiles: map[string]string{"decision-a.md": "base"},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base")}},
+			check:       wantOriginFile("decision-a.md", ""),
+		},
+		{
+			name:        "RecordFileChangedOnBothSidesKeepsOriginsFileAndReportsItLost",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a")},
+			originFiles: map[string]string{"decision-a.md": "origin"},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("base"), Before: []byte("base"), After: []byte("local")}},
+			wantEmpty:   true,
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "decision-a.md", Field: "decision record", Reason: "origin changed the file too"}},
+			check:       wantOriginFile("decision-a.md", "origin"),
+		},
+		{
+			name:        "RecordFileWrittenForAnEntryOriginLacksIsLostAndNotWritten",
+			base:        []Task{replayEntry("a", withTitle("A")), replayEntry("b")},
+			origin:      []Task{replayEntry("b")},
+			parent:      []Task{replayEntry("a", withTitle("A")), replayEntry("b")},
+			commit:      []Task{replayEntry("a", withTitle("A2")), replayEntry("b")},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", After: []byte("record")}},
+			wantEmpty:   true,
+			wantLost:    []fabricengine.ReplayFinding{{Entry: "a", Reason: "origin removed the entry"}, {Entry: "decision-a.md", Field: "decision record", Reason: "origin does not hold the entry"}},
+			wantEntries: map[string]string{"a": "", "b": "b"},
+			check:       wantOriginFile("decision-a.md", ""),
+		},
+		{
+			name:        "RemovedEntryAndItsRecordFileLeaveNoRecordOnOrigin",
+			base:        []Task{replayEntry("a"), replayEntry("b")},
+			origin:      []Task{replayEntry("a"), replayEntry("b")},
+			parent:      []Task{replayEntry("a"), replayEntry("b")},
+			commit:      []Task{replayEntry("b")},
+			originFiles: map[string]string{"decision-a.md": "record"},
+			designs:     []fabricengine.ReplayFile{{Path: "decision-a.md", Base: []byte("record"), Before: []byte("record")}},
+			wantEntries: map[string]string{"a": "", "b": "b"},
+			check:       wantOriginFile("decision-a.md", ""),
+		},
+		{
+			name:        "RenameCommitLeavesNoOldRecordFileOnOrigin",
+			base:        []Task{replayEntry("a", asDiscussed)},
+			origin:      []Task{replayEntry("a", asDiscussed)},
+			parent:      []Task{replayEntry("a", asDiscussed)},
+			commit:      []Task{replayEntry("c", asDiscussed)},
+			originFiles: map[string]string{"decision-a.md": "record"},
+			designs: []fabricengine.ReplayFile{
+				{Path: "decision-a.md", Base: []byte("record"), Before: []byte("record")},
+				{Path: "decision-c.md", After: []byte("record")},
+			},
+			wantEntries: map[string]string{"a": "", "c": "c"},
+			check: func(t *testing.T, dir string, _ map[string]Task) {
+				wantOriginFile("decision-a.md", "")(t, dir, nil)
+				wantOriginFile("decision-c.md", "record")(t, dir, nil)
+			},
+		},
+		{
+			name:        "DiscussedFlagSetByTheCommitLandsOnOriginsEntry",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a", asDiscussed)},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if !got["a"].Discussed {
+					t.Errorf("a.discussed = false; want true")
+				}
+			},
+		},
 	}
 
 	for _, tt := range rows {
@@ -644,6 +754,9 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			{"NotMarkdown", "project-x.json", false},
 			{"EntryStore", "board.json", true},
 			{"DesignFile", "design-a.md", true},
+			{"RecordFile", "decision-x.md", true},
+			{"RecordFileInSubdirectory", "sub/decision-x.md", false},
+			{"RecordFileEmptySlug", "decision-.md", false},
 			{"NestedReadme", "dir/README.md", false},
 			{"SubdirectoryReadme", "sub/README.md", false},
 			{"OtherStore", "heddle.json", false},
@@ -675,6 +788,7 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			{"EntryRemoved", two, onlyA, []string{"board.json"}, []string{"b"}},
 			{"EntryStoreUnchanged", two, two, []string{"board.json"}, []string{}},
 			{"DesignFileNamesItsEntry", nil, nil, []string{"design-a.md"}, []string{"a"}},
+			{"RecordFileNamesItsEntry", nil, nil, []string{"decision-a.md"}, []string{"a"}},
 			{"OverviewFileNamesNone", nil, nil, []string{"README.md", "project-x.md"}, []string{}},
 			{"DesignFileAndEntryChange", two, retitled, []string{"board.json", "design-b.md"}, []string{"a", "b"}},
 		}

@@ -238,6 +238,7 @@
 // The net change runs from the entries as loaded under the board file lock to the entries after the whole mutation,
 // so a batch or merge that clears the status early and then edits the entry is still refused, and nothing reaches disk.
 // A status-only net change passes: set-status, a merge's set_status and an upsert that differs only in status.
+// The discussed flag is no scope either, so a held entry takes it, and only StoreDecisionRecord writes it.
 // set-status is itself unguarded, so a live run's status can be cleared by hand.
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
@@ -283,7 +284,19 @@
 // A beam is refused, since its slug stays fixed while it lives and its title is changed with `lym board upsert`, and so is an entry whose pair exists on this machine, naming `lym batten cancel <slug> --remove`.
 // A target that is empty, longer than MaxSlugLength or already an entry's slug is refused too.
 // Body and brief text is never rewritten; the result names every entry whose body or brief still holds the old slug with no letter, digit, '-' or '_' beside it.
-// The render after the write drops the old slug's design doc and writes the new one.
+// The render after the write drops the old slug's design doc and writes the new one, and the entry's decision record file moves with it to the new slug's name.
+// A failed move is returned as the rename's *DecisionRecordError after the entry is saved, naming the file left at the old name, and Board.Rename returns its result beside that error; a flagged entry with no file removes a file at the new slug's name, so it never reads an orphan as its own record.
+//
+// # Decision record
+//
+// An entry whose run's Discussion was approved carries the discussed flag, and its decision record is the file `decision-<slug>.md` beside board.json, at the Bolt root; the file follows its entry through a rename, and a remove, a prune or a merge that drops the slug removes it.
+// No render output names that file, so RenderToDisk's manifest never holds it and a render never deletes it.
+// Only lym writes the flag and the file: Board.StoreDecisionRecord is the one writer, and a payload may carry discussed only as the entry's stored value, false for a new entry, which is dropped as a no-op; any other value is refused.
+// StoreDecisionRecord writes the file before it saves board.json, so a crash leaves a file with no flag and never a flag with no file, and it writes nothing when the entry is flagged and the file already holds the bytes.
+// It bypasses the run lock for the flag and the file alone, so every other field of a held entry stays locked, and it refuses an absent entry and a done entry, the latter with an error that matches ErrRecordEntryDone, since a landed entry keeps the record it last stored.
+// Board.DecisionRecord reads without the lock and answers found only when the entry exists, carries the flag and the file exists; an absent entry, an unflagged one and a flagged one with no file each answer not found.
+// A merge that removes a flagged slug and upserts it again keeps the flag.
+// LoadConfig refuses a design_prefix that would render a design file onto a record file's name, a prefix of `decision-` or one starting with it, the empty prefix included.
 //
 // # Siblings
 //
@@ -297,7 +310,7 @@
 //
 // # Concurrency and sync
 //
-// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → render → write files.
+// Board sequences all mutating operations with a file lock: lock → load → mutate → save board.json → move or remove decision record files → render → write files.
 // After each write, a detached background sync process (see sync.go) is launched to commit and push
 // changes to the remote.
 // The write returns immediately without waiting for the sync.
@@ -337,9 +350,10 @@
 // # Replay
 //
 // FabricReplay is the board's Bolt replayer, named `board`, and the run ledger fabricengine reads the ended set and the owners through; the lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
-// It claims `board.json`, `README.md`, the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's, and the `design-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
-// The by-entry merge of fields is `internal/entrymerge`'s.
-// Apply re-applies a local board commit, read out of the files the request holds by path, onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file the commit touches.
+// It claims `board.json`, `README.md`, the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's, and the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
+// The by-entry merge of fields is `internal/entrymerge`'s, and its fields include the `discussed` flag.
+// Apply re-applies a local board commit, read out of the files the request holds by path, onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file and decision record the commit touches.
+// A decision record goes after the entry changes: one the commit writes for an entry origin does not hold is reported lost and not written, and every other record file, a removal included, lands by the design-file rule, so a replayed removal or rename leaves no old record file on origin.
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
 // a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.

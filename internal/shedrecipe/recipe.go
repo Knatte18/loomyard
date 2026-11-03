@@ -251,6 +251,9 @@ type Env struct {
 	// entry. It is invoked on the approved branch of that producer's settle, before the commit
 	// seam.
 	ApprovePlan func() error
+	// ApproveDiscussion is the injected closure that copies the run's decision record onto its board entry, read by the Bouncer entry's approve_seam: discussion.
+	// It is invoked on the approved branch of that producer's settle, before the commit seam.
+	ApproveDiscussion func() error
 	// SkipPlanReview is the injected closure answering whether the live plan generation skips its Plan-Review judge, read by the Bouncer entry's skip_seam key.
 	// An error makes the Bouncer review for real.
 	SkipPlanReview func() (bool, error)

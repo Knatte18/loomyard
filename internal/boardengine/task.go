@@ -60,6 +60,8 @@ type Task struct {
 	Front bool `json:"front,omitempty"`
 	// OnLand is the key of the action the front-task package runs when the front task lands; empty for any other entry.
 	OnLand string `json:"on_land,omitempty"`
+	// Discussed marks an entry whose run's Discussion was approved and whose decision record lym stored as decision-<slug>.md; only StoreDecisionRecord sets it.
+	Discussed bool `json:"discussed,omitempty"`
 
 	// Unknown holds the decoded entry's keys this binary does not know, each with its raw JSON value, nil when there are none.
 	// Encoding writes them back after the known fields in key order, and no step decodes a value into a Go type.

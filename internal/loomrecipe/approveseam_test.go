@@ -18,15 +18,18 @@
 package loomrecipe
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.TapestryRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: merge and skip_seam: merge-overlap sit on the Merge-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
+// TestShippedRecipe_SeamsWiredOnPlanBouncerOnly parses the real embedded recipes.TapestryRecipe and asserts each seam key's shipped shape: approve_seam: plan and skip_seam: rework-exempt sit on the Plan-Bouncer row, approve_seam: discussion sits on the Discussion-Bouncer row, and no other row carries either key, and require_approved is present on no row at all -- the key is no longer recognized by any registry entry now that both rows sharing the old PlanValidate engine are deleted, and a row carrying it would fail construction outright rather than silently doing nothing.
 //
 //testtiming:keep pins which shipped rows carry approve_seam and skip_seam, which TestApproveSeam_FailsToBuild never reads off the shipped recipe
 func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
@@ -48,7 +51,7 @@ func TestShippedRecipe_SeamsWiredOnPlanBouncerOnly(t *testing.T) {
 		// want maps each row that carries the key to its shipped value.
 		want map[string]string
 	}{
-		{"approve_seam", map[string]string{loomshed.NamePlanBouncer: "plan"}},
+		{"approve_seam", map[string]string{loomshed.NamePlanBouncer: "plan", loomshed.NameDiscussionBouncer: "discussion"}},
 		{"skip_seam", map[string]string{loomshed.NamePlanBouncer: "rework-exempt"}},
 	}
 	for _, seam := range seams {
@@ -92,7 +95,7 @@ func approveSeamFixture(approveSeam string) string {
 		approveSeamLine
 }
 
-// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam must never silently build a Bouncer whose Approve closure is nil -- and for a value bouncerEntry does not recognize: approve_seam names env.ApprovePlan and nothing else, so any value other than "plan" is a build-time error, not a silently-ignored key.
+// TestApproveSeam_FailsToBuild parses a one-row recipe naming approve_seam on a Bouncer row and builds it, asserting Build fails for a nil Env.ApprovePlan under approve_seam: plan -- a present approve_seam key is guarded by requireSeam on env.ApprovePlan exactly as commit_seam is guarded on env.CommitPlan/env.CommitDiscussion, so a document naming the key against a nil seam must never silently build a Bouncer whose Approve closure is nil -- and for a value bouncerEntry does not recognize: approve_seam accepts "plan" and "discussion", so any other value is a build-time error, not a silently-ignored key.
 func TestApproveSeam_FailsToBuild(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -102,7 +105,7 @@ func TestApproveSeam_FailsToBuild(t *testing.T) {
 		nilClosure  bool
 	}{
 		{"nil Env.ApprovePlan", "plan", true},
-		{"unrecognized value", "discussion", false},
+		{"unrecognized value", "webster", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -119,6 +122,75 @@ func TestApproveSeam_FailsToBuild(t *testing.T) {
 
 			if _, err := shedbuild.Build(r, env); err == nil {
 				t.Fatalf("shedbuild.Build() error = nil; want non-nil for approve_seam: %s", tt.approveSeam)
+			}
+		})
+	}
+}
+
+// discussionApproveSeamFault returns the first way parsed breaks the discussion approve-seam rule, or "" when it keeps it.
+// The rule: the row that approves the discussion carries approve_seam: discussion, and no other Bouncer row does.
+func discussionApproveSeamFault(parsed shedbuild.Recipe) string {
+	approvalRow, _ := discussionApprovalRow(parsed)
+	for _, row := range parsed.Producers {
+		if row.Engine != bouncerEngine {
+			continue
+		}
+		carries := row.Config["approve_seam"] == "discussion"
+		switch {
+		case row.Name == approvalRow && !carries:
+			return fmt.Sprintf("row %q approves the discussion but carries no approve_seam: discussion", row.Name)
+		case row.Name != approvalRow && carries:
+			return fmt.Sprintf("row %q carries approve_seam: discussion but does not approve the discussion", row.Name)
+		}
+	}
+	return ""
+}
+
+// TestDiscussionApprovalRowsCarryApproveSeam pins the rule discussionApproveSeamFault judges over every embedded loom recipe, and over two fixtures that break it.
+func TestDiscussionApprovalRowsCarryApproveSeam(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
+		isLoom, err := IsLoom(recipe)
+		if err != nil || !isLoom {
+			continue
+		}
+		parsed, err := parseEmbeddedRecipe(recipe)
+		if err != nil {
+			t.Fatalf("parseEmbeddedRecipe(%q) error = %v; want nil", recipe, err)
+		}
+		if fault := discussionApproveSeamFault(parsed); fault != "" {
+			t.Errorf("recipe %q: %s; want the rule kept", recipe, fault)
+		}
+	}
+
+	faults := []struct {
+		name    string
+		recipe  string
+		wantHas string
+	}{
+		{"ApprovalRowWithoutTheKey", "version: 1\n" +
+			"entry: Fixture-Write\n" +
+			"terminals: [Fixture-Bouncer]\n" +
+			"producers:\n" +
+			"  - name: Fixture-Write\n" +
+			"    engine: DiscussionWrite\n" +
+			"    on_done: Fixture-Bouncer\n" +
+			"  - name: Fixture-Bouncer\n" +
+			"    engine: Bouncer\n" +
+			"    segment: Fixture-Review\n", "approves the discussion but carries no"},
+		{"CodeBouncerWithTheKey", approveSeamFixture("discussion"), "does not approve the discussion"},
+	}
+	for _, tt := range faults {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			parsed, err := shedbuild.Parse([]byte(tt.recipe))
+			if err != nil {
+				t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			}
+			if fault := discussionApproveSeamFault(parsed); !strings.Contains(fault, tt.wantHas) {
+				t.Errorf("discussionApproveSeamFault() = %q; want it to contain %q", fault, tt.wantHas)
 			}
 		})
 	}

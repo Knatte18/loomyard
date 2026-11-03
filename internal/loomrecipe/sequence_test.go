@@ -94,7 +94,11 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	tiergate.Require(t, 0)
 	anchorPath, env, paths := buildSequenceFixture(t)
 
-	var commitDiscussionCalls, commitPlanCalls int
+	var commitDiscussionCalls, commitPlanCalls, approveDiscussionCalls int
+	env.ApproveDiscussion = func() error {
+		approveDiscussionCalls++
+		return nil
+	}
 	env.CommitDiscussion = func() error {
 		commitDiscussionCalls++
 		return nil
@@ -187,6 +191,10 @@ func TestSequence_FullRunBlocksAtMergeIn(t *testing.T) {
 	}
 	if spawns := countRole(env.Shuttle.(*shedfake.Shuttle), "discussion"); spawns != 0 {
 		t.Errorf("loom shuttle ran %d discussion sessions; want none on the seat engine", spawns)
+	}
+
+	if approveDiscussionCalls != 1 {
+		t.Errorf("ApproveDiscussion calls = %d; want exactly 1 after a clean run (Discussion-Bouncer's approved settle)", approveDiscussionCalls)
 	}
 
 	// This is the scenario proof that the Plan-Bouncer commit_seam is genuinely reached through a
