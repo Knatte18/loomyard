@@ -387,7 +387,7 @@ func TestGreenEnd(t *testing.T) {
 			f.tasks = []boardengine.Task{fixTask("adopt-fix-alpha-t1", nil)}
 			f.removeEntryErr = errors.New("board locked")
 
-			if lines := greenEnd(f.deps); !mentions(lines, "adopt-fix-alpha-t1", "board locked", "`lym board remove adopt-fix-alpha-t1`") {
+			if lines := greenEnd(f.deps); !mentions(lines, "adopt-fix-alpha-t1", "board locked", "`lym board remove '{\"slug\":\"adopt-fix-alpha-t1\"}'`") {
 				t.Errorf("greenEnd() = %q; want a line with the step's error and its hand removal", lines)
 			}
 		})

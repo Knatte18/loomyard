@@ -254,7 +254,7 @@ func TestFailedEnd(t *testing.T) {
 				if len(f.created) != 0 || len(f.removed) != 0 || len(f.cancelled) != 0 {
 					t.Errorf("created = %v, removed = %q, cancelled = %q; want none", f.created, f.removed, f.cancelled)
 				}
-				if len(lines) != 1 || !mentions(lines, "adopt-fix-alpha-t1", tt.wantState, "its landing starts the next check", tt.wantHand, "`lym batten cancel adopt-fix-alpha-t1 --remove`, then `lym board remove adopt-fix-alpha-t1`") {
+				if len(lines) != 1 || !mentions(lines, "adopt-fix-alpha-t1", tt.wantState, "its landing starts the next check", tt.wantHand, "`lym batten cancel adopt-fix-alpha-t1 --remove`, then `lym board remove '{\"slug\":\"adopt-fix-alpha-t1\"}'`") {
 					t.Errorf("lines = %q; want the task, its state %q and the hand steps", lines, tt.wantState)
 				}
 			})
@@ -359,7 +359,7 @@ func TestFailedEnd(t *testing.T) {
 		if !mentions(cancelLines, "driver alive", "`lym batten cancel adopt-fix-alpha-t1 --remove`") || mentions(cancelLines, "re-run lym adopt") {
 			t.Errorf("cancel lines = %q; want the hand cancel first and no re-run", cancelLines)
 		}
-		if !mentions(entryLines, "board locked", "`lym board remove adopt-fix-alpha-t1`", "re-run lym adopt alpha") {
+		if !mentions(entryLines, "board locked", "`lym board remove '{\"slug\":\"adopt-fix-alpha-t1\"}'`", "re-run lym adopt alpha") {
 			t.Errorf("entry lines = %q; want the hand removal and the re-run", entryLines)
 		}
 	})

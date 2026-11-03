@@ -13,7 +13,7 @@ func frontPayloadRefusal(slug string) error {
 
 // frontFixedRefusal is the refusal of a change to a front task's project, kind or slug.
 func frontFixedRefusal(slug string) error {
-	return fmt.Errorf("entry %q is a front task, and a front task's project, kind and slug are fixed; way forward: remove it with \"lym board remove %s\", preceded by \"lym batten cancel %s --remove\" while a run holds the entry", slug, slug, slug)
+	return fmt.Errorf("entry %q is a front task, and a front task's project, kind and slug are fixed; way forward: remove it with `%s`, preceded by `lym batten cancel %s --remove` while a run holds the entry", slug, RemoveCommand(slug), slug)
 }
 
 // checkFrontPayload judges the front and on_land keys of an upsert payload against the entry fields["slug"] names, the entry being new when the store holds none.

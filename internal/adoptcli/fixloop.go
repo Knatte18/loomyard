@@ -265,7 +265,7 @@ func failedEnd(deps fixDeps, record CheckRecord) []string {
 // halted is true for a task to remove: a draft or other closed status, or a run the batten run record reads halted.
 // Otherwise state words the open task and handStep names what the operator takes to move or drop it.
 func judgeOwnFix(deps fixDeps, own boardengine.Task) (state, handStep string, halted bool, err error) {
-	drop := fmt.Sprintf("to drop it run `lym batten cancel %s --remove`, then `lym board remove %s`, whose removal runs its adopt-check action", own.Slug, own.Slug)
+	drop := fmt.Sprintf("to drop it run `lym batten cancel %s --remove`, then `%s`, whose removal runs its adopt-check action", own.Slug, boardengine.RemoveCommand(own.Slug))
 	if boardengine.IsEmptyStatus(own.Status) {
 		return "released and waits for its dobby to start it", drop, false, nil
 	}

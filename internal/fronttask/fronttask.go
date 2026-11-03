@@ -127,9 +127,9 @@ func (e *RemoveError) Unwrap() error { return e.Err }
 // HandRemoval names the commands that finish the removal by hand: the cancel and the board removal after a failed cancel, the board removal alone after a later step.
 func (e *RemoveError) HandRemoval() string {
 	if e.Step == "cancel" {
-		return fmt.Sprintf("run `lym batten cancel %s --remove`, then `lym board remove %s`", e.Slug, e.Slug)
+		return fmt.Sprintf("run `lym batten cancel %s --remove`, then `%s`", e.Slug, boardengine.RemoveCommand(e.Slug))
 	}
-	return fmt.Sprintf("run `lym board remove %s`", e.Slug)
+	return fmt.Sprintf("run `%s`", boardengine.RemoveCommand(e.Slug))
 }
 
 // IsOpen reports whether task is an open front task: a task entry with Front set whose status is empty or a run status.
@@ -177,7 +177,7 @@ func File(deps Deps, req Request, between func() error) error {
 		return fmt.Errorf("front task %s: read the board: %w", req.Slug, err)
 	}
 	if open, found := OpenFront(tasks, req.Project); found {
-		return fmt.Errorf("front task %s: the front task %s stands open in this worktree, and one front task stands open per worktree; way forward: let %s land, or remove it with `lym batten cancel %s --remove` then `lym board remove %s`, which runs its action", req.Slug, open.Slug, open.Slug, open.Slug, open.Slug)
+		return fmt.Errorf("front task %s: the front task %s stands open in this worktree, and one front task stands open per worktree; way forward: let %s land, or remove it with `lym batten cancel %s --remove` then `%s`, which runs its action", req.Slug, open.Slug, open.Slug, open.Slug, boardengine.RemoveCommand(open.Slug))
 	}
 
 	fields := map[string]any{"slug": req.Slug, "title": req.Title, "kind": boardengine.KindTask, "body": req.Body, "labels": req.Labels}

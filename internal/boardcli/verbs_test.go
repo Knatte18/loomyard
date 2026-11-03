@@ -391,8 +391,9 @@ func stepOwners(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepFrontTask drives the front and on_land guards through a seeded released front task:
-// every payload verb refuses a value other than the stored one, accepts the stored one unchanged, and refuses a change of the front task's project, kind or slug.
+// stepFrontTask drives the front and on_land guards through a seeded released front task.
+// Every payload verb refuses a value other than the stored one and accepts the stored one unchanged.
+// A change of the front task's project, kind or slug is refused with a removal command the remove verb accepts.
 func stepFrontTask(t *testing.T, f *cliFixture) {
 	seedBoardFile(t, f.cwd, `{"version":1,"draft_status":true,"entries":[`+
 		`{"id":0,"slug":"fix","title":"Fix","kind":"task","labels":["bug"],"front":true,"on_land":"adopt-check"}]}`)
@@ -423,14 +424,39 @@ func stepFrontTask(t *testing.T, f *cliFixture) {
 	}
 	runJSON(t, 0, "upsert", `{"slug":"fix","title":"Fix again"}`)
 
-	const fixed = `lym board remove`
+	// The refusal's way forward is the removal below, so the payload it names is the one the remove verb is run with.
+	const removePayload = `{"slug":"fix"}`
+	const fixed = `lym board remove '` + removePayload + `'`
 	refuse(t, fixed, "upsert", `{"slug":"fix","project":"other"}`)
 	refuse(t, fixed, "upsert", `{"slug":"fix","kind":"note"}`)
 	refuse(t, fixed, "rename", `{"slug":"fix","to":"moved"}`)
 
-	runJSON(t, 0, "remove", `{"slug":"fix"}`)
+	runJSON(t, 0, "remove", removePayload)
 	if got := runJSON(t, 0, "get", `{"slug":"fix"}`)["task"]; got != nil {
 		t.Errorf("get after remove: task = %v; want none", got)
+	}
+}
+
+// stepRemoveCommandParses runs the remove verb with the payload of each command boardengine.RemoveCommand renders, and expects it to remove the entry the slug names.
+func stepRemoveCommandParses(t *testing.T, f *cliFixture) {
+	slugs := []string{"fix", "adopt-fix-alpha-t1", "a-b-c-d"}
+	entries := make([]string, len(slugs))
+	for i, slug := range slugs {
+		entries[i] = fmt.Sprintf(`{"id":%d,"slug":%q,"title":"T","kind":"task","labels":["bug"]}`, i, slug)
+	}
+	seedBoardFile(t, f.cwd, `{"version":1,"draft_status":true,"entries":[`+strings.Join(entries, ",")+`]}`)
+
+	const prefix = "lym board remove '"
+	for _, slug := range slugs {
+		command := boardengine.RemoveCommand(slug)
+		if !strings.HasPrefix(command, prefix) || !strings.HasSuffix(command, "'") {
+			t.Fatalf("RemoveCommand(%q) = %q; want %s<payload>'", slug, command, prefix)
+		}
+		payload := strings.TrimSuffix(strings.TrimPrefix(command, prefix), "'")
+		runJSON(t, 0, "remove", payload)
+		if got := runJSON(t, 0, "get", fmt.Sprintf(`{"slug":%q}`, slug))["task"]; got != nil {
+			t.Errorf("get %s after running %s: task = %v; want none", slug, command, got)
+		}
 	}
 }
 

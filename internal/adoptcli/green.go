@@ -196,11 +196,8 @@ func removeFixTask(deps greenDeps) []string {
 		return nil
 	}
 	if err := fronttask.Remove(deps.FrontDeps, task.Slug); err != nil {
-		var removal *fronttask.RemoveError
-		if errors.As(err, &removal) {
-			return []string{fmt.Sprintf("the fix task %s of %s was not removed: the %s step failed (%v); way forward: %s", task.Slug, deps.Subject, removal.Step, removal.Err, removal.HandRemoval())}
-		}
-		return []string{fmt.Sprintf("the fix task %s of %s was not removed (%v); way forward: run `lym batten cancel %s --remove`, then `lym board remove %s`", task.Slug, deps.Subject, err, task.Slug, task.Slug)}
+		removal := err.(*fronttask.RemoveError)
+		return []string{fmt.Sprintf("the fix task %s of %s was not removed: the %s step failed (%v); way forward: %s", task.Slug, deps.Subject, removal.Step, removal.Err, removal.HandRemoval())}
 	}
 	return nil
 }

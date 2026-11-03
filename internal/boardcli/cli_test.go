@@ -122,6 +122,7 @@ func TestCLI(t *testing.T) {
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},
 		{"FrontTask", stepFrontTask},
+		{"RemoveCommandParses", stepRemoveCommandParses},
 		{"UpsertBodyFile", stepUpsertBodyFile},
 		{"MergeBodyFile", stepMergeBodyFile},
 		{"GetBody", stepGetBody},

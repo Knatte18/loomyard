@@ -3,6 +3,7 @@
 package boardengine
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -219,6 +220,13 @@ func (b *Board) RemoveTask(idOrSlug any) error {
 		return nil, store.RemoveTask(idOrSlug)
 	}, nil)
 	return err
+}
+
+// RemoveCommand returns the `lym board remove` command line that removes the entry slug names, its JSON payload single-quoted for a shell.
+// A way forward names it, since the verb takes a JSON payload or a bare handle and never a bare slug.
+func RemoveCommand(slug string) string {
+	payload, _ := json.Marshal(map[string]string{"slug": slug})
+	return "lym board remove '" + string(payload) + "'"
 }
 
 // MergeTasks atomically removes slugs, upserts one task, and optionally applies a status update.
