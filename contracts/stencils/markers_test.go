@@ -53,6 +53,8 @@ func TestStencils_TopLevelMarkers(t *testing.T) {
 		{"loom-fragment-self-check-plan-gated", LoomFragmentSelfCheckPlanGated, nil},
 		{"loom-fragment-self-check-discussion", LoomFragmentSelfCheckDiscussion, nil},
 		{"loom-fragment-self-check-discussion-gated", LoomFragmentSelfCheckDiscussionGated, nil},
+		{"darn-fragment-make-change", DarnFragmentMakeChange, []string{"subagent_model"}},
+		{"darn-fragment-make-change-gated", DarnFragmentMakeChangeGated, []string{"subagent_model"}},
 		{"twill-judge-critical", TwillJudgeCritical, []string{"disposition_place", "dispute_evidence", "governing_input"}},
 		{"twill-judge-plain", TwillJudgePlain, []string{"disposition_place", "rejection_rule"}},
 		{"twill-writer-fork", TwillWriterFork, []string{"disposition_place", "explore_step", "files_dir", "format_step", "input_record", "last_file", "reviewed_files", "self_check_command", "self_check_step"}},
@@ -131,6 +133,7 @@ func TestStencils_MarkerPositions(t *testing.T) {
 	}{
 		{"plan twill directive", "loom-template-plan", "## Step 2 — Explore the codebase", "{{.twill_directive}}"},
 		{"discussion twill directive", "loom-template-discussion", "## Step 4 — How to get answers", "{{.twill_directive}}"},
+		{"darn make change", "darn-template-write", "## Step 4 — Make the change", "{{.make_change}}"},
 		{"plan self check", "loom-template-plan", "## Step 5 — Self-check before ending your turn", "{{.self_check}}"},
 		{"discussion self check", "loom-template-discussion", "## Step 6 — Self-check before ending your turn", "{{.self_check}}"},
 		{"discussion decision record path", "loom-template-discussion", "## What you may write", "{{.decision_record_path}}"},

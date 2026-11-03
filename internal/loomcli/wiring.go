@@ -984,7 +984,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		return err
 	}
 	if hasDarnWrite {
-		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, loomCfg.SubagentModel, registry); err != nil {
+		if err := c.wireDarn(location, websterGeom.StencilsDir, websterGeom.SpecsDir, frictionDir, loomCfg.SubagentModel, pairSlug, registry); err != nil {
 			return err
 		}
 	}

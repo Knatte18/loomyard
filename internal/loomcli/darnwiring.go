@@ -225,7 +225,8 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
 // subagentModel is loom.yaml's subagent_model, the model the writer's prompt names for the subagents it hands work to.
-func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir, subagentModel string, registry modelspec.Registry) error {
+// pairSlug is the worktree's pair slug, empty on the prime; with it, a verify gate whose fixer setting holds a model-spec has the writer's prompt drop its gate runs.
+func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, frictionDir, subagentModel, pairSlug string, registry modelspec.Registry) error {
 	dirs := fabricengine.ConfigDirs(location)
 	cfg, err := darnengine.LoadConfig(dirs, "darn")
 	if err != nil {
@@ -237,6 +238,10 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 
 	c.env.Darn = darnDeps(location, c.runID, c.recipe)
 	darnTable := func(told loomshed.DarnTold) (seatengine.Table, error) {
+		gateFixed, err := writerFixerOn(c.recipe, darnWriteEngine, darnGateEntry, c.env.Setting, pairSlug)
+		if err != nil {
+			return seatengine.Table{}, err
+		}
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
 			SpecsDir:           specsDir,
@@ -249,6 +254,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			PriorWork:          told.PriorWork,
 			LanguageSkills:     c.languageSkills,
 			SubagentModel:      subagentModel,
+			GateFixed:          gateFixed,
 
 			ConditionStopMarkerPath: shedrun.ConditionStopMarker(location, c.runID),
 		}, cfg, registry)

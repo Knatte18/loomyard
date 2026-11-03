@@ -4,6 +4,7 @@
 package loomcli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,6 +232,58 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
+		}
+	})
+
+	t.Run("the writer's prompt drops its gate runs only for a pair run whose gate_fixer holds a model-spec", func(t *testing.T) {
+		t.Parallel()
+
+		const (
+			gatedNoGateStep = "3. Run no `lym gate test` yourself."
+			ungatedTestStep = "3. Test with `lym gate test` after the last edit of each commit"
+		)
+		tests := []struct {
+			name      string
+			pair      bool
+			gateFixer string
+			wantGated bool
+		}{
+			{name: "pair slug and a fixer", pair: true, gateFixer: "sonnet[medium]", wantGated: true},
+			{name: "pair slug and an empty fixer", pair: true, gateFixer: ""},
+			{name: "no pair slug and a fixer", pair: false, gateFixer: "sonnet[medium]"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				loc := hubLocation(t, "pair", ".")
+				seedDarnHubConfig(t, loc.HubPath, "3", "gate_fixer: sonnet[medium]", fmt.Sprintf("gate_fixer: %q", tt.gateFixer))
+				writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+				if tt.pair {
+					recordPath := fabricengine.OriginRecordPath(loc)
+					if err := os.MkdirAll(filepath.Dir(recordPath), 0o755); err != nil {
+						t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(recordPath), err)
+					}
+					if err := os.WriteFile(recordPath, []byte("{}"), 0o644); err != nil {
+						t.Fatalf("WriteFile(%q) = %v; want nil", recordPath, err)
+					}
+				}
+				c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+				if err := c.wire(loc, loc.AnchorPath()); err != nil {
+					t.Fatalf("wire() = %v; want nil", err)
+				}
+				table, err := c.env.DarnTable(loomshed.DarnTold{})
+				if err != nil {
+					t.Fatalf("c.env.DarnTable() = _, %v; want nil", err)
+				}
+				step := table.Values["make_change"]
+				wantStep, absentStep := ungatedTestStep, gatedNoGateStep
+				if tt.wantGated {
+					wantStep, absentStep = gatedNoGateStep, ungatedTestStep
+				}
+				if !strings.Contains(step, wantStep) || strings.Contains(step, absentStep) {
+					t.Errorf("Step 4 list = %q; want it to hold %q and not %q", step, wantStep, absentStep)
+				}
+			})
 		}
 	})
 

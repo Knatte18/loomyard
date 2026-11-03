@@ -6,6 +6,7 @@ package darnengine
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/friction"
@@ -16,10 +17,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencil"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // darnStencilName is the registered name of the darn writer's stencil.
 const darnStencilName = "darn-template-write"
+
+// makeChangeStencil and makeChangeGatedStencil are the fragments that fill the writer stencil's Step 4 list, the first for a writer that runs the gate itself and the second for one whose verify gate has a cold fixer.
+const (
+	makeChangeStencil      = "darn-fragment-make-change"
+	makeChangeGatedStencil = "darn-fragment-make-change-gated"
+)
 
 // darnRole is the agent-name role the darn writer's spawn carries.
 const darnRole = "darn"
@@ -56,6 +65,8 @@ type DarnInputs struct {
 	LanguageSkills []string
 	// SubagentModel is the model name the writer passes to the Agent tool for the fresh subagents it hands work to.
 	SubagentModel string
+	// GateFixed reports that a cold fixer clears the writer's verify gate, so the prompt has the writer and its subagents run no gate.
+	GateFixed bool
 }
 
 // DarnTable builds the seatengine.Table of one darn writer spawn: one lead that writes the change description.
@@ -63,6 +74,7 @@ type DarnInputs struct {
 // The lead is non-interactive, carries the change description as its one output file, and the table runs for cfg.WriterTimeoutMin minutes.
 // The table's values are the stencil's markers, and the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
+// With in.GateFixed the prompt's Step 4 has the writer and its subagents run no gate and act only on what the verify gate's fixer leaves; without it the step has them run the gate after each commit.
 // A friction directive that fails to render is logged and left empty, because the note is optional bookkeeping.
 func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	required := []struct{ field, value string }{
@@ -100,6 +112,10 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 		logger.Warn("darn: friction directive failed, continuing without one", "role", darnRole, "stencil", darnStencilName, "error", err)
 		frictionDirective = ""
 	}
+	makeChange, err := makeChangeList(in.StencilsDir, in.GateFixed, in.SubagentModel)
+	if err != nil {
+		return seatengine.Table{}, fmt.Errorf("darn: DarnTable: Step 4 list: %w", err)
+	}
 
 	return seatengine.Table{
 		RolePrefix: darnRole,
@@ -113,7 +129,7 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			"condition_stop_marker_path": in.ConditionStopMarkerPath,
 			"specs_dir":                  in.SpecsDir,
 			"prior_work":                 orNone(in.PriorWork),
-			"subagent_model":             in.SubagentModel,
+			"make_change":                makeChange,
 			"pattern_directive":          patternDirective,
 			friction.MarkerName:          frictionDirective,
 		},
@@ -125,6 +141,23 @@ func DarnTable(in DarnInputs, cfg Config, reg modelspec.Registry) (seatengine.Ta
 			Skills:      languageconfig.AppendSkills(darnSkills, in.LanguageSkills),
 		}},
 	}, nil
+}
+
+// makeChangeList returns the writer prompt's Step 4 list, read at call time from stencilsDir and filled with subagentModel: the gated fragment when gateFixed, otherwise the ungated one.
+func makeChangeList(stencilsDir string, gateFixed bool, subagentModel string) (string, error) {
+	name := makeChangeStencil
+	if gateFixed {
+		name = makeChangeGatedStencil
+	}
+	content, err := stencilstore.Read(stencilsDir, name)
+	if err != nil {
+		return "", err
+	}
+	filled, err := stencil.Fill(content, map[string]string{"subagent_model": subagentModel})
+	if err != nil {
+		return "", fmt.Errorf("fill stencil %s: %w", name, err)
+	}
+	return strings.TrimSpace(string(filled)), nil
 }
 
 // orNone returns value, or noneToken when value is empty.

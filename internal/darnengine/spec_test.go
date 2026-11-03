@@ -64,6 +64,13 @@ func leadPrompt(t *testing.T, in DarnInputs, parentName string, table seatengine
 	return prompts[""]
 }
 
+// Lines of the prompt's Step 4 that tell the gate rule apart: the writer's and its subagents' gate runs with the verify gate's fixer off, and the no-gate step with it on.
+const (
+	ungatedTestStep     = "3. Test with `lym gate test` after the last edit of each commit"
+	ungatedSubagentGate = "the gate rule from your system prompt with its Bash tool timeout, for the subagent to run on its own package"
+	gatedNoGateStep     = "3. Run no `lym gate test` yourself."
+)
+
 // TestDarnSpec covers the table's lead and settings, and the rendered tokens for a first spawn, where the optional prior-work token renders (none), and for a spawn that carries prior work, a parent and a friction directory.
 func TestDarnSpec(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -71,23 +78,36 @@ func TestDarnSpec(t *testing.T) {
 
 	cfg := Config{Writer: "opus[effort=high]", WriterTimeoutMin: 45}
 	tests := []struct {
-		name         string
-		configure    func(in *DarnInputs)
-		parentName   string
-		wantInPrompt func(in DarnInputs) []string
-		wantNone     int
-		wantNoParent bool
-		wantSkills   []string
+		name            string
+		configure       func(in *DarnInputs)
+		parentName      string
+		wantInPrompt    func(in DarnInputs) []string
+		wantNotInPrompt []string
+		wantNone        int
+		wantNoParent    bool
+		wantSkills      []string
 	}{
 		{
 			name:       "first spawn renders the prior-work token as none",
 			configure:  func(in *DarnInputs) {},
 			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
 			wantInPrompt: func(in DarnInputs) []string {
-				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`}
+				return []string{"fix-the-thing", in.DescriptionPath, filepath.ToSlash(in.SpecsDir), in.DecisionRecordPath, in.StopMarkerPath, in.ConditionStopMarkerPath, `model: "haiku"`, ungatedTestStep, ungatedSubagentGate}
 			},
-			wantNone:     1,
-			wantNoParent: true,
+			wantNotInPrompt: []string{gatedNoGateStep},
+			wantNone:        1,
+			wantNoParent:    true,
+		},
+		{
+			name:       "a cold fixer on the verify gate has the writer and its subagents run no gate",
+			configure:  func(in *DarnInputs) { in.GateFixed = true },
+			wantSkills: []string{"scribe:prose", "scribe:code-quality", "scribe:testing"},
+			wantInPrompt: func(in DarnInputs) []string {
+				return []string{`model: "haiku"`, gatedNoGateStep}
+			},
+			wantNotInPrompt: []string{ungatedTestStep, ungatedSubagentGate},
+			wantNone:        1,
+			wantNoParent:    true,
 		},
 		{
 			name: "resumed spawn renders the prior work, the parent and the friction note path",
@@ -167,6 +187,11 @@ func TestDarnSpec(t *testing.T) {
 					t.Errorf("lead prompt does not contain %q", want)
 				}
 			}
+			for _, unwanted := range tt.wantNotInPrompt {
+				if strings.Contains(prompt, unwanted) {
+					t.Errorf("lead prompt contains %q; want it absent", unwanted)
+				}
+			}
 			if got := strings.Count(prompt, "\n(none)\n"); got != tt.wantNone {
 				t.Errorf("lead prompt renders (none) on its own line %d times; want %d", got, tt.wantNone)
 			}
@@ -178,7 +203,7 @@ func TestDarnSpec(t *testing.T) {
 }
 
 // TestDarnSpec_Refusals covers the refusal of each empty required field by name, an unusable writer spec, and a stencil missing from the stencils directory.
-// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
+// DarnTable reads the Step 4 fragment its gate rule picks, while the seat engine's Validate reads every seat's stencil.
 func TestDarnSpec_Refusals(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -199,6 +224,13 @@ func TestDarnSpec_Refusals(t *testing.T) {
 		{"empty SubagentModel", func(t *testing.T, in *DarnInputs, cfg *Config) { in.SubagentModel = "" }, "SubagentModel"},
 		{"malformed writer spec", func(t *testing.T, in *DarnInputs, cfg *Config) { cfg.Writer = "opus[effort=high" }, "writer model-spec"},
 		{"missing stencil", func(t *testing.T, in *DarnInputs, cfg *Config) { stencilkit.Remove(t, in.StencilsDir, darnStencilName) }, darnStencilName},
+		{"missing Step 4 fragment", func(t *testing.T, in *DarnInputs, cfg *Config) {
+			stencilkit.Remove(t, in.StencilsDir, makeChangeStencil)
+		}, makeChangeStencil},
+		{"missing gated Step 4 fragment", func(t *testing.T, in *DarnInputs, cfg *Config) {
+			in.GateFixed = true
+			stencilkit.Remove(t, in.StencilsDir, makeChangeGatedStencil)
+		}, makeChangeGatedStencil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -31,6 +31,8 @@
 // the producer then halts the run with the report alone as the reason, since the report states its own way forward.
 // It is non-interactive, carries the description as its one output file, and renders `(none)` for prior work the spawn has nothing to tell for.
 // A spawn that continues earlier work is told so through that value, and its stencil continues from the commits already on the task branch.
+// When the caller tells it a cold fixer clears the row's verify gate, the prompt's Step 4 has the writer and its subagents run no gate, and the writer acts only on what the fixer leaves;
+// otherwise the step has them run the gate after each commit.
 // The seat engine renders the parent and edit directives, so DarnTable reads no parent name.
 // DarnTable refuses an empty required field by name and a writer model-spec the registry cannot resolve.
 //

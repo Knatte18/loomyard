@@ -26,6 +26,7 @@
 //
 // `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
 // The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.
+// The same three rows' tables read that condition through `writerFixerOn`, so a writer whose gate has a fixer is told to run neither its validator nor, on Darn-Write, `lym gate test`.
 // A fixer's records live in the run's scratch directory under `gatefix`, in a directory `rowVisitDir` keys by the row and the status history's length and newest repeat count, so a crash re-step finds the fixer it left and a goto or a fresh entry starts clean.
 // `fixerSpec` renders the prompt from the shared cold frame and one body stencil per gate entry, `gatefix-body-darn`, `gatefix-body-plan` or `gatefix-body-discussion`.
 //

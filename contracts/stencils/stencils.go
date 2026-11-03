@@ -43,6 +43,16 @@ var LandingTemplatePRReview []byte
 //go:embed darn/darn-template-write.md
 var DarnTemplateWrite []byte
 
+// DarnFragmentMakeChange is the darn writer prompt's Step 4 list that has the writer and its subagents run the gate, filled in when the verify gate has no cold fixer.
+//
+//go:embed darn/darn-fragment-make-change.md
+var DarnFragmentMakeChange []byte
+
+// DarnFragmentMakeChangeGated is the darn writer prompt's Step 4 list that has the writer and its subagents run no gate, filled in when the verify gate has a cold fixer.
+//
+//go:embed darn/darn-fragment-make-change-gated.md
+var DarnFragmentMakeChangeGated []byte
+
 // SamplerTemplateAgent is the sampler agent's shipped-default prompt: the whole instruction set of the interactive session the operator works a change out with.
 //
 //go:embed sampler/sampler-template-agent.md
@@ -565,6 +575,8 @@ var entries = []registryEntry{
 	{"landing-template-fix-review", &LandingTemplateFixReview},
 	{"landing-template-pr-review", &LandingTemplatePRReview},
 	{"darn-template-write", &DarnTemplateWrite},
+	{"darn-fragment-make-change", &DarnFragmentMakeChange},
+	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
 	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"drift-template-baseline", &DriftTemplateBaseline},
 	{"drift-template-verify", &DriftTemplateVerify},
