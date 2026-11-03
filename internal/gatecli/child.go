@@ -1,16 +1,21 @@
-// child.go runs go test as a child tied to this process and names the signals that end the verb early.
+// child.go runs a tier's or the build's shell as a child tied to this process, ends what the shell leaves behind, and names the signals that end the verb early.
 
 package gatecli
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
+
+// defaultPipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
+const defaultPipeWaitDelay = 10 * time.Second
 
 // terminatingSignalSet are the signals `lym gate test` catches to kill the child's tree and release its slot before it exits.
 // Windows delivers only the interrupt and ignores the rest.
@@ -18,8 +23,12 @@ var terminatingSignalSet = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.
 
 // runTiedChild starts cmd tied to this process's life, waits for it and returns Wait's error.
 // A cancelled context kills the child's whole tree, logging the kill.
+// Once the child exits, its output is read for at most pipeWaitDelay, so a process it left behind holding the output pipe cannot hang the call;
+// a zero exit cut short that way returns nil, and a failing exit keeps its own error.
+// What is left of the child's process group is then killed, on Windows through the child's kill-on-close job.
 // A non-nil started is called with the child's pid once it is running, before the wait.
-func runTiedChild(cmd *exec.Cmd, started func(pid int)) error {
+func runTiedChild(cmd *exec.Cmd, pipeWaitDelay time.Duration, started func(pid int)) error {
+	cmd.WaitDelay = pipeWaitDelay
 	var tied atomic.Pointer[proc.Tied]
 	cmd.Cancel = func() error {
 		pid := cmd.Process.Pid
@@ -43,5 +52,24 @@ func runTiedChild(cmd *exec.Cmd, started func(pid int)) error {
 	if started != nil {
 		started(cmd.Process.Pid)
 	}
-	return handle.Wait()
+	waitErr := handle.Wait()
+	killLeftovers(handle.Record())
+	if errors.Is(waitErr, exec.ErrWaitDelay) && cmd.ProcessState != nil {
+		// Wait reports the delay only after a zero exit: a failing exit's own error wins over it.
+		logger.Warn("gate test: a process the shell left behind held its output past the wait delay", "pid", cmd.Process.Pid, "delay", pipeWaitDelay)
+		return nil
+	}
+	return waitErr
+}
+
+// killLeftovers kills what a tied child's shell left in its process group, so no leftover goes on holding the output pipe or running inside the slots.
+// The kill reaches nothing on Windows, where closing the child's job has already ended its tree.
+func killLeftovers(record proc.TreeRecord) {
+	killed, err := proc.KillTree(record)
+	switch {
+	case err != nil:
+		logger.Warn("gate test: could not kill what the shell left in its process group", "pid", record.PID, "cause", err)
+	case killed:
+		logger.Info("gate test: killed what the shell left in its process group", "pid", record.PID)
+	}
 }

@@ -1,5 +1,5 @@
 // test_integration_test.go drives `lym gate test` over one hubforge hub and a stand-in tier command, each run in a process of its own so a test can signal the gate it started:
-// the tier run, its slots, the slot wait, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL and a timeout, the prebuild, the run record, and the refusals that need a hub.
+// the tier run, its slots, the slot wait, inheritance, hub resolution from -C, the unslotted run outside every hub, the child's lifetime under a catchable signal, a SIGKILL, a timeout and an orphan holding its output, the prebuild, the run record, and the refusals that need a hub.
 // It is Tier 2: it builds a real hub and spawns git, the stand-in and a few real go test runs, so it needs the integration build tag.
 
 package gatecli
@@ -46,6 +46,7 @@ const (
 	helperRoleGate = "gate"
 	// helperRoleStandIn records how it was invoked, then exits with helperExitEnv or, under helperHoldEnv, sleeps until killed with a sleeper child.
 	// Under helperShortageEnv a tier invocation prints a resource-shortage error and exits 1 instead.
+	// Under helperOrphanEnv, set to helperOrphanTier for a tier invocation or helperOrphanBuild for the shared build invocation, that invocation first starts a sleeper child that holds its stdout and exits without waiting for it.
 	// A build invocation instead writes helperBuildContentEnv to its `-o` file when it succeeds and exits with helperBuildExitEnv.
 	// The hub's shared build step is such an invocation too, with `sharedbuild` as its first argument, and holds under helperHoldEnv like a tier does;
 	// when it exits non-zero it first prints helperBuildFailureLine.
@@ -64,11 +65,16 @@ const (
 	// helperBuildFailureLine is the line the shared build step prints before it exits non-zero.
 	helperBuildFailureLine = "sharedbuild: compile failed"
 	helperHoldEnv          = "GATECLI_TEST_HOLD"
+	helperOrphanEnv        = "GATECLI_TEST_ORPHAN"
+	// helperOrphanTier and helperOrphanBuild are the values of helperOrphanEnv that name the invocation that leaves the orphan.
+	helperOrphanTier  = "tier"
+	helperOrphanBuild = "build"
 	// helperShortageEnv makes a tier invocation print a resource-shortage error and exit 1, on its first run when the value is `once` and on every run when it is `always`.
 	helperShortageEnv = "GATECLI_TEST_SHORTAGE"
-	// helperCeilingEnv and helperUnitEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
-	helperCeilingEnv = "GATECLI_TEST_CEILING"
-	helperUnitEnv    = "GATECLI_TEST_UNIT"
+	// helperCeilingEnv, helperUnitEnv and helperPipeDelayEnv are durations the gate helper passes to newCommand in place of its defaults, and the helper always passes a shortage-rerun delay of 0.
+	helperCeilingEnv   = "GATECLI_TEST_CEILING"
+	helperUnitEnv      = "GATECLI_TEST_UNIT"
+	helperPipeDelayEnv = "GATECLI_TEST_PIPE_DELAY"
 	// helperDelayEnv is how long a tier invocation sleeps, after printing a line, before it exits with its code.
 	helperDelayEnv = "GATECLI_TEST_DELAY"
 	// helperCapEnv is the keep-warm cap the gate helper's resolver answers: a duration, `0` for a zero cap, or `fallback` for DefaultAwaitCap with a fallback cause, as the real resolver answers over an unloadable claude.yaml.
@@ -136,7 +142,7 @@ func runGateHelper() int {
 	if standIn := os.Getenv(helperGoEnv); standIn != "" {
 		goBinary = standIn
 	}
-	durations := map[string]time.Duration{helperCeilingEnv: 2 * time.Minute, helperUnitEnv: time.Minute}
+	durations := map[string]time.Duration{helperCeilingEnv: 2 * time.Minute, helperUnitEnv: time.Minute, helperPipeDelayEnv: defaultPipeWaitDelay}
 	for name := range durations {
 		if value := os.Getenv(name); value != "" {
 			parsed, err := time.ParseDuration(value)
@@ -150,7 +156,7 @@ func runGateHelper() int {
 	if !ok {
 		return 1
 	}
-	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperCeilingEnv], durations[helperUnitEnv], 0, seams), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
+	code := clihelp.ExecuteIn(newCommand(goBinary, time.Second, durations[helperCeilingEnv], durations[helperUnitEnv], 0, durations[helperPipeDelayEnv], seams), os.Getenv(helperCwdEnv), os.Stdout, os.Args[1:])
 	// The helper stands for `lym`'s main, which removes the process run directory on exit.
 	_ = lymtemp.Remove()
 	return code
@@ -269,9 +275,15 @@ func runStandIn() int {
 	record := standInRecord{Args: os.Args[1:], Build: isBuild, Cwd: cwd, GoFlags: os.Getenv("GOFLAGS"), BuildMark: os.Getenv("BUILD_MARK"), Slot: os.Getenv(gateslot.InheritEnv), Strand: os.Getenv(agentname.StrandNameEnv), Prebuilt: os.Getenv(gateslot.PrebuiltLymEnv), Enclosing: os.Getenv(enclosingGateEnv), Trace: os.Getenv(logger.TraceIDEnv), NodeReuse: os.Getenv("MSBUILDDISABLENODEREUSE"), MSBuildServer: os.Getenv("DOTNET_CLI_USE_MSBUILD_SERVER"), PID: os.Getpid()}
 	// A prebuild invocation only records itself and exits with its own code; the hold belongs to the tier's invocation and the shared build's.
 	hold := (!isBuild || sharedBuild) && os.Getenv(helperHoldEnv) != ""
-	if hold {
+	orphanTarget := os.Getenv(helperOrphanEnv)
+	orphan := (!isBuild && orphanTarget == helperOrphanTier) || (sharedBuild && orphanTarget == helperOrphanBuild)
+	if hold || orphan {
 		sleeper := exec.Command(os.Args[0])
 		sleeper.Env = append(os.Environ(), helperEnv+"="+helperRoleSleeper)
+		if orphan {
+			// The sleeper keeps the tier's output pipe open past the stand-in's exit, as an MSBuild node outlives a crashed dotnet.
+			sleeper.Stdout = os.Stdout
+		}
 		if err := sleeper.Start(); err != nil {
 			return 1
 		}
@@ -1535,6 +1547,55 @@ func TestGateTest_Scenario(t *testing.T) {
 		run, log := runRecordOf(t, g.stdout.String(), 0)
 		if !run.TimedOut || run.ExitCode != 1 || !strings.Contains(log, "tier timeout") {
 			t.Errorf("run record = %+v, log %q; want a timed-out run with the timeout line in its log", run, log)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a tier whose shell exits while an orphan holds its output ends with the shell's code and kills the orphan", func(t *testing.T) {
+		tests := []struct {
+			name        string
+			shellExit   int
+			wantOutcome string
+		}{
+			{"FailingExit", 134, "failed"},
+			{"ZeroExit", 0, "passed"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanTier, helperExitEnv + "=" + strconv.Itoa(tt.shellExit), helperPipeDelayEnv + "=100ms"}})
+				code := g.wait(t)
+				record := g.standIn(t)
+				t.Cleanup(func() { _ = (&os.Process{Pid: record.Grandchild}).Kill() })
+				if code != tt.shellExit {
+					t.Errorf("exit code = %d, stdout %q; want the shell's %d", code, g.stdout.String(), tt.shellExit)
+				}
+				eventually(t, "the orphan holding the tier's output to end", func() bool { return processGone(record.Grandchild) })
+				if run, _ := runRecordOf(t, g.stdout.String(), 0); run.ExitCode != tt.shellExit || run.Outcome != tt.wantOutcome || run.TimedOut {
+					t.Errorf("run record = %+v; want a %s run with the shell's exit code %d and no timeout", run, tt.wantOutcome, tt.shellExit)
+				}
+				requireFree(t)
+			})
+		}
+	})
+
+	t.Run("a shared build whose shell exits while an orphan holds its output ends with the shell's code and kills the orphan", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}, env: []string{helperOrphanEnv + "=" + helperOrphanBuild, helperBuildExitEnv + "=1", helperPipeDelayEnv + "=100ms"}})
+		code := g.wait(t)
+		builds := buildRecords(t, g)
+		if len(builds) != 1 {
+			t.Fatalf("build invocations = %+v; want the build once", builds)
+		}
+		orphan := builds[0].Grandchild
+		t.Cleanup(func() { _ = (&os.Process{Pid: orphan}).Kill() })
+		if code != 1 {
+			t.Errorf("exit code = %d, stdout %q; want the build's 1", code, g.stdout.String())
+		}
+		eventually(t, "the orphan holding the build's output to end", func() bool { return processGone(orphan) })
+		if build, _ := buildRunRecordOf(t, g.stdout.String(), 0); build.ExitCode != 1 || build.Outcome != "failed" || build.TimedOut {
+			t.Errorf("build run record = %+v; want a failed run with the build's exit code 1 and no timeout", build)
 		}
 		requireFree(t)
 	})

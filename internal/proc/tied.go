@@ -82,7 +82,7 @@ func (t *Tied) Kill() error {
 }
 
 // KillTree kills the process tree a record names and reports whether it killed anything.
-// On Linux it kills the process group only while a live process still reports the recorded group id with a start time at or after the recorded one, so a reused group id is left alone.
+// On Linux it kills the process group only while a live process still reports the recorded group id with a start time at or after the recorded one, so a group that has emptied is left alone.
 // On Windows it kills nothing and reports false; the tree dies through TerminateNamedJob on its loop's job.
 func KillTree(rec TreeRecord) (bool, error) {
 	return killTreePlatform(rec)

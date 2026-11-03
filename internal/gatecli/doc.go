@@ -212,7 +212,7 @@
 // The tier's `timeout_min`, counted once its slots are held, bounds the prebuild and every invocation of the tier's command.
 // A tier that outlives it has its process tree killed through the tied child's context and fails with exit code 1 and `gateslot.TierTimeoutLine` on stderr and in its log.
 // The work before the first tier is bounded by a ceiling, 10 minutes in production, and fails naming the step and the way forward to run the same command again, which a transient hang such as a stalled `go list` passes.
-// The length of a `timeout_min` minute and the ceiling are parameters of `newCommand`, so a test shortens them.
+// The length of a `timeout_min` minute, the ceiling and the pipe wait delay the Child lifetime section names are parameters of `newCommand`, so a test shortens them.
 //
 // # Counters, record and log
 //
@@ -260,6 +260,10 @@
 // A tier's shell runs through `internal/proc`'s tied child, which keeps its tree killable without signalling the shell that called the verb and ends it when the verb dies, a hard kill included.
 // On a terminating signal, including one sent to the verb's own group, the verb kills that tree, releases its slots and exits with 128 plus the signal number.
 // Bound: the parent-death signal reaches the shell alone, so a command the shell forks rather than replaces outlives a hard kill of the verb; a tier command that must die with it starts with `exec`.
+//
+// A tier's or the build's shell that exits ends its run with its own exit code, even while a process it started still holds its output pipe, such as an MSBuild worker node a crashed `dotnet` left.
+// The verb reads the output for at most the pipe wait delay after the exit, 10 seconds in production, and then kills what is left of the shell's process group, on Windows by closing the child's kill-on-close job, so no leftover holds the pipe or runs on inside the slots.
+// Bound: a leftover that left the shell's process group, such as one that started a session of its own, is not killed, and only the delay bounds its hold on the pipe.
 //
 // # CPU watchdog
 //

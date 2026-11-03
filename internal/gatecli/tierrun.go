@@ -225,7 +225,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		logger.Info("gate test: spawning tier command", "tier", tierName(run.number), "dir", dir, "command", command)
 		watchCtx, stopWatching := context.WithCancel(ctx)
 		var watchdogDone sync.WaitGroup
-		runErr := runTiedChild(cmd, func(pid int) {
+		runErr := runTiedChild(cmd, request.pipeWaitDelay, func(pid int) {
 			if !request.watching {
 				return
 			}

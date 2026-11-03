@@ -32,11 +32,11 @@ const defaultShortageRetryDelay = 10 * time.Second
 
 // Command builds the cobra command tree for the gate module.
 func Command() *cobra.Command {
-	return newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay, defaultDetachSeams())
+	return newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay, defaultPipeWaitDelay, defaultDetachSeams())
 }
 
-// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, shortageRetryDelay, how long a tier that failed on a resource shortage waits before its one rerun, and seams, the bounds and launcher of a capped call's front.
-func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay time.Duration, seams detachSeams) *cobra.Command {
+// newCommand builds the gate command tree over goBinary, the go command a prebuilding tier builds `lym` with, samplePeriod, how often the CPU watchdog samples a tier's process tree, preTierCeiling, the bound on the work before the first tier, timeoutUnit, the length of one `timeout_min` minute, shortageRetryDelay, how long a tier that failed on a resource shortage waits before its one rerun, pipeWaitDelay, how long a tier's or the build's output is still read after its shell exits, and seams, the bounds and launcher of a capped call's front.
+func newCommand(goBinary string, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay, pipeWaitDelay time.Duration, seams detachSeams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gate",
 		Short: "run the hub's test tiers inside the hub's gate-slot pool",
@@ -87,7 +87,7 @@ Examples:
 				return nil
 			}
 			request := testRequest{
-				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, shortageRetryDelay: shortageRetryDelay,
+				goBinary: goBinary, samplePeriod: samplePeriod, preTierCeiling: preTierCeiling, timeoutUnit: timeoutUnit, shortageRetryDelay: shortageRetryDelay, pipeWaitDelay: pipeWaitDelay,
 				stderr: cmd.ErrOrStderr(), dir: dir, tags: tags, gate: gate, tiers: tiers, cards: cards, base: base, all: all, guards: guards, targets: args,
 				upto: upto, uptoGiven: cmd.Flags().Changed("upto"),
 				phase: phaseFrom(cmd.Context()),
@@ -118,7 +118,7 @@ Examples:
 	cmd.AddCommand(reportCmd())
 	cmd.AddCommand(cardVerifyCmd(seams))
 	cmd.AddCommand(runnerCmd(func() *cobra.Command {
-		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay, seams)
+		return newCommand(goBinary, samplePeriod, preTierCeiling, timeoutUnit, shortageRetryDelay, pipeWaitDelay, seams)
 	}, seams))
 
 	return cmd
@@ -150,6 +150,8 @@ type testRequest struct {
 	timeoutUnit time.Duration
 	// shortageRetryDelay is how long a tier that failed on a resource shortage waits before its one rerun.
 	shortageRetryDelay time.Duration
+	// pipeWaitDelay is how long a tier's or the build's output is still read after its shell exits.
+	pipeWaitDelay time.Duration
 	// stderr receives the lines the verb prints beside its output: the CPU watchdog's quit, a tier's timeout and each tier's summary.
 	stderr io.Writer
 	// dir is the -C value as typed; empty means the tier's own dir.
