@@ -22,10 +22,10 @@
 // Check's non-lymcwd.ErrNotAGitRepo branch is NOT reachable through a git-subprocess spawn failure — that case is folded into ErrNotAGitRepo already.
 // It is reachable only through lymcwd's anchor-resolution path: ErrCwdOutsideAnchor from the cwd gate, ErrStaleAnchorMarker from a board carrying only the pre-rename marker, and an ErrInvalidAnchor-wrapping failure when a recorded anchor exists but fails validation are examples of routes into that branch, not a closed set of them.
 //
-// The worktree-clean check skips the run-records root under `_lym` on the state side.
-// lym writes its own run records there while it handles a stop.
-// The status commits stage the settle records, while the other run-record files, the stop and condition-stop markers among them, stay uncommitted until a later records commit or the run's removal.
-// Counting them made a run refuse its own bookkeeping on every re-step.
+// The worktree-clean check skips lym's own state under `_lym` on the state side: the run-records root, the loom friction directory and the friction directory's reflection archives.
+// lym writes its run records while it handles a stop, writes a halt note into the friction directory, and a reflection moves covered notes into an archive.
+// The status commits stage the settle records, while the other files, and a note's deletion or move, stay uncommitted until a later records commit or the run's removal.
+// Counting them made a run refuse its own bookkeeping on every re-step, and one halt's note caused the next halt.
 // Everything else under `_lym` still counts.
 //
 // A composing orchestrator reads this doc rather than duplicating the contract in its own package

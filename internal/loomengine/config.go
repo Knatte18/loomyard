@@ -358,6 +358,12 @@ func LoomFrictionDirRel() string {
 	return filepath.Join(LoomDurableDirRel(), frictionDirName)
 }
 
+// LoomFrictionArchivesRelPattern returns a worktree-anchor-relative git pathspec glob matching every timestamped reflection-archive sibling of the friction directory and everything beneath it.
+// It suits a pathspec only, never a file path, since git's glob lets its `*` match across `/`.
+func LoomFrictionArchivesRelPattern() string {
+	return LoomFrictionDirRel() + "-*"
+}
+
 // IsLoomFrictionArchive reports whether name, a directory name under LoomDurableDirRel, is a timestamped reflection-archive sibling of the friction directory.
 // That is the friction segment followed by "-" and at least one more character; the friction directory itself is not an archive.
 func IsLoomFrictionArchive(name string) bool {

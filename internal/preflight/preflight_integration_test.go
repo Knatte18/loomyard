@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fslink"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
@@ -411,11 +412,12 @@ func TestCheckResolved_Failures(t *testing.T) {
 	}
 }
 
-// TestCheckResolved_RunStateUnderLymIsExempt writes, untracked, every file lym's stop and settle paths write into a run's directory under `_lym`, and asserts the worktree-clean check passes over them.
-// Fabric's own unscoped Clean must see the files first, so the pass is never a gitignore's doing.
-// A file under `_lym` outside the run-records root then still refuses.
+// TestCheckResolved_LymOwnStateIsExempt leaves lym's own state under `_lym` uncommitted and asserts the worktree-clean check passes over it.
+// The state is every file lym's stop and settle paths write into a run's directory, a new friction note, and a committed halt note a reflection moved into an archive.
+// Fabric's own unscoped Clean must see the changes first, so the pass is never a gitignore's doing.
+// A file under `_lym` outside the exempt state then still refuses.
 // Each anchor builds its own hub, since a subpath anchor moves `_lym` below the worktree's root.
-func TestCheckResolved_RunStateUnderLymIsExempt(t *testing.T) {
+func TestCheckResolved_LymOwnStateIsExempt(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -425,6 +427,18 @@ func TestCheckResolved_RunStateUnderLymIsExempt(t *testing.T) {
 
 			h, _ := setupAnchoredFixture(t, anchor)
 			l := h.Location
+
+			frictionDir := loomengine.LoomFrictionDir(l)
+			haltNote := filepath.Join(frictionDir, "loom-halt.md")
+			writeFile(t, haltNote)
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "add", "-A")
+			gitkit.MustRun(t, h.PrimeRecords(), "git", "commit", "-m", "commit a halt note")
+			if err := os.Remove(haltNote); err != nil {
+				t.Fatalf("remove %s: %v", haltNote, err)
+			}
+			writeFile(t, filepath.Join(loomengine.LoomFrictionArchivePrefix(l)+"20261103-120000", "loom-halt.md"))
+			writeFile(t, filepath.Join(frictionDir, "Darn-Write.md"))
+
 			runID := shedrun.SelfRunID
 			runState := []string{
 				shedrun.SettleRecords(l, runID),

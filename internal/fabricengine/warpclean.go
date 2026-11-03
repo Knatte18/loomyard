@@ -17,7 +17,7 @@ import (
 // files.
 // It is package-level for use by preflight.CheckResolved.
 // The weft-side check is skipped when the weft worktree does not exist.
-// weftExempt names anchor-relative weft paths whose dirty content the weft-side check ignores, everything beneath each included.
+// weftExempt names anchor-relative weft paths, or git pathspec globs, whose dirty content the weft-side check ignores, everything beneath each included.
 // Returns (false, reason, nil) when dirty or (false, "", err) for system errors.
 func Clean(l *lymcwd.Location, weftExempt ...string) (clean bool, reason string, err error) {
 	warpReason, err := dirtyReason("git status --porcelain", l.WorktreePath())

@@ -10,17 +10,19 @@ import (
 	"errors"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
-// runStateExemptRels returns the anchor-relative directories under `_lym` whose uncommitted content the worktree-clean check ignores: the run-records root, which holds only lym's own run records.
-// lym writes there while a run handles a stop, such as settle records, tackler and arbiter attempts and stop markers.
-// The status commits stage the settle records, while the other run-record files, the stop and condition-stop markers among them, stay uncommitted until a later records commit or the run's removal.
-// The check ignores them because they are lym's own bookkeeping in flight, never work a run could lose.
+// runStateExemptRels returns the anchor-relative pathspecs under `_lym` whose uncommitted content the worktree-clean check ignores, all of them lym's own state.
+// The run-records root holds what lym writes while a run handles a stop, such as settle records, tackler and arbiter attempts and stop markers.
+// The friction directory holds the halt and crash-resume notes lym writes and the notes agents write, and a reflection moves the notes it covered into a timestamped archive sibling.
+// Those writes, deletions and moves stay uncommitted until a later records commit or the run's removal.
+// The check ignores them because they are lym's own bookkeeping in flight, never work a run could lose, and counting them let one halt's note cause the next halt.
 // It is the one place that decides which lym state the check skips.
 func runStateExemptRels() []string {
-	return []string{shedrun.RunsRootRel()}
+	return []string{shedrun.RunsRootRel(), loomengine.LoomFrictionDirRel(), loomengine.LoomFrictionArchivesRelPattern()}
 }
 
 // Check resolves cwd into a *lymcwd.Location and validates the tier-1/tier-2 preconditions against
