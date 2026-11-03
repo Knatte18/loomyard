@@ -98,6 +98,7 @@
 // with none declared, every caller behaves as before.
 // A [Spec] may also carry `OpenMapShapes`, an open-map path mapped to the shape the module decodes there, which [Set] passes to yamlengine on every layer:
 // a key inside a shaped open map, such as one entry's field or one name in that field's map, is set alone, and a path the shape does not reach is refused naming the key.
+// A key naming an open map that holds a mapping replaces it whole from a YAML flow mapping, whose keys the shape, when declared, must reach.
 //
 // # Template overlay
 //

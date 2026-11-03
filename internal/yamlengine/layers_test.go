@@ -92,13 +92,13 @@ func TestStrip(t *testing.T) {
 	}
 }
 
-const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\ntiers: {}\n"
+const sparseTemplate = "name: tmpl\nport: 80\nnested:\n    deep: 1\nlabels: {}\nlist: [a]\nplan_max_bounces: ~\nrounds: \"\"\nnames:\n    a: default a\nlists:\n    l: [x]\nprofiles:\n    plain:\n        kind: identity\n    costed:\n        kind: cost\n        budget: 200\ntiers: {}\nspec:\n    vars: {}\n"
 
-// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as one key inside a shaped open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
+// TestSetSparse pins that SetSparse writes only the set keys: into empty bytes, beside an existing key, through intermediate mappings, as an open-map entry, as a whole open map, as one key inside a shaped open-map entry, as a per-name entry, as one key of a per-name mapping entry and as a flow list, with a template tag kept and an unknown or misshapen request refused.
 func TestSetSparse(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	openMaps := []string{"labels", "rounds", "tiers"}
+	openMaps := []string{"labels", "rounds", "spec.vars", "tiers"}
 	perNameMaps := []string{"lists", "names", "profiles"}
 	tests := []struct {
 		name        string
@@ -153,6 +153,13 @@ func TestSetSparse(t *testing.T) {
 		{name: "a key inside a shaped flow entry keeps the entry's keys", existing: "tiers:\n    t0: {command: x}\n", pairs: []KV{{Key: "tiers.t0.env.NAME", Value: "a"}}, want: "tiers:\n    t0: {command: x, env: {NAME: a}}\n"},
 		{name: "a whole shaped open-map entry is written from a flow mapping", pairs: []KV{{Key: "tiers.t0", Value: "{command: x}"}}, want: "tiers:\n    t0:\n        command: x\n"},
 		{name: "a key a shaped open-map entry lacks is refused naming it", pairs: []KV{{Key: "tiers.t0.nope", Value: "1"}}, wantErr: true, wantErrText: []string{"tiers.t0.nope", "tiers.t0 holds no key nope"}},
+		{name: "a whole open map is replaced from a flow mapping", existing: "labels:\n    a: x\n", pairs: []KV{{Key: "labels", Value: "{bug: desc}"}}, want: "labels:\n    bug: desc\n"},
+		{name: "a whole open map is emptied by an empty flow mapping", existing: "labels:\n    a: x\n", pairs: []KV{{Key: "labels", Value: "{}"}}, want: "labels: {}\n"},
+		{name: "a whole shaped open map is written with its scalar tags", pairs: []KV{{Key: "tiers", Value: `{t0: {command: "go test", timeout_min: 30}}`}}, want: "tiers:\n    t0: {command: \"go test\", timeout_min: 30}\n"},
+		{name: "a whole shaped open map holding a key its shape lacks is refused naming it", pairs: []KV{{Key: "tiers", Value: "{t0: {nope: 1}}"}}, wantErr: true, wantErrText: []string{"tiers.t0.nope", "tiers.t0 holds no key nope"}},
+		{name: "a whole open map refuses a value that is no flow mapping", pairs: []KV{{Key: "labels", Value: "[a]"}}, wantErr: true, wantErrText: []string{"labels", "flow mapping", "labels.<key>"}},
+		{name: "a whole shaped open map refuses a mapping under a text field", pairs: []KV{{Key: "tiers", Value: "{t0: {command: {a: b}}}"}}, wantErr: true, wantErrText: []string{"tiers.t0.command", "one string"}},
+		{name: "a whole dotted open map creates the missing parent mapping", existing: "name: x\n", pairs: []KV{{Key: "spec.vars", Value: "{k: v}"}}, want: "name: x\nspec:\n    vars:\n        k: v\n"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,10 +179,20 @@ func TestSetSparse(t *testing.T) {
 			if !slices.Equal(got.Unknown, tc.wantUnknown) {
 				t.Fatalf("Unknown = %v, want %v", got.Unknown, tc.wantUnknown)
 			}
-			for _, key := range []string{"labels.<name>", "list", "name", "nested.deep", "port", "profiles.<name>.budget"} {
+			for _, key := range []string{"labels", "labels.<name>", "list", "name", "nested.deep", "port", "profiles.<name>.budget"} {
 				if !slices.Contains(got.Known, key) {
 					t.Errorf("Known = %v, lacks %q", got.Known, key)
 				}
+			}
+			// rounds is a scalar leaf and a declared open map, so it is listed twice before the duplicate is removed.
+			roundsListed := 0
+			for _, key := range got.Known {
+				if key == "rounds" {
+					roundsListed++
+				}
+			}
+			if roundsListed != 1 {
+				t.Errorf("Known = %v, lists rounds %d times; want once", got.Known, roundsListed)
 			}
 			if len(got.Preserved) != 0 {
 				t.Errorf("Preserved = %v, want none", got.Preserved)

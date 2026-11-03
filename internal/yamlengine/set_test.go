@@ -413,6 +413,24 @@ func TestSetValues(t *testing.T) {
 			notContains: []string{`"3"`},
 		},
 		{
+			name:        "shaped open map of fixed keys is replaced whole from a flow mapping",
+			template:    "tiers: {}\nbuild: {}\n",
+			existing:    "build:\n  command: old\n  plain: gone\n",
+			pairs:       []KV{{Key: "build", Value: `{command: "go build", timeout_min: 30}`}},
+			openMaps:    []string{"tiers", "build"},
+			shapes:      shapedOpenMaps,
+			contains:    []string{"command: \"go build\"", "timeout_min: 30"},
+			notContains: []string{"old", "gone", `"30"`},
+		},
+		{
+			name:     "whole dotted open map sets its keys under its existing parent mapping",
+			template: "name: tmpl\na:\n  b: {}\n",
+			existing: "name: mine\n",
+			pairs:    []KV{{Key: "a.b", Value: "{k: v}"}},
+			openMaps: []string{"a.b"},
+			contains: []string{"name: mine", "a:\n    b:\n        k: v\n"},
+		},
+		{
 			name:     "unshaped open map keeps a dotted rest as one entry name",
 			template: openMapSetTemplate,
 			pairs:    []KV{{Key: "labels.a.b", Value: "v"}},
@@ -500,6 +518,13 @@ func TestSetValues_UnknownKeys(t *testing.T) {
 			pairs:     []KV{{Key: "bogus", Value: "v"}},
 			openMaps:  []string{"labels"},
 			wantKnown: "labels.<name>",
+		},
+		{
+			name:      "an open map lists itself as known",
+			template:  openMapSetTemplate,
+			pairs:     []KV{{Key: "labels", Value: "{a: b}"}, {Key: "bogus", Value: "v"}},
+			openMaps:  []string{"labels"},
+			wantKnown: "labels",
 		},
 		{
 			name:        "per-name map lists its name placeholder as known",
@@ -611,6 +636,29 @@ func TestSetValues_Refusals(t *testing.T) {
 			openMaps: []string{"tiers"},
 			shapes:   shapedOpenMaps,
 			want:     []string{"tiers.t0 holds a scalar", "rewrite it as a map to set tiers.t0.command"},
+		},
+		{
+			name:     "whole shaped open map holding a key its shape lacks",
+			template: "build: {}\n",
+			pair:     KV{Key: "build", Value: "{command: x, timeoutt: 1}"},
+			openMaps: []string{"build"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"build.timeoutt", "build holds no key timeoutt"},
+		},
+		{
+			name:     "whole shaped open map holding a mapping under a text field",
+			template: "build: {}\n",
+			pair:     KV{Key: "build", Value: "{command: {a: b}}"},
+			openMaps: []string{"build"},
+			shapes:   shapedOpenMaps,
+			want:     []string{"build.command", "one string"},
+		},
+		{
+			name:     "flow list for a whole mapping open map",
+			template: openMapSetTemplate,
+			pair:     KV{Key: "labels", Value: "[a]"},
+			openMaps: []string{"labels"},
+			want:     []string{"labels", "flow mapping", "labels.<key>"},
 		},
 		{
 			name:     "scalar for a list key",
@@ -728,6 +776,20 @@ func TestSetValues_Refusals(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestSetValues_WholeOpenMapKeepsLineComment pins that replacing an open map whole keeps the line comment the template carries on it.
+// It stands apart from TestSetValues because a file that already holds the open map does not carry the template's comment, so the second call that table makes would not reproduce the first.
+func TestSetValues_WholeOpenMapKeepsLineComment(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	result, err := SetValues([]byte("labels: {} # note\n"), nil, []KV{{Key: "labels", Value: "{bug: desc}"}}, nil, nil, "labels")
+	if err != nil {
+		t.Fatalf("SetValues() unexpected error: %v", err)
+	}
+	if want := "labels: # note\n    bug: desc\n"; string(result.Merged) != want {
+		t.Errorf("SetValues() Merged = %q; want %q", result.Merged, want)
 	}
 }
 

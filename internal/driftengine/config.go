@@ -100,7 +100,7 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns drift's layered-load spec.
 // capture and compare run commands, so they are executable keys and closed to the local layer.
-// Both carry the shape their decode gives them, so `--set` reaches one key inside a step, such as `capture.env.NAME`, and refuses a key a step lacks.
+// Both carry the shape their decode gives them, so `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`, or reaches one key inside it, such as `capture.env.NAME`, and refuses a key a step lacks.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,

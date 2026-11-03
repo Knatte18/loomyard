@@ -114,7 +114,9 @@ func shapeOfType(t reflect.Type) *Shape {
 // A pair at P itself, when P holds a scalar or a list, replaces P whole with the shape the value spells:
 // a value starting with [ is a YAML flow list of scalars or mappings of scalars, and any other value a string;
 // a bracketed value that is not such a list is an error.
-// Known lists each open map as P.<name>.
+// A pair at P itself, when P holds a mapping, replaces P whole with the YAML flow mapping the value spells, {} included;
+// a value that is not one flow mapping is an error naming P and the per-key form, and under a shape a key the shape does not reach, or a mapping or list where the shape takes a string, is an error naming it.
+// Known lists each open map as P and as P.<name>.
 //
 // An open map P that shapes maps to a shape takes a key P.<rest> for any rest the shape reaches, a name for each mapping of names on the way and a key the mapping holds for each mapping of fixed keys,
 // and the pair sets that one value in the tree at P, creating every missing mapping on the way.
@@ -214,6 +216,12 @@ func SetValues(template, existing []byte, pairs []KV, perNameMaps []string, shap
 			current := findValueNode(&templateNode, pair.Key)
 			value.HeadComment, value.LineComment, value.FootComment = current.HeadComment, current.LineComment, current.FootComment
 			*current = *value
+			continue
+		}
+		if slices.Contains(openMaps, pair.Key) {
+			if err := setWholeOpenMap(documentRoot(&templateNode), pair, shapes[pair.Key]); err != nil {
+				return SetResult{}, err
+			}
 			continue
 		}
 		if shape, shaped, _ := shapedOpenMapKey(pair.Key, openMaps, shapes); shaped {
@@ -356,6 +364,61 @@ func setOpenMapEntry(root *yaml.Node, open, name string, pair KV) error {
 		}
 	}
 	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}, entry)
+	return nil
+}
+
+// setWholeOpenMap replaces the open map pair.Key names, in the mapping tree under root, with the YAML flow mapping pair.Value spells, keeping the old value's comments;
+// a line comment on an old value replaced by a non-empty mapping moves onto the key, where it marshals.
+// Every mapping on the way to it is created when missing.
+// A value that is not one flow mapping is an error naming the key and the per-key form;
+// under shape, a key inside the mapping the shape does not reach is an error naming it, and nothing is set.
+func setWholeOpenMap(root *yaml.Node, pair KV, shape *Shape) error {
+	value, err := openMapEntryNode(pair)
+	if err != nil {
+		return err
+	}
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("value for %s is not a YAML flow mapping, got %q: write the map whole as {key: value, ...}, or set one key as %s.<key>", pair.Key, pair.Value, pair.Key)
+	}
+	if shape != nil {
+		if err := mappingShapeError(pair.Key, value, shape); err != nil {
+			return err
+		}
+	}
+	parent, name, err := parentMappingOf(root, pair.Key)
+	if err != nil {
+		return err
+	}
+	setEntry(parent, name, value)
+	// A line comment after an empty {} sits on the value, and a value's line comment is dropped when it marshals as a block mapping, so it moves onto the key.
+	if key := parent.Content[mappingIndex(parent, name)]; len(value.Content) > 0 && value.LineComment != "" && key.LineComment == "" {
+		key.LineComment, value.LineComment = value.LineComment, ""
+	}
+	return nil
+}
+
+// mappingShapeError returns an error naming the first key below path, in node, that shape does not reach or whose node is a mapping or list where shape takes a string, and nil otherwise.
+// A single value that is not a string takes whatever node holds, so nothing below it is checked.
+func mappingShapeError(path string, node *yaml.Node, shape *Shape) error {
+	if shape.Text && node.Kind != yaml.ScalarNode {
+		return fmt.Errorf("config key %s takes one string, not a %s: write it as a plain or quoted string", path, nodeShape(node))
+	}
+	if node.Kind != yaml.MappingNode || (shape.Fields == nil && shape.Entries == nil) {
+		return nil
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		name := node.Content[i].Value
+		next := shape.Entries
+		if shape.Fields != nil {
+			var ok bool
+			if next, ok = shape.Fields[name]; !ok {
+				return fmt.Errorf("unknown config key %s.%s: %s holds no key %s; it holds %s", path, name, path, name, strings.Join(slices.Sorted(maps.Keys(shape.Fields)), ", "))
+			}
+		}
+		if err := mappingShapeError(path+"."+name, node.Content[i+1], next); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -151,9 +151,11 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 // A key is known when the template holds it as a leaf or a list, or lies under a declared openMaps path P as P.<name>;
 // a list key takes a YAML flow list such as [] or [a, b], and an open-map entry is a scalar in the mapping at P.
 // A key at P itself, when P holds a scalar or a list, takes either: a value starting with [ is written as a flow list of scalars or mappings of scalars, any other value as a string, and a bracketed value that is not such a list is an error.
+// A key at P itself, when P holds a mapping, replaces P whole with the YAML flow mapping its value spells, as SetValues does.
 // Unknown lists the requested keys that are not known, Known the sorted known set, and Merged is nil when Unknown is non-empty.
 // A scalar leaf outside a scalar-or-list open-map path takes its template leaf's tag, except that a value spelling a null (`~`, `null`, `Null`, `NULL`), or a template leaf holding a null, gives it the tag its own text resolves to.
 // An open map that shapes maps to a shape takes a key at any path the shape reaches, as SetValues takes it, and a path it does not reach is an error naming the key.
+// A whole-map value holding a mapping or list where the shape takes a string is an error naming the key.
 // Preserved stays empty.
 //
 // Each perNameMaps entry is a dotted key path whose template value is a mapping of names:
@@ -198,6 +200,24 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shap
 		existingDoc = &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{existingRoot}}
 	}
 	for _, pair := range pairs {
+		if slices.Contains(scalarOrListPaths, pair.Key) {
+			value, err := scalarOrListNode(pair)
+			if err != nil {
+				return SetResult{}, err
+			}
+			parent, name, err := parentMappingOf(existingRoot, pair.Key)
+			if err != nil {
+				return SetResult{}, err
+			}
+			setEntry(parent, name, value)
+			continue
+		}
+		if slices.Contains(openMaps, pair.Key) {
+			if err := setWholeOpenMap(existingRoot, pair, shapes[pair.Key]); err != nil {
+				return SetResult{}, err
+			}
+			continue
+		}
 		if shape, shaped, _ := shapedOpenMapKey(pair.Key, openMaps, shapes); shaped {
 			if err := setShapedValue(existingRoot, pair, shape); err != nil {
 				return SetResult{}, err
@@ -239,20 +259,9 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shap
 			}
 			continue
 		}
-		parentPath, name := splitLastSegment(pair.Key)
-		parent := existingRoot
-		if parentPath != "" {
-			if parent, err = mappingAt(existingRoot, parentPath); err != nil {
-				return SetResult{}, err
-			}
-		}
-		if slices.Contains(scalarOrListPaths, pair.Key) {
-			value, err := scalarOrListNode(pair)
-			if err != nil {
-				return SetResult{}, err
-			}
-			setEntry(parent, name, value)
-			continue
+		parent, name, err := parentMappingOf(existingRoot, pair.Key)
+		if err != nil {
+			return SetResult{}, err
 		}
 		if _, ok := templateSequences[pair.Key]; ok {
 			sequence := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
@@ -272,7 +281,7 @@ func SetSparse(template, existing []byte, pairs []KV, perNameMaps []string, shap
 	return SetResult{Merged: merged, Known: known}, nil
 }
 
-// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, and one P.<name> per open map and per per-name map P.
+// knownKeys returns the sorted key set a template makes settable: its leaf paths, its list-valued key paths, each open map P itself, and one P.<name> per open map and per per-name map P.
 // It also holds one P.<name>.<rest> per path rest the entries of a per-name map of mappings hold, as entryLeaves lists them.
 func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
 	known := make([]string, 0, len(templateLeaves)+len(templateSequences)+len(openMaps)+len(perNameMaps))
@@ -283,7 +292,7 @@ func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps
 		known = append(known, path)
 	}
 	for _, p := range openMaps {
-		known = append(known, p+".<name>")
+		known = append(known, p, p+".<name>")
 	}
 	for _, p := range perNameMaps {
 		known = append(known, p+".<name>")
@@ -292,10 +301,11 @@ func knownKeys(templateLeaves, templateSequences map[string]*yaml.Node, openMaps
 		}
 	}
 	sort.Strings(known)
-	return known
+	return slices.Compact(known)
 }
 
 // unknownKeys returns the sorted, deduplicated pair keys the template neither holds nor opens.
+// A declared open map is known itself, whatever it holds.
 // A key under a per-name map is open for one dot-free name only, or, when the map's entries are mappings, for a name followed by a path some entry holds, as entryLeaves lists them;
 // a deeper key under it is unknown.
 func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.Node, openMaps, perNameMaps []string, entryLeaves map[string]map[string]*yaml.Node) []string {
@@ -303,10 +313,11 @@ func unknownKeys(pairs []KV, templateLeaves, templateSequences map[string]*yaml.
 	for _, pair := range pairs {
 		_, isLeaf := templateLeaves[pair.Key]
 		_, isSequence := templateSequences[pair.Key]
-		_, _, isOpen := splitOpenMapKey(pair.Key, openMaps)
+		_, _, isOpenEntry := splitOpenMapKey(pair.Key, openMaps)
+		isOpen := slices.Contains(openMaps, pair.Key)
 		_, _, isPerName := splitPerNameKey(pair.Key, perNameMaps)
 		_, _, isPerNameEntry := splitPerNameEntryKey(pair.Key, perNameMaps, entryLeaves)
-		if !isLeaf && !isSequence && !isOpen && !isPerName && !isPerNameEntry {
+		if !isLeaf && !isSequence && !isOpen && !isOpenEntry && !isPerName && !isPerNameEntry {
 			unknown = append(unknown, pair.Key)
 		}
 	}
@@ -320,6 +331,17 @@ func splitLastSegment(path string) (parent, name string) {
 		return path[:at], path[at+1:]
 	}
 	return "", path
+}
+
+// parentMappingOf returns the mapping under root that holds the last segment of the dotted key, and that segment.
+// Missing mappings on the way are created, and a value on the way that is neither a mapping nor null is an error naming its path.
+func parentMappingOf(root *yaml.Node, key string) (*yaml.Node, string, error) {
+	parentPath, name := splitLastSegment(key)
+	if parentPath == "" {
+		return root, name, nil
+	}
+	parent, err := mappingAt(root, parentPath)
+	return parent, name, err
 }
 
 // mappingAt returns the mapping at the dotted path under root, creating missing mappings on the way.

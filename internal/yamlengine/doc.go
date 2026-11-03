@@ -44,11 +44,13 @@
 //     A braced or bracketed value that is not one node of its kind, or carries text after its closing bracket, is refused naming the key, and a string holding a brace, comma or bracket is double-quoted inside it.
 //     A list at P is an error naming P;
 //     the list is never converted.
-//     Known lists each open map as P.<name>.
+//     Known lists each open map as P and as P.<name>.
 //   - SetValues and SetSparse set P itself when P holds a scalar or a list, not a mapping, replacing it whole with the shape the value spells:
 //     a value starting with [ is a YAML flow list of scalars or mappings of scalars, and any other value a string.
 //     A bracketed value that is not such a list is refused, never written as a string.
 //     A module declares a key that takes one value or a list, such as a per-round model list, this way.
+//   - SetValues and SetSparse set P itself when P holds a mapping, replacing it whole with the YAML flow mapping the value spells, {} included.
+//     A value that is not one flow mapping is refused naming P and the per-key form P.<key>, and a shaped P refuses a key inside the mapping its shape does not reach, and a mapping or list where its shape takes a string, naming it.
 //   - SetValues and SetSparse also take a map from an open-map path to its [Shape], which [ShapeOf] derives from the module's decode type.
 //     A shaped P takes a dotted key at any path its shape reaches, such as P.<name>.env.<var> under a mapping of names whose entries hold a map,
 //     and sets that one value, creating every mapping on the way: a text value as a string and any other scalar under the tag its own text resolves to.
