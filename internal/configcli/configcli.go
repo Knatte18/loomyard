@@ -557,7 +557,7 @@ func runReconcile(ctx context.Context, out io.Writer, apply bool, layer string) 
 	baseDir := baseDirOf(l)
 
 	// Reconcile all modules; apply controls whether changes are written to disk.
-	results, err := configsync.ReconcileAll(baseDir, boltDir, configsync.Options{Apply: apply})
+	results, err := configsync.ReconcileAll(baseDir, boltDir, configsync.Options{Apply: apply, PruneUnknown: true})
 	if err != nil {
 		return output.Err(out, fmt.Sprintf("reconcile: %v", err))
 	}
@@ -721,7 +721,11 @@ hub-wide modules' files and each per-worktree module's repo default, seeding
 an absent one from the prime. Renamed keys are migrated and keys the template
 lacks are removed. --apply with it runs only from the hub's prime worktree,
 outside a task session, and commits the files in ` + fabricengine.BoltDirName + ` and pushes.
-Reconcile is refused in the board dir itself.`,
+Reconcile is refused in the board dir itself.
+
+This verb is the one way to remove a key the template lacks: the reconcile a
+start verb, a clone or fabric reconcile runs keeps such a key, unless the
+module retired it, since a newer lym binary may have written it.`,
 	}
 	apply := reconcileCmd.Flags().Bool("apply", false, "apply changes to disk (default: dry-run)")
 	reconcileLayer := reconcileCmd.Flags().String("layer", "", "default reconciles the files under the hub's board dir (default: this worktree's own and local files)")

@@ -506,7 +506,22 @@ func TestConfigOverRealHub(t *testing.T) {
 		}
 	})
 
-	t.Run("reconcile --layer default --apply prunes every retired loom, landing and gate key and leaves the profiles file as written", func(t *testing.T) {
+	t.Run("reconcile --apply removes a key the template lacks from a hub worktree file", func(t *testing.T) {
+		t.Setenv(agentname.StrandNameEnv, "")
+		loomFile := configengine.ConfigFile(codeWorktreePath, "loom")
+		if err := os.WriteFile(loomFile, []byte("discussion_timeout_min: 60\nnewer_key: 1\n"), 0o644); err != nil {
+			t.Fatalf("plant a key the template lacks in the worktree loom.yaml: %v", err)
+		}
+
+		if code, result := runReconcileCLI(t, codeWorktreePath, "--apply"); code != 0 {
+			t.Fatalf("reconcile --apply = %d; want 0; result: %v", code, result)
+		}
+		if after, err := os.ReadFile(loomFile); err != nil || string(after) != "discussion_timeout_min: 60\n" {
+			t.Errorf("worktree loom.yaml = %q, %v after the apply; want the unknown key removed and the tuned one kept", after, err)
+		}
+	})
+
+	t.Run("reconcile --layer default --apply prunes every retired loom, landing and gate key and every key the template lacks, and leaves the profiles file as written", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		appendPlanted := func(module, planted string) {
 			t.Helper()
@@ -523,8 +538,8 @@ func TestConfigOverRealHub(t *testing.T) {
 				t.Fatalf("plant retired keys in the board %s.yaml: %v", module, err)
 			}
 		}
-		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\n")
-		appendPlanted("landing", "require_pr_to_base: []\n")
+		appendPlanted("loom", "webster_max_bounces: 2\nmerge_max_bounces: 1\nalignment_pr_approve: true\nrework: true\nnewer_loom_key: 1\n")
+		appendPlanted("landing", "require_pr_to_base: []\nnewer_landing_key: 1\n")
 		gateFile := configengine.ConfigFile(boardDir, "gate")
 		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
 			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
@@ -552,13 +567,13 @@ func TestConfigOverRealHub(t *testing.T) {
 		if !strings.Contains(loom, "\ncode_max_bounces: 2 ") {
 			t.Errorf("applied board loom.yaml lacks code_max_bounces: 2; got %q", loom)
 		}
-		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework"} {
+		for _, gone := range []string{"webster_max_bounces", "merge_max_bounces", "alignment_pr_approve", "rework", "newer_loom_key"} {
 			if strings.Contains(loom, gone) {
 				t.Errorf("applied board loom.yaml still holds %q; got %q", gone, loom)
 			}
 		}
-		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") {
-			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and no require_pr_to_base", landing)
+		if landing := read("landing"); !strings.Contains(landing, "\ndeploy_branches: []") || strings.Contains(landing, "require_pr_to_base") || strings.Contains(landing, "newer_landing_key") {
+			t.Errorf("applied board landing.yaml = %q; want an empty deploy_branches and neither require_pr_to_base nor newer_landing_key", landing)
 		}
 		if gate := read("gate"); !strings.Contains(gate, "webster-fix: {tiers: [0, 1], scope: diff}") || strings.Contains(gate, "round") || strings.Contains(gate, "publish") {
 			t.Errorf("applied board gate.yaml = %q; want the round list migrated to webster-fix and no publish", gate)

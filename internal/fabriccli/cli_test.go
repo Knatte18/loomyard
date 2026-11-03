@@ -507,7 +507,7 @@ func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 
 	tests := []struct {
 		name string
-		// staleHubConfig commits a retired key into the board's fabric config, so the heal rewrites it.
+		// staleHubConfig commits a retired key into the board's landing config, so the heal rewrites it.
 		staleHubConfig bool
 		// unbind commits the warp-binding record's removal, so reconcile records it again.
 		unbind               bool
@@ -571,13 +571,13 @@ func TestRunCLI_ReconcileBoardFailureFailsTheVerb(t *testing.T) {
 
 			boardDir := fabricengine.BoardDir(hubPath)
 			if tt.staleHubConfig {
-				fabricConfig := configengine.ConfigFile(boardDir, "fabric")
-				current, err := os.ReadFile(fabricConfig)
+				landingConfig := configengine.ConfigFile(boardDir, "landing")
+				current, err := os.ReadFile(landingConfig)
 				if err != nil {
-					t.Fatalf("read %s: %v", fabricConfig, err)
+					t.Fatalf("read %s: %v", landingConfig, err)
 				}
-				if err := os.WriteFile(fabricConfig, append(current, []byte("retired_fixture_key: 1\n")...), 0o644); err != nil {
-					t.Fatalf("write %s: %v", fabricConfig, err)
+				if err := os.WriteFile(landingConfig, append(current, []byte("publish_verify: x\n")...), 0o644); err != nil {
+					t.Fatalf("write %s: %v", landingConfig, err)
 				}
 				gitkit.MustRun(t, boardDir, "git", "commit", "-am", "test fixture: stale hub-wide config")
 			}

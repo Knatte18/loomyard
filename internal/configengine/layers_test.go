@@ -1119,3 +1119,35 @@ func TestProvenance(t *testing.T) {
 		})
 	}
 }
+
+// TestDropRetired pins that a retired key leaves the document and a mapping it empties leaves with it, while a sibling key, an unknown key and a document holding no retired key stay as written.
+func TestDropRetired(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	spec := configengine.Spec{
+		Name:        layerModule,
+		RetiredKeys: map[string]configengine.Category{"gone": configengine.CategoryNone, "old.inner": configengine.CategoryNone},
+	}
+	tests := []struct {
+		name string
+		doc  string
+		want string
+	}{
+		{name: "top-level retired key", doc: "gone: 1\nkeep: 2\n", want: "keep: 2\n"},
+		{name: "nested retired key beside a sibling keeps the parent", doc: "old:\n  inner: 1\n  other: 2\n", want: "old:\n  other: 2\n"},
+		{name: "nested retired key that was the only child drops the emptied parent", doc: "old:\n  inner: 1\nnewer_key: 3\n", want: "newer_key: 3\n"},
+		{name: "document holding no retired key is returned byte for byte", doc: "newer_key:   3\n", want: "newer_key:   3\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := configengine.DropRetired([]byte(tt.doc), spec)
+			if err != nil {
+				t.Fatalf("DropRetired(%q): %v", tt.doc, err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("DropRetired(%q) = %q; want %q", tt.doc, got, tt.want)
+			}
+		})
+	}
+}

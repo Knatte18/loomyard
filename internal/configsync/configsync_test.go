@@ -629,31 +629,31 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantAbsent:   []string{"review_max_bounces:"},
 		},
 		{
-			name:         "loom default present is pruned in place and gains no template key",
+			name:         "loom default present is pruned of a retired key in place and gains no template key",
 			module:       "loom",
-			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
+			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
 			primeFile:    "discussion_timeout_min: 480\n",
 			seedDefaults: true,
 			wantSeed:     SeedHub,
 			wantContains: []string{"discussion_timeout_min: 7"},
-			wantAbsent:   []string{"stale_key", "480", "review_max_bounces:"},
+			wantAbsent:   []string{"pr_review", "480", "review_max_bounces:"},
 			wantAdded:    []string{},
 		},
 		{
-			name:         "loom default present is pruned without SeedDefaults",
+			name:         "loom default present is pruned of a retired key without SeedDefaults",
 			module:       "loom",
-			hubFile:      "discussion_timeout_min: 7\nstale_key: old\n",
+			hubFile:      "discussion_timeout_min: 7\npr_review: old\n",
 			wantSeed:     SeedHub,
 			wantContains: []string{"discussion_timeout_min: 7"},
-			wantAbsent:   []string{"stale_key", "review_max_bounces:"},
+			wantAbsent:   []string{"pr_review", "review_max_bounces:"},
 		},
 		{
 			name:         "loom default left with no unit is written as the header-only base",
 			module:       "loom",
-			hubFile:      "stale_key: old\n",
+			hubFile:      "pr_review: old\n",
 			wantSeed:     SeedHub,
 			wantContains: []string{configengine.SparseBaseHeader},
-			wantAbsent:   []string{"stale_key"},
+			wantAbsent:   []string{"pr_review"},
 		},
 		{
 			name:       "loom default absent stays absent without SeedDefaults",
@@ -1359,6 +1359,7 @@ func TestReconcileAll_HubWideCopy(t *testing.T) {
 }
 
 // TestReconcileAll_SparseLayers pins that in a hub a worktree file and a local file are sparse layers: retired keys are pruned and a below-floor value is migrated, but nothing is ever added, an absent file stays absent, a seed-only module's files are untouched, and a file emptied by a prune is deleted.
+// A worktree file keeps a key the template lacks and no retired key covers, reported preserved, unless PruneUnknown is set; a local file loses it either way.
 func TestReconcileAll_SparseLayers(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1377,6 +1378,8 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		// wantResult is false when the layer is absent and no result is reported.
 		wantResult    bool
 		wantKeptExtra []string
+		pruneUnknown  bool
+		wantPreserved []string
 	}{
 		{
 			name: "worktree file keeps a hub-only lens and stays byte-identical", module: "lenses", layer: configengine.LayerWorktree,
@@ -1384,9 +1387,19 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			wantKeptExtra: []string{"lenses.hub-lens"}, wantResult: true,
 		},
 		{
-			name: "worktree file loses a retired key and gains no template key", module: "loom", layer: configengine.LayerWorktree,
+			name: "worktree file loses a key the template lacks under PruneUnknown and gains no template key", module: "loom", layer: configengine.LayerWorktree,
 			content: "discussion_timeout_min: 480\nstale_key: old\n", wantFile: ptr("discussion_timeout_min: 480\n"),
-			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
+			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true, pruneUnknown: true,
+		},
+		{
+			name: "worktree file keeps a key the template lacks without PruneUnknown and reports it preserved", module: "loom", layer: configengine.LayerWorktree,
+			content: "discussion_timeout_min: 480\nnewer_key: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\n"),
+			wantResult: true, wantPreserved: []string{"newer_key"},
+		},
+		{
+			name: "worktree file loses a retired key without PruneUnknown and keeps a key the template lacks", module: "loom", layer: configengine.LayerWorktree,
+			content: "discussion_timeout_min: 480\npr_review: x\nnewer_key: x\n", wantFile: ptr("discussion_timeout_min: 480\nnewer_key: x\n"),
+			wantApplied: true, wantRemoved: []string{"pr_review"}, wantResult: true, wantPreserved: []string{"newer_key"},
 		},
 		{
 			name: "below-floor loom value is raised by Migrate", module: "loom", layer: configengine.LayerWorktree,
@@ -1398,7 +1411,7 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			wantResult: true,
 		},
 		{
-			name: "local file is pruned and reported with layer local", module: "loom", layer: configengine.LayerLocal,
+			name: "local file is pruned without PruneUnknown and reported with layer local", module: "loom", layer: configengine.LayerLocal,
 			content: "review_max_bounces: 2\nstale_key: old\n", wantFile: ptr("review_max_bounces: 2\n"),
 			wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
 		},
@@ -1412,7 +1425,7 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 		},
 		{
 			name: "file emptied by a prune is deleted", module: "loom", layer: configengine.LayerWorktree,
-			content: "stale_key: old\n", wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true,
+			content: "stale_key: old\n", wantApplied: true, wantRemoved: []string{"stale_key"}, wantResult: true, pruneUnknown: true,
 		},
 		{
 			name: "absent local file reports nothing", module: "loom", layer: configengine.LayerLocal,
@@ -1439,7 +1452,7 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 				}
 			}
 
-			dry, err := ReconcileAll(anchor, boardDir, Options{})
+			dry, err := ReconcileAll(anchor, boardDir, Options{PruneUnknown: tt.pruneUnknown})
 			if err != nil {
 				t.Fatalf("ReconcileAll(dry): %v", err)
 			}
@@ -1452,7 +1465,7 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 				t.Errorf("dry run result = %+v; want Applied false", dryResult)
 			}
 
-			results, err := ReconcileAll(anchor, boardDir, Options{Apply: true})
+			results, err := ReconcileAll(anchor, boardDir, Options{Apply: true, PruneUnknown: tt.pruneUnknown})
 			if err != nil {
 				t.Fatalf("ReconcileAll(apply): %v", err)
 			}
@@ -1467,6 +1480,9 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 				if !slices.Equal(result.KeptExtra, tt.wantKeptExtra) {
 					t.Errorf("KeptExtra = %v; want %v", result.KeptExtra, tt.wantKeptExtra)
 				}
+				if !slices.Equal(result.Preserved, tt.wantPreserved) {
+					t.Errorf("Preserved = %v; want %v", result.Preserved, tt.wantPreserved)
+				}
 			}
 			got, readErr := os.ReadFile(path)
 			if tt.wantFile == nil {
@@ -1477,6 +1493,68 @@ func TestReconcileAll_SparseLayers(t *testing.T) {
 			}
 			if string(got) != *tt.wantFile {
 				t.Errorf("%s = %q; want %q", path, got, *tt.wantFile)
+			}
+		})
+	}
+}
+
+// TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked pins two behaviors.
+// A present board file loses a retired key on every run.
+// A key the template lacks and no retired key covers stays and is reported preserved unless PruneUnknown is set.
+func TestReconcileHubWideAt_PrunesUnknownKeysOnlyWhenAsked(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name          string
+		content       string
+		pruneUnknown  bool
+		wantFile      string
+		wantApplied   bool
+		wantRemoved   []string
+		wantPreserved []string
+	}{
+		{
+			name: "a key the template lacks stays and is reported preserved", content: "newer_key: 1\n",
+			wantFile: "newer_key: 1\n", wantPreserved: []string{"newer_key"},
+		},
+		{
+			name: "a retired key is pruned beside a preserved key", content: "newer_key: 1\npublish_verify: x\n",
+			wantFile: "newer_key: 1\n", wantApplied: true, wantRemoved: []string{"publish_verify"}, wantPreserved: []string{"newer_key"},
+		},
+		{
+			name: "PruneUnknown prunes the key the template lacks as well", content: "newer_key: 1\npublish_verify: x\n", pruneUnknown: true,
+			wantFile: configengine.SparseBaseHeader, wantApplied: true, wantRemoved: []string{"newer_key", "publish_verify"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			writeModuleFile(t, boardDir, "landing", tt.content)
+			if err := WriteBaseSparseMarker(boardDir); err != nil {
+				t.Fatalf("WriteBaseSparseMarker: %v", err)
+			}
+			path := configengine.ConfigFile(boardDir, "landing")
+			for _, apply := range []bool{false, true} {
+				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply, PruneUnknown: tt.pruneUnknown})
+				if err != nil {
+					t.Fatalf("ReconcileHubWideAt(apply %v): %v", apply, err)
+				}
+				result := findResult(results, "landing")
+				if result == nil {
+					t.Fatalf("ReconcileHubWideAt(apply %v) returned no landing result", apply)
+				}
+				if result.Applied != (apply && tt.wantApplied) || !slices.Equal(result.Removed, tt.wantRemoved) || !slices.Equal(result.Preserved, tt.wantPreserved) {
+					t.Errorf("apply %v: result = %+v; want Applied %v, Removed %v, Preserved %v", apply, result, apply && tt.wantApplied, tt.wantRemoved, tt.wantPreserved)
+				}
+				if !apply {
+					if got, _ := os.ReadFile(path); string(got) != tt.content {
+						t.Errorf("dry run changed %s to %q; want %q", path, got, tt.content)
+					}
+				}
+			}
+			if got, err := os.ReadFile(path); err != nil || string(got) != tt.wantFile {
+				t.Errorf("%s = %q, %v; want %q", path, got, err, tt.wantFile)
 			}
 		})
 	}

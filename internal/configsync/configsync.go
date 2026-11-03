@@ -6,6 +6,8 @@
 // only a standalone worktree base and a seed-only file stay full, and every layer above a base is sparse.
 // ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
 // ReconcileAll covers a worktree's sparse and local layers.
+// A key the template lacks and no retired key of its module covers leaves a hub base or worktree file only under the options' PruneUnknown;
+// any other run keeps it and reports it as Preserved, so a binary older than the one that wrote a key never strips it.
 // Every strip, prune, reconcile and template-equal drop judges a file against the effective template its base layer picks, the module's template with the overlay its selector names laid over it;
 // key-move scaffolds and the seed-only paths use the base template.
 // Every reconcile entry point, and run-settings preparation through configreg, applies the key-move table to each layer as its first step, before any module of the layer is seeded or reconciled.
@@ -195,6 +197,9 @@ type Result struct {
 	// Dropped lists, sorted, each "<path>.<name>" a per-name map of a base-layer file held with the template's value, left out of the file because the load resolves it from the template.
 	// Set on a dry run too.
 	Dropped []string
+	// Preserved lists, sorted, the dotted keys a sparse file holds that the template lacks and no retired key covers, left in place because the run did not prune unknown keys.
+	// Set on a dry run too.
+	Preserved []string
 }
 
 // Options configures ReconcileAll.
@@ -203,12 +208,19 @@ type Options struct {
 	Apply bool
 	// Migrate lets an Apply run strip a worktree's full files to sparse overrides and write the sparse marker; without it Stripped and Inherited are only reported as pending.
 	Migrate bool
+	// PruneUnknown removes from a hub worktree file each key the template lacks that no retired key of the module covers.
+	// Without it such a key stays and is reported in Preserved, so a binary older than the one that wrote the key never removes it.
+	// A local file is pruned of every such key either way, since its load refuses one.
+	PruneUnknown bool
 }
 
 // HubWideOptions configures ReconcileHubWideAt.
 type HubWideOptions struct {
 	// Apply writes and removes files; false reports what would change.
 	Apply bool
+	// PruneUnknown removes from a present file each key the template lacks that no retired key of the module covers.
+	// Without it such a key stays and is reported in Preserved, so a binary older than the one that wrote the key never removes it from the committed board.
+	PruneUnknown bool
 	// SeedDefaults seeds a per-worktree module's absent repo default; false leaves an absent default absent.
 	SeedDefaults bool
 	// StripBase lets an Apply run strip a present base file of the units equal to the template or a former template value, and write the board marker after the files.
@@ -392,9 +404,9 @@ func retireHubWideCopy(module, baseDir, boardDir string, apply bool) (Result, er
 
 // ReconcileAll reconciles a worktree's layers under baseDir against the module templates,
 // returning the slice of results and any I/O or YAML parsing error.
-// Standalone (boardDir empty) the worktree file is the base layer and is fully reconciled;
-// in a hub it is sparse: a present file is migrated and its retired keys pruned, nothing is added, and an absent one stays absent.
-// The local file of every module is a sparse layer reconciled the same way, and is reported with layer local only when present.
+// Standalone (boardDir empty) the worktree file is the base layer and is fully reconciled, whatever opts.PruneUnknown says;
+// in a hub it is sparse: a present file is migrated and pruned of its retired keys, and of every other key the template lacks only under opts.PruneUnknown, nothing is added, and an absent one stays absent.
+// The local file of every module is a sparse layer reconciled the same way, bar that every key the template lacks is pruned from it, and is reported with layer local only when present.
 // A seed-only module's worktree and local files are never rewritten; standalone, an absent worktree file materializes the template verbatim.
 // A hub-wide module is never reconciled or written as a worktree file.
 // Its result reports whether a leftover per-worktree copy is Retired (the hub file at boardDir holds everything the copy holds, and apply deletes it)
@@ -430,14 +442,14 @@ func ReconcileAll(baseDir, boardDir string, opts Options) ([]Result, error) {
 		case boardDir == "":
 			result, err = reconcileBaseWorktreeFile(m, baseDir, opts.Apply)
 		default:
-			result, _, err = reconcileSparseFile(m, dirs, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply, pending)
+			result, _, err = reconcileSparseFile(m, dirs, configengine.ConfigFile(baseDir, m.Name), configengine.LayerWorktree, opts.Apply, opts.PruneUnknown, pending)
 		}
 		if err != nil {
 			return nil, err
 		}
 		results = append(results, result)
 
-		localResult, present, err := reconcileSparseFile(m, dirs, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply, nil)
+		localResult, present, err := reconcileSparseFile(m, dirs, configengine.LocalFile(baseDir, m.Name), configengine.LayerLocal, opts.Apply, true, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -554,13 +566,13 @@ func reconcileBaseWorktreeFile(m configreg.Module, baseDir string, apply bool) (
 	return result, nil
 }
 
-// reconcileSparseFile reconciles one sparse layer file of a module: its Migrate hook runs over it and its retired keys are pruned, and nothing is ever added.
+// reconcileSparseFile reconciles one sparse layer file of a module: its Migrate hook runs over it, it is pruned of its retired keys, and of every other key the template lacks with pruneUnknown, and nothing is ever added.
 // An absent file stays absent and reports present false;
 // a seed-only module's present file is otherwise untouched.
 // With a non-nil strip, the file's keys that equal what the layers below it resolve to are reported as Stripped, and removed when strip.write is set;
 // a seed-only module takes the strip as well.
 // A file emptied by a prune or a strip is deleted and reported applied.
-func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string, layer configengine.Layer, apply bool, strip *migration) (result Result, present bool, err error) {
+func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string, layer configengine.Layer, apply, pruneUnknown bool, strip *migration) (result Result, present bool, err error) {
 	result = Result{Module: m.Name, Layer: layer}
 	original, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -585,7 +597,7 @@ func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string
 		if err != nil {
 			return Result{}, true, err
 		}
-		current, result.Removed, result.KeptExtra, err = yamlengine.Prune(template, current, m.PerNameMaps, m.OpenMaps...)
+		current, result.Removed, result.KeptExtra, result.Preserved, err = pruneSparse(m, template, current, pruneUnknown)
 		if err != nil {
 			return fail("reconcile", err)
 		}
@@ -616,6 +628,29 @@ func reconcileSparseFile(m configreg.Module, dirs configengine.Dirs, path string
 	}
 	result.Applied = true
 	return result, true, nil
+}
+
+// pruneSparse prunes current, a sparse file of m, of the units template lacks, and returns the pruned bytes with the removed and kept paths as yamlengine.Prune reports them.
+// Without pruneUnknown only the units a retired key of m covers are removed;
+// the others stay and come back as preserved, so a key a newer binary wrote survives a reconcile by an older one.
+func pruneSparse(m configreg.Module, template, current []byte, pruneUnknown bool) (pruned []byte, removed, kept, preserved []string, err error) {
+	pruned, removed, kept, err = yamlengine.Prune(template, current, m.PerNameMaps, m.OpenMaps...)
+	if err != nil || pruneUnknown || len(removed) == 0 {
+		return pruned, removed, kept, nil, err
+	}
+	withoutRetired, err := configengine.DropRetired(current, m.Spec())
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	_, preserved, _, err = yamlengine.Prune(template, withoutRetired, m.PerNameMaps, m.OpenMaps...)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	if len(preserved) == 0 {
+		return pruned, removed, kept, nil, nil
+	}
+	removed = slices.DeleteFunc(removed, func(key string) bool { return slices.Contains(preserved, key) })
+	return withoutRetired, removed, kept, preserved, nil
 }
 
 // stripToSparse strips current, a worktree file of m, of every key that equals what the layers below the worktree layer resolve to or equals a former template value of m, and returns the stripped bytes with the removed keys.
@@ -846,7 +881,8 @@ func primeConfig(primeBaseDir, module string) []byte {
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
 // A seed-only module is reconciled as a full file: a present one is never rewritten, and an absent one is seeded whole.
-// Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of keys the template lacks, and nothing is ever added.
+// Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of its retired keys, and nothing is ever added.
+// Under opts.PruneUnknown it is pruned of every other key the template lacks as well; without it such a key stays and is reported as Preserved.
 // A module's MigrateHubBase hook runs right after Migrate on a present hub file, and over the bytes of a prime or legacy seed on an absent one, so a hub file seeded in a pass holds what the hook adds at once, since the build stamp gates the next reconcile; no other reconcile path runs it.
 // Its per-name entries equal to the template's are dropped on every pass.
 // An absent file of a module with open maps, or one marked SeedsFromPrime, is seeded from the prime's copy when that copy exists and parses;
@@ -929,7 +965,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			}
 		}
 
-		var added, removed, keptExtra, dropped, stripped []string
+		var added, removed, keptExtra, dropped, stripped, preserved []string
 		var mergedBytes []byte
 		var reconcileErr error
 		changed := fileAbsent
@@ -978,7 +1014,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			var template []byte
 			template, reconcileErr = effectiveTemplateOf(m, mergedBytes, true, cfgPath)
 			if reconcileErr == nil {
-				mergedBytes, removed, keptExtra, reconcileErr = yamlengine.Prune(template, mergedBytes, m.PerNameMaps, m.OpenMaps...)
+				mergedBytes, removed, keptExtra, preserved, reconcileErr = pruneSparse(m, template, mergedBytes, opts.PruneUnknown)
 			}
 			changed = len(removed)+len(migrated) > 0
 			// The strip runs before the per-name drop, so a per-name map the strip empties leaves no empty mapping behind.
@@ -1015,6 +1051,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			KeptExtra:    keptExtra,
 			Dropped:      dropped,
 			Stripped:     stripped,
+			Preserved:    preserved,
 			MigratedFrom: migratedFrom,
 			Migrated:     migrated,
 			Seed:         seed,

@@ -305,6 +305,24 @@ func TestRunCLI_HubMutationScenario(t *testing.T) {
 				t.Fatalf("restore the base-sparse marker: %v", err)
 			}
 		}},
+		{"ReconcileKeepsAKeyTheTemplateLacks", func(t *testing.T) {
+			boardPath := configengine.ConfigFile(h.BoardDir(), "board")
+			sparseBoard, err := os.ReadFile(boardPath)
+			if err != nil {
+				t.Fatalf("read board.yaml: %v", err)
+			}
+			const newerKey = "newer_board_key: 1\n"
+			// The key is committed, since a dirty board makes the hub-wide heal skip and keep it whatever the reconcile prunes.
+			boardRel := configengine.ConfigFileRel("board")
+			gitkit.CommitFile(t, h.BoardDir(), boardRel, string(sparseBoard)+newerKey, "fixture: a key the template lacks")
+			defer gitkit.CommitFile(t, h.BoardDir(), boardRel, string(sparseBoard), "fixture: restore the sparse board.yaml")
+			if code, output := runFabric(t, h.PrimeWorktree(), "reconcile"); code != 0 {
+				t.Fatalf("RunCLI(reconcile) over a board.yaml holding a newer key = %d; want 0\noutput: %s", code, output)
+			}
+			if kept, err := os.ReadFile(boardPath); err != nil || !strings.Contains(string(kept), newerKey) {
+				t.Errorf("board.yaml = %q, %v after reconcile; want the key the template lacks kept", kept, err)
+			}
+		}},
 		{"ReconcileDoesNotFailOnAPairThatVanishedMidWalk", func(t *testing.T) {
 			// The counter-assertion to the unrepairable-pair step below; the two must be read together.
 			// Once a per-pair error drives reconcile's exit code, the verb becomes sensitive to a race it cannot avoid: `git worktree list` is read once, before the per-pair loop, so a concurrent `lym fabric remove`/`prune` can delete a pair between the enumeration and the iteration that reaches it.

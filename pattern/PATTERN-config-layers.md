@@ -45,6 +45,13 @@ Judging a config document against its template goes only through `configengine`'
 
 Reconciling a hub's config after a binary change goes only through `hubreconcile.Ensure`.
 
+## Keys the template lacks
+
+Only the operator's `lym config reconcile` removes, from a hub base or worktree file, a key the running template lacks and no retired key of the module covers: it alone sets `configsync`'s `PruneUnknown`.
+Every other reconcile, the binary-change walk, a clone and `lym fabric reconcile` included, keeps such a key and carries it in `configsync`'s `Result.Preserved`; the walk logs it when it writes the file.
+A binary older than the one that wrote a key cannot tell a key it never knew from one the template dropped, so an automatic removal would strip a newer binary's settings from the committed board.
+A local override file is pruned of every such key on any reconcile, since its load refuses one.
+
 ## Strictness
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one, except `runprofile`.

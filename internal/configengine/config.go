@@ -227,7 +227,7 @@ func load(dirs Dirs, spec Spec, fallbackOnAbsent bool) ([]byte, error) {
 	}
 
 	label := stack.Layers[len(stack.Layers)-1].Path
-	stackDoc, err := dropRetired(stack.Doc, spec)
+	stackDoc, err := DropRetired(stack.Doc, spec)
 	if err != nil {
 		return nil, MarkInvalid(fmt.Errorf("config file %s: %w", label, err))
 	}

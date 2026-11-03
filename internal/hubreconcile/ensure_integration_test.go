@@ -368,8 +368,17 @@ func newStaleHub(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
-// staleHubWideConfig is a fabric config carrying a key the registry no longer knows, so the hub-wide reconcile rewrites it.
-const staleHubWideConfig = "branch_prefix: \"\"\nretired_fixture_key: 1\n"
+// newerHubWideKey is a fabric key the running template lacks and no retired key covers, as a newer binary writes.
+const newerHubWideKey = "newer_fixture_key: 1"
+
+// newerWorktreeKey is a logger key the running template lacks and no retired key covers, planted in the pair's worktree file.
+const newerWorktreeKey = "newer_worktree_key: 1"
+
+// seedRetiredHubWideKey commits on the board a landing.yaml holding only a key landing retired, so the hub-wide reconcile rewrites it.
+func seedRetiredHubWideKey(t *testing.T, h *hubforge.Hub) {
+	t.Helper()
+	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("landing"), "publish_verify: x\n", "fixture: retired landing key")
+}
 
 // pushBoardFromSecondClone pushes the board's current branch to its origin, then lands a commit on that origin from a second clone, and returns the board's branch name.
 // The board is left behind its upstream by exactly that commit.
@@ -445,6 +454,7 @@ fans:
 `
 
 // runStaleBuildReconcile walks a stale hub and asserts every worktree and the board got one reconcile commit, with the board's pulled from upstream when boardBehind.
+// The walk keeps a key the template lacks in the board's fabric.yaml and in the pair's logger.yaml.
 // With loomDefaultGone the stamp names the running build but loom's committed repo default is deleted, and the walk reseeds and commits it on the board; batcher's default stays intact so retiredKeyPresent keeps reading it.
 func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	t.Helper()
@@ -453,7 +463,6 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	h := newStaleHub(t, "pair-a")
 	geom := geometryOf(h)
 	pair := h.PairCodeWorktree("pair-a")
-	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
 	var modelsBefore []byte
 	if run.unmigratedBoard {
 		var err error
@@ -465,6 +474,13 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 			commitRetiredKeys(t, h.BoardDir())
 		}
 	}
+	hubforge.SeedFabricConfig(t, h, newerHubWideKey+"\n")
+	pairRecords := h.PairRecordsSibling("pair-a")
+	pairLogger, err := os.ReadFile(configengine.ConfigFile(pairRecords, "logger"))
+	if err != nil {
+		t.Fatalf("read the pair's logger.yaml: %v", err)
+	}
+	gitkit.CommitFile(t, pairRecords, configengine.ConfigFileRel("logger"), string(pairLogger)+newerWorktreeKey+"\n", "fixture: a key the template lacks")
 	loomDefault := configengine.ConfigFileRel("loom")
 	lensesDefault := configengine.ConfigFileRel("lenses")
 	burlerDefault := configengine.ConfigFileRel("burler")
@@ -505,6 +521,12 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 	if got, err := os.ReadFile(machineFile); err != nil || string(got) != machineBytes {
 		t.Errorf("machine gate file = %q, %v after Ensure; want it unchanged", got, err)
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "fabric")); err != nil || !strings.Contains(string(got), newerHubWideKey) {
+		t.Errorf("board fabric.yaml = %q, %v after Ensure; want the newer binary's %q kept", got, err, newerHubWideKey)
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(pairRecords, "logger")); err != nil || !strings.Contains(string(got), newerWorktreeKey) {
+		t.Errorf("pair logger.yaml =%q, %v after Ensure; want the newer binary's %q kept", got, err, newerWorktreeKey)
 	}
 
 	if want := []string{h.BoardDir()}; !slices.Equal(*spawned, want) {
@@ -638,7 +660,7 @@ func runStaleBuildReconcile(t *testing.T, run staleRun) {
 	}
 }
 
-// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's tuned verify_attempts;
+// assertBoardStrippedOnce checks the board a walk stripped once: every non-seed-only base file other than lenses holds only the sparse header, bar darn's, which keeps the hub's tuned verify_attempts, and fabric's, which keeps the newer binary's key;
 // the seed-only models.yaml is byte for byte as seeded, the marker is tracked in the walk's board commit, and the board's loom base resolves the template's lens fan and its one webster bounce.
 // lenses.yaml is skipped because the declared key move from burler.yaml gives it the hub's tuned lens.
 func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte) {
@@ -656,6 +678,12 @@ func assertBoardStrippedOnce(t *testing.T, h *hubforge.Hub, modelsBefore []byte)
 		if module.Name == "darn" {
 			if !strings.HasPrefix(string(got), "verify_attempts: 5") || strings.Count(string(got), "\n") != 1 {
 				t.Errorf("board darn.yaml = %q; want only the hub's tuned verify_attempts", got)
+			}
+			continue
+		}
+		if module.Name == "fabric" {
+			if string(got) != newerHubWideKey+"\n" {
+				t.Errorf("board fabric.yaml = %q; want only the newer binary's %q", got, newerHubWideKey)
 			}
 			continue
 		}
@@ -901,9 +929,9 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		{
 			name: "unparseable hub-wide config",
 			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
-				// A stale board.yaml, which precedes fabric.yaml in the registry, is written before the fabric failure.
-				board, _ := configreg.Lookup("board")
-				gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("board"), board.Template()+"retired_fixture_key: 1\n", "fixture: stale board.yaml")
+				// A darn.yaml holding a retired key, which precedes fabric.yaml in the registry, is written before the fabric failure.
+				darn, _ := configreg.Lookup("darn")
+				gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("darn"), darn.Template()+"verify: make verify\n", "fixture: stale darn.yaml")
 				hubforge.SeedFabricConfig(t, h, "a: [unclosed\n")
 				return h.BoardDir(), h.BoardDir(), configengine.ConfigFile(h.BoardDir(), "fabric")
 			},
@@ -1218,7 +1246,7 @@ func TestEnsure_UnreachableBoardRemoteSkipsHubWideConfigAndLeavesStampAbsent(t *
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 	geom := geometryOf(h)
-	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	seedRetiredHubWideKey(t, h)
 	gitkit.Git(t, h.BoardDir(), "remote", "set-url", "origin", filepath.Join(t.TempDir(), "missing.git"))
 	before := commitCount(t, h.BoardDir())
 
@@ -1243,7 +1271,7 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 	tiergate.Require(t, 1)
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
-	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	seedRetiredHubWideKey(t, h)
 	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
 	before := commitCount(t, h.BoardDir())
 	spawned := recordBoardSyncs(t)
@@ -1285,7 +1313,7 @@ func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
 	board := h.BoardDir()
-	hubforge.SeedFabricConfig(t, h, staleHubWideConfig)
+	seedRetiredHubWideKey(t, h)
 	branch := gitkit.CurrentBranch(t, board)
 	gitkit.Git(t, board, "push", "-u", "origin", branch)
 	origin := gitkit.Git(t, board, "remote", "get-url", "origin")
@@ -1359,7 +1387,7 @@ func TestEnsure_UnpushedHubWideCommitOverMovedUpstreamLeavesStampAbsent(t *testi
 	t.Run("an upstream that changed the same config file skips with the stamp absent", func(t *testing.T) {
 		logs := logcapture.Capture(t)
 		u := arrangeUnpushedHubWide(t)
-		u.moveUpstream(t, u.hubWidePath, "branch_prefix: \"upstream\"\n")
+		u.moveUpstream(t, u.hubWidePath, "fixer_timeout_min: 7\n")
 
 		if err := hubreconcile.Ensure(u.geom, hubreconcile.Options{}); err != nil {
 			t.Fatalf("second Ensure: %v", err)

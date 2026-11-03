@@ -202,9 +202,10 @@ func retiredCovering(spec Spec, path string) (string, Category, bool) {
 	return best, category, found
 }
 
-// dropRetired removes from doc every retired key of the spec, at its dotted path, keeping every other key and comment.
+// DropRetired removes from doc every retired key of the spec, at its dotted path, keeping every other key and comment.
+// A mapping the removal leaves empty is removed with its key.
 // A document that holds none is returned byte for byte.
-func dropRetired(doc []byte, spec Spec) ([]byte, error) {
+func DropRetired(doc []byte, spec Spec) ([]byte, error) {
 	if len(spec.RetiredKeys) == 0 || len(strings.TrimSpace(string(doc))) == 0 {
 		return doc, nil
 	}
@@ -236,7 +237,7 @@ func dropRetired(doc []byte, spec Spec) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// removeKey deletes the mapping entry at the key path under node and reports whether one was removed.
+// removeKey deletes the mapping entry at the key path under node, and a mapping on the path that the deletion empties, and reports whether an entry was removed.
 func removeKey(node *yaml.Node, path []string) bool {
 	if node.Kind != yaml.MappingNode {
 		return false
@@ -249,7 +250,13 @@ func removeKey(node *yaml.Node, path []string) bool {
 			node.Content = append(node.Content[:i], node.Content[i+2:]...)
 			return true
 		}
-		return removeKey(node.Content[i+1], path[1:])
+		if !removeKey(node.Content[i+1], path[1:]) {
+			return false
+		}
+		if child := node.Content[i+1]; child.Kind == yaml.MappingNode && len(child.Content) == 0 {
+			node.Content = append(node.Content[:i], node.Content[i+2:]...)
+		}
+		return true
 	}
 	return false
 }

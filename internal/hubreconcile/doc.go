@@ -22,6 +22,14 @@
 // Each worktree's applied files are committed in that worktree, and the board's push goes to the detached `lym board sync` every board write spawns, which carries the board commit and any an earlier run left unpushed.
 // The walk spawns it and returns at once, so no start verb waits on a push to GitHub, and the build stamp never waits on one either.
 //
+// # Keys the template lacks
+//
+// The walk removes no key the running binary's template lacks unless a retired key of its module covers it.
+// Such a key, as a newer binary writes, stays in the board's base files and in each worktree file, and is carried in the result as preserved and logged when the walk writes the file,
+// so a start verb run by an older binary never strips a newer one's settings from the hub.
+// `lym config reconcile --apply`, with `--layer default` for a board file, is the one way to remove it.
+// A local override file is pruned of every such key, since its load refuses one.
+//
 // # The base strip
 //
 // Every non-seed-only base file on the board is sparse over the template.

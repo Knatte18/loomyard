@@ -18,7 +18,7 @@
 
 - `PATTERN-cli-cobra` — Adding CLI module: a cobra subtree under one root in `cmd/lym/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
-- `PATTERN-config-layers` — Loading config: only `configengine` reads, stacks, locates and judges layers against the template; a caller adopts one of strict `Load` or `LoadOrTemplate`, bar `runprofile`; after a binary change, only `hubreconcile.Ensure` reconciles. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Loading config: only `configengine` reads, stacks, locates and judges layers against the template; a caller adopts `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; only `lym config reconcile` prunes unknown base-layer keys. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-sparse-hub-base` — Writing a hub base file, from any package: only the units the hub tuned, never a template fill; only `internal/hubreconcile`'s one-time strip drops a template-equal unit.
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward and a test reaches it; no refusal, stencil or spec names a step agents' settings deny. (test) — [background](pattern/PATTERN-refusal-way-forward.md)
 

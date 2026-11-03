@@ -181,7 +181,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 			primeAnchor = w.Anchor
 		}
 	}
-	opts := configsync.HubWideOptions{SeedDefaults: true}
+	opts := configsync.HubWideOptions{SeedDefaults: true, PruneUnknown: true}
 
 	if !apply {
 		results, err := configsync.ReconcileHubWideAt(board, primeAnchor, opts)

@@ -379,7 +379,7 @@ func boardErrorFor(boardDir string, err error) *WorktreeError {
 func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
 		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated,
-		"stripped", result.Stripped, "inherited", result.Inherited,
+		"stripped", result.Stripped, "inherited", result.Inherited, "preserved", result.Preserved,
 		"moved", result.Moved, "keptTarget", result.KeptTarget, "keptExtra", result.KeptExtra, "dropped", result.Dropped, "overwritten", result.Overwritten, "copied", result.Copied)
 }
 
