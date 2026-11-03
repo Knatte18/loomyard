@@ -1572,10 +1572,11 @@ func stepTeardown_SiblingDirtOutsideRecordPathsRefusesShutdown(t *testing.T, h *
 	}
 }
 
-// stepPairDirNamesTheTaskWorktree pins the InnerRun.PairDir seam to the task worktree's own anchor, resolved on Call over a real pair.
+// stepPairDirNamesTheTaskWorktree pins the InnerRun.PairDir seam to the task worktree's root, resolved on Call over a real pair anchored at a subdirectory, where the root and the anchor differ.
 func stepPairDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-pair-dir"
 	hubforge.AddPair(t, h, slug)
+	hubforge.ReanchorPair(t, h, slug, "backend")
 
 	c := wireForHub(t, h, slug, nil)
 
@@ -1587,8 +1588,11 @@ func stepPairDirNamesTheTaskWorktree(t *testing.T, h *hubforge.Hub) {
 	if err != nil {
 		t.Fatalf("resolve task location: %v", err)
 	}
-	if got != taskLocation.AnchorPath() {
-		t.Errorf("PairDir() = %q; want %q", got, taskLocation.AnchorPath())
+	if taskLocation.AnchorPath() == taskLocation.WorktreePath() {
+		t.Fatalf("task location anchor %q equals its worktree root; want a subdirectory anchor", taskLocation.AnchorPath())
+	}
+	if got != taskLocation.WorktreePath() {
+		t.Errorf("PairDir() = %q; want the task worktree root %q", got, taskLocation.WorktreePath())
 	}
 }
 

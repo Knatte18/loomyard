@@ -104,7 +104,7 @@ func readNoticeChild(prime *lymcwd.Location, slug string, locateTask func() (*ly
 		Error:           status.Error,
 		HistoryLen:      len(status.History),
 		Modified:        info.ModTime(),
-		PairDir:         taskLocation.AnchorPath(),
+		PairDir:         taskLocation.WorktreePath(),
 	}
 	if capped {
 		child.RespawnCap = battenshed.RespawnCap

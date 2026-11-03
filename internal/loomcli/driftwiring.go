@@ -126,6 +126,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			return driftengine.BaselineTable(driftengine.BaselineInputs{
 				StencilsDir:        tables.stencilsDir,
 				WorktreeRoot:       location.WorktreePath(),
+				AnchorDir:          location.AnchorPath(),
 				Subject:            tables.subject,
 				Slug:               tables.slug,
 				DecisionRecordPath: tables.decisionRecordPath,
@@ -150,18 +151,11 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			if err != nil {
 				return driftengine.CaptureRecord{}, err
 			}
-			return driftengine.RunCapture(ctx, driftengine.CaptureRequest{
-				Paths:     paths,
-				AnchorDir: location.AnchorPath(),
-				Step:      step,
-				Pool:      pool,
-				WaitDir:   waitDir,
-				Skip:      scope.Skip,
-				Check:     checkMain,
-				Timeout:   time.Duration(step.TimeoutMin) * time.Minute,
-				Now:       time.Now,
-				LockRetry: driftCaptureLockRetry,
-			})
+			request := driftCaptureRequest(location, paths, pool, waitDir, step)
+			request.Skip = scope.Skip
+			request.Check = checkMain
+			request.LockRetry = driftCaptureLockRetry
+			return driftengine.RunCapture(ctx, request)
 		},
 		Sleep: sleepContext,
 		VerifyTable: func(told driftengine.VerifyTold) (seatengine.Table, error) {
@@ -192,18 +186,41 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			if err != nil {
 				return driftengine.CompareResult{}, err
 			}
-			return driftengine.RunCompare(ctx, driftengine.CompareRequest{
-				Paths:     paths,
-				AnchorDir: location.AnchorPath(),
-				Step:      step,
-				Pool:      pool,
-				WaitDir:   waitDir,
-				Skip:      driftengine.SkipList(scope),
-				Timeout:   time.Duration(step.TimeoutMin) * time.Minute,
-				Now:       time.Now,
-				LockRetry: driftCompareLockRetry,
-			})
+			request := driftCompareRequest(location, paths, pool, waitDir, step)
+			request.Skip = driftengine.SkipList(scope)
+			request.LockRetry = driftCompareLockRetry
+			return driftengine.RunCompare(ctx, request)
 		},
+	}
+}
+
+// driftCaptureRequest describes a capture of step over location's worktree, which the caller completes with its skip list, precondition and lock bound.
+// A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
+func driftCaptureRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CaptureRequest {
+	return driftengine.CaptureRequest{
+		Paths:       paths,
+		WorktreeDir: location.WorktreePath(),
+		AnchorDir:   location.AnchorPath(),
+		Step:        step,
+		Pool:        pool,
+		WaitDir:     waitDir,
+		Timeout:     time.Duration(step.TimeoutMin) * time.Minute,
+		Now:         time.Now,
+	}
+}
+
+// driftCompareRequest describes a compare of step over location's worktree, which the caller completes with its skip list and lock bound.
+// A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
+func driftCompareRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CompareRequest {
+	return driftengine.CompareRequest{
+		Paths:       paths,
+		WorktreeDir: location.WorktreePath(),
+		AnchorDir:   location.AnchorPath(),
+		Step:        step,
+		Pool:        pool,
+		WaitDir:     waitDir,
+		Timeout:     time.Duration(step.TimeoutMin) * time.Minute,
+		Now:         time.Now,
 	}
 }
 

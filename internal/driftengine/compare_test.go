@@ -22,14 +22,15 @@ func newCompareFixture(t *testing.T, command string) (CompareRequest, *gateslot.
 	t.Helper()
 	f := newCaptureFixture(t, command)
 	return CompareRequest{
-		Paths:     f.req.Paths,
-		AnchorDir: f.req.AnchorDir,
-		Step:      f.req.Step,
-		Pool:      f.pool,
-		WaitDir:   f.req.WaitDir,
-		Timeout:   time.Minute,
-		Now:       time.Now,
-		LockRetry: time.Second,
+		Paths:       f.req.Paths,
+		WorktreeDir: f.req.WorktreeDir,
+		AnchorDir:   f.req.AnchorDir,
+		Step:        f.req.Step,
+		Pool:        f.pool,
+		WaitDir:     f.req.WaitDir,
+		Timeout:     time.Minute,
+		Now:         time.Now,
+		LockRetry:   time.Second,
 	}, f.pool
 }
 
@@ -107,6 +108,44 @@ func TestRunCompare(t *testing.T) {
 		}
 		if held, err := ProbeLock(req.Paths.CompareMarker); held || err != nil {
 			t.Errorf("ProbeLock(CompareMarker) after the run = %v, %v; want free", held, err)
+		}
+	})
+
+	t.Run("a missing dir is refused naming the compare key and resume as the way forward", func(t *testing.T) {
+		t.Parallel()
+		req, pool := newCompareFixture(t, "true")
+		req.Step.Dir = "gone"
+		_, err := RunCompare(context.Background(), req)
+		for _, want := range []string{filepath.Join(req.WorktreeDir, "gone"), `drift.yaml key "compare.dir"`, "lym config drift --set compare.dir=<dir> from the prime, then lym loom resume"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("RunCompare() = %v; want an error naming %q", err, want)
+			}
+		}
+		if err != nil && strings.Contains(err.Error(), "lym drift capture") {
+			t.Errorf("RunCompare() = %v; want no capture in a compare's way forward", err)
+		}
+		if !slotFree(t, pool) {
+			t.Errorf("the slot is held after a refused dir")
+		}
+	})
+
+	t.Run("a relative dir joins the worktree root, not the anchor", func(t *testing.T) {
+		t.Parallel()
+		req, _ := newCompareFixture(t, "pwd -P > ran.txt")
+		req.AnchorDir = filepath.Join(req.WorktreeDir, "dotnet")
+		if err := os.MkdirAll(req.AnchorDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		req.Step.Dir = "dotnet"
+		if got, err := RunCompare(context.Background(), req); err != nil || !got.Passed {
+			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
+		}
+		want, err := filepath.EvalSymlinks(req.AnchorDir)
+		if err != nil {
+			t.Fatalf("EvalSymlinks() = %v; want nil", err)
+		}
+		if got := strings.TrimSpace(readFile(t, filepath.Join(req.AnchorDir, "ran.txt"))); got != want {
+			t.Errorf("the command ran in %s; want %s", got, want)
 		}
 	})
 

@@ -40,15 +40,16 @@ func newCaptureFixture(t *testing.T, command string) *captureFixture {
 	return &captureFixture{
 		pool: pool,
 		req: CaptureRequest{
-			Paths:     NewPaths(root),
-			AnchorDir: root,
-			Step:      CommandStep{Command: command, Dir: ".", TimeoutMin: 1},
-			Pool:      pool,
-			WaitDir:   t.TempDir(),
-			Check:     func() (string, error) { return "head1", nil },
-			Timeout:   time.Minute,
-			Now:       time.Now,
-			LockRetry: time.Second,
+			Paths:       NewPaths(root),
+			WorktreeDir: root,
+			AnchorDir:   root,
+			Step:        CommandStep{Command: command, TimeoutMin: 1},
+			Pool:        pool,
+			WaitDir:     t.TempDir(),
+			Check:       func() (string, error) { return "head1", nil },
+			Timeout:     time.Minute,
+			Now:         time.Now,
+			LockRetry:   time.Second,
 		},
 	}
 }
@@ -144,6 +145,63 @@ func TestRunCapture(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("the step's dir", func(t *testing.T) {
+		t.Parallel()
+		// Each row runs under an anchor at the worktree's dotnet subdirectory, the geometry where the two bases differ.
+		dirs := []struct {
+			name string
+			dir  string
+			// ranIn is where the command ran, relative to the worktree root; empty when the dir is refused.
+			ranIn string
+		}{
+			{name: "NoDirRunsInTheAnchor", dir: "", ranIn: "dotnet"},
+			{name: "ARelativeDirJoinsTheWorktreeRootNotTheAnchor", dir: "dotnet", ranIn: "dotnet"},
+			{name: "AMissingDirIsRefusedBeforeTheCommand", dir: "dotnet/dotnet"},
+		}
+		for _, tt := range dirs {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newCaptureFixture(t, "pwd -P > {baseline_dir}/ran")
+				root := f.req.WorktreeDir
+				f.req.AnchorDir = filepath.Join(root, "dotnet")
+				if err := os.MkdirAll(f.req.AnchorDir, 0o755); err != nil {
+					t.Fatalf("MkdirAll() = %v; want nil", err)
+				}
+				f.req.Step.Dir = tt.dir
+
+				rec, err := RunCapture(context.Background(), f.req)
+				if tt.ranIn == "" {
+					resolved := filepath.Join(root, filepath.FromSlash(tt.dir))
+					for _, want := range []string{resolved, `drift.yaml key "capture.dir"`, "lym config drift --set capture.dir=<dir> from the prime", "then lym drift capture and lym loom resume"} {
+						if err == nil || !strings.Contains(err.Error(), want) || !strings.Contains(rec.Reason, want) {
+							t.Errorf("RunCapture() = %+v, %v; want an error and a reason naming %q", rec, err, want)
+						}
+					}
+					if rec.State != CaptureFailed {
+						t.Errorf("RunCapture() state = %q; want %q", rec.State, CaptureFailed)
+					}
+					if _, statErr := os.Stat(rec.Log); !errors.Is(statErr, os.ErrNotExist) {
+						t.Errorf("the log %s exists; want no command started", rec.Log)
+					}
+					if !slotFree(t, f.pool) {
+						t.Errorf("the slot is held after a refused dir")
+					}
+					return
+				}
+				if err != nil || rec.State != CapturePassed {
+					t.Fatalf("RunCapture() = %+v, %v; want a passed record", rec, err)
+				}
+				want, err := filepath.EvalSymlinks(filepath.Join(root, tt.ranIn))
+				if err != nil {
+					t.Fatalf("EvalSymlinks() = %v; want nil", err)
+				}
+				if got := strings.TrimSpace(readFile(t, filepath.Join(f.req.Paths.BaselineDir, "ran"))); got != want {
+					t.Errorf("the command ran in %s; want %s", got, want)
+				}
+			})
+		}
+	})
 
 	t.Run("a command past the timeout has its tree killed and fails", func(t *testing.T) {
 		t.Parallel()
@@ -257,6 +315,47 @@ func TestRunCapture(t *testing.T) {
 		}
 		if _, found, _ := ReadCapture(f.req.Paths); found {
 			t.Errorf("a capture record was written for a refused capture")
+		}
+	})
+
+	t.Run("a side capture's relative dir joins the worktree root, not the anchor", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "pwd -P > {baseline_dir}/ran")
+		f.req.AnchorDir = filepath.Join(f.req.WorktreeDir, "dotnet")
+		if err := os.MkdirAll(f.req.AnchorDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		f.req.Step.Dir = "dotnet"
+
+		got, err := RunSideCapture(context.Background(), f.req)
+		if err != nil || got.ExitCode != 0 {
+			t.Fatalf("RunSideCapture() = %+v, %v; want exit 0", got, err)
+		}
+		want, err := filepath.EvalSymlinks(f.req.AnchorDir)
+		if err != nil {
+			t.Fatalf("EvalSymlinks() = %v; want nil", err)
+		}
+		if ran := strings.TrimSpace(readFile(t, filepath.Join(got.Dir, "ran"))); ran != want {
+			t.Errorf("the command ran in %s; want %s", ran, want)
+		}
+	})
+
+	t.Run("a side capture of a missing dir is refused with the side capture as its way forward", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "true")
+		f.req.Step.Dir = "gone"
+
+		_, err := RunSideCapture(context.Background(), f.req)
+		for _, want := range []string{filepath.Join(f.req.WorktreeDir, "gone"), `drift.yaml key "capture.dir"`, "lym config drift --set capture.dir=<dir> from the prime, then lym drift capture --side"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("RunSideCapture() = %v; want an error naming %q", err, want)
+			}
+		}
+		if err != nil && strings.Contains(err.Error(), "lym loom resume") {
+			t.Errorf("RunSideCapture() = %v; want no loom resume in a side capture's way forward", err)
+		}
+		if !slotFree(t, f.pool) {
+			t.Errorf("the slot is held after a refused dir")
 		}
 	})
 

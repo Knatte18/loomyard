@@ -1108,7 +1108,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				if err != nil {
 					return "", err
 				}
-				return taskLocation.AnchorPath(), nil
+				return taskLocation.WorktreePath(), nil
 			},
 			// ReadDecision and DriverAlive resolve the task worktree on Call like every seam here, never at wiring time.
 			// No verb writes an approval or rejection record any more, so an awaiting child is never resumed on an operator decision.

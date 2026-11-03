@@ -168,8 +168,8 @@ func TestReadNoticeChild(t *testing.T) {
 			if !child.NewestHistory.Equal(newestHistory) || !child.Modified.Equal(statusWritten) {
 				t.Errorf("readNoticeChild() newest history %v, modified %v; want %v and %v", child.NewestHistory, child.Modified, newestHistory, statusWritten)
 			}
-			if child.PairDir != taskLocation.AnchorPath() {
-				t.Errorf("readNoticeChild() PairDir = %q; want %q", child.PairDir, taskLocation.AnchorPath())
+			if child.PairDir != taskLocation.WorktreePath() {
+				t.Errorf("readNoticeChild() PairDir = %q; want the task worktree root %q", child.PairDir, taskLocation.WorktreePath())
 			}
 			wantCap := 0
 			if tt.wantCapped {

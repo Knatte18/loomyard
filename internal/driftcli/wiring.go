@@ -39,12 +39,12 @@ func openWorktree(cmd *cobra.Command) (*worktree, error) {
 	return &worktree{location: location, paths: driftengine.NewPaths(location.AnchorPath())}, nil
 }
 
-// root returns the worktree root, which names the capture's job.
+// root returns the worktree root, which names the capture's job and a drift command's relative dir is joined onto.
 func (w *worktree) root() string {
 	return w.location.WorktreePath()
 }
 
-// anchor returns the anchored directory the capture child starts in and a drift command's relative dir is joined onto.
+// anchor returns the anchored directory the capture child starts in and a drift command with no dir runs in.
 func (w *worktree) anchor() string {
 	return w.location.AnchorPath()
 }
@@ -112,6 +112,38 @@ func (w *worktree) gitFacts() (head, branchPoint string, dirty []string, err err
 // slots returns the hub's gate-slot pool and the directory a step's wait record goes to.
 func (w *worktree) slots() (*gateslot.Pool, string) {
 	return hubgeom.GateSlots(w.location), gateslot.WaitDir(w.location.AnchorPath())
+}
+
+// captureRequest describes a capture of step in this worktree, which the caller completes with its skip list, precondition and lock bound.
+// A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
+func (w *worktree) captureRequest(step driftengine.CommandStep) driftengine.CaptureRequest {
+	pool, waitDir := w.slots()
+	return driftengine.CaptureRequest{
+		Paths:       w.paths,
+		WorktreeDir: w.root(),
+		AnchorDir:   w.anchor(),
+		Step:        step,
+		Pool:        pool,
+		WaitDir:     waitDir,
+		Timeout:     stepTimeout(step),
+		Now:         time.Now,
+	}
+}
+
+// compareRequest describes a compare of step in this worktree, which the caller completes with its skip list and lock bound.
+// A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
+func (w *worktree) compareRequest(step driftengine.CommandStep) driftengine.CompareRequest {
+	pool, waitDir := w.slots()
+	return driftengine.CompareRequest{
+		Paths:       w.paths,
+		WorktreeDir: w.root(),
+		AnchorDir:   w.anchor(),
+		Step:        step,
+		Pool:        pool,
+		WaitDir:     waitDir,
+		Timeout:     stepTimeout(step),
+		Now:         time.Now,
+	}
 }
 
 // stepTimeout returns how long a declared step may run.

@@ -26,10 +26,21 @@ import (
 // stampLayout is the UTC time layout that names a run's log file.
 const stampLayout = "20060102T150405.000Z"
 
+// The sites a drift command runs from, which label its slot holder and wait record and word the way forward of a refused dir.
+const (
+	siteCapture     = "drift capture"
+	siteSideCapture = "drift side capture"
+	siteCompare     = "drift compare"
+)
+
 // stepRun is one drift command to run.
 type stepRun struct {
-	// AnchorDir is the absolute anchored directory a relative step dir is joined onto.
+	// WorktreeDir is the absolute worktree root a relative step dir is joined onto.
+	WorktreeDir string
+	// AnchorDir is the absolute anchored directory a step with no dir runs in.
 	AnchorDir string
+	// Name is the step's drift.yaml key, capture or compare, which a refusal of its dir names.
+	Name string
 	// Step is the declared command.
 	Step CommandStep
 	// Pool is the gate-slot pool the run takes one slot of.
@@ -65,10 +76,15 @@ type stepOutcome struct {
 
 // runStep waits for a slot, runs the command and returns once its whole tree is gone.
 // On an error the slot is already released; on success the caller releases it through the outcome.
+// A step whose dir is no existing directory is refused before it waits for a slot, so a shell never fails to start in a missing directory.
 func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	command, err := renderCommand(run)
 	if err != nil {
 		return stepOutcome{}, err
+	}
+	dir, err := gateslot.StatCommandDir(run.WorktreeDir, run.AnchorDir, run.Step.Dir)
+	if err != nil {
+		return stepOutcome{}, missingDirRefusal(run, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(run.LogPath), 0o755); err != nil {
 		return stepOutcome{}, fmt.Errorf("drift: create the log directory: %w", err)
@@ -94,10 +110,7 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 
 	shellName, shellFlag := verifyrun.ShellFor(runtime.GOOS)
 	cmd := exec.Command(shellName, shellFlag, command)
-	cmd.Dir = run.Step.Dir
-	if !filepath.IsAbs(cmd.Dir) {
-		cmd.Dir = filepath.Join(run.AnchorDir, cmd.Dir)
-	}
+	cmd.Dir = dir
 	cmd.Env = gateslot.HolderEnv(slices.Concat(os.Environ(), renderEnv(run.Step.Env)), lease, limits.Tier0Parallel)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 
@@ -134,6 +147,19 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 		return stepOutcome{}, fmt.Errorf("drift: wait for the %s command: %w", run.Site, err)
 	}
 	return stepOutcome{ExitCode: exit, TimedOut: timedOut, release: release}, nil
+}
+
+// missingDirRefusal is the refusal of a step whose dir is no existing directory.
+// It names the config key and the resolved path, and as the way forward the write that fixes the key from the prime, where hub-wide config is written, and then the verbs that run the step again from its site.
+func missingDirRefusal(run stepRun, cause error) error {
+	again := "lym loom resume"
+	switch run.Site {
+	case siteCapture:
+		again = "lym drift capture and lym loom resume"
+	case siteSideCapture:
+		again = "lym drift capture --side"
+	}
+	return fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)
 }
 
 // acquireSlot writes a wait record, waits for one slot with no deadline and removes the record.

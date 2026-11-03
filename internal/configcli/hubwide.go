@@ -30,6 +30,8 @@ import (
 type configDirs struct {
 	worktree string
 	board    string
+	// root is the worktree root, which a hub-wide write's check of a command dir resolves a relative dir against.
+	root string
 
 	// layer is the --layer value: empty, or one of the four layer names.
 	// Empty selects the module's own default, the worktree file of a per-worktree module and the hub file of a hub-wide one.
@@ -77,7 +79,7 @@ func (d configDirs) refuseHubWrite(out io.Writer) (exitCode int, refused bool) {
 // dirsOf returns the config base dirs for the worktree l resolves to.
 // The board is empty when the hub's board dir does not exist, as for a worktree that is no hub's.
 func dirsOf(l *lymcwd.Location) configDirs {
-	return configDirs{worktree: baseDirOf(l), board: fabricengine.ConfigDirs(l).Board}
+	return configDirs{worktree: baseDirOf(l), board: fabricengine.ConfigDirs(l).Board, root: l.WorktreePath()}
 }
 
 // layerNames are the values --layer takes.
@@ -320,6 +322,16 @@ func validateHubFile(boardDir string, module configreg.Module) error {
 	return err
 }
 
+// checkHubModule loads module's board file alone through its own loader and, for a module that declares commands, checks each command dir against the worktree of dirs.
+// A hub-wide write runs only from the prime, so a dir is checked against the prime.
+func checkHubModule(dirs configDirs, module configreg.Module) error {
+	boardDirs := configengine.Dirs{Board: dirs.board}
+	if err := module.CheckLoad(boardDirs); err != nil || module.CheckDirs == nil {
+		return err
+	}
+	return module.CheckDirs(boardDirs, dirs.root, dirs.worktree)
+}
+
 // reportHubWrite turns the outcome of a hub-commit round trip into the command's envelope.
 // writeErr is the write closure's own error, which tells a refused write from a failed commit.
 func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr error, extra map[string]any) int {
@@ -340,8 +352,8 @@ func reportHubWrite(out io.Writer, module, path string, commitErr, writeErr erro
 }
 
 // setHubWide writes pairs into a hub-wide module's file at the board dir and commits it in the Bolt checkout.
-// The file is validated strictly before the commit, then loaded alone through the module's own loader, and restored on any failure.
-// The loader refuses the write only with a failure the file did not already load with.
+// The file is validated strictly before the commit, then loaded alone through the module's own loader, its command dirs checked against the prime, and restored on any failure.
+// The check refuses the write only with a failure the file did not already have.
 func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs []yamlengine.KV, commit hubCommitFunc) int {
 	path := configengine.ConfigFile(dirs.board, module.Name)
 	boardDirs := configengine.Dirs{Board: dirs.board}
@@ -350,13 +362,13 @@ func setHubWide(dirs configDirs, out io.Writer, module configreg.Module, pairs [
 	commitErr := commit(module.Name, func() error {
 		snap, err := snapshotFile(path)
 		if err == nil {
-			before := module.CheckLoad(boardDirs)
+			before := checkHubModule(dirs, module)
 			preserved, err = configengine.Set(boardDirs, module.Spec(), configengine.LayerDefault, pairs)
 			if err == nil {
 				err = validateHubFile(dirs.board, module)
 			}
 			if err == nil {
-				err = newLoadFailure(module, boardDirs, before)
+				err = newLoadFailure(module, before, checkHubModule(dirs, module))
 			}
 			if err != nil {
 				err = rollBack(path, snap, err)
@@ -406,7 +418,7 @@ func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit c
 
 	var writeErr error
 	commitErr := commit(module.Name, func() error {
-		writeErr = copyStagedToHub(path, staging, base, template, dirs.board, module)
+		writeErr = copyStagedToHub(path, staging, base, template, dirs, module)
 		return writeErr
 	})
 	if errors.Is(writeErr, errHubFileChanged) {
@@ -421,8 +433,8 @@ func editHubWide(dirs configDirs, out io.Writer, module configreg.Module, edit c
 
 // copyStagedToHub writes the staged bytes to the hub file when it still holds the bytes the staging copy was taken from,
 // validates it strictly and restores the previous file on failure.
-// It then loads the board file alone through the module's own loader and restores the previous file when that load fails with an error other than the one the file already loaded with, returning an error wrapping errHubFileLoad and the loader's.
-func copyStagedToHub(path, staging string, base []byte, template, boardDir string, module configreg.Module) error {
+// It then loads the board file alone through the module's own loader, checks its command dirs against the prime, and restores the previous file when that check fails with an error other than the one the file already had, returning an error wrapping errHubFileLoad and the check's.
+func copyStagedToHub(path, staging string, base []byte, template string, dirs configDirs, module configreg.Module) error {
 	snap, err := snapshotFile(path)
 	if err != nil {
 		return err
@@ -438,14 +450,14 @@ func copyStagedToHub(path, staging string, base []byte, template, boardDir strin
 	if err != nil {
 		return fmt.Errorf("read staging copy: %w", err)
 	}
-	before := module.CheckLoad(configengine.Dirs{Board: boardDir})
+	before := checkHubModule(dirs, module)
 	if err := fsx.AtomicWriteBytes(path, staged); err != nil {
 		return rollBack(path, snap, err)
 	}
-	if err := validateHubFile(boardDir, module); err != nil {
+	if err := validateHubFile(dirs.board, module); err != nil {
 		return rollBack(path, snap, err)
 	}
-	if after := module.CheckLoad(configengine.Dirs{Board: boardDir}); after != nil && (before == nil || before.Error() != after.Error()) {
+	if after := checkHubModule(dirs, module); after != nil && (before == nil || before.Error() != after.Error()) {
 		return rollBack(path, snap, fmt.Errorf("%w: %w", errHubFileLoad, after))
 	}
 	return nil

@@ -11,7 +11,7 @@
 // The run status is read under its lock from the self run, and the agent-session mark from the run counter; together they tell the Drift-Verify agent session from a caller at a halt.
 // HEAD, the branch point and the tracked dirty paths come from the worktree's fabric: the branch point is the merge base of HEAD with the parent branch the origin record names.
 // The gate slots come from hubgeom.GateSlots, and the capture child is registered under the run-process directory with the worktree name as owner.
-// The engine is told the anchored directory lymcwd resolves, where the capture child starts and a command step's relative dir is joined on.
+// The engine is told the worktree root lymcwd resolves, which a command step's relative dir is joined onto, and the anchored directory, where the capture child starts and a step with no dir runs.
 //
 // # Capture
 //

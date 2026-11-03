@@ -69,6 +69,7 @@
 //
 // Every `--set` write, on any layer, and every hub-wide editor save is then checked by loading the module through its own loader (`configreg.Module.CheckLoad`), and the written file is put back as it was when the load fails.
 // A Bolt-checkout write loads the board file alone, and any other write loads the worktree's stack.
+// A Bolt-checkout write of a module that declares commands (`configreg.Module.CheckDirs`) also refuses a command `dir` that is no existing directory in the prime, naming the key and the resolved path.
 // The refusal names the module and carries the loader's error, which names the key, so `--set 'plan=["opus[medium]", "sonnet[high]"]'` on loom's single-model `plan` key is refused rather than stored as a string.
 // The bound: the load also runs before the write, and a write is refused only when the load then fails with a different error, so a stack already failing to load, such as one with no base layer, still takes a write that leaves that failure as it was.
 // A refused hub-wide editor save keeps the staging copy and answers with its own way forward in place of the `--set` one: it names the loader's error, says the hub file is unchanged and names the staging copy's path.

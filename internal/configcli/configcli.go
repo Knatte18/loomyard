@@ -280,15 +280,14 @@ func setChecked(dirs configengine.Dirs, module configreg.Module, layer configeng
 	if err != nil {
 		return nil, err
 	}
-	if failure := newLoadFailure(module, dirs, before); failure != nil {
+	if failure := newLoadFailure(module, before, module.CheckLoad(dirs)); failure != nil {
 		return nil, rollBack(path, snap, fmt.Errorf("%w; %s unchanged", failure, path))
 	}
 	return preserved, nil
 }
 
-// newLoadFailure loads module through its own loader under dirs and returns a refusal when it fails with an error other than before, the load's error ahead of the write.
-func newLoadFailure(module configreg.Module, dirs configengine.Dirs, before error) error {
-	after := module.CheckLoad(dirs)
+// newLoadFailure returns a refusal when after, the module's check once a write is made, fails with an error other than before, the check's error ahead of the write.
+func newLoadFailure(module configreg.Module, before, after error) error {
 	if after == nil || (before != nil && before.Error() == after.Error()) {
 		return nil
 	}
@@ -344,7 +343,7 @@ func editMachine(dirs configDirs, out io.Writer, mod configreg.Module, path stri
 		}
 		return output.Err(out, err.Error())
 	}
-	if failure := newLoadFailure(mod, dirs.engineDirs(), before); failure != nil {
+	if failure := newLoadFailure(mod, before, mod.CheckLoad(dirs.engineDirs())); failure != nil {
 		return output.Err(out, rollBack(path, snap, fmt.Errorf("%w; %s unchanged", failure, path)).Error())
 	}
 	return output.Ok(out, map[string]any{

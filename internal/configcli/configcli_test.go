@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/lenses"
@@ -925,6 +926,79 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			},
 		},
 		{
+			name:        "drift set of a dir missing in the prime is refused naming the resolved path",
+			module:      "drift",
+			seed:        driftengine.ConfigTemplate(),
+			setFlags:    []string{`capture={command: "p {baseline_dir}", dir: dotnet, timeout_min: 3}`},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != driftengine.ConfigTemplate() {
+					t.Errorf("hub file changed on a refused set; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, `drift config key "capture.dir"`)
+				assertJSONErrContains(t, out, filepath.Join(fx.layout.WorktreePath(), "dotnet"))
+			},
+		},
+		{
+			name:        "drift set of a dir present in the prime is written",
+			module:      "drift",
+			seed:        driftengine.ConfigTemplate(),
+			setFlags:    []string{`capture={command: "p {baseline_dir}", dir: _lym, timeout_min: 3}`},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if !strings.Contains(hubFile, "dir: _lym") {
+					t.Errorf("hub file lacks the written dir; got %q", hubFile)
+				}
+			},
+		},
+		{
+			name:        "gate set of a build dir missing in the prime is refused naming the resolved path",
+			module:      "gate",
+			seed:        gateslot.ConfigTemplate(),
+			setFlags:    []string{`build={command: make, dir: gone, timeout_min: 1}`},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if hubFile != gateslot.ConfigTemplate() {
+					t.Errorf("hub file changed on a refused set; got %q", hubFile)
+				}
+				assertJSONErrContains(t, out, `key "build.dir"`)
+				assertJSONErrContains(t, out, filepath.Join(fx.layout.WorktreePath(), "gone"))
+			},
+		},
+		{
+			name:   "drift editor save of a dir missing in the prime is refused and the staging copy kept",
+			module: "drift",
+			seed:   driftengine.ConfigTemplate(),
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return fakeEditor(driftWithCaptureDir("dotnet"), nil)
+			},
+			wantCode:    1,
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				assertSaveRefused(t, fx, "drift", hubFile, out, driftengine.ConfigTemplate(), driftWithCaptureDir("dotnet"),
+					[]string{`drift config key "capture.dir"`, filepath.Join(fx.layout.WorktreePath(), "dotnet")}, nil)
+			},
+		},
+		{
+			name:   "drift editor save over a file whose dir already failed the same check keeps the failure and is written",
+			module: "drift",
+			seed:   driftWithCaptureDir("dotnet"),
+			editor: func(fx hubFixture) configengine.EditorFunc {
+				return fakeEditor(strings.Replace(driftWithCaptureDir("dotnet"), "verify_max_runs: 8", "verify_max_runs: 9", 1), nil)
+			},
+			wantCommits: 1,
+			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
+				if want := strings.Replace(driftWithCaptureDir("dotnet"), "verify_max_runs: 8", "verify_max_runs: 9", 1); hubFile != want {
+					t.Errorf("hub file = %q; want the saved bytes %q", hubFile, want)
+				}
+				if _, err := os.Stat(configengine.StagingFile(fx.worktree, "drift")); !os.IsNotExist(err) {
+					t.Errorf("staging file remains after a written save; stat err = %v", err)
+				}
+			},
+		},
+		{
 			name:   "darn editor save emptying tree_scope is written",
 			module: "darn",
 			seed:   darnSeeded,
@@ -1028,13 +1102,24 @@ func darnWithTreeScope(trees string) string {
 	return strings.Replace(darnengine.ConfigTemplate(), "tree_scope: {}", "tree_scope:"+trees, 1)
 }
 
+// driftWithCaptureDir returns drift's template with a capture declared in dir.
+func driftWithCaptureDir(dir string) string {
+	return strings.Replace(driftengine.ConfigTemplate(), "capture: {}", `capture: {command: "p {baseline_dir}", dir: `+dir+`, timeout_min: 3}`, 1)
+}
+
 // assertDarnSaveRefused checks a refused darn editor save: the board file still holds seeded, the staging copy holds saved, and the error names each of wantErr, none of notErr, and the staging path.
 func assertDarnSaveRefused(t *testing.T, fx hubFixture, hubFile, out, seeded, saved string, wantErr, notErr []string) {
+	t.Helper()
+	assertSaveRefused(t, fx, "darn", hubFile, out, seeded, saved, wantErr, notErr)
+}
+
+// assertSaveRefused checks a refused editor save of module: the board file still holds seeded, the staging copy holds saved, and the error names each of wantErr, none of notErr, and the staging path.
+func assertSaveRefused(t *testing.T, fx hubFixture, module, hubFile, out, seeded, saved string, wantErr, notErr []string) {
 	t.Helper()
 	if hubFile != seeded {
 		t.Errorf("hub file changed on a refused save; got %q", hubFile)
 	}
-	staging := configengine.StagingFile(fx.worktree, "darn")
+	staging := configengine.StagingFile(fx.worktree, module)
 	if kept, err := os.ReadFile(staging); err != nil || string(kept) != saved {
 		t.Errorf("staging file = %q, %v; want the saved bytes %q", kept, err, saved)
 	}

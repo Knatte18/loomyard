@@ -25,7 +25,9 @@ const CaptureHaltPrefix = "drift capture halt: "
 type CaptureRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
-	// AnchorDir is the absolute anchored directory the command's relative dir is joined onto.
+	// WorktreeDir is the absolute worktree root the command's relative dir is joined onto.
+	WorktreeDir string
+	// AnchorDir is the absolute anchored directory a command with no dir runs in.
 	AnchorDir string
 	// Step is the declared capture command.
 	Step CommandStep
@@ -87,11 +89,13 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 
 	rec.Log = logPathFor(p.LogsDir, "capture", req.Now())
 	outcome, err := runStep(ctx, stepRun{
+		WorktreeDir: req.WorktreeDir,
 		AnchorDir:   req.AnchorDir,
+		Name:        stepCapture,
 		Step:        req.Step,
 		Pool:        req.Pool,
 		WaitDir:     req.WaitDir,
-		Site:        "drift capture",
+		Site:        siteCapture,
 		BaselineDir: p.BaselineDir,
 		SkipFile:    p.SkipFile,
 		LogPath:     rec.Log,
@@ -224,11 +228,13 @@ func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error)
 
 	result := SideResult{Dir: dir, Log: logPathFor(p.LogsDir, "side-capture", req.Now())}
 	outcome, err := runStep(ctx, stepRun{
+		WorktreeDir: req.WorktreeDir,
 		AnchorDir:   req.AnchorDir,
+		Name:        stepCapture,
 		Step:        req.Step,
 		Pool:        req.Pool,
 		WaitDir:     req.WaitDir,
-		Site:        "drift side capture",
+		Site:        siteSideCapture,
 		BaselineDir: dir,
 		SkipFile:    p.SkipFile,
 		LogPath:     result.Log,

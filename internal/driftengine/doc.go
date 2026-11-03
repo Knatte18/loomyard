@@ -5,7 +5,9 @@
 // and `scope` and `skip`, a task's regression scope and the tests scope partial leaves out, which a task sets in its board entry's `run_settings`.
 // LoadConfig refuses a scope other than empty, `off`, `partial` or `full`, a partial scope with no skipped test and a skipped test under any other scope.
 // A declared command holds the placeholder `{baseline_dir}`, the directory the capture writes its profile files to and the compare reads them from, and may hold `{skip_file}`, a file naming one skipped test per line.
-// A step's relative `dir` is joined onto the worktree's anchored directory, the one every drift run is told.
+// A step's `dir` resolves by gateslot.ResolveCommandDir, so it means the directory a gate tier's `dir` means: relative to the worktree root, absolute as written, and the worktree's anchored directory when unset; every drift run is told both directories.
+// Before a step's command starts, a `dir` that is no existing directory fails naming the resolved path, the `drift.yaml` key and, as the way forward, `lym config drift --set <step>.dir=<dir>` from the prime, then `lym drift capture` and `lym loom resume` for the capture, `lym drift capture --side` for the side capture and `lym loom resume` for the compare.
+// CheckDirs refuses the same `dir` over the loaded config against a told worktree, which a hub-wide `lym config drift` write runs against the prime.
 // `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
 // Once a step is declared, `--set` also changes one of its keys alone, as in `--set capture.env.NAME=1` or `--set compare.timeout_min=10`, and refuses a key a step lacks;
 // a step left with keys but no command fails the load check, so a first declaration sets `command` and `timeout_min` together.

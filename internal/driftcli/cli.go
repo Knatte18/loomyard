@@ -239,18 +239,10 @@ Example:
 				if err != nil {
 					return nil, err
 				}
-				pool, waitDir := w.slots()
-				result, err := driftengine.RunCompare(cmd.Context(), driftengine.CompareRequest{
-					Paths:     w.paths,
-					AnchorDir: w.anchor(),
-					Step:      step,
-					Pool:      pool,
-					WaitDir:   waitDir,
-					Skip:      driftengine.SkipList(scope),
-					Timeout:   stepTimeout(step),
-					Now:       time.Now,
-					LockRetry: compareLockRetry,
-				})
+				request := w.compareRequest(step)
+				request.Skip = driftengine.SkipList(scope)
+				request.LockRetry = compareLockRetry
+				result, err := driftengine.RunCompare(cmd.Context(), request)
 				if err != nil {
 					return nil, err
 				}
@@ -301,17 +293,9 @@ func runSideCapture(cmd *cobra.Command, w *worktree) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	pool, waitDir := w.slots()
-	result, err := driftengine.RunSideCapture(cmd.Context(), driftengine.CaptureRequest{
-		Paths:     w.paths,
-		AnchorDir: w.anchor(),
-		Step:      step,
-		Pool:      pool,
-		WaitDir:   waitDir,
-		Skip:      driftengine.SkipList(scope),
-		Timeout:   stepTimeout(step),
-		Now:       time.Now,
-	})
+	request := w.captureRequest(step)
+	request.Skip = driftengine.SkipList(scope)
+	result, err := driftengine.RunSideCapture(cmd.Context(), request)
 	if err != nil {
 		return nil, err
 	}
@@ -420,26 +404,18 @@ func runCaptureChild(cmd *cobra.Command) {
 		return
 	}
 
-	pool, waitDir := w.slots()
-	_, runErr := driftengine.RunCapture(ctx, driftengine.CaptureRequest{
-		Paths:     w.paths,
-		AnchorDir: w.anchor(),
-		Step:      step,
-		Pool:      pool,
-		WaitDir:   waitDir,
-		Skip:      scope.Skip,
-		Check: func() (string, error) {
-			head, err := checkMainCapture(w)
-			if err != nil {
-				fail(err)
-				return "", err
-			}
-			return head, nil
-		},
-		Timeout:   stepTimeout(step),
-		Now:       time.Now,
-		LockRetry: captureLockRetry,
-	})
+	request := w.captureRequest(step)
+	request.Skip = scope.Skip
+	request.Check = func() (string, error) {
+		head, err := checkMainCapture(w)
+		if err != nil {
+			fail(err)
+			return "", err
+		}
+		return head, nil
+	}
+	request.LockRetry = captureLockRetry
+	_, runErr := driftengine.RunCapture(ctx, request)
 	if runErr != nil {
 		clihelp.SetExit(ctx, 1)
 		logger.Warn("drift: the capture child ended with an error", "error", runErr.Error())

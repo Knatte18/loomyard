@@ -38,11 +38,11 @@ func TestConfigSpec_SetNestedKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() = %v; want nil", err)
 	}
-	wantCapture := CommandStep{Command: "profile --out {baseline_dir}", Dir: ".", Env: map[string]string{"NAME": "1"}, TimeoutMin: 45}
+	wantCapture := CommandStep{Command: "profile --out {baseline_dir}", Env: map[string]string{"NAME": "1"}, TimeoutMin: 45}
 	if !reflect.DeepEqual(cfg.Capture, wantCapture) {
 		t.Errorf("LoadConfig() capture = %+v; want %+v", cfg.Capture, wantCapture)
 	}
-	wantCompare := CommandStep{Command: "cmp {baseline_dir}", Dir: ".", TimeoutMin: 5}
+	wantCompare := CommandStep{Command: "cmp {baseline_dir}", TimeoutMin: 5}
 	if !reflect.DeepEqual(cfg.Compare, wantCompare) {
 		t.Errorf("LoadConfig() compare = %+v; want %+v", cfg.Compare, wantCompare)
 	}
@@ -84,7 +84,7 @@ func TestConfigSpec_SetWholeSteps(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Capture, wantCapture) {
 		t.Errorf("LoadConfig() capture = %+v; want %+v", cfg.Capture, wantCapture)
 	}
-	wantCompare := CommandStep{Command: "cmp {baseline_dir}", Dir: ".", Env: map[string]string{"NAME": "1"}, TimeoutMin: 5}
+	wantCompare := CommandStep{Command: "cmp {baseline_dir}", Env: map[string]string{"NAME": "1"}, TimeoutMin: 5}
 	if !reflect.DeepEqual(cfg.Compare, wantCompare) {
 		t.Errorf("LoadConfig() compare = %+v; want %+v", cfg.Compare, wantCompare)
 	}
@@ -112,6 +112,65 @@ func seedDriftConfig(t *testing.T, baseDir, contents string) {
 	}
 	if err := os.WriteFile(filepath.Join(configDir, "drift.yaml"), []byte(contents), 0o644); err != nil {
 		t.Fatalf("WriteFile drift.yaml = %v; want nil", err)
+	}
+}
+
+// TestCheckDirs pins that a declared step whose dir resolves to no existing directory under the worktree root is refused.
+// The refusal names the step's key and the resolved path.
+// An existing dir, an unset dir and an undeclared step pass.
+func TestCheckDirs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	root := t.TempDir()
+	anchor := filepath.Join(root, "dotnet")
+	if err := os.MkdirAll(anchor, 0o755); err != nil {
+		t.Fatalf("MkdirAll() = %v; want nil", err)
+	}
+	tests := []struct {
+		name    string
+		capture string
+		// compare is the compare line; empty leaves the template's undeclared one.
+		compare string
+		// wantErr are the texts the refusal names; empty when the dirs pass.
+		wantErr []string
+	}{
+		{name: "AnUndeclaredStepPasses", capture: "capture: {}"},
+		{
+			name:    "ADirMissingUnderTheWorktreeRootOfTheCompareIsRefused",
+			capture: "capture: {}",
+			compare: `compare: {command: "c {baseline_dir}", dir: gone, timeout_min: 1}`,
+			wantErr: []string{`drift config key "compare.dir"`, filepath.Join(root, "gone"), "lym config drift"},
+		},
+		{name: "NoDirPasses", capture: `capture: {command: "p {baseline_dir}", timeout_min: 1}`},
+		{name: "AnExistingDirUnderTheWorktreeRootPasses", capture: `capture: {command: "p {baseline_dir}", dir: dotnet, timeout_min: 1}`},
+		{
+			name:    "ADirMissingUnderTheWorktreeRootIsRefused",
+			capture: `capture: {command: "p {baseline_dir}", dir: dotnet/dotnet, timeout_min: 1}`,
+			wantErr: []string{`drift config key "capture.dir"`, filepath.Join(root, "dotnet", "dotnet"), "lym config drift"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			board := t.TempDir()
+			lines := map[string]string{"capture": tt.capture}
+			if tt.compare != "" {
+				lines["compare"] = tt.compare
+			}
+			seedDriftConfig(t, board, withKeys(t, lines))
+			err := CheckDirs(configengine.Dirs{Board: board}, root, anchor)
+			if len(tt.wantErr) == 0 {
+				if err != nil {
+					t.Errorf("CheckDirs() = %v; want nil", err)
+				}
+				return
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("CheckDirs() = %v; want an error naming %q", err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -182,10 +241,10 @@ func TestLoadConfig(t *testing.T) {
 	}{
 		{name: "template defaults", seed: true, contents: ConfigTemplate(), want: templateConfig(func(*Config) {})},
 		{
-			name: "a declared capture loads with dir defaulted", seed: true,
+			name: "a declared capture with no dir loads with an empty dir", seed: true,
 			contents: withKey(t, "capture", capture),
 			want: templateConfig(func(c *Config) {
-				c.Capture = CommandStep{Command: "profile --out {baseline_dir}", Dir: ".", TimeoutMin: 30}
+				c.Capture = CommandStep{Command: "profile --out {baseline_dir}", TimeoutMin: 30}
 			}),
 		},
 		{

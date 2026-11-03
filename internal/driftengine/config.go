@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -41,7 +42,7 @@ const (
 type CommandStep struct {
 	// Command is the shell command the step runs, holding the {baseline_dir} placeholder.
 	Command string `yaml:"command"`
-	// Dir is the run directory, absolute or relative to the anchored directory.
+	// Dir is the run directory, absolute or relative to the worktree root; empty runs the step in the worktree's anchored directory.
 	Dir string `yaml:"dir"`
 	// Env is the environment the command runs with, over the process environment.
 	Env map[string]string `yaml:"env"`
@@ -126,7 +127,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
-// A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1, and its dir defaults to ".";
+// A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
 // A scope must be empty, off, partial or full, and skip names tests under scope partial only, where it is required.
 // Every refusal names the key and lym config drift as the way forward.
@@ -219,11 +220,29 @@ func decodeStep(name string, file stepFile) (CommandStep, error) {
 	if *file.TimeoutMin < 1 {
 		return CommandStep{}, refuseKey(name+".timeout_min", fmt.Sprintf("%d; want at least 1", *file.TimeoutMin))
 	}
-	step := CommandStep{Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}
-	if step.Dir == "" {
-		step.Dir = "."
+	return CommandStep{Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}, nil
+}
+
+// CheckDirs loads the drift config under dirs and refuses a declared step whose dir is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
+// A hub-wide drift config write runs it against the prime, so a dir that would fail every capture or compare is refused when it is written.
+func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		return err
 	}
-	return step, nil
+	steps := []struct {
+		name string
+		step CommandStep
+	}{{stepCapture, cfg.Capture}, {stepCompare, cfg.Compare}}
+	for _, declared := range steps {
+		if declared.step.Command == "" {
+			continue
+		}
+		if _, err := gateslot.StatCommandDir(worktreeRoot, anchorDir, declared.step.Dir); err != nil {
+			return refuseKey(declared.name+".dir", err.Error())
+		}
+	}
+	return nil
 }
 
 // Step returns the declared capture or compare step.

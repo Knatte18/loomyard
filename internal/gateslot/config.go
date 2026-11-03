@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -304,6 +305,51 @@ func decodeBuild(file buildFile) (BuildStep, error) {
 		return BuildStep{}, refuse("timeout_min", fmt.Sprintf("%d; want at least 1", *file.TimeoutMin))
 	}
 	return BuildStep{About: file.About, Command: file.Command, Dir: file.Dir, Env: file.Env, TimeoutMin: *file.TimeoutMin}, nil
+}
+
+// ResolveCommandDir returns the directory a hub command whose configured dir is dir runs in:
+// the anchored directory anchorDir when dir is empty, dir itself when absolute, and otherwise dir joined onto the worktree root worktreeRoot.
+// It is the rule the drift steps and the hub-wide dir checks resolve a dir by.
+// The gate's own run path reaches the same directory by filling an unset dir with the anchor relative to the worktree root and joining the result onto the root, so one value means one directory in every config file.
+func ResolveCommandDir(worktreeRoot, anchorDir, dir string) string {
+	switch {
+	case dir == "":
+		return anchorDir
+	case filepath.IsAbs(dir):
+		return dir
+	default:
+		return filepath.Join(worktreeRoot, dir)
+	}
+}
+
+// StatCommandDir returns the directory a hub command whose configured dir is dir runs in, resolved against worktreeRoot and anchorDir.
+// It refuses one that is no existing directory with an error naming dir and the resolved path.
+func StatCommandDir(worktreeRoot, anchorDir, dir string) (string, error) {
+	resolved := ResolveCommandDir(worktreeRoot, anchorDir, dir)
+	if info, err := os.Stat(resolved); err == nil && info.IsDir() {
+		return resolved, nil
+	}
+	return resolved, fmt.Errorf("dir %q resolves to %s, which is no existing directory; want an existing directory, absolute or relative to the worktree root, or no dir to run in the worktree's anchor", dir, resolved)
+}
+
+// CheckDirs loads the gate config under dirs and refuses a tier or build dir that is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
+// A hub-wide gate config write runs it against the prime, so a dir that would fail every gate run is refused when it is written.
+func CheckDirs(dirs configengine.Dirs, worktreeRoot, anchorDir string) error {
+	cfg, err := LoadConfig(dirs)
+	if err != nil {
+		return err
+	}
+	for _, key := range sortedKeys(cfg.Tiers) {
+		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Tiers[key].Dir); err != nil {
+			return useRefusal("key %q: %v", "tiers."+key+".dir", err)
+		}
+	}
+	if cfg.Build.Command != "" {
+		if _, err := StatCommandDir(worktreeRoot, anchorDir, cfg.Build.Dir); err != nil {
+			return useRefusal("key %q: %v", "build.dir", err)
+		}
+	}
+	return nil
 }
 
 // Inert reports whether the worktree-relative slash path rel matches an inert_paths pattern:

@@ -54,10 +54,11 @@ func TestSeatTables(t *testing.T) {
 
 	baseline := func(t *testing.T) BaselineInputs {
 		t.Helper()
-		dir := t.TempDir()
+		dir, root := t.TempDir(), t.TempDir()
 		return BaselineInputs{
 			StencilsDir:        stencilkit.Seed(t),
-			WorktreeRoot:       t.TempDir(),
+			WorktreeRoot:       root,
+			AnchorDir:          root,
 			Subject:            SubjectDecisionRecord,
 			Slug:               "fix-the-thing",
 			DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
@@ -89,6 +90,7 @@ func TestSeatTables(t *testing.T) {
 		}{
 			{"StencilsDir", func(in *BaselineInputs) { in.StencilsDir = "" }},
 			{"WorktreeRoot", func(in *BaselineInputs) { in.WorktreeRoot = "" }},
+			{"AnchorDir", func(in *BaselineInputs) { in.AnchorDir = "" }},
 			{"DecisionRecordPath", func(in *BaselineInputs) { in.DecisionRecordPath = "" }},
 			{"BaselineReportPath", func(in *BaselineInputs) { in.BaselineReportPath = "" }},
 		}
@@ -192,6 +194,37 @@ func TestSeatTables(t *testing.T) {
 		}
 		if strings.Contains(entryPrompt, "the decision record at `"+entry.DecisionRecordPath+"`, in which") || strings.Contains(prompt, "lym board get") {
 			t.Errorf("the two subjects render alike; want the decision-record and board-entry readings distinct")
+		}
+	})
+
+	t.Run("the capture's run directory is told relative to the worktree root", func(t *testing.T) {
+		t.Parallel()
+		outside := t.TempDir()
+		rows := []struct {
+			name string
+			dir  string
+			want string
+		}{
+			{"NoDirRunsInTheAnchor", "", "`p {baseline_dir}`, run in `dotnet` relative to the worktree root"},
+			{"DotIsTheWorktreeRoot", ".", "`p {baseline_dir}`, run in `.` relative to the worktree root"},
+			{"ARelativeDirIsKept", "tests", "`p {baseline_dir}`, run in `tests` relative to the worktree root"},
+			{"AnAbsoluteDirOutsideTheRootIsToldWhole", outside, "`p {baseline_dir}`, run in `" + outside + "`"},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				in := baseline(t)
+				in.AnchorDir = filepath.Join(in.WorktreeRoot, "dotnet")
+				captured := cfg
+				captured.Capture = CommandStep{Command: "p {baseline_dir}", Dir: row.dir}
+				table, err := BaselineTable(in, captured, seatRegistry(t))
+				if err != nil {
+					t.Fatalf("BaselineTable() = _, %v; want nil error", err)
+				}
+				if got := table.Values["capture_command"]; got != row.want {
+					t.Errorf("capture_command = %q; want %q", got, row.want)
+				}
+			})
 		}
 	})
 

@@ -65,6 +65,9 @@
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
 // A tier whose command holds TestTimeoutPlaceholder may hold `test_timeout_min`, the minutes the placeholder renders for the test runner's own per-binary bound, DefaultTestTimeoutMin when unset, so a hub raises `go test`'s own `-timeout` default from config instead of a literal in the command.
 // `build` holds `about`, `command`, `dir` (default the worktree's anchor, filled by `Config.WithDefaultDir`), `env` and `timeout_min`; the template's `build: {}` is no build step, and a declared step has a non-empty Config.Build.Command.
+// ResolveCommandDir is the base of a `dir` for the drift steps and the hub-wide dir checks: relative to the worktree root, absolute as written, and the worktree's anchor when unset.
+// The gate's run path reaches the same directory for a tier's and the build's `dir`, through Config.WithDefaultDir, which fills an unset dir with the anchor relative to the root, and its join of the dir onto the worktree root.
+// StatCommandDir refuses a `dir` that resolves to no existing directory, naming the resolved path, and CheckDirs applies it to every tier and the build, which a hub-wide `lym config gate` write runs against the prime.
 // `inert_paths` lists glob patterns of files no test reads: Config.Inert matches a worktree-relative slash path through `path.Match`, a pattern without a slash against the path's base name and one with a slash against the whole path, and a pattern `path.Match` rejects matches nothing.
 // Config.AllInert is true only when the list and the paths are both non-empty and every path is inert.
 // The `dotnet` scoper derives the impacted C# test projects and classes from the type-name closure over test classes.

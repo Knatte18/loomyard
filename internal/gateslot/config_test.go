@@ -136,6 +136,97 @@ func seedGateConfig(t *testing.T, contents string) string {
 	return baseDir
 }
 
+// TestResolveCommandDir pins the one base every hub command's dir resolves against: the anchor for no dir, the worktree root for a relative dir and an absolute dir as written.
+func TestResolveCommandDir(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	root := t.TempDir()
+	anchor := filepath.Join(root, "dotnet")
+	absolute := t.TempDir()
+	tests := []struct {
+		name string
+		dir  string
+		want string
+	}{
+		{"NoDirRunsInTheAnchor", "", anchor},
+		{"ARelativeDirJoinsTheWorktreeRoot", "dotnet", filepath.Join(root, "dotnet")},
+		{"DotIsTheWorktreeRoot", ".", root},
+		{"AnAbsoluteDirIsKept", absolute, absolute},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ResolveCommandDir(root, anchor, tt.dir); got != tt.want {
+				t.Errorf("ResolveCommandDir(%q, %q, %q) = %q; want %q", root, anchor, tt.dir, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCheckDirs pins that a tier or build dir resolving to no existing directory is refused naming its key and the resolved path, and that existing and unset dirs pass.
+func TestCheckDirs(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	root := t.TempDir()
+	anchor := filepath.Join(root, "dotnet")
+	if err := os.MkdirAll(anchor, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "afile"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const tier1 = "  tier1: {command: run, timeout_min: 1, counter: vstest}\n"
+	tests := []struct {
+		name  string
+		tiers string
+		build string
+		// wantErr are the texts the refusal names; empty when the dirs pass.
+		wantErr []string
+	}{
+		{
+			name:  "ExistingAndUnsetDirsPass",
+			tiers: "tiers:\n  tier0: {command: run, dir: dotnet, timeout_min: 1, counter: vstest}\n" + tier1,
+			build: "build: {command: make, timeout_min: 1}\n",
+		},
+		{
+			name:    "AMissingTierDirIsRefused",
+			tiers:   "tiers:\n  tier0: {command: run, dir: dotnet/dotnet, timeout_min: 1, counter: vstest}\n",
+			build:   "build: {}\n",
+			wantErr: []string{`key "tiers.tier0.dir"`, filepath.Join(root, "dotnet", "dotnet"), `"lym config gate" from the prime`},
+		},
+		{
+			name:    "ADirNamingARegularFileIsRefused",
+			tiers:   "tiers:\n  tier0: {command: run, dir: afile, timeout_min: 1, counter: vstest}\n",
+			build:   "build: {}\n",
+			wantErr: []string{`key "tiers.tier0.dir"`, filepath.Join(root, "afile")},
+		},
+		{
+			name:    "AMissingBuildDirIsRefused",
+			tiers:   "tiers:\n" + tier1,
+			build:   "build: {command: make, dir: gone, timeout_min: 1}\n",
+			wantErr: []string{`key "build.dir"`, filepath.Join(root, "gone")},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			contents := strings.Replace(strings.Replace(ConfigTemplate(), "\ntiers: {}\n", "\n"+tt.tiers, 1), "\nbuild: {}\n", "\n"+tt.build, 1)
+			err := CheckDirs(configengine.Dirs{Board: seedGateConfig(t, contents)}, root, anchor)
+			if len(tt.wantErr) == 0 {
+				if err != nil {
+					t.Errorf("CheckDirs() = %v; want nil", err)
+				}
+				return
+			}
+			for _, want := range tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), want) {
+					t.Errorf("CheckDirs() = %v; want an error naming %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadConfig(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
