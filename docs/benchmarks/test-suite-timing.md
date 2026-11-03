@@ -821,3 +821,7 @@ Pairs 1 and 3 ran side by side for their whole length.
 
 A permanent `/dev/shm` setting is not worth a task: it gains a few percent at most.
 A lead worth testing is the cost of the processes the tests start, such as each `git` and `tmux` exec Cortex XDR may inspect, rather than the files they write.
+
+## fabric-test-speed-survey: where `internal/fabricengine`'s time goes
+
+The survey that follows the lead above is [fabric-test-speed-survey-2026-11-03.md](../research/fabric-test-speed-survey-2026-11-03.md): per test, per file and per fixture builder on neve, the git processes and files one run makes split between fixture setup and the code under test, what `hubforge`'s templates already cover, and a ranked list of cuts with their expected savings and the reasoning for OSL-1046.
