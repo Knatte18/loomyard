@@ -63,6 +63,7 @@ func assertReviewBudget(t *testing.T, producers []shedengine.ProducerDef, budget
 
 // TestReviewBudget_AppliedByNewAndRouting asserts both entry points stamp the budget on the review rows:
 // the same budget on every segment, and a segment's own budget on its three rows alone.
+// The arras recipe takes its Discussion-Review budget through the block as tapestry does.
 func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 	tiergate.Require(t, 0)
 	const budget = 7
@@ -76,24 +77,26 @@ func TestReviewBudget_AppliedByNewAndRouting(t *testing.T) {
 		{"a zero entry is zero rounds", map[string]int{"Plan-Review": 0}},
 		{"every segment's own budget", map[string]int{"Discussion-Review": 1, "Plan-Review": 2, "Code-Review": 9}},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			env, paths := testEnv(t)
-			setBudgets(&env, budget, tt.own)
-			budgets := budgetsOf(env)
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeArras} {
+		for _, tt := range tests {
+			t.Run(recipe+" "+tt.name, func(t *testing.T) {
+				env, paths := testEnv(t)
+				setBudgets(&env, budget, tt.own)
+				budgets := budgetsOf(env)
 
-			routing, err := Routing(shedrun.RecipeTapestry, budgets)
-			if err != nil {
-				t.Fatalf("Routing(%v) = _, %v; want nil", budgets, err)
-			}
-			assertReviewBudget(t, routing.Producers, budgets)
+				routing, err := Routing(recipe, budgets)
+				if err != nil {
+					t.Fatalf("Routing(%v) = _, %v; want nil", budgets, err)
+				}
+				assertReviewBudget(t, routing.Producers, budgets)
 
-			shed, err := New(shedrun.RecipeTapestry, env, paths)
-			if err != nil {
-				t.Fatalf("New() = _, %v; want nil", err)
-			}
-			assertReviewBudget(t, shed.Producers, budgets)
-		})
+				shed, err := New(recipe, env, paths)
+				if err != nil {
+					t.Fatalf("New() = _, %v; want nil", err)
+				}
+				assertReviewBudget(t, shed.Producers, budgets)
+			})
+		}
 	}
 }
 

@@ -41,7 +41,7 @@ func Command() *cobra.Command {
 		Long: `drift runs regression around a task: the Drift-Baseline agent records the
 task's scope, a capture takes the suite's profile on the task's branch point,
 and Drift-Verify compares the task's code against it. The verbs run inside a
-tapestry or darn run's worktree and judge the run's status, so each refusal names
+tapestry, arras or darn run's worktree and judge the run's status, so each refusal names
 its way forward. See lym config drift for the capture and compare commands.`,
 		RunE: clihelp.GroupRunE,
 	}

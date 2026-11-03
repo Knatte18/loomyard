@@ -68,7 +68,14 @@ var retiredRowNames = map[string]string{
 
 // recipePhaseTables holds the phase table of every recipe a report selects.
 var recipePhaseTables = map[string]phaseTable{
-	shedrun.RecipeTapestry: {
+	shedrun.RecipeTapestry: tapestryPhaseTable(),
+	shedrun.RecipeArras:    arrasPhaseTable(),
+	shedrun.RecipeDarn:     {exact: darnPhases()},
+}
+
+// tapestryPhaseTable returns the phase table of a tapestry run.
+func tapestryPhaseTable() phaseTable {
+	return phaseTable{
 		exact: loomPhases(),
 		families: map[string]string{
 			rowFamily(loomshed.NameDiscussionWrite): PhaseDiscussion,
@@ -78,8 +85,14 @@ var recipePhaseTables = map[string]phaseTable{
 			rowFamily(loomshed.NameParentAlign):     PhaseMerge,
 			rowFamily(retiredMergeInRow):            PhaseMerge,
 		},
-	},
-	shedrun.RecipeDarn: {exact: darnPhases()},
+	}
+}
+
+// arrasPhaseTable returns the phase table of an arras run: a tapestry run's, with the Motif row counted under discussion.
+func arrasPhaseTable() phaseTable {
+	table := tapestryPhaseTable()
+	table.families[rowFamily(loomshed.NameMotif)] = PhaseDiscussion
+	return table
 }
 
 // loomPhases maps every row of a tapestry run that a phase table names whole, the retired rows of past runs included, to its phase.

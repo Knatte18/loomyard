@@ -95,15 +95,20 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 //
 // This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
 // value, which New does not return, so it must not be "simplified" back onto New.
+// The arras recipe holds a block row, so its parsed recipe is expanded before it is built.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	tiergate.Require(t, 0)
-	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe} {
+	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "arras": recipes.ArrasRecipe} {
 		t.Run(name, func(t *testing.T) {
 			env, _ := testEnv(t)
 
 			recipe, err := shedbuild.Parse(source)
 			if err != nil {
 				t.Fatalf("shedbuild.Parse() error = %v; want nil", err)
+			}
+			recipe, err = shedbuild.Expand(recipe, embeddedRecipeSource)
+			if err != nil {
+				t.Fatalf("shedbuild.Expand() error = %v; want nil", err)
 			}
 
 			built, err := shedbuild.Build(recipe, env)
@@ -178,14 +183,14 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession, the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown and the arras recipe's Block, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	tiergate.Require(t, 0)
-	// The darn recipe's record row and writer, the sampler recipe's session row and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's.
-	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
+	// The darn recipe's record row and writer, the sampler recipe's session row, the pawl recipe's own rows and the arras recipe's block row are ones a loom row can reach, beside the tapestry recipe's.
+	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown", "Block"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -212,7 +217,7 @@ func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	}
 }
 
-// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its shedbuild.Parse rows in file order, and that an unknown recipe name is refused.
+// TestRowNames_FollowEachRecipesRowOrder pins that each recipe's names and rows equal its expanded shedbuild rows in order, block fields included, and that an unknown recipe name is refused.
 func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 	tiergate.Require(t, 0)
 	for _, tt := range []struct {
@@ -224,11 +229,17 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipeBatten, recipes.BattenRecipe},
 		{shedrun.RecipePawl, recipes.PawlRecipe},
 		{shedrun.RecipeSampler, recipes.SamplerRecipe},
+		{shedrun.RecipeMotif, recipes.MotifRecipe},
+		{shedrun.RecipeArras, recipes.ArrasRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
 			if err != nil {
 				t.Fatalf("shedbuild.Parse(%s recipe) = %v", tt.recipe, err)
+			}
+			parsed, err = shedbuild.Expand(parsed, embeddedRecipeSource)
+			if err != nil {
+				t.Fatalf("shedbuild.Expand(%s recipe) = %v", tt.recipe, err)
 			}
 			var want []string
 			for _, row := range parsed.Producers {
@@ -251,7 +262,10 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 				t.Fatalf("Rows(%q) has %d rows; want %d", tt.recipe, len(rows), len(parsed.Producers))
 			}
 			for i, row := range parsed.Producers {
-				wantRow := RecipeRow{Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, OnDone: row.OnDone, Bouncer: row.Engine == "Bouncer"}
+				wantRow := RecipeRow{
+					Name: row.Name, Segment: row.Segment, OnStuck: row.OnStuck, OnDone: row.OnDone, Bouncer: row.Engine == "Bouncer",
+					BlockPath: row.BlockPath, SkipTo: row.SkipTo, IsBlock: row.Engine == "Block",
+				}
 				if rows[i] != wantRow {
 					t.Errorf("Rows(%q)[%d] = %+v; want %+v", tt.recipe, i, rows[i], wantRow)
 				}
@@ -327,6 +341,12 @@ func TestEntryNumbers(t *testing.T) {
 			"Drift-Verify": 12,
 			"Code-Bouncer": 13, "Code-Burler-Review": 13, "Code-Burler-Fix": 13,
 			"Describe": 14, "PR-Review": 15, "Finalize": 16, "Friction-Reflect": 17,
+		}},
+		{"arras", shedrun.RecipeArras, map[string]int{
+			"Preflight": 1, "Motif": 2, "Discussion-Write": 3,
+			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
+			"Drift-Baseline": 5,
+			"Webster":        11, "Friction-Reflect": 18,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
 		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Verify": 6, "Code-Bouncer": 7, "Code-Burler-Review": 7, "Code-Burler-Fix": 7}},

@@ -1,4 +1,4 @@
-// entrygate_test.go covers the entry gate Build makes from a parsed recipe's entry_gate key, evaluated against a fake setting lookup and no worktree.
+// entrygate_test.go covers the entry gate Build makes from a parsed recipe's entry_gate key, evaluated against a fake setting lookup and no worktree, and the gate of an expanded block row.
 
 package shedbuild
 
@@ -136,4 +136,20 @@ func TestBuild_EntryGate(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("an expanded block row with block_gate always builds a gate that holds", func(t *testing.T) {
+		t.Parallel()
+		recipe := Recipe{Producers: []Row{{Name: "Blk", Engine: shedrecipe.EngineBlock, Block: "sub", BlockGate: shedrecipe.BlockGateAlways}}}
+
+		defs, err := Build(recipe, shedrecipe.Env{})
+		if err != nil {
+			t.Fatalf("Build() error = %v; want nil", err)
+		}
+		if defs[0].EntryGate == nil {
+			t.Fatal("EntryGate = nil; want the always gate")
+		}
+		if holds, reason, err := defs[0].EntryGate(); err != nil || !holds {
+			t.Errorf("gate() = (%v, %q, %v); want (true, _, nil)", holds, reason, err)
+		}
+	})
 }

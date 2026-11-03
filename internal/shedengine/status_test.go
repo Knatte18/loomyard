@@ -53,7 +53,7 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 		},
 		History: []HistoryEntry{
 			{Producer: "Preflight", Outcome: Done, Output: "", At: "2026-08-15T09:00:00Z", By: "driver", Machine: "neve"},
-			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lym/plan.md", At: "2026-08-15T09:05:00Z", GateSpans: []GateSpan{
+			{Producer: "Plan-Write", Outcome: Stuck, Output: "_lym/plan.md", At: "2026-08-15T09:05:00Z", Block: "Motif", GateSpans: []GateSpan{
 				{Gate: "plan-parse", Kind: GateSpanKindGate, Start: "2026-08-15T09:04:00.25Z", End: "2026-08-15T09:04:01.5Z"},
 				{Gate: "plan-parse", Kind: GateSpanKindRework, Start: "2026-08-15T09:04:02Z", End: "2026-08-15T09:04:30Z"},
 			}},
@@ -128,6 +128,13 @@ func TestStatus_JSONRoundTrip(t *testing.T) {
 	// The same record has no entered row and no skip reason, which read as empty and are not written back.
 	if legacy.EnteredRow != "" || legacy.History[0].Reason != "" || strings.Contains(string(reencoded), "entered_row") || strings.Contains(string(reencoded), `"reason"`) {
 		t.Errorf("record without entered_row and reason = %+v re-encoded as %s; want empty values and no entered_row or reason key", legacy, reencoded)
+	}
+	// The block path round-trips, and an entry outside every block (and a file written before the key) carries none.
+	if got.History[1].Block != "Motif" || !strings.Contains(string(data), `"block":"Motif"`) || strings.Count(string(data), `"block"`) != 1 {
+		t.Errorf("History[1].Block = %q in %s; want Motif, written once", got.History[1].Block, data)
+	}
+	if legacy.History[0].Block != "" || strings.Contains(string(reencoded), `"block"`) {
+		t.Errorf("record without block = %+v re-encoded as %s; want empty block and no block key", legacy, reencoded)
 	}
 	if got.Activity != want.Activity {
 		t.Errorf("Activity = %+v; want %+v", got.Activity, want.Activity)

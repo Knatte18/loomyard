@@ -28,6 +28,17 @@ var PawlRecipe []byte
 //go:embed sampler-recipe.yaml
 var SamplerRecipe []byte
 
+// MotifRecipe is the motif recipe's producer graph, the rows that make a sketch, the decision record, from a task, in internal/shedbuild's recipe format.
+// It is a block source: the arras recipe runs it inline.
+//
+//go:embed motif-recipe.yaml
+var MotifRecipe []byte
+
+// ArrasRecipe is the arras recipe's producer graph, the tapestry recipe with its Discussion rows run as the Motif block, in internal/shedbuild's recipe format.
+//
+//go:embed arras-recipe.yaml
+var ArrasRecipe []byte
+
 // BattenRecipe is the task-worktree batten's producer graph, in internal/shedbuild's recipe
 // format.
 //

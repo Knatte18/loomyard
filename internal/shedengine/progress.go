@@ -1,8 +1,9 @@
 package shedengine
 
 // Routing is the told projection of a recipe's producer graph that progress is derived from.
-// Only each ProducerDef's Name, OnDone, OnStuck, Segment and MaxBounces are read, so Producer
+// Only each ProducerDef's Name, OnDone, OnStuck, Segment, MaxBounces, SkipTo and Block are read, so Producer
 // may be nil and no engine needs building to project a recipe.
+// SkipTo and Block reach the goto admission and the goto and re-launch history entries when Producers is passed to a GotoRequest or RelaunchRequest.
 type Routing struct {
 	// Entry is the name of the first row of the main line.
 	Entry string

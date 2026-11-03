@@ -151,6 +151,23 @@ func VerifySource(recipe string) (string, error) {
 	return parsed.VerifySource, nil
 }
 
+// ProfileRecipe returns the recipe whose run-profile block and default profile a task running the named recipe takes: the recipe's top-level profile_recipe, or the recipe's own name when it sets none.
+// An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
+func ProfileRecipe(recipe string) (string, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return "", err
+	}
+	if parsed.ProfileRecipe != "" {
+		return parsed.ProfileRecipe, nil
+	}
+	if recipe == "" {
+		return shedrun.RecipeTapestry, nil
+	}
+
+	return recipe, nil
+}
+
 // RetiredRows maps each row name a run of the named recipe may still carry in its status file from an earlier recipe onto the row that replaced it.
 // It is nil for a recipe with none, and an empty name reads as the tapestry recipe.
 func RetiredRows(recipe string) map[string]string {

@@ -88,12 +88,26 @@ Its production import set is one-way: it imports `internal/shedrecipe`, `interna
 It requires a `version` (currently only `1` is accepted), a told `entry` producer name, a told `terminals` list, and a `producers` list.
 It may also set an optional top-level `amendment_target`, the name of the row a plan amendment routes to; `Parse` decodes it without checking that it names a row, since routing is `shedengine`'s and `shedcheck`'s.
 It may also set a top-level `contract`, empty or `loom`, and a top-level `verify_source`, empty, `plan` or `tree_scope`; `Parse` refuses any other value of either, naming the key, the legal values and the way forward.
-Each row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`, `segment`, and `max_bounces` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
+It may also set a top-level `profile_recipe`, the name of the recipe whose run-profile block a task takes; empty means the recipe's own name, and `Parse` decodes it without checking that it names a recipe.
+A row is an engine row or a block row.
+An engine row carries `name`, `engine`, `config`, `on_done`, `on_stuck`, `on_reroute`, `segment`, `max_bounces` and `entry_gate` — the same field set `shedengine.ProducerDef` itself carries, `segment` included per the reversal recorded above.
+A block row carries only `name`, `block`, `block_gate` and `on_done`, and no engine: `block` names the recipe to run inline, `block_gate` the shipped check that gates it.
+`Parse` refuses a block row that sets any other key, one missing `block` or `block_gate`, and a hand-written `engine: Block`, which is reserved for the row a block becomes once expanded.
 
-**Four exported functions.** `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` may consume it.
+**Exported functions.** `Parse` decodes a byte slice into a `Recipe` and runs every shape check the value must pass before `Build` may consume it.
 `Load` reads the recipe file at a told absolute path and delegates to `Parse` — it is the only function in the package whose own code touches the filesystem.
+`Expand` inlines each block row's sub-recipe into its parent, as the expansion paragraph below describes.
 `Build` resolves each row's `Engine` name against the `internal/shedrecipe` registry, calls the returned constructor with a caller-supplied `shedrecipe.Env`, and assembles the `[]shedengine.ProducerDef` list `shedengine.Shed` already consumes unchanged.
+`RoutingFrom` projects the routing of an expanded recipe, each row's skip target and block path included, and builds no engine.
+`Build` and `RoutingFrom` take the expanded recipe: `Build` refuses a block row that was never expanded, and a block row's gate is the check its `block_gate` names.
 `Check` is a thin, non-production forward of an assembled producer list plus a `Recipe`'s own `Entry` and `Terminals` into `shedcheck.Check`, for a caller's own authoring-time test suite.
+
+**Expansion.** `Expand` takes a parsed `Recipe` and a told resolver from a recipe name to its bytes, parses each block's recipe through `Parse`, and returns a new `Recipe` in which every block row is followed by the rows of its recipe, under their own names.
+The block row becomes an `engine: Block` row whose `on_done` is the sub-recipe's `entry` and whose skip target is the block's exit; the exit is the block row's own `on_done`, or, when that is empty, the exit of the block enclosing it, and an outermost block row must set `on_done`.
+Every inlined row's empty `on_done`, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
+Each inlined row carries its block path, the enclosing block rows' names joined by `/`, outermost first.
+A sub-recipe's `terminals` are not read, and a sub-recipe setting `contract`, `verify_source`, `amendment_target` or `profile_recipe` is refused, since those belong to the run.
+A recipe with no block row is returned unchanged.
 
 **Strictness.** Unknown keys and duplicate keys are errors at both document level and row level, and every message the decoder produces keeps its own yaml line number.
 Every error this package raises itself, after a successful decode, names the offending row's zero-based list index and its `name`.
@@ -111,6 +125,7 @@ A recipe without `contract: loom` is not checked and is no loom.
 
 **Validation split.** This package owns file shape and engine-name resolution alone.
 It runs no reachability, cycle, blind-gate, dangling-target, or segment analysis of its own, because `shedengine`'s own validation and `internal/shedcheck` already own routing, cycles, and reachability, and a third copy is what drifts.
+The one exception is `Expand`'s block refusals: a block recipe including itself, an inlined edge naming no row of its recipe, and a segment shared across a block's edge, which only the expansion can see.
 
 **Building is not filesystem-free.** Three registry constructors reach disk of their own accord at construction time, producing four distinct effects, and `Build` is a pass-through for those effects rather than a suppressor or a wrapper of them — see `internal/shedbuild/doc.go` for the single site enumerating which constructor produces which effect.
 

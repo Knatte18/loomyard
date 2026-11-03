@@ -3,6 +3,7 @@
 package shedrecipe
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -195,6 +196,13 @@ func simpleEntryCases() []simpleEntryCase {
 			unreadField:     "Cwd",
 		},
 		{
+			registryKey:     EngineBlock,
+			entry:           blockEntry,
+			buildEnv:        newTestEnv,
+			validatedFields: nil,
+			unreadField:     "Cwd",
+		},
+		{
 			registryKey:     "Webster",
 			entry:           websterEntry,
 			buildEnv:        newTestEnv,
@@ -242,6 +250,18 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 			}
 		})
 	}
+
+	// A block row's producer does no work: it returns Done at once.
+	t.Run("Block producer returns Done", func(t *testing.T) {
+		producer, err := blockEntry(RowIdentity{Name: "Motif"}, Config{}, Env{})
+		if err != nil {
+			t.Fatalf("blockEntry() error = %v; want nil", err)
+		}
+		outcome, output, err := producer.Call(context.Background())
+		if outcome != shedengine.Done || !reflect.DeepEqual(output, shedengine.OutputPointer{}) || err != nil {
+			t.Errorf("Call() = %q, %+v, %v; want done, an empty pointer, nil", outcome, output, err)
+		}
+	})
 
 	// The landing rows run the gate key their config or row name picks, read from the producer's told Deps.
 	landingRows := []struct {

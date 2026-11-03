@@ -77,6 +77,9 @@ func (s *Shed) validate() error {
 		if p.OnDone != "" && p.OnDone == p.Name {
 			return fmt.Errorf("shedengine: producer %q at index %d has OnDone naming itself", p.Name, i)
 		}
+		if p.SkipTo != "" && !seen[p.SkipTo] {
+			return fmt.Errorf("shedengine: producer %q at index %d has SkipTo %q naming no producer in the list", p.Name, i, p.SkipTo)
+		}
 		if p.OnReroute != "" && !seen[p.OnReroute] {
 			return fmt.Errorf("shedengine: producer %q at index %d has OnReroute %q naming no producer in the list", p.Name, i, p.OnReroute)
 		}

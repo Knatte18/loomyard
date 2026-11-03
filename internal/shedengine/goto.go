@@ -39,7 +39,7 @@ func checkGuard(guard GotoGuard, target, runID string) error {
 
 // GotoRequest is everything Goto needs.
 // All three paths are told.
-// Producers needs only Name, Segment, OnDone and OnStuck, so a Routing.Producers projection works.
+// Producers needs only Name, Segment, OnDone, OnStuck, SkipTo and Block, so a Routing.Producers projection works.
 type GotoRequest struct {
 	StatusPath     string
 	LockPath       string
@@ -96,7 +96,8 @@ func Goto(req GotoRequest) (Status, error) {
 	if st.State == StateDone {
 		return Status{}, fmt.Errorf("shedengine: status file %q is done; goto never re-opens a finished run; way forward: seed a new run", req.StatusPath)
 	}
-	if _, ok := findProducer(req.Producers, req.Target); !ok {
+	target, ok := findProducer(req.Producers, req.Target)
+	if !ok {
 		names := make([]string, len(req.Producers))
 		for i, def := range req.Producers {
 			names[i] = def.Name
@@ -133,7 +134,7 @@ func Goto(req GotoRequest) (Status, error) {
 		cur.PauseAfterBy = ""
 		cur.PauseReason = labelled("goto to "+req.Target, req.By)
 		cur.PendingBy = ""
-		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), By: req.By})
+		cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), By: req.By, Block: target.Block})
 		cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
 		written = cur
 		return cur, nil
@@ -167,7 +168,7 @@ func CheckGotoTarget(producers []ProducerDef, st Status, target, runID string) e
 
 // RelaunchRequest is everything Relaunch needs.
 // All three paths are told.
-// Producers needs only Name, Segment, OnDone and OnStuck, so a Routing.Producers projection works.
+// Producers needs only Name, Segment, OnDone, OnStuck, SkipTo and Block, so a Routing.Producers projection works.
 type RelaunchRequest struct {
 	StatusPath     string
 	LockPath       string
@@ -239,6 +240,8 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 			return Status{}, err
 		}
 		if req.Target != "" && !inEffect {
+			// CheckGotoTarget has admitted the target, so the lookup finds it.
+			target, _ := findProducer(req.Producers, req.Target)
 			cur.CurrentProducer = req.Target
 			// Clearing the entered row makes the next step evaluate the target's entry gate.
 			cur.EnteredRow = ""
@@ -247,7 +250,7 @@ func Relaunch(req RelaunchRequest) (Status, error) {
 			cur.Transient = ""
 			cur.PauseReason = "re-launched onto " + req.Target
 			cur.PendingBy = ""
-			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339()})
+			cur.History = append(cur.History, HistoryEntry{Producer: req.Target, Outcome: OutcomeGoto, At: nowRFC3339(), Block: target.Block})
 			cur.Activity = composeActivity(req.Target, cur.History, StatePaused, "", "")
 		}
 		written = cur
@@ -293,7 +296,7 @@ func RecordResumer(statusPath, statusLockPath, by string) error {
 
 // gotoAdmitted returns the reference row's name and every admitted goto target in list order.
 // The reference row is current_producer, or, when that names no row, the producer of the latest history entry that does;
-// that entry's routed row is admitted too.
+// that entry's routed row is admitted too: OnDone after a Done, the skip target after a skip.
 // An awaiting run admits only rows strictly before the reference row;
 // paused, blocked and failed admit the reference row itself.
 func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitted []string) {
@@ -314,8 +317,10 @@ func gotoAdmitted(producers []ProducerDef, st Status) (reference string, admitte
 				}
 				refIdx = i
 				switch entry.Outcome {
-				case Done, OutcomeSkipped:
+				case Done:
 					routed = def.OnDone
+				case OutcomeSkipped:
+					routed = def.skipTarget()
 				case Stuck:
 					routed = def.OnStuck
 				case OutcomeReroute:

@@ -44,6 +44,7 @@ const (
 	checklistUnknownStart  = "--:--"
 	checklistBouncedWord   = "bounced"
 	checklistEscalatedWord = "escalated"
+	checklistEnteredWord   = "entered"
 )
 
 // checklistInput is what renderChecklist draws a frame from.
@@ -60,9 +61,10 @@ type checklistInput struct {
 }
 
 // checklistVisit is one visit of a row, read from one status history entry or from the current producer's open visit.
-// row is the name of the row visited, index the entry's position in the status history (-1 for the open visit), routedTo the entry's routed_to and isGoto true for a goto entry.
+// row is the name of the row visited, block the entry's block path (empty for the open visit and for a row outside every block), index the entry's position in the status history (-1 for the open visit), routedTo the entry's routed_to and isGoto true for a goto entry.
 type checklistVisit struct {
 	row          string
+	block        string
 	index        int
 	routedTo     string
 	isGoto       bool
@@ -192,6 +194,7 @@ func readChecklistPaused(recordPath, slug string, now time.Time) []pauserecord.I
 // each arbiter attempt standing right after the line, and the gate lines, of the history entry its stop key names, in every list the frame draws, and the others after the last row;
 // with in.rowsErr set, the single line checklistRecipeBroken and then every visit line in history order, each naming its row;
 // the state line, without the wait the wait line carries; and the wait line.
+// A block row's Done visit reads checklistEnteredWord, and a row of a block is named "<row> in <block path>" through checklistBlockName.
 // in.startedAt is the run's seed time, where its first visit starts; an empty or unparsable value starts it at the first entry's own time.
 // in.paused is left out of every visit's time.
 // A row's total is drawn to the second unless one of its visits is the open one, and then in whole minutes.
@@ -210,7 +213,13 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 	if in.poll.Found {
 		status = in.poll.Status
 	}
-	visits, visitedOrder, history := checklistVisitsOf(status, in.startedAt, in.paused, now)
+	blockRows := map[string]bool{}
+	for _, row := range in.rows {
+		if row.IsBlock {
+			blockRows[row.Name] = true
+		}
+	}
+	visits, visitedOrder, history := checklistVisitsOf(status, blockRows, in.startedAt, in.paused, now)
 	arbiters := newChecklistArbiterPlacement(in.arbiters, len(status.History), now)
 
 	if in.rowsErr != nil {
@@ -269,7 +278,7 @@ func renderChecklist(in checklistInput, now time.Time) statuspane.Frame {
 			}
 			continue
 		}
-		line := checklistBox(name, visits[name], skipped[name], status) + " " + checklistEntryName(numbers[name], name)
+		line := checklistBox(name, visits[name], skipped[name], status) + " " + checklistEntryName(numbers[name], checklistBlockName(name, recipeRow[name].BlockPath))
 		if v := visits[name]; v.visits > 0 {
 			line += " " + checklistTime(v.spent, slices.ContainsFunc(v.log, checklistVisitIsOpen))
 			if v.visits > 1 {
@@ -332,6 +341,14 @@ func checklistEntryName(number int, name string) string {
 	return fmt.Sprintf("%d. %s", number, name)
 }
 
+// checklistBlockName renders name beside the block path it runs in as "<name> in <block>"; an empty block leaves name bare.
+func checklistBlockName(name, block string) string {
+	if block == "" {
+		return name
+	}
+	return name + " in " + block
+}
+
 // checklistReworkSet is the rework the refusals of gate rows caused.
 // forVisit maps the history index of a rework visit, -1 for the open visit, to the gate row it was rework for.
 // total is each gate row's summed rework time, and includesOpen holds the gate rows whose total includes the open visit.
@@ -377,6 +394,7 @@ func checklistTime(spent time.Duration, includesOpen bool) string {
 // checklistReviewBlock renders a review segment, a recipe segment holding a Bouncer row, as one block from the history-order visits.
 // The heading reads "<box> <number>. <segment> <time> rounds <n>"; an unvisited segment is the single line "<box> <number>. <segment>", boxed skipped when skipped holds one of its rows and not reached otherwise.
 // number is the segment's entry number, which its rounds and their lines do not carry.
+// The segment is named beside the block path of its rows, as checklistBlockName renders it, and each line names its row beside the block its entry recorded.
 // Under it come the lines placed before any round opened, then each opened round in the order opened as "  round <n> <time>", the sum of its lines' time, with its lines, and last a Bouncer done that ends the segment.
 // A time that includes the open visit is drawn in whole minutes and every other time to the second.
 // A review-row entry, the row a Bouncer row's OnStuck names, opens or joins the round its output names through shedadapters.OutputRound.
@@ -388,9 +406,13 @@ func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRo
 	inSegment := map[string]bool{}
 	bouncers := map[string]bool{}
 	reviewRows := map[string]bool{}
+	segmentName := segment
 	for _, row := range rows {
 		if row.Segment != segment {
 			continue
+		}
+		if row.BlockPath != "" && segmentName == segment {
+			segmentName = checklistBlockName(segment, row.BlockPath)
 		}
 		inSegment[row.Name] = true
 		if row.Bouncer {
@@ -417,7 +439,7 @@ func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRo
 				break
 			}
 		}
-		return []string{box + " " + checklistEntryName(number, segment)}
+		return []string{box + " " + checklistEntryName(number, segmentName)}
 	}
 	box := checklistBoxDone
 	for _, row := range rows {
@@ -502,7 +524,7 @@ func checklistReviewBlock(segment string, number int, rows []loomrecipe.RecipeRo
 		placeInProgress(line)
 	}
 
-	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, checklistEntryName(number, segment), checklistTime(spent, segmentOpen), len(rounds))}
+	lines := []string{fmt.Sprintf("%s %s %s rounds %d", box, checklistEntryName(number, segmentName), checklistTime(spent, segmentOpen), len(rounds))}
 	lines = appendChecklistBlockLines(lines, "  ", before, arbiters)
 	for _, round := range rounds {
 		lines = append(lines, fmt.Sprintf("  round %d %s", round.number, round.total()))
@@ -647,7 +669,7 @@ func (p *checklistArbiterPlacement) endLines() []string {
 
 // checklistVisitLine renders one visit as "<start> <spent> <outcome>", the time to the second except for the open visit's in whole minutes, then " x<n>" for a folded entry and " gate attempts <n>" when gated and the entry carried no gate span list.
 // The visit's output is never drawn, since its path would wrap the line.
-// A non-empty row is written before the outcome, for a list that does not sit under the row's own line.
+// A non-empty row is written before the outcome, beside the visit's block through checklistBlockName, for a list that does not sit under the row's own line.
 // A non-empty reworkFor, the gate row whose refusal the visit was rework for, ends the line as " rework for <reworkFor>".
 func checklistVisitLine(visit checklistVisit, row string, reworkFor string) string {
 	start := checklistUnknownStart
@@ -656,7 +678,7 @@ func checklistVisitLine(visit checklistVisit, row string, reworkFor string) stri
 	}
 	line := start + " " + checklistTime(visit.spent, checklistVisitIsOpen(visit))
 	if row != "" {
-		line += " " + row
+		line += " " + checklistBlockName(row, visit.block)
 	}
 	line += " " + visit.outcome
 	if visit.folds > 1 {
@@ -762,7 +784,8 @@ func checklistWaitLine(poll statuspane.StatusPoll, waitNote string) string {
 // A skipped entry is a row passed through: it is no visit, in no result, and starts the next visit at its own time.
 // While the run is not done, the current producer's open visit runs from the last entry's end to now.
 // A Stuck entry that records where it was routed reads checklistBouncedWord and one that does not reads as stored; an awaiting entry reads checklistEscalatedWord.
-func checklistVisitsOf(status shedengine.Status, startedAt string, paused []pauserecord.Interval, now time.Time) (visits map[string]checklistVisits, order []string, history []checklistVisit) {
+// A Done entry of a row in blockRows reads checklistEnteredWord, and every visit carries its entry's block path.
+func checklistVisitsOf(status shedengine.Status, blockRows map[string]bool, startedAt string, paused []pauserecord.Interval, now time.Time) (visits map[string]checklistVisits, order []string, history []checklistVisit) {
 	visits = map[string]checklistVisits{}
 	visit := func(name string, count int, entry checklistVisit) {
 		v, seen := visits[name]
@@ -784,6 +807,7 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, paused []paus
 		if entry.Outcome == shedengine.OutcomeGoto {
 			history = append(history, checklistVisit{
 				row:        entry.Producer,
+				block:      entry.Block,
 				index:      index,
 				isGoto:     true,
 				start:      at,
@@ -821,8 +845,11 @@ func checklistVisitsOf(status shedengine.Status, startedAt string, paused []paus
 			outcome = checklistBouncedWord
 		case entry.Outcome == shedengine.Awaiting:
 			outcome = checklistEscalatedWord
+		case entry.Outcome == shedengine.Done && blockRows[entry.Producer]:
+			outcome = checklistEnteredWord
 		}
 		visit(entry.Producer, 1+entry.Repeats, checklistVisit{
+			block:        entry.Block,
 			index:        index,
 			routedTo:     entry.RoutedTo,
 			start:        prevEnd,

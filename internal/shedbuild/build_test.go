@@ -20,7 +20,7 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 
 	r := Recipe{
 		Producers: []Row{
-			{Name: "First", Engine: "Stub", OnDone: "Second", OnStuck: "First", OnReroute: "Third", Segment: "seg", MaxBounces: 3},
+			{Name: "First", Engine: "Stub", OnDone: "Second", OnStuck: "First", OnReroute: "Third", Segment: "seg", MaxBounces: 3, SkipTo: "Third", BlockPath: "Outer/Inner"},
 			{Name: "Second", Engine: "Stub"},
 			{Name: "Third", Engine: "Stub"},
 		},
@@ -36,10 +36,10 @@ func TestBuild_RowsCarryRoutingInRecipeOrder(t *testing.T) {
 	for i, row := range r.Producers {
 		def := defs[i]
 		if def.Name != row.Name || def.OnDone != row.OnDone || def.OnStuck != row.OnStuck || def.OnReroute != row.OnReroute ||
-			def.Segment != row.Segment || def.MaxBounces != row.MaxBounces {
-			t.Errorf("defs[%d] = {%q %q %q %q %q %d}; want row {%q %q %q %q %q %d}", i,
-				def.Name, def.OnDone, def.OnStuck, def.OnReroute, def.Segment, def.MaxBounces,
-				row.Name, row.OnDone, row.OnStuck, row.OnReroute, row.Segment, row.MaxBounces)
+			def.Segment != row.Segment || def.MaxBounces != row.MaxBounces || def.SkipTo != row.SkipTo || def.Block != row.BlockPath {
+			t.Errorf("defs[%d] = {%q %q %q %q %q %d %q %q}; want row {%q %q %q %q %q %d %q %q}", i,
+				def.Name, def.OnDone, def.OnStuck, def.OnReroute, def.Segment, def.MaxBounces, def.SkipTo, def.Block,
+				row.Name, row.OnDone, row.OnStuck, row.OnReroute, row.Segment, row.MaxBounces, row.SkipTo, row.BlockPath)
 		}
 		if def.Producer == nil {
 			t.Errorf("defs[%d].Producer = nil; want non-nil", i)
@@ -55,10 +55,24 @@ func TestBuild_Errors(t *testing.T) {
 	tests := []struct {
 		name string
 		rows []Row
+		// contract is the recipe's Contract.
+		contract string
 		// fullEnv selects envkit.FullEnv over a zero shedrecipe.Env.
 		fullEnv  bool
 		wantSubs []string
 	}{
+		{
+			name:     "block row naming no block gate check",
+			rows:     []Row{{Name: "Blk", Engine: shedrecipe.EngineBlock, Block: "sub", BlockGate: "no-such-check"}},
+			wantSubs: []string{"producer 0", "Blk", "no-such-check", "way forward", shedrecipe.BlockGateAlways},
+		},
+		{
+			// The contract is loom to prove the not-expanded refusal wins over the contract check.
+			name:     "block row that was never expanded",
+			rows:     []Row{{Name: "Raw-Block", Block: "sub", BlockGate: shedrecipe.BlockGateAlways}},
+			contract: "loom",
+			wantSubs: []string{"producer 0", "Raw-Block", "block row is not expanded", "way forward: expand the recipe with shedbuild.Expand"},
+		},
 		{
 			name:     "no producers",
 			wantSubs: []string{"shedbuild: "},
@@ -112,7 +126,7 @@ func TestBuild_Errors(t *testing.T) {
 				env = envkit.FullEnv(t)
 			}
 
-			_, err := Build(Recipe{Producers: tt.rows}, env)
+			_, err := Build(Recipe{Contract: tt.contract, Producers: tt.rows}, env)
 			if err == nil {
 				t.Fatal("Build() error = nil; want non-nil")
 			}

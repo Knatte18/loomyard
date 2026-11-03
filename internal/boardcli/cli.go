@@ -494,16 +494,16 @@ Optional fields:
   "status"     string — lifecycle status
   "kind"       string — "task", "note" or "project", default "note"
   "labels"     array  — replaces the list; a task needs a type label, a note exactly one
-  "recipe"    string — "darn" or "tapestry", or default_recipe
+  "recipe"    string — "darn", "tapestry" or "arras", or default_recipe
   "priority"   string — a note's "high", "normal" or "low"; "normal" clears it
   "short_name" string — display label; falls back to the slug
-  "issues"     array  — the hub's issue numbers
+  "issues"     array  — hub issue numbers
   "created"    string — RFC 3339 creation
   "revised"    string — RFC 3339 scope change
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
   "profile"    string — a "lym board profiles" name; "" clears it
   "pull_request" string — "on" or "off" overrides beam.yaml; "" clears it
-  "notify_on_land" bool — a line to the orch once the run lands
+  "notify_on_land" bool — tell the orch when the run lands
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs, in order

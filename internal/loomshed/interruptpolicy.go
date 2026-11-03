@@ -65,6 +65,9 @@ var InterruptPolicies = map[string]string{
 	NamePartsWrite:     shedverbs.InterruptPolicyReinvoke,
 	NamePartsPlanWrite: shedverbs.InterruptPolicyReinvoke,
 
+	// The Motif producer returns Done at once, so re-invoking it repeats nothing.
+	NameMotif: shedverbs.InterruptPolicyReinvoke,
+
 	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
 	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,
 }

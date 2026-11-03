@@ -36,6 +36,20 @@ func outcomeSequence(outcomes ...Outcome) *funcProducer {
 	}
 }
 
+// blockShapedList returns a list shaped like an expanded block: the block row "Blk" gated by outer, whose Done enters "In1" and whose skip routes to "Exit";
+// the inlined rows "In1" and "In2" in block "B"; the inner block row "Inner" in block "B" gated by inner, whose skip routes to "Exit"; and the awaiting row "Exit".
+func blockShapedList(outer, inner *fakeGate) (producers []ProducerDef, in1, in2, exit *funcProducer) {
+	in1, in2, exit = fixedOutcomeProducer(Done, ""), fixedOutcomeProducer(Done, ""), outcomeSequence(Awaiting)
+	producers = []ProducerDef{
+		{Name: "Blk", Producer: fixedOutcomeProducer(Done, ""), OnDone: "In1", SkipTo: "Exit", EntryGate: outer.evaluate},
+		{Name: "In1", Producer: in1, OnDone: "Inner", Block: "B"},
+		{Name: "Inner", Producer: fixedOutcomeProducer(Done, ""), OnDone: "In2", SkipTo: "Exit", Block: "B", EntryGate: inner.evaluate},
+		{Name: "In2", Producer: in2, OnDone: "Exit", Block: "B/Inner"},
+		{Name: "Exit", Producer: exit},
+	}
+	return producers, in1, in2, exit
+}
+
 func TestStep_EntryGate(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -180,6 +194,57 @@ func TestStep_EntryGate(t *testing.T) {
 		}
 		if on.calls != 1 || a.calls != 2 {
 			t.Errorf("gate calls, calls A = %d, %d; want 1, 2", on.calls, a.calls)
+		}
+	})
+
+	t.Run("a false gate on a block row routes to its skip target and records no inlined row", func(t *testing.T) {
+		t.Parallel()
+		shed, statusPath, _, statusLockPath := newTestShed(t)
+		outer := &fakeGate{reason: "block off"}
+		var in1, exit *funcProducer
+		shed.Producers, in1, _, exit = blockShapedList(outer, &fakeGate{holds: true})
+		seedStatus(t, statusPath, statusLockPath, commonSeed("Blk"))
+
+		res := step(t, shed)
+		if in1.calls != 0 || exit.calls != 1 || len(res.History) != 2 {
+			t.Fatalf("calls In1, Exit = %d, %d, History = %+v; want 0, 1 and the skip plus Exit's verdict", in1.calls, exit.calls, res.History)
+		}
+		if skipped := res.History[0]; skipped.Producer != "Blk" || skipped.Outcome != OutcomeSkipped || skipped.Reason != "block off" || skipped.Block != "" {
+			t.Errorf("History[0] = %+v; want Blk skipped with the gate's reason and no block", skipped)
+		}
+		if res.History[1].Producer != "Exit" {
+			t.Errorf("History[1].Producer = %q; want Exit, the skip target, not the first inlined row", res.History[1].Producer)
+		}
+	})
+
+	t.Run("a holding block gate enters the block and the inlined row's entry carries the block path", func(t *testing.T) {
+		t.Parallel()
+		shed, statusPath, _, statusLockPath := newTestShed(t)
+		shed.Producers, _, _, _ = blockShapedList(&fakeGate{holds: true}, &fakeGate{holds: true})
+		seedStatus(t, statusPath, statusLockPath, commonSeed("Blk"))
+
+		step(t, shed)
+		res := step(t, shed)
+		if len(res.History) != 2 || res.History[0].Producer != "Blk" || res.History[0].Block != "" || res.History[1].Producer != "In1" || res.History[1].Block != "B" {
+			t.Errorf("History = %+v; want Blk's Done with no block, then In1's with block B", res.History)
+		}
+	})
+
+	t.Run("a false gate on an inner block row routes to the exit and its skipped entry carries the enclosing block", func(t *testing.T) {
+		t.Parallel()
+		shed, statusPath, _, statusLockPath := newTestShed(t)
+		var in2, exit *funcProducer
+		shed.Producers, _, in2, exit = blockShapedList(&fakeGate{holds: true}, &fakeGate{reason: "inner off"})
+		seedStatus(t, statusPath, statusLockPath, commonSeed("Blk"))
+
+		step(t, shed)
+		step(t, shed)
+		res := step(t, shed)
+		if in2.calls != 0 || exit.calls != 1 || len(res.History) != 4 {
+			t.Fatalf("calls In2, Exit = %d, %d, History = %+v; want 0, 1 and four entries", in2.calls, exit.calls, res.History)
+		}
+		if skipped := res.History[2]; skipped.Producer != "Inner" || skipped.Outcome != OutcomeSkipped || skipped.Reason != "inner off" || skipped.Block != "B" {
+			t.Errorf("History[2] = %+v; want Inner skipped with block B", skipped)
 		}
 	})
 

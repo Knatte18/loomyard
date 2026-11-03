@@ -1,12 +1,10 @@
 // finalizerow.go answers whether a row of the embedded tapestry and darn recipes is the Finalize row.
+// It reads each recipe through parseEmbeddedRecipe, so the rows are the expanded ones.
 
 package loomrecipe
 
 import (
-	"fmt"
-
-	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // finalizeEngine is the recipe engine name the Finalize row carries.
@@ -16,10 +14,10 @@ const finalizeEngine = "Finalize"
 // The row is identified by its engine, never its name; an unknown name is false.
 // A recipe parse failure is a `loomrecipe:`-prefixed error.
 func IsFinalizeRow(row string) (bool, error) {
-	for _, source := range [][]byte{recipes.TapestryRecipe, recipes.DarnRecipe} {
-		recipe, err := shedbuild.Parse(source)
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
-			return false, fmt.Errorf("loomrecipe: IsFinalizeRow: %w", err)
+			return false, err
 		}
 		for _, r := range recipe.Producers {
 			if r.Name == row {

@@ -361,6 +361,7 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 			RoutedTo:        routedTo,
 			GenerationStart: outcome == Stuck && output.GenerationStart,
 			Machine:         s.Machine,
+			Block:           def.Block,
 		})
 	}
 

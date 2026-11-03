@@ -134,6 +134,20 @@ func TestShed_Validate(t *testing.T) {
 			wantErr: "OnDone \"No-Such-Producer\" naming no producer in the list",
 		},
 		{
+			name: "SkipTo names no producer in the list",
+			mutate: func(s *Shed) {
+				s.Producers[0].SkipTo = "No-Such-Producer"
+			},
+			wantErr: "SkipTo \"No-Such-Producer\" naming no producer in the list",
+		},
+		{
+			name: "SkipTo naming a later producer is accepted",
+			mutate: func(s *Shed) {
+				s.Producers[0].SkipTo = s.Producers[1].Name
+			},
+			wantErr: "",
+		},
+		{
 			name: "OnDone naming a later producer is accepted",
 			mutate: func(s *Shed) {
 				s.Producers[0].OnDone = s.Producers[1].Name

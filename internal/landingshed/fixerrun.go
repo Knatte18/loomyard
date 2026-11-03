@@ -22,7 +22,7 @@ import (
 // LandingStopPrefix opens the reason of every halt a landing row hands back to the orch, so the hand-back predicate finds it.
 const LandingStopPrefix = "landing stop: "
 
-// EscalateStopPrefix opens the reason of a tapestry, darn or sampler merge fixer's escalate halt, which goes to the arbiter first and is no hand-back.
+// EscalateStopPrefix opens the reason of a tapestry, arras, darn or sampler merge fixer's escalate halt, which goes to the arbiter first and is no hand-back.
 const EscalateStopPrefix = "landing escalate: "
 
 // fixerGateName labels the fixer session's one gate entry.
@@ -309,7 +309,7 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 }
 
 // haltReason words the halt a run that did not end fixed ends the row with.
-// Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward, and is one line.
+// Every reason except a tapestry, arras, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward, and is one line.
 // An escalate end with escalateJudgedFirst true opens with EscalateStopPrefix instead and names the decision verb as its way forward;
 // with it false the way forward is the conflict settled on the task branch, since a pawl run refuses the decision verb.
 func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {

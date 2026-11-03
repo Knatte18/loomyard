@@ -38,7 +38,7 @@
 
 ## Shed and loom
 
-- `PATTERN-shed-recipe-registry` — Adding producer or recipe row: one `Constructor` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a row off by one config key its `entry_gate`, one whose off reads more its own call. — [background](pattern/PATTERN-shed-recipe-registry.md)
+- `PATTERN-shed-recipe-registry` — Adding producer, recipe row or block gate: one `Constructor` or `BlockGates` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a row off by one config key its `entry_gate`, one whose off reads more its own call. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-loom-contract` — Adding a loom recipe: it declares `contract: loom`, checked by Shed's recipe loader; `lym loom` verbs serve loom runs only; a verb for some loom recipes refuses on others by the recipe's rows, never its name.
 - `PATTERN-project-record` — Changing a beam project's scope once its pawl run passed Preflight: only `lym loom decision add <beam-slug>` on its project record, never a board body edit; a member reads the record from the beam's worktree, never writes it.
 - `PATTERN-pull-request-mode` — Deciding whether a landing goes through a pull request: only landingshed's one resolver, from the receiving `beam.pull_request`, the entry's `pull_request`, the parent's GitHub rules, the origin and task commits past the parent; no run setting carries it; a yes merges on GitHub.

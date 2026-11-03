@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"gopkg.in/yaml.v3"
 )
 
@@ -110,17 +111,64 @@ func checkRowShape(i int, row Row, seen map[string]int) error {
 	if row.Name == "" {
 		return fmt.Errorf("shedbuild: producer %d: name must not be empty", i)
 	}
-	if row.Engine == "" {
-		return fmt.Errorf("shedbuild: producer %d %q: engine must not be empty", i, row.Name)
-	}
-	if row.MaxBounces < 0 {
-		return fmt.Errorf("shedbuild: producer %d %q: max_bounces must not be negative, got %d", i, row.Name, row.MaxBounces)
+	if row.Block != "" || row.BlockGate != "" {
+		if err := checkBlockRowShape(i, row); err != nil {
+			return err
+		}
+	} else {
+		if row.Engine == shedrecipe.EngineBlock {
+			return fmt.Errorf("shedbuild: producer %d %q: engine %s is reserved for block rows; way forward: write the row as a block row with block and block_gate", i, row.Name, shedrecipe.EngineBlock)
+		}
+		if row.Engine == "" {
+			return fmt.Errorf("shedbuild: producer %d %q: engine must not be empty", i, row.Name)
+		}
+		if row.MaxBounces < 0 {
+			return fmt.Errorf("shedbuild: producer %d %q: max_bounces must not be negative, got %d", i, row.Name, row.MaxBounces)
+		}
 	}
 	if earlier, ok := seen[row.Name]; ok {
 		return fmt.Errorf("shedbuild: producer %d %q: duplicate name, already defined by producer %d", i, row.Name, earlier)
 	}
 	if _, err := parseEntryGate(row); err != nil {
 		return err
+	}
+	return nil
+}
+
+// checkBlockRowShape runs the shape checks of a block row at index i: it carries only name, block, block_gate and on_done, and needs both block and block_gate.
+// Whether its on_done is set, and whether the recipe block names exists, is judged by Expand.
+func checkBlockRowShape(i int, row Row) error {
+	var set []string
+	for _, key := range []struct {
+		name string
+		set  bool
+	}{
+		{"engine", row.Engine != ""},
+		{"config", row.Config != nil},
+		{"on_stuck", row.OnStuck != ""},
+		{"on_reroute", row.OnReroute != ""},
+		{"segment", row.Segment != ""},
+		{"max_bounces", row.MaxBounces != 0},
+		{"entry_gate", len(row.EntryGate) > 0},
+	} {
+		if key.set {
+			set = append(set, key.name)
+		}
+	}
+	if len(set) > 0 {
+		keys := strings.Join(set, ", ")
+		return fmt.Errorf("shedbuild: producer %d %q: a block row carries only name, block, block_gate and on_done, and sets %s; way forward: remove %s, since the block's rows carry their own", i, row.Name, keys, keys)
+	}
+	for _, key := range []struct {
+		name  string
+		value string
+	}{
+		{"block", row.Block},
+		{"block_gate", row.BlockGate},
+	} {
+		if key.value == "" {
+			return fmt.Errorf("shedbuild: producer %d %q: a block row needs %s; way forward: set %s, block_gate naming one of the shipped checks", i, row.Name, key.name, key.name)
+		}
 	}
 	return nil
 }

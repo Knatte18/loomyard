@@ -37,6 +37,7 @@ func gotoShed(t *testing.T) (*Shed, *funcProducer, *funcProducer) {
 func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	tiergate.Require(t, 0)
 	shed, _, _ := gotoShed(t)
+	shed.Producers[0].Block = "Outer"
 	seed := commonSeed("B")
 	seed.State = StateBlocked
 	seed.Error = "stuck on B"
@@ -68,8 +69,8 @@ func TestGoto_MovesBlockedRunToTarget(t *testing.T) {
 	if got.Error != "" || got.Transient != "" || got.PauseRequested || got.PauseBefore != "" || got.PauseAfter != "" {
 		t.Errorf("Error, Transient, PauseRequested, PauseBefore, PauseAfter = %q, %q, %v, %q, %q; want all cleared", got.Error, got.Transient, got.PauseRequested, got.PauseBefore, got.PauseAfter)
 	}
-	if len(got.History) != 1 || got.History[0].Producer != "A" || got.History[0].Outcome != OutcomeGoto {
-		t.Fatalf("History = %+v; want one goto entry for A", got.History)
+	if len(got.History) != 1 || got.History[0].Producer != "A" || got.History[0].Outcome != OutcomeGoto || got.History[0].Block != "Outer" {
+		t.Fatalf("History = %+v; want one goto entry for A carrying block Outer", got.History)
 	}
 	assertRFC3339UTC(t, got.History[0].At)
 	if got.Activity.Now != "A" || got.Activity.Last != "A → goto" {
@@ -532,27 +533,40 @@ func TestGoto_RunningRunRefusedUntilPaused(t *testing.T) {
 }
 
 // TestGoto_BlockedRunAdmitsOnlyEarlierRows pins which rows a blocked run's goto refuses and admits, relative to the row it is blocked at: forward rows are refused, the row itself, an earlier row and an offshoot's partner are admitted.
-// A row removed from the list falls back to the latest history entry's successor.
+// A row removed from the list falls back to the latest history entry's successor, which after a skip is the skip target.
 func TestGoto_BlockedRunAdmitsOnlyEarlierRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
+	// blockProducers is shaped like an expanded block: a block row whose skip jumps past its inlined row to the exit.
+	blockProducers := []ProducerDef{
+		{Name: "Blk", OnDone: "In1", SkipTo: "Exit"},
+		{Name: "In1", OnDone: "Exit", Block: "Blk"},
+		{Name: "Exit"},
+	}
 	tests := []struct {
 		name    string
 		current string
 		history []HistoryEntry
-		refuse  []string
-		admit   []string
+		// producers is the list the run is over; nil means tailProducers.
+		producers []ProducerDef
+		refuse    []string
+		admit     []string
 	}{
-		{"blocked at a bouncer refuses forward rows", "Webster-Bouncer", nil, []string{"Describe", "Publish"}, []string{"Webster-Bouncer", "Webster"}},
-		{"blocked at an offshoot admits the partner, not the successor", "PR-Rework", nil, []string{"Finalize"}, []string{"PR-Gate"}},
-		{"removed current row uses the latest history entry", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: Done}}, []string{"Describe"}, []string{"Webster-Bouncer"}},
-		{"removed current row uses the latest reroute entry's target", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: OutcomeReroute, RoutedTo: "Finalize"}}, []string{"Describe"}, []string{"Finalize"}},
-		{"removed current row with an empty history admits only the first row", "Removed", nil, []string{"Webster-Bouncer"}, []string{"Webster"}},
+		{"blocked at a bouncer refuses forward rows", "Webster-Bouncer", nil, nil, []string{"Describe", "Publish"}, []string{"Webster-Bouncer", "Webster"}},
+		{"blocked at an offshoot admits the partner, not the successor", "PR-Rework", nil, nil, []string{"Finalize"}, []string{"PR-Gate"}},
+		{"removed current row uses the latest history entry", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: Done}}, nil, []string{"Describe"}, []string{"Webster-Bouncer"}},
+		{"removed current row uses the latest reroute entry's target", "Removed", []HistoryEntry{{Producer: "Webster", Outcome: OutcomeReroute, RoutedTo: "Finalize"}}, nil, []string{"Describe"}, []string{"Finalize"}},
+		{"removed current row with an empty history admits only the first row", "Removed", nil, nil, []string{"Webster-Bouncer"}, []string{"Webster"}},
+		{"removed current row after a skipped block row admits the skip target, not the block's first row", "Removed", []HistoryEntry{{Producer: "Blk", Outcome: OutcomeSkipped}}, blockProducers, []string{"In1"}, []string{"Exit"}},
+		{"blocked at the exit after a pass-over admits an inlined row of the block", "Exit", []HistoryEntry{{Producer: "Blk", Outcome: OutcomeSkipped}}, blockProducers, nil, []string{"In1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			shed := tailShed(t, tt.current, StateBlocked, tt.history)
+			if tt.producers != nil {
+				shed.Producers = tt.producers
+			}
 			for _, target := range tt.refuse {
 				assertGotoRefused(t, shed, target)
 			}
@@ -631,6 +645,14 @@ func TestRelaunch(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "target entry carries the target row's block", seed: seedWith(StateBlocked, "B"), target: "A", wantAdmits: 1,
+			check: func(t *testing.T, got Status) {
+				if len(got.History) != 1 || got.History[0].Block != "Outer" {
+					t.Errorf("History = %+v; want one goto entry carrying block Outer", got.History)
+				}
+			},
+		},
 		{name: "no target writes the status unchanged, the entered row included", seed: enteredSeed(StateBlocked, "B", "B"), wantAdmits: 1},
 		{name: "target in effect writes the status unchanged, the entered row included", seed: enteredSeed(StateBlocked, "B", "B"), target: "A", admitInEffect: true, wantAdmits: 1},
 	}
@@ -638,6 +660,7 @@ func TestRelaunch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			shed, _, _ := gotoShed(t)
+			shed.Producers[0].Block = "Outer"
 			var before Status
 			if tt.seed != nil {
 				seedStatus(t, shed.StatusPath, shed.StatusLockPath, *tt.seed)

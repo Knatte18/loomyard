@@ -1,12 +1,10 @@
 // bouncerrows.go answers which of the embedded tapestry and darn recipes' rows is a Bouncer and where its run directory lives.
+// It reads each recipe through parseEmbeddedRecipe, so the rows are the expanded ones.
 
 package loomrecipe
 
 import (
-	"fmt"
-
-	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // bouncerEngine is the recipe engine name a Bouncer row carries.
@@ -16,10 +14,10 @@ const bouncerEngine = "Bouncer"
 // The bool is false for any other row and for an unknown name.
 // A recipe parse failure is a `loomrecipe:`-prefixed error.
 func BouncerRunSubdir(row string) (string, bool, error) {
-	for _, source := range [][]byte{recipes.TapestryRecipe, recipes.DarnRecipe} {
-		recipe, err := shedbuild.Parse(source)
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
-			return "", false, fmt.Errorf("loomrecipe: BouncerRunSubdir: %w", err)
+			return "", false, err
 		}
 		for _, r := range recipe.Producers {
 			if r.Name != row {

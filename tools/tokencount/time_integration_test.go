@@ -251,7 +251,7 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-no-sleep", "-last", "1"}, &defaulted, readsFor(false)); err != nil {
 		t.Fatalf("run with no slugs: %v", err)
 	}
-	wantHeader := " for the 1 most recent finished tapestry and darn runs: full.\n" + sleepOffLine + "Skipped 2 runs that are not finished tapestry or darn runs: done, live.\n\n"
+	wantHeader := " for the 1 most recent finished tapestry, darn and arras runs: full.\n" + sleepOffLine + "Skipped 2 runs that are not finished tapestry, darn or arras runs: done, live.\n\n"
 	if !strings.Contains(defaulted.String(), wantHeader) {
 		t.Errorf("default report header lacks %q:\n%s", wantHeader, defaulted.String())
 	}
@@ -265,14 +265,14 @@ func TestRunReadsArchivedShedStatus(t *testing.T) {
 	if err := run([]string{"-hub", hub, "-" + repositoryFlag, records, "-code", code, "-no-sleep", "-last", "1", "-since", "2026-01-01"}, &sinceReport, readsFor(false)); err != nil {
 		t.Fatalf("run with -since: %v", err)
 	}
-	wantSinceHeader := " for the 1 finished tapestry and darn runs active since 2026-01-01: full.\n" + sleepOffLine + "Skipped 3 runs that are not finished tapestry or darn runs: done, live, solo.\n\n"
+	wantSinceHeader := " for the 1 finished tapestry, darn and arras runs active since 2026-01-01: full.\n" + sleepOffLine + "Skipped 3 runs that are not finished tapestry, darn or arras runs: done, live, solo.\n\n"
 	if !strings.Contains(sinceReport.String(), wantSinceHeader) {
 		t.Errorf("-since report header lacks %q:\n%s", wantSinceHeader, sinceReport.String())
 	}
 
 	emptyHub := t.TempDir()
 	err = run([]string{"-hub", emptyHub, "-" + repositoryFlag, records}, &defaulted, readsFor(false))
-	wantErr := "no finished tapestry or darn runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
+	wantErr := "no finished tapestry, darn or arras runs of " + emptyHub + " from engines " + fakeEngine + "; name the slugs to count a partial run"
 	if err == nil || err.Error() != wantErr {
 		t.Errorf("run with no finished run = %v; want %q", err, wantErr)
 	}

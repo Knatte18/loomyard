@@ -36,7 +36,7 @@ const OutcomeGoto Outcome = "goto"
 const OutcomeReroute Outcome = "reroute"
 
 // OutcomeSkipped is a history-only Outcome, written when a row's EntryGate does not hold and never returned by a producer.
-// A skipped entry carries the gate's reason, routes by the row's OnDone as a Done does, spends no bounce budget and ends the row's bounce-budget episode as a Done does.
+// A skipped entry carries the gate's reason, routes by the row's SkipTo when set and by its OnDone otherwise, spends no bounce budget and ends the row's bounce-budget episode as a Done does.
 const OutcomeSkipped Outcome = "skipped"
 
 // EntryGate decides whether a row runs when the run enters it.
@@ -113,6 +113,23 @@ type ProducerDef struct {
 	// never "no bounces allowed".
 	MaxBounces int
 	// EntryGate is evaluated when the run enters the row; nil is an ungated row that always runs.
-	// A gate that does not hold skips the row through OnDone.
+	// A gate that does not hold skips the row through SkipTo when set and through OnDone otherwise.
 	EntryGate EntryGate
+	// SkipTo is the row a skipped entry of this row routes to; "" means the row skips by OnDone.
+	// A row whose skip must jump past the rows its Done enters, such as the row that opens a block, sets it.
+	// It must name a producer in the list.
+	SkipTo string
+	// Block is the row's block path: the names of the block rows enclosing it, outermost first, joined by "/".
+	// "" is a row outside every block.
+	// Shed only copies it onto the history entries the row writes.
+	Block string
+}
+
+// skipTarget returns the row a skip of d routes to: SkipTo when set, OnDone otherwise.
+// It is the one place a skip's route is read.
+func (d ProducerDef) skipTarget() string {
+	if d.SkipTo != "" {
+		return d.SkipTo
+	}
+	return d.OnDone
 }

@@ -66,6 +66,14 @@
 // a row without the key, and a setting holding anything but one implementer name, refuse when the recipe builds.
 // contracts/specs/implementer-spec.md pins what every implementer takes in and delivers.
 //
+// # The Block row
+//
+// The Block entry builds the row a recipe's block row becomes once its sub-recipe is expanded into it.
+// It takes no Config key and reads no Env field; its producer returns Done at once, so the row's Done marks the run entering the block.
+// Whether the block runs is the row's entry gate, built from a block gate check.
+// BlockGates is the closed table of those checks, reached only through LookupBlockGate and BlockGateNames, and its one check is `always`, which holds with an empty reason.
+// A name the table lacks is refused with the names it holds, and a new check is a row of the table, never code per recipe.
+//
 // # The PRReview row
 //
 // The PRReview entry builds the PR-Review row over a copy of the run's landing deps.

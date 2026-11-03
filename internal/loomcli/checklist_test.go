@@ -94,6 +94,23 @@ var reviewRecipe = []loomrecipe.RecipeRow{
 	{Name: "PR-Rework", Segment: "PR"},
 }
 
+// motifRecipe is the shape of arras's expanded rows around its Motif block: the block row, then the block's Discussion rows, one of them a review segment, then the row the block exits to.
+var motifRecipe = []loomrecipe.RecipeRow{
+	{Name: "Preflight"},
+	{Name: "Motif", IsBlock: true, SkipTo: "Drift-Baseline"},
+	{Name: "Discussion-Write", BlockPath: "Motif"},
+	{Name: "Discussion-Bouncer", Segment: "Discussion-Review", OnStuck: "Discussion-Burler-Review", Bouncer: true, BlockPath: "Motif"},
+	{Name: "Discussion-Burler-Review", Segment: "Discussion-Review", OnStuck: "Discussion-Burler-Fix", BlockPath: "Motif"},
+	{Name: "Discussion-Burler-Fix", Segment: "Discussion-Review", OnStuck: "Discussion-Bouncer", BlockPath: "Motif"},
+	{Name: "Drift-Baseline"},
+}
+
+// inBlock returns entry as written by a row of the block path block.
+func inBlock(entry shedengine.HistoryEntry, block string) shedengine.HistoryEntry {
+	entry.Block = block
+	return entry
+}
+
 // bouncedEntry is the Rev-Bouncer entry at the given minute that bounced the run to the review row.
 func bouncedEntry(atMinute int) shedengine.HistoryEntry {
 	return stuckEntry("Rev-Bouncer", atMinute, "Rev-Review")
@@ -1073,6 +1090,43 @@ func TestRenderChecklist(t *testing.T) {
 			want: []string{
 				"recipe unreadable",
 				"  10:00 5m00s Plan done", "  10:05 arbiter attempt 1 resume", "  10:05 2m Plan running",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name: "a block row's Done reads entered, an inlined row and a review segment of the block are named in it, and each visit line names its row in the block",
+			rows: motifRecipe,
+			poll: checklistStatus(shedengine.StateRunning, "Drift-Baseline",
+				doneEntry("Preflight", 1), doneEntry("Motif", 2),
+				inBlock(doneEntry("Discussion-Write", 5), "Motif"),
+				inBlock(stuckEntry("Discussion-Bouncer", 6, "Discussion-Burler-Review"), "Motif"),
+				inBlock(roundEntry("Discussion-Burler-Review", 10, 1, "review"), "Motif"),
+				inBlock(roundEntry("Discussion-Burler-Fix", 15, 1, "fixer-report"), "Motif"),
+				inBlock(doneEntry("Discussion-Bouncer", 16), "Motif")),
+			nowMin: 20,
+			want: []string{
+				"[x] 1. Preflight 1m00s", "  10:00 1m00s done",
+				"[x] 2. Motif 1m00s", "  10:01 1m00s entered",
+				"[x] 3. Discussion-Write in Motif 3m00s", "  10:02 3m00s done",
+				"[x] 4. Discussion-Review in Motif 11m00s rounds 1",
+				"  round 1 10m00s",
+				"    10:05 1m00s Discussion-Bouncer in Motif bounced",
+				"    10:06 4m00s Discussion-Burler-Review in Motif done",
+				"    10:10 5m00s Discussion-Burler-Fix in Motif done",
+				"  10:15 1m00s Discussion-Bouncer in Motif done",
+				"[>] 5. Drift-Baseline 4m", "  10:16 4m running",
+				"loom running | now working", "waiting on nothing",
+			},
+		},
+		{
+			name:    "with the recipe unreadable a visit line of an inlined row names the row in its block and a block row's Done reads as stored",
+			rowsErr: errors.New("no seed is recorded"),
+			poll: checklistStatus(shedengine.StateRunning, "Drift-Baseline",
+				doneEntry("Motif", 1), inBlock(doneEntry("Discussion-Write", 5), "Motif")),
+			nowMin: 7,
+			want: []string{
+				"recipe unreadable",
+				"  10:00 1m00s Motif done", "  10:01 4m00s Discussion-Write in Motif done", "  10:05 2m Drift-Baseline running",
 				"loom running | now working", "waiting on nothing",
 			},
 		},

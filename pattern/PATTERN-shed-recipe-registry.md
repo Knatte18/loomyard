@@ -13,6 +13,10 @@ A recipe row's value is looked up by key, never carried as a field of its own on
 - A row's `entry_gate` reads the same two sources and no other: a `module.key` operand through `Env.Setting`, and a `budget.<Segment>` operand as that segment's resolved `MaxBounces`.
 - A row never gets its own `Env` field.
 
+## Block gates
+
+A block row's gate check is a row of the `BlockGates` map in `internal/shedrecipe`, reached through `LookupBlockGate`, and never code per recipe.
+
 ## Command rows
 
 A side-action row added to a recipe is a `Command` row over config keys.

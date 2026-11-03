@@ -110,7 +110,9 @@
 // A ProducerDef may carry an EntryGate, a function that answers whether the row runs, the check's text with the values it read, and an evaluation error; nil is an ungated row.
 // Shed evaluates a gated row when the run enters it, after the step's pause checks and before the resume write.
 // A holding gate records the row in the status file's entered_row and the row is called.
-// A gate that does not hold appends a history entry with outcome OutcomeSkipped and the gate's text in reason, and routes by the row's OnDone as a Done does; it spends no bounce budget and ends the row's episode as a Done does.
+// A gate that does not hold appends a history entry with outcome OutcomeSkipped and the gate's text in reason, and routes by the row's SkipTo when set and by its OnDone otherwise; it spends no bounce budget and ends the row's episode as a Done does.
+// SkipTo lets a skip jump past the rows a Done would enter, such as the rows of a block; it must name a producer in the list, and a goto's admission reads a skipped entry's routed row through it.
+// A row's Block is its block path, the enclosing block rows' names joined by "/", copied onto every history entry the row writes as block, and empty for a row outside every block.
 // The step then enters the row the skip routes to, so consecutive skips chain within one step.
 // A pause_before naming a row the skip chain reaches pauses the run before that row's gate is evaluated, or before an ungated row is called, so a setting changed during the pause decides the gate.
 // A pause_after naming a skipped row pauses the run at the row the skip routes to, with the reason "paused after <row>, as requested", and clears both conditions as a fired condition does.

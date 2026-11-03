@@ -27,7 +27,26 @@ func TestPrepareRunSettings(t *testing.T) {
 		settings    battenshed.RunSettings
 		wantDocs    map[string]string
 		wantStuck   []string
+		// like, when set, replaces wantDocs with the documents a task of these settings gets over the same profiles file.
+		like *battenshed.RunSettings
 	}{
+		{
+			name:     "an arras task naming no profile takes the template's tapestry default profile's tapestry block",
+			settings: battenshed.RunSettings{Recipe: "arras"},
+			like:     &battenshed.RunSettings{Recipe: "tapestry"},
+		},
+		{
+			name:        "an arras task naming light takes light's tapestry block",
+			profilesYML: profiles,
+			settings:    battenshed.RunSettings{Recipe: "arras", Profile: "light"},
+			like:        &battenshed.RunSettings{Recipe: "tapestry", Profile: "light"},
+		},
+		{
+			name:        "a task whose recipe names no embedded recipe and no profile writes the task's settings alone",
+			profilesYML: profiles,
+			settings:    battenshed.RunSettings{Recipe: "no-such-recipe", Settings: map[string]any{"darn": map[string]any{"verify_attempts": float64(1)}}},
+			wantDocs:    map[string]string{"darn": "verify_attempts: 1\n"},
+		},
 		{
 			name:        "no profile and no default for the recipe writes the task's settings alone",
 			profilesYML: profiles,
@@ -120,10 +139,21 @@ func TestPrepareRunSettings(t *testing.T) {
 			if err != nil {
 				t.Fatalf("prepareRunSettings() error = %v; want none", err)
 			}
-			if len(got) != len(tt.wantDocs) {
-				t.Fatalf("prepareRunSettings() = %v; want %d modules", got, len(tt.wantDocs))
+			wantDocs := tt.wantDocs
+			if tt.like != nil {
+				reference, err := prepareRunSettings(dirs, *tt.like)
+				if err != nil || len(reference) == 0 {
+					t.Fatalf("prepareRunSettings(%+v) = %v, %v; want documents and no error", *tt.like, reference, err)
+				}
+				wantDocs = map[string]string{}
+				for module, document := range reference {
+					wantDocs[module] = string(document)
+				}
 			}
-			for module, want := range tt.wantDocs {
+			if len(got) != len(wantDocs) {
+				t.Fatalf("prepareRunSettings() = %v; want %d modules", got, len(wantDocs))
+			}
+			for module, want := range wantDocs {
 				if string(got[module]) != want {
 					t.Errorf("document for %s = %q; want %q", module, got[module], want)
 				}

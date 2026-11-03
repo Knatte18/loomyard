@@ -62,7 +62,7 @@ func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
 	tiergate.Require(t, 0)
 	shed, statusPath, _, statusLockPath := newTestShed(t)
 	shed.Producers = []ProducerDef{
-		{Name: "A", Producer: scriptedRerouteProducer([]rerouteOutcome{callReroute}), OnReroute: "B"},
+		{Name: "A", Block: "Blk", Producer: scriptedRerouteProducer([]rerouteOutcome{callReroute}), OnReroute: "B"},
 		{Name: "B", Segment: "seg", Producer: fixedOutcomeProducer(Done, ""), OnStuck: "C"},
 		{Name: "C", Segment: "seg", Producer: fixedOutcomeProducer(Done, "")},
 	}
@@ -80,8 +80,8 @@ func TestStep_RerouteMovesToTargetAndEndsTargetSegmentEpisode(t *testing.T) {
 		t.Fatalf("Step Next/State = %q/%q, file %q/%q; want B/running", res.Next, res.State, got.CurrentProducer, got.State)
 	}
 	last := got.History[len(got.History)-1]
-	if last.Producer != "A" || last.Outcome != OutcomeReroute || last.RoutedTo != "B" || last.BudgetExempt {
-		t.Errorf("last history entry = %+v; want A's reroute entry routed to B, spending no budget", last)
+	if last.Producer != "A" || last.Outcome != OutcomeReroute || last.RoutedTo != "B" || last.BudgetExempt || last.Block != "Blk" {
+		t.Errorf("last history entry = %+v; want A's reroute entry routed to B, spending no budget, carrying block Blk", last)
 	}
 	assertRFC3339UTC(t, last.At)
 	if !reflect.DeepEqual(last.GateSpans, rerouteSpans) {

@@ -25,6 +25,7 @@ var writerIsTerminal = clihelp.WriterIsTerminal
 // "wait" when non-empty and the state is blocked, failed or awaiting; and "next" naming the
 // main-line steps still ahead, omitted when none remain.
 // A paused run with a recorded reason prints a "why" line after "last".
+// The "now" line names the current row's block when its routing definition carries one, and the "last" line reads a block row's Done as entered and names an inlined row's block.
 // A non-empty waiting note prints "waiting <note>" in the header in place of the state.
 func RenderStatusHuman(label, runID string, st shedengine.Status, routing shedengine.Routing, waiting string) string {
 	var b strings.Builder
@@ -50,12 +51,46 @@ func RenderStatusHuman(label, runID string, st shedengine.Status, routing sheden
 		remaining = p.Remaining
 	}
 
-	fmt.Fprintf(&b, "now  %s\n", st.Activity.Now)
+	now := st.Activity.Now
+	if def, inRouting := routingDef(routing, st.CurrentProducer); inRouting && def.Block != "" && st.State != shedengine.StateDone {
+		now += " in " + def.Block
+	}
+	fmt.Fprintf(&b, "now  %s\n", now)
+	st.Activity.Last = blockAwareLast(st, routing)
 	writeActivityTail(&b, st)
 	if len(remaining) > 0 {
 		fmt.Fprintf(&b, "next %s\n", strings.Join(remaining, ", "))
 	}
 	return b.String()
+}
+
+// routingDef returns the routing's definition of the row named name, and false when it holds none.
+func routingDef(routing shedengine.Routing, name string) (shedengine.ProducerDef, bool) {
+	for _, def := range routing.Producers {
+		if def.Name == name {
+			return def, true
+		}
+	}
+	return shedengine.ProducerDef{}, false
+}
+
+// blockAwareLast returns the status's "last" line read against its blocks.
+// A latest history entry that is a Done of a row whose routing definition carries a skip target, a block row, reads "<row> → entered";
+// one that carries a block names its row "<row> in <block>" in the activity's line.
+// Any other run keeps the activity's line as it is.
+func blockAwareLast(st shedengine.Status, routing shedengine.Routing) string {
+	last := st.Activity.Last
+	if len(st.History) == 0 {
+		return last
+	}
+	latest := st.History[len(st.History)-1]
+	if def, inRouting := routingDef(routing, latest.Producer); inRouting && latest.Outcome == shedengine.Done && def.SkipTo != "" {
+		return fmt.Sprintf("%s → entered", latest.Producer)
+	}
+	if latest.Block != "" && strings.HasPrefix(last, latest.Producer) {
+		return latest.Producer + " in " + latest.Block + strings.TrimPrefix(last, latest.Producer)
+	}
+	return last
 }
 
 // writeActivityTail writes the "last" line when non-empty, the "why" line when the run is paused with a recorded reason,

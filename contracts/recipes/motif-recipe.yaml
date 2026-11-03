@@ -1,0 +1,89 @@
+# motif-recipe.yaml is the recipe that makes a sketch, the decision record, from a task.
+# It is a block source only: the arras recipe runs it inline through its Motif block row, and no run is seeded with it.
+# Its rows are tapestry's Discussion rows, and internal/loomrecipe's TestBlockRecipes holds them equal to tapestry-recipe.yaml's.
+# Discussion-Bouncer sets no on_done: the block rewrites it to the block's exit.
+#
+# The recipe sets no contract, verify_source, amendment_target or profile_recipe: those belong to the run that holds the block.
+
+version: 1
+entry: Discussion-Write
+terminals:
+  - Discussion-Bouncer
+
+producers:
+  - name: Discussion-Write
+    engine: DiscussionWrite
+    on_done: Discussion-Bouncer
+    config:
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
+      # fixer names the setting holding the model-spec of a cold fixer that clears a failing
+      # discussion gate before the writer hears of it; an empty value turns the fixer off.
+      gates:
+        - name: discussion
+          attempts: 3
+          fixer: loom.discussion_gate_fixer
+
+  - name: Discussion-Bouncer
+    engine: Bouncer
+    segment: Discussion-Review
+    on_stuck: Discussion-Burler-Review
+    config:
+      run_subdir: discussion
+      subject: document
+      role_prefix: discussion
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      auto_accept_setting: loom.discussion_auto_accept
+      artifact_paths:
+        - _lym/discussion/decision-record.md
+        - _lym/discussion/support-log.md
+      rubric_stencil: loom-rubric-discussion-review
+      commit_seam: discussion
+      carry_over: Discussion-Review
+      escalate_decisions: true
+
+  - name: Discussion-Burler-Review
+    engine: BurlerReview
+    segment: Discussion-Review
+    on_stuck: Discussion-Burler-Fix
+    on_done: Discussion-Burler-Fix
+    config:
+      run_subdir: discussion
+      role_prefix: discussion
+      reviewer_fan_setting: loom.discussion_reviewer_fan
+      fixer_fan_setting: loom.discussion_fixer_fan
+      profile:
+        target:
+          paths:
+            - _lym/discussion/decision-record.md
+            - _lym/discussion/support-log.md
+        fasit:
+          instructions: >
+            The authority for this round is the rubric supplied in the prompt. The mechanical
+            section contract over the discussion artifact pair is already enforced by this round's
+            own gate over this round's own output, so re-deriving it here is duplicated work.
+        rubric_stencil: loom-rubric-discussion-review
+        fix-scope: overlay
+        tool-use: true
+
+  - name: Discussion-Burler-Fix
+    engine: BurlerFix
+    segment: Discussion-Review
+    on_stuck: Discussion-Bouncer
+    on_done: Discussion-Bouncer
+    config:
+      run_subdir: discussion
+      role_prefix: discussion
+      fixer_fan_setting: loom.discussion_fixer_fan
+      decisions_escalated: true
+      review_row: Discussion-Burler-Review
+      gates:
+        - name: discussion
+          attempts: 3
+      profile:
+        target:
+          paths:
+            - _lym/discussion/decision-record.md
+            - _lym/discussion/support-log.md
+        fix-scope: overlay

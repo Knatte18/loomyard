@@ -192,7 +192,7 @@ func TestNewTask(t *testing.T) {
 		}{
 			{"project pawl", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "pawl"}, nil},
 			{"project tapestry", map[string]any{"slug": "p", "kind": boardengine.KindProject, "labels": []string{"bug"}, "recipe": "tapestry"}, []string{`project "p"`, `recipe "tapestry"`, "pawl"}},
-			{"task pawl", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "recipe": "pawl"}, []string{`task "t"`, "tapestry, darn or sampler", "beam project"}},
+			{"task pawl", map[string]any{"slug": "t", "kind": boardengine.KindTask, "labels": []string{"bug"}, "recipe": "pawl"}, []string{`task "t"`, "tapestry, arras, darn or sampler", "beam project"}},
 		} {
 			_, err := boardengine.NewTask(tt.fields, 1)
 			if len(tt.wantErr) == 0 {

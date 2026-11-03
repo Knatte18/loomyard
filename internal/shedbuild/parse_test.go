@@ -101,6 +101,112 @@ producers:
 			},
 		},
 		{
+			name: "a well-formed block row decodes block and block_gate and may leave on_done empty",
+			yaml: blockRowYAML(""),
+			wantRecipe: &Recipe{
+				Version:   1,
+				Entry:     "Motif",
+				Terminals: []string{"done"},
+				Producers: []Row{
+					{Name: "Motif", Block: "motif", BlockGate: "always"},
+				},
+			},
+		},
+		{
+			name: "profile_recipe decodes into the field",
+			yaml: `
+version: 1
+entry: start
+profile_recipe: tapestry
+terminals: [done]
+producers:
+  - name: row1
+    engine: bouncer
+`,
+			wantRecipe: &Recipe{
+				Version:       1,
+				Entry:         "start",
+				ProfileRecipe: "tapestry",
+				Terminals:     []string{"done"},
+				Producers: []Row{
+					{Name: "row1", Engine: "bouncer"},
+				},
+			},
+		},
+		{
+			name:       "a block row setting engine is refused naming the key and the way forward",
+			yaml:       blockRowYAML("engine: bouncer"),
+			wantErrSub: `shedbuild: producer 0 "Motif": a block row carries only name, block, block_gate and on_done, and sets engine; way forward: remove engine, since the block's rows carry their own`,
+		},
+		{
+			name:       "a block row setting config is refused",
+			yaml:       blockRowYAML("config: {a: 1}"),
+			wantErrSub: `a block row carries only name, block, block_gate and on_done, and sets config; way forward: remove config,`,
+		},
+		{
+			name:       "a block row setting on_stuck is refused",
+			yaml:       blockRowYAML("on_stuck: row1"),
+			wantErrSub: `and sets on_stuck; way forward: remove on_stuck,`,
+		},
+		{
+			name:       "a block row setting on_reroute is refused",
+			yaml:       blockRowYAML("on_reroute: row1"),
+			wantErrSub: `and sets on_reroute; way forward: remove on_reroute,`,
+		},
+		{
+			name:       "a block row setting segment is refused",
+			yaml:       blockRowYAML("segment: seg"),
+			wantErrSub: `and sets segment; way forward: remove segment,`,
+		},
+		{
+			name:       "a block row setting max_bounces is refused",
+			yaml:       blockRowYAML("max_bounces: 2"),
+			wantErrSub: `and sets max_bounces; way forward: remove max_bounces,`,
+		},
+		{
+			name:       "a block row setting entry_gate is refused",
+			yaml:       blockRowYAML("entry_gate: loom.a"),
+			wantErrSub: `and sets entry_gate; way forward: remove entry_gate,`,
+		},
+		{
+			name: "a block row missing block is refused",
+			yaml: `version: 1
+entry: Motif
+terminals: [done]
+producers:
+  - name: Motif
+    block_gate: always
+`,
+			wantErrSub: `shedbuild: producer 0 "Motif": a block row needs block; way forward: set block, block_gate naming one of the shipped checks`,
+		},
+		{
+			name: "a block row missing block_gate is refused",
+			yaml: `version: 1
+entry: Motif
+terminals: [done]
+producers:
+  - name: Motif
+    block: motif
+`,
+			wantErrSub: `shedbuild: producer 0 "Motif": a block row needs block_gate; way forward: set block_gate, block_gate naming one of the shipped checks`,
+		},
+		{
+			name: "a hand-written engine Block is reserved for block rows",
+			yaml: `version: 1
+entry: row1
+terminals: [done]
+producers:
+  - name: row1
+    engine: Block
+`,
+			wantErrSub: `shedbuild: producer 0 "row1": engine Block is reserved for block rows; way forward: write the row as a block row with block and block_gate`,
+		},
+		{
+			name:       "block_path written in a file is refused as an unknown field",
+			yaml:       blockRowYAML("block_path: Outer"),
+			wantErrSub: "block_path",
+		},
+		{
 			name: "unknown contract is refused naming the key, the legal value and the way forward",
 			yaml: `
 version: 1
@@ -564,8 +670,32 @@ producers:
 			if !recipeEqual(got, *tt.wantRecipe) {
 				t.Errorf("Parse(%q) = %+v; want %+v", tt.name, got, *tt.wantRecipe)
 			}
+			if got.ProfileRecipe != tt.wantRecipe.ProfileRecipe {
+				t.Errorf("Parse(%q) ProfileRecipe = %q; want %q", tt.name, got.ProfileRecipe, tt.wantRecipe.ProfileRecipe)
+			}
+			for i, row := range got.Producers {
+				if want := tt.wantRecipe.Producers[i]; row.Block != want.Block || row.BlockGate != want.BlockGate {
+					t.Errorf("Parse(%q) row %d Block, BlockGate = %q, %q; want %q, %q", tt.name, i, row.Block, row.BlockGate, want.Block, want.BlockGate)
+				}
+			}
 		})
 	}
+}
+
+// blockRowYAML returns a one-row recipe whose row is a well-formed block row, with the extra line appended to the row when non-empty.
+func blockRowYAML(extra string) string {
+	yaml := `version: 1
+entry: Motif
+terminals: [done]
+producers:
+  - name: Motif
+    block: motif
+    block_gate: always
+`
+	if extra != "" {
+		yaml += "    " + extra + "\n"
+	}
+	return yaml
 }
 
 // recipeEqual reports whether two Recipe values are equal, including a nil-vs-empty distinction on

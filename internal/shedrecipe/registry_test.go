@@ -90,6 +90,7 @@ func TestNames(t *testing.T) {
 			"BeamDescribe",
 			"BeamDown",
 			"BeamUp",
+			"Block",
 			"Bouncer",
 			"BurlerFix",
 			"BurlerReview",

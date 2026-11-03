@@ -164,7 +164,7 @@ var LoomRubricDiscussionReview []byte
 //go:embed loom/loom-rubric-plan-review.md
 var LoomRubricPlanReview []byte
 
-// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the tapestry, darn and sampler recipes.
+// LoomRubricCodeReview is the Code-Review rubric, read by both rows of the Code-Review perch in the tapestry, arras, darn and sampler recipes.
 //
 //go:embed loom/loom-rubric-code-review.md
 var LoomRubricCodeReview []byte

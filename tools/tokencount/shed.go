@@ -138,11 +138,12 @@ func inFlight(hub, slug string) (bool, error) {
 }
 
 // countedRecipes are the recipes whose finished runs the default selection counts.
-var countedRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
+var countedRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeArras}
 
-// recipeList joins countedRecipes for a sentence, conjunction between them.
+// recipeList joins countedRecipes for a sentence: commas between all but the last two, the conjunction before the last.
 func recipeList(conjunction string) string {
-	return strings.Join(countedRecipes, " "+conjunction+" ")
+	last := len(countedRecipes) - 1
+	return strings.Join(countedRecipes[:last], ", ") + " " + conjunction + " " + countedRecipes[last]
 }
 
 // finishedRun reports whether the slug's latest run went through its whole lifecycle under one of countedRecipes:

@@ -259,12 +259,12 @@ github.com/Knatte18/loomyard/
 ├── internal/shedcheck/           authoring-time structural checker over an assembled OnDone/OnStuck producer graph
 ├── internal/loomcli/             loom's cobra module: the session bootstrap, arming `internal/shedverbs`' generic status and pause verb bodies, and mounting `internal/sheddriver` for `lym loom drive`
 ├── internal/loomshed/            loom's own row-name constants and producer constructors over `shedengine`
-├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, darn, pawl and sampler recipes from their embedded files
+├── internal/loomrecipe/          assembles the `*shedengine.Shed` of the tapestry, arras, darn, pawl and sampler recipes from their embedded files, and expands arras's `Motif` block from motif, the block source that makes a sketch, the decision record
 ├── internal/shedrecipe/          the engine registry — the name to `ShedProducer`-constructor mapping a recipe loader resolves each row's `Engine` against
 ├── internal/shedbuild/           the recipe file format's loader and builder — decodes a recipe document and assembles the producer-definition list the shed engine already consumes
 ├── internal/shedverbs/           the generic run/step/status/pause/goto cobra verb bodies shared by every module that arms a `*shedengine.Shed` onto a CLI subtree
 ├── internal/sheddriver/          the shed layer's Go driver: its settle loop, rule table and hand-back, the tackler agent call, and the `shed` config module, told its paths and seams by the arming module
-├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
+├── internal/shedcli/             the `lym shed` subtree: a named-recipe arming table for the tapestry, arras, darn, pawl, sampler and batten recipes plus the three CLI seams that register it under the lym root
 ├── internal/statuscommit/        the shared per-transition status commit core (skip while mid-merge, commit hard-errors, push spawn warns) that `loomcli` and `battencli` wrap
 ├── internal/statuspane/          the pane mechanics the runs overview and the gate checklist share: a redraw-in-place pane loop and a lock-free status-file reader
 ├── internal/landingshed/         landing's general ShedProducers, Parent-Align, the PR-Review row and Finalize, shared by reference across producer lists
@@ -534,7 +534,7 @@ User-facing modules each get one `lym <module>` namespace:
   The `Code-Review` perch follows, left out unless `sampler.code_review` holds: its three rows carry that entry gate, so with it off each is recorded skipped and the run goes on to `Describe`, which always runs because the agent writes no description.
   Then PR-Review and Finalize, with no discussion, plan, webster, Drift or Parent-Align rows; the build row runs no verify gate, and Finalize's gate checks any code the run lands.
   `loomcli` reads the run's seed once at arming and builds, routes and wires the recipe it names, `tapestry` when the run has no seed; `lym loom start` never rewrites a recorded recipe.
-  The `lym loom` verbs serve loom runs only: a recipe declaring `contract: loom`, tapestry, darn, pawl and sampler, is served, and a run of any other recipe is refused naming the `lym shed` verbs, or the re-seed for a seed naming no recipe this lym knows.
+  The `lym loom` verbs serve loom runs only: a recipe declaring `contract: loom`, tapestry, arras, darn, pawl and sampler, is served, and a run of any other recipe is refused naming the `lym shed` verbs, or the re-seed for a seed naming no recipe this lym knows.
   A verb that applies to some loom recipes refuses on the others by the recipe's rows, never its name: `validate-plan`, `insert-card`, `remove-card` and `restore-renumber` refuse on a recipe with no Plan-Write row, which has no plan, `validate-parts` on a recipe with no Parts-Write row, which writes no parts file, and `join-parts` on a recipe with no Parts-Plan-Write row, which has no parts to join.
   `lym shed`'s arming of the same runs never carries these refusals.
   A darn run takes its verify command and attempt budget from the hub-wide `darn.yaml` (`internal/darnengine`), for the writer's and `Code-Burler-Fix`'s verify gates alike, and the writer's gate halts the run for the parent once the budget is spent;
@@ -612,7 +612,7 @@ User-facing modules each get one `lym <module>` namespace:
   It frees the lock while its fixer or fix review works, then takes it again at the front of the queue, merges the parent anew and verifies under the lock before it lands.
   Finalize never reroutes: a fixer change over the caps goes to its fix review, which reads only the fixer's commits, and a rejection hands the findings back to the fixer to fix in place, for up to `finalize_fix_review_rounds` reviews; an approval lands it, and the last review that does not approve halts for the operator, whose `lym loom circling accept` lands the change with the open findings in the change description.
   A halt at `Parent-Align` or `Finalize` (a spent or over-cap fixer, fix reviews out of rounds) is handed back to the orch through every driver, and the status marks it `hand_back`.
-  On a loom run, tapestry, darn, pawl or sampler, a fixer's escalate halts with `EscalateStopPrefix` instead, is not marked `hand_back` and goes to the arbiter first, reaching the orch only as the arbiter's hand-on.
+  On a loom run, tapestry, arras, darn, pawl or sampler, a fixer's escalate halts with `EscalateStopPrefix` instead, is not marked `hand_back` and goes to the arbiter first, reaching the orch only as the arbiter's hand-on.
   `Webster` reroutes to `Plan-Burler-Review` when begin-batch left a new plan conflict that the plan fixer `lym webster fix-plan` could not clear.
   `Describe` writes the change description at `_lym/landing/summary.md`, the single source for the landing commit, whose message, like the pull request's body, ends in the plain-line credit block Go appends while `landing.yaml`'s `credit` is on: `credit_heading`, then a ` - ` line for `credit_loomyard` and for the `credit_engines` text of each engine that ran a session in the task, an empty text adding no line.
   `Finalize` tolerates an already-landed parent and marks the board task `done` after the parent merge.
@@ -681,7 +681,7 @@ User-facing modules each get one `lym <module>` namespace:
   Behavior-based reviewer that *runs* a live-substrate module (needs a sandbox repo) to harden it before merge;
   on-demand, post-loom, **off the spine**, shares only the `burler` round discipline.
   See the board's `hardener` note.
-- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`tapestry`, `darn` for a darn child or `sampler` for a sampler child, empty meaning `board.yaml`'s `default_recipe`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lym batten run|step|status|pause|goto|cancel <run-id>`, `lym batten lock list|release` for the hub's parent locks, and `lym batten cleanup [--apply]`).
+- **batten** — drives one task worktree's whole lifecycle — create, seed the child's own inner run from the Board task's own `recipe` (`tapestry`, `arras` for an arras child, `darn` for a darn child or `sampler` for a sampler child, empty meaning `board.yaml`'s `default_recipe`), run it to a terminal state, land it into the prime, and tear down — as a single Shed run from the hub's prime worktree (`internal/battenshed` + `internal/battenrecipe` + `internal/battencli`; `lym batten run|step|status|pause|goto|cancel <run-id>`, `lym batten lock list|release` for the hub's parent locks, and `lym batten cleanup [--apply]`).
   `lym batten cancel <slug> [--remove]` ends a run for good from the prime, whatever its state, leaving its claim `draft` and removing its records, and with `--remove` its pair and task branches.
   The hidden `lym batten overview` is the pane process of the `runs` strand of the prime and of each beam, which `lym beam start` ensures, in the beam's window named `beam: prime` or `beam: <slug>`.
   Ensuring it replaces a `loom-status` strand a pawl run's `lym loom start` put in the overview window first, and a failure to add, replace or record it is a warning on the bring-up report, never a stop.
@@ -789,7 +789,7 @@ loom              phase machine: drive each phase through a Bouncer gate       [
 
 Regression sits beside this stack: the Drift rows are shed producers over seats, and the baseline capture is a detached registered process, not a gate tier (see [internal/driftengine](../internal/driftengine/doc.go)).
 
-The batten Shed nests loom's: it is its own recipe whose `Run-Shed` row seeds and drives a task's run, tapestry, darn or sampler, as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/` — each resuming independently.
+The batten Shed nests loom's: it is its own recipe whose `Run-Shed` row seeds and drives a task's run, tapestry, arras, darn or sampler, as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/` — each resuming independently.
 See [PATTERN-pair-teardown](../pattern/PATTERN-pair-teardown.md).
 
 **Landing preconditions.** This task's relocation of run state requires no `lifecycle` or `loom` run in flight at landing: no migration reads or moves the old `.lym/lifecycle/<slug>/`/`_lym/loom/status.json` layouts, so a run left in flight under either old layout resumes nowhere afterward.

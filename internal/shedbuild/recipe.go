@@ -16,12 +16,14 @@ import (
 // AmendmentTarget is optional graph metadata of the same kind: it names the row a plan amendment routes to, empty when the recipe sets none.
 // Contract is empty or `loom`, and `loom` declares the recipe a loom, which Build checks against the loom contract.
 // VerifySource is empty, `plan` or `tree_scope`, and a loom recipe must set it.
+// ProfileRecipe names the recipe whose run-profile block a task takes, empty meaning the recipe's own name.
 type Recipe struct {
 	Version         int      `yaml:"version"`
 	Entry           string   `yaml:"entry"`
 	AmendmentTarget string   `yaml:"amendment_target"`
 	Contract        string   `yaml:"contract"`
 	VerifySource    string   `yaml:"verify_source"`
+	ProfileRecipe   string   `yaml:"profile_recipe"`
 	Terminals       []string `yaml:"terminals"`
 	Producers       []Row    `yaml:"producers"`
 }
@@ -31,6 +33,10 @@ type Recipe struct {
 //
 // Config is the decoded sub-map passed to the row's engine untouched -- never normalised,
 // lowercased, or key-walked -- because each registry entry owns its own key validation.
+//
+// A block row sets Block, the name of the recipe it runs, and BlockGate, the name of the check that gates it, instead of an engine.
+// SkipTo and BlockPath sit outside the recipe format: only expansion sets them, so a file that writes either is refused.
+// SkipTo is the row a skipped block row routes to, and BlockPath is the names of the block rows enclosing the row, outermost first, joined by "/".
 type Row struct {
 	Name       string         `yaml:"name"`
 	Engine     string         `yaml:"engine"`
@@ -41,6 +47,10 @@ type Row struct {
 	Segment    string         `yaml:"segment"`
 	MaxBounces int            `yaml:"max_bounces"`
 	EntryGate  EntryChecks    `yaml:"entry_gate"`
+	Block      string         `yaml:"block"`
+	BlockGate  string         `yaml:"block_gate"`
+	SkipTo     string         `yaml:"-"`
+	BlockPath  string         `yaml:"-"`
 }
 
 // EntryChecks is a row's entry_gate value: one check written as a scalar, or a list of checks that must all hold.

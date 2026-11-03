@@ -52,6 +52,11 @@ var recipes = map[string]entry{
 		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: loomcli.BootstrapVerb,
 	},
+	"arras": {
+		Arm:           loomcli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
+		BootstrapVerb: loomcli.BootstrapVerb,
+	},
 	"batten": {
 		Arm:           battencli.ArmAt,
 		Verbs:         []string{"run", "step", "status", "pause", "goto"},

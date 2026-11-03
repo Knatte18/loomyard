@@ -396,6 +396,25 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
+			name: "an arras run counts its Motif row under discussion, as a tapestry run counts its Discussion rows",
+			setup: func(w *world) {
+				loom := []shedengine.HistoryEntry{
+					entryAt(loomshed.NamePreflight, secondsAfter(run, 300)),
+					entryAt(loomshed.NameMotif, secondsAfter(run, 900)),
+					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1500)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1800)),
+				}
+				seed := fmt.Sprintf(`{"recipe":"arras","driver":"go","started_at":%q}`, run.Format(time.RFC3339))
+				landedRun(w, "woven", "t1", 3, seed, loom)
+			},
+			check: func(t *testing.T, got TimingReport) {
+				wantPhases(t, runOf(t, got, "woven"), map[string]int64{PhaseSetup: 300, PhaseDiscussion: 600, PhasePlan: 600, PhasePublishFinalize: 300})
+				if len(got.Findings) != 0 {
+					t.Errorf("findings = %+v; want none, since the Motif row names a phase", got.Findings)
+				}
+			},
+		},
+		{
 			name: "a sleep with fractional seconds is cut to whole seconds, so the phases plus sleep equal the span",
 			sleeps: []Interval{
 				{From: secondsAfter(run, 720).Add(400 * time.Millisecond), To: secondsAfter(run, 960).Add(700 * time.Millisecond)},

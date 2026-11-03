@@ -62,6 +62,9 @@ type ShedPaths struct {
 // Each of NewShed's two callers wraps a non-nil returned error with its own single package prefix,
 // so NewShed must not add a second one on top.
 //
+// NewShed builds the recipe without expanding it, so a recipe holding a block row is refused:
+// it goes through Expand and then NewShedFrom.
+//
 // NewShed never calls Check -- internal/shedcheck/doc.go and internal/shedbuild/check.go both state
 // that Check is authoring-time only, because a resumed run legitimately starts mid-graph and
 // reachability-from-entry is the wrong production question.

@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 )
 
-// New parses the embedded recipe the name selects, builds it against env, and returns a *shedengine.Shed carrying
+// New parses the embedded recipe the name selects, expands its blocks, builds it against env, and returns a *shedengine.Shed carrying
 // the built []shedengine.ProducerDef plus paths' five fields.
 // An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
@@ -68,7 +68,7 @@ func New(recipe string, env shedrecipe.Env, paths shedbuild.ShedPaths) (*shedeng
 			return nil, err
 		}
 	}
-	segments := reviewSegmentsOf(parsed)
+	segments := reviewSegments(parsed)
 	budgets, err := segmentBudgets(segments, env, loomSegmentTableWayForward)
 	if err != nil {
 		return nil, err
@@ -105,8 +105,8 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 	return nil
 }
 
-// Routing projects the routing of the embedded recipe the name selects without building any engine, so a caller
-// that never builds a Shed (the status verb) can compute progress. A parse error is returned
+// Routing projects the routing of the embedded recipe the name selects, its blocks expanded, without building any engine, so a caller
+// that never builds a Shed (the status verb) can compute progress. A parse or expansion error is returned
 // prefixed with "loomrecipe: ". Routing.MaxBounces is left 0.
 // An empty name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 //
@@ -115,19 +115,13 @@ func checkStatusPaths(env shedrecipe.Env, paths shedbuild.ShedPaths) error {
 // The exception is a zero-round segment: its rows carry MaxBounces 0, which the progress projection reads as shedengine's inherited budget.
 // A review segment budgets lacks is refused naming the segment and the loom wiring's segment-to-perch table, and a negative entry is refused naming the segment.
 func Routing(recipe string, budgets map[string]int) (shedengine.Routing, error) {
-	source, err := embeddedRecipeSource(recipe)
+	parsed, err := parseEmbeddedRecipe(recipe)
 	if err != nil {
 		return shedengine.Routing{}, err
 	}
-	routing, err := shedbuild.RoutingOf(source)
-	if err != nil {
-		return shedengine.Routing{}, fmt.Errorf("loomrecipe: %w", err)
-	}
+	routing := shedbuild.RoutingFrom(parsed)
 
-	segments, err := reviewSegments(source)
-	if err != nil {
-		return shedengine.Routing{}, err
-	}
+	segments := reviewSegments(parsed)
 	if err := checkSegmentBudgets(segments, budgets, loomSegmentTableWayForward); err != nil {
 		return shedengine.Routing{}, err
 	}
@@ -176,18 +170,8 @@ func negativeBudgetError(segment string, budget int, key, file string) error {
 	return fmt.Errorf("loomrecipe: bounce budget of review segment %q = %d from %s in %s; want 0 or more; way forward: set %s in %s", segment, budget, key, file, key, file)
 }
 
-// reviewSegments maps each segment of the recipe source that holds a Bouncer row to that Bouncer row's name.
-func reviewSegments(source []byte) (map[string]string, error) {
-	recipe, err := shedbuild.Parse(source)
-	if err != nil {
-		return nil, fmt.Errorf("loomrecipe: %w", err)
-	}
-
-	return reviewSegmentsOf(recipe), nil
-}
-
-// reviewSegmentsOf maps each segment of the parsed recipe that holds a Bouncer row to that Bouncer row's name.
-func reviewSegmentsOf(recipe shedbuild.Recipe) map[string]string {
+// reviewSegments maps each segment of the expanded recipe that holds a Bouncer row to that Bouncer row's name.
+func reviewSegments(recipe shedbuild.Recipe) map[string]string {
 	segments := map[string]string{}
 	for _, row := range recipe.Producers {
 		if row.Engine == bouncerEngine && row.Segment != "" {

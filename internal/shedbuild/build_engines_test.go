@@ -106,11 +106,11 @@ func TestBuild_EveryRegisteredEngineBuilds(t *testing.T) {
 	for _, name := range shedrecipe.Names() {
 		name := name
 		t.Run(name, func(t *testing.T) {
-			r := Recipe{
-				Producers: []Row{
-					{Name: "Row-" + name, Engine: name, Segment: reviewSegments[name], Config: configByEngine[name]},
-				},
+			row := Row{Name: "Row-" + name, Engine: name, Segment: reviewSegments[name], Config: configByEngine[name]}
+			if name == shedrecipe.EngineBlock {
+				row.BlockGate = shedrecipe.BlockGateAlways
 			}
+			r := Recipe{Producers: []Row{row}}
 			defs, err := Build(r, env)
 			if err != nil {
 				t.Fatalf("Build() for engine %q: error = %v; want nil", name, err)

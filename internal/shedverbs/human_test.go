@@ -28,6 +28,21 @@ func humanRouting() shedengine.Routing {
 	}
 }
 
+// blockRouting is humanRouting's shape around a block: the Motif block row, which skips to Ship, and two rows inlined from it.
+func blockRouting() shedengine.Routing {
+	return shedengine.Routing{
+		Entry:      "Intro",
+		MaxBounces: 3,
+		Producers: []shedengine.ProducerDef{
+			{Name: "Intro", OnDone: "Motif"},
+			{Name: "Motif", OnDone: "Discussion-Write", SkipTo: "Ship"},
+			{Name: "Discussion-Write", OnDone: "Discussion-Fix", Block: "Motif"},
+			{Name: "Discussion-Fix", OnDone: "Ship", Block: "Motif"},
+			{Name: "Ship"},
+		},
+	}
+}
+
 func TestRenderStatusHuman(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -126,6 +141,39 @@ func TestRenderStatusHuman(t *testing.T) {
 			st:   shedengine.Status{State: shedengine.StateRunning, Activity: shedengine.Activity{Now: "working"}},
 			args: &renderArgs{label: "batten"},
 			want: "batten | running\nnow  working\n",
+		},
+		{
+			name: "a latest Done of a block row reads entered and the current inlined row is named in its block",
+			st: shedengine.Status{
+				CurrentProducer: "Discussion-Write",
+				State:           shedengine.StateRunning,
+				History:         []shedengine.HistoryEntry{{Producer: "Motif", Outcome: shedengine.Done}},
+				Activity:        shedengine.Activity{Now: "Discussion-Write", Last: "Motif → done"},
+			},
+			args: &renderArgs{label: "loom", runID: "self", routing: blockRouting()},
+			want: "loom self | running\n" +
+				"step 3/5 Discussion-Write\n" +
+				"now  Discussion-Write in Motif\n" +
+				"last Motif → entered\n" +
+				"next Discussion-Fix, Ship\n",
+		},
+		{
+			name: "a latest entry written inside a block names its row in the block",
+			st: shedengine.Status{
+				CurrentProducer: "Discussion-Fix",
+				State:           shedengine.StateRunning,
+				History: []shedengine.HistoryEntry{
+					{Producer: "Motif", Outcome: shedengine.Done},
+					{Producer: "Discussion-Write", Outcome: shedengine.Done, Block: "Motif"},
+				},
+				Activity: shedengine.Activity{Now: "Discussion-Fix", Last: "Discussion-Write → done"},
+			},
+			args: &renderArgs{label: "loom", runID: "self", routing: blockRouting()},
+			want: "loom self | running\n" +
+				"step 4/5 Discussion-Fix\n" +
+				"now  Discussion-Fix in Motif\n" +
+				"last Discussion-Write in Motif → done\n" +
+				"next Ship\n",
 		},
 		{
 			name: "waiting note replaces state",

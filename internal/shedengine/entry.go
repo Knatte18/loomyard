@@ -13,7 +13,7 @@ import (
 // enter evaluates def's entry gate when the run enters def, st being the status read at the start of the step.
 // An ungated row, and a row st names as entered, are returned as they are without an evaluation.
 // A holding gate persists the row as entered and returns it to call.
-// A gate that does not hold appends an OutcomeSkipped entry carrying its reason, routes by def.OnDone as a Done does and spends no bounce budget; the next row is then entered in the same call, so consecutive skips chain.
+// A gate that does not hold appends an OutcomeSkipped entry carrying its reason, routes by def's skip target and spends no bounce budget; the next row is then entered in the same call, so consecutive skips chain.
 // The returned ProducerDef is the row to call, and a non-nil StepResult means the call ended the step: the chain paused at a row, or a skip finished the run.
 // An evaluation error, and a chain longer than the producer list, write the status failed and are returned.
 func (s *Shed) enter(st Status, def ProducerDef) (ProducerDef, *StepResult, error) {
@@ -48,8 +48,9 @@ func (s *Shed) enter(st Status, def ProducerDef) (ProducerDef, *StepResult, erro
 		}
 
 		chain = append(chain, def.Name)
-		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeSkipped, At: nowRFC3339(), Reason: gateReason, Machine: s.Machine})
-		if def.OnDone == "" {
+		nextHistory := appendOrFold(st.History, HistoryEntry{Producer: def.Name, Outcome: OutcomeSkipped, At: nowRFC3339(), Reason: gateReason, Machine: s.Machine, Block: def.Block})
+		skipTo := def.skipTarget()
+		if skipTo == "" {
 			if err := s.persistRouted(def.Name, StateDone, nextHistory, false, "", ""); err != nil {
 				return def, nil, err
 			}
@@ -59,15 +60,15 @@ func (s *Shed) enter(st Status, def ProducerDef) (ProducerDef, *StepResult, erro
 		if err != nil {
 			return def, nil, err
 		}
-		if err := s.persistRouted(def.OnDone, next, nextHistory, next == StatePaused, "", pauseReason); err != nil {
+		if err := s.persistRouted(skipTo, next, nextHistory, next == StatePaused, "", pauseReason); err != nil {
 			return def, nil, err
 		}
 		if next == StatePaused {
-			return def, &StepResult{Next: def.OnDone, State: next, Reason: pauseReason, History: nextHistory}, nil
+			return def, &StepResult{Next: skipTo, State: next, Reason: pauseReason, History: nextHistory}, nil
 		}
 
-		// validate has already rejected an OnDone naming no producer in the list.
-		def, _ = findProducer(s.Producers, def.OnDone)
+		// validate has already rejected an OnDone or SkipTo naming no producer in the list.
+		def, _ = findProducer(s.Producers, skipTo)
 		var found bool
 		st, found, err = state.ReadJSON[Status](s.StatusPath, s.StatusLockPath)
 		if err != nil {

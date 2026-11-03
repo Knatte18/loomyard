@@ -470,6 +470,8 @@ func TestRecentRuns(t *testing.T) {
 	}
 	touch(filepath.Join(hub, "darn"), 90*time.Minute)
 	archive("darn", shedrun.RecipeDarn, "Darn-Write", "Finalize")
+	touch(filepath.Join(hub, "woven"), 200*time.Minute)
+	archive("woven", shedrun.RecipeArras, "Motif", "Finalize")
 	touch(filepath.Join(hub, "sampled"), 80*time.Minute)
 	archive("sampled", shedrun.RecipeSampler, "Sampler-Session", "Finalize")
 	touch(filepath.Join(hub, "bench"), time.Hour)
@@ -480,7 +482,7 @@ func TestRecentRuns(t *testing.T) {
 	touch("/other/newest", 0)
 	archive("newest", shedrun.RecipeTapestry, full...)
 
-	// Finished tapestry and darn runs count; a stopped run, a run of another recipe and a run in flight are skipped.
+	// Finished tapestry, darn and arras runs count; a stopped run, a run of another recipe and a run in flight are skipped.
 	tests := []struct {
 		name                  string
 		last                  int
@@ -488,6 +490,7 @@ func TestRecentRuns(t *testing.T) {
 		wantCounted, wantSkip string
 	}{
 		{"the last two", 2, time.Time{}, "darn,new", "bench,sampled,inflight"},
+		{"the last three reaches an arras run", 3, time.Time{}, "darn,new,woven", "bench,sampled,inflight"},
 		{"every run since a time", 0, now.Add(-150 * time.Minute), "darn", "bench,sampled,inflight"},
 	}
 	for _, tt := range tests {
@@ -504,6 +507,13 @@ func TestRecentRuns(t *testing.T) {
 				t.Errorf("recentRuns skipped = %s; want %s", got, tt.wantSkip)
 			}
 		})
+	}
+
+	if got, want := recipeList("and"), "tapestry, darn and arras"; got != want {
+		t.Errorf("recipeList(and) = %q; want %q", got, want)
+	}
+	if got, want := recipeList("or"), "tapestry, darn or arras"; got != want {
+		t.Errorf("recipeList(or) = %q; want %q", got, want)
 	}
 }
 

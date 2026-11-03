@@ -118,6 +118,10 @@ type HistoryEntry struct {
 	// Machine is the name of the machine whose shed appended this entry, empty on an entry written by a shed told none and on a goto or resume entry.
 	// A status file written before the field existed decodes as empty.
 	Machine string `json:"machine,omitempty"`
+	// Block is the block path of the row that wrote this entry: the enclosing block rows' names, outermost first, joined by "/".
+	// It is empty on an entry of a row outside every block.
+	// A status file written before the field existed decodes as empty.
+	Block string `json:"block,omitempty"`
 }
 
 // Status is the whole status file.

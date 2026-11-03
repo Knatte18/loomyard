@@ -113,6 +113,13 @@ func TestCompute_SelectsRuns(t *testing.T) {
 			},
 		},
 		{
+			name: "a finalized arras run is a full run carrying its recipe, as a tapestry run is",
+			setup: func(w *world) expectation {
+				w.tag("woven", "t1", at(1), seedText("arras"), statusText(w.t, "Motif", "Finalize"))
+				return expectation{runs: []wantRun{{tag: tagName("woven", "t1"), week: "2026-W02", recipe: "arras"}}}
+			},
+		},
+		{
 			name: "a seed or a status that does not decode is a finding and the tag is partial",
 			setup: func(w *world) expectation {
 				w.tag("broken", "t1", at(1), seedText("tapestry"), "{not json")

@@ -40,7 +40,7 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
 1. Release a task for its run with `lym board set-status '{"slug":"<slug>","status":null}'` once the operator approves it; a new task is `draft` until then.
    The dobby of the task's parent worktree starts the run, drives its batten passes, lands it and cleans up, so you never start, stop or clean up a batten run on your own.
    The operator's terminal window on the task's worktree is opened by the run, so never open one yourself.
-   The batten run creates the task pair, drives the task's run inside it, tapestry, darn or sampler as the board entry's `recipe` says, and tears the pair down after the run ends.
+   The batten run creates the task pair, drives the task's run inside it, tapestry, arras, darn or sampler as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no Discussion review: its Code-Review perch, the one tapestry runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as tapestry's does.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted or paused batten run waits for you: dobby does not resume it.
@@ -160,7 +160,7 @@ A landing halt reaches you with the status marked `hand_back`, and no driver, ba
   For an undecodable attempt record the way forward is removing that record by the path the reason names, which grants the entry a fresh cap.
   Read the commits, decide what the run needs, record it with `lym loom decision add <slug> --by parent`, then `lym loom resume` in the task worktree.
 - When Finalize's fix reviews ran out of rounds, the reason names the open findings: either accept the change as it stands with `lym loom circling accept <slug>`, which writes those findings into the change description, or have them fixed on the task branch by the run's agents; then `lym loom resume`, which without an acceptance runs the fix reviews afresh.
-- On a tapestry, darn or sampler run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
+- On a tapestry, arras, darn or sampler run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
 After a run lands, amend the board entries it superseded.
 
 ## After landing

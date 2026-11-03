@@ -52,6 +52,7 @@ A fresh seed carries an empty `current_producer`, which says only that the run s
   "history": [                                 // Shed-owned: one entry per producer call
     {"producer": "Preflight", "outcome": "done", "output": "", "at": "2026-07-17T10:01:30Z"}
     // a reroute entry also carries "routed_to": "<target row>", and so does a Stuck entry whose row's on_stuck edge bounced the run; the Stuck entry of a reroute-cap halt carries "reroute_capped": true
+    // an entry of a row inside a block carries "block": "<block path>", the enclosing block rows' names joined by "/", omitted outside every block
   ],
   "product": {                                 // loom-owned, opaque to Shed
     "slug": "loom-contracts",                  // board-task pointer (board owns title/description)
@@ -92,15 +93,15 @@ Per-field notes — `product`'s three fields are the whole of loom's own half of
 
 `lym loom status` carries a top-level `hand_back` key, and the loop's stop envelope carries `loop.hand_back`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
-For tapestry and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix.
+For tapestry, arras and darn the check is `landingshed.HandsBack`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-stop prefix.
 A true key marks a halt that goes to the orch, so every driver hands it back instead of routing it.
-A tapestry, darn or sampler fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
+A tapestry, arras, darn or sampler fixer's escalate halt opens with the landing-escalate prefix, `landingshed.EscalateHalt` answers true for it, and the key stays false: it goes to the arbiter first.
 
 ## The `restep_hold` key
 
 `lym loom status` carries a top-level `restep_hold` key, and the loop's stop envelope carries `loop.restep_hold`.
 Both are true when the run is blocked and the recipe's told check answers true for the status's `current_producer` and `error`, and false otherwise, including when no check is told.
-For tapestry and darn the check is `landingshed.EscalateHalt`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
+For tapestry, arras and darn the check is `landingshed.EscalateHalt`: a blocked stop at Parent-Align or Finalize whose reason opens with the landing-escalate prefix.
 A true key marks a halt the LLM driver's own build re-launch and binary watch leave alone; it still goes to the arbiter first, and only the arbiter's `resume` or the orch's `lym loom resume` moves it.
 
 ## The `waiting` key
