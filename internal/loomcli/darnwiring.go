@@ -220,7 +220,8 @@ func (c *loomCLI) wireTreeScope(location *lymcwd.Location) error {
 	return nil
 }
 
-// wireDarn fills the Env fields a recipe with a Darn-Write row reads beyond the ones wire and wireTreeScope fill: the writer's seams and its table.
+// wireDarn fills the Env fields a recipe with a Darn-Write row reads beyond the ones wire and wireTreeScope fill: the writer's seams, its table and Preflight's stencils check.
+// The check builds the table a first spawn reads and refuses a marker of its stencils no value fills, so a stencil newer than the running binary, or a blank value, halts the run at Preflight, before any agent row.
 // It loads the hub-wide darn.yaml strictly, so start, run, step and resume refuse an absent or malformed file before any row builds.
 // A malformed tree_scope key is refused with the editor way forward instead of the hub reconcile one, since --set cannot remove a key the hub file holds.
 // subagentModel is loom.yaml's subagent_model, the model the writer's prompt names for the subagents it hands work to.
@@ -235,7 +236,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 	}
 
 	c.env.Darn = darnDeps(location, c.runID, c.recipe)
-	c.env.DarnTable = func(told loomshed.DarnTold) (seatengine.Table, error) {
+	darnTable := func(told loomshed.DarnTold) (seatengine.Table, error) {
 		table, err := darnengine.DarnTable(darnengine.DarnInputs{
 			StencilsDir:        stencilsDir,
 			SpecsDir:           specsDir,
@@ -255,6 +256,14 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 			return seatengine.Table{}, err
 		}
 		return withProjectDirective(table, location, stencilsDir)
+	}
+	c.env.DarnTable = darnTable
+	c.env.PreflightStencils = func() error {
+		table, err := darnTable(loomshed.DarnTold{})
+		if err != nil {
+			return fmt.Errorf("build the darn writer table: %w; way forward: fix the config or model spec it names, then re-step", err)
+		}
+		return table.CheckMarkers(stencilsDir)
 	}
 
 	return nil

@@ -188,13 +188,14 @@ func (t Table) Validate(stencilsDir string) error {
 		}
 	}
 	for index, seat := range t.Seats {
-		if err := validateSeatRoles(seat); err != nil {
+		label := t.seatLabel(seat)
+		if err := validateSeatRoles(label, seat); err != nil {
 			return err
 		}
-		if err := validateValues(fmt.Sprintf("seat %q", seat.Name), seat.Values); err != nil {
+		if err := validateValues(fmt.Sprintf("seat %q", label), seat.Values); err != nil {
 			return err
 		}
-		blocks, err := validateStencil(stencilsDir, seat)
+		blocks, err := validateStencil(stencilsDir, label, seat.Stencil)
 		if err != nil {
 			return err
 		}
@@ -208,14 +209,20 @@ func (t Table) Validate(stencilsDir string) error {
 			}
 		}
 		if seat.Writer && !slices.Contains(blocks, writerDirectiveBlock) {
-			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which a writer needs; include %s in the writer's stencil", seat.Name, seat.Stencil, writerDirectiveBlock, writerDirectiveBlock)
+			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which a writer needs; include %s in the writer's stencil", label, seat.Stencil, writerDirectiveBlock, writerDirectiveBlock)
 		}
 	}
 	return nil
 }
 
+// seatLabel returns the name an error gives seat: its strand role, so the lead, which carries no name, reads as the role prefix.
+func (t Table) seatLabel(seat Seat) string {
+	return SeatRole(t.RolePrefix, seat.Name)
+}
+
 // validateSeatRoles checks the fields only some seats may carry: no gate, Required, Writer or Accept on the lead, and Accept only on a seat that ends the step.
-func validateSeatRoles(seat Seat) error {
+// label is the name an error gives the seat.
+func validateSeatRoles(label string, seat Seat) error {
 	if seat.Name == leadName {
 		switch {
 		case len(seat.Gate) > 0:
@@ -230,7 +237,7 @@ func validateSeatRoles(seat Seat) error {
 		return nil
 	}
 	if seat.Accept != nil && !seat.endsStep() {
-		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is neither required nor a writer", seat.Name)
+		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is neither required nor a writer", label)
 	}
 	return nil
 }
@@ -242,7 +249,7 @@ func (t Table) validateWriterKinds() error {
 	}
 	for _, seat := range t.Seats[1:] {
 		if !seat.Writer {
-			return fmt.Errorf("seatengine: seat %q: the table holds writers, but this seat is not one; a table holds advisors only or writers only, so mark the seat a writer or drop it", seat.Name)
+			return fmt.Errorf("seatengine: seat %q: the table holds writers, but this seat is not one; a table holds advisors only or writers only, so mark the seat a writer or drop it", t.seatLabel(seat))
 		}
 	}
 	return nil
@@ -285,16 +292,17 @@ func (t Table) validateOutputs() error {
 	leadInputs := t.Chair().Inputs
 	owners := make(map[string]string)
 	for _, seat := range t.Seats {
+		label := t.seatLabel(seat)
 		if len(seat.Outputs) == 0 {
-			return fmt.Errorf("seatengine: seat %q: has no output", seat.Name)
+			return fmt.Errorf("seatengine: seat %q: has no output", label)
 		}
 		for _, output := range seat.Outputs {
 			if owner, shared := owners[output]; shared {
-				return fmt.Errorf("seatengine: seat %q: output %q is also seat %q's output", seat.Name, output, owner)
+				return fmt.Errorf("seatengine: seat %q: output %q is also seat %q's output", label, output, owner)
 			}
-			owners[output] = seat.Name
+			owners[output] = label
 			if seat.Name != leadName && !slices.Contains(leadInputs, output) {
-				return fmt.Errorf("seatengine: seat %q: output %q is not among the lead's inputs", seat.Name, output)
+				return fmt.Errorf("seatengine: seat %q: output %q is not among the lead's inputs", label, output)
 			}
 		}
 	}
@@ -304,8 +312,9 @@ func (t Table) validateOutputs() error {
 // validateRoles checks every seat's formed strand role passes the agent-name role grammar.
 func (t Table) validateRoles() error {
 	for _, seat := range t.Seats {
-		if err := agentname.ValidateRole(SeatRole(t.RolePrefix, seat.Name)); err != nil {
-			return fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		label := t.seatLabel(seat)
+		if err := agentname.ValidateRole(label); err != nil {
+			return fmt.Errorf("seatengine: seat %q: %w", label, err)
 		}
 	}
 	return nil
@@ -325,29 +334,44 @@ func validateValues(owner string, values map[string]string) error {
 	return nil
 }
 
-// validateStencil checks seat's stencil and every block it includes are readable from stencilsDir, and that no block includes another.
-// It returns the names of the blocks the stencil includes.
-func validateStencil(stencilsDir string, seat Seat) ([]string, error) {
-	body, err := stencilstore.Read(stencilsDir, seat.Stencil)
+// validateStencil checks the stencil named stencilName and every block it includes are readable from stencilsDir, and that no block includes another.
+// It returns the sorted names of the blocks the stencil includes; label is the name an error gives the seat the stencil opens.
+func validateStencil(stencilsDir, label, stencilName string) ([]string, error) {
+	_, blocks, err := readStencilSet(stencilsDir, label, stencilName)
 	if err != nil {
-		return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		return nil, err
 	}
-	blocks, err := stencil.IncludeNames(body)
-	if err != nil {
-		return nil, fmt.Errorf("seatengine: seat %q: stencil %q: %w", seat.Name, seat.Stencil, err)
-	}
-	for _, block := range blocks {
-		blockBody, err := stencilstore.Read(stencilsDir, block)
+	names := slices.Sorted(maps.Keys(blocks))
+	for _, name := range names {
+		nested, err := stencil.IncludeNames(blocks[name])
 		if err != nil {
-			return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
-		}
-		nested, err := stencil.IncludeNames(blockBody)
-		if err != nil {
-			return nil, fmt.Errorf("seatengine: seat %q: include %q: %w", seat.Name, block, err)
+			return nil, fmt.Errorf("seatengine: seat %q: include %q: %w", label, name, err)
 		}
 		if len(nested) > 0 {
-			return nil, fmt.Errorf("seatengine: seat %q: include %q declares an include of its own; includes resolve one level deep", seat.Name, block)
+			return nil, fmt.Errorf("seatengine: seat %q: include %q declares an include of its own; includes resolve one level deep", label, name)
 		}
 	}
-	return blocks, nil
+	return names, nil
+}
+
+// readStencilSet reads the stencil named stencilName from stencilsDir, with every block it includes keyed by block name.
+// label is the name an error gives the seat the stencil opens.
+func readStencilSet(stencilsDir, label, stencilName string) ([]byte, map[string][]byte, error) {
+	body, err := stencilstore.Read(stencilsDir, stencilName)
+	if err != nil {
+		return nil, nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
+	}
+	names, err := stencil.IncludeNames(body)
+	if err != nil {
+		return nil, nil, fmt.Errorf("seatengine: seat %q: stencil %q: %w", label, stencilName, err)
+	}
+	blocks := make(map[string][]byte, len(names))
+	for _, name := range names {
+		block, err := stencilstore.Read(stencilsDir, name)
+		if err != nil {
+			return nil, nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
+		}
+		blocks[name] = block
+	}
+	return body, blocks, nil
 }

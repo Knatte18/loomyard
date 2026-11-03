@@ -290,7 +290,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work
 	if err != nil {
 		return nil, err
 	}
-	prompt, err := composeSeatPrompt(e.geom.StencilsDir, seat, values, table.Optional)
+	prompt, err := composeSeatPrompt(e.geom.StencilsDir, table, seat, values)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (e *Engine) startSeat(table Table, seat Seat, names map[string]string, work
 	}
 	handle, err := e.shuttle.StartGated(spec, seatGate(table, seat))
 	if err != nil {
-		return nil, fmt.Errorf("seatengine: seat %q: start: %w", seat.Name, seat.ModelKey.Wrap(err))
+		return nil, fmt.Errorf("seatengine: seat %q: start: %w", table.seatLabel(seat), seat.ModelKey.Wrap(err))
 	}
 	if err := checkName(handle, names[seat.Name]); err != nil {
 		if stopErr := stopSeat(handle); stopErr != nil {

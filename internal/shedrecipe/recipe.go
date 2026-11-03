@@ -82,6 +82,9 @@ type Env struct {
 	Cwd string
 	// PreflightBatcher is the batcher.yaml load Preflight runs, set by the wiring for a recipe with an Implementer row, nil otherwise.
 	PreflightBatcher func() error
+	// PreflightStencils is the seat stencils check Preflight runs, set by the wiring for a recipe with a Darn-Write row, nil otherwise.
+	// It checks only the Darn-Write writer table, since the other seat tables are built from call-time values Preflight does not have.
+	PreflightStencils func() error
 	// AnchorPath is the told anchor path, read by Webster, Bouncer and the gate resolver's "plan" gate.
 	AnchorPath string
 	// ConfigDirs is the told geometry of a layered config load, read by Webster, which loads batcher through it.

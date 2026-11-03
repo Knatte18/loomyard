@@ -37,9 +37,10 @@ type loomCLI struct {
 	// location is the resolved *lymcwd.Location for this invocation. wire reads it to anchor every
 	// config load and to build the reed/webster geometries; no verb needs it directly.
 	location *lymcwd.Location
-	// cwd is the resolved cwd string the pre-run read via lymcwd.CwdFrom. It travels to
-	// preflightEntry as Env.Cwd, and that entry makes the same preflightshed.NewPreflight(name,
-	// env.Cwd) call over this exact cwd -- Preflight is the one row that spawns git.
+	// cwd is the resolved cwd string the pre-run read via lymcwd.CwdFrom.
+	// It travels to preflightEntry as Env.Cwd,
+	// and that entry makes the same preflightshed.NewPreflightWithChecks(name, env.Cwd, checks) call over this exact cwd.
+	// Preflight is the one row that spawns git.
 	cwd string
 	// cfg is the loaded loom.yaml config. Batch 5's start/bootstrap verb reads its Discussion/Plan
 	// role model-specs and timeout knobs.

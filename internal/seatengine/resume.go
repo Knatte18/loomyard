@@ -69,7 +69,7 @@ func (e *Engine) probeSeat(table Table, seat Seat, holdDeferral func() bool) (Ha
 	spec.HoldDeferral = holdDeferral
 	handle, found, err := e.shuttle.ProbeGated(spec, seatGate(table, seat))
 	if err != nil {
-		return nil, false, fmt.Errorf("seatengine: probe seat %q: %w", seat.Name, err)
+		return nil, false, fmt.Errorf("seatengine: probe seat %q: %w", table.seatLabel(seat), err)
 	}
 	return handle, found, nil
 }

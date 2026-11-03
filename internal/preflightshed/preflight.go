@@ -1,4 +1,4 @@
-// preflight.go implements NewPreflight and NewPreflightWithBatcher, the general Preflight producer: a content-free
+// preflight.go implements NewPreflight and NewPreflightWithChecks, the general Preflight producer with its optional checks: a content-free
 // shedengine.ShedProducer wrapping internal/preflight.Check, constructed with a told name and cwd.
 
 package preflightshed
@@ -60,13 +60,21 @@ func wayForward(report preflight.Report) string {
 	return "; way forward: " + strings.Join(steps, "; ") + "; a session lym refuses the verb from reports status: FAILED and the orch runs it"
 }
 
+// Checks are the optional checks the Preflight row runs after the hub reconcile and before preflight.Check, in field order; a nil field runs no check.
+type Checks struct {
+	// Batcher loads batcher.yaml; its failure is Stuck with the batchifier reason and the way forward its error calls for.
+	Batcher func() error
+	// Stencils composes the recipe's seat tables and refuses a stencil marker no value fills, or a table that cannot be built; its failure is Stuck with the stencils reason and the way forward its error carries.
+	Stencils func() error
+}
+
 // preflightProducer is the general Preflight producer: it wraps preflight.Check, mapping its
 // determined Report onto shedengine's contract.
 type preflightProducer struct {
-	name    string
-	cwd     string
-	opts    hubreconcile.Options
-	batcher func() error
+	name   string
+	cwd    string
+	opts   hubreconcile.Options
+	checks Checks
 }
 
 var _ shedengine.ShedProducer = (*preflightProducer)(nil)
@@ -80,21 +88,22 @@ const batchifierWayForward = "; way forward: fix batcher.yaml (its active: key o
 // retiredKeyWayForward completes the way forward a retired-key error already ends with, running either lym config reconcile --apply, which migrates a worktree or local file, or lym fabric reconcile for the repo default.
 const retiredKeyWayForward = ", then re-step"
 
+// stencilsReasonPrefix leads the Stuck reason of a failed stencils check; the error text, which carries its own way forward, follows.
+const stencilsReasonPrefix = "seat stencils check failed: "
+
 // NewPreflight returns a shedengine.ShedProducer that validates cwd via preflight.Check.
 //
 // name is told rather than hardcoded because a second product names this row independently.
 // Per internal/shedadapters' own package doc, the name is used only as a log field and in error
 // text -- never compared, parsed, or used for control flow.
 func NewPreflight(name, cwd string) shedengine.ShedProducer {
-	return NewPreflightWithBatcher(name, cwd, nil)
+	return NewPreflightWithChecks(name, cwd, Checks{})
 }
 
-// NewPreflightWithBatcher returns the Preflight producer with an optional batcher check.
-// A non-nil batcher runs after the hub reconcile and before preflight.Check, so a broken batcher.yaml stops the run before any agent spends tokens;
-// its error maps to Stuck with the batchifier reason and its way forward.
-// A nil batcher runs no check.
-func NewPreflightWithBatcher(name, cwd string, batcher func() error) shedengine.ShedProducer {
-	return &preflightProducer{name: name, cwd: cwd, batcher: batcher}
+// NewPreflightWithChecks returns the Preflight producer with the optional checks.
+// They run after the hub reconcile and before preflight.Check, so a broken batcher.yaml or a stencil the running binary cannot fill stops the run before any agent spends tokens.
+func NewPreflightWithChecks(name, cwd string, checks Checks) shedengine.ShedProducer {
+	return &preflightProducer{name: name, cwd: cwd, checks: checks}
 }
 
 // newPreflightWith is NewPreflight with told options for the hub config reconcile that runs ahead of the check.
@@ -106,10 +115,10 @@ func newPreflightWith(name, cwd string, opts hubreconcile.Options) shedengine.Sh
 // A retired-key error closes with the reconcile way forward its own text already carries, any other with the fix-batcher.yaml one.
 // A cancelled context wins over the failure and comes back as the error.
 func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) {
-	if p.batcher == nil {
+	if p.checks.Batcher == nil {
 		return "", nil
 	}
-	berr := p.batcher()
+	berr := p.checks.Batcher()
 	if berr == nil {
 		return "", nil
 	}
@@ -122,6 +131,23 @@ func (p *preflightProducer) batcherFailure(ctx context.Context) (string, error) 
 		wayForward = retiredKeyWayForward
 	}
 	return batchifierReasonPrefix + berr.Error() + wayForward, nil
+}
+
+// stencilsFailure runs the told stencils check and returns the Stuck reason for its failure, or "" when it passed or none is told.
+// A cancelled context wins over the failure and comes back as the error.
+func (p *preflightProducer) stencilsFailure(ctx context.Context) (string, error) {
+	if p.checks.Stencils == nil {
+		return "", nil
+	}
+	serr := p.checks.Stencils()
+	if serr == nil {
+		return "", nil
+	}
+	if cerr := cancelErr(ctx, p.name); cerr != nil {
+		return "", cerr
+	}
+	logger.Warn("preflightshed: seat stencils check failed", "producer", p.name, "cwd", p.cwd, "cause", serr)
+	return stencilsReasonPrefix + serr.Error(), nil
 }
 
 // reconcileHub reconciles the hub's config when the build stamp is stale, and does nothing for a repository outside a hub.
@@ -156,12 +182,14 @@ func (p *preflightProducer) Call(ctx context.Context) (shedengine.Outcome, shede
 		return "", shedengine.OutputPointer{}, cerr
 	}
 
-	reason, err := p.batcherFailure(ctx)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if reason != "" {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+	for _, check := range []func(context.Context) (string, error){p.batcherFailure, p.stencilsFailure} {
+		reason, err := check(ctx)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if reason != "" {
+			return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
+		}
 	}
 
 	report, _, err := preflight.Check(p.cwd)

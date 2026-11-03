@@ -14,7 +14,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
-	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
 
 // noneValue is what a list marker renders when its list is empty.
@@ -27,7 +26,7 @@ func strandNames(geom Geometry, table Table) (map[string]string, error) {
 	for _, seat := range table.Seats {
 		name, err := agentname.Format(geom.Shortname, geom.Slug, SeatRole(table.RolePrefix, seat.Name))
 		if err != nil {
-			return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+			return nil, fmt.Errorf("seatengine: seat %q: %w", table.seatLabel(seat), err)
 		}
 		names[seat.Name] = name
 	}
@@ -54,13 +53,14 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 	if seat.Name == leadName {
 		parentName, interactive = geom.ParentName, table.Interactive
 	}
+	label := table.seatLabel(seat)
 	parent, err := parentdirective.Directive(geom.StencilsDir, parentName, interactive)
 	if err != nil {
-		return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		return nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
 	}
 	edit, err := editdirective.Directive(geom.StencilsDir)
 	if err != nil {
-		return nil, fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		return nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
 	}
 
 	var advisors []string
@@ -84,7 +84,7 @@ func seatValues(geom Geometry, table Table, seat Seat, names map[string]string) 
 
 	for _, name := range reservedMarkers {
 		if _, filled := values[name]; !filled {
-			return nil, fmt.Errorf("seatengine: seat %q: reserved marker %q has no value", seat.Name, name)
+			return nil, fmt.Errorf("seatengine: seat %q: reserved marker %q has no value", label, name)
 		}
 	}
 	return values, nil
@@ -107,13 +107,58 @@ func Prompts(geom Geometry, table Table) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		prompt, err := composeSeatPrompt(geom.StencilsDir, seat, values, table.Optional)
+		prompt, err := composeSeatPrompt(geom.StencilsDir, table, seat, values)
 		if err != nil {
 			return nil, err
 		}
 		prompts[seat.Name] = amendLeadPrompt(table, seat, prompt)
 	}
 	return prompts, nil
+}
+
+// CheckMarkers checks that a value fills every top-level marker of every seat's stencil and of every block it includes, read from stencilsDir.
+// A non-blank table or seat value, a name in Optional or a marker the engine fills itself fills a marker, so a table that passes composes no prompt with an unfilled marker.
+// The first seat with an unfilled marker is refused naming its strand role, its stencil and every unfilled marker.
+// Such a marker means either the stencils are newer than the running binary, as after a version skew where a newer binary refreshed them, or a value is blank.
+// The refusal names both causes and a way forward for each: a binary that fills the marker, or text for the blank value.
+// It applies none of Validate's rules, and starts nothing.
+func (t Table) CheckMarkers(stencilsDir string) error {
+	for _, seat := range t.Seats {
+		label := t.seatLabel(seat)
+		body, blocks, err := readStencilSet(stencilsDir, label, seat.Stencil)
+		if err != nil {
+			return err
+		}
+		var unfilled []string
+		for _, source := range append([][]byte{body}, slices.Collect(maps.Values(blocks))...) {
+			markers, err := stencil.TopLevelMarkers(source)
+			if err != nil {
+				return fmt.Errorf("seatengine: seat %q: stencil %q: %w", label, seat.Stencil, err)
+			}
+			for _, marker := range markers {
+				if !t.fills(seat, marker) && !slices.Contains(unfilled, marker) {
+					unfilled = append(unfilled, marker)
+				}
+			}
+		}
+		if len(unfilled) > 0 {
+			slices.Sort(unfilled)
+			return fmt.Errorf("seatengine: seat %q: stencil %q has marker(s) %s that no value fills, because the stencils in %s are newer than this lym binary or a value is blank; way forward: re-step with a lym binary that fills them, or give the blank value text", label, seat.Stencil, strings.Join(unfilled, ", "), stencilsDir)
+		}
+	}
+	return nil
+}
+
+// fills reports whether a value fills marker in seat's stencil: Optional names it, the engine fills it itself, or the seat's value, else the table's, is not blank.
+func (t Table) fills(seat Seat, marker string) bool {
+	if slices.Contains(t.Optional, marker) || slices.Contains(reservedMarkers, marker) {
+		return true
+	}
+	value, inSeat := seat.Values[marker]
+	if !inSeat {
+		value = t.Values[marker]
+	}
+	return strings.TrimSpace(value) != ""
 }
 
 // amendLeadPrompt returns prompt followed by the table's Amendment when seat is the lead, and prompt unchanged for any other seat.
@@ -124,33 +169,17 @@ func amendLeadPrompt(table Table, seat Seat, prompt string) string {
 	return prompt + table.Amendment
 }
 
-// composePrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values, with no marker optional.
-func composePrompt(stencilsDir string, seat Seat, values map[string]string) (string, error) {
-	return composeSeatPrompt(stencilsDir, seat, values, nil)
-}
-
 // composeSeatPrompt reads seat's stencil and every block it includes from stencilsDir and fills them from values.
-// A marker named in optional renders as nothing when its value is empty, in the stencil and in every block.
-func composeSeatPrompt(stencilsDir string, seat Seat, values map[string]string, optional []string) (string, error) {
-	body, err := stencilstore.Read(stencilsDir, seat.Stencil)
+// A marker named in table's Optional renders as nothing when its value is empty, in the stencil and in every block.
+func composeSeatPrompt(stencilsDir string, table Table, seat Seat, values map[string]string) (string, error) {
+	label := table.seatLabel(seat)
+	body, blocks, err := readStencilSet(stencilsDir, label, seat.Stencil)
 	if err != nil {
-		return "", fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
+		return "", err
 	}
-	blockNames, err := stencil.IncludeNames(body)
+	filled, err := stencil.FillWith(body, blocks, values, table.Optional)
 	if err != nil {
-		return "", fmt.Errorf("seatengine: seat %q: stencil %q: %w", seat.Name, seat.Stencil, err)
-	}
-	blocks := make(map[string][]byte, len(blockNames))
-	for _, name := range blockNames {
-		block, err := stencilstore.Read(stencilsDir, name)
-		if err != nil {
-			return "", fmt.Errorf("seatengine: seat %q: %w", seat.Name, err)
-		}
-		blocks[name] = block
-	}
-	filled, err := stencil.FillWith(body, blocks, values, optional)
-	if err != nil {
-		return "", fmt.Errorf("seatengine: seat %q: fill stencil %q: %w", seat.Name, seat.Stencil, err)
+		return "", fmt.Errorf("seatengine: seat %q: fill stencil %q: %w", label, seat.Stencil, err)
 	}
 	return string(filled), nil
 }

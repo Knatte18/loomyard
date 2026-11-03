@@ -4,6 +4,7 @@ package shedrecipe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -260,6 +261,20 @@ func TestSimpleEntries_HappyPath(t *testing.T) {
 		outcome, output, err := producer.Call(context.Background())
 		if outcome != shedengine.Done || !reflect.DeepEqual(output, shedengine.OutputPointer{}) || err != nil {
 			t.Errorf("Call() = %q, %+v, %v; want done, an empty pointer, nil", outcome, output, err)
+		}
+	})
+
+	// The Preflight row hands Env.PreflightStencils to its producer, so a failing check halts the row.
+	t.Run("Preflight forwards the stencils check", func(t *testing.T) {
+		env := newTestEnv(t)
+		env.PreflightStencils = func() error { return errors.New("marker x that no value fills") }
+		producer, err := preflightEntry(RowIdentity{Name: "Preflight"}, Config{}, env)
+		if err != nil {
+			t.Fatalf("preflightEntry() error = %v; want nil", err)
+		}
+		outcome, pointer, err := producer.Call(context.Background())
+		if err != nil || outcome != shedengine.Stuck || !strings.Contains(pointer.Reason, "seat stencils check failed: marker x that no value fills") {
+			t.Errorf("Call() = %q, %q, %v; want stuck with the stencils reason, nil", outcome, pointer.Reason, err)
 		}
 	})
 

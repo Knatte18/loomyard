@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -113,6 +114,11 @@ func TestWire_DarnRecipe(t *testing.T) {
 		if c.env.PreflightBatcher != nil {
 			t.Error("c.env.PreflightBatcher is set after wire() of a darn seed; want nil, so a broken batcher.yaml fails no darn Preflight")
 		}
+		if c.env.PreflightStencils == nil {
+			t.Error("c.env.PreflightStencils is nil after wire() of a darn seed; want the writer's stencils check")
+		} else if err := c.env.PreflightStencils(); err != nil {
+			t.Errorf("c.env.PreflightStencils() = %v; want nil, since a value fills every marker of the shipped writer stencils", err)
+		}
 		if got, want := c.env.RecordWrite.RecordPath, loomengine.DiscussionDecisionRecord(loc); got != want {
 			t.Errorf("c.env.RecordWrite.RecordPath = %q; want %q", got, want)
 		}
@@ -154,6 +160,63 @@ func TestWire_DarnRecipe(t *testing.T) {
 		}
 		if command, err := c.env.VerifyCommand("finalize"); err != nil || command != wantDarnLandingCall {
 			t.Errorf("c.env.VerifyCommand(finalize) = %q, %v; want the landing call %q, nil", command, err, wantDarnLandingCall)
+		}
+	})
+
+	wireDarnHub := func(t *testing.T) *loomCLI {
+		t.Helper()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, "3")
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+		return c
+	}
+
+	t.Run("the wired stencils check refuses a marker of the writer stencil no value fills", func(t *testing.T) {
+		t.Parallel()
+		c := wireDarnHub(t)
+		stencilsDir := c.runDeps.Geom.StencilsDir
+		body, err := stencilstore.Read(stencilsDir, "darn-template-write")
+		if err != nil {
+			t.Fatalf("stencilstore.Read() = %v; want nil", err)
+		}
+		path := stencilstore.Path(stencilsDir, "darn-template-write")
+		if err := os.WriteFile(path, append(body, []byte("\n{{.unfilled_marker}}\n")...), 0o644); err != nil {
+			t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+		}
+
+		err = c.env.PreflightStencils()
+		if err == nil {
+			t.Fatal("c.env.PreflightStencils() = nil; want a refusal of the unfilled marker")
+		}
+		for _, want := range []string{`seat "darn"`, `"darn-template-write"`, "unfilled_marker"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("c.env.PreflightStencils() = %q; want it to contain %q", err.Error(), want)
+			}
+		}
+	})
+
+	t.Run("the wired stencils check names the table build when the table cannot be built", func(t *testing.T) {
+		t.Parallel()
+		loc := hubLocation(t, "pair", ".")
+		seedDarnHubConfig(t, loc.HubPath, "3", "writer: opus[medium]", "writer: nosuchalias[medium]")
+		writeHubGateConfig(t, loc.HubPath, gateConfigWithTwoTiers())
+		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeDarn}
+		if err := c.wire(loc, loc.AnchorPath()); err != nil {
+			t.Fatalf("wire() = %v; want nil", err)
+		}
+
+		err := c.env.PreflightStencils()
+		if err == nil {
+			t.Fatal("c.env.PreflightStencils() = nil; want a refusal of the unresolvable writer model-spec")
+		}
+		for _, want := range []string{"build the darn writer table", "way forward"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("c.env.PreflightStencils() = %q; want it to contain %q", err.Error(), want)
+			}
 		}
 	})
 

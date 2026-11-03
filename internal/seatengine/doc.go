@@ -21,6 +21,7 @@
 // # The table rules
 //
 // Table.Validate applies every rule as a loud error naming the seat.
+// An error names a seat by its strand role, so the lead, which carries no name, reads as the role prefix.
 // The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor or a writer, never both in one table, with a unique valid name.
 // A table may hold no advisors: the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
 // The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, and a writer table's lead includes seat-directive-writer-chair in its place; a lone lead needs no such include.
@@ -31,6 +32,8 @@
 // A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
 // A table value named in Table.Optional may be empty and then renders as nothing in the stencil and in every block it includes; an Optional name may not be a reserved marker, and a seat value is never exempt.
 // Prompts composes every seat's prompt from a table without starting anything, so a table builder can test what its seats will read.
+// Table.CheckMarkers refuses a seat whose stencil, or a block it includes, holds a top-level marker no value fills, so a caller stops a stencil newer than the running binary, or a blank value, before any seat starts.
+// Validate leaves that check out, since a resumed seat keeps the prompt it started with and never fills its stencil again.
 // The list ReservedMarkers returns is declared once in this package; the table's collision check and the seats' value maps read that declaration, and a caller that builds a table reaches it through Table.Validate.
 //
 // # Told geometry

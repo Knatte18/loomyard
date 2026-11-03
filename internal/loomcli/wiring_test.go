@@ -179,7 +179,10 @@ func TestWire_DefaultConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("a tapestry seed tells Preflight the batcher load", func(t *testing.T) {
+	t.Run("a tapestry seed tells Preflight the batcher load and no stencils check", func(t *testing.T) {
+		if c.env.PreflightStencils != nil {
+			t.Error("c.env.PreflightStencils is set; want nil for a recipe with no Darn-Write row")
+		}
 		if c.env.PreflightBatcher == nil {
 			t.Fatal("c.env.PreflightBatcher = nil; want the batcher.yaml load for a recipe with an Implementer row")
 		}

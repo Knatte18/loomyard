@@ -1224,7 +1224,16 @@ func TestCreelCLI(t *testing.T) {
 		r.clientClock.Advance(5 * time.Second)
 		select {
 		case code := <-codes:
-			if text := timeoutStderr.String(); code != ExitWaitTimeout || text != "creel: no outcome arrived before the timeout of 5s\n" {
+			// The daemon may still hold alpha's draft stall from the expired inject as a fresh reading when this wait registers,
+			// since no probe of alpha has read the cleared stall yet, so a stall note may precede the answer.
+			text := timeoutStderr.String()
+			lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+			for _, note := range lines[:len(lines)-1] {
+				if !strings.Contains(note, "is stalled: ") {
+					t.Errorf("stderr line %q before the answer; want only stall notes", note)
+				}
+			}
+			if last := lines[len(lines)-1]; code != ExitWaitTimeout || last != "creel: no outcome arrived before the timeout of 5s" {
 				t.Errorf("creel inject --wait --timeout 5s into a failing writer = (%d, %q); want exit %d and a creel: line naming the timeout and no id", code, text, ExitWaitTimeout)
 			}
 		case <-time.After(10 * time.Second):

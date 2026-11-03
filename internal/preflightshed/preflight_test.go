@@ -57,7 +57,7 @@ func TestCall_CancelledAtEntryReturnsErrorNotStuck(t *testing.T) {
 	}
 }
 
-// TestPreflight_BatcherCheck covers the optional batcher check of NewPreflightWithBatcher over a temporary non-repository cwd.
+// TestPreflight_BatcherCheck covers the optional batcher check of NewPreflightWithChecks over a temporary non-repository cwd.
 // A failing check is Stuck with the batchifier reason and its way forward, and is logged with the row's name and the error.
 // A retired-key error closes with the reconcile hand-off instead.
 // A check that cancels the context before failing yields the cancellation error and no verdict.
@@ -116,7 +116,7 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			buf := logcapture.Capture(t)
-			p := NewPreflightWithBatcher("Pre-Row", t.TempDir(), tt.check(cancel))
+			p := NewPreflightWithChecks("Pre-Row", t.TempDir(), Checks{Batcher: tt.check(cancel)})
 
 			outcome, pointer, err := p.Call(ctx)
 
@@ -131,6 +131,96 @@ func TestPreflight_BatcherCheck(t *testing.T) {
 			case tt.wantNone:
 				if strings.Contains(pointer.Reason, batchifierReasonPrefix) {
 					t.Errorf("Call() reason = %q; want no batchifier reason", pointer.Reason)
+				}
+			default:
+				if err != nil {
+					t.Fatalf("Call() error = %v; want nil", err)
+				}
+				if outcome != shedengine.Stuck || pointer.Reason != tt.wantReason {
+					t.Errorf("Call() = (%q, %q); want (%q, %q)", outcome, pointer.Reason, shedengine.Stuck, tt.wantReason)
+				}
+				logged := buf.String()
+				for _, want := range []string{"Pre-Row", tt.failure.Error()} {
+					if !strings.Contains(logged, want) {
+						t.Errorf("log = %q; want it to contain %q", logged, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestPreflight_StencilsCheck covers the optional stencils check of NewPreflightWithChecks over a temporary non-repository cwd.
+// A failing check is Stuck with the stencils reason followed by the error's own text, and is logged with the row's name and the error.
+// A failing batcher check runs first and wins over a failing stencils check.
+// A check that cancels the context before failing yields the cancellation error and no verdict.
+// A passing check never yields the stencils reason.
+// It does not call t.Parallel, because logcapture.Capture redirects the process-global logger output.
+func TestPreflight_StencilsCheck(t *testing.T) {
+	tiergate.Require(t, 0)
+	stencilsErr := errors.New("stencil darn-template-write has marker(s) subagent_model that no value fills")
+	batcherErr := errors.New("unknown batchifier bogus")
+	failWith := func(err error) func() error { return func() error { return err } }
+
+	tests := []struct {
+		name string
+		// checks builds the checks under test; cancel lets a check cancel the call's context.
+		checks     func(cancel context.CancelFunc) Checks
+		failure    error
+		wantReason string
+		wantCancel bool
+		wantNone   bool
+	}{
+		{
+			name:       "FailingCheckIsStuckWithTheStencilsReason",
+			checks:     func(context.CancelFunc) Checks { return Checks{Stencils: failWith(stencilsErr)} },
+			failure:    stencilsErr,
+			wantReason: stencilsReasonPrefix + stencilsErr.Error(),
+		},
+		{
+			name: "FailingBatcherCheckWinsOverTheStencilsCheck",
+			checks: func(context.CancelFunc) Checks {
+				return Checks{Batcher: failWith(batcherErr), Stencils: failWith(stencilsErr)}
+			},
+			failure:    batcherErr,
+			wantReason: batchifierReasonPrefix + batcherErr.Error() + batchifierWayForward,
+		},
+		{
+			name: "CancelledContextWinsOverTheFailure",
+			checks: func(cancel context.CancelFunc) Checks {
+				return Checks{Stencils: func() error {
+					cancel()
+					return stencilsErr
+				}}
+			},
+			wantCancel: true,
+		},
+		{
+			name:     "PassingCheckYieldsNoStencilsReason",
+			checks:   func(context.CancelFunc) Checks { return Checks{Stencils: failWith(nil)} },
+			wantNone: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			buf := logcapture.Capture(t)
+			p := NewPreflightWithChecks("Pre-Row", t.TempDir(), tt.checks(cancel))
+
+			outcome, pointer, err := p.Call(ctx)
+
+			switch {
+			case tt.wantCancel:
+				if !errors.Is(err, context.Canceled) {
+					t.Errorf("Call() error = %v; want the cancellation error", err)
+				}
+				if outcome == shedengine.Stuck || outcome == shedengine.Done {
+					t.Errorf("Call() outcome = %q; want no verdict alongside a cancellation error", outcome)
+				}
+			case tt.wantNone:
+				if strings.Contains(pointer.Reason, stencilsReasonPrefix) {
+					t.Errorf("Call() reason = %q; want no stencils reason", pointer.Reason)
 				}
 			default:
 				if err != nil {
