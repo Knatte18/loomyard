@@ -117,7 +117,7 @@ type MasterStarter interface {
 // Starter spawns Master; Stopper is the seam the entry-time reclaim stops a leftover strand through;
 // Engines and ShuttleCfg support session resolution and audit, Engines reading each recorded session through its own engine;
 // Geom is the told Geometry every path (PlanDir, WebsterDir, ReportsDir, PromptsDir, ScratchDir,
-// WorktreeRoot, AnchorRoot, StencilsDir) is read from;
+// WorktreeRoot, PaneCwd, AnchorRoot, StencilsDir) is read from;
 // RefMatcher is the injected fabric-reference class matcher CheckParent/CheckFork consult, never nil
 // in either mode;
 // Config, Roles, and Batcher carry the loaded configuration, pre-flight-resolved role->model-spec
@@ -730,7 +730,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// The fixer fork's prompt is Go-rendered and Go-written up front for the same reason as a batch fork's:
 	// Merriam may write nothing but its two contract files.
 	verifyFixNotePath := friction.NotePath(deps.FrictionDir, "webster-verify-fix")
-	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
+	verifyFixPrompt, err := RenderVerifyFixPrompt(verifyGateReportPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, verifyFixNotePath, verifyFixGate)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -754,7 +754,7 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 		return RunResult{}, fmt.Errorf("%w %s", err, deps.reentryStep())
 	}
 	masterNotePath := friction.NotePath(deps.FrictionDir, "webster-master")
-	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.WorktreeRoot, deps.Geom.RepoRoot, deps.Geom.StencilsDir, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
+	prompt, err := RenderMasterPrompt(batches, st, outcomePath, summaryPath, verifyFixPromptPath, deps.Geom.PlanDir, deps.Config.SelfFixCap, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, patternChanges, parentDecisions, masterNotePath, deps.Geom.ParentName)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -1096,9 +1096,9 @@ func runExitAuditCrossCheck(deps RunDeps, outcomePath, summaryPath string, resul
 		return nil, "", err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(*result.ForkAudit, outcomePath, summaryPath, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range result.ForkAudit.Forks {
-		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, outcomePath, summaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, forkOwnReport(st, deps.Geom, f.TranscriptPath), deps.RefMatcher)...)
 	}
 
 	// Classification is the only fallible step and runs before any mutation.

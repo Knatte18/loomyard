@@ -92,6 +92,7 @@ func newVerifyFixture(t *testing.T, command string) *verifyFixture {
 	geom := websterengine.Geometry{
 		AnchorRoot:   anchor,
 		WorktreeRoot: worktree,
+		PaneCwd:      worktree,
 		WebsterDir:   websterDir,
 		ReportsDir:   filepath.Join(websterDir, "reports"),
 		PromptsDir:   filepath.Join(websterDir, "prompts"),

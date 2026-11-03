@@ -206,7 +206,7 @@ type verifyGateSeams struct {
 // Attempt and failure counts, the routing and the pre-fix head live in the closure for one shuttle run;
 // the pre-fix head is also persisted as state.json's PreFixHead when it is recorded, overwriting an earlier run's, and cleared on a passing evaluation.
 func NewVerifyGate(geom Geometry, attempts int, batches []batcher.Batch, parentBranch ParentBranchFunc, frictionDir, fixPromptPath string) (shuttleengine.Gate, *VerifyGateNotes) {
-	paths := verifytree.NewPaths(geom.WorktreeRoot, geom.VerifyDir)
+	paths := verifytree.NewPaths(geom.PaneCwd, geom.VerifyDir)
 	seams := verifyGateSeams{
 		outcome: func() (string, error) {
 			o, err := parseOutcome(OutcomePath(geom.WebsterDir))

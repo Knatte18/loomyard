@@ -123,8 +123,11 @@ func TestWire_ModeHubSelectsHubMode(t *testing.T) {
 			if c.geom.AnchorRoot != loc.AnchorPath() {
 				t.Errorf("geom.AnchorRoot = %q; want %q", c.geom.AnchorRoot, loc.AnchorPath())
 			}
-			if c.geom.WorktreeRoot != loc.AnchorPath() {
-				t.Errorf("geom.WorktreeRoot = %q; want %q -- hub mode's WorktreeRoot is the anchor path", c.geom.WorktreeRoot, loc.AnchorPath())
+			if c.geom.WorktreeRoot != loc.WorktreePath() {
+				t.Errorf("geom.WorktreeRoot = %q; want %q -- hub mode's WorktreeRoot is the git worktree, not the anchor", c.geom.WorktreeRoot, loc.WorktreePath())
+			}
+			if c.geom.PaneCwd != loc.AnchorPath() {
+				t.Errorf("geom.PaneCwd = %q; want %q -- hub mode's sessions run at the anchor", c.geom.PaneCwd, loc.AnchorPath())
 			}
 			if c.anchorRel != loc.AnchorRel {
 				t.Errorf("anchorRel = %q; want %q", c.anchorRel, loc.AnchorRel)

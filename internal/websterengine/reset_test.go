@@ -90,7 +90,8 @@ func newResolutionFixture(t *testing.T) *resolutionFixture {
 			2: {Slug: "two", Kind: "fork", StartSHA: fx.batch1Head},
 		},
 	}
-	fx.geom = websterengine.Geometry{ScratchDir: t.TempDir(), ReportsDir: t.TempDir(), WorktreeRoot: t.TempDir(), Git: git}
+	worktree := t.TempDir()
+	fx.geom = websterengine.Geometry{ScratchDir: t.TempDir(), ReportsDir: t.TempDir(), WorktreeRoot: worktree, PaneCwd: worktree, Git: git}
 	fx.writeReport(2, "two", fx.batch2Head)
 	return fx
 }

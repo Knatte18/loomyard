@@ -122,7 +122,7 @@ func (e *PlanConflictError) Unwrap() error { return ErrPlanConflict }
 // State is the already-loaded run state BeginBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Stopper is the seam the prior-recovery-strand reclaim stops a leftover strand through (a dead-but-live recovery record a fork batch is about to overwrite);
-// Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the repo checkout HeadSHA is captured from and RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are the reports directory,
+// Geom is the told Geometry BeginBatch reads every path from: WorktreeRoot is the git worktree HeadSHA is captured from and the plan's card paths resolve against, PaneCwd is RenderForkPrompt's promptWorktreeRoot, WebsterDir and ReportsDir are the reports directory,
 // and PromptsDir and StencilsDir feed the prompt write and the fork template's read location.
 type BeginDeps struct {
 	Plan    *planparser.Plan
@@ -518,7 +518,7 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 	}
 
 	// The gate calls render before the first mutation, so a gate list the config lacks refuses with no prompt written and no state recorded.
-	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Gate)
+	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
 		return nil, err
 	}
@@ -581,15 +581,12 @@ func BeginBatch(deps BeginDeps, batchNumber int) (*BeginResult, error) {
 		return nil, fmt.Errorf("webster: resolve report path: %w", err)
 	}
 
-	// WorktreeRoot, not AnchorRoot, is correct in both modes here: hub
-	// mode's WorktreeRoot is the anchor path, the exact value this call
-	// rendered before this Geometry split.
 	notePath := friction.NotePath(deps.FrictionDir, batchName)
 	promptPath, err := filepath.Abs(filepath.Join(deps.Geom.PromptsDir, batchName+".md"))
 	if err != nil {
 		return nil, fmt.Errorf("webster: resolve prompt path: %w", err)
 	}
-	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
+	prompt, err := RenderForkPrompt(batch, cardGates, batchGate, prevDigest, reportPath, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, OutcomePath(deps.Geom.WebsterDir), summaryparser.Path(deps.Geom.WebsterDir), deps.Config.SelfFixCap, notePath, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}

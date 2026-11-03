@@ -80,6 +80,7 @@ func newVerifyGateRepo(t *testing.T) verifyGateRepo {
 	return verifyGateRepo{
 		geom: Geometry{
 			WorktreeRoot: dir,
+			PaneCwd:      dir,
 			WebsterDir:   websterDir,
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),

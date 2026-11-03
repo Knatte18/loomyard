@@ -30,6 +30,7 @@ func TestClassifyViolation(t *testing.T) {
 	geom := Geometry{
 		AnchorRoot:   root,
 		WorktreeRoot: root,
+		PaneCwd:      root,
 		WebsterDir:   filepath.Join(root, "_lym", "webster"),
 		ReportsDir:   filepath.Join(root, "_lym", "webster", "reports"),
 		PlanDir:      filepath.Join(root, "_lym", "plan"),
@@ -49,6 +50,7 @@ func TestClassifyViolation(t *testing.T) {
 	linkGeom := Geometry{
 		AnchorRoot:   linkRoot,
 		WorktreeRoot: linkRoot,
+		PaneCwd:      linkRoot,
 		WebsterDir:   filepath.Join(linkRoot, "_lym", "webster"),
 		ReportsDir:   filepath.Join(linkRoot, "_lym", "webster", "reports"),
 		PlanDir:      filepath.Join(linkRoot, "_lym", "plan"),
@@ -69,6 +71,7 @@ func TestClassifyViolation(t *testing.T) {
 	nestedGeom := Geometry{
 		AnchorRoot:   nested,
 		WorktreeRoot: nested,
+		PaneCwd:      nested,
 		WebsterDir:   filepath.Join(nested, "_lym", "webster"),
 		ReportsDir:   filepath.Join(nested, "_lym", "webster", "reports"),
 		PlanDir:      filepath.Join(nested, "_lym", "plan"),

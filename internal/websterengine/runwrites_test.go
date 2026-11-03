@@ -7,6 +7,7 @@ package websterengine
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -147,12 +148,30 @@ func TestLoadRunWrites(t *testing.T) {
 			},
 		}
 
-		got, err := writtenWorktreePaths(writes, worktree)
+		got, err := writtenWorktreePaths(writes, worktree, worktree)
 		if err != nil {
 			t.Fatalf("writtenWorktreePaths: %v", err)
 		}
 		if want := []string{"a.go", "b/new.go", "recovered.go"}; !reflect.DeepEqual(got, want) {
 			t.Errorf("writtenWorktreePaths = %v, want %v", got, want)
+		}
+
+		// A session that ran in a subdirectory resolves its relative writes there, while the within-tree check and the returned paths stay on the worktree root.
+		paneCwd := filepath.Join(worktree, "backend")
+		if err := os.MkdirAll(paneCwd, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		split := RunWrites{Master: []shuttleengine.WriteEvent{
+			{Path: "a.go", Succeeded: true},
+			{Path: filepath.Join("..", "top.go"), Succeeded: true},
+			{Path: filepath.Join("..", "..", "outside.go"), Succeeded: true},
+		}}
+		got, err = writtenWorktreePaths(split, paneCwd, worktree)
+		if err != nil {
+			t.Fatalf("writtenWorktreePaths: %v", err)
+		}
+		if want := []string{"backend/a.go", "top.go"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("writtenWorktreePaths with a subdirectory pane cwd = %v, want %v", got, want)
 		}
 	})
 

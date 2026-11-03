@@ -109,6 +109,7 @@ func newBeginFixture(t *testing.T) *beginFixture {
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
+			PaneCwd:      worktree,
 			WebsterDir:   t.TempDir(),
 			ScratchDir:   t.TempDir(),
 			ReportsDir:   t.TempDir(),

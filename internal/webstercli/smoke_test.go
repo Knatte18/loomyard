@@ -334,7 +334,7 @@ func TestSmoke_RecordBatchConsumesCrashedSessionReport(t *testing.T) {
 		Batches: []batcher.Batch{{Cards: cards}},
 		State:   state,
 		Engines: shuttleengine.NewEngineSet("claude", map[string]shuttleengine.Engine{"claude": eng}),
-		Geom:    websterengine.Geometry{WorktreeRoot: dir, ReportsDir: reportsDir},
+		Geom:    websterengine.Geometry{WorktreeRoot: dir, PaneCwd: dir, ReportsDir: reportsDir},
 		// RecordBatch's glyph passes (DoneChecks, BindHandles, DetectDrift) all take the parsed plan,
 		// so a nil Plan is refused outright. The card carries no targets, so every one of those passes
 		// is a clean no-op here and this fixture stays about the crashed-session report it exists to

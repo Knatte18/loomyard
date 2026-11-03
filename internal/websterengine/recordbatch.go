@@ -217,10 +217,9 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 // State is the already-loaded run state RecordBatch reads and mutates;
 // Config is the loaded webster.yaml;
 // Engines supplies the incremental fork audit (AuditForksIncremental), read for each session through the engine its batch record names;
-// Geom is the told Geometry the audit and the dirty-worktree/head-SHA checks read: the audit workdir
-// is Geom.WorktreeRoot (not Geom.AnchorRoot) — the audit resolves transcript-relative recorded write
-// paths against this directory, so it must be the directory the fork actually ran in, which is the
-// worktree root in every mode (the two coincide in hub mode, so nothing changes there);
+// Geom is the told Geometry the audit and the dirty-worktree/head-SHA checks read;
+// the audit resolves transcript-relative recorded write paths against Geom.PaneCwd, the directory the fork ran in,
+// and the git checks read Geom.WorktreeRoot;
 // RefMatcher is the injected fabric-reference class matcher (a real *fabricengine.RefScanner in hub
 // mode, NeverMatches in standalone) CheckParent/CheckFork consult, never nil in either mode;
 // OutcomePath and SummaryPath are the run's two Master contract files CheckParent's write-policy
@@ -358,7 +357,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 	fetch := func() (shuttleengine.ForkAudit, error) {
-		return engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+		return engine.AuditForksIncremental(bs.SessionID, deps.Geom.PaneCwd, seenSet)
 	}
 
 	audit, newReports, err := SettleRetry(fetch, deps.State.SeenForkTranscripts, DefaultSettleWindow, DefaultSettleTick, deps.Sleeper)
@@ -379,7 +378,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	for _, f := range audit.Forks {
 		if slices.Contains(bs.BracketTranscripts, f.TranscriptPath) {
 			bracketForks = append(bracketForks, f)
-			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isOwnReportWrite(deps.Geom.WorktreeRoot, w, ownReport) }) {
+			if slices.ContainsFunc(f.WritePaths, func(w string) bool { return isOwnReportWrite(deps.Geom.PaneCwd, w, ownReport) }) {
 				counted = append(counted, f)
 			}
 		}
@@ -409,9 +408,9 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 		return nil, err
 	}
 	var candidates []AuditViolation
-	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, deps.RefMatcher)...)
+	candidates = append(candidates, CheckParent(audit, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, deps.RefMatcher)...)
 	for _, f := range append(slices.Clone(newReports), bracketForks...) {
-		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
+		candidates = append(candidates, CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, ownReport, deps.RefMatcher)...)
 		forkWarnings = append(forkWarnings, ForkWarnings(f)...)
 	}
 
@@ -530,7 +529,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 	// a policy warning is only safe to carry once the work is evidenced.
 	// A FAILED report takes its policy findings as warnings with no re-run.
 	if report.Status == ReportStatusOK && (len(policy) > 0 || len(bs.AuditWarnings) > 0) {
-		runner := cardverify.Runner{Worktree: deps.Geom.WorktreeRoot, Slots: deps.Geom.GateSlots, WaitDir: deps.Geom.GateWaitDir, Timeout: deps.VerifyTimeout}
+		runner := cardverify.Runner{Worktree: deps.Geom.PaneCwd, Slots: deps.Geom.GateSlots, WaitDir: deps.Geom.GateWaitDir, Timeout: deps.VerifyTimeout}
 		if failures := rerunCardVerifies(batch.Cards, runner); len(failures) > 0 {
 			var earlier []string
 			for _, w := range bs.AuditWarnings {
@@ -602,6 +601,7 @@ func RecordBatch(deps RecordDeps, batchNumber int) (*RecordResult, error) {
 			Number:       number,
 			Slug:         slug,
 			ReportsDir:   deps.Geom.ReportsDir,
+			PaneCwd:      deps.Geom.PaneCwd,
 			WorktreeRoot: deps.Geom.WorktreeRoot,
 			Git:          deps.Geom.Git,
 			HeadSHA:      report.HeadSHA,
@@ -709,7 +709,7 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 	if err != nil {
 		return nil, err
 	}
-	audit, err := engine.AuditForksIncremental(bs.SessionID, deps.Geom.WorktreeRoot, seenSet)
+	audit, err := engine.AuditForksIncremental(bs.SessionID, deps.Geom.PaneCwd, seenSet)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
@@ -732,7 +732,7 @@ func auditTerminalFork(deps RecordDeps, bs *BatchState, batchNumber int) (*Recor
 	ownReport := filepath.Join(deps.Geom.ReportsDir, ReportFileName(number, slug))
 	var correctness []classifiedFinding
 	for _, f := range newReports {
-		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.WorktreeRoot, planDirs, websterDirs, ownReport, deps.RefMatcher) {
+		for _, v := range CheckFork(f, deps.OutcomePath, deps.SummaryPath, deps.Geom.PaneCwd, planDirs, websterDirs, ownReport, deps.RefMatcher) {
 			id := findingIdentity(bs.SessionID, v)
 			if isDispositioned(deps.State, id) {
 				continue
@@ -785,6 +785,7 @@ func failFromFindings(deps RecordDeps, bs *BatchState, number int, slug, headSHA
 		Number:         number,
 		Slug:           slug,
 		ReportsDir:     deps.Geom.ReportsDir,
+		PaneCwd:        deps.Geom.PaneCwd,
 		WorktreeRoot:   deps.Geom.WorktreeRoot,
 		Git:            deps.Geom.Git,
 		HeadSHA:        headSHA,

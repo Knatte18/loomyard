@@ -86,7 +86,7 @@ func TestMerriamBase(t *testing.T) {
 	if err := os.MkdirAll(planDir, 0o755); err != nil {
 		t.Fatalf("mkdir plan dir: %v", err)
 	}
-	geom := websterengine.Geometry{WorktreeRoot: worktree, PlanDir: planDir, StencilsDir: stencilsDir}
+	geom := websterengine.Geometry{PaneCwd: worktree, PlanDir: planDir, StencilsDir: stencilsDir}
 	write := func(t *testing.T, path, content string) {
 		t.Helper()
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -178,7 +178,7 @@ func TestMerriamBase(t *testing.T) {
 		write(t, filepath.Join(repoRoot, "PATTERN.md"), "# PATTERN\n\nsome constraints\n")
 		record := filepath.Join(worktree, "decision-record.md")
 		patternGeom := geom
-		patternGeom.RepoRoot = repoRoot
+		patternGeom.WorktreeRoot = repoRoot
 		patternGeom.DecisionRecordPath = record
 
 		noRecord, err := websterengine.MerriamBase(patternGeom, nil)

@@ -28,8 +28,9 @@ type RunWrites struct {
 // the recovery sessions follow, each batch's RecoverySessions in batch-number order, then the cold verify-gate fixers' sessions; both are deduplicated, an empty id skipped, and each id is audited once.
 // Each session is audited through the engine its own state entry records, so a later change to the configured engine never changes it.
 // It reads only; an engine or audit error is returned naming the session.
+// paneCwd is the directory the sessions ran in, which the audit resolves relative write paths against.
 // A nil engines yields an empty history.
-func loadRunWrites(engines AuditEngines, st *State, worktree string) (RunWrites, error) {
+func loadRunWrites(engines AuditEngines, st *State, paneCwd string) (RunWrites, error) {
 	var writes RunWrites
 	if st == nil || engines == nil {
 		return writes, nil
@@ -40,7 +41,7 @@ func loadRunWrites(engines AuditEngines, st *State, worktree string) (RunWrites,
 		if err != nil {
 			return RunWrites{}, err
 		}
-		audit, err := engine.AuditForks(session.ID, worktree)
+		audit, err := engine.AuditForks(session.ID, paneCwd)
 		if err != nil {
 			return RunWrites{}, fmt.Errorf("audit session %s for run writes: %w", session.ID, err)
 		}
@@ -54,7 +55,7 @@ func loadRunWrites(engines AuditEngines, st *State, worktree string) (RunWrites,
 		if err != nil {
 			return RunWrites{}, err
 		}
-		audit, err := engine.AuditForks(session.ID, worktree)
+		audit, err := engine.AuditForks(session.ID, paneCwd)
 		if err != nil {
 			return RunWrites{}, fmt.Errorf("audit recovery session %s for run writes: %w", session.ID, err)
 		}
@@ -68,8 +69,9 @@ func loadRunWrites(engines AuditEngines, st *State, worktree string) (RunWrites,
 
 // writtenWorktreePaths returns, sorted and deduplicated, the slash-separated paths relative to worktree that some session of the run wrote successfully.
 // Unlike the tracked own paths of a reset it keeps untracked files, and a failed write is not evidence.
+// A relative write path is resolved against paneCwd.
 // A path outside the worktree is dropped, and the error is a link-resolution failure.
-func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
+func writtenWorktreePaths(writes RunWrites, paneCwd, worktree string) ([]string, error) {
 	root, err := canonicalPath(worktree)
 	if err != nil {
 		return nil, err
@@ -79,7 +81,7 @@ func writtenWorktreePaths(writes RunWrites, worktree string) ([]string, error) {
 		if !ev.Succeeded {
 			continue
 		}
-		canon, err := canonicalPath(resolveWritePath(worktree, ev.Path))
+		canon, err := canonicalPath(resolveWritePath(paneCwd, ev.Path))
 		if err != nil {
 			return nil, err
 		}

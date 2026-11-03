@@ -199,6 +199,7 @@ func newRunFixtureOver(t *testing.T, numCards int, worktree string, git webstere
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
+			PaneCwd:      worktree,
 			VerifyDir:    t.TempDir(),
 			WebsterDir:   t.TempDir(),
 			ScratchDir:   t.TempDir(),

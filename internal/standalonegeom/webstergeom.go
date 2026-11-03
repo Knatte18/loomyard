@@ -34,14 +34,13 @@ import (
 // GateConfig loads the gate config over the target worktree's own directory at each call, the file the gate verb reads outside every hub;
 // a worktree with none is refused naming `lym config gate`.
 //
-// WorktreeRoot is target, never stateDir: it is the fork-audit workdir and the {{.worktree_root}}
-// token's value in standalone, since target is the git repository an implementer's work happens
-// in.
+// WorktreeRoot and PaneCwd are both target, never stateDir:
+// target is the git repository an implementer's work happens in and the directory its sessions run in.
 func WebsterGeometry(target, stateDir string) websterengine.Geometry {
 	return websterengine.Geometry{
 		AnchorRoot:   stateDir,
 		WorktreeRoot: target,
-		RepoRoot:     target,
+		PaneCwd:      target,
 		WebsterDir:   websterengine.Dir(stateDir),
 		ReportsDir:   websterengine.ReportsDir(stateDir),
 		ScratchDir:   websterengine.ScratchDir(stateDir),

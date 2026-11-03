@@ -446,7 +446,7 @@ func RenderPlanFixPrompt(recordPath, replyPath, worktreeRoot, planDir, stencilsD
 }
 
 // masterPlanDirDisplay returns the plan-directory spelling the rendered prompts carry: planDir relative to paneCwd when it sits inside it — hub geometry, whose pane runs at the anchor the plan's `_lym/plan` junction hangs off, so the byte-exact "_lym/plan" keeps the prompt's own never-reference-_lym-by-another-path rule self-consistent — and the absolute planDir otherwise, which is standalone geometry, whose plan lives in the derived state directory and is reachable from the pane's cwd by no relative spelling at all.
-// The base is the PANE's cwd (Geometry.WorktreeRoot, where every session actually runs), never AnchorRoot: standalone's AnchorRoot IS the state directory containing the plan, so an anchor-based split rendered the unreachable relative spelling for exactly the mode this function exists to fix (proven live in round fable5-high-r3's second E2E attempt).
+// The base is the PANE's cwd (Geometry.PaneCwd, where every session actually runs), never AnchorRoot: standalone's AnchorRoot IS the state directory containing the plan, so an anchor-based split rendered the unreachable relative spelling for exactly the mode this function exists to fix (proven live in round fable5-high-r3's second E2E attempt).
 func masterPlanDirDisplay(paneCwd, planDir string) string {
 	if rel, err := filepath.Rel(paneCwd, planDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return filepath.ToSlash(rel)

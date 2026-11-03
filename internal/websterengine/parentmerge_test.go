@@ -28,6 +28,7 @@ func TestParentMergeBetweenForkCommitAndRecordBatch(t *testing.T) {
 	gitkit.CommitFile(t, fx.Worktree, "base.txt", "base", "base commit")
 	fx.Deps.Geom.Git = nil
 	fx.Deps.Geom.WorktreeRoot = fx.Worktree
+	fx.Deps.Geom.PaneCwd = fx.Worktree
 	deps := fx.Deps
 
 	// 1. begin-batch 1 records its StartSHA.

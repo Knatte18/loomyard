@@ -35,12 +35,12 @@ func MerriamBaseOf(texts ...string) batcher.StartBase {
 	return batcher.StartBase{Lines: lines, Fixed: merriamFixedContext}
 }
 
-// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files at the worktree root when present, the Master stencil with the orchestrator PATTERN directive and the declared changes of geom.DecisionRecordPath, and the plan's 00-overview.md.
+// MerriamBase returns the start base of the Merriam session geom describes: the named instruction files in the pane's cwd when present, the Master stencil with the orchestrator PATTERN directive and the declared changes of geom.DecisionRecordPath, and the plan's 00-overview.md.
 // An absent instruction file adds nothing; any other failure is refused naming the file and the cause, with no way forward.
 func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, error) {
 	var texts []string
 	for _, name := range instructionFiles {
-		data, err := os.ReadFile(filepath.Join(geom.WorktreeRoot, name))
+		data, err := os.ReadFile(filepath.Join(geom.PaneCwd, name))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -59,7 +59,7 @@ func MerriamBase(geom Geometry, instructionFiles []string) (batcher.StartBase, e
 	if err != nil {
 		patternChanges = nil
 	}
-	directive, err := pattern.Directive(geom.RepoRoot, geom.StencilsDir, pattern.RoleOrchestrator, patternChanges)
+	directive, err := pattern.Directive(geom.WorktreeRoot, geom.StencilsDir, pattern.RoleOrchestrator, patternChanges)
 	if err != nil {
 		return batcher.StartBase{}, merriamBaseError("PATTERN.md", err)
 	}

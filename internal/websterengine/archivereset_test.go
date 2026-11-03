@@ -28,6 +28,7 @@ func newResetArchiveFixture(t *testing.T) *resetArchiveFixture {
 	git := newFakeGit()
 	geom := websterengine.Geometry{
 		WorktreeRoot: filepath.Join(root, "worktree"),
+		PaneCwd:      filepath.Join(root, "worktree"),
 		WebsterDir:   filepath.Join(root, "webster"),
 		ReportsDir:   filepath.Join(root, "webster", "reports"),
 		PromptsDir:   filepath.Join(root, "scratch", "prompts"),

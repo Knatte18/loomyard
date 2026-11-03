@@ -186,7 +186,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 	}
 
 	// The friction directive is rendered by gatefixer.RenderPrompt from the note path, so the body's own values carry none.
-	bodyValues, err := verifyFixValues(reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, "", fixGate, verifyFixBodyStencil)
+	bodyValues, err := verifyFixValues(reportPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, outcomePath, summaryPath, "", fixGate, verifyFixBodyStencil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -196,7 +196,7 @@ func FixVerifySpawnOrAttach(deps FixVerifyDeps, st *State, clk Clock) (*VerifyFi
 		BodyValues:     bodyValues,
 		ReportPath:     reportPath,
 		ReplyPath:      replyPath,
-		RepoRoot:       deps.Geom.RepoRoot,
+		RepoRoot:       deps.Geom.WorktreeRoot,
 		PatternChanges: patternChanges,
 		ParentName:     deps.Geom.ParentName,
 		NotePath:       friction.NotePath(deps.FrictionDir, "webster-verify-fix-cold"),

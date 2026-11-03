@@ -135,7 +135,7 @@ func rebaselineDeps(t *testing.T, planCards []planparser.Card, partition []webst
 		Plan:   &planparser.Plan{Dir: planDir, Format: 5, Cards: planCards},
 		Active: active,
 		State:  &websterengine.State{PlanFingerprint: "old-fingerprint", Batches: recs, Partition: slices.Clone(partition)},
-		Geom:   websterengine.Geometry{WorktreeRoot: worktree, WebsterDir: t.TempDir(), Git: git},
+		Geom:   websterengine.Geometry{WorktreeRoot: worktree, PaneCwd: worktree, WebsterDir: t.TempDir(), Git: git},
 	}
 }
 

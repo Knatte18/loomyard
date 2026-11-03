@@ -205,11 +205,11 @@ func uncommittedPathsBlock(deps RecoverDeps) (string, error) {
 	}
 	var written []string
 	if deps.Engines != nil {
-		writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.WorktreeRoot)
+		writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.PaneCwd)
 		if err != nil {
 			return "", err
 		}
-		if written, err = writtenWorktreePaths(writes, deps.Geom.WorktreeRoot); err != nil {
+		if written, err = writtenWorktreePaths(writes, deps.Geom.PaneCwd, deps.Geom.WorktreeRoot); err != nil {
 			return "", err
 		}
 	}
@@ -279,7 +279,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	}
 
 	// The gate calls render before the first mutation, so a gate list the config lacks refuses with nothing changed.
-	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.WorktreeRoot, deps.Geom.PlanDir), deps.Gate)
+	cardGates, err := renderCardGates(batch.Cards, masterPlanDirDisplay(deps.Geom.PaneCwd, deps.Geom.PlanDir), deps.Gate)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func recoverSpawn(deps RecoverDeps, batch batcher.Batch, prior *BatchState, prev
 	if err != nil {
 		return nil, fmt.Errorf("webster: list the worktree's uncommitted paths for batch %s: %w; way forward: transient, re-run `lym webster recover-batch %d`", batchName, err, number)
 	}
-	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.RepoRoot, deps.Geom.PlanDir, deps.Geom.WorktreeRoot, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
+	prompt, err := RenderRecoveryPrompt(batch, cardGates, batchGate, prevDigest, failureDigestBlock(prior), uncommittedPaths, reportPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.PaneCwd, deps.Geom.StencilsDir, deps.Geom.SpecsDir, deps.GateTiers, deps.RenameTools, patternChanges, deps.Config.SelfFixCap, notePath, deps.Geom.ParentName, deps.CardFixer)
 	if err != nil {
 		return nil, err
 	}
@@ -691,6 +691,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 			Number:       number,
 			Slug:         slug,
 			ReportsDir:   deps.Geom.ReportsDir,
+			PaneCwd:      deps.Geom.PaneCwd,
 			WorktreeRoot: deps.Geom.WorktreeRoot,
 			Git:          deps.Geom.Git,
 			HeadSHA:      head,
@@ -755,6 +756,7 @@ func PersistRecoveryTerminal(deps RecoverDeps, st *State, batchNumber int, diges
 			Number:       number,
 			Slug:         slug,
 			ReportsDir:   deps.Geom.ReportsDir,
+			PaneCwd:      deps.Geom.PaneCwd,
 			WorktreeRoot: deps.Geom.WorktreeRoot,
 			Git:          deps.Geom.Git,
 			HeadSHA:      head,

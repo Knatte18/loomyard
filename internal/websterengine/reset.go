@@ -424,7 +424,7 @@ func ownTrackedPaths(deps ResetDeps) ([]string, error) {
 	if deps.Engines == nil {
 		return nil, nil
 	}
-	writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.WorktreeRoot)
+	writes, err := loadRunWrites(deps.Engines, deps.State, deps.Geom.PaneCwd)
 	if err != nil {
 		return nil, err
 	}
@@ -433,7 +433,7 @@ func ownTrackedPaths(deps ResetDeps) ([]string, error) {
 		if !ev.Succeeded {
 			continue
 		}
-		rel, ok, err := trackedRel(deps.Geom.git(), deps.Geom.WorktreeRoot, ev.Path)
+		rel, ok, err := trackedRel(deps.Geom.git(), deps.Geom.PaneCwd, deps.Geom.WorktreeRoot, ev.Path)
 		if err != nil {
 			return nil, err
 		}

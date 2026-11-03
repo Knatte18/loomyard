@@ -15,10 +15,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// seedPendingFinding points the geometry at the fixture's real repo, records a done batch at its HEAD, and leaves one pending finding naming the tracked base.txt.
+// seedPendingFinding records a done batch at the fixture repo's HEAD and leaves one pending finding naming the tracked base.txt, relative to a pane run at the worktree root.
 func (fx *verbsFixture) seedPendingFinding(t *testing.T) {
 	t.Helper()
-	fx.CLI.geom.WorktreeRoot = fx.Worktree
+	fx.CLI.geom.PaneCwd = fx.Worktree
 	st := fx.initState(t)
 	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", Kind: "fork", Terminal: true, Status: "done", Digest: &websterengine.Digest{Status: "done", HeadSHA: head}}
@@ -75,7 +75,6 @@ func TestAcceptAuditCmd_BatchClearsFabricReference(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
-	fx.CLI.geom.WorktreeRoot = fx.Worktree
 	st := fx.initState(t)
 	head := gitkit.RevParse(t, fx.Worktree, "HEAD")
 	st.Batches[2] = &websterengine.BatchState{

@@ -42,6 +42,7 @@ func newSuspectFixture(t *testing.T) *suspectFixture {
 	}
 	geom := Geometry{
 		WorktreeRoot: root,
+		PaneCwd:      root,
 		PlanDir:      planDir,
 		WebsterDir:   filepath.Join(root, "_lym", "webster"),
 		ScratchDir:   filepath.Join(root, ".lym", "webster"),
@@ -128,6 +129,30 @@ func TestCheckSuspectPaths(t *testing.T) {
 		gitkit.Git(t, root, "commit", "-am", "edit")
 		d, _ = check(t, fx.head, "tracked.txt")
 		expect(t, d, "tracked.txt")
+	})
+	t.Run("relative paths resolve against a subdirectory pane cwd inside the worktree root", func(t *testing.T) {
+		gitkit.CommitFile(t, root, "backend/f.txt", "f", "add backend file")
+		paneCwd := filepath.Join(root, "backend")
+		git := fx.geom.git()
+
+		// The second path leaves the pane cwd but stays in the worktree, so only a within-tree check on the worktree root accepts it.
+		for p, want := range map[string]string{"f.txt": "backend/f.txt", "../tracked.txt": "tracked.txt"} {
+			rel, ok, err := trackedRel(git, paneCwd, root, p)
+			if err != nil || !ok || rel != want {
+				t.Errorf("trackedRel(%q) = %q, %v, %v; want %q, true, nil", p, rel, ok, err, want)
+			}
+		}
+
+		blobs, err := suspectBlobs(git, paneCwd, root, []string{"f.txt", "../tracked.txt"})
+		if err != nil {
+			t.Fatalf("suspectBlobs() error = %v", err)
+		}
+		wantF := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", "HEAD:backend/f.txt"))
+		wantTracked := strings.TrimSpace(gitkit.Git(t, root, "rev-parse", "HEAD:tracked.txt"))
+		want := []SuspectPath{{Path: "f.txt", Blob: wantF}, {Path: "../tracked.txt", Blob: wantTracked}}
+		if !reflect.DeepEqual(blobs, want) {
+			t.Errorf("suspectBlobs() = %+v; want %+v", blobs, want)
+		}
 	})
 }
 

@@ -16,11 +16,9 @@ import (
 // its accessors and passed through untouched.
 // It performs no cwd resolution of its own — internal/lymcwd stays the sole owner of cwd resolution
 // (the Cwd Resolution Invariant), and WebsterGeometry only reads what l's caller already resolved.
-// WorktreeRoot is l.AnchorPath(), NOT l.WorktreePath(): every one of webster's CLI call sites passes
-// the anchor path today, and this is the opposite of the neighbouring ReedGeometry's own
-// WorktreeRoot, which is l.WorktreePath(). Converging the two would silently change behaviour in a
-// subpath-anchored hub, where the anchor path and the worktree path diverge.
-// RepoRoot is l.WorktreePath(), the directory holding PATTERN.md.
+// WorktreeRoot is l.WorktreePath(), the git worktree every git call opens and every card path resolves against;
+// PaneCwd is l.AnchorPath(), where webster's sessions run, as ReedGeometry's PaneCwd is.
+// The two differ in a hub whose anchor sits in a subdirectory.
 // ParentName is what ResolveParent returns; an unresolvable parent logs a warning and leaves it empty, as reedGeometry does.
 // DecisionRecordPath is the location's decision record, where the task's declared PATTERN changes are read from.
 // GateConfig loads the hub's gate config over the hub's config dirs at each call.
@@ -28,8 +26,8 @@ func WebsterGeometry(l *lymcwd.Location) websterengine.Geometry {
 	anchorPath := l.AnchorPath()
 	return websterengine.Geometry{
 		AnchorRoot:         anchorPath,
-		WorktreeRoot:       anchorPath,
-		RepoRoot:           l.WorktreePath(),
+		WorktreeRoot:       l.WorktreePath(),
+		PaneCwd:            anchorPath,
 		WebsterDir:         websterengine.Dir(anchorPath),
 		ReportsDir:         websterengine.ReportsDir(anchorPath),
 		ScratchDir:         websterengine.ScratchDir(anchorPath),

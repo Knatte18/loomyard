@@ -336,7 +336,7 @@ func TestValidateCmd_BatchesFlag(t *testing.T) {
 		c.batcher = cost
 		c.instructionFiles = claudeInstructionFiles
 		plankit.Write(t, c.geom.PlanDir, twoCardUsesPlan(2, 1))
-		if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
+		if err := os.Mkdir(filepath.Join(c.geom.PaneCwd, "CLAUDE.md"), 0o755); err != nil {
 			t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 		}
 
@@ -1252,7 +1252,7 @@ func TestRebaselineCmd_Refusals(t *testing.T) {
 			name: "unreadable Merriam start base",
 			arrange: func(t *testing.T, c *websterCLI) []string {
 				c.instructionFiles = claudeInstructionFiles
-				if err := os.Mkdir(filepath.Join(c.geom.WorktreeRoot, "CLAUDE.md"), 0o755); err != nil {
+				if err := os.Mkdir(filepath.Join(c.geom.PaneCwd, "CLAUDE.md"), 0o755); err != nil {
 					t.Fatalf("plant a directory in place of CLAUDE.md: %v", err)
 				}
 				return []string{}

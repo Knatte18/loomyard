@@ -145,6 +145,7 @@ func newRecordFixtureOver(t *testing.T, worktree string, git websterengine.Git, 
 		Geom: websterengine.Geometry{
 			AnchorRoot:   worktree,
 			WorktreeRoot: worktree,
+			PaneCwd:      worktree,
 			WebsterDir:   websterDir,
 			ReportsDir:   reportsDir,
 			PlanDir:      planDir,

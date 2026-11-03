@@ -137,7 +137,7 @@ func FixPlanSpawnOrAttach(deps FixPlanDeps, st *State, clk Clock) (*PlanFixerSta
 		return nil, false, fmt.Errorf("webster: resolve plan-conflict record path: %w", err)
 	}
 	notePath := friction.NotePath(deps.FrictionDir, "webster-plan-fix")
-	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.WorktreeRoot, deps.Geom.PlanDir, deps.Geom.StencilsDir, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
+	prompt, err := RenderPlanFixPrompt(recordPath, replyPath, deps.Geom.PaneCwd, deps.Geom.PlanDir, deps.Geom.StencilsDir, deps.Geom.SpecsDir, notePath, deps.Geom.ParentName)
 	if err != nil {
 		return nil, false, err
 	}

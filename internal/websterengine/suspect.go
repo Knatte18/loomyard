@@ -137,7 +137,7 @@ func splitPlanPaths(geom Geometry, paths []string) (plan, rest []string, err err
 		return nil, nil, err
 	}
 	for _, p := range paths {
-		canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
+		canon, err := canonicalPath(resolveWritePath(geom.PaneCwd, p))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -156,7 +156,7 @@ func planFileName(geom Geometry, p string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	canon, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, p))
+	canon, err := canonicalPath(resolveWritePath(geom.PaneCwd, p))
 	if err != nil {
 		return "", err
 	}
@@ -186,7 +186,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 	if err != nil {
 		return nil, nil, err
 	}
-	lym, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName))
+	lym, err := canonicalPath(filepath.Join(geom.PaneCwd, lymdirs.LymDirName))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -195,7 +195,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 		base = ""
 	}
 	for _, p := range paths {
-		lexical := resolveWritePath(geom.WorktreeRoot, p)
+		lexical := resolveWritePath(geom.PaneCwd, p)
 		canon, err := canonicalPath(lexical)
 		if err != nil {
 			return nil, nil, err
@@ -212,7 +212,7 @@ func checkSuspectPaths(geom Geometry, st *State, base string, paths []string) (d
 				differing = append(differing, p)
 			}
 		case !pathWithin(worktree, canon),
-			pathWithin(lym, canon), pathWithin(filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName), lexical),
+			pathWithin(lym, canon), pathWithin(filepath.Join(geom.PaneCwd, lymdirs.LymDirName), lexical),
 			pathWithin(scratch, canon):
 			unverifiable = append(unverifiable, p)
 		default:
@@ -262,19 +262,20 @@ func planFileDiffers(st *State, planDir, canon string) (differs, ok bool, err er
 }
 
 // trackedRel returns the slash-separated path of p relative to worktree when p lies in the task worktree's tracked tree:
-// inside the worktree, outside its _lym and not git-ignored.
+// inside the worktree, outside the _lym under paneCwd and not git-ignored.
+// A relative p is resolved against paneCwd, the directory the session that recorded it ran in.
 // ok is false for every other path, which has no blob to compare.
-func trackedRel(git Git, worktree, p string) (rel string, ok bool, err error) {
+func trackedRel(git Git, paneCwd, worktree, p string) (rel string, ok bool, err error) {
 	root, err := canonicalPath(worktree)
 	if err != nil {
 		return "", false, err
 	}
-	lexical := resolveWritePath(worktree, p)
+	lexical := resolveWritePath(paneCwd, p)
 	canon, err := canonicalPath(lexical)
 	if err != nil {
 		return "", false, err
 	}
-	lymLink := filepath.Join(worktree, lymdirs.LymDirName)
+	lymLink := filepath.Join(paneCwd, lymdirs.LymDirName)
 	lymReal, err := canonicalPath(lymLink)
 	if err != nil {
 		return "", false, err
@@ -313,12 +314,13 @@ func uncheckableSuspects(geom Geometry, st *State, paths []string) ([]string, er
 }
 
 // suspectBlobs records, for each of paths, the blob of its worktree content now.
+// A relative path is resolved against paneCwd.
 // A path outside the tracked tree, or an absent file, gets an empty Blob.
-func suspectBlobs(git Git, worktree string, paths []string) ([]SuspectPath, error) {
+func suspectBlobs(git Git, paneCwd, worktree string, paths []string) ([]SuspectPath, error) {
 	var out []SuspectPath
 	for _, p := range paths {
 		sp := SuspectPath{Path: p}
-		rel, ok, err := trackedRel(git, worktree, p)
+		rel, ok, err := trackedRel(git, paneCwd, worktree, p)
 		if err != nil {
 			return nil, err
 		}

@@ -1633,6 +1633,22 @@ func TestRun_MasterSpawn(t *testing.T) {
 			},
 		},
 		{
+			// The size source reads repository-relative paths from the worktree root, which differs from the pane's cwd under a subpath anchor.
+			name:  "a first init sizes cards from the worktree root when the pane's cwd is a subdirectory",
+			cards: 2,
+			prepare: func(t *testing.T, fx *runFixture) {
+				writeWorktreeFile(t, fx.Worktree, "any.go", strings.Repeat("x\n", 150))
+				writeWorktreeFile(t, fx.Worktree, "backend/base.txt", "base")
+				fx.Deps.Geom.PaneCwd = filepath.Join(fx.Worktree, "backend")
+				fx.Deps.Batcher = sizeBatcher{}
+			},
+			check: func(t *testing.T, fx *runFixture) {
+				if got := loadRunState(t, fx).Partition; len(got) != 2 {
+					t.Errorf("State.Partition = %+v; want one batch per card, as a 150-line file read from the worktree root groups them", got)
+				}
+			},
+		},
+		{
 			// When FindRun fails AFTER Master's pane is live, state.json has already recorded
 			// MasterStrand, so the next run's entry-time reclaim can find and stop the orphaned pane.
 			name:       "the Master strand is persisted before the session resolve",

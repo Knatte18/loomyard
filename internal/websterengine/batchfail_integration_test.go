@@ -50,6 +50,7 @@ func TestFailBatch_RecordsSuspectBlobs(t *testing.T) {
 	}
 	in, _ := failBatchFixture(t, true)
 	in.WorktreeRoot = repo
+	in.PaneCwd = repo
 	in.SuspectPaths = []string{"internal/x.go", "internal/gone.go"}
 	if _, err := failBatch(in); err != nil {
 		t.Fatal(err)
@@ -63,5 +64,17 @@ func TestFailBatch_RecordsSuspectBlobs(t *testing.T) {
 	}
 	if got[1].Path != "internal/gone.go" || got[1].Blob != "" {
 		t.Errorf("absent file = %+v, want empty blob", got[1])
+	}
+
+	// A pane cwd below the worktree root resolves a relative suspect path there, and the blob probe still runs on the worktree root.
+	split, _ := failBatchFixture(t, true)
+	split.WorktreeRoot = repo
+	split.PaneCwd = filepath.Join(repo, "internal")
+	split.SuspectPaths = []string{"x.go"}
+	if _, err := failBatch(split); err != nil {
+		t.Fatal(err)
+	}
+	if got := split.Batch.SuspectPaths; len(got) != 1 || got[0].Path != "x.go" || got[0].Blob != strings.TrimSpace(want) {
+		t.Errorf("suspect path relative to a subdirectory pane cwd = %+v, want x.go with blob %s", got, strings.TrimSpace(want))
 	}
 }

@@ -92,7 +92,7 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	if _, pathless := pathlessEntryClass(path); path == "" || pathless {
 		return reasonNoPath, true, nil
 	}
-	lexical := resolveWritePath(geom.WorktreeRoot, path)
+	lexical := resolveWritePath(geom.PaneCwd, path)
 	canon, err := canonicalPath(lexical)
 	if err != nil {
 		return "", false, err
@@ -114,19 +114,19 @@ func uncheckableReason(geom Geometry, st *State, path string) (reason string, un
 	if pathWithin(scratch, canon) {
 		return reasonScratch, true, nil
 	}
-	if _, ok, err := trackedRel(geom.git(), geom.WorktreeRoot, path); err != nil || ok {
+	if _, ok, err := trackedRel(geom.git(), geom.PaneCwd, geom.WorktreeRoot, path); err != nil || ok {
 		return "", false, err
 	}
 	root, err := canonicalPath(geom.WorktreeRoot)
 	if err != nil {
 		return "", false, err
 	}
-	lymLink := filepath.Join(geom.WorktreeRoot, lymdirs.LymDirName)
+	lymLink := filepath.Join(geom.PaneCwd, lymdirs.LymDirName)
 	lymReal, err := canonicalPath(lymLink)
 	if err != nil {
 		return "", false, err
 	}
-	dotLym, err := canonicalPath(filepath.Join(geom.WorktreeRoot, lymdirs.DotLymDirName))
+	dotLym, err := canonicalPath(filepath.Join(geom.PaneCwd, lymdirs.DotLymDirName))
 	if err != nil {
 		return "", false, err
 	}

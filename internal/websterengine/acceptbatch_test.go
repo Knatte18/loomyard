@@ -53,7 +53,7 @@ func acceptBatchFixture(t *testing.T) (*websterengine.State, websterengine.Geome
 		Uncheckable: []string{fabricEntry},
 	}}}
 	root := t.TempDir()
-	return st, websterengine.Geometry{WorktreeRoot: root, WebsterDir: filepath.Join(root, "_lym", "webster"), Git: g}, g
+	return st, websterengine.Geometry{WorktreeRoot: root, PaneCwd: root, WebsterDir: filepath.Join(root, "_lym", "webster"), Git: g}, g
 }
 
 func TestAcceptBatchFabricReference_ToleratesTheRunsOwnState(t *testing.T) {

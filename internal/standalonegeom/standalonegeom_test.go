@@ -219,8 +219,8 @@ func TestWebsterGeometry(t *testing.T) {
 	if got.WorktreeRoot != target {
 		t.Errorf("WebsterGeometry().WorktreeRoot = %q; want %q (target)", got.WorktreeRoot, target)
 	}
-	if got.RepoRoot != target {
-		t.Errorf("WebsterGeometry().RepoRoot = %q; want %q (target)", got.RepoRoot, target)
+	if got.PaneCwd != target {
+		t.Errorf("WebsterGeometry().PaneCwd = %q; want %q (target)", got.PaneCwd, target)
 	}
 	// AnchorRoot and WorktreeRoot asserted in the same case, for the same reason
 	// as the reed test's PaneCwd/AnchorPath pair.

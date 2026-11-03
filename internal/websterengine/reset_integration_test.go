@@ -41,7 +41,7 @@ func (fx *resetFixture) step(t *testing.T, name string, run func(t *testing.T)) 
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		fx.deps = ResetDeps{
-			Geom:         Geometry{WorktreeRoot: fx.root, ScratchDir: t.TempDir()},
+			Geom:         Geometry{WorktreeRoot: fx.root, PaneCwd: fx.root, ScratchDir: t.TempDir()},
 			State:        &State{MasterSessionID: "s1", Batches: map[int]*BatchState{1: {Slug: "one", StartSHA: fx.first}}},
 			Engines:      shuttlefake.EngineSet(&shuttlefake.Engine{}),
 			ParentBranch: func() (string, error) { return "main", nil },

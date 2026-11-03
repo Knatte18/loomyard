@@ -26,6 +26,7 @@ func evidenceGeom(t *testing.T) Geometry {
 	root := t.TempDir()
 	return Geometry{
 		WorktreeRoot: filepath.Join(root, "wt"),
+		PaneCwd:      filepath.Join(root, "wt"),
 		PlanDir:      filepath.Join(root, "wt", "_lym", "plan"),
 		WebsterDir:   filepath.Join(root, "wt", "_lym", "webster"),
 		ScratchDir:   filepath.Join(root, "wt", ".lym", "webster"),

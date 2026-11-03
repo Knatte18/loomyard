@@ -401,7 +401,7 @@ func ClassifyViolation(v AuditViolation, geom Geometry, readOnly func(cmd string
 		return AuditSeverityPolicy, nil
 	}
 
-	written, err := canonicalPath(resolveWritePath(geom.WorktreeRoot, v.Path))
+	written, err := canonicalPath(resolveWritePath(geom.PaneCwd, v.Path))
 	if err != nil {
 		return "", err
 	}

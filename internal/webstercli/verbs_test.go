@@ -53,25 +53,6 @@ func newScratchRepo(t *testing.T) string {
 	return dir
 }
 
-// seedAnchoredGitLink makes anchorPath (a plain, .git-less subdirectory of worktree) openable as a
-// git checkout by go-git's PlainOpenWithOptions, which requires a literal ".git" entry at the exact
-// path it is given rather than discovering one in a parent directory. It writes a ".git" gitlink
-// file at anchorPath pointing straight at worktree's own ".git" directory, so reads through it (e.g.
-// gitrepo.Repo.CurrentSHA) see the SAME live refs worktree's own commits update -- unlike
-// `git worktree add`, which would pin anchorPath to a detached SHA at creation time and go stale the
-// moment a later commit lands in worktree.
-func seedAnchoredGitLink(t *testing.T, anchorPath, worktree string) {
-	t.Helper()
-	if err := os.MkdirAll(anchorPath, 0o755); err != nil {
-		t.Fatalf("mkdir anchor path %s: %v", anchorPath, err)
-	}
-	gitdir := filepath.Join(worktree, ".git")
-	content := fmt.Sprintf("gitdir: %s\n", gitdir)
-	if err := os.WriteFile(filepath.Join(anchorPath, ".git"), []byte(content), 0o644); err != nil {
-		t.Fatalf("write anchored .git link at %s: %v", anchorPath, err)
-	}
-}
-
 // verbsFakeMasterStarter is a hermetic websterengine.MasterStarter double
 // that records whether it was ever called and errors loud if it is — used
 // only by tests proving a refusal path never reaches Master's own spawn.
@@ -89,7 +70,7 @@ var _ websterengine.MasterStarter = (*verbsFakeMasterStarter)(nil)
 // verbsFixture is a fully-wired *websterCLI (bypassing Command()'s
 // PersistentPreRunE) over a real scratch git repo and a real
 // *shuttleengine.Runner wired over local fakes, plus a single-batch plan
-// fixture seeded under the fixture's own _lym/plan.
+// fixture seeded under the fixture's own _lym/plan, whose root: is the anchor directory.
 type verbsFixture struct {
 	CLI      *websterCLI
 	Reed     *shuttlefake.Reed
@@ -105,14 +86,17 @@ func newVerbsFixture(t *testing.T) *verbsFixture {
 	gitkit.CommitFile(t, worktree, "base.txt", "base", "base commit")
 
 	layout := &lymcwd.Location{HubPath: filepath.Dir(worktree), WorktreeName: filepath.Base(worktree), AnchorRel: "backend"}
-	seedValidPlanDir(t, planparser.PlanDir(layout.AnchorPath()))
+	// The plan's root: names the anchor directory, so a card path resolved against the anchor instead of the worktree root doubles the prefix and reads as missing.
+	// The Edit target exists only under that directory of the worktree root, which makes a dispatch-time lookup against the anchor report it missing.
+	gitkit.CommitFile(t, worktree, layout.AnchorRel+"/README.md", "# backend\n", "add the anchor's README")
+	plan := onlyCreatePlan("", "internal/only/new.go")
+	plan.Root = layout.AnchorRel
+	plan.Cards[0].Groups = append(plan.Cards[0].Groups, plankit.Group{Label: "Edit", Targets: []string{"README.md"}})
+	plan.Cards[0].ImpactSummary = "Edits the README."
+	plankit.Write(t, planparser.PlanDir(layout.AnchorPath()), plan)
 	seedHubStencils(t, layout.HubPath)
 	seedHubGateConfig(t, layout.HubPath)
-	// begin-batch/record-batch/recover-batch read HEAD at layout.AnchorPath() (RunDeps.WorktreeRoot,
-	// unchanged by this batch), which requires a literal .git at that path -- link the anchored
-	// directory back onto worktree's real .git so it shares the same live ref/commit history rather
-	// than needing its own separate repository.
-	seedAnchoredGitLink(t, layout.AnchorPath(), worktree)
+	// The anchor holds no .git of its own, so every verb that reads git proves it opens the repository at the worktree root.
 
 	reed := &shuttlefake.Reed{}
 	engine := &shuttlefake.Engine{}
@@ -201,6 +185,71 @@ func TestPersistentPreRun_OpenFabricWiredButUninvoked(t *testing.T) {
 func (fx *verbsFixture) initState(t *testing.T) *websterengine.State {
 	t.Helper()
 	return seedRunState(t, fx.CLI)
+}
+
+// sizeProbeBatcher is a batcher.Batcher double that asks its size source about one path while batching and records the answer, then batches like the identity batchifier.
+type sizeProbeBatcher struct {
+	path  string
+	found bool
+}
+
+func (b *sizeProbeBatcher) Batch(plan *planparser.Plan, cards []planparser.Card, sizes batcher.SizeSource, before int, base batcher.StartBase) ([]batcher.Batch, error) {
+	_, found, err := sizes.Lines(b.path)
+	if err != nil {
+		return nil, err
+	}
+	b.found = found
+	return batcher.Identity().Batch(plan, cards, sizes, before, base)
+}
+
+func (b *sizeProbeBatcher) Name() string { return "size-probe" }
+
+// TestExecutionBatches_SizesReadFromWorktreeRoot proves the size source handed to the batchifier is rooted at the git worktree root: a repository-relative path under the anchor directory is found, which a source rooted at the pane's cwd would not find.
+func TestExecutionBatches_SizesReadFromWorktreeRoot(t *testing.T) {
+	tiergate.Require(t, 1)
+	fx := newVerbsFixture(t)
+	probe := &sizeProbeBatcher{path: "backend/README.md"}
+	fx.CLI.batcher = probe
+	plan, err := planparser.ParsePlan(fx.CLI.geom.PlanDir)
+	if err != nil {
+		t.Fatalf("ParsePlan() error = %v", err)
+	}
+
+	if _, err := fx.CLI.executionBatches(plan, nil); err != nil {
+		t.Fatalf("executionBatches() error = %v", err)
+	}
+
+	if !probe.found {
+		t.Errorf("size source found %q = false; want true, the fixture commits it under the worktree root", probe.path)
+	}
+}
+
+// TestRebaselineCmd_SizesReadFromWorktreeRoot proves rebaseline hands the batchifier a size source rooted at the git worktree root when it re-forms the unbegun tail of a recorded partition.
+func TestRebaselineCmd_SizesReadFromWorktreeRoot(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("FABRIC_SKIP_GIT", "1")
+	fx := newVerbsFixture(t)
+	plan := onlyCreatePlan("", "internal/only/new.go")
+	plan.Root = fx.CLI.anchorRel
+	plan.Cards = append(plan.Cards, plankit.Card{Number: 2, Slug: "second", Summary: "edits the README", Groups: []plankit.Group{{Label: "Edit", Targets: []string{"README.md"}}}, Intent: "edit it.", ImpactSummary: "Edits the README."})
+	plankit.Write(t, fx.CLI.geom.PlanDir, plan)
+	st := fx.initState(t)
+	st.Partition = []websterengine.PartitionBatch{{Cards: []string{"01-only"}}}
+	st.Batches[1] = &websterengine.BatchState{Slug: "only", Cards: []string{"01-only"}, StartSHA: "abc123", Kind: "fork"}
+	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
+		t.Fatalf("SaveState() error = %v", err)
+	}
+	probe := &sizeProbeBatcher{path: "backend/README.md"}
+	fx.CLI.batcher = probe
+
+	var out strings.Builder
+	if exitCode := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, nil); exitCode != 0 {
+		t.Fatalf("rebaseline = %d; want 0, output: %s", exitCode, out.String())
+	}
+
+	if !probe.found {
+		t.Errorf("size source found %q = false; want true, the fixture commits it under the worktree root", probe.path)
+	}
 }
 
 // TestBeginBatchCmd_HappyPath proves the success envelope carries prompt_path/start_sha and no model key, that begin-batch types nothing into Master's pane, and that state.json was persisted with the new BatchState.
@@ -561,7 +610,7 @@ func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
 		{
 			name: "record-batch over a begun batch",
 			seed: func(t *testing.T, fx *verbsFixture, st *websterengine.State) {
-				startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+				startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 				st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 				st.CurrentBatch = 1
 				if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -582,7 +631,7 @@ func TestFingerprintRefusals_CarryPlanDrifted(t *testing.T) {
 				if code := clihelp.Execute(fx.CLI.recoverBatchCmd(), &spawn, []string{"1", "--wait", "1ns"}); code != 0 {
 					t.Fatalf("recover-batch 1 (spawn) = %d; want 0, output: %s", code, spawn.String())
 				}
-				head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+				head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: land the card's Create target")
 				writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 			},
 			verb: func(fx *verbsFixture) *cobra.Command { return fx.CLI.recoverBatchCmd() },
@@ -652,20 +701,8 @@ func TestRecordBatchCmd_Envelope(t *testing.T) {
 			// record-batch runs on a recorded state and prices no partition, so a lister that fails proves it is never called.
 			fx.CLI.instructionFiles = failingInstructionFiles
 			st := fx.initState(t)
-			// DoneChecks resolves a card's Create target against
-			// deps.Geom.WorktreeRoot, which hubgeom.WebsterGeometry fills
-			// with layout.AnchorPath() (fx.Worktree + anchorRel), not
-			// fx.Worktree itself -- quarry.Resolve is a live filesystem
-			// walk rooted there, so the file must physically exist under
-			// that anchored directory, not merely under fx.Worktree.
-			// commitFile therefore runs with the anchored path itself as
-			// its git working directory (seedAnchoredGitLink's gitlink
-			// makes that a valid, shared-history checkout) rather than
-			// fx.Worktree plus a path prefix: git treats a nested ".git"
-			// file as an embedded-repository boundary, so `git add`
-			// invoked from fx.Worktree silently refuses to descend into
-			// it and stages nothing.
-			startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+			// DoneChecks resolves a card's Create target, prefixed by the plan's root, against the git worktree root, so the file is committed there under the anchor directory.
+			startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 			st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 			st.CurrentBatch = 1
 			if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -725,7 +762,7 @@ func TestRecordBatchCmd_FailedBatchEnvelope(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
-	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork", AmendedCards: []websterengine.AmendedCard{{Card: "01-only"}}}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
@@ -888,7 +925,7 @@ func TestRecordBatchCmd_ReportArchivedEnvelope(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "1")
 	fx := newVerbsFixture(t)
 	fx.initState(t)
-	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, startSHA)
 
 	var out strings.Builder
@@ -1023,7 +1060,10 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	}
 	startSHA := failed.StartSHA
 
-	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited/new.go"))
+	// The edit keeps the plan's root, so only the card changes and the overview stays as recorded.
+	edited := onlyCreatePlan("", "internal/edited/new.go")
+	edited.Root = fx.CLI.anchorRel
+	plankit.Write(t, fx.CLI.geom.PlanDir, edited)
 
 	out.Reset()
 	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
@@ -1051,7 +1091,9 @@ func TestRebaselineCmd_EditedCardOfFailedBatchThenRecover(t *testing.T) {
 	}
 
 	// The recovery strand is now in flight: a further edit of its card is accepted and reported as amended.
-	plankit.Write(t, fx.CLI.geom.PlanDir, onlyCreatePlan("", "internal/edited-again/new.go"))
+	edited = onlyCreatePlan("", "internal/edited-again/new.go")
+	edited.Root = fx.CLI.anchorRel
+	plankit.Write(t, fx.CLI.geom.PlanDir, edited)
 	out.Reset()
 	if code := clihelp.Execute(fx.CLI.rebaselineCmd(), &out, []string{"--card", "1"}); code != 0 {
 		t.Fatalf("rebaseline --card 1 over the in-flight recovery = %d; want 0, output: %s", code, out.String())
@@ -1115,7 +1157,7 @@ func TestRecoverBatchCmd_RunningThenTerminal(t *testing.T) {
 	// "Finishes" means its card's own Create target actually lands and is committed: the terminal
 	// recovery path now runs the same mechanical post-batch pass record-batch does, so a recovery
 	// reporting done over a card whose target never appeared is refused rather than marked terminal.
-	head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: land the card's Create target")
+	head := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: land the card's Create target")
 	writeBatchReport(t, fx.CLI.geom.ReportsDir, head)
 
 	// A card of the batch is amended while that recovery runs, which forces its done report failed.
@@ -1652,12 +1694,29 @@ func unmakeConfigUnreadable(t *testing.T, h *hubforge.Hub, module string) {
 // production call site that regressed to layout.WorktreePath() would stay self-consistent and pass
 // at either of those. This test drives the real PersistentPreRunE through RunCLIIn and asserts on
 // planparser's own error text, which only a wrong-root c.planDir can produce.
+// The plan's `root:` names the anchor's own directory and its Edit target is a file there,
+// so a card path checked against the anchor instead of the worktree root doubles the prefix and reads as missing.
 // This file stays serial: no t.Parallel() is added here, matching every other test in this file.
 func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	tiergate.Require(t, 1)
 	h := seedPersistentPreRunFixture(t, "backend", batcher.ConfigTemplate())
 
-	seedValidPlanDir(t, planparser.PlanDir(h.Location.AnchorPath()))
+	if err := os.WriteFile(filepath.Join(h.PrimeWorktree(), "backend", "README.md"), []byte("# backend\n"), 0o644); err != nil {
+		t.Fatalf("write README.md under the anchor: %v", err)
+	}
+	plankit.Write(t, planparser.PlanDir(h.Location.AnchorPath()), plankit.Plan{
+		Approved: true,
+		Root:     "backend",
+		Framing:  "Framing.",
+		Cards: []plankit.Card{{
+			Number:        1,
+			Slug:          "only",
+			Summary:       "edits the anchor's README",
+			Groups:        []plankit.Group{{Label: "Edit", Targets: []string{"README.md"}}},
+			Intent:        "placeholder card.",
+			ImpactSummary: "none.",
+		}},
+	})
 
 	// lymcwd.Resolve gates cwd against the anchored directory exactly, so at a "backend" hub the
 	// anchor directory -- not h.PrimeWorktree(), the unanchored worktree root -- is what RunCLIIn
@@ -1674,6 +1733,11 @@ func TestPersistentPreRunE_PlanDirAnchoredAtSubpath(t *testing.T) {
 	}
 	if strings.Contains(got, "plan overview not found") {
 		t.Errorf("output contains \"plan overview not found\"; got %q -- a WorktreePath()-based resolution at cli.go's c.planDir assignment would look under the un-anchored worktree root and produce exactly that error", got)
+	}
+	for _, finding := range []string{"path-missing", "glyph-not-found"} {
+		if strings.Contains(got, finding) {
+			t.Errorf("output contains %q; got %q -- the root:-joined card path was looked up under the anchor instead of the worktree root", finding, got)
+		}
 	}
 }
 
@@ -1743,7 +1807,7 @@ func TestRecordBatchCmd_FabricSyncFailureWayForward(t *testing.T) {
 	t.Setenv("FABRIC_SKIP_GIT", "")
 	fx := newVerbsFixture(t)
 	st := fx.initState(t)
-	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "internal/only/new.go", "package only\n", "01.1: add impl")
+	startSHA := gitkit.CommitFile(t, fx.CLI.geom.WorktreeRoot, "backend/internal/only/new.go", "package only\n", "01.1: add impl")
 	st.Batches[1] = &websterengine.BatchState{Slug: "only", StartSHA: startSHA, Kind: "fork"}
 	st.CurrentBatch = 1
 	if err := websterengine.SaveState(fx.CLI.geom.WebsterDir, fx.CLI.geom.ScratchDir, st); err != nil {
