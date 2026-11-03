@@ -76,6 +76,19 @@ func TestRunCompare(t *testing.T) {
 		}
 	})
 
+	t.Run("a told profile directory replaces the baseline directory in the command", func(t *testing.T) {
+		t.Parallel()
+		req, _ := newCompareFixture(t, "echo {baseline_dir} > seen.txt")
+		req.ProfileDir = req.Paths.AcceptedDir
+		if got, err := RunCompare(context.Background(), req); err != nil || !got.Passed {
+			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
+		}
+		want := req.Paths.AcceptedDir + "\n"
+		if text := readFile(t, filepath.Join(req.AnchorDir, "seen.txt")); text != want {
+			t.Errorf("seen.txt = %q; want %q, the told profile directory and not %q", text, want, req.Paths.BaselineDir)
+		}
+	})
+
 	t.Run("the marker reads held while the run waits for a slot and free once it ends", func(t *testing.T) {
 		t.Parallel()
 		req, pool := newCompareFixture(t, "true")

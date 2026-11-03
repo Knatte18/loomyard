@@ -1,4 +1,4 @@
-// entries_drift_test.go covers the three Drift entries: their config keys, their required Env seams and the producers they build.
+// entries_drift_test.go covers the four Drift entries: their config keys, their required Env seams and the producers they build.
 
 package shedrecipe
 
@@ -35,6 +35,12 @@ func driftTestEnv(t *testing.T) Env {
 		Sleep:       func(context.Context, time.Duration) error { return nil },
 		VerifyTable: func(driftengine.VerifyTold) (seatengine.Table, error) { return seatengine.Table{}, nil },
 		Compare: func(context.Context) (driftengine.CompareResult, error) {
+			return driftengine.CompareResult{}, nil
+		},
+		CaptureAccepted: func(context.Context) (driftengine.AcceptedCapture, error) {
+			return driftengine.AcceptedCapture{}, nil
+		},
+		CompareAccepted: func(context.Context) (driftengine.CompareResult, error) {
 			return driftengine.CompareResult{}, nil
 		},
 	}
@@ -77,6 +83,15 @@ func TestDriftEntries(t *testing.T) {
 		{"VerifySecondGate", driftVerifyEntry, verifyCfg(verifyGate, map[string]any{"name": "description", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyOnlyOtherGate", driftVerifyEntry, verifyCfg(map[string]any{"name": "description", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyNilCompare", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
+		{"VerifyNilCaptureAccepted", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.CaptureAccepted = nil }, nil, "Drift.CaptureAccepted"},
+		{"RecheckBuilds", driftRecheckEntry, Config{}, nil, reflect.TypeOf(&driftengine.DriftRecheck{}), ""},
+		{"RecheckUnknownKey", driftRecheckEntry, Config{"subject": "decision-record"}, nil, nil, "entry_gate"},
+		{"RecheckNilConfig", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.Config = nil }, nil, "Drift.Config"},
+		{"RecheckNilHead", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.Head = nil }, nil, "Drift.Head"},
+		{"RecheckNilDirtyPaths", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.DirtyPaths = nil }, nil, "Drift.DirtyPaths"},
+		{"RecheckNilCommit", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.Commit = nil }, nil, "Drift.Commit"},
+		{"RecheckNilCompare", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
+		{"RecheckNilCompareAccepted", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.CompareAccepted = nil }, nil, "Drift.CompareAccepted"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

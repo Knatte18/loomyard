@@ -54,6 +54,7 @@ var (
 	driftBaselineType = reflect.TypeOf(&driftengine.DriftBaseline{})
 	driftAwaitType    = reflect.TypeOf(&driftengine.DriftAwait{})
 	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
+	driftRecheckType  = reflect.TypeOf(&driftengine.DriftRecheck{})
 )
 
 // blockProducerType returns the concrete type of the Block registry entry's producer, which shedrecipe does not export, for the shape table's Motif row.
@@ -100,6 +101,7 @@ var wantProducerTable = []wantProducerRow{
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDriftRecheck, "DriftRecheck", driftRecheckType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},

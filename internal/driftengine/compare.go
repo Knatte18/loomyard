@@ -33,6 +33,8 @@ type CompareRequest struct {
 	WaitDir string
 	// Skip is the tests the compare leaves out, written to the skip file.
 	Skip []string
+	// ProfileDir is the profile `{baseline_dir}` renders to; empty renders the baseline directory.
+	ProfileDir string
 	// Timeout bounds the command from its start; production passes the step's timeout_min.
 	Timeout time.Duration
 	// Now is the clock the log's name comes from.
@@ -54,7 +56,7 @@ type CompareResult struct {
 	Reason string
 }
 
-// RunCompare runs the declared compare command against the baseline directory and returns how it ended.
+// RunCompare runs the declared compare command against the baseline directory, or the told profile directory, and returns how it ended.
 // It takes the compare marker, an OS lock, before it waits for its gate slot and holds it until it ends, so a compare queued for a slot reads as activity and one a dead compare left reads as none.
 // A marker still held once LockRetry runs out is refused.
 // A non-zero exit and a timeout are results that did not pass, not errors.
@@ -75,6 +77,10 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 	if err := writeSkipFile(p.SkipFile, req.Skip); err != nil {
 		return CompareResult{}, err
 	}
+	profile := req.ProfileDir
+	if profile == "" {
+		profile = p.BaselineDir
+	}
 	result := CompareResult{Log: logPathFor(p.LogsDir, "compare", req.Now())}
 	outcome, err := runStep(ctx, stepRun{
 		WorktreeDir: req.WorktreeDir,
@@ -84,7 +90,7 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 		Pool:        req.Pool,
 		WaitDir:     req.WaitDir,
 		Site:        siteCompare,
-		BaselineDir: p.BaselineDir,
+		BaselineDir: profile,
 		SkipFile:    p.SkipFile,
 		LogPath:     result.Log,
 		Timeout:     req.Timeout,

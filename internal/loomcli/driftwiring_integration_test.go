@@ -107,3 +107,89 @@ compare:
 		})
 	}
 }
+
+// TestDriftDeps_AcceptedSeamsKeepAcceptedTestsInTheRun covers the CaptureAccepted and CompareAccepted seams against Compare:
+// with skip s1 and accepted test t1, Compare leaves out both, the two accepted seams leave out s1 alone, and CompareAccepted renders {baseline_dir} as the accepted profile directory.
+func TestDriftDeps_AcceptedSeamsKeepAcceptedTestsInTheRun(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "backend", Pairs: []string{hubforge.TemplatePairSlug}})
+	anchor := filepath.Join(h.PairCodeWorktree(hubforge.TemplatePairSlug), "backend")
+	loc, err := lymcwd.Resolve(anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	seen := t.TempDir()
+	driftYAML := fmt.Sprintf(`capture:
+  command: 'mkdir -p {baseline_dir} && cat {skip_file} > {baseline_dir}/skip.txt'
+  timeout_min: 1
+compare:
+  command: |
+    printf '%%s\n' {baseline_dir} > %q
+    cat {skip_file} > %q
+  timeout_min: 1
+`, filepath.Join(seen, "dir.txt"), filepath.Join(seen, "skip.txt"))
+	driftFile := configengine.ConfigFile(h.BoardDir(), "drift")
+	if err := os.MkdirAll(filepath.Dir(driftFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(driftFile, []byte(driftYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	paths := driftengine.NewPaths(loc.AnchorPath())
+	err = driftengine.UpdateScope(paths, func(driftengine.ScopeRecord, bool) (driftengine.ScopeRecord, error) {
+		return driftengine.ScopeRecord{
+			Scope:    driftengine.ScopePartial,
+			Skip:     []string{"s1"},
+			Accepted: []driftengine.Acceptance{{Test: "t1"}},
+		}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readSeen := func(name string) string {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(seen, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	deps := loomcli.DriftDepsAt(loc, "", "")
+
+	if result, err := deps.Compare(context.Background()); err != nil || !result.Passed {
+		t.Fatalf("Compare() = %+v, %v; want a passed compare", result, err)
+	}
+	if got, want := readSeen("skip.txt"), "s1\nt1\n"; got != want {
+		t.Errorf("Compare() skip file = %q; want %q, the skip and the accepted test both left out", got, want)
+	}
+	if got, want := strings.TrimSpace(readSeen("dir.txt")), paths.BaselineDir; got != want {
+		t.Errorf("Compare() rendered {baseline_dir} as %q; want the baseline directory %q", got, want)
+	}
+
+	if result, err := deps.CompareAccepted(context.Background()); err != nil || !result.Passed {
+		t.Fatalf("CompareAccepted() = %+v, %v; want a passed compare", result, err)
+	}
+	if got, want := readSeen("skip.txt"), "s1\n"; got != want {
+		t.Errorf("CompareAccepted() skip file = %q; want %q, the accepted test left in", got, want)
+	}
+	if got, want := strings.TrimSpace(readSeen("dir.txt")), paths.AcceptedDir; got != want {
+		t.Errorf("CompareAccepted() rendered {baseline_dir} as %q; want the accepted profile directory %q", got, want)
+	}
+
+	captured, err := deps.CaptureAccepted(context.Background())
+	if err != nil || !captured.Passed {
+		t.Fatalf("CaptureAccepted() = %+v, %v; want a passed capture", captured, err)
+	}
+	data, err := os.ReadFile(filepath.Join(paths.AcceptedDir, "skip.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(data), "s1\n"; got != want {
+		t.Errorf("CaptureAccepted() skip file = %q; want %q, the accepted test left in", got, want)
+	}
+}

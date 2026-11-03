@@ -68,7 +68,7 @@ func deriveSequenceOrder() []wantSequenceEntry {
 				wantSequenceEntry{row.name, shedengine.Done},
 			)
 		case row.producerType == burlerReviewType, row.producerType == burlerFixType:
-		case row.name == loomshed.NameDriftBaseline, row.name == loomshed.NameDriftAwait, row.name == loomshed.NameDriftVerify,
+		case row.name == loomshed.NameDriftBaseline, row.name == loomshed.NameDriftAwait, row.name == loomshed.NameDriftVerify, row.name == loomshed.NameDriftRecheck,
 			row.name == loomshed.NamePartsWrite, row.name == loomshed.NamePartsPlanWrite:
 			order = append(order, wantSequenceEntry{row.name, shedengine.OutcomeSkipped})
 		case row.name == loomshed.NameParentAlign:

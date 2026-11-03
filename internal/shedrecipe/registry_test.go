@@ -100,6 +100,7 @@ func TestNames(t *testing.T) {
 			"DiscussionWrite",
 			"DriftAwait",
 			"DriftBaseline",
+			"DriftRecheck",
 			"DriftVerify",
 			"Finalize",
 			"FrictionReflect",

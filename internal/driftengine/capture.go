@@ -235,11 +235,54 @@ type SideResult struct {
 // RunSideCapture runs the capture command into the next free numbered directory under the side directory.
 // It takes no capture lock, writes no capture record and needs no clean tree or branch point, so an agent can take a second profile beside the baseline.
 func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error) {
-	p := req.Paths
-	if err := os.MkdirAll(p.SideDir, 0o755); err != nil {
-		return SideResult{}, fmt.Errorf("drift: create the side capture directory: %w", err)
+	return captureInto(ctx, req, nextFree(req.Paths.SideDir, ""), siteSideCapture, "side-capture")
+}
+
+// AcceptedCapture is how a capture of the accepted profile ended.
+type AcceptedCapture struct {
+	// Passed is true when the command exited 0 within its timeout and wrote at least one file.
+	Passed bool
+	// Log is the command's log file.
+	Log string
+	// Reason says why the capture did not pass and names its log; empty when it passed.
+	Reason string
+}
+
+// RunAcceptedCapture captures the accepted profile: the capture command run on the current code into the accepted directory, which it empties first.
+// A later compare against that profile shows an accepted test whose output changed after its acceptance as drift.
+// It takes no capture lock and writes no capture record; a command that fails, times out or writes no file is a result that did not pass, not an error.
+func RunAcceptedCapture(ctx context.Context, req CaptureRequest) (AcceptedCapture, error) {
+	dir := req.Paths.AcceptedDir
+	if err := os.RemoveAll(dir); err != nil {
+		return AcceptedCapture{}, fmt.Errorf("drift: empty the accepted profile %s: %w", dir, err)
 	}
-	dir := nextFree(p.SideDir, "")
+	side, err := captureInto(ctx, req, dir, siteAcceptedCapture, "accepted-capture")
+	result := AcceptedCapture{Log: side.Log}
+	if err != nil {
+		return result, err
+	}
+	switch {
+	case side.TimedOut:
+		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m; log " + side.Log
+	case side.ExitCode != 0:
+		result.Reason = "exit " + strconv.Itoa(side.ExitCode) + "; log " + side.Log
+	default:
+		wrote, err := holdsFile(dir)
+		if err != nil {
+			return result, err
+		}
+		if !wrote {
+			result.Reason = "exit 0 but wrote no file to " + dir + "; log " + side.Log
+			break
+		}
+		result.Passed = true
+	}
+	return result, nil
+}
+
+// captureInto runs the capture command into dir, which it creates, logging to a new log named for logName, and returns how the command ended.
+func captureInto(ctx context.Context, req CaptureRequest, dir, site, logName string) (SideResult, error) {
+	p := req.Paths
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return SideResult{}, fmt.Errorf("drift: create %s: %w", dir, err)
 	}
@@ -247,7 +290,7 @@ func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error)
 		return SideResult{}, err
 	}
 
-	result := SideResult{Dir: dir, Log: logPathFor(p.LogsDir, "side-capture", req.Now())}
+	result := SideResult{Dir: dir, Log: logPathFor(p.LogsDir, logName, req.Now())}
 	outcome, err := runStep(ctx, stepRun{
 		WorktreeDir: req.WorktreeDir,
 		AnchorDir:   req.AnchorDir,
@@ -255,7 +298,7 @@ func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error)
 		Step:        req.Step,
 		Pool:        req.Pool,
 		WaitDir:     req.WaitDir,
-		Site:        siteSideCapture,
+		Site:        site,
 		BaselineDir: dir,
 		SkipFile:    p.SkipFile,
 		LogPath:     result.Log,

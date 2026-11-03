@@ -67,6 +67,7 @@ func NewDriftVerify(name string, row Row, verify shuttleengine.GateEntry, deps D
 // It halts for the parent on an unruled acceptance under scope full and on a missing baseline.
 // It checks that the tree is clean and that the agent's commits pass the verify gate, then runs the compare.
 // A passing compare is Done; a failing one spawns one agent, with the operator in its pane under verify_interactive, whose table gates on a clean tree, on the verify entry and on a final compare.
+// A Done with tests accepted first captures the accepted profile at HEAD, unless one was captured there since the last acceptance, and a capture that does not pass is a Stuck naming lym loom resume.
 // Every Stuck under scope full, and under scope partial the missing-baseline halt and a failing final compare while a test is withdrawn, opens with shedadapters.DecisionHaltPrefix.
 func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -79,6 +80,7 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		seam{"Seats", d.Seats != nil},
 		seam{"VerifyTable", d.VerifyTable != nil},
 		seam{"Compare", d.Compare != nil},
+		seam{"CaptureAccepted", d.CaptureAccepted != nil},
 	)
 	if err == nil && p.verify.Gate == nil {
 		err = fmt.Errorf("drift: %s is wired without a verify gate entry", p.name)
@@ -188,9 +190,37 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, err
 	}
 	if result.Passed {
-		return doneBecause("the compare passed")
+		return p.keepAcceptedProfile(ctx, shedengine.OutputPointer{Reason: "the compare passed"})
 	}
 	return p.runAgent(ctx, VerifyTold{CompareLog: result.Log, BaselineHead: capture.Head})
+}
+
+// keepAcceptedProfile ends a pass whose compare passed as a Done carrying pointer.
+// With tests accepted and no accepted profile captured at HEAD since their acceptance, it first captures one and records HEAD as its commit, so a later compare can tell an accepted test whose output changed.
+// A capture that does not pass is a Stuck naming its reason and lym loom resume.
+func (p *DriftVerify) keepAcceptedProfile(ctx context.Context, pointer shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	scope, _, err := ReadScope(p.deps.Paths)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	head, err := p.deps.Head()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if len(scope.Accepted) == 0 || scope.AcceptedProfileHead == head {
+		return shedengine.Done, pointer, nil
+	}
+	captured, err := p.deps.CaptureAccepted(ctx)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if !captured.Passed {
+		return p.haltFrom(pointer, false, generalHaltOpening, "the capture of the accepted profile did not pass: "+captured.Reason+"; way forward: lym loom resume")
+	}
+	if _, err := p.updateScope(func(cur *ScopeRecord) { cur.AcceptedProfileHead = head }); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	return shedengine.Done, pointer, nil
 }
 
 // probeInterruptedAgent reports whether the agent an earlier entry spawned still has a live chair, and the table text that entry was told.
@@ -548,7 +578,7 @@ func (p *DriftVerify) runAgent(ctx context.Context, told VerifyTold) (shedengine
 		if scope.Scope == ScopeFull && len(scope.Unruled()) > 0 {
 			return p.haltFrom(pointer, false, generalHaltOpening, "the Drift-Verify agent accepted drift that only the run's parent may rule on")
 		}
-		return shedengine.Done, pointer, nil
+		return p.keepAcceptedProfile(ctx, pointer)
 	case shedengine.Stuck:
 		return p.stuckAfterAgent(pointer, seats.failedGate(), scope)
 	}

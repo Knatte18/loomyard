@@ -1,4 +1,4 @@
-// driftwiring.go builds the seams the three Drift rows are told: the run status, the git facts, the records commit, the two agents' tables and the capture and compare runs.
+// driftwiring.go builds the seams the Drift rows are told: the run status, the git facts, the records commit, the two agents' tables and the capture and compare runs.
 // Every seam opens the fabric or reads a file on demand, since wire also runs for status and pause.
 
 package loomcli
@@ -188,6 +188,34 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			}
 			request := driftCompareRequest(location, paths, pool, waitDir, step)
 			request.Skip = driftengine.SkipList(scope)
+			request.LockRetry = driftCompareLockRetry
+			return driftengine.RunCompare(ctx, request)
+		},
+		CaptureAccepted: func(ctx context.Context) (driftengine.AcceptedCapture, error) {
+			step, err := stepOf("capture")
+			if err != nil {
+				return driftengine.AcceptedCapture{}, err
+			}
+			scope, _, err := driftengine.ReadScope(paths)
+			if err != nil {
+				return driftengine.AcceptedCapture{}, err
+			}
+			request := driftCaptureRequest(location, paths, pool, waitDir, step)
+			request.Skip = scope.Skip
+			return driftengine.RunAcceptedCapture(ctx, request)
+		},
+		CompareAccepted: func(ctx context.Context) (driftengine.CompareResult, error) {
+			step, err := stepOf("compare")
+			if err != nil {
+				return driftengine.CompareResult{}, err
+			}
+			scope, _, err := driftengine.ReadScope(paths)
+			if err != nil {
+				return driftengine.CompareResult{}, err
+			}
+			request := driftCompareRequest(location, paths, pool, waitDir, step)
+			request.Skip = scope.Skip
+			request.ProfileDir = paths.AcceptedDir
 			request.LockRetry = driftCompareLockRetry
 			return driftengine.RunCompare(ctx, request)
 		},

@@ -362,7 +362,7 @@ type Env struct {
 	// The entry fills its Setting and ExecutableSetting from Env.Setting and Env.ExecutableSetting, so a caller leaves those two nil.
 	Command shedadapters.CommandDeps
 
-	// Drift is a whole-struct passthrough to the three Drift producers, following Env.Darn's precedent, read by the DriftBaseline, DriftAwait and DriftVerify entries only.
+	// Drift is a whole-struct passthrough to the Drift producers, following Env.Darn's precedent, read by the Drift entries only.
 	// The entries fill its Seats and Now from Env.Seats and Env.Now, and DriftVerify its GateFindingsFile from Env.GateFindingsFile, so a caller leaves those three unset.
 	Drift driftengine.Deps
 }

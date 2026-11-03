@@ -347,6 +347,80 @@ func TestRunCapture(t *testing.T) {
 		}
 	})
 
+	acceptedRows := []struct {
+		name    string
+		command string
+		// stale seeds a file in the accepted directory before the capture.
+		stale bool
+		// timeout, when set, replaces the fixture's timeout.
+		timeout    time.Duration
+		wantPassed bool
+		// wantFile is the file the command wrote under the accepted directory.
+		wantFile     string
+		wantReasonIn []string
+	}{
+		{name: "an accepted capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after "}},
+		{name: "an accepted capture writing a file passes and leaves its output under the accepted directory", command: "echo profile > {baseline_dir}/p.json", wantPassed: true, wantFile: "p.json"},
+		{name: "an accepted capture empties a file left in the accepted directory first", command: "echo profile > {baseline_dir}/p.json", stale: true, wantPassed: true, wantFile: "p.json"},
+		{name: "an accepted capture exiting non-zero does not pass and names the exit and the log", command: "exit 3", wantReasonIn: []string{"exit 3; log "}},
+		{name: "an accepted capture exiting 0 with no file does not pass and names the missing file", command: "true", wantReasonIn: []string{"wrote no file", "; log "}},
+		{name: "a file left in the accepted directory does not make an empty capture pass", command: "true", stale: true, wantReasonIn: []string{"wrote no file"}},
+	}
+	for _, tt := range acceptedRows {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCaptureFixture(t, tt.command)
+			if tt.timeout > 0 {
+				f.req.Timeout = tt.timeout
+			}
+			dir := f.req.Paths.AcceptedDir
+			if tt.stale {
+				if err := os.MkdirAll(dir, 0o755); err != nil {
+					t.Fatalf("MkdirAll() = %v; want nil", err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "stale.json"), []byte("old"), 0o644); err != nil {
+					t.Fatalf("WriteFile() = %v; want nil", err)
+				}
+			}
+
+			got, err := RunAcceptedCapture(context.Background(), f.req)
+			if err != nil {
+				t.Fatalf("RunAcceptedCapture() = _, %v; want nil", err)
+			}
+			if got.Passed != tt.wantPassed {
+				t.Errorf("RunAcceptedCapture() = %+v; want passed = %v", got, tt.wantPassed)
+			}
+			if tt.wantPassed && got.Reason != "" {
+				t.Errorf("RunAcceptedCapture() reason = %q; want none for a pass", got.Reason)
+			}
+			for _, want := range tt.wantReasonIn {
+				if !strings.Contains(got.Reason, want) {
+					t.Errorf("RunAcceptedCapture() reason = %q; want it to name %q", got.Reason, want)
+				}
+			}
+			if !tt.wantPassed && !strings.Contains(got.Reason, got.Log) {
+				t.Errorf("RunAcceptedCapture() reason = %q; want it to name the log %q", got.Reason, got.Log)
+			}
+			if _, err := os.Stat(got.Log); err != nil {
+				t.Errorf("accepted capture log %q: %v; want the log file", got.Log, err)
+			}
+			if tt.wantFile != "" {
+				if text := readFile(t, filepath.Join(dir, tt.wantFile)); text != "profile\n" {
+					t.Errorf("accepted/%s = %q; want the command's output", tt.wantFile, text)
+				}
+			}
+			if _, err := os.Stat(filepath.Join(dir, "stale.json")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the stale file is still in the accepted directory")
+			}
+			if _, found, _ := ReadCapture(f.req.Paths); found {
+				t.Errorf("an accepted capture wrote a capture record")
+			}
+			if !slotFree(t, f.pool) {
+				t.Errorf("the slot is still held after the accepted capture")
+			}
+		})
+	}
+
 	t.Run("a side capture's relative dir joins the worktree root, not the anchor", func(t *testing.T) {
 		t.Parallel()
 		f := newCaptureFixture(t, "pwd -P > {baseline_dir}/ran")

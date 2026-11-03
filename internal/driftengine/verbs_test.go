@@ -188,8 +188,10 @@ func TestAcceptWithdraw(t *testing.T) {
 	t.Parallel()
 
 	decisionHalt := shedadapters.DecisionHaltPrefix + "bouncer Drift-Verify: round 2"
-	scoped := func(scope string) *ScopeRecord { return &ScopeRecord{Scope: scope} }
-	withdrawn := func(scope string) *ScopeRecord { return &ScopeRecord{Scope: scope, Withdrawn: []string{"t1"}} }
+	scoped := func(scope string) *ScopeRecord { return &ScopeRecord{Scope: scope, AcceptedProfileHead: "aaa"} }
+	withdrawn := func(scope string) *ScopeRecord {
+		return &ScopeRecord{Scope: scope, Withdrawn: []string{"t1"}, AcceptedProfileHead: "aaa"}
+	}
 	operator := func(st VerbStatus) VerbStatus { st.OperatorSession = true; return st }
 
 	t.Run("Accept", func(t *testing.T) {
@@ -243,6 +245,9 @@ func TestAcceptWithdraw(t *testing.T) {
 				if tt.wantNoWd && len(got.Withdrawn) != 0 {
 					t.Errorf("withdrawn = %v; want t1 taken off it", got.Withdrawn)
 				}
+				if got.AcceptedProfileHead != "" {
+					t.Errorf("accepted_profile_head = %q; want it cleared by the acceptance", got.AcceptedProfileHead)
+				}
 			})
 		}
 	})
@@ -253,7 +258,7 @@ func TestAcceptWithdraw(t *testing.T) {
 
 		t.Run("an accepted test is compared again and refused to the agent", func(t *testing.T) {
 			t.Parallel()
-			before := &ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}, Accepted: []Acceptance{{Test: "t1"}, {Test: "t2"}}}
+			before := &ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}, Accepted: []Acceptance{{Test: "t1"}, {Test: "t2"}}, AcceptedProfileHead: "aaa"}
 			p := seedScope(t, before)
 			if err := Withdraw(p, running, "t1"); err != nil {
 				t.Fatalf("Withdraw() = %v; want nil", err)
@@ -264,6 +269,9 @@ func TestAcceptWithdraw(t *testing.T) {
 			}
 			if !slices.Equal(got.Withdrawn, []string{"t1"}) {
 				t.Errorf("withdrawn = %v; want [t1]", got.Withdrawn)
+			}
+			if got.AcceptedProfileHead != "" {
+				t.Errorf("accepted_profile_head = %q; want it cleared by the withdrawal", got.AcceptedProfileHead)
 			}
 			err := Accept(p, running, "t1", "again")
 			if err == nil || !strings.Contains(err.Error(), "the run's parent withdrew t1") {

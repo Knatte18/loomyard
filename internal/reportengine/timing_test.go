@@ -321,6 +321,7 @@ var darnRowPhases = []struct{ row, phase string }{
 	{loomshed.NameCodeBouncer, PhaseReview},
 	{loomshed.NameCodeBurlerReview, PhaseReview},
 	{loomshed.NameCodeBurlerFix, PhaseReview},
+	{loomshed.NameDriftRecheck, PhaseReview},
 	{loomshed.NameDescribe, PhaseWrite},
 	{retiredMergeInRow, PhaseMerge},
 	{retiredPublishRow, PhasePublishFinalize},
@@ -569,9 +570,10 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NameCodeBouncer, secondsAfter(run, 1320)),
 					entryAt(loomshed.NameCodeBurlerReview, secondsAfter(run, 1380)),
 					entryAt(loomshed.NameCodeBurlerFix, secondsAfter(run, 1440)),
-					entryAt(loomshed.NameDescribe, secondsAfter(run, 1500)),
-					entryAt(loomshed.NamePRReview, secondsAfter(run, 1560)),
-					entryAt(loomshed.NameFinalize, secondsAfter(run, 1620)),
+					entryAt(loomshed.NameDriftRecheck, secondsAfter(run, 1500)),
+					entryAt(loomshed.NameDescribe, secondsAfter(run, 1560)),
+					entryAt(loomshed.NamePRReview, secondsAfter(run, 1620)),
+					entryAt(loomshed.NameFinalize, secondsAfter(run, 1680)),
 				})
 				landedRun(w, "oldtail", "t2", 4, seedStartedAt(run), []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 600)),
@@ -582,7 +584,7 @@ func TestComputeTiming(t *testing.T) {
 				})
 			},
 			check: func(t *testing.T, got TimingReport) {
-				wantPhases(t, runOf(t, got, "newtail"), map[string]int64{PhaseSetup: 600, PhaseWebster: 840, PhaseMerge: 60, PhasePublishFinalize: 120})
+				wantPhases(t, runOf(t, got, "newtail"), map[string]int64{PhaseSetup: 600, PhaseWebster: 900, PhaseMerge: 60, PhasePublishFinalize: 120})
 				wantPhases(t, runOf(t, got, "oldtail"), map[string]int64{PhaseSetup: 600, PhaseWebster: 600, PhaseMerge: 60, PhasePublishFinalize: 120})
 				if len(got.Findings) != 0 {
 					t.Errorf("findings = %+v; want none, since every row names a phase", got.Findings)
@@ -639,7 +641,7 @@ func TestComputeTiming(t *testing.T) {
 				if darned.Recipe != shedrun.RecipeDarn || runOf(t, got, "loomed").Recipe != shedrun.RecipeTapestry {
 					t.Errorf("recipes = %s, %s; want darn and tapestry", darned.Recipe, runOf(t, got, "loomed").Recipe)
 				}
-				wantPhases(t, darned, map[string]int64{PhaseSetup: 720, PhaseWrite: 180, PhaseReview: 420, PhaseMerge: 60, PhasePublishFinalize: 360})
+				wantPhases(t, darned, map[string]int64{PhaseSetup: 720, PhaseWrite: 180, PhaseReview: 480, PhaseMerge: 60, PhasePublishFinalize: 360})
 				flight := runOf(t, got, "darn-flight")
 				if flight.Recipe != shedrun.RecipeDarn || flight.State != RunStateInFlight {
 					t.Errorf("run in flight = %s %s; want a darn run in flight", flight.Recipe, flight.State)

@@ -28,9 +28,10 @@ const stampLayout = "20060102T150405.000Z"
 
 // The sites a drift command runs from, which label its slot holder and wait record and word the way forward of a refused dir.
 const (
-	siteCapture     = "drift capture"
-	siteSideCapture = "drift side capture"
-	siteCompare     = "drift compare"
+	siteCapture         = "drift capture"
+	siteSideCapture     = "drift side capture"
+	siteAcceptedCapture = "drift accepted capture"
+	siteCompare         = "drift compare"
 )
 
 // stepRun is one drift command to run.

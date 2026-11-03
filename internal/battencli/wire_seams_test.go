@@ -145,6 +145,8 @@ var intentionallyNil = map[string]string{
 	"Drift.Sleep":                         "loom- and darn-only seam, batten has no Drift row",
 	"Drift.VerifyTable":                   "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Compare":                       "loom- and darn-only seam, batten has no Drift row",
+	"Drift.CaptureAccepted":               "loom- and darn-only seam, batten has no Drift row",
+	"Drift.CompareAccepted":               "loom- and darn-only seam, batten has no Drift row",
 	"Sampler.Spec":                        "sampler-only seam, batten runs no sampler row",
 	"Sampler.Sessions":                    "sampler-only seam, batten runs no sampler row",
 	"Sampler.SessionLive":                 "sampler-only seam, batten runs no sampler row",

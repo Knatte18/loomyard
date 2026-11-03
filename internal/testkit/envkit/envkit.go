@@ -603,6 +603,12 @@ func driftDeps(root string) driftengine.Deps {
 		Compare: func(context.Context) (driftengine.CompareResult, error) {
 			return driftengine.CompareResult{Passed: true}, nil
 		},
+		CaptureAccepted: func(context.Context) (driftengine.AcceptedCapture, error) {
+			return driftengine.AcceptedCapture{Passed: true}, nil
+		},
+		CompareAccepted: func(context.Context) (driftengine.CompareResult, error) {
+			return driftengine.CompareResult{Passed: true}, nil
+		},
 	}
 }
 

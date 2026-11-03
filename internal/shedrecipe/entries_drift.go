@@ -1,4 +1,4 @@
-// entries_drift.go implements the three Drift registry entries: driftBaselineEntry, driftAwaitEntry and driftVerifyEntry.
+// entries_drift.go implements the Drift registry entries, one per Drift engine.
 // Each reads its keys, checks the Env.Drift seams its producer reads and hands the producer a copy of Env.Drift filled with the run-wide seat runner and clock.
 
 package shedrecipe
@@ -136,6 +136,7 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		{"Drift.Commit", d.Commit},
 		{"Drift.VerifyTable", d.VerifyTable},
 		{"Drift.Compare", d.Compare},
+		{"Drift.CaptureAccepted", d.CaptureAccepted},
 	})
 	if err != nil {
 		return nil, err
@@ -143,4 +144,26 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	deps := driftDepsFrom(env)
 	deps.GateFindingsFile = env.gateFindingsPath(row.Name)
 	return driftengine.NewDriftVerify(row.Name, driftengine.Row{Subject: subject}, gates[0], deps), nil
+}
+
+// driftRecheckEntry is the Constructor for the "DriftRecheck" registry row.
+// The row takes no config key and spawns nothing, so it checks only the Env.Drift seams the producer reads.
+func driftRecheckEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	const entry = "DriftRecheck"
+	if err := configRejectUnknown(cfg); err != nil {
+		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, driftKeyWayForward)
+	}
+	d := env.Drift
+	err := requireDriftSeams(entry, driftSeams{
+		{"Drift.Config", d.Config},
+		{"Drift.Head", d.Head},
+		{"Drift.DirtyPaths", d.DirtyPaths},
+		{"Drift.Commit", d.Commit},
+		{"Drift.Compare", d.Compare},
+		{"Drift.CompareAccepted", d.CompareAccepted},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return driftengine.NewDriftRecheck(row.Name, driftDepsFrom(env)), nil
 }

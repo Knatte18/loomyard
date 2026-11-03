@@ -29,6 +29,7 @@ var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
+	{loomshed.NameDriftRecheck, "DriftRecheck", driftRecheckType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
@@ -170,8 +171,11 @@ func TestNewDarn_Routing(t *testing.T) {
 			t.Errorf("Drift-Verify OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", verify.OnDone, verify.OnStuck, verify.Segment, loomshed.NameCodeBouncer)
 		}
 		bouncer, review, fix := rows[loomshed.NameCodeBouncer], rows[loomshed.NameCodeBurlerReview], rows[loomshed.NameCodeBurlerFix]
-		if bouncer.OnDone != loomshed.NameDescribe || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
-			t.Errorf("Code-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDescribe, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix, loomshed.NameCodeBouncer)
+		if bouncer.OnDone != loomshed.NameDriftRecheck || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
+			t.Errorf("Code-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDriftRecheck, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix, loomshed.NameCodeBouncer)
+		}
+		if recheck := rows[loomshed.NameDriftRecheck]; recheck.OnDone != loomshed.NameDescribe || recheck.OnStuck != loomshed.NameDriftVerify || recheck.Segment != "" {
+			t.Errorf("Drift-Recheck OnDone/OnStuck/Segment = %q/%q/%q; want %q/%q/empty", recheck.OnDone, recheck.OnStuck, recheck.Segment, loomshed.NameDescribe, loomshed.NameDriftVerify)
 		}
 		describe := rows[loomshed.NameDescribe]
 		if describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {

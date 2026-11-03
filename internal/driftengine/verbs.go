@@ -159,6 +159,7 @@ func Accept(p Paths, st VerbStatus, test, reason string) error {
 		kept := slices.DeleteFunc(slices.Clone(cur.Accepted), func(existing Acceptance) bool { return existing.Test == test })
 		cur.Accepted = append(kept, acceptance)
 		cur.Withdrawn = slices.DeleteFunc(slices.Clone(cur.Withdrawn), func(existing string) bool { return existing == test })
+		cur.AcceptedProfileHead = ""
 		return cur, nil
 	})
 }
@@ -179,6 +180,7 @@ func Withdraw(p Paths, st VerbStatus, test string) error {
 		}
 		cur.Accepted = slices.Delete(slices.Clone(cur.Accepted), accepted, accepted+1)
 		cur.Withdrawn = append(slices.DeleteFunc(slices.Clone(cur.Withdrawn), func(existing string) bool { return existing == test }), test)
+		cur.AcceptedProfileHead = ""
 		return cur, nil
 	})
 }

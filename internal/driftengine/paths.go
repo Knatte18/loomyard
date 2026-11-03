@@ -33,6 +33,8 @@ type Paths struct {
 	BaselineDir string
 	// SideDir holds the numbered directories of side captures.
 	SideDir string
+	// AcceptedDir is the accepted profile: the capture Drift-Verify takes once its compare passed with tests accepted, which Drift-Recheck compares later code against.
+	AcceptedDir string
 	// SkipFile is the file naming one skipped test per line.
 	SkipFile string
 	// Runs is the run counter of the Drift-Verify agent session.
@@ -53,6 +55,7 @@ func NewPaths(anchorRoot string) Paths {
 		CompareMarker:  filepath.Join(ephemeral, "compare.lock"),
 		BaselineDir:    filepath.Join(ephemeral, "baseline"),
 		SideDir:        filepath.Join(ephemeral, "side"),
+		AcceptedDir:    filepath.Join(ephemeral, "accepted"),
 		SkipFile:       filepath.Join(ephemeral, "skip.txt"),
 		Runs:           filepath.Join(ephemeral, "runs.json"),
 	}

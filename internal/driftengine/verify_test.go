@@ -105,6 +105,10 @@ type verifyFixture struct {
 	events    []string
 	told      []VerifyTold
 
+	// accepted is what the scripted accepted capture answers, and acceptedHeads the HEAD each of its calls saw.
+	accepted      AcceptedCapture
+	acceptedHeads []string
+
 	compareCalls int
 	verifyCalls  int
 }
@@ -117,7 +121,7 @@ var (
 // newVerifyFixture returns a fixture with a counted capture at HEAD, a declared compare and a scope record of scope.
 func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verifyFixture {
 	t.Helper()
-	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}}
+	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}, accepted: AcceptedCapture{Passed: true}}
 	f.verifyFn = func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{Passed: true}, nil }
 	if scope.Scope != "" {
 		scope.AwaitedAt = "2026-01-01T00:00:00Z"
@@ -171,6 +175,11 @@ func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verify
 		result := f.compares[min(f.compareCalls, len(f.compares)-1)]
 		f.compareCalls++
 		return result, nil
+	}
+	d.CaptureAccepted = func(context.Context) (AcceptedCapture, error) {
+		f.events = append(f.events, "capture-accepted")
+		f.acceptedHeads = append(f.acceptedHeads, f.head)
+		return f.accepted, nil
 	}
 	return f
 }
@@ -849,6 +858,76 @@ func TestDriftVerify(t *testing.T) {
 			scope := f.scope()
 			if len(scope.Accepted) != 1 || scope.Accepted[0].By != AcceptedByOperator || scope.Accepted[0].Ruling != RulingRuled {
 				t.Errorf("accepted = %+v; want t1 accepted by the operator and ruled", scope.Accepted)
+			}
+		})
+	})
+
+	t.Run("the accepted profile", func(t *testing.T) {
+		t.Parallel()
+		accepted := []Acceptance{{Test: "t1", Reason: "intended", By: AcceptedByAgent}}
+		withAccepted := func(profileHead string) ScopeRecord {
+			return ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}, Accepted: accepted, AcceptedProfileHead: profileHead}
+		}
+		rows := []struct {
+			name  string
+			scope ScopeRecord
+			// wantCaptures is how many accepted captures the pass runs, and wantProfileHead the commit the scope record names afterwards.
+			wantCaptures    int
+			wantProfileHead string
+		}{
+			{"a passing compare with tests accepted captures the profile once and records HEAD", withAccepted(""), 1, "aaa"},
+			{"a profile captured at an earlier commit is captured again at HEAD", withAccepted("old"), 1, "aaa"},
+			{"a profile already captured at HEAD runs no capture", withAccepted("aaa"), 0, "aaa"},
+			{"no acceptance runs no capture", partial, 0, ""},
+		}
+		for _, row := range rows {
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t, row.scope, nil)
+				requireDone(f)
+				if len(f.acceptedHeads) != row.wantCaptures {
+					t.Errorf("accepted captures = %d; want %d", len(f.acceptedHeads), row.wantCaptures)
+				}
+				if row.wantCaptures > 0 && f.events[len(f.events)-1] != "capture-accepted" {
+					t.Errorf("events = %v; want the accepted capture after the compare", f.events)
+				}
+				if got := f.scope().AcceptedProfileHead; got != row.wantProfileHead {
+					t.Errorf("accepted_profile_head = %q; want %q", got, row.wantProfileHead)
+				}
+			})
+		}
+
+		t.Run("a capture that does not pass is Stuck naming the accepted profile and resume, and records no commit", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t, withAccepted(""), nil)
+			f.accepted = AcceptedCapture{Reason: "exit 2; log accepted-capture-1.log"}
+			outcome, pointer, err := f.call()
+			requireStuck(t, outcome, pointer, err, false, "accepted profile", "lym loom resume", "exit 2; log accepted-capture-1.log")
+			if got := f.scope().AcceptedProfileHead; got != "" {
+				t.Errorf("accepted_profile_head = %q; want none after a capture that did not pass", got)
+			}
+			if len(f.commits) != 1 || !slices.Equal(f.commits[0], []string{DirRel()}) {
+				t.Errorf("commits = %v; want the durable directory once", f.commits)
+			}
+		})
+
+		t.Run("an agent's acceptance is captured at the agent's HEAD before Done", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t, partial, nil)
+			f.compares = []CompareResult{failingCompare, passingCompare}
+			accept := f.agentAccept()
+			f.seats = gateLoopSeats(t, []func(){func() {
+				f.head = "bbb"
+				accept()
+			}})
+			f.deps.Seats = f.seats
+			requireDone(f)
+			if !slices.Equal(f.acceptedHeads, []string{"bbb"}) {
+				t.Errorf("accepted capture heads = %v; want one capture at the agent's HEAD bbb", f.acceptedHeads)
+			}
+			scope := f.scope()
+			if scope.AcceptedProfileHead != "bbb" || len(scope.Accepted) != 1 || scope.Accepted[0].Test != "t1" {
+				t.Errorf("scope = %+v; want t1 accepted and the profile at bbb", scope)
 			}
 		})
 	})

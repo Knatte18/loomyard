@@ -513,7 +513,7 @@ func TestRenderChecklist(t *testing.T) {
 				"[ ] 6. Drift-Verify",
 				"[>] 7. Code-Review 2m rounds 0",
 				"  10:10 2m Code-Bouncer running",
-				"[ ] 8. Describe", "[ ] 9. PR-Review", "[ ] 10. Finalize", "[ ] 11. Friction-Reflect",
+				"[ ] 8. Drift-Recheck", "[ ] 9. Describe", "[ ] 10. PR-Review", "[ ] 11. Finalize", "[ ] 12. Friction-Reflect",
 				"loom running | now working", "waiting on nothing",
 			},
 		},

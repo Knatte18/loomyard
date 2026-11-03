@@ -44,8 +44,12 @@ type Deps struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// VerifyTable builds the Drift-Verify agent's table for the failing compare's log and the baseline's commit.
 	VerifyTable func(told VerifyTold) (seatengine.Table, error)
-	// Compare runs the mechanical compare over the scope's skip list and returns how it ended.
+	// Compare runs the mechanical compare against the baseline over the scope's skip list and returns how it ended.
 	Compare func(ctx context.Context) (CompareResult, error)
+	// CaptureAccepted captures the accepted profile on the current code, leaving out the scope's skipped tests alone.
+	CaptureAccepted func(ctx context.Context) (AcceptedCapture, error)
+	// CompareAccepted runs the compare against the accepted profile, leaving out the scope's skipped tests alone, so the accepted tests are compared too.
+	CompareAccepted func(ctx context.Context) (CompareResult, error)
 	// GateFindingsFile is the file an exhausted gate entry's findings are kept in; empty keeps none.
 	GateFindingsFile string
 }

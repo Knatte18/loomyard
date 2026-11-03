@@ -339,13 +339,13 @@ func TestEntryNumbers(t *testing.T) {
 			"Webster":     11, "Parent-Align": 12,
 			"Drift-Verify": 13,
 			"Code-Bouncer": 14, "Code-Burler-Review": 14, "Code-Burler-Fix": 14,
-			"Describe": 15, "PR-Review": 16, "Finalize": 17, "Friction-Reflect": 18,
+			"Drift-Recheck": 15, "Describe": 16, "PR-Review": 17, "Finalize": 18, "Friction-Reflect": 19,
 		}},
 		{"motif", shedrun.RecipeMotif, map[string]int{
 			"Discussion-Write": 1, "Discussion-Bouncer": 2, "Discussion-Burler-Review": 2, "Discussion-Burler-Fix": 2,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
-		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Verify": 6, "Code-Bouncer": 7, "Code-Burler-Review": 7, "Code-Burler-Fix": 7}},
+		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Verify": 6, "Code-Bouncer": 7, "Code-Burler-Review": 7, "Code-Burler-Fix": 7, "Drift-Recheck": 8, "Describe": 9, "PR-Review": 10, "Finalize": 11, "Friction-Reflect": 12}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			got := numbersOf(t, tt.recipe)

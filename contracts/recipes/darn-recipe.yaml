@@ -2,8 +2,9 @@
 # the baseline capture, Drift-Await holds the run until the capture passed or the parent deferred it,
 # one gated writer reads the board entry, edits, tests and commits, Drift-Verify
 # compares the writer's code with the baseline, the Code-Review perch reviews the committed diff,
+# Drift-Recheck compares again the code the perch's fixes committed,
 # Describe rewrites the change description from the final diff, then PR-Review and Finalize land it.
-# The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
+# The Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them. It is
 # embedded into the binary by the sibling recipes.go rather than read from disk. The row names below are the
 # durable on-disk identities pinned against internal/loomshed's Name* constants -- a rename here
@@ -22,8 +23,9 @@
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
 # and a Stuck of a Drift row halts it with the ways forward in its reason.
 # Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
-# The comparison never sees the code the Code-Review perch's fixes change, or a Finalize merge and its
-# fixer.
+# Drift-Recheck compares the code the perch's fixes changed: its Stuck routes to Drift-Verify, which
+# judges the drift again, and the perch reviews that row's fixes in turn.
+# No compare sees a Finalize merge and its fixer.
 # PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
 # never returns Stuck.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
@@ -131,7 +133,7 @@ producers:
     engine: Bouncer
     segment: Code-Review
     on_stuck: Code-Burler-Review
-    on_done: Describe
+    on_done: Drift-Recheck
     config:
       run_subdir: code
       subject: code
@@ -217,6 +219,15 @@ producers:
         fix-scope: source
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
+
+  # Drift-Recheck is mechanical and spawns nothing: once the perch approved, it compares again the code
+  # committed since Drift-Verify's last compare, against the accepted profile while tests are accepted.
+  # Its Stuck, on drift or a tree it cannot compare, routes to Drift-Verify, under the shed's bounce budget.
+  - name: Drift-Recheck
+    engine: DriftRecheck
+    entry_gate: drift.enabled
+    on_stuck: Drift-Verify
+    on_done: Describe
 
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe

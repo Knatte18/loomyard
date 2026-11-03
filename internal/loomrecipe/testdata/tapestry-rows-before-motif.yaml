@@ -6,8 +6,8 @@
 #
 # The main line is Preflight, Discussion-Write, the Discussion-Review ring,
 # Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
-# Drift-Verify, the Code-Review ring, Describe, PR-Review, Finalize and Friction-Reflect.
-# The three Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
+# Drift-Verify, the Code-Review ring, Drift-Recheck, Describe, PR-Review, Finalize and Friction-Reflect.
+# The Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them.
 # Parts-Write and Parts-Plan-Write carry entry_gate: tapestry.plan_split, and Plan-Write carries entry_gate: tapestry.plan_split != true.
 # With the flag off, each of the two parts rows is recorded Skipped and Plan-Write runs as before.
@@ -53,8 +53,7 @@
 # Drift-Baseline captured on the branch point, and spawns one agent to judge, accept and fix drift,
 # so the review sees Drift-Verify's fixes.
 # A run in flight parked on Drift-Verify after its review runs the perch once more, and one inside the
-# perch exits to Describe without Drift-Verify, which the orch moves back with
-# `lym loom goto --to Drift-Verify`.
+# perch exits to Drift-Recheck, which sends it back to Drift-Verify while no compare is recorded.
 # Drift-Await holds Webster until the baseline capture passed or the parent deferred it.
 #
 # An in-flight run parked on a row this recipe removed or renamed -- Webster-Bouncer and its
@@ -452,7 +451,7 @@ producers:
     engine: Bouncer
     segment: Code-Review
     on_stuck: Code-Burler-Review
-    on_done: Describe
+    on_done: Drift-Recheck
     config:
       run_subdir: code
       subject: code
@@ -573,6 +572,12 @@ producers:
         fix-scope: source
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
+
+  - name: Drift-Recheck
+    engine: DriftRecheck
+    entry_gate: drift.enabled
+    on_stuck: Drift-Verify
+    on_done: Describe
 
   - name: Describe
     engine: Describe

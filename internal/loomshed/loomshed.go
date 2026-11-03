@@ -49,4 +49,5 @@ const (
 	NameDriftBaseline = "Drift-Baseline"
 	NameDriftAwait    = "Drift-Await"
 	NameDriftVerify   = "Drift-Verify"
+	NameDriftRecheck  = "Drift-Recheck"
 )
