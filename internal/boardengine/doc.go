@@ -177,7 +177,8 @@
 // Every write renders README.md, the overview of every project, and one board file per project: every project, open or done, renders to project-<slug>.md beside it, and the root to project-root.md.
 // The split is rendering only: every entry stays in the one store, handles stay numbered across the hub, so a file's handles have gaps, and layers, After cells and owners read the whole board.
 // README.md opens with the UTC date and time it was rendered, so its ages read as of that moment, and the prime owner;
-// a project file opens with its handle and title, the render time, a link up to its parent's file, README.md for the root and a project under no other, its facts line, its brief, and for a beam the word `beam`.
+// a project file opens with its handle and title, the render time, a link up to its parent's file, README.md for the root and a project under no other, its facts line, its brief, for a beam the word `beam`, and the project's body when it has one, before the intro and the entry sections.
+// The body's ATX headings outside fenced code blocks shift down together until the shallowest is `##`, so the body adds no second `#` heading; its design file and the facts line's link to it stay.
 // A project's facts line is its slug as a code span, linked to its design file the way a table's Slug cell is when the project has a body, then `Age` and its created age when its created date is known, then `Owner` and its effective owner, its recorded owner_machine for a beam else its parent's, resolved through ParentBeam over the rendered entries with the prime owner as the root's, or none recorded, parts joined by a middle dot.
 // The root's facts line is `Owner` and the prime owner alone, since it has no board entry to give it a slug, an age or a design file.
 // The Running table's Owner column shows a task's effective owner the same way.

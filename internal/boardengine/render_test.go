@@ -624,6 +624,8 @@ func TestRenderReadmeGolden(t *testing.T) {
 					"\n" +
 					"beam\n" +
 					"\n" +
+					"Ship design.\n" +
+					"\n" +
 					"Tasks are grouped by dependency layer and notes by type.\n" +
 					"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
 					"\n" +
@@ -987,6 +989,63 @@ func TestRenderRecipeCellTakesTheDefaultRecipe(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Errorf("README lacks row %q:\n%s", want, got)
 		}
+	}
+}
+
+// TestRenderProjectFileShowsTheBodyUnderTheBrief pins that a project file renders the project's body between its brief and the intro.
+// Its ATX headings shift down together until the shallowest is level two, and lines in fenced or indented code stay as they are.
+// A project with no body, or a blank one, renders no body.
+func TestRenderProjectFileShowsTheBodyUnderTheBrief(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const linkedFacts = "[`plan`](design-plan.md) · Owner none recorded"
+	tests := []struct {
+		name      string
+		body      string
+		wantFacts string
+		wantBody  string
+	}{
+		{"NoBody", "", "`plan` · Owner none recorded", ""},
+		{"BlankBody", "  \n", linkedFacts, ""},
+		{"PlainBody", "Goal text.\n\nMore text.\n", linkedFacts, "Goal text.\n\nMore text.\n\n"},
+		{
+			"TopLevelHeadingsShiftDown",
+			"# Goal\nText.\n## Detail\n###### Deep\n",
+			linkedFacts,
+			"## Goal\nText.\n### Detail\n###### Deep\n\n",
+		},
+		{"SecondLevelHeadingsStay", "## Seen\n\nIt broke.\n### Why\n", linkedFacts, "## Seen\n\nIt broke.\n### Why\n\n"},
+		{
+			"CodeLinesStay",
+			"# Goal\n```go\n# not a heading\n```go\n# still code\n```\n~~~\n# tilde code\n~~~\n    # indented code\n#hashtag\n",
+			linkedFacts,
+			"## Goal\n```go\n# not a heading\n```go\n# still code\n```\n~~~\n# tilde code\n~~~\n    # indented code\n#hashtag\n\n",
+		},
+		{"FencedHeadingsSetNoShift", "## Seen\n```\n# comment\n```\n", linkedFacts, "## Seen\n```\n# comment\n```\n\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tasks := []boardengine.Task{{ID: 1, Handle: "P1", Slug: "plan", Title: "Plan", Kind: boardengine.KindProject, Brief: "Brief.", Body: tt.body}}
+			result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}, renderTime)
+			if err != nil {
+				t.Fatalf("Render: %v", err)
+			}
+			want := "# P1 Plan\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Under: [Board](README.md).\n" +
+				"\n" +
+				tt.wantFacts + "\n" +
+				"\n" +
+				"Brief.\n" +
+				"\n" +
+				tt.wantBody +
+				"Tasks are grouped by dependency layer and notes by type.\n"
+			if got := result["project-plan.md"]; !strings.HasPrefix(got, want) {
+				t.Errorf("project-plan.md opens:\n%s\nwant it to open:\n%s", got, want)
+			}
+		})
 	}
 }
 

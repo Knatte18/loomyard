@@ -7,7 +7,7 @@
 // README.md holds every top-level project's section under its header and the root's last, and a project file holds its project's sub-projects and own entries under its header.
 // A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
-// README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
+// README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file, the project's brief, for a beam its owner, and the project's body with its headings shifted below the file's own;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug with a Sketch link to the decision record under it for a discussed entry, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, the configured default recipe for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the entries each waits on that are not done, a project judged by its landing members.
@@ -351,16 +351,94 @@ func (b boardView) renderedLine() string {
 	return "Rendered " + b.now.UTC().Format(renderedTimeLayout) + "; every age below is as of then."
 }
 
-// fileHeader is the opening of project's board file: its handle and title, the render time, a link up to the file above it, its facts line, its brief, and for a beam the word beam.
+// fileHeader is the opening of project's board file: its handle and title, the render time, a link up to the file above it, its facts line, its brief, for a beam the word beam, and its body when it has one.
 func (b boardView) fileHeader(project Task) []string {
 	lines := []string{"# " + cellText(project.Handle+" "+project.Title), "", b.renderedLine(), "Under: " + b.upLink(project) + ".", "", b.projectFacts(project), ""}
 	if project.Brief != "" {
 		lines = append(lines, project.Brief, "")
 	}
-	if !project.Beam {
+	if project.Beam {
+		lines = append(lines, projectBeamText, "")
+	}
+	if strings.TrimSpace(project.Body) == "" {
 		return lines
 	}
-	return append(lines, projectBeamText, "")
+	return append(append(lines, projectBodyLines(project.Body)...), "")
+}
+
+// bodyTopHeadingLevel is the level the shallowest heading of a project's body renders at in its board file, one below the file's own heading.
+const bodyTopHeadingLevel = 2
+
+// projectBodyLines is a project's body as lines of its board file, trailing newlines dropped.
+// Its ATX headings shift down together until the shallowest sits at bodyTopHeadingLevel, capped at maxHeadingLevel, so the body never adds a heading beside the file's own;
+// a body whose headings already sit that deep keeps them, and a line inside a fenced code block is never read as a heading.
+func projectBodyLines(body string) []string {
+	lines := strings.Split(strings.TrimRight(body, "\r\n"), "\n")
+	shallowest := maxHeadingLevel
+	forEachBodyHeading(lines, func(_, level int, _ string) {
+		shallowest = min(shallowest, level)
+	})
+	shift := max(0, bodyTopHeadingLevel-shallowest)
+	if shift == 0 {
+		return lines
+	}
+	forEachBodyHeading(lines, func(index, level int, rest string) {
+		lines[index] = strings.Repeat("#", min(level+shift, maxHeadingLevel)) + rest
+	})
+	return lines
+}
+
+// forEachBodyHeading calls visit with the index, level and text after the hashes of every ATX heading line of lines outside a fenced code block.
+func forEachBodyHeading(lines []string, visit func(index, level int, rest string)) {
+	openFence := ""
+	for index, line := range lines {
+		fence, info := codeFence(line)
+		if openFence != "" {
+			// A closing fence repeats the opening character at least as many times and carries no info string.
+			if fence != "" && fence[0] == openFence[0] && len(fence) >= len(openFence) && strings.TrimSpace(info) == "" {
+				openFence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			openFence = fence
+			continue
+		}
+		if level, rest := atxHeading(line); level > 0 {
+			visit(index, level, rest)
+		}
+	}
+}
+
+// markdownMaxIndent is the deepest indent, in spaces, at which a markdown heading or code fence still starts a line; a deeper one is an indented code block.
+const markdownMaxIndent = 3
+
+// codeFence is the run of three or more backticks or tildes that opens line as a code fence, and the text after it, or "" when line is no fence.
+func codeFence(line string) (fence, info string) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > markdownMaxIndent || trimmed == "" || (trimmed[0] != '`' && trimmed[0] != '~') {
+		return "", ""
+	}
+	info = strings.TrimLeft(trimmed, trimmed[:1])
+	fence = trimmed[:len(trimmed)-len(info)]
+	if len(fence) < 3 || (fence[0] == '`' && strings.Contains(info, "`")) {
+		return "", ""
+	}
+	return fence, info
+}
+
+// atxHeading is the level of line as an ATX heading and the text after its hashes, or level 0 when line is no heading.
+func atxHeading(line string) (level int, rest string) {
+	trimmed := strings.TrimLeft(line, " ")
+	if len(line)-len(trimmed) > markdownMaxIndent {
+		return 0, ""
+	}
+	rest = strings.TrimLeft(trimmed, "#")
+	level = len(trimmed) - len(rest)
+	if level == 0 || level > maxHeadingLevel || (rest != "" && rest[0] != ' ' && rest[0] != '\t') {
+		return 0, ""
+	}
+	return level, rest
 }
 
 // projectFacts is the line naming project's slug, linked to its design doc when the project has a body, its age as of the render time and its effective owner, the age left out when its created date is unknown.
