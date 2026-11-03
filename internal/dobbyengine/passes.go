@@ -15,6 +15,8 @@ import (
 const (
 	// runStateRunning is the batten status state of a run that has not halted, paused, failed or finished.
 	runStateRunning = "running"
+	// runStatePaused is the batten status state of a run a pause request, a pause condition or a cancelled pass left paused.
+	runStatePaused = "paused"
 	// runStateDone is the batten status state of a run that finished, which dobby drives no further.
 	runStateDone = "done"
 	// producerRunShed is the batten producer that waits on the child run, the only row a continue pass may re-enter.
@@ -50,6 +52,15 @@ type RunView struct {
 	Landed   bool
 	// LandingCommit is the commit the run's landing put on its parent branch, empty when none is recorded.
 	LandingCommit string
+	// ReachedParent reports whether the run's work already reached its parent branch, so only its Land and Worktree-Teardown rows are left.
+	// It is read for a paused run only.
+	ReachedParent bool
+}
+
+// drivable reports whether batten's state lets dobby give run a pass: running, or paused with its work already on its parent.
+// Such a paused run has nothing left to decide, and only its landing and teardown finish it.
+func drivable(run RunView) bool {
+	return run.State == runStateRunning || (run.State == runStatePaused && run.ReachedParent)
 }
 
 // PassExit is how a `lym batten run` pass ended: its exit code and its last error text.
@@ -87,14 +98,15 @@ type passTrigger struct {
 }
 
 // planPass decides, for one run and trigger, none, a continue pass or a full pass.
-// There is none unless batten's state is running, none while the cancel marker exists or a pass is in flight, and a held driver lock reads as in flight.
+// There is none unless batten's state is running, or paused with the run's work already on its parent, none while the cancel marker exists or a pass is in flight, and a held driver lock reads as in flight.
+// Such a paused run gets only full passes, and none while a pause covers it but the one at the lift.
 // A write of batten's own status file triggers only when it is later than the run's last pass exit, so a pass's own writes never trigger the next.
 // A run a hold-caller entry covers gets none either, an owned-elsewhere run included, and its lift gives it the full pass.
 // While a pause covers the run, only a continue pass runs, and the full pass at the lift; an owed full pass waits for the lift.
 // A continue pass needs the run at Run-Shed with no full pass owed and no lift to answer, and every other pass is full, with no reopen while the origin-owed marker stands.
 // A run recorded owned elsewhere gets a full pass at the lift of its covering pause, and while no pause covers it a full pass on each probe tick; no other trigger gives it one.
 func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passKind {
-	if run.State != runStateRunning || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
+	if !drivable(run) || run.CancelMarker || trigger.InFlight || run.DriverLockHeld {
 		return passNone
 	}
 	if run.Held {
@@ -118,12 +130,12 @@ func planPass(run RunView, rs RunState, trigger passTrigger, covered bool) passK
 		switch {
 		case trigger.Lift:
 			return full
-		case rs.FullPassOwed || run.Producer != producerRunShed:
+		case rs.FullPassOwed || run.Producer != producerRunShed || run.State != runStateRunning:
 			return passNone
 		}
 		return passContinue
 	}
-	if rs.FullPassOwed || run.Producer != producerRunShed || run.OriginOwed || trigger.Lift {
+	if rs.FullPassOwed || run.Producer != producerRunShed || run.State != runStateRunning || run.OriginOwed || trigger.Lift {
 		return full
 	}
 	return passContinue
@@ -171,7 +183,7 @@ func (d *daemon) drivePasses(ctx context.Context, now time.Time) error {
 		}
 		trigger := d.triggerFor(run)
 		kind := planPass(run, rs, trigger, run.Covered)
-		if !trigger.InFlight && (run.State != runStateRunning || run.CancelMarker) {
+		if !trigger.InFlight && (!drivable(run) || run.CancelMarker) {
 			// No pass answers the lift while the run cannot be given one, and a later pass must not inherit it.
 			delete(d.liftPending, run.Slug)
 		}

@@ -44,12 +44,14 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
    A darn run has no Discussion review: its Code-Review perch, the one tapestry runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as tapestry's does.
    Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted or paused batten run waits for you: dobby does not resume it.
+   The one exception is a paused run whose work already reached its parent: dobby finishes it through Land and Worktree-Teardown once no `lym tender pause` entry covers it.
    Once its cause is known (see Investigating a stop), resume it with a hand pass, `lym batten run <slug>`, which you run only on the operator's word or after judging the stop under Investigating a stop.
    A halted child (blocked, paused or failed) is still resumed with `lym loom resume` in the task worktree.
    When `lym loom resume` refuses, its message names the way forward (`lym batten run <slug>` to bring a dead driver back, or `lym loom start`),
    and you take it.
 3. Hold a run with `lym batten pause <slug>`, and send it to a producer with `lym batten goto <slug> --to <producer>`.
    Both leave the batten run paused, so resume it with the hand pass `lym batten run <slug>`.
+   A `lym batten pause` or `lym batten goto` does not hold a run whose work already reached its parent, since dobby finishes that run; hold it with `lym tender pause <slug>`.
    To give up a run for good, end it with `lym batten cancel <slug>` from the prime when the operator asks, and add `--remove` to discard its pair.
    A kept pair needs `lym batten cancel <slug> --remove` before the slug runs again.
 4. Watch runs through their notices and mail only: keep no polling shell, start no Monitor for a run, and never read `lym batten status` on your own to check on runs, since a command's own output says what it did.

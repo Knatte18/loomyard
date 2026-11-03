@@ -34,6 +34,21 @@ func TestPlanPass(t *testing.T) {
 		{"AnotherProducerGivesFull", func(run *RunView, _ *RunState) { run.Producer = "Land" }, probe, false, passFull},
 		{"HaltedGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked" }, probe, false, passNone},
 		{"FailedGivesNone", func(run *RunView, _ *RunState) { run.State = "failed" }, probe, false, passNone},
+		{"PausedGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused }, probe, false, passNone},
+		{"HaltedReachedParentGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked"; run.ReachedParent = true }, probe, false, passNone},
+		{"PausedReachedParentGivesFull", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, probe, false, passFull},
+		{"PausedReachedParentOwnedElsewhereProbeGivesFull", func(run *RunView, rs *RunState) {
+			run.State = runStatePaused
+			run.ReachedParent = true
+			rs.OwnedElsewhere = true
+		}, probe, false, passFull},
+		{"PausedReachedParentHeldGivesNone", func(run *RunView, _ *RunState) {
+			run.State = runStatePaused
+			run.ReachedParent = true
+			run.Held = true
+		}, passTrigger{Lift: true}, true, passNone},
+		{"PausedReachedParentCoveredGivesNone", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, probe, true, passNone},
+		{"PausedReachedParentCoveredLiftGivesFull", func(run *RunView, _ *RunState) { run.State = runStatePaused; run.ReachedParent = true }, passTrigger{Lift: true}, true, passFull},
 		{"CancelMarkedGivesNone", func(run *RunView, _ *RunState) { run.CancelMarker = true }, probe, false, passNone},
 		{"InFlightGivesNone", nil, passTrigger{ProbeTick: true, InFlight: true}, false, passNone},
 		{"HeldDriverLockReadsAsInFlight", func(run *RunView, _ *RunState) { run.DriverLockHeld = true }, probe, false, passNone},
@@ -517,6 +532,28 @@ func TestDrivePasses_ExitHandling(t *testing.T) {
 		spawned := h.fake.spawnsOf("task")
 		if len(spawned) != 2 || !spawned[1].continuePass {
 			t.Errorf("passes = %+v; want a continue pass at the first probe tick and a continue pass after the run runs again", spawned)
+		}
+	})
+
+	t.Run("a lift seen by a paused run whose work reached its parent is kept while its driver lock is held", func(t *testing.T) {
+		t.Parallel()
+		run := runningRun("task")
+		run.State, run.ReachedParent = runStatePaused, true
+		h := newPassHarness(t, run)
+		h.fake.runs[0].Covered = true
+		h.tick(false)
+		h.fake.runs[0].Covered = false
+		h.fake.runs[0].DriverLockHeld = true
+		h.tick(false)
+		if got := len(h.fake.spawned); got != 0 {
+			t.Fatalf("passes with the driver lock held = %d; want 0", got)
+		}
+
+		h.fake.runs[0].DriverLockHeld = false
+		h.tick(false)
+		spawned := h.fake.spawnsOf("task")
+		if len(spawned) != 1 || spawned[0].continuePass {
+			t.Errorf("passes after the driver lock was released = %+v; want the lift's full pass", spawned)
 		}
 	})
 }

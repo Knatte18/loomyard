@@ -121,9 +121,13 @@ func readDobbyRunStatus(path string) (shedengine.Status, bool, error) {
 	return status, true, nil
 }
 
+// unreadableReachedParent keeps one failure episode per paused run whose reached-parent judgment does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+var unreadableReachedParent logger.EpisodeSet
+
 // DobbyRuns builds the RunView of every batten run whose parent worktree is geom's, with the pause coverage read from the record at pauseRecord.
 // A run's place against its Land row is battenrecipe.LandOutcomeOf's, and a landed run carries the landing commit its landing recorded, empty when none is readable.
 // A run's slot reading comes from its board entry on the local board at geom.BoardDir, which runTakesNoSlot judges.
+// A paused run also carries whether its work already reached its parent, judged as a cancel judges it; a judgment that does not read leaves it unreached with one Warn, so the run stays paused.
 func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *DobbyParents, pauseRecord string) ([]dobbyengine.RunView, error) {
 	runs, err := dobbyParentRuns(prime, geom, parents)
 	if err != nil {
@@ -179,6 +183,20 @@ func DobbyRuns(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *Dobby
 					return nil
 				}
 				view.LandingCommit = commit
+				return nil
+			},
+			func() error {
+				if run.status.State != shedengine.StatePaused {
+					unreadableReachedParent.Recover(slug, "battencli: the run left paused, so whether its work reached its parent is no longer read", "slug", slug)
+					return nil
+				}
+				reached, err := hubChildReachedParent(prime, slug)(run.status, true)
+				if err != nil {
+					unreadableReachedParent.Fail(slug, "battencli: whether a paused run's work reached its parent is unreadable, so the run stays paused", "slug", slug, "error", err)
+					return nil
+				}
+				unreadableReachedParent.Recover(slug, "battencli: whether a paused run's work reached its parent reads again", "slug", slug)
+				view.ReachedParent = reached
 				return nil
 			},
 		}

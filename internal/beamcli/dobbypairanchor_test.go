@@ -184,6 +184,51 @@ func TestDobbyLandings_CountsOnlyThisMachine(t *testing.T) {
 	}
 }
 
+func TestDobbyRuns_ReadsWhetherAPausedRunsWorkReachedItsParent(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	prime := h.Location
+	type fixture struct{ batten, child string }
+	fixtures := map[string]fixture{
+		"teardown":     {batten: `{"state":"paused","current_producer":"Worktree-Teardown"}`},
+		"finalizedkid": {batten: `{"state":"paused","current_producer":"Run-Shed"}`, child: `{"state":"paused","current_producer":"Finalize","history":[{"producer":"Finalize","outcome":"done","output":"","at":"2026-10-31T10:00:00Z"}]}`},
+		"midrun":       {batten: `{"state":"paused","current_producer":"Run-Shed"}`},
+		"running":      {batten: `{"state":"running","current_producer":"Worktree-Teardown"}`},
+	}
+	for slug, f := range fixtures {
+		hubforge.AddPair(t, h, slug)
+		seedBattenRun(t, prime, slug)
+		if err := os.WriteFile(shedrun.StatusFile(prime, slug), []byte(f.batten), 0o644); err != nil {
+			t.Fatalf("write the status of %s: %v", slug, err)
+		}
+		if f.child == "" {
+			continue
+		}
+		childStatus := shedrun.StatusFile(&lymcwd.Location{HubPath: h.Path, WorktreeName: slug, AnchorRel: "."}, shedrun.SelfRunID)
+		if err := os.MkdirAll(filepath.Dir(childStatus), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(childStatus), err)
+		}
+		if err := os.WriteFile(childStatus, []byte(f.child), 0o644); err != nil {
+			t.Fatalf("write the child status of %s: %v", slug, err)
+		}
+	}
+
+	views, err := battencli.DobbyRuns(prime, dobbyengine.Geometry{}, battencli.NewDobbyParents(prime), filepath.Join(t.TempDir(), "pause.json"))
+	if err != nil {
+		t.Fatalf("DobbyRuns() = _, %v; want nil", err)
+	}
+	got := map[string]bool{}
+	for _, view := range views {
+		got[view.Slug] = view.ReachedParent
+	}
+	want := map[string]bool{"teardown": true, "finalizedkid": true, "midrun": false, "running": false}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("DobbyRuns() ReachedParent = %v; want %v", got, want)
+	}
+}
+
 func TestDobbyRuns_ReadsTheLandOutcomeAndTheLandingCommit(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()

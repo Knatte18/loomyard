@@ -67,8 +67,9 @@
 // The passes:
 //
 //   - Each tick lists the runs whose parent worktree is this dobby's, from the prime's local batten status files and never the board, so a run whose task Land already pruned is still driven through its teardown.
-//   - A run gets a pass only while batten's state is running and its cancel marker is absent, never while a pass of it is in flight; a held driver lock reads as in flight, so a pass left by a dead dobby is waited for and never doubled.
-//     A halted or paused batten run gets no pass; the orch or the operator resumes it with a hand pass.
+//   - A run gets a pass only while batten's state is running, or paused with its work already on its parent, and its cancel marker is absent, never while a pass of it is in flight; a held driver lock reads as in flight, so a pass left by a dead dobby is waited for and never doubled.
+//     A halted batten run gets no pass, nor does a paused one whose work has not reached its parent; the orch or the operator resumes it with a hand pass.
+//     A paused run whose work already reached its parent, RunView.ReachedParent, has nothing left to decide: while no pause entry covers it, each trigger gives it a full pass, which resumes it through its Land and Worktree-Teardown rows, and a covering pause holds it until the lift.
 //   - A done batten run is driven no further: once no pass of it is in flight, it takes no slot under `max_runs`, gets no pass, and its entry leaves the state record.
 //     The board tidy still reads its history.
 //   - A pass is triggered by a write of the child's status file, by a write of batten's own status file later than the run's last pass exit, by a probe tick once per probe interval, by the dobby's start and by the lift of a pause that covered the run.
