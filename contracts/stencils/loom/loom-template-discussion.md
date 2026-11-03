@@ -85,6 +85,8 @@ Cover:
 - **Security** — trust boundaries, validation.
   Only if relevant to this task.
 - **Testing** — approach per module, key scenarios to cover.
+  Phrase each acceptance criterion as behavior a test can check;
+  a criterion about wording in a stencil, spec, doc or other prose is a review check, marked as the discussion spec's acceptance-criteria rule says, never a test of that prose.
 
 For every question, give your **recommended answer**.
 Where there are distinct viable approaches, propose 2–3 with explicit trade-offs, leading with the recommendation.

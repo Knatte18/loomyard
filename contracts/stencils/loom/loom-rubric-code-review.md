@@ -97,13 +97,17 @@ Do not flag any of the following as a finding:
   before then the omission is an unrecorded parent correction, filed under that bullet as a MEDIUM `decision` finding deferred to the parent.
 - **Stencil wording.**
   A diff that changes a stencil is read against the measuring stick, the plan card's `Intent` with a plan and the amended board entry with a decision record alone; a rule the answer key did not ask to change that the diff drops, weakens or contradicts is a finding.
+- **Wording criteria.**
+  Each criterion about wording in a stencil, spec, doc or other prose is checked here by reading that text as the diff leaves it, whether or not its bullet opens with `Review:`.
+  With a plan, the criteria are the decision record's `## Acceptance criteria`; with a decision record alone, they are what the amended board entry expects.
+  A wording the criterion asks for that the text does not carry is a finding naming the criterion; a test asserting the prose never stands in for this check.
 - **Test economy.**
   Each of these is a finding, and each names what grounds it:
   - a new test that duplicates an existing test's coverage, naming the covering test;
   - a per-helper test the public surface's test already covers, naming that public-surface test;
   - a review-fix test added for a finding that was not a coverage gap, naming that finding;
-  - a new assertion on a stencil's static prose, naming the assertion;
-  - a behavior the diff adds with no coverage, naming the uncovered behavior; a stencil's static prose is exempt.
+  - a new assertion on the static prose of a stencil, spec, doc or other text, naming the assertion;
+  - a behavior the diff adds with no coverage, naming the uncovered behavior; the static prose of a stencil, spec, doc or other text is exempt.
 
   A redundancy finding is raised only by naming the existing test that covers the behavior, so it cannot block on a vague suspicion.
 
