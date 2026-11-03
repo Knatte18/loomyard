@@ -915,6 +915,33 @@ func TestRenderRecipeCellTakesTheDefaultRecipe(t *testing.T) {
 	}
 }
 
+// TestRenderSlugCellLinksTheDecisionRecord pins that a discussed entry's Slug cell stacks a Sketch link to its decision record under the slug, in an open and a Done table of every board file listing it, and that an entry not flagged discussed renders the slug alone.
+func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tasks := []boardengine.Task{
+		{ID: 1, Handle: "T1", Slug: "sketched", Title: "Sketched", Kind: boardengine.KindTask, Labels: []string{"bug"}, Body: "body", Discussed: true},
+		{ID: 2, Handle: "T2", Slug: "plain", Title: "Plain", Kind: boardengine.KindTask, Labels: []string{"bug"}, Body: "body"},
+		{ID: 3, Handle: "T3", Slug: "landed", Title: "Landed", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr("done"), Discussed: true},
+	}
+	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}, renderTime)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	wantRows := []string{
+		"| T1 | **Sketched** | [`sketched`](design-sketched.md)<br>[Sketch](decision-sketched.md) | darn |",
+		"| T2 | **Plain** | [`plain`](design-plain.md) | darn |",
+		"| T3 | **Landed** | `landed`<br>[Sketch](decision-landed.md) |",
+	}
+	for _, file := range []string{"README.md", "project-root.md"} {
+		for _, want := range wantRows {
+			if !strings.Contains(result[file], want) {
+				t.Errorf("%s lacks row %q:\n%s", file, want, result[file])
+			}
+		}
+	}
+}
+
 // emptyProjectEntries is the rendered own entries of a project holding none, its Tasks and Notes at heading level level and Ready one level down.
 func emptyProjectEntries(level int) string {
 	return strings.Repeat("#", level) + " Tasks (0)\n" +

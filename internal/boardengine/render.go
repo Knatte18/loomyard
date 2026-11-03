@@ -8,7 +8,7 @@
 // A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, research first, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
-// the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
+// the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug with a Sketch link to the decision record under it for a discussed entry, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, the configured default recipe for an empty one;
 // Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the open entries each waits on.
 // The section names, their meaning lines and the table columns are declared here alone;
@@ -446,7 +446,7 @@ func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
 		if table.priority {
 			row = append(row, priorityCell(twl.Priority))
 		}
-		row = append(row, slices.Insert(table.cells(twl.Task), 1, slugCell(twl.Task, b.out.DesignPrefix))...)
+		row = append(row, slices.Insert(table.cells(twl.Task), 1, slugColumnCell(twl.Task, b.out.DesignPrefix))...)
 		row = append(row, ageCell(twl.Task, b.now), labelsCell(twl.Task, b.out.Types))
 		lines = append(lines, tableRow(row))
 	}
@@ -639,6 +639,18 @@ func slugCell(t Task, designPrefix string) string {
 		return fmt.Sprintf("[`%s`](%s%s.md)", t.Slug, designPrefix, t.Slug)
 	}
 	return "`" + t.Slug + "`"
+}
+
+// sketchLinkText is the text of a discussed entry's link to its decision record.
+const sketchLinkText = "Sketch"
+
+// slugColumnCell is a table's Slug cell: slugCell, with a Sketch link to the decision record stacked under it for a discussed entry, so the mark adds no column.
+func slugColumnCell(t Task, designPrefix string) string {
+	cell := slugCell(t, designPrefix)
+	if !t.Discussed {
+		return cell
+	}
+	return cell + cellBreak + "[" + sketchLinkText + "](" + DecisionFileName(t.Slug) + ")"
 }
 
 // priorityCell is H for a high priority, L for a low one and empty for normal.

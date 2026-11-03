@@ -186,12 +186,21 @@ type loopSnapshot struct {
 	spawnExited  bool
 }
 
-// takeSnapshot looks at the loop lock and the pid file first, then the envelope file and the followed loop's delivered record, and the waiter's own spawn last.
+// takeSnapshot looks at the waiter's own spawn first, then the loop lock and the pid file, then the envelope file and the followed loop's delivered record.
 // That order is what makes a loop that finished between two looks show up as a delivered envelope and never as a gone one:
-// a loop writes its envelope before it removes its pid file and releases its lock.
+// a spawn seen exited has written everything it will write before the files are read,
+// and a loop writes its envelope before it removes its pid file and releases its lock.
 // A pid file read error is logged through failures, owned by the caller for the length of its wait: a Warn at the first failure, Debug while it repeats and an Info when it reads again.
 func takeSnapshot(loop LoopSpec, follow loopFollow, failures *logger.Episode) loopSnapshot {
-	snap := loopSnapshot{lockFree: loopLockFree(loop.LockPath)}
+	var snap loopSnapshot
+	if follow.spawned != nil {
+		select {
+		case <-follow.spawned:
+			snap.spawnExited = true
+		default:
+		}
+	}
+	snap.lockFree = loopLockFree(loop.LockPath)
 	record, found, err := ReadLoopPIDRecord(loop.PIDPath)
 	if err != nil {
 		failures.Fail("shed: the waiter could not read the loop pid file", "error", err.Error())
@@ -202,13 +211,6 @@ func takeSnapshot(loop LoopSpec, follow loopFollow, failures *logger.Episode) lo
 	snap.envelope, snap.hasEnvelope = readLoopEnvelopeFile(loop.EnvelopePath)
 	if validLoopID(follow.id) {
 		snap.delivered, snap.hasDelivered = readLoopEnvelopeFile(loop.Delivered(follow.id))
-	}
-	if follow.spawned != nil {
-		select {
-		case <-follow.spawned:
-			snap.spawnExited = true
-		default:
-		}
 	}
 	return snap
 }
