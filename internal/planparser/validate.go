@@ -1312,24 +1312,20 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 		return pathExistsOnDisk(worktreeRoot, p) || creates[p] || renames[p] || (plan.Part != nil && slices.Contains(plan.Part.Paths, p))
 	}
 
-	report := func(c Card, raw string) {
-		findings = append(findings, ValidationError{
-			Check: "path-missing",
-			Card:  cardID(c),
-			Detail: fmt.Sprintf(
-				"card %d path %q does not exist on disk and is not a Create target or Rename destination of any card",
-				c.Number, raw,
-			),
-			Ref: raw,
-		})
-	}
-
 	checkRef := func(c Card, raw string) {
 		mapped, ok := diskPathForRef(plan, raw)
 		if !ok || satisfied(mapped) {
 			return
 		}
-		report(c, raw)
+		findings = append(findings, ValidationError{
+			Check: "path-missing",
+			Card:  cardID(c),
+			Detail: fmt.Sprintf(
+				"card %d path %q does not exist on disk and is not a Create target or Rename destination of any card%s",
+				c.Number, raw, rootRelativeGlyphRemedy(plan, raw, mapped, satisfied),
+			),
+			Ref: raw,
+		})
 	}
 
 	for _, c := range plan.Cards {
@@ -1355,6 +1351,33 @@ func checkPathMissing(plan *Plan, worktreeRoot string) []ValidationError {
 	}
 
 	return findings
+}
+
+// rootRelativeGlyphRemedy returns the way forward path-missing appends for raw, a self glyph whose unit path mapped is missing, when the plan's root: joined to mapped names a path satisfied reports present.
+// A glyph is never root:-joined, so a self glyph spelled relative to root:, such as `README.md#` under `root: docs`, names a file at the worktree root instead;
+// the remedy names the worktree-relative self glyph and the plain path root: does join.
+// It returns "" when raw is no glyph, root: is absent or ".", or the joined path is not satisfied either.
+func rootRelativeGlyphRemedy(plan *Plan, raw, mapped string, satisfied func(string) bool) string {
+	root := cleanPosixPath(plan.Root)
+	if root == "" || root == "." {
+		return ""
+	}
+	parsed, err := ParseRef(plan, raw)
+	if err != nil {
+		return ""
+	}
+	joined := path.Join(root, mapped)
+	if !satisfied(joined) {
+		return ""
+	}
+	remedy, err := glyph.Self(parsed.Lang, joined)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf(
+		"; root: is never joined to a glyph or a //-escaped path, so this names the worktree-root file %q; to name the file root: joins instead, spell it as %q, or drop the // escape or the trailing \"#\" so root: joins the path %q",
+		mapped, remedy.String(), mapped,
+	)
 }
 
 // partHoldsHandle reports whether the plan's part scope lists handle among the handles other parts and shared spots export to it.

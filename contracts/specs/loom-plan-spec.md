@@ -158,6 +158,7 @@ Write it as a glyph, or `//`-escape it when it is a path.
 The overview's optional `root: <worktree-relative-dir>` prefixes every path-shaped entry as `<root>/<path>`, unless the path starts with `//`, which is always worktree-root-relative: `//cmd/lym/main.go`.
 `root: "."` leaves a path unchanged.
 Glyphs, handles and bare symbols are never `root:`-joined.
+A file self glyph is therefore worktree-relative under any `root:`: under `root: docs`, `docs/README.md#` names the file and `README.md#` names one at the worktree root, while the path `README.md` resolves to `docs/README.md`.
 
 The parser normalizes each path once at parse time to a clean, worktree-relative, forward-slash path.
 Then, under `go` or `csharp`, it canonicalizes a path that carries an extension or holds no `/` into its self glyph (`list.go` → `internal/boardcli/list.go#`, `LICENSE` → `LICENSE#`); a slashed extensionless path stays a path, for `directory-target` to judge.

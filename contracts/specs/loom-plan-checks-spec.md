@@ -61,6 +61,7 @@ Under `language: none` the glyph checks are skipped: `bare-symbol-target`, `dire
 - `path-missing` — a path or self glyph absent from disk and not created by any card's `Create` target or `Rename` `New` side.
   It reads every `Uses:` entry, the targets of `Edit`, `Extends`, `Delete`, `Move` and `Prosa` groups, and a `Rename` pair's `Old` side; `Custom` targets and member glyphs are exempt.
   A later card naming a file at the destination an earlier `Move` gave it is a false finding: reorder the cards, or name the pre-move path.
+  A self glyph spelled relative to a `root:` other than `.` whose `root:`-joined path is present on disk or created by a card gets the way forward of its worktree-relative self glyph, or of the plain path `root:` joins.
 - `glyph-not-found`, `glyph-ambiguous`, `glyph-rejected` *(planglyph)* — a glyph target that does not resolve, resolves to several declarations, or that quarry's grammar rejects.
   A `Create` target and a `Rename` `New` side are not resolved.
   A member declared once per mutually exclusive build-constraint set resolves as one member.

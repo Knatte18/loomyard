@@ -1514,6 +1514,42 @@ func TestValidate_PathMissing(t *testing.T) {
 		}
 	})
 
+	t.Run("self glyph spelled relative to root: names the worktree-relative remedy", func(t *testing.T) {
+		t.Parallel()
+		remedy := `spell it as "`
+		tests := []struct {
+			name       string
+			ref        string
+			present    []string
+			wantRemedy bool
+		}{
+			{"JoinedPathExists", "guide.md#", []string{"docs/guide.md"}, true},
+			{"JoinedPathMissing", "guide.md#", nil, false},
+			{"PathShapedRefGetsNoRemedy", "sub/dir", []string{"docs/sub/dir"}, false},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				root := t.TempDir()
+				materializeFiles(t, root, tt.present...)
+				card := cardOfType(1, "a", planparser.CardTypeEdit, []string{tt.ref})
+				plan := &planparser.Plan{Format: 5, Approved: true, Root: "docs", Cards: []planparser.Card{card}}
+				var details []string
+				for _, f := range planparser.Validate(plan, root) {
+					if f.Check == "path-missing" {
+						details = append(details, f.Detail)
+					}
+				}
+				if len(details) != 1 {
+					t.Fatalf("path-missing details = %q; want exactly one", details)
+				}
+				if got := strings.Contains(details[0], remedy); got != tt.wantRemedy {
+					t.Errorf("path-missing detail %q names %q = %v; want %v", details[0], remedy, got, tt.wantRemedy)
+				}
+			})
+		}
+	})
+
 	t.Run("Create card absent target produces none", func(t *testing.T) {
 		t.Parallel()
 		card := cardOfType(1, "a", planparser.CardTypeCreate, []string{"missing.go"})
