@@ -1,4 +1,4 @@
-// watch_test.go drives the daemon's sequence over fakeWorld.
+// watch_test.go drives the request's sequence over fakeWorld, taken up and carried to its end in the test's goroutine.
 
 package hibernateengine
 
@@ -30,20 +30,30 @@ func sessionReading(strand, state string, kinds ...string) tenderengine.SessionS
 	return reading
 }
 
-// watchNow seeds a now request owned by the world's own daemon and runs Watch over it.
+// runCarrier takes up the request as the world's own process and carries it to its end in the calling goroutine, as Carrier.Tick does in a goroutine of its own.
+// No request, a terminal one and one another live daemon carries return the zero Request.
+func runCarrier(deps Deps) (Request, error) {
+	r, taken, err := takeUp(deps)
+	if err != nil || !taken {
+		return Request{}, err
+	}
+	return carry(deps, r)
+}
+
+// watchNow seeds a now request the world's own process carries and runs it to its end.
 func watchNow(t *testing.T, w *fakeWorld) (Request, error) {
 	t.Helper()
 	w.seed(w.ownRequest(TriggerNow, ""))
-	return Watch(w.deps())
+	return runCarrier(w.deps())
 }
 
-// watchKeeping seeds a now request owned by the world's own daemon that keeps its pause after the wake, and runs Watch over it.
+// watchKeeping seeds a now request the world's own process carries that keeps its pause after the wake, and runs it to its end.
 func watchKeeping(t *testing.T, w *fakeWorld) (Request, error) {
 	t.Helper()
 	request := w.ownRequest(TriggerNow, "")
 	request.ResumeOnWake = false
 	w.seed(request)
-	return Watch(w.deps())
+	return runCarrier(w.deps())
 }
 
 // resumeLive lifts the live hub entry that caller added.
@@ -87,7 +97,7 @@ func requireNotice(t *testing.T, w *fakeWorld, parts ...string) {
 	}
 }
 
-func TestWatch(t *testing.T) {
+func TestSequence(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name string
@@ -429,7 +439,7 @@ func TestWatch(t *testing.T) {
 				pausesAtSleep = append(pausesAtSleep, w.pauseCount())
 			}
 
-			got, err := Watch(w.deps())
+			got, err := runCarrier(w.deps())
 
 			if err != nil || got.Phase != PhaseDone {
 				t.Fatalf("got %+v, %v; want done", got, err)
@@ -451,7 +461,7 @@ func TestWatch(t *testing.T) {
 				w.runs["p1"] = []RunStatus{status}
 				w.seed(w.ownRequest(TriggerAfter, "p1"))
 
-				got, err := Watch(w.deps())
+				got, err := runCarrier(w.deps())
 
 				if err != nil || got.Phase != PhaseDone || !reflect.DeepEqual(w.sleepList(), []time.Duration{wakePoll}) {
 					t.Errorf("%+v: got %+v, %v, sleeps %v; want done with no trigger wait", status, got, err, w.sleepList())
@@ -470,7 +480,7 @@ func TestWatch(t *testing.T) {
 				}
 			}
 
-			_, err := Watch(w.deps())
+			_, err := runCarrier(w.deps())
 
 			if err != nil || w.pauseCount() != 0 || waiting.Phase != PhaseWaiting || !strings.Contains(waiting.Reason, "halted at Run-Shed (blocked)") {
 				t.Errorf("err %v, pauses %d, request while waiting %+v; want the halt reason shown and no pause", err, w.pauseCount(), waiting)
@@ -489,7 +499,7 @@ func TestWatch(t *testing.T) {
 				w.runsMissing["p1"] = true
 			}
 
-			got, err := Watch(w.deps())
+			got, err := runCarrier(w.deps())
 
 			if err != nil || got.Phase != PhaseFailed || got.Reason != "the batten status of p1 is gone" || w.pauseCount() != 0 {
 				t.Errorf("got %+v, %v, pauses %d; want failed with the reason and no pause", got, err, w.pauseCount())
@@ -516,16 +526,16 @@ func TestWatch(t *testing.T) {
 				tc.setup(w)
 				w.seed(w.ownRequest(TriggerAfterAll, ""))
 
-				got, err := Watch(w.deps())
+				got, err := runCarrier(w.deps())
 
 				if err != nil || got.Phase != PhaseDone || !reflect.DeepEqual(w.sleepList(), tc.wantSleeps) {
 					t.Errorf("%s: got %+v, %v, sleeps %v; want done with sleeps %v", tc.name, got, err, w.sleepList(), tc.wantSleeps)
 				}
 			}
 		}},
-		{"no request, a terminal one and another daemon's pause and hibernate nothing and leave the file alone", func(t *testing.T) {
+		{"no request, a terminal one and one another live daemon carries pause and hibernate nothing and leave the file alone", func(t *testing.T) {
 			w := newFakeWorld(t)
-			if got, err := Watch(w.deps()); err != nil || !reflect.DeepEqual(got, Request{}) {
+			if got, err := runCarrier(w.deps()); err != nil || !reflect.DeepEqual(got, Request{}) {
 				t.Errorf("no request: got %+v, %v; want nothing", got, err)
 			}
 			requireNoRequestFile(t, w)
@@ -534,11 +544,12 @@ func TestWatch(t *testing.T) {
 			done.Phase = PhaseDone
 			another := w.ownRequest(TriggerNow, "")
 			another.DaemonPID = 9
-			for name, r := range map[string]Request{"a terminal request": done, "another daemon's request": another} {
+			w.alive[9] = another.DaemonStart
+			for name, r := range map[string]Request{"a terminal request": done, "another live daemon's request": another} {
 				w.seed(r)
 				before := readBytes(t, w.requestPath)
 
-				got, err := Watch(w.deps())
+				got, err := runCarrier(w.deps())
 
 				if err != nil || !reflect.DeepEqual(got, Request{}) || string(readBytes(t, w.requestPath)) != string(before) {
 					t.Errorf("%s: got %+v, %v; want nothing done and the file as it was", name, got, err)
@@ -1061,18 +1072,21 @@ func TestWatch(t *testing.T) {
 				t.Errorf("notice = %q; want no tender pause for an owner pause", w.noticeList()[0])
 			}
 		}},
-		{"an agent caller and a non-Linux platform are refused with no pause", func(t *testing.T) {
+		{"a cancel that lands while the pause runs, before its entry is recorded, has the entry lifted by the sequence", func(t *testing.T) {
 			w := newFakeWorld(t)
-			w.caller = agentStrand(t)
-			_, err := watchNow(t, w)
-			requireRefusal(t, err, "ask your parent session")
+			w.onPause = func() {
+				if _, err := Cancel(w.deps()); err != nil {
+					t.Error(err)
+				}
+			}
 
-			w = newFakeWorld(t)
-			w.goos = "darwin"
-			_, err = watchNow(t, w)
-			requireRefusal(t, err, "Linux only")
-			if w.pauseCount() != 0 {
-				t.Errorf("pauses = %d; want none", w.pauseCount())
+			_, err := watchNow(t, w)
+
+			if err != nil || len(w.liveEntries()) != 0 || w.hibernates() != 0 {
+				t.Errorf("err %v, live %+v, hibernate calls %d; want the entry lifted and no hibernate", err, w.liveEntries(), w.hibernates())
+			}
+			if final := w.request(); final.Phase != PhaseCancelled {
+				t.Errorf("final request = %+v; want the cancel's write left alone", final)
 			}
 		}},
 	}

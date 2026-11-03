@@ -326,7 +326,7 @@ func TestCleanupVerb_RefusesOutsideThePrimeThenListsAndThenRemovesEverySeededLef
 		t.Errorf("--apply over an ended run: mutations = %v; want the removed pair recorded", mutationKinds(t, endedRun))
 	}
 
-	// The wake force case: a pair the hibernate daemon paused, ended on origin, with an uncommitted task worktree and a held teardown lock.
+	// The wake force case: a pair the hibernate request's wake paused, ended on origin, with an uncommitted task worktree and a held teardown lock.
 	wakeSlug := "wake-task"
 	endOnOrigin(t, h, board, wakeSlug)
 	wakeWorktree := h.PairCodeWorktree(wakeSlug)

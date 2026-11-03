@@ -40,8 +40,12 @@ import (
 // This package cannot import the hibernate packages: their import chain leads back to it through a test fixture.
 const hibernateRequestFileName = "request.json"
 
-// hibernateDaemonLive reports whether the hub's hibernate request names a daemon that is still running.
-// A hub with no request file has none.
+// hibernateEndedPhases are the phases of a hibernate request that has ended, which the prime's dobby, still running, carries no more.
+// A test pins the list to the hibernate engine's terminal phases, since this package cannot import them.
+var hibernateEndedPhases = []string{"done", "failed", "cancelled"}
+
+// hibernateDaemonLive reports whether the hub's hibernate request is pending and names a carrying daemon, the prime's dobby, that is still running.
+// A hub with no request file has none, and an ended request holds nothing.
 func hibernateDaemonLive(hub string) (bool, error) {
 	path := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.HibernateDirName, hibernateRequestFileName)
 	data, err := os.ReadFile(path)
@@ -54,9 +58,13 @@ func hibernateDaemonLive(hub string) (bool, error) {
 	var request struct {
 		DaemonPID   int    `json:"daemon_pid"`
 		DaemonStart string `json:"daemon_start"`
+		Phase       string `json:"phase"`
 	}
 	if err := json.Unmarshal(data, &request); err != nil {
 		return false, fmt.Errorf("decode the hibernate request: %w", err)
+	}
+	if slices.Contains(hibernateEndedPhases, request.Phase) {
+		return false, nil
 	}
 	return request.DaemonPID != 0 && parentlock.ProcessAlive(request.DaemonPID, request.DaemonStart), nil
 }

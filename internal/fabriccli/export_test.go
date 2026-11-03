@@ -1,10 +1,11 @@
-// export_test.go exposes the add verb's pair-push seam, the open-PR lookup seam and the hub pull runner to this package's external tests.
+// export_test.go exposes the add verb's pair-push seam, the open-PR lookup seam, the hub pull runner and the hibernate request reader to this package's external tests.
 
 package fabriccli
 
 import (
 	"context"
 	"io"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -24,6 +25,16 @@ func SetPairPushForTest(push func(*lymcwd.Location) error) (previous func(*lymcw
 	previous = spawnPairPush
 	spawnPairPush = push
 	return previous
+}
+
+// HibernateDaemonLiveForTest reads the hibernate request of hub the way the anchor verb's refusal does.
+func HibernateDaemonLiveForTest(hub string) (bool, error) {
+	return hibernateDaemonLive(hub)
+}
+
+// HibernateEndedPhasesForTest returns a copy of the request phases the anchor verb reads as ended.
+func HibernateEndedPhasesForTest() []string {
+	return slices.Clone(hibernateEndedPhases)
 }
 
 // RunHubPullForTest runs the hub pull of the acting location l under ctx, so a test can cancel a wait on a parent lock.

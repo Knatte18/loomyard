@@ -1,4 +1,4 @@
-// dobbydeps.go fills dobbyengine's seams over a real hub: the runs and tasks it reads, the pass it spawns, the notices, owner pause and board tidy it sends, and the registration of the dobby process itself.
+// dobbydeps.go fills dobbyengine's seams over a real hub: the runs and tasks it reads, the pass it spawns, the notices, owner pause and board tidy it sends, the hibernate request the prime's dobby carries, and the registration of the dobby process itself.
 
 package beamcli
 
@@ -25,6 +25,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fronttask"
+	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -101,12 +102,16 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 	if err != nil {
 		return dobbyengine.Deps{}, err
 	}
+	hibernateRequestPath := ""
+	if geom.Slug == "" {
+		hibernateRequestPath = hibernatecli.RequestPath(prime)
+	}
 	deps := dobbyengine.Deps{
 		Now:   time.Now,
 		Awake: pauserecord.MonotonicAwake(),
 		Sleep: sleepContext,
 		Watch: func() (<-chan struct{}, func(), error) {
-			return openDobbyWatch(dobbyWatchDirs(prime, pause.RecordPath, boardDir))
+			return openDobbyWatch(dobbyWatchDirs(prime, pause.RecordPath, boardDir, hibernateRequestPath))
 		},
 		Machine:       machinename.Name,
 		CheckBinary:   selfexec.New().CheckWith,
@@ -185,6 +190,14 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			return parent.Name, err
 		},
 	}
+	if geom.Slug == "" {
+		carrier, err := hibernatecli.NewDobbyCarrier(prime)
+		if err != nil {
+			return dobbyengine.Deps{}, err
+		}
+		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) { return false, carrier.Tick() }
+		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
+	}
 	if geom.Slug != "" {
 		// The removed worktree's config is gone by the time this stops a strand, so the runner is built over the prime.
 		deps.PrimeTidyShuttle = &runnerTidyShuttle{worktree: prime}
@@ -201,6 +214,16 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// holdReexec returns a binary check that runs check only while holds reports false, so a re-exec never cuts what holds guards.
+func holdReexec(holds func() bool, check func(beforeExec func(), failed func(error))) func(beforeExec func(), failed func(error)) {
+	return func(beforeExec func(), failed func(error)) {
+		if holds() {
+			return
+		}
+		check(beforeExec, failed)
+	}
 }
 
 // beamLandReading reads whether the beam slug can land, which it can once it is flagged ready and nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.

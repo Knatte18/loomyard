@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -40,7 +41,7 @@ const (
 	PhaseCancelled   Phase = "cancelled"
 )
 
-// PauseCaller is the caller label the daemon's pause entry carries.
+// PauseCaller is the caller label the hub pause entry a request adds carries.
 const PauseCaller = "hibernate"
 
 // requesterExternal is the requester recorded for a caller that is no strand.
@@ -54,10 +55,10 @@ type Request struct {
 	// Requester is the caller's strand name, or EXTERNAL.
 	Requester   string    `json:"requester"`
 	RequestedAt time.Time `json:"requested_at"`
-	// DaemonPID and DaemonStart identify the daemon that owns the request.
+	// DaemonPID and DaemonStart identify the daemon that carries the request, the prime's dobby, and are zero until one takes it up.
 	DaemonPID   int    `json:"daemon_pid"`
 	DaemonStart string `json:"daemon_start"`
-	// Owned names the pause entry the daemon added, nil until it adds one.
+	// Owned names the pause entry the request's sequence added, nil until it adds one.
 	Owned *tenderengine.EntryRef `json:"owned,omitempty"`
 	// ResumeOnWake reports whether the wake lifts the owned entry; false keeps it live once the request has ended.
 	ResumeOnWake bool  `json:"resume_on_wake"`
@@ -66,9 +67,17 @@ type Request struct {
 	Reason string `json:"reason"`
 }
 
+// terminalPhases are the phases of a request that has ended.
+var terminalPhases = []Phase{PhaseDone, PhaseFailed, PhaseCancelled}
+
+// TerminalPhases returns the phases of a request that has ended: done, failed and cancelled.
+func TerminalPhases() []Phase {
+	return slices.Clone(terminalPhases)
+}
+
 // Terminal reports whether the request has ended: done, failed or cancelled.
 func (r Request) Terminal() bool {
-	return r.Phase == PhaseDone || r.Phase == PhaseFailed || r.Phase == PhaseCancelled
+	return slices.Contains(terminalPhases, r.Phase)
 }
 
 // RunStatus is one batten run's status as the engine reads it.
@@ -87,14 +96,13 @@ type Deps struct {
 	GOOS   string
 	// LookPath finds an executable on PATH.
 	LookPath func(file string) (string, error)
-	// Spawn starts the detached daemon and returns its identity.
-	Spawn func() (pid int, startTime string, err error)
-	// SelfPID and SelfStart are the running process's own identity.
+	// DobbyLive reports whether the prime's dobby, which carries the request, runs.
+	DobbyLive func() (bool, error)
+	// SelfPID and SelfStart are the running process's own identity, recorded as the request's carrier when it takes the request up.
 	SelfPID   int
 	SelfStart string
 	// Alive reports whether the process with pid and start time is running.
 	Alive func(pid int, startTime string) bool
-	Kill  func(pid int) error
 	// RunStatus reads the batten status of slug; RunSlugs lists the slugs that have one.
 	RunStatus func(slug string) (RunStatus, bool, error)
 	RunSlugs  func() ([]string, error)
@@ -120,6 +128,15 @@ type Deps struct {
 	Sleep      func(time.Duration)
 	// Awake is the awake clock: it does not run while the machine sleeps.
 	Awake func() time.Duration
+	// phased is told each phase the sequence writes; nil tells nothing.
+	phased func(Phase)
+}
+
+// tellPhase tells phased the phase the sequence wrote.
+func (deps Deps) tellPhase(phase Phase) {
+	if deps.phased != nil {
+		deps.phased(phase)
+	}
 }
 
 // errUnchanged is what a mutate returns to leave the request file as it is.
@@ -151,7 +168,7 @@ func updateRequest(path string, mutate func(cur Request, found bool) (Request, e
 	return err
 }
 
-// daemonLive reports whether the request's daemon is running, a recycled pid not taken for it.
+// daemonLive reports whether the daemon that carries the request is running, a recycled pid not taken for it.
 func daemonLive(deps Deps, r Request) bool {
 	return r.DaemonPID != 0 && deps.Alive(r.DaemonPID, r.DaemonStart)
 }

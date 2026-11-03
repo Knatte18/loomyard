@@ -1,4 +1,4 @@
-// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed, the machine-named landings seam and the recipe count-to-duration fallback behind the probe interval and quiet window.
+// dobby_test.go pins the pieces of dobby's hub wiring that need no hub: the run-process registration of the dobby, the error text read from what a pass printed, the machine-named landings seam, the binary check the hibernate carrier holds, and the recipe count-to-duration fallback behind the probe interval and quiet window.
 
 package beamcli
 
@@ -113,6 +113,22 @@ func TestMachineLandings(t *testing.T) {
 			t.Error("landings() called read; want it never called after a failed name read")
 		}
 	})
+}
+
+func TestHoldReexec(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	for _, held := range []bool{true, false} {
+		checks := 0
+		check := holdReexec(func() bool { return held }, func(func(), func(error)) { checks++ })
+
+		check(nil, nil)
+
+		if want := map[bool]int{true: 0, false: 1}[held]; checks != want {
+			t.Errorf("held %v: the binary check ran %d times; want %d", held, checks, want)
+		}
+	}
 }
 
 func TestDurationFromCount(t *testing.T) {

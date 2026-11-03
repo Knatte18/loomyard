@@ -8,8 +8,12 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
+
+// dobbyDownWayForward is the way forward a submit names when the prime's dobby, which carries the request, does not run.
+const dobbyDownWayForward = `the prime's dobby carries the request and does not run; run "lym beam start root" to start it, and it takes the request up`
 
 // refuseCaller refuses an agent: any strand but an orch's, the prime's or a beam's.
 // An empty strand is an external caller, and a name that does not parse is an agent.
@@ -79,29 +83,37 @@ func refuseKeptPause(deps Deps, r Request) error {
 	return nil
 }
 
-// Submit records the hub's hibernate request and spawns the daemon that carries it out, returning once the daemon is spawned.
-// The pending-request check, the spawn and the write share one hold of the request lock, so two racing submits spawn one daemon.
-// A pending request whose daemon is dead is replaced after its owned pause entry is lifted.
-// A terminal request whose owned pause entry is still live is refused, so the entry a wake kept is not forgotten.
-func Submit(deps Deps, req SubmitRequest) (Request, error) {
+// SubmitReport is the request a submit wrote and whether the prime's dobby, which carries it, runs.
+type SubmitReport struct {
+	Request   Request `json:"request"`
+	DobbyLive bool    `json:"dobby_live"`
+	// WayForward names the step that starts the prime's dobby, empty while it runs.
+	WayForward string `json:"way_forward,omitempty"`
+}
+
+// Submit records the hub's hibernate request, carried by no process yet, and returns at once; the prime's dobby takes it up.
+// The pending-request check and the write share one hold of the request lock, so of two racing submits one is refused.
+// A pending request is refused whether or not a process carries it, and a terminal request whose owned pause entry is still live is refused, so the entry a wake kept is not forgotten.
+// A prime's dobby that does not run, or whose liveness does not read, is reported with the way forward that starts it.
+func Submit(deps Deps, req SubmitRequest) (SubmitReport, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
-		return Request{}, err
+		return SubmitReport{}, err
 	}
 	if err := refusePlatform(deps.GOOS); err != nil {
-		return Request{}, err
+		return SubmitReport{}, err
 	}
 	if _, err := deps.LookPath("systemctl"); err != nil {
-		return Request{}, errors.New(`hibernate: systemctl is not on PATH, so lym cannot hibernate this machine; way forward: put systemctl on PATH, then re-run "lym hibernate request"`)
+		return SubmitReport{}, errors.New(`hibernate: systemctl is not on PATH, so lym cannot hibernate this machine; way forward: put systemctl on PATH, then re-run "lym hibernate request"`)
 	}
 	if req.After != "" && req.AfterAll {
-		return Request{}, errors.New(`hibernate: --after and --after-all are exclusive; way forward: pass one of them, or neither to hibernate once the pause is confirmed`)
+		return SubmitReport{}, errors.New(`hibernate: --after and --after-all are exclusive; way forward: pass one of them, or neither to hibernate once the pause is confirmed`)
 	}
 	trigger := TriggerNow
 	switch {
 	case req.After != "":
 		trigger = TriggerAfter
 		if err := requireRunStatus(deps, req.After); err != nil {
-			return Request{}, err
+			return SubmitReport{}, err
 		}
 	case req.AfterAll:
 		trigger = TriggerAfterAll
@@ -110,38 +122,36 @@ func Submit(deps Deps, req SubmitRequest) (Request, error) {
 	var submitted Request
 	err := updateRequest(deps.RequestPath, func(cur Request, found bool) (Request, error) {
 		if found && !cur.Terminal() {
-			if daemonLive(deps, cur) {
-				return Request{}, fmt.Errorf(`hibernate: a hibernate request is pending in phase %s with daemon pid %d; way forward: run "lym hibernate cancel", then request again`, cur.Phase, cur.DaemonPID)
-			}
-			if _, err := liftOwned(deps, cur); err != nil {
-				return Request{}, err
-			}
+			return Request{}, fmt.Errorf(`hibernate: a hibernate request is pending in phase %s; way forward: run "lym hibernate cancel", then request again`, cur.Phase)
 		}
-		if found && cur.Terminal() {
+		if found {
 			if err := refuseKeptPause(deps, cur); err != nil {
 				return Request{}, err
 			}
-		}
-		pid, start, err := deps.Spawn()
-		if err != nil {
-			return Request{}, fmt.Errorf("hibernate: spawn the daemon: %w", err)
 		}
 		submitted = Request{
 			Trigger:      trigger,
 			Slug:         req.After,
 			Requester:    requesterLabel(deps),
 			RequestedAt:  deps.Now(),
-			DaemonPID:    pid,
-			DaemonStart:  start,
 			ResumeOnWake: req.ResumeOnWake,
 			Phase:        PhaseWaiting,
 		}
 		return submitted, nil
 	})
 	if err != nil {
-		return Request{}, err
+		return SubmitReport{}, err
 	}
-	return submitted, nil
+	report := SubmitReport{Request: submitted}
+	live, err := deps.DobbyLive()
+	if err != nil {
+		logger.Warn("hibernate: whether the prime's dobby runs does not read", "error", err)
+	}
+	report.DobbyLive = live
+	if !live {
+		report.WayForward = dobbyDownWayForward
+	}
+	return report, nil
 }
 
 // requireRunStatus refuses a slug with no batten status, naming the slugs that have one.
@@ -169,16 +179,15 @@ type CancelReport struct {
 	// Cancelled reports whether a live request was ended.
 	Cancelled bool `json:"cancelled"`
 	// Phase is the phase the request was cancelled from.
-	Phase         Phase `json:"phase"`
-	DaemonStopped bool  `json:"daemon_stopped"`
+	Phase Phase `json:"phase"`
 	// Lifted is the lift of the request's owned pause entry, nil when the request owned none.
 	Lifted *tenderengine.ResumeReport `json:"lifted,omitempty"`
 }
 
-// Cancel ends the pending request, stops its daemon and lifts the pause entry the request owns.
+// Cancel ends the pending request and lifts the pause entry the request owns; the dobby that carries it stops the request's sequence at its next step and lifts what that sequence added since.
 // No request, and a terminal one, succeed with nothing cancelled;
-// a terminal request still has the pause entry it owns lifted, so a pause its daemon left live is not kept.
-// A live daemon in the hibernating phase is refused; a dead daemon's request is cancelled in any phase.
+// a terminal request still has the pause entry it owns lifted, so a pause its sequence left live is not kept.
+// A request a live daemon carries in the hibernating phase is refused; one no live daemon carries is cancelled in any phase.
 func Cancel(deps Deps) (CancelReport, error) {
 	if err := refuseCaller(deps.Caller); err != nil {
 		return CancelReport{}, err
@@ -186,35 +195,23 @@ func Cancel(deps Deps) (CancelReport, error) {
 	if err := refusePlatform(deps.GOOS); err != nil {
 		return CancelReport{}, err
 	}
-	var (
-		report  CancelReport
-		stopPID int
-	)
+	var report CancelReport
 	err := updateRequest(deps.RequestPath, func(cur Request, found bool) (Request, error) {
 		if !found || cur.Terminal() {
 			return Request{}, errUnchanged
 		}
-		live := daemonLive(deps, cur)
-		if live && cur.Phase == PhaseHibernating {
+		if cur.Phase == PhaseHibernating && daemonLive(deps, cur) {
 			return Request{}, errors.New(`hibernate: the machine is going into hibernation; way forward: none until it wakes; run "lym hibernate status" to follow it, and once the request has ended "lym hibernate cancel" lifts a pause the wake kept`)
 		}
 		report.Cancelled, report.Phase = true, cur.Phase
-		if live {
-			stopPID = cur.DaemonPID
-		}
 		cur.Phase, cur.Reason = PhaseCancelled, "cancelled by "+requesterLabel(deps)
 		return cur, nil
 	})
 	if err != nil {
 		return CancelReport{}, err
 	}
-	if stopPID != 0 {
-		if err := deps.Kill(stopPID); err != nil {
-			return report, fmt.Errorf("hibernate: stop the daemon: %w", err)
-		}
-		report.DaemonStopped = true
-	}
-	// The daemon may have recorded its owned entry after the hold and before the kill.
+	// The request is read again after the hold, so a terminal request's kept entry is lifted too.
+	// An entry the sequence records after this read is lifted by the sequence once it sees the cancel.
 	// The lift is by identity, so an entry already lifted lifts nothing.
 	cur, found, err := readRequest(deps.RequestPath)
 	if err != nil || !found {
@@ -224,14 +221,14 @@ func Cancel(deps Deps) (CancelReport, error) {
 	return report, err
 }
 
-// StatusReport is the request as the file holds it and whether its daemon runs.
+// StatusReport is the request as the file holds it and whether the daemon that carries it runs.
 type StatusReport struct {
 	// Request is nil when there is none.
 	Request    *Request `json:"request"`
 	DaemonLive bool     `json:"daemon_live"`
 }
 
-// Status reads the request and its daemon's liveness, changing nothing; it needs no caller and no platform check.
+// Status reads the request and whether the daemon that carries it runs, changing nothing; it needs no caller and no platform check.
 func Status(deps Deps) (StatusReport, error) {
 	cur, found, err := readRequest(deps.RequestPath)
 	if err != nil || !found {

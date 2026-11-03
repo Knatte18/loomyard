@@ -1,4 +1,4 @@
-// wake.go implements what the daemon does between the wake and the lift of its pause entry: the hub's origin reconcile under a network exemption, the pair pause entries it leaves behind and the notice text.
+// wake.go implements what the request's sequence does between the wake and the lift of its pause entry: the hub's origin reconcile under a network exemption, the pair pause entries it leaves behind and the notice text.
 
 package hibernateengine
 

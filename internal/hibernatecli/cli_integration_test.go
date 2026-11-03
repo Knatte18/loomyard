@@ -1,6 +1,6 @@
 //go:build linux
 
-// cli_integration_test.go drives `lym hibernate status`, `cancel`, `request` and `watch` through the cobra commands over a hubforge hub with one pair, and the operator index the root renders.
+// cli_integration_test.go drives `lym hibernate status`, `cancel` and `request` through the cobra commands over a hubforge hub with one pair, the hub wiring's request path and dobby liveness, and the operator index the root renders.
 // The test calls no t.Parallel: it sets the strand-name variable.
 
 package hibernatecli
@@ -79,14 +79,6 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 	}
 	t.Setenv(agentname.StrandNameEnv, "")
 
-	watch, code := verb(t, prime, "watch")
-	if !watch.OK || code != 0 {
-		t.Fatalf("watch: ok=%v code=%d error=%q", watch.OK, code, watch.Error)
-	}
-	if _, err := os.Stat(requestPath); !os.IsNotExist(err) {
-		t.Errorf("watch with no request wrote a request file: stat err = %v", err)
-	}
-
 	location, err := lymcwd.Resolve(prime)
 	if err != nil {
 		t.Fatal(err)
@@ -98,6 +90,12 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 	if deps.Reconcile == nil || deps.ExemptNetwork == nil {
 		t.Errorf("hubDeps left a wake seam unfilled: Reconcile nil %v, ExemptNetwork nil %v", deps.Reconcile == nil, deps.ExemptNetwork == nil)
 	}
+	if live, err := deps.DobbyLive(); err != nil || live {
+		t.Errorf("DobbyLive() = %v, %v; want the prime's dobby read as not running", live, err)
+	}
+	if deps.RequestPath != requestPath || RequestPath(location) != requestPath {
+		t.Errorf("request path = %q, RequestPath() = %q; want %q", deps.RequestPath, RequestPath(location), requestPath)
+	}
 
 	root := &cobra.Command{Use: "lym"}
 	root.AddCommand(Command())
@@ -106,8 +104,5 @@ func TestHibernateVerbs_WireTheHub(t *testing.T) {
 		if !strings.Contains(index, line) {
 			t.Errorf("operator index lacks a %q line:\n%s", line, index)
 		}
-	}
-	if strings.Contains(index, "`watch") {
-		t.Errorf("operator index lists the hidden watch verb:\n%s", index)
 	}
 }

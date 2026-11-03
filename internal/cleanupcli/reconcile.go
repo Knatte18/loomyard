@@ -36,7 +36,7 @@ func reconcileHub(prime *lymcwd.Location, apply bool) (fabricengine.OriginReport
 }
 
 // cleanupSeamOptions returns the hub's seam options extended with the wake hold.
-// WakeHeld reads the pause record for a live entry of the slug whose caller is the hibernate daemon, and LiftWakeHold lifts that entry by identity through tender.
+// WakeHeld reads the pause record for a live entry of the slug whose caller is the hibernate request's wake, and LiftWakeHold lifts that entry by identity through tender.
 func cleanupSeamOptions(prime *lymcwd.Location) pairteardown.SeamOptions {
 	opts := pairteardown.HubSeamOptions(prime)
 	opts.WakeHeld = func(slug string) (bool, error) {
@@ -58,7 +58,7 @@ func cleanupSeamOptions(prime *lymcwd.Location) pairteardown.SeamOptions {
 	return opts
 }
 
-// wakeEntry returns the live pause entry the hibernate daemon wrote for slug, and whether there is one.
+// wakeEntry returns the live pause entry the hibernate request's wake wrote for slug, and whether there is one.
 func wakeEntry(prime *lymcwd.Location, slug string) (pauserecord.Entry, bool, error) {
 	geometry, err := hubgeom.PauseGeometry(prime)
 	if err != nil {

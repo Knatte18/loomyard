@@ -1,4 +1,4 @@
-// cli.go builds the hibernate cobra command with its request, cancel, status and hidden watch verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the hibernate cobra command with its request, cancel and status verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
 
 package hibernatecli
 
@@ -19,18 +19,18 @@ import (
 // resumeOnWakeFlag is the `hibernate request` flag that chooses, for one request, whether its wake lifts the hub pause.
 const resumeOnWakeFlag = "resume-on-wake"
 
-// Command returns the cobra command for `lym hibernate`: the bare group and its request, cancel, status and watch verbs.
+// Command returns the cobra command for `lym hibernate`: the bare group and its request, cancel and status verbs.
 func Command() *cobra.Command {
 	hibernate := &cobra.Command{
 		Use:   "hibernate",
 		Short: "queue a hibernate of the machine that runs once every session in the hub is paused",
 		Long: `hibernate asks lym itself to hibernate the machine once every session in the hub
 is safely paused, so no LLM session runs the hibernate and none is cut mid-call.
-request records the request and spawns the daemon that carries it out, cancel
+request records the request, which the prime's dobby carries out, cancel
 withdraws it and status shows it. Linux only.`,
 		RunE: clihelp.GroupRunE,
 	}
-	hibernate.AddCommand(requestCmd(), cancelCmd(), statusCmd(), watchCmd())
+	hibernate.AddCommand(requestCmd(), cancelCmd(), statusCmd())
 	return hibernate
 }
 
@@ -74,14 +74,16 @@ func requestCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:         "request",
-		Short:       "queue a hibernate and spawn the daemon that carries it out",
+		Short:       "queue a hibernate that the prime's dobby carries out",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `request records the hub's one hibernate request and spawns a detached daemon,
-then returns. The daemon waits for the trigger, pauses the hub, confirms every
-session paused, hibernates the machine, and on wake reconciles the hub with
-origin. It posts creel mail to the orch when it is done or failed.
+		Long: `request records the hub's one hibernate request and returns. The prime's dobby
+takes it up: it waits for the trigger, pauses the hub, confirms every session
+paused, hibernates the machine, and on wake reconciles the hub with origin. It
+posts creel mail to the orch when it is done or failed. The request stays on
+disk, so a prime's dobby that is not running takes it up once it starts; the
+envelope says whether it runs and names "lym beam start root" when it does not.
 
-The wake lifts the daemon's pause only when hibernate.yaml's resume_on_wake is
+The wake lifts the request's pause only when hibernate.yaml's resume_on_wake is
 on or --resume-on-wake is given; --resume-on-wake=false keeps the pause for this
 request whatever the config holds. A kept pause stands until "lym tender resume"
 or "lym hibernate cancel" lifts it, and a new request is refused meanwhile.
@@ -130,10 +132,10 @@ func cancelCmd() *cobra.Command {
 		Use:         "cancel",
 		Short:       "withdraw the pending hibernate request and lift the pause it added",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `cancel ends the pending request, stops its daemon and lifts the pause entry the
-request added. No request, and one that has ended, succeed with nothing
-cancelled, and one that has ended still has the pause entry it added lifted
-when its daemon left that entry live or its wake kept it. Once the machine is
+		Long: `cancel ends the pending request and lifts the pause entry the request added; the
+prime's dobby stops carrying it at its next step. No request, and one that has
+ended, succeed with nothing cancelled, and one that has ended still has the
+pause entry it added lifted when it was left live or its wake kept it. Once the machine is
 going into hibernation cancel is refused until the wake. Only the orch or an
 external caller may cancel.
 
@@ -152,10 +154,11 @@ Example:
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "print the hibernate request and whether its daemon runs",
+		Short:       "print the hibernate request and whether the dobby that carries it runs",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the hub's hibernate request, its phase and last reason, and
-whether its daemon runs. It changes nothing. Any caller may run it.
+whether the daemon that carries it, the prime's dobby, runs. It changes nothing.
+Any caller may run it.
 
 Example:
   lym hibernate status`,
@@ -163,24 +166,6 @@ Example:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runVerb(cmd, "status", func(_ *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
 				return hibernateengine.Status(deps)
-			})
-		},
-	}
-}
-
-// watchCmd returns the hidden `hibernate watch` verb, the daemon that `hibernate request` spawns.
-func watchCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:         "watch",
-		Short:       "run the daemon of the pending hibernate request",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
-		Long: `watch carries out the pending hibernate request whose daemon is this process,
-and is what "lym hibernate request" spawns. Run by hand with no request, or
-beside a live daemon, it returns at once and does nothing.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "watch", func(_ *lymcwd.Location, deps hibernateengine.Deps) (any, error) {
-				return hibernateengine.Watch(deps)
 			})
 		},
 	}

@@ -88,17 +88,14 @@ func TestSubmit(t *testing.T) {
 		name string
 		run  func(t *testing.T)
 	}{
-		{"no trigger spawns once and writes a waiting now request owning no entry", func(t *testing.T) {
+		{"no trigger writes a waiting now request no daemon carries and reports the prime's dobby live", func(t *testing.T) {
 			w := newFakeWorld(t)
 
 			got, err := Submit(w.deps(), SubmitRequest{})
 
-			if err != nil || len(w.spawned) != 1 {
-				t.Fatalf("err %v, spawned %v; want one daemon", err, w.spawned)
-			}
-			want := Request{Trigger: TriggerNow, Requester: requesterExternal, RequestedAt: w.wall, DaemonPID: w.spawned[0], DaemonStart: "start-1000", Phase: PhaseWaiting}
-			if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(w.request(), want) {
-				t.Errorf("returned %+v and written %+v; want %+v", got, w.request(), want)
+			want := Request{Trigger: TriggerNow, Requester: requesterExternal, RequestedAt: w.wall, Phase: PhaseWaiting}
+			if err != nil || !reflect.DeepEqual(got, SubmitReport{Request: want, DobbyLive: true}) || !reflect.DeepEqual(w.request(), want) {
+				t.Errorf("returned %+v, %v and written %+v; want %+v with the dobby live", got, err, w.request(), want)
 			}
 		}},
 		{"after and after-all write their trigger", func(t *testing.T) {
@@ -115,7 +112,7 @@ func TestSubmit(t *testing.T) {
 
 				got, err := Submit(w.deps(), tc.req)
 
-				if err != nil || got.Trigger != tc.wantTrigger || got.Slug != tc.wantSlug {
+				if err != nil || got.Request.Trigger != tc.wantTrigger || got.Request.Slug != tc.wantSlug {
 					t.Errorf("%+v: got %+v, %v; want trigger %s with slug %q", tc.req, got, err, tc.wantTrigger, tc.wantSlug)
 				}
 			}
@@ -126,8 +123,23 @@ func TestSubmit(t *testing.T) {
 
 				got, err := Submit(w.deps(), SubmitRequest{ResumeOnWake: resume})
 
-				if err != nil || got.ResumeOnWake != resume || w.request().ResumeOnWake != resume {
+				if err != nil || got.Request.ResumeOnWake != resume || w.request().ResumeOnWake != resume {
 					t.Errorf("Submit(ResumeOnWake %v) = %+v, %v, written %+v; want the choice returned and written", resume, got, err, w.request())
+				}
+			}
+		}},
+		{"a prime's dobby that does not run, or whose liveness does not read, is named with lym beam start root and the request is still written", func(t *testing.T) {
+			for _, liveErr := range []error{nil, errors.New("lock unreadable")} {
+				w := newFakeWorld(t)
+				w.dobbyLive, w.dobbyLiveErr = false, liveErr
+
+				got, err := Submit(w.deps(), SubmitRequest{})
+
+				if err != nil || got.DobbyLive || got.WayForward != dobbyDownWayForward || !strings.Contains(got.WayForward, "lym beam start root") {
+					t.Errorf("liveness error %v: got %+v, %v; want the dobby reported down with lym beam start root", liveErr, got, err)
+				}
+				if w.request().Phase != PhaseWaiting {
+					t.Errorf("liveness error %v: request = %+v; want a waiting request written", liveErr, w.request())
 				}
 			}
 		}},
@@ -143,16 +155,13 @@ func TestSubmit(t *testing.T) {
 
 				if tc.refused {
 					requireRefusal(t, err, "ask your parent session")
-					if len(w.spawned) != 0 {
-						t.Errorf("caller %q spawned %v; want no spawn", tc.caller, w.spawned)
-					}
 					requireNoRequestFile(t, w)
 				} else if err != nil {
 					t.Errorf("caller %q: err = %v; want none", tc.caller, err)
 				}
 			}
 		}},
-		{"a refused submit spawns nothing and writes no request", func(t *testing.T) {
+		{"a refused submit writes no request", func(t *testing.T) {
 			tests := []struct {
 				name  string
 				setup func(w *fakeWorld)
@@ -172,48 +181,37 @@ func TestSubmit(t *testing.T) {
 				_, err := Submit(w.deps(), tc.req)
 
 				requireRefusal(t, err, tc.parts...)
-				if len(w.spawned) != 0 {
-					t.Errorf("%s: spawned %v; want none", tc.name, w.spawned)
-				}
 				requireNoRequestFile(t, w)
 			}
 		}},
-		{"a pending request with a live daemon is refused and left as it was", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.alive[7] = "s7"
-			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming})
-			before := readBytes(t, w.requestPath)
+		{"a pending request is refused and left as it was, its pause entry live, whether or not a live daemon carries it", func(t *testing.T) {
+			for _, live := range []bool{true, false} {
+				w := newFakeWorld(t)
+				if live {
+					w.alive[7] = "s7"
+				}
+				entry := w.addHubEntry(PauseCaller)
+				w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming, Owned: refOf(entry)})
+				before := readBytes(t, w.requestPath)
 
-			_, err := Submit(w.deps(), SubmitRequest{})
+				_, err := Submit(w.deps(), SubmitRequest{})
 
-			requireRefusal(t, err, "lym hibernate cancel", "confirming", "pid 7")
-			if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 {
-				t.Errorf("request changed or a daemon spawned (%v); want neither", w.spawned)
+				requireRefusal(t, err, "lym hibernate cancel", "confirming")
+				if string(readBytes(t, w.requestPath)) != string(before) || len(w.liveEntries()) != 1 {
+					t.Errorf("live %v: the request changed or the entry was lifted (live %+v); want neither", live, w.liveEntries())
+				}
 			}
 		}},
-		{"a pending request with a dead daemon has its owned entry lifted and is replaced", func(t *testing.T) {
-			w := newFakeWorld(t)
-			entry := w.addHubEntry(PauseCaller)
-			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming, Owned: refOf(entry)})
-
-			got, err := Submit(w.deps(), SubmitRequest{})
-
-			if err != nil || got.Phase != PhaseWaiting || got.DaemonPID != w.spawned[0] || got.Owned != nil {
-				t.Fatalf("got %+v, %v; want a fresh waiting request with the new pid", got, err)
-			}
-			if live := w.liveEntries(); len(live) != 0 {
-				t.Errorf("live entries = %+v; want the owned entry lifted", live)
-			}
-		}},
-		{"a terminal request is replaced with one spawn", func(t *testing.T) {
+		{"a terminal request is replaced by a waiting request no daemon carries", func(t *testing.T) {
 			for _, phase := range []Phase{PhaseDone, PhaseFailed, PhaseCancelled} {
 				w := newFakeWorld(t)
+				w.alive[7] = "s7"
 				w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: phase, Reason: "old"})
 
 				got, err := Submit(w.deps(), SubmitRequest{})
 
-				if err != nil || len(w.spawned) != 1 || got.Phase != PhaseWaiting || got.Reason != "" {
-					t.Errorf("replacing %s: got %+v, %v, spawned %v; want one spawn and a fresh waiting request", phase, got, err, w.spawned)
+				if err != nil || got.Request.Phase != PhaseWaiting || got.Request.Reason != "" || got.Request.DaemonPID != 0 || w.request().DaemonPID != 0 {
+					t.Errorf("replacing %s: got %+v, %v; want a fresh waiting request no daemon carries", phase, got, err)
 				}
 			}
 		}},
@@ -227,8 +225,8 @@ func TestSubmit(t *testing.T) {
 				_, err := Submit(w.deps(), SubmitRequest{})
 
 				requireRefusal(t, err, "lym hibernate cancel", "lym tender resume", string(phase))
-				if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 || len(w.liveEntries()) != 1 {
-					t.Errorf("%s: request changed, a daemon spawned (%v) or the entry lifted; want none of them", phase, w.spawned)
+				if string(readBytes(t, w.requestPath)) != string(before) || len(w.liveEntries()) != 1 {
+					t.Errorf("%s: the request changed or the entry was lifted; want neither", phase)
 				}
 
 				if _, err := w.lift(*refOf(entry)); err != nil {
@@ -236,8 +234,8 @@ func TestSubmit(t *testing.T) {
 				}
 				got, err := Submit(w.deps(), SubmitRequest{})
 
-				if err != nil || got.Phase != PhaseWaiting || len(w.spawned) != 1 {
-					t.Errorf("%s with the entry lifted: got %+v, %v, spawned %v; want a fresh waiting request", phase, got, err, w.spawned)
+				if err != nil || got.Request.Phase != PhaseWaiting {
+					t.Errorf("%s with the entry lifted: got %+v, %v; want a fresh waiting request", phase, got, err)
 				}
 			}
 		}},
@@ -251,11 +249,11 @@ func TestSubmit(t *testing.T) {
 			_, err := Submit(w.deps(), SubmitRequest{})
 
 			requireRefusal(t, err, "pane read failed", "way forward", "lym tender status")
-			if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 {
-				t.Errorf("request changed or a daemon spawned (%v); want neither", w.spawned)
+			if string(readBytes(t, w.requestPath)) != string(before) {
+				t.Errorf("the request changed; want it as it was")
 			}
 		}},
-		{"two submits in parallel spawn one daemon and refuse the other", func(t *testing.T) {
+		{"two submits in parallel write one request and refuse the other", func(t *testing.T) {
 			w := newFakeWorld(t)
 			errs := make([]error, 2)
 			var wg sync.WaitGroup
@@ -275,31 +273,8 @@ func TestSubmit(t *testing.T) {
 					requireRefusal(t, err, "lym hibernate cancel")
 				}
 			}
-			if refusals != 1 || len(w.spawned) != 1 {
-				t.Errorf("refusals %d, spawned %v; want one of each", refusals, w.spawned)
-			}
-		}},
-		{"a spawn error is returned and no request is written", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.spawnErr = errors.New("no fork")
-
-			_, err := Submit(w.deps(), SubmitRequest{})
-
-			requireRefusal(t, err, "no fork")
-			requireNoRequestFile(t, w)
-		}},
-		{"a lift error over a dead daemon's request is returned with the request untouched and no spawn", func(t *testing.T) {
-			w := newFakeWorld(t)
-			entry := w.addHubEntry(PauseCaller)
-			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming, Owned: refOf(entry)})
-			before := readBytes(t, w.requestPath)
-			w.liftErr = errors.New("record locked")
-
-			_, err := Submit(w.deps(), SubmitRequest{})
-
-			requireRefusal(t, err, "record locked")
-			if string(readBytes(t, w.requestPath)) != string(before) || len(w.spawned) != 0 {
-				t.Errorf("request changed or a daemon spawned (%v); want neither", w.spawned)
+			if refusals != 1 || w.request().Phase != PhaseWaiting {
+				t.Errorf("refusals %d, request %+v; want one refusal and a waiting request", refusals, w.request())
 			}
 		}},
 	}
@@ -322,16 +297,16 @@ func TestCancel(t *testing.T) {
 
 			report, err := Cancel(w.deps())
 
-			if err != nil || report.Cancelled || len(w.killed) != 0 {
-				t.Errorf("no request: %+v, %v, killed %v; want nothing cancelled", report, err, w.killed)
+			if err != nil || report.Cancelled {
+				t.Errorf("no request: %+v, %v; want nothing cancelled", report, err)
 			}
 			requireNoRequestFile(t, w)
 
 			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseDone})
 			before := readBytes(t, w.requestPath)
 			report, err = Cancel(w.deps())
-			if err != nil || report.Cancelled || report.Lifted != nil || len(w.killed) != 0 || string(readBytes(t, w.requestPath)) != string(before) {
-				t.Errorf("terminal request: %+v, %v, killed %v; want nothing cancelled or lifted and the file as it was", report, err, w.killed)
+			if err != nil || report.Cancelled || report.Lifted != nil || string(readBytes(t, w.requestPath)) != string(before) {
+				t.Errorf("terminal request: %+v, %v; want nothing cancelled or lifted and the file as it was", report, err)
 			}
 		}},
 		{"a terminal request whose owned entry is still live has the entry lifted, nothing cancelled and the file left as it was", func(t *testing.T) {
@@ -343,15 +318,15 @@ func TestCancel(t *testing.T) {
 
 				report, err := Cancel(w.deps())
 
-				if err != nil || report.Cancelled || report.Lifted == nil || !reflect.DeepEqual(report.Lifted.Resumed, []string{pauserecord.ScopeHub}) || len(w.killed) != 0 {
-					t.Errorf("%s: %+v, %v, killed %v; want nothing cancelled or killed and the hub entry lifted", phase, report, err, w.killed)
+				if err != nil || report.Cancelled || report.Lifted == nil || !reflect.DeepEqual(report.Lifted.Resumed, []string{pauserecord.ScopeHub}) {
+					t.Errorf("%s: %+v, %v; want nothing cancelled and the hub entry lifted", phase, report, err)
 				}
 				if live := w.liveEntries(); len(live) != 0 || string(readBytes(t, w.requestPath)) != string(before) {
 					t.Errorf("%s: live %+v; want none and the file as it was", phase, live)
 				}
 			}
 		}},
-		{"a waiting request with a live daemon is cancelled, its daemon killed and nothing lifted", func(t *testing.T) {
+		{"a waiting request a live daemon carries is cancelled with the caller as the reason and nothing lifted", func(t *testing.T) {
 			for _, caller := range []string{orchStrand(t), ""} {
 				w := newFakeWorld(t)
 				w.caller = caller
@@ -360,8 +335,8 @@ func TestCancel(t *testing.T) {
 
 				report, err := Cancel(w.deps())
 
-				if err != nil || !report.Cancelled || report.Phase != PhaseWaiting || !report.DaemonStopped || report.Lifted != nil || !reflect.DeepEqual(w.killed, []int{7}) {
-					t.Errorf("caller %q: %+v, %v, killed %v; want cancelled from waiting with the daemon stopped and nothing lifted", caller, report, err, w.killed)
+				if err != nil || !report.Cancelled || report.Phase != PhaseWaiting || report.Lifted != nil {
+					t.Errorf("caller %q: %+v, %v; want cancelled from waiting with nothing lifted", caller, report, err)
 				}
 				label := caller
 				if label == "" {
@@ -372,43 +347,23 @@ func TestCancel(t *testing.T) {
 				}
 			}
 		}},
-		{"a confirming request with a live daemon and an owned entry lifts the entry", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.alive[7] = "s7"
-			entry := w.addHubEntry(PauseCaller)
-			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming, Owned: refOf(entry)})
+		{"a confirming request with an owned entry has the entry lifted, whether or not a live daemon carries it", func(t *testing.T) {
+			for _, live := range []bool{true, false} {
+				w := newFakeWorld(t)
+				if live {
+					w.alive[7] = "s7"
+				}
+				entry := w.addHubEntry(PauseCaller)
+				w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseConfirming, Owned: refOf(entry)})
 
-			report, err := Cancel(w.deps())
+				report, err := Cancel(w.deps())
 
-			if err != nil || !report.DaemonStopped || report.Lifted == nil || !reflect.DeepEqual(report.Lifted.Resumed, []string{pauserecord.ScopeHub}) {
-				t.Fatalf("%+v, %v; want the daemon stopped and the hub entry lifted", report, err)
-			}
-			if live := w.liveEntries(); len(live) != 0 {
-				t.Errorf("live entries = %+v; want none", live)
-			}
-		}},
-		{"an owned entry the daemon records after the hold is still lifted", func(t *testing.T) {
-			w := newFakeWorld(t)
-			w.alive[7] = "s7"
-			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhasePausing})
-			entry := w.addHubEntry(PauseCaller)
-			w.onKill = func(int) {
-				err := updateRequest(w.requestPath, func(cur Request, _ bool) (Request, error) {
-					cur.Owned = refOf(entry)
-					return cur, nil
-				})
-				if err != nil {
-					t.Error(err)
+				if err != nil || !report.Cancelled || report.Lifted == nil || !reflect.DeepEqual(report.Lifted.Resumed, []string{pauserecord.ScopeHub}) || len(w.liveEntries()) != 0 {
+					t.Errorf("live %v: %+v, %v, live entries %+v; want cancelled with the hub entry lifted", live, report, err, w.liveEntries())
 				}
 			}
-
-			report, err := Cancel(w.deps())
-
-			if err != nil || report.Lifted == nil || len(w.liveEntries()) != 0 {
-				t.Errorf("%+v, %v, live %+v; want the late entry lifted", report, err, w.liveEntries())
-			}
 		}},
-		{"a hibernating request with a live daemon is refused and nothing is killed or lifted", func(t *testing.T) {
+		{"a hibernating request a live daemon carries is refused and nothing is lifted", func(t *testing.T) {
 			w := newFakeWorld(t)
 			w.alive[7] = "s7"
 			entry := w.addHubEntry(PauseCaller)
@@ -418,19 +373,19 @@ func TestCancel(t *testing.T) {
 			_, err := Cancel(w.deps())
 
 			requireRefusal(t, err, "lym hibernate status")
-			if len(w.killed) != 0 || len(w.liveEntries()) != 1 || string(readBytes(t, w.requestPath)) != string(before) {
-				t.Errorf("killed %v, live %+v; want nothing killed, the entry live and the file as it was", w.killed, w.liveEntries())
+			if len(w.liveEntries()) != 1 || string(readBytes(t, w.requestPath)) != string(before) {
+				t.Errorf("live %+v; want the entry live and the file as it was", w.liveEntries())
 			}
 		}},
-		{"a hibernating request with a dead daemon is cancelled and its owned entry lifted", func(t *testing.T) {
+		{"a hibernating request no live daemon carries is cancelled and its owned entry lifted", func(t *testing.T) {
 			w := newFakeWorld(t)
 			entry := w.addHubEntry(PauseCaller)
 			w.seed(Request{Trigger: TriggerNow, DaemonPID: 7, DaemonStart: "s7", Phase: PhaseHibernating, Owned: refOf(entry)})
 
 			report, err := Cancel(w.deps())
 
-			if err != nil || !report.Cancelled || report.Phase != PhaseHibernating || report.DaemonStopped || report.Lifted == nil || len(w.killed) != 0 || len(w.liveEntries()) != 0 {
-				t.Errorf("%+v, %v, killed %v, live %+v; want cancelled with the entry lifted and nothing killed", report, err, w.killed, w.liveEntries())
+			if err != nil || !report.Cancelled || report.Phase != PhaseHibernating || report.Lifted == nil || len(w.liveEntries()) != 0 {
+				t.Errorf("%+v, %v, live %+v; want cancelled with the entry lifted", report, err, w.liveEntries())
 			}
 		}},
 		{"a request owning no entry lifts nothing and leaves another caller's hub entry live", func(t *testing.T) {
@@ -480,7 +435,7 @@ func TestStatus(t *testing.T) {
 				t.Errorf("%+v, %v; want no request and no daemon", report, err)
 			}
 		}},
-		{"a request is reported whole with its daemon's liveness, and the call writes nothing", func(t *testing.T) {
+		{"a request is reported whole with its carrier's liveness, and the call writes nothing", func(t *testing.T) {
 			entry := pauserecord.Entry{Scope: pauserecord.ScopeHub, Caller: PauseCaller, PausedAt: newFakeWorld(t).wall}
 			for _, live := range []bool{true, false} {
 				w := newFakeWorld(t)

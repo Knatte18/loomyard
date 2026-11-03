@@ -125,7 +125,7 @@ type anchorDeps struct {
 	HubBattenLive func() ([]string, error)
 	// GateHolders describes each gate slot that is held.
 	GateHolders func() ([]string, error)
-	// HibernateLive reports whether the hub's hibernate daemon runs.
+	// HibernateLive reports whether the hub's hibernate request is pending in a running prime's dobby.
 	HibernateLive func() (bool, error)
 	// PassInFlight describes the pass of the worktree's dobby that is in flight, empty when none is.
 	PassInFlight func(worktree string) (string, error)
@@ -325,7 +325,7 @@ func refuseLiveDobbies(deps anchorDeps, location *lymcwd.Location, target string
 	if live, err := deps.HibernateLive(); err != nil {
 		return err
 	} else if live {
-		return fmt.Errorf("the hub's hibernate daemon is live; cancel it with `lym hibernate cancel`, %s", again)
+		return fmt.Errorf("the hub's hibernate request is pending in the prime's dobby; cancel it with `lym hibernate cancel`, %s", again)
 	}
 	return nil
 }
@@ -523,11 +523,12 @@ the same --set again.
 The move is refused, naming its way forward, while the board names another machine as
 the owner, while the worktree's reed session or strands, its run driver, a batten run or
 an unfinished run are live, and, on Windows, while its dobby is. For the prime it is
-refused while any reed session, batten run, gate slot or hibernate daemon of the hub is
-live. It waits out the passes of the dobbies it ends, takes the parent lock of the
-worktree's branch, ends the worktree's dobby, or every dobby of this machine for the
-prime, and starts it again afterwards, reporting a start that failed as
-dobby_start_error with the way forward "lym beam start".
+refused while any reed session, batten run or gate slot of the hub is live, or a
+hibernate request is pending in the prime's dobby. It waits out the passes of the
+dobbies it ends, takes the parent lock of the worktree's branch, ends the worktree's
+dobby, or every dobby of this machine for the prime, and starts it again afterwards,
+reporting a start that failed as dobby_start_error with the way forward
+"lym beam start".
 
 Start no session, hand pass or "lym beam dobby" in the worktree while it runs, and for
 the prime none in the hub: the verb holds no lock against them.

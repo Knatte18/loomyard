@@ -15,13 +15,16 @@ import (
 )
 
 // dobbyWatchDirs returns the lister of the directories dobby watches, each with the file names it cares about, empty meaning every entry.
-// They are the prime's batten runs directory, where a new run appears, each run's directory for batten's own status file, each task pair's status directory for the child's, the board's `board.json` and the hub's pause record.
-func dobbyWatchDirs(prime *lymcwd.Location, pauseRecordPath, boardDir string) func() map[string][]string {
+// They are the prime's batten runs directory, where a new run appears, each run's directory for batten's own status file, each task pair's status directory for the child's, the board's `board.json`, the hub's pause record, and the hibernate request at hibernateRequestPath unless it is empty, as for a beam's dobby, which carries no request.
+func dobbyWatchDirs(prime *lymcwd.Location, pauseRecordPath, boardDir, hibernateRequestPath string) func() map[string][]string {
 	return func() map[string][]string {
 		dirs := map[string][]string{
 			shedrun.RunsRoot(prime):       nil,
 			boardDir:                      {boardengine.BoardFileRel()},
 			filepath.Dir(pauseRecordPath): {pauserecord.RecordFileName},
+		}
+		if hibernateRequestPath != "" {
+			dirs[filepath.Dir(hibernateRequestPath)] = []string{filepath.Base(hibernateRequestPath)}
 		}
 		slugs, err := shedrun.List(prime)
 		if err != nil {

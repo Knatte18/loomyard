@@ -101,7 +101,7 @@
 //     For a worktree another machine owns the status is read at the weft's fetched upstream tip, since the weft pull that would refresh the checked-out copy stops at the marker change, and an unfinished one names `lym batten cancel <slug>` on the owner machine, `lym fabric pull` and the `--set`.
 //     A pair's batten status in the prime counts too.
 //   - On Windows, where ending a process signals nothing, a live dobby the move would end, named by pid.
-//   - For the prime, any reed state of the hub holding a session or a strand, any live batten run, any held gate slot and a live hibernate daemon.
+//   - For the prime, any reed state of the hub holding a session or a strand, any live batten run, any held gate slot and a hibernate request pending in a running prime's dobby.
 //     The creel daemon is not refused.
 //
 // The engine then adds its own refusals, and an equal anchor is reported as a no-op with nothing ended.

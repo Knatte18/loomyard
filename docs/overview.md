@@ -223,7 +223,7 @@ github.com/Knatte18/loomyard/
 │   └── main.go                   entrypoint: routes the <module> argument to a module
 ├── internal/adoptcli/            the adopt CLI command (`lym adopt`, the takeover of beam projects or root, and the runs under them, from another machine)
 ├── internal/agentname/           the sole former, parser and validator of agent names (`<shortname>:<slug>:<role>`), a stdlib-only leaf
-├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby)
+├── internal/beamcli/             the beam CLI command (`lym beam`, the making and starting of beams from board project entries, and the wiring of their dobby, the prime's carrying the hibernate request)
 ├── internal/dobbyengine/         dobby, the daemon of a beam worktree: it starts released tasks, drives their batten runs in passes and spawns the board-tidy agent
 ├── internal/boardcli/            the board CLI command
 ├── internal/boardengine/         the board domain kernel
@@ -311,8 +311,8 @@ github.com/Knatte18/loomyard/
 ├── internal/parentlock/          the per-branch parent lock: one record valid while its owner process lives, a ticket queue and compare-and-release
 ├── internal/tendercli/           the `lym tender` commands (`pause`, `resume`, `revive`, `status` and `reap`) and the network gate every lym process in a hub runs under
 ├── internal/tenderengine/        the pause, resume, revive and status sequences over seams: the entry, the grace, the Esc, the resume line and the revive line
-├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status` and the hidden `watch`), their hub wiring and the daemon and `systemctl` spawns
-├── internal/hibernateengine/     the hibernate request file and the submit, cancel, status and daemon sequences over seams
+├── internal/hibernatecli/        the `lym hibernate` commands (`request`, `cancel`, `status`), their hub wiring, the prime dobby's carrier and the `systemctl` spawn
+├── internal/hibernateengine/     the hibernate request file, the submit, cancel and status sequences, and the carrier the prime's dobby runs the request with, over seams
 ├── internal/hibernateconfig/     the hub-wide `hibernate.yaml` config: whether the wake from a `lym hibernate request` lifts the hub pause that request added
 ├── internal/creelcli/            the `lym creel` commands (`post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold`, `release` and the hidden `daemon`, `hook-read` and `hook-wait`), their hub wiring and the delivery adapter over reed and shuttle
 ├── internal/creelengine/         the per-hub message daemon: the journal-folded pool of mail and queued injects, sender identity, reminders for a strand without hook delivery, the per-strand mail flags, the tool-boundary and Stop claim, the idle waiter and bell, injects, holds, the removed-holder sweep and the socket protocol, over a delivery seam
@@ -486,12 +486,12 @@ User-facing modules each get one `lym <module>` namespace:
   Every lym process in a hub runs its network git and GitHub calls under a gate that waits while a pause covers it, and every reader that reacts to an unexpected stop or to idle time consults the record (`internal/pauserecord`).
   ✅ Implemented. See the `internal/tenderengine` and `internal/tendercli` package documentation.
 - **hibernate** — a queued hibernate of the machine that lym's own Go code carries out once every session in the hub is safely paused, so no LLM session runs it (`internal/hibernatecli` + `internal/hibernateengine` + `internal/hibernateconfig`; `lym hibernate request [--after <slug>] [--after-all] [--resume-on-wake]`, `lym hibernate cancel` and `lym hibernate status`, from any worktree of the hub; Linux only).
-  `request` records the hub's one request and spawns a detached daemon, the hidden `lym hibernate watch`, then returns; the trigger is at once, the end of one batten run's Land row, or no batten run in flight.
-  The daemon waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and reconciles the hub with origin, then posts creel mail to the orch when it is done or failed.
-  The wake lifts the daemon's own pause entry by identity only when the request resumes on wake, chosen by `--resume-on-wake` or else the hub-wide `hibernate.yaml`'s `resume_on_wake`, off by default; otherwise the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it, and a new request is refused meanwhile.
-  `cancel` ends the request, stops the daemon and lifts the entry, and is refused while the machine is going into hibernation; `status` changes nothing and any caller may run it.
+  `request` records the hub's one request and returns; the trigger is at once, the end of one batten run's Land row, or no batten run in flight.
+  The prime's dobby carries the request, and no beam's dobby does: it takes the request up from disk, again after a restart, waits for its trigger, pauses the hub through tender's engine, confirms every session paused, hibernates the machine, detects the wake and reconciles the hub with origin, then posts creel mail to the orch when it is done or failed.
+  The wake lifts the request's own pause entry by identity only when the request resumes on wake, chosen by `--resume-on-wake` or else the hub-wide `hibernate.yaml`'s `resume_on_wake`, off by default; otherwise the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it, and a new request is refused meanwhile.
+  `cancel` ends the request and lifts the entry, and is refused while the machine is going into hibernation; `status` changes nothing and any caller may run it.
   Only the orch or an external caller may request or cancel; an agent asks its parent session.
-  Bounds: the daemon waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
+  Bounds: the sequence waits a fixed window for the pause to confirm and for the wake, and fails the request, leaving its reason in the file, when either runs out.
   ✅ Implemented. See the `internal/hibernateengine` and `internal/hibernatecli` package documentation.
 - **creel** — the per-hub message daemon, the one way to reach an agent: mail to a Claude strand shuttle launched with creel's hooks arrives in full through those hooks, while every other strand, a hand-added one or a session launched without those hooks included, gets a typed notice or reminder and pulls its mail with `lym creel read`, and lines are injected into a pane (`internal/creelcli` + `internal/creelengine`; `lym creel post`, `inject`, `interrupt`, `forward`, `read`, `inbox`, `log`, `hold` and `release`, from any worktree of the hub, and the hidden `lym creel daemon`, `lym creel hook-read` and `lym creel hook-wait`).
   A hook strand gets each post in full, quoted with its sender, at its next tool call in the `PostToolUse` hook's additional context and at its turn end in the `Stop` hook's additional context, which continues the turn and records no turn end, at most 6 a turn; the hooks test the strand's flag file, which creel keeps while the strand holds unread mail, and only the main thread takes mail, so a subagent's hook claims nothing.

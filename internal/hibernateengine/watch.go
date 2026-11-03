@@ -1,4 +1,4 @@
-// watch.go implements the daemon's sequence: wait for the trigger, pause the hub, confirm the pause, hibernate the machine, detect the wake and lift or keep the daemon's own pause entry.
+// watch.go implements the request's sequence, which the prime's dobby carries: wait for the trigger, pause the hub, confirm the pause, hibernate the machine, detect the wake and lift or keep the request's own pause entry.
 
 package hibernateengine
 
@@ -43,7 +43,7 @@ const (
 	noticeRetryBase = time.Second
 	// noticeRetryCeiling is the longest wait between two attempts to queue a notice.
 	noticeRetryCeiling = 30 * time.Second
-	// noticeRetryWindow is how long the waits between attempts to queue a notice may add up to before the daemon gives up.
+	// noticeRetryWindow is how long the waits between attempts to queue a notice may add up to before the sequence gives up.
 	noticeRetryWindow = 10 * time.Minute
 )
 
@@ -57,32 +57,22 @@ func (e runGoneError) Error() string {
 	return fmt.Sprintf("the batten status of %s is gone", e.slug)
 }
 
-// Watch runs the daemon's sequence for the request whose daemon is the running process, and returns the request as it ended.
-// It acts only for a non-terminal request carrying the process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
+// carry runs the sequence of r, a request the running process took up, and returns the request as it ended.
+// A request taken up in the hibernating or resuming phase ends failed at once, the pause entry it owns lifted only when it resumes on wake, since the wake its sequence waited for can no longer be seen.
+// The reason of a request taken up in the resuming phase adds that its wake reconcile may not have run and that `lym cleanup --apply` runs it.
 // After the wake it reconciles the hub with origin.
 // A request that resumes on wake then has its own pause entry lifted whatever the reconcile found, and a failed write of the request or a refused notice never keeps that entry live.
 // A request that does not keeps the entry live on every path after the wake, a failure included, so the hub stays paused until the operator lifts it.
-// A request cancelled meanwhile ends the sequence quietly, since the cancel lifts the owned pause entry.
-// The daemon sends no key and no text of its own: every interrupt and resume line is tender's.
-func Watch(deps Deps) (Request, error) {
-	if err := refuseCaller(deps.Caller); err != nil {
-		return Request{}, err
-	}
-	if err := refusePlatform(deps.GOOS); err != nil {
-		return Request{}, err
-	}
-	var r Request
-	var owns bool
-	err := updateRequest(deps.RequestPath, func(cur Request, found bool) (Request, error) {
-		if found && ours(deps, cur) && !cur.Terminal() {
-			r, owns = cur, true
+// A request cancelled meanwhile ends the sequence quietly, with the entry its pause added lifted by identity, since the cancel may have read the request before that entry was recorded.
+// The sequence sends no key and no text of its own: every interrupt and resume line is tender's.
+func carry(deps Deps, r Request) (Request, error) {
+	if r.Phase == PhaseHibernating || r.Phase == PhaseResuming {
+		reason := fmt.Sprintf("the sequence that carried it ended in phase %s, so its wake could not be seen", r.Phase)
+		if r.Phase == PhaseResuming {
+			reason += " and its wake reconcile may not have run, which `lym cleanup --apply` runs"
 		}
-		return Request{}, errUnchanged
-	})
-	if err != nil || !owns {
-		return Request{}, err
+		return failAtWake(deps, r, nil, reason)
 	}
-
 	r, ok, err := waitForTrigger(deps, r)
 	if err != nil || !ok {
 		return r, err
@@ -91,7 +81,7 @@ func Watch(deps Deps) (Request, error) {
 		return r, err
 	}
 
-	// kept holds the entry the pause added even when recording it in the request fails, so the daemon can still lift it.
+	// kept holds the entry the pause added even when recording it in the request fails, so the sequence can still lift it.
 	var kept *tenderengine.EntryRef
 	report, err := deps.Pause(tenderengine.PauseRequest{Grace: pauseGrace, Added: func(entry pauserecord.Entry) error {
 		ref := tenderengine.EntryRef{Scope: entry.Scope, Caller: entry.Caller, PausedAt: entry.PausedAt}
@@ -106,11 +96,11 @@ func Watch(deps Deps) (Request, error) {
 	}
 
 	if r, ok, err = advance(deps, PhaseConfirming, ""); err != nil || !ok {
-		return r, err
+		return withdrawn(deps, r, kept, err)
 	}
 	switch outcome, reason := awaitConfirmation(deps, report, r.Requester); outcome {
 	case confirmationStopped:
-		return r, nil
+		return withdrawn(deps, r, kept, nil)
 	case confirmationLifted:
 		return finish(deps, r, PhaseCancelled, "the pause was lifted before the hibernate")
 	case confirmationTimedOut:
@@ -126,7 +116,7 @@ func Watch(deps Deps) (Request, error) {
 		return finish(deps, r, PhaseCancelled, "the pause was lifted before the hibernate")
 	}
 	if r, ok, err = advance(deps, PhaseHibernating, ""); err != nil || !ok {
-		return r, err
+		return withdrawn(deps, r, kept, err)
 	}
 	woke, err := awaitWake(deps)
 	if err != nil {
@@ -141,10 +131,10 @@ func Watch(deps Deps) (Request, error) {
 		return failAtWake(deps, r, kept, err.Error())
 	}
 	if !ok {
-		return r, nil
+		return withdrawn(deps, r, kept, nil)
 	}
 	r = resuming
-	// The entry kept from the pause stands in for an owned entry the request failed to record, so the reconcile recognises the daemon's own hub entry.
+	// The entry kept from the pause stands in for an owned entry the request failed to record, so the reconcile recognises the request's own hub entry.
 	target := r
 	if target.Owned == nil {
 		target.Owned = kept
@@ -173,6 +163,18 @@ func Watch(deps Deps) (Request, error) {
 		line += " " + detail
 	}
 	return r, errors.Join(recordErr, writeErr, sendNotice(deps, line, headline))
+}
+
+// withdrawn ends the sequence of a request that is no longer this process's or has gone terminal, as after a cancel, with err as the error, and lifts kept, the entry the sequence's pause added, by identity.
+// A cancel lifts the entry the request records, but it may have read the request before the pause recorded it; a lift of an entry already lifted lifts nothing.
+func withdrawn(deps Deps, r Request, kept *tenderengine.EntryRef, err error) (Request, error) {
+	if kept == nil {
+		return r, err
+	}
+	if _, liftErr := deps.Lift(*kept); liftErr != nil {
+		return r, errors.Join(err, fmt.Errorf("hibernate: lift the pause of a withdrawn request: %w", liftErr))
+	}
+	return r, err
 }
 
 // sendNotice queues line for the orch, queueing it again after a doubling wait while it is refused, until the waits add up to noticeRetryWindow, since right after a wake the orch's session may not be listed yet.
@@ -204,7 +206,7 @@ func writeNoticeFile(deps Deps, line string) string {
 	}
 	if err != nil {
 		logger.Warn("hibernate: the whole notice could not be written", "path", deps.NoticePath, "error", err, "notice", line)
-		return fmt.Sprintf("The whole notice could not be written to %s, so it is in the daemon's log.", deps.NoticePath)
+		return fmt.Sprintf("The whole notice could not be written to %s, so it is in the prime dobby's log.", deps.NoticePath)
 	}
 	return fmt.Sprintf("The whole notice is in %s.", deps.NoticePath)
 }
@@ -228,17 +230,17 @@ func keptOutcome(r Request) string {
 	return keptPauseOutcome
 }
 
-// ours reports whether r is the request of the running daemon.
+// ours reports whether r is the request the running process carries.
 func ours(deps Deps, r Request) bool {
 	return r.DaemonPID == deps.SelfPID && r.DaemonStart == deps.SelfStart
 }
 
-// stillOurs reports whether the request file still holds a non-terminal request of the running daemon.
-// A file that cannot be read is taken as still ours, since the daemon cannot tell otherwise.
+// stillOurs reports whether the request file still holds a non-terminal request the running process carries.
+// A file that cannot be read is taken as still ours, since the process cannot tell otherwise.
 func stillOurs(deps Deps) bool {
 	r, found, err := readRequest(deps.RequestPath)
 	if err != nil {
-		logger.Debug("hibernate: the request could not be read, taking it as still this daemon's", "error", err)
+		logger.Debug("hibernate: the request could not be read, taking it as still carried here", "error", err)
 		return true
 	}
 	return found && ours(deps, r) && !r.Terminal()
@@ -255,8 +257,8 @@ func recordOwned(deps Deps, ref tenderengine.EntryRef) error {
 	})
 }
 
-// advance moves the request to phase with reason under the lock.
-// It reports false, writing nothing, when the request is no longer this daemon's or has gone terminal, as after a cancel.
+// advance moves the request to phase with reason under the lock, and tells the phase to Deps.phased once written.
+// It reports false, writing nothing, when the request is no longer carried here or has gone terminal, as after a cancel.
 func advance(deps Deps, phase Phase, reason string) (Request, bool, error) {
 	var next Request
 	moved := false
@@ -271,6 +273,7 @@ func advance(deps Deps, phase Phase, reason string) (Request, bool, error) {
 	if err != nil || !moved {
 		return Request{}, false, err
 	}
+	deps.tellPhase(phase)
 	logger.Info("hibernate: phase change", "phase", phase, "reason", reason)
 	return next, true, nil
 }
@@ -293,6 +296,7 @@ func finish(deps Deps, r Request, phase Phase, reason string) (Request, error) {
 	if !moved {
 		return r, nil
 	}
+	deps.tellPhase(phase)
 	logger.Info("hibernate: request ended", "phase", phase, "reason", reason)
 	return written, nil
 }
@@ -337,7 +341,7 @@ func failRequest(deps Deps, r Request, kept *tenderengine.EntryRef, reason strin
 }
 
 // waitForTrigger reads the trigger until it fires and reports true.
-// It reports false when the request ended meanwhile: failed because the batten status an after trigger waits for is gone, or no longer this daemon's, as after a cancel.
+// It reports false when the request ended meanwhile: failed because the batten status an after trigger waits for is gone, or no longer carried here, as after a cancel.
 // The wait has no deadline, since the operator cancels a request whose run halted.
 func waitForTrigger(deps Deps, r Request) (Request, bool, error) {
 	delay := triggerPollBase
@@ -419,7 +423,7 @@ const (
 	confirmationReached confirmation = iota
 	// confirmationLifted: no live hub entry stands, the operator's resume having lifted the pause.
 	confirmationLifted
-	// confirmationStopped: the request is no longer this daemon's.
+	// confirmationStopped: the request is no longer carried here.
 	confirmationStopped
 	confirmationTimedOut
 )

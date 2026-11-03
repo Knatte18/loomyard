@@ -143,5 +143,9 @@
 //   - the notice through `orchcli.NotifyFromScoped`, signed `ly:DOBBY` for the prime and `ly:<slug>:DOBBY` for a beam;
 //   - `beam.yaml` through `dobbyengine.LoadConfig`, and the binary check through `internal/selfexec`;
 //   - each log line appended to `dobby.log` in the worktree's `.lym/beam/` directory by its own open, through `dobbyengine.AppendLog`, while the process's raw standard output and error, which `dobbyengine.SpawnDetached` points at `dobby.out` there, go to that other file;
-//   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory.
+//   - the board-tidy agent's shuttle runner from the worktree's own reed geometry, its model `sonnet[medium]` resolved through the model registry, and the stencils directory;
+//   - for the prime's dobby alone, the hub's hibernate request: `Deps.Tick` is the tick of the `hibernateengine.Carrier` that `hibernatecli.NewDobbyCarrier` builds over the prime, which takes the pending request up and carries it in a goroutine of its own and never reports a run in flight, the binary check is wrapped by `holdReexec`, which skips it while `Carrier.HoldsReexec` reports a sequence past its trigger wait, until it has sent its notice, and the watch also covers the request file at `hibernatecli.RequestPath`, so a written request wakes the tick that takes it up.
+//     No beam's dobby carries or watches the request.
+//
+// Bound: `Deps.Tick` runs after the tick's other steps, so while a tick fails before it no pending request is taken up; a sequence already in flight runs on.
 package beamcli

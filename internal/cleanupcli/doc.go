@@ -24,7 +24,7 @@
 // A stop on a pair is only reported, and an unreachable origin is a `warning` with the segments run.
 // Under an operator's live hub pause the reconcile's network calls wait at the network gate until the lift.
 //
-// The teardown seam of an ended run extends the hub's seams with the hibernate wake hold: a live pause entry of the slug whose caller is the hibernate daemon is lifted by identity through tender once the pair's uncommitted paths are snapshotted.
+// The teardown seam of an ended run extends the hub's seams with the hibernate wake hold: a live pause entry of the slug whose caller is the hibernate request's wake is lifted by identity through tender once the pair's uncommitted paths are snapshotted.
 //
 // # The segments
 //

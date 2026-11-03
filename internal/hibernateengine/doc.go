@@ -1,17 +1,17 @@
-// Package hibernateengine implements the hibernate request file and the submit, cancel and status sequences behind `lym hibernate`, over seams.
+// Package hibernateengine implements the hibernate request file, the submit, cancel and status sequences behind `lym hibernate`, and the Carrier the prime's dobby carries the request out with, over seams.
 //
 // A hibernate request asks lym's own Go code to hibernate the machine once every session in the hub is safely paused, so no LLM session runs the hibernate and none is cut mid-call.
-// A detached daemon carries the request out; the verbs here record the request, end it and read it.
+// The prime's dobby carries the request out; the verbs here record the request, end it and read it.
 //
 // Every path and every probe is told through Deps; the engine resolves no working directory, spawns nothing itself and reaches tender only through the Pause, TenderStatus and Lift seams and origin only through the Reconcile and ExemptNetwork seams.
 //
 // # The request file
 //
 // The hub holds one request, a JSON file at `Deps.RequestPath` with its lock at the same path plus `.lock`.
-// It records the trigger (`now`, `after` with a slug, or `after-all`), whether the wake lifts the request's pause, the requester, the daemon's pid and start time, the pause entry the daemon owns once it has added one, the phase and the last reason.
+// It records the trigger (`now`, `after` with a slug, or `after-all`), whether the wake lifts the request's pause, the requester, the pid and start time of the daemon that carries it, the pause entry its sequence owns once it has added one, the phase and the last reason.
 // The phases are waiting, pausing, confirming, hibernating, resuming, done, failed and cancelled; the last three are terminal.
 // Every write holds the request lock across its read and write and keeps keys a newer binary added; a read takes no lock and a missing file reads as no request.
-// A daemon is live when its pid is running with the recorded start time, so a recycled pid is not taken for it.
+// A carrying daemon is live when its pid is running with the recorded start time, so a recycled pid is not taken for it.
 //
 // # Callers and platform
 //
@@ -22,34 +22,46 @@
 //
 // # Submit
 //
-// Submit checks the caller, the platform, `systemctl` on PATH, that `--after` and `--after-all` are not both given, and that an `--after` slug has a batten status; each refusal writes nothing and spawns nothing.
-// In one hold of the request lock it then refuses a pending request whose daemon is live, lifts the pause entry a pending request with a dead daemon owns, spawns the daemon and writes a waiting request with its pid and start time.
+// Submit checks the caller, the platform, `systemctl` on PATH, that `--after` and `--after-all` are not both given, and that an `--after` slug has a batten status; each refusal writes nothing.
+// In one hold of the request lock it then refuses a pending request, whether or not a live daemon carries it, and writes a waiting request no daemon carries yet.
 // A terminal request and no request are replaced the same way, except that a terminal request whose owned pause entry is still live is refused, naming "lym hibernate cancel" and "lym tender resume", so a pause its wake kept is not forgotten.
-// Because the check, the spawn and the write share one hold, two racing submits spawn one daemon.
-// Submit returns once the daemon is spawned; the daemon decides when the trigger holds.
+// Because the check and the write share one hold, of two racing submits one is refused.
+// Submit returns at once, with whether the prime's dobby runs through `Deps.DobbyLive`, and names `lym beam start root` when it does not or its liveness does not read; the request waits on disk until that dobby takes it up.
 // The request records the caller's `ResumeOnWake` as told, since the engine reads no config.
 //
 // # Cancel
 //
 // Cancel ends the pending request: no request and a terminal one succeed with nothing cancelled.
-// A live daemon in the hibernating phase is refused, since the machine is going down; once the wake has ended the request, a cancel lifts a pause the wake kept.
-// A dead daemon's request is cancelled in any phase, which is the way out after a crash or a cold boot left the hub paused.
-// Otherwise the request is written cancelled with the requester as the reason, a live daemon is killed, and the pause entry the request owns is lifted by identity, resume lines included.
-// The request is read again after the kill, since the daemon may have recorded its entry between the hold and the kill.
+// A request a live daemon carries in the hibernating phase is refused, since the machine is going down; once the wake has ended the request, a cancel lifts a pause the wake kept.
+// A request no live daemon carries is cancelled in any phase, which is the way out after a crash or a cold boot left the hub paused.
+// Otherwise the request is written cancelled with the requester as the reason, and the pause entry the request owns is lifted by identity, resume lines included; Cancel stops no process.
+// The carrying dobby's sequence sees the cancel at its next read of the request and ends quietly, lifting by identity the entry its pause added, which covers an entry recorded after Cancel read the request.
 // A request that owns no entry lifts nothing, so a hub pause that stood before the request stays.
-// A terminal request is not cancelled, but the pause entry it owns is still lifted by identity, which is the way out when its daemon left that entry live or its wake kept it as the request asked.
-// Bound: a daemon killed between its pause's record write and the write of its owned entry leaves that entry live and unowned, which `lym tender resume` lifts; the window is one file write.
+// A terminal request is not cancelled, but the pause entry it owns is still lifted by identity, which is the way out when its sequence left that entry live or its wake kept it as the request asked.
+// Bound: a dobby that ends between its pause's record write and the write of its owned entry leaves that entry live and unowned, which `lym tender resume` lifts; the window is one file write.
 //
 // # Status
 //
-// Status reads the request and whether its daemon is live and writes nothing, so a halted `--after` run's reason and a dead daemon show up in it.
+// Status reads the request and whether the daemon that carries it is live and writes nothing, so a halted `--after` run's reason and a carrier that ended show up in it.
 //
-// # The daemon
+// # The carrier
 //
-// Watch is the sequence the spawned daemon runs.
-// It refuses an agent caller and a non-Linux platform as Submit does, and acts only for a non-terminal request carrying the running process's own pid and start time; with no request, a terminal one or another daemon's it returns at once and writes nothing.
-// Every phase change is written under the request lock and stops the sequence quietly, leaving the lifting to Cancel, when the request is no longer this daemon's or has gone terminal.
-// The daemon sends no key and no text of its own: every interrupt and resume line is tender's, under its guards.
+// The Carrier is what the prime's dobby runs the request with; no beam's dobby carries it.
+// Each `Carrier.Tick` with no sequence of its own in flight takes up the pending request under the request lock: one no live daemon carries, and one that names the running process itself, which a re-exec of the process leaves behind with no sequence running.
+// No request, a terminal one and one another live process carries are left alone, so the request is watched and carried in one place.
+// Taking it up records the running process as its carrier, keeps a waiting request as it is, and sends a request in the pausing or confirming phase back to waiting with the pause entry it owns lifted, so its sequence starts again from the trigger.
+// A request taken up in the hibernating or resuming phase ends failed at once with one notice, its owned entry lifted only when it resumes on wake, since the wake its sequence waited for can no longer be seen; the reason of one taken up in the resuming phase adds that its wake reconcile may not have run and that `lym cleanup --apply` runs it.
+// Since the request stays on disk, a dobby that was not running or died takes it up again when it next ticks.
+// A sequence's end rewrites the request file as it stands, so the watch on the file runs the next tick, which takes up a request written while a cancelled sequence was still in flight.
+// The sequence then runs in a goroutine of its own, so the dobby's ticks never wait on it and a dobby tick that fails stops no sequence in flight.
+// `Carrier.HoldsReexec` reports a sequence in flight past its trigger wait, which the dobby's wiring reads to skip its binary re-exec, so a re-exec never cuts a pause, a confirmation, a hibernate or a wake in the middle; the hold lasts until the sequence has lifted its entry and sent its notice, after its terminal phase is written; one still waiting for its trigger holds nothing, since the re-exec takes it up again at the same wait.
+// Bound: a re-exec that passed the check in the instant the sequence moved past waiting cuts the sequence, and the takeover sends it back to waiting as above.
+//
+// # The sequence
+//
+// The sequence acts only while the request file holds a non-terminal request carrying the running process's own pid and start time.
+// Every phase change is written under the request lock and stops the sequence quietly when the request is no longer carried here or has gone terminal.
+// The sequence sends no key and no text of its own: every interrupt and resume line is tender's, under its guards.
 // The timings are fixed constants with no config key.
 //
 // The trigger wait reads the trigger and writes the reason it still waits into the request, so status shows it.
@@ -60,8 +72,9 @@
 // Bound: the wait has no deadline, since the operator cancels a request whose run halted.
 //
 // Firing pauses the hub through tender with a ten second grace.
-// The pause's `Added` callback records the entry as the request's owned entry before the grace, whatever the phase, and the daemon keeps it in memory even when that write fails.
-// A pause that found a live hub entry owns none, so neither the daemon nor Cancel lifts that pause.
+// The pause's `Added` callback records the entry as the request's owned entry before the grace, whatever the phase, and the sequence keeps it in memory even when that write fails.
+// A pause that found a live hub entry owns none, so neither the sequence nor Cancel lifts that pause.
+// The pause holds sessions and the network calls of other processes; the dobby that carries the request is no session, and its sequence never waits on a pause, so the pause it adds never stops the wait.
 // A pause lifted during its grace cancels the request.
 // A pause error fails the request, lifts the owned entry and queues one notice; the lift and the notice run even when the failed write fails.
 //
@@ -76,17 +89,17 @@
 // A reading with no live hub entry cancels the request, and a reading error counts as unconfirmed.
 // Without a confirmed reading the request fails with the last withholding reason and `Hibernate` is never called.
 //
-// Right before the hibernate the daemon reads the hub once more, needs a live hub entry, and moves the request to hibernating only if it is still this daemon's.
+// Right before the hibernate the sequence reads the hub once more, needs a live hub entry, and moves the request to hibernating only if it is still carried here.
 // The wake is a sleep the clock gap watch records ending after the hibernate call, seen within five minutes of awake time; a hibernate error or no wake fails the request with the owned entry lifted and one notice.
 // What the wake does with the owned entry is the request's `ResumeOnWake`.
-// When it is set the daemon lifts its owned entry on every path after the wake: a failed write of the resuming or done phase, a reconcile that stops and a notice that is never delivered all leave the entry lifted, and only a lift error leaves it, failing the request.
-// When it is not set the daemon keeps its owned entry live on every path after the wake, a failure included, and the request ends with the entry still recorded as owned, written back when the request had lost its record, so the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it.
+// When it is set the sequence lifts its owned entry on every path after the wake: a failed write of the resuming or done phase, a reconcile that stops and a notice that is never delivered all leave the entry lifted, and only a lift error leaves it, failing the request.
+// When it is not set the sequence keeps its owned entry live on every path after the wake, a failure included, and the request ends with the entry still recorded as owned, written back when the request had lost its record, so the hub stays paused until `lym tender resume` or `lym hibernate cancel` lifts it.
 // The reconcile, the pair pause entries and the notice run either way.
-// After the move to resuming the daemon reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
+// After the move to resuming the sequence reconciles the hub with origin, through the `Reconcile` seam, before it lifts anything.
 // The engine imports no fabric package: `WakeReconcile` is its own view of the report, with whether origin was unreachable, the stop on a branch every pair shares, one `WakeRun` per stopped, ended or owned-elsewhere entry and one rendered line per mutation.
 // A hub entry the request does not own that is live skips the reconcile and the exemption, only an owned entry is lifted or kept, and the notice names the standing entry, `lym tender resume`, and that `lym beam start` or `lym cleanup --apply` runs the reconcile after that lift.
 // Otherwise the owned entry, when live, is exempted from the network gate through `ExemptNetwork` until the reconcile returns, so only the reconcile's own network calls pass and every other process and entry stays held; with no hub entry live the reconcile runs with nothing to exempt.
-// The daemon has no envelope, so each mutation line is logged at Info and never enters the notice.
+// The sequence has no envelope, so each mutation line is logged at Info and never enters the notice.
 // Unreachable through the retry bound, or a reconcile error, moves nothing further, and the notice names the cause and `lym cleanup --apply`.
 // Otherwise each stopped run, and each ended run still busy, gets a plain pair pause entry through `Pause`, not recorded as owned so it outlives the request, before the owned entry is lifted or kept.
 // A stop on a shared branch is no exception: its stopped runs are held the same way, and the notice names the stop before the runs.

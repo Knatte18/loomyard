@@ -1,4 +1,4 @@
-// world_test.go declares fakeWorld, the in-memory hub the verb and daemon tests drive the engine over: paths under a temp directory, a wall and an awake clock, and a scripted fake of every seam.
+// world_test.go declares fakeWorld, the in-memory hub the verb, carrier and sequence tests drive the engine over: paths under a temp directory, a wall and an awake clock, and a scripted fake of every seam.
 
 package hibernateengine
 
@@ -43,17 +43,13 @@ type fakeWorld struct {
 	goos      string
 	systemctl bool
 
-	// nextPID is the pid the next Spawn hands out; spawned holds every pid handed out.
-	nextPID  int
-	spawnErr error
-	spawned  []int
+	// dobbyLive and dobbyLiveErr are what DobbyLive answers.
+	dobbyLive    bool
+	dobbyLiveErr error
 
 	selfPID   int
 	selfStart string
 	alive     map[int]string
-	killed    []int
-	// onKill runs inside Kill before the process is recorded dead.
-	onKill func(pid int)
 
 	// runs holds each slug's readings, consumed per call with the last repeated; runsMissing reports a slug as having no status.
 	runs        map[string][]RunStatus
@@ -103,14 +99,16 @@ type fakeWorld struct {
 	// noWake makes a successful hibernate leave the clocks alone, so no sleep is ever seen.
 	noWake bool
 	// notices holds every delivered notice; notifyErrs fail the first calls in turn, then notifyErr fails every call after them.
-	notices        []string
+	notices []string
+	// onNotify runs at the start of each notify call, before the call takes the world's lock, so it may block.
+	onNotify       func()
 	notifyErrs     []error
 	notifyErr      error
 	notifyAttempts int
 	start          time.Time
 }
 
-// newFakeWorld builds a Linux hub with systemctl on PATH, an external caller, and the clocks at a fixed instant.
+// newFakeWorld builds a Linux hub with systemctl on PATH, the prime's dobby running, an external caller, and the clocks at a fixed instant.
 func newFakeWorld(t *testing.T) *fakeWorld {
 	t.Helper()
 	root := t.TempDir()
@@ -124,7 +122,7 @@ func newFakeWorld(t *testing.T) *fakeWorld {
 		start:       start,
 		goos:        "linux",
 		systemctl:   true,
-		nextPID:     1000,
+		dobbyLive:   true,
 		selfPID:     4242,
 		selfStart:   "self-start",
 		alive:       map[int]string{},
@@ -155,32 +153,10 @@ func (w *fakeWorld) sleep(d time.Duration) {
 	}
 }
 
-func (w *fakeWorld) spawn() (int, string, error) {
+func (w *fakeWorld) primeDobbyLive() (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.spawnErr != nil {
-		return 0, "", w.spawnErr
-	}
-	pid := w.nextPID
-	w.nextPID++
-	start := fmt.Sprintf("start-%d", pid)
-	w.alive[pid] = start
-	w.spawned = append(w.spawned, pid)
-	return pid, start, nil
-}
-
-func (w *fakeWorld) kill(pid int) error {
-	w.mu.Lock()
-	hook := w.onKill
-	w.mu.Unlock()
-	if hook != nil {
-		hook(pid)
-	}
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.killed = append(w.killed, pid)
-	delete(w.alive, pid)
-	return nil
+	return w.dobbyLive, w.dobbyLiveErr
 }
 
 func (w *fakeWorld) isAlive(pid int, start string) bool {
@@ -406,6 +382,9 @@ func (w *fakeWorld) elapsed() time.Duration {
 }
 
 func (w *fakeWorld) notify(line string) error {
+	if hook := w.onNotify; hook != nil {
+		hook()
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.notifyAttempts++
@@ -442,11 +421,10 @@ func (w *fakeWorld) deps() Deps {
 			}
 			return "/usr/bin/" + file, nil
 		},
-		Spawn:         w.spawn,
+		DobbyLive:     w.primeDobbyLive,
 		SelfPID:       w.selfPID,
 		SelfStart:     w.selfStart,
 		Alive:         w.isAlive,
-		Kill:          w.kill,
 		RunStatus:     w.runStatus,
 		RunSlugs:      w.listRunSlugs,
 		LandLockHeld:  w.landLockHeld,
@@ -465,7 +443,7 @@ func (w *fakeWorld) deps() Deps {
 	}
 }
 
-// ownRequest is a waiting request whose daemon is the world's own process.
+// ownRequest is a waiting request the world's own process carries.
 // It resumes on wake, so the wake rows pin the lift; the rows that keep the pause clear it.
 func (w *fakeWorld) ownRequest(trigger Trigger, slug string) Request {
 	requester := w.requester

@@ -1,8 +1,9 @@
-// deps.go fills hibernateengine.Deps for a hub: the request file and log paths, the prime's batten status and land lock readers, tender's engine over the hub's pairs, and the daemon's identity.
+// deps.go fills hibernateengine.Deps for a hub: the request and notice paths, the prime's batten status and land lock readers, the prime dobby's liveness, tender's engine over the hub's pairs, and the running process's identity; and builds the Carrier the prime's dobby runs.
 
 package hibernatecli
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,8 +11,10 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hibernateengine"
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -30,17 +33,34 @@ import (
 const (
 	// requestFileName is the hibernate request file in the hibernate directory.
 	requestFileName = "request.json"
-	// watchLogFileName is the daemon's log in the hibernate directory.
-	watchLogFileName = "watch.log"
 	// noticeFileName is the file in the hibernate directory a notice too long for one creel line is written to.
 	noticeFileName = "notice.txt"
 	// hibernateProgram is the program name hibernate signs its notices to the orch with.
 	hibernateProgram = "HIBERNATE"
 )
 
-// hibernateDir is the hub's board-level directory holding the request, its lock and the daemon's log.
+// hibernateDir is the hub's board-level directory holding the request, its lock and the whole text of a notice too long for one creel line.
 func hibernateDir(location *lymcwd.Location) string {
 	return filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.HibernateDirName)
+}
+
+// RequestPath is the hibernate request file of the hub location belongs to.
+func RequestPath(location *lymcwd.Location) string {
+	return filepath.Join(hibernateDir(location), requestFileName)
+}
+
+// NewDobbyCarrier returns the Carrier the prime's dobby carries the hub's hibernate request with, wired over the hub of prime as the verbs are, with the dobby's process as the carrier.
+// It creates the hibernate directory, so the dobby's file watch can open it before the first request is written.
+func NewDobbyCarrier(prime *lymcwd.Location) (*hibernateengine.Carrier, error) {
+	deps, err := hubDeps(prime)
+	if err != nil {
+		return nil, err
+	}
+	// The dobby's file watch opens only a directory that exists, so a first request on a hub that never hibernated would wake nothing.
+	if err := os.MkdirAll(hibernateDir(prime), 0o755); err != nil {
+		return nil, fmt.Errorf("create the hibernate directory: %w", err)
+	}
+	return hibernateengine.NewCarrier(deps), nil
 }
 
 // hubDeps fills the engine's Deps for the hub location belongs to.
@@ -63,17 +83,20 @@ func hubDeps(location *lymcwd.Location) (hibernateengine.Deps, error) {
 		return deps, err
 	}
 	return hibernateengine.Deps{
-		RequestPath: filepath.Join(dir, requestFileName),
+		RequestPath: RequestPath(location),
 		Caller:      os.Getenv(agentname.StrandNameEnv),
 		GOOS:        runtime.GOOS,
 		LookPath:    exec.LookPath,
-		Spawn: func() (int, string, error) {
-			return spawnDaemon(prime.AnchorPath(), filepath.Join(dir, watchLogFileName))
+		DobbyLive: func() (bool, error) {
+			geom, err := hubgeom.DobbyGeometry(prime, primeName)
+			if err != nil {
+				return false, err
+			}
+			return dobbyengine.Live(geom)
 		},
 		SelfPID:   selfPID,
 		SelfStart: selfStart,
 		Alive:     parentlock.ProcessAlive,
-		Kill:      killDaemon,
 		RunStatus: func(slug string) (hibernateengine.RunStatus, bool, error) {
 			return readRunStatus(prime, slug)
 		},

@@ -1,4 +1,4 @@
-// reconcile.go runs the hub's origin reconcile for the hibernate daemon's wake and maps its report onto the engine's own view of it.
+// reconcile.go runs the hub's origin reconcile for the hibernate request's wake and maps its report onto the engine's own view of it.
 
 package hibernatecli
 

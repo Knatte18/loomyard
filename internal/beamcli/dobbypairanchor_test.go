@@ -101,7 +101,11 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 			t.Errorf("dobbyRuns() child status seen = %v; want %v", modified, want)
 		}
 
-		dirs := dobbyWatchDirs(prime, pauseRecord, h.BoardDir())()
+		requestPath := filepath.Join(h.Path, "hibernate", "request.json")
+		dirs := dobbyWatchDirs(prime, pauseRecord, h.BoardDir(), requestPath)()
+		if names := dirs[filepath.Dir(requestPath)]; len(names) != 1 || names[0] != "request.json" {
+			t.Errorf("dobbyWatchDirs() = %v; want the hibernate request's directory with its file name", dirs)
+		}
 		if _, listed := dirs[filepath.Dir(movedStatus)]; !listed {
 			t.Errorf("dobbyWatchDirs() = %v; want the moved pair's status directory %s", dirs, filepath.Dir(movedStatus))
 		}
@@ -121,7 +125,7 @@ func TestDobbyRuns_PairAtItsOwnAnchor(t *testing.T) {
 			t.Fatalf("dobbyRuns() = %v, %v; want an error naming the pair and wrapping ErrInvalidAnchor", views, err)
 		}
 
-		dirs := dobbyWatchDirs(prime, pauseRecord, h.BoardDir())()
+		dirs := dobbyWatchDirs(prime, pauseRecord, h.BoardDir(), "")()
 		if _, listed := dirs[filepath.Dir(movedStatus)]; !listed {
 			t.Errorf("dobbyWatchDirs() = %v; want the moved pair's status directory %s", dirs, filepath.Dir(movedStatus))
 		}

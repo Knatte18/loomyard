@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -60,6 +61,21 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 	}
 	if primeDeps.PrimeTidyShuttle != nil {
 		t.Errorf("prime PrimeTidyShuttle = %#v; want nil", primeDeps.PrimeTidyShuttle)
+	}
+	// The watch opens only a directory that exists, and a tick creates it as a side effect, so the check comes before any tick.
+	if info, err := os.Stat(filepath.Dir(hibernatecli.RequestPath(prime))); err != nil || !info.IsDir() {
+		t.Errorf("the request's directory after the prime's wiring: stat = %v; want an existing directory", err)
+	}
+
+	// Only the prime's dobby carries the hibernate request; with no request, its tick takes nothing up.
+	if beamDeps.Tick != nil {
+		t.Errorf("beam Tick is set; want nil, since no beam's dobby carries the hibernate request")
+	}
+	if primeDeps.Tick == nil {
+		t.Fatal("prime Tick = nil; want the hibernate carrier's tick")
+	}
+	if inFlight, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); inFlight || err != nil {
+		t.Errorf("prime Tick() with no request = %v, %v; want false, nil", inFlight, err)
 	}
 
 	// The seam reads the host's real cgroup, so it is checked for being filled and never called.
