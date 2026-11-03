@@ -220,7 +220,7 @@ func normalizeCapture(capture string) string {
 // InterruptSequence returns the key choreography that interrupts a claude turn: a single Escape key
 // press.
 func (c *Claude) InterruptSequence() []shuttleengine.PaneInput {
-	return []shuttleengine.PaneInput{{Key: "Escape"}}
+	return []shuttleengine.PaneInput{{Key: escapeKey}}
 }
 
 // gateAcceptNeedles are whitespace-stripped, lowercased phrases identifying a gate's ACCEPTING

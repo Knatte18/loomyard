@@ -20,11 +20,13 @@ var ErrSessionBusy = errors.New("shuttle: the session is not idle")
 // SessionBusyError is the error of a verified send held by its idle wait.
 // Reason is the hold the wait's last reading named, without the pane's last lines.
 // Draft is true when that hold is text in the input box.
+// NoInputBox is true when that hold is a pane showing no input box to an engine that reads one, as when a picker covers the box.
 // Err is the full error, which wraps ErrSessionBusy, and is what Error returns, so the message is Err's.
 type SessionBusyError struct {
-	Reason string
-	Draft  bool
-	Err    error
+	Reason     string
+	Draft      bool
+	NoInputBox bool
+	Err        error
 }
 
 // Error returns the message of the full error.
@@ -163,6 +165,7 @@ func windowPollCap(window, minInterval time.Duration) int {
 // Otherwise every poll takes the session's readiness reading, which is built on the hook-derived session state;
 // when that state is unknown the poll falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end, unless the pane has read idle for turnStartIdleOverride or the engine reports that turn interrupted.
 // An engine that reads the unmatched turn in flight keeps the send waiting past turnStartIdleOverride, until a turn end, a reported interrupt, a later session start or the send-ready window ends it.
+// A held reading over a picker the engine knows how to dismiss gets the picker's keys at most once per call; see dismissPicker.
 func awaitIdleSession(sc sendContext) error {
 	cycler, ok := sc.engine.(SessionCycler)
 	if !ok {
@@ -195,14 +198,15 @@ func awaitIdleSession(sc sendContext) error {
 	interval := idlePollInitial
 	maxPolls := windowPollCap(sendReadyTimeout(sc.cfg), idlePollInitial)
 	stray := &strayClear{}
+	picker := &pickerDismissal{}
 	for poll := 1; ; poll++ {
-		busy := busyReading(sc, cycler, hold, stray)
+		busy := busyReading(sc, cycler, hold, stray, picker)
 		if busy.reason == "" {
 			return nil
 		}
 		now := sc.clock.Now()
 		if !now.Before(limit) || poll >= maxPolls {
-			return &SessionBusyError{Reason: busy.reason, Draft: busy.draft, Err: fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy.reason, paneTail(sc.reed, sc.guid))}
+			return &SessionBusyError{Reason: busy.reason, Draft: busy.draft, NoInputBox: busy.noInputBox || busy.reason == readinessReasonNoInputBox, Err: fmt.Errorf("%w: strand %q: %s; retry once the session is idle. The pane's last lines:\n%s", ErrSessionBusy, sc.guid, busy.reason, paneTail(sc.reed, sc.guid))}
 		}
 		sc.clock.Sleep(min(interval, limit.Sub(now)))
 		interval = min(interval*2, idlePollMax)
@@ -210,9 +214,11 @@ func awaitIdleSession(sc sendContext) error {
 }
 
 // busyHold is one idle-wait reading's answer: reason is what keeps the session from being idle, empty when it is idle, and draft is true when that hold is text in the input box.
+// noInputBox is true when that hold is a pane showing no input box, which includes a dismissal whose key could not be sent.
 type busyHold struct {
-	reason string
-	draft  bool
+	reason     string
+	draft      bool
+	noInputBox bool
 }
 
 // busyReading polls the pane and the events file once and returns what keeps the session from being idle, an empty reason when it is idle.
@@ -223,8 +229,9 @@ type busyHold struct {
 // A lone stray-character candidate in the box, on the hook reading held only for that draft or on the pane reading ready but not idle, is cleared once per stray, behind a full guard reading;
 // see clearStrayCharacter.
 // Once stray records a clear, every reading of the attempt is a post-clear reading, and a box still holding exactly the recorded character reads as empty.
+// A reading that is not ready over a picker the engine knows how to dismiss is handed to dismissPicker until picker records a try.
 // Every pane-reading hold whose box reads non-empty quotes the box.
-func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear) busyHold {
+func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal) busyHold {
 	capture, err := boxCapture(sc.reed, sc.engine, sc.guid)
 	if err != nil {
 		return busyHold{reason: fmt.Sprintf("the pane could not be captured: %v", err)}
@@ -236,9 +243,14 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 		case isCandidate && character == reading.draft && stray.cleared && character == stray.character:
 			reading = readiness{ready: true}
 		case isCandidate && character == reading.draft && !stray.cleared:
-			if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, character); handled {
+			if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, picker, character); handled {
 				return busy
 			}
+		}
+	}
+	if !reading.ready && !picker.tried {
+		if busy, handled := dismissPicker(sc, cycler, hold, stray, picker, capture); handled {
+			return busy
 		}
 	}
 	switch {
@@ -266,7 +278,7 @@ func busyReading(sc sendContext, cycler SessionCycler, hold *turnStartHold, stra
 		unmatched = fmt.Sprintf("a turn start at %s has no turn end", turnStart.At.Format(time.RFC3339))
 	}
 	if isCandidate && !stray.cleared && unmatched == "" {
-		if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, character); handled {
+		if busy, handled := clearStrayCharacter(sc, cycler, hold, stray, picker, character); handled {
 			return busy
 		}
 	}
@@ -303,7 +315,7 @@ func strayCandidate(engine Engine, capture string) (character string, ok bool) {
 // else the clear plays right after this reading with no wait or other key between, stray records the character, the box settles for SubmitSettle, and a second full reading is taken.
 // That post-clear reading is the write's guard reading, and busy is what it returns.
 // The active-operator hold is a draft hold, a failed clear is not, and the post-clear reading carries its own kind.
-func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, character string) (busy busyHold, handled bool) {
+func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal, character string) (busy busyHold, handled bool) {
 	clearer, canClear := sc.engine.(InputBoxClearer)
 	reader, canRead := sc.engine.(InputBoxReader)
 	if !canClear || !canRead {
@@ -317,7 +329,45 @@ func clearStrayCharacter(sc sendContext, cycler SessionCycler, hold *turnStartHo
 	}
 	stray.cleared, stray.character = true, character
 	sc.clock.Sleep(reader.SubmitSettle())
-	return busyReading(sc, cycler, hold, stray), true
+	return busyReading(sc, cycler, hold, stray, picker), true
+}
+
+// pickerDismissal is the dismissible-picker state of one send attempt's idle wait: the zero value has tried no dismissal.
+type pickerDismissal struct {
+	tried bool
+}
+
+// dismissPicker closes a picker the engine knows how to dismiss when capture shows one, so the send can go on to the input box behind it.
+// handled is false for an engine without DismissiblePickerReader, for a capture it reads no picker in, and for one its InterruptGuard reads a running turn in, since the picker's keys may interrupt a turn; the caller then holds as for any other reading.
+// Otherwise an active operator holds the send without a key, since the operator may be answering the picker, and a later poll tries again.
+// Else the picker's keys play once, picker records the try, the pane settles for the engine's interrupt settle where it has one, and a second full reading is taken, which busy returns.
+// A key that cannot be sent holds the send as a pane with no input box, since the picker still covers it.
+// The keys keep the provider's current setting, so the dismissal answers nothing on the session's behalf.
+func dismissPicker(sc sendContext, cycler SessionCycler, hold *turnStartHold, stray *strayClear, picker *pickerDismissal, capture string) (busy busyHold, handled bool) {
+	reader, ok := sc.engine.(DismissiblePickerReader)
+	if !ok {
+		return busyHold{}, false
+	}
+	name, keys, shown := reader.DismissiblePicker(capture)
+	if !shown {
+		return busyHold{}, false
+	}
+	guard, guarded := sc.engine.(InterruptGuard)
+	if guarded && guard.RunningTurn(capture) {
+		return busyHold{}, false
+	}
+	if activity := operatorActivityHold(sc.reed, sc.guid, sc.activityFailures); activity != "" {
+		return busyHold{reason: fmt.Sprintf("%s; the provider's %s picker is open", activity, name)}, true
+	}
+	picker.tried = true
+	if err := playInputs(sc.reed, sc.guid, keys); err != nil {
+		return busyHold{reason: fmt.Sprintf("dismissing the provider's %s picker failed: %v", name, err), noInputBox: true}, true
+	}
+	logger.Info("shuttle: dismissed the provider's picker before a send", "strandGUID", sc.guid, "picker", name)
+	if guarded {
+		sc.clock.Sleep(guard.InterruptSettle())
+	}
+	return busyReading(sc, cycler, hold, stray, picker), true
 }
 
 // withBoxQuote returns reason followed by the input box's text, as a draft hold, when the engine reads a non-empty box in capture, and the bare reason otherwise.
@@ -869,6 +919,7 @@ func (run *Run) boundaryIdle() bool {
 	run.gateAtBoundary = false
 	run.boundaryHeld = false
 	run.unsentReprompt = false
+	run.noBoxReprompts = 0
 	run.startCleared = true
 	run.startHold = turnStartHold{}
 	logger.Info("shuttle: gate: a turn started after the boundary, holding the gate send", "strandGUID", run.state.StrandGUID, "turnStartAt", turnStart.At)

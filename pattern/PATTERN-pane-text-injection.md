@@ -1,6 +1,6 @@
 # PATTERN-pane-text-injection
 
-Text lym types into an agent pane never merges with, submits or wipes an operator's draft, and never closes a menu the operator has open.
+Text lym types into an agent pane never merges with, submits or wipes an operator's draft, and its picker dismissal holds while an operator was active in the pane within `operator_quiet_s`, which is what protects an operator's open menu.
 The bounded exception is a lone stray character in an idle box: the guard clears it once per send attempt, behind a full guard reading, and a character that survives is submitted at the head of the message.
 
 - Text reaches a pane only through reed's paste-submit: one tmux invocation that pastes the text and, when the provider's Enter submits a paste, sends the Enter in the same command list.
@@ -23,25 +23,28 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   It fires only on text that appeared in a box read empty before the key, at most once per call and never without a passing guard reading: the pane ready, no running turn, a readable box and no active operator.
   Its keys are the provider's restored-prompt clear, no `Escape`, `C-c` or Enter, at most two per line the read showed, and the text is the stopped turn's own prompt, already in the transcript.
   A guard reading that fails sends nothing, and the text stays as a draft the next send holds on.
-- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.InterruptRestoring`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal, the clear sent into a box holding exactly one stray-character candidate the guard reading found and the restored-prompt clear.
+- Explicit key deliveries stay outside the rule: `Runner.Interrupt`, `Runner.InterruptRestoring`, `Runner.Inject`, `InterruptSequence`, the trust-prompt dismissal, the clear sent into a box holding exactly one stray-character candidate the guard reading found, the restored-prompt clear and the guarded picker dismissal.
   Each names its keys itself and is not text for a draft box.
   `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows the guarded interrupt below.
 
 ## Guarded interrupt
 
-An interrupt key reaches an agent pane only through shuttle's two pane guards, and every other path refuses it.
+An interrupt key reaches an agent pane only through shuttle's guarded interrupt and its two guarded picker paths below, and every other path refuses it.
 
 - The guarded interrupt (`Runner.Interrupt`, `Run.Interrupt`) sends the provider's interrupt sequence only after the ready-agent-pane check and a fresh capture the provider reads as a running turn.
   A pane with no running turn gets nothing and `ErrNoRunningTurn`, and a capture that fails sends nothing.
 - A caller that retries an interrupt waits at least the provider's settle time (`Runner.InterruptSettle`) after its first key before it reads again, and sends the retry through the guarded interrupt.
   So lym's own keys land at least the settle apart and never open the rewind picker.
-- The guarded picker close is the one exception: before every interrupt and every verified send it sends exactly one key of the interrupt sequence, only into a capture the provider reads as the rewind picker.
+- The guarded picker close is one of two exceptions: before every interrupt and every verified send it sends exactly one key of the interrupt sequence, only into a capture the provider reads as the rewind picker.
   It then re-captures after the settle, never selects an entry, never sends a second key, and fails the operation with `ErrRewindPickerOpen`.
+- The guarded picker dismissal is the other exception, in a verified send's idle wait: the engine names the keys, which for Claude's autocompact picker are one `Escape` that keeps the current setting.
+  It fires only into a capture the provider reads as that known picker with no input box, only when the provider's running-turn check reads no running turn, and only when no operator was active in the pane within `operator_quiet_s`.
+  It plays at most once per send attempt, then waits the provider's interrupt settle and reads the pane again, and never selects an entry.
 - `Runner.Inject` skips the ready-pane check, so it refuses any input list holding a key of the engine's interrupt sequence (case-insensitive, `C-[` read as `Escape`) or a `Text` with a control character, whatever its `SettleMS` and neighbours, and names `lym creel interrupt`.
   A tmux spelling of the interrupt key beyond those still passes, bounded by Inject having no production caller.
 - The orch watcher's hub-pause interrupt is the one key the watcher still sends: it reaches the orch pane through the guarded interrupt, under the exemption the orch pane section below keeps for it.
 - `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
-- The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestRunner_InterruptRestoring`, `TestGuardedPickerClose` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.
+- The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestRunner_InterruptRestoring`, `TestGuardedPickerClose`, `TestGate_RepromptOverPicker`, `TestDismissPicker_Guards` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.
 
 ## A pause holds prompts
 

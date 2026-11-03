@@ -30,6 +30,7 @@
 // and the boundary is restored when the engine reports that turn interrupted, a session start follows it, or the pane has read idle for turnStartIdleOverride while the engine does not read that turn in flight.
 // Every gate send goes through sendWithin, so its idle wait and submit window end by the run deadline.
 // A re-prompt that fails busy or unlanded spends no attempt and is re-sent on a later tick, bounded by the run deadline.
+// One held maxNoInputBoxReprompts times in a row by a pane showing no input box ends the loop with the attempts spent so far, so a picker shuttle cannot dismiss does not hold the run until its deadline.
 // A gated run off the boundary, mid-turn or attached with no boundary seen, also asks each entry's read-only Expired probe once per gateRecheckEvery;
 // the first entry whose wait bound has run out finalizes the run done, so the bound ends the wait even when the writer never ends its turn.
 // That finalize call is a positive outcome, so it needs no allOutputFilesExist check.
@@ -131,6 +132,10 @@ const pollFloor = time.Second
 // gateRecheckEvery is the shortest spacing between two gate evaluations the wait loop starts with no new arrival.
 // A verdict read this much later costs nothing, and each evaluation re-reads the entries' files.
 const gateRecheckEvery = 5 * time.Second
+
+// maxNoInputBoxReprompts bounds the consecutive re-prompt sends a pane showing no input box may hold before the gated loop ends with the attempts spent so far.
+// Each held send has already waited out its idle window, so the bound ends a wait on a picker shuttle cannot dismiss within a few idle windows rather than at the run deadline.
+const maxNoInputBoxReprompts = 5
 
 // pollInterval returns Wait's tick interval, flooring a value below pollFloor (non-positive included) to pollFloor to prevent busy-spinning.
 // It floors silently; LoadConfig logs the one warning.
@@ -339,6 +344,7 @@ func (run *Run) Wait() (Result, error) {
 				run.gateAtBoundary = true
 				run.startCleared = false
 				run.unsentReprompt = false
+				run.noBoxReprompts = 0
 				run.boundaryHeld = false
 				if run.covered {
 					// A pause covers the session: nothing is evaluated or sent until the first uncovered tick.
@@ -507,7 +513,7 @@ func gateEntryError(name, problem string) error {
 // A pass, a terminal failure (GateResult.Terminal, whatever the entry's failure count, with no re-prompt and no count incremented), or a failure whose budget is spent, finalizes done.
 // A failure with budget remaining re-prompts and keeps polling.
 // A re-prompt send that fails with ErrSessionBusy, ErrSubmissionNotLanded or ErrPaused leaves the entry's failure and sent counts unchanged, clears the memo and keeps the writer at the boundary with the re-prompt marked unsent, so a later tick re-sends it until the run deadline;
-// any other re-prompt send failure ends the loop as it always has.
+// the maxNoInputBoxReprompts-th such failure in a row that is a pane showing no input box instead finalizes done with the attempts spent so far, and any other re-prompt send failure ends the loop as it always has.
 // A pending result sends its Send text when non-empty and keeps polling;
 // a failed pending send warns once per entry and episode, naming the entry, the error and the closure's way-forward, logs Debug while it keeps failing and Info when it is delivered, leaves the entry pending and the writer at the boundary, and never ends the loop.
 // The memo is cleared after a pending result, so the next evaluation, and a finalize after it, read the closures afresh.
@@ -545,6 +551,17 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 	}
 	if serr := run.sendWithin(reprompt); serr != nil {
 		if errors.Is(serr, ErrSessionBusy) || errors.Is(serr, ErrSubmissionNotLanded) || errors.Is(serr, ErrPaused) {
+			var busy *SessionBusyError
+			if errors.As(serr, &busy) && busy.NoInputBox {
+				run.noBoxReprompts++
+			} else {
+				run.noBoxReprompts = 0
+			}
+			if run.noBoxReprompts >= maxNoInputBoxReprompts {
+				logger.Warn("shuttle: gate: re-prompt held by a pane with no input box past the bound, ending the loop with the attempts spent so far", "strandGUID", run.state.StrandGUID, "sessionID", run.state.SessionID, "gate", run.gate[failed].Name, "holds", run.noBoxReprompts, "error", serr)
+				result, ferr := run.finalize(OutcomeDone)
+				return result, true, ferr
+			}
 			// No attempt was spent: keep the writer at the boundary and re-send on a later tick.
 			// The send cleared its own text where it could, but for an engine with the idle reading a box it left occupied fails that re-send busy, until the run deadline ends the loop.
 			// A held send is an ordinary retry iteration: Info when it first holds, Debug while it stays held.
@@ -562,6 +579,7 @@ func (run *Run) handleGatedBoundary() (Result, bool, error) {
 		return result, true, ferr
 	}
 	run.unsentReprompt = false
+	run.noBoxReprompts = 0
 	run.gateAtBoundary = false
 	run.boundaryHeld = false
 	run.gateFails[failed]++

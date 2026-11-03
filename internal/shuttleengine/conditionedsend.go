@@ -68,7 +68,7 @@ func conditionedReading(sc sendContext, want SendCondition) error {
 		return fmt.Errorf("%w: strand %q reads %s (%s), want %s (%s)", ErrSendConditionUnmet, sc.guid, state.Name, state.Cause, want.State, want.Cause)
 	}
 	if reading := judgeReadiness(state, false, readBox(sc.engine, capture)); !reading.ready {
-		return &SessionBusyError{Reason: reading.reason, Draft: reading.draft != "", Err: fmt.Errorf("%w: strand %q: %s; retry once the session can take input", ErrSessionBusy, sc.guid, reading.reason)}
+		return &SessionBusyError{Reason: reading.reason, Draft: reading.draft != "", NoInputBox: reading.reason == readinessReasonNoInputBox, Err: fmt.Errorf("%w: strand %q: %s; retry once the session can take input", ErrSessionBusy, sc.guid, reading.reason)}
 	}
 	if hold := operatorActivityHold(sc.reed, sc.guid, sc.activityFailures); hold != "" {
 		return &SessionBusyError{Reason: hold, Err: fmt.Errorf("%w: strand %q: %s; retry once the operator is idle", ErrSessionBusy, sc.guid, hold)}

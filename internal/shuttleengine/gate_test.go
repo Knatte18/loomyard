@@ -788,6 +788,13 @@ type gateRigSettings struct {
 	entry *GateEntry
 	// strandName is the run record's StrandName.
 	strandName string
+	// engine replaces the rig's tuiEngine as the run's engine when non-nil.
+	engine Engine
+}
+
+// withGateEngine runs the rig's run on engine in place of its tuiEngine.
+func withGateEngine(engine Engine) gateRigOption {
+	return func(s *gateRigSettings) { s.engine = engine }
 }
 
 // gateRigOption adjusts one setting of newGateRig.
@@ -834,7 +841,11 @@ func newGateRig(t *testing.T, cfg Config, events string, opts ...gateRigOption) 
 	if settings.entry != nil {
 		entry = *settings.entry
 	}
-	rig.run = newFixture(t, rig.reed, rig.engine, withConfig(cfg)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
+	var engine Engine = rig.engine
+	if settings.engine != nil {
+		engine = settings.engine
+	}
+	rig.run = newFixture(t, rig.reed, engine, withConfig(cfg)).newRun(Spec{OutputFiles: []string{outputFile}, Timeout: time.Hour},
 		withRunDir(runDir),
 		withRunState(RunState{StrandGUID: "strand-1", StrandName: settings.strandName, SessionID: "session-1", EventsPath: eventsPath}),
 		withRunClock(rig.clock, rig.start.Add(30*time.Second)),
@@ -1239,5 +1250,121 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGate_RepromptOverPicker pins a re-prompt whose pane shows a picker in place of the input box, for an engine with the readiness reading:
+// a picker the engine knows is dismissed with its key and the re-prompt delivered;
+// a pane with no input box that the dismissal does not clear ends the loop after maxNoInputBoxReprompts held sends with no attempt spent, one key per send for a known picker, whether or not the key can be sent, and none for an unknown one;
+// and an operator active over a known picker gets no key and holds the re-prompt until the run deadline.
+// It is not parallel: it captures the process-wide logger.
+func TestGate_RepromptOverPicker(t *testing.T) {
+	tiergate.Require(t, 0)
+	const boundWarn = "re-prompt held by a pane with no input box past the bound"
+	tests := []struct {
+		name         string
+		picker       string
+		sticky       bool
+		active       bool
+		sendKeyErr   bool
+		wantSends    int
+		wantAttempts int
+		wantEscapes  int
+		// wantEndBefore bounds the clock at the end from above, from the start; zero leaves it unchecked.
+		wantEndBefore time.Duration
+		// wantEndAtLeast bounds the clock at the end from below, from the start; zero leaves it unchecked.
+		wantEndAtLeast time.Duration
+		wantBoundWarn  bool
+	}{
+		{
+			name: "a known picker is dismissed and the re-prompt delivered", picker: "COMPACT-PICKER",
+			wantSends: 1, wantAttempts: 1, wantEscapes: 1,
+		},
+		{
+			name: "a known picker its key does not close ends the loop after the bound", picker: "COMPACT-PICKER", sticky: true,
+			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+		},
+		{
+			name: "a known picker whose key cannot be sent ends the loop after the bound", picker: "COMPACT-PICKER", sticky: true, sendKeyErr: true,
+			wantEscapes: maxNoInputBoxReprompts, wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+		},
+		{
+			name: "an unknown picker ends the loop after the bound with no key", picker: "some menu", sticky: true,
+			wantEndBefore: 30 * time.Second, wantBoundWarn: true,
+		},
+		{
+			name: "an operator active over a known picker gets no key and holds until the deadline", picker: "COMPACT-PICKER", active: true,
+			wantEndAtLeast: 30 * time.Second,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf := logcapture.CaptureVerbose(t)
+
+			engine := &dismissPickerEngine{readinessEngine: readinessEngine{idleEngine: idleEngine{sessionFakeEngine: sessionFakeEngine{liveness: LivenessAlive}}}}
+			rig := newGateRig(t, Config{SendReadyTimeoutS: 1}, "STOP:turn1\n", withGateEngine(engine))
+			rig.reed.picker, rig.reed.pickerSticky = tt.picker, tt.sticky
+			rig.reed.ActiveQueue = []bool{tt.active}
+			if tt.sendKeyErr {
+				rig.reed.SendKeyErr = errors.New("tmux: no such pane")
+			}
+
+			result, err := rig.run.Wait()
+			if err != nil {
+				t.Fatalf("Wait() error: %v", err)
+			}
+			if sends := len(rig.reed.SendTextCalls); sends != tt.wantSends {
+				t.Errorf("SendText calls = %d, want %d", sends, tt.wantSends)
+			}
+			if result.Gate == nil || result.Gate.Attempts != tt.wantAttempts {
+				t.Errorf("Gate = %+v, want %d attempts spent", result.Gate, tt.wantAttempts)
+			}
+			escapes := 0
+			for _, call := range rig.reed.SendKeyCalls {
+				if call.Key == "Escape" {
+					escapes++
+				}
+			}
+			if escapes != tt.wantEscapes {
+				t.Errorf("Escape keys = %d, want %d", escapes, tt.wantEscapes)
+			}
+			ended := rig.clock.Now().Sub(rig.start)
+			if tt.wantEndBefore > 0 && ended >= tt.wantEndBefore {
+				t.Errorf("ended %v after the start, want before %v", ended, tt.wantEndBefore)
+			}
+			if tt.wantEndAtLeast > 0 && ended < tt.wantEndAtLeast {
+				t.Errorf("ended %v after the start, want at least %v", ended, tt.wantEndAtLeast)
+			}
+			wantWarns := 0
+			if tt.wantBoundWarn {
+				wantWarns = 1
+			}
+			if warns := countLevelLines(buf.String(), "WARN", boundWarn); warns != wantWarns {
+				t.Errorf("bound WARN lines = %d, want %d; log: %s", warns, wantWarns, buf.String())
+			}
+		})
+	}
+}
+
+// TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox pins that a send held at its first poll by a dismissal key that could not be sent still reports a pane with no input box, so the gated loop counts it toward its bound.
+func TestAwaitIdleSession_FailedDismissalKeyHoldsAsNoInputBox(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	engine := &dismissPickerEngine{readinessEngine: readinessEngine{idleEngine: idleEngine{sessionFakeEngine: sessionFakeEngine{liveness: LivenessAlive}}}}
+	rig := newGateRig(t, Config{SendReadyTimeoutS: 1}, "STOP:turn1\n", withGateEngine(engine))
+	rig.reed.picker, rig.reed.pickerSticky = "COMPACT-PICKER", true
+	rig.reed.SendKeyErr = errors.New("tmux: no such pane")
+	sc := rig.run.newSendContext()
+	sc.deadline = rig.clock.Now()
+
+	err := awaitIdleSession(sc)
+
+	var busy *SessionBusyError
+	if !errors.As(err, &busy) || !busy.NoInputBox {
+		t.Fatalf("awaitIdleSession() error = %v, want a *SessionBusyError with NoInputBox set", err)
+	}
+	if keys := rig.reed.SendKeyCalls; len(keys) != 1 || keys[0].Key != "Escape" {
+		t.Errorf("keys = %+v, want one Escape", keys)
 	}
 }

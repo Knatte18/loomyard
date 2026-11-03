@@ -233,6 +233,8 @@
 // StrayInput is the judgment beside that rule: a box holding exactly one character that is neither a letter, a digit nor whitespace, with no running turn on screen, is a stray-character candidate and the character is returned; the lone `%` is never one.
 // IdleSession, StrayInput and RunningTurn share one running-turn reading, the "esc to interrupt" hint matched over the whole capture.
 // RewindPicker reads the rewind picker: the picker's subtitle is on screen and no input box is, so a transcript quoting the subtitle above a live box is not the picker.
+// DismissiblePicker reads the mid-session pickers in its table, today the autocompact picker ("We recommend compacting earlier" with "esc not now"), the same way: every phrase of the picker on screen and no input box.
+// It answers one Escape, which closes the picker and keeps the current setting.
 // InterruptSettle is 2 seconds, assuming Claude Code's double-Esc window is shorter, so two keys lym sends never read as a double Esc.
 //
 // Beside the clear sequence (`/clear`) and the compact sequence (`/compact`), the engine realizes skill loading, in skillload.go.

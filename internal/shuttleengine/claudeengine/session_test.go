@@ -138,6 +138,40 @@ func TestInterruptGuardReadings(t *testing.T) {
 	}
 }
 
+func TestDismissiblePicker(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	rule := "────────────────────────────────"
+	tests := []struct {
+		name     string
+		capture  string
+		wantName string
+		wantKeys []shuttleengine.PaneInput
+		wantOK   bool
+	}{
+		{"autocompact picker", readPaneFixture(t, "pane-autocompact-picker.txt"), "autocompact", []shuttleengine.PaneInput{{Key: "Escape"}}, true},
+		{
+			name:    "transcript quoting the picker above an empty box",
+			capture: "● it read: We recommend compacting earlier, esc not now\n\n" + rule + "\n❯ \n" + rule + "\n  ? for shortcuts\n",
+		},
+		{name: "one phrase alone", capture: "   We recommend compacting earlier\n\n   ❯ 1. Autocompact at 400k\n"},
+		{name: "rewind picker", capture: readPaneFixture(t, "pane-rewind-picker.txt")},
+		{name: "idle empty box", capture: readPaneFixture(t, "pane-idle-empty.txt")},
+	}
+	c := New()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			name, keys, ok := c.DismissiblePicker(tt.capture)
+			if name != tt.wantName || ok != tt.wantOK || !reflect.DeepEqual(keys, tt.wantKeys) {
+				t.Errorf("DismissiblePicker = (%q, %v, %v); want (%q, %v, %v)", name, keys, ok, tt.wantName, tt.wantKeys, tt.wantOK)
+			}
+		})
+	}
+}
+
 func TestInputBoxText(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

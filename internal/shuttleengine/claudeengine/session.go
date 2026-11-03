@@ -6,6 +6,7 @@ package claudeengine
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,8 +24,9 @@ var (
 	_ shuttleengine.StrayInputReader = (*Claude)(nil)
 	_ shuttleengine.TextPaster       = (*Claude)(nil)
 
-	_ shuttleengine.InterruptGuard     = (*Claude)(nil)
-	_ shuttleengine.RewindPickerReader = (*Claude)(nil)
+	_ shuttleengine.InterruptGuard          = (*Claude)(nil)
+	_ shuttleengine.RewindPickerReader      = (*Claude)(nil)
+	_ shuttleengine.DismissiblePickerReader = (*Claude)(nil)
 )
 
 // pastePlaceholderShape matches the whole input-box reading Claude Code shows for a collapsed paste: `[Pasted text #<n>]` or `[Pasted text #<n> +<m> lines]`.
@@ -157,6 +159,40 @@ func (c *Claude) RewindPicker(capture string) bool {
 	}
 	_, boxShown := inputBoxInterior(capture)
 	return !boxShown
+}
+
+// escapeKey is the tmux name of the Escape key.
+const escapeKey = "Escape"
+
+// dismissiblePicker is a Claude Code mid-session picker that Escape closes while keeping the current setting.
+type dismissiblePicker struct {
+	// name names the picker in logs and hold reasons.
+	name string
+	// needles are phrases in normalizeCapture form that must all be on screen.
+	needles []string
+}
+
+// dismissiblePickers are the mid-session pickers DismissiblePicker recognises.
+// The autocompact picker asks whether to autocompact earlier, and its Escape answers "not now".
+var dismissiblePickers = []dismissiblePicker{
+	{name: "autocompact", needles: []string{"werecommendcompactingearlier", "escnotnow"}},
+}
+
+// DismissiblePicker reports whether capture shows one of Claude Code's known mid-session pickers in place of the input box, and returns its name and one Escape, which closes it and keeps the current setting.
+// Every needle of the picker must be on screen and the input box must not, so a transcript quoting the wording above a live box is not the picker.
+// Bound: a release that rewords the picker leaves it unrecognised.
+func (c *Claude) DismissiblePicker(capture string) (name string, keys []shuttleengine.PaneInput, ok bool) {
+	if _, boxShown := inputBoxInterior(capture); boxShown {
+		return "", nil, false
+	}
+	normalized := normalizeCapture(capture)
+	for _, picker := range dismissiblePickers {
+		missing := slices.ContainsFunc(picker.needles, func(needle string) bool { return !strings.Contains(normalized, needle) })
+		if !missing {
+			return picker.name, []shuttleengine.PaneInput{{Key: escapeKey}}, true
+		}
+	}
+	return "", nil, false
 }
 
 // InterruptSettle returns how long after an interrupt key the pane is left alone before it is read again.

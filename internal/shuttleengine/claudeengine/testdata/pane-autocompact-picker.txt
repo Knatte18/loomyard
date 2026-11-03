@@ -1,0 +1,13 @@
+● Fixed the comment wrap and committed.
+
+✻ Crunched for 12s · done 14:02
+
+────────────────────────────────────────────────────
+   We recommend compacting earlier
+
+   Long sessions work better when autocompact runs before the context is full.
+
+   ❯ 1. Autocompact at 400k
+     2. Keep the current setting
+
+   Enter to confirm · esc not now

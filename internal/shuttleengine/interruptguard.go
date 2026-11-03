@@ -1,4 +1,4 @@
-// interruptguard.go holds the guarded interrupt and the guarded rewind-picker close: every interrupt key shuttle sends into a pane passes the pane guard here.
+// interruptguard.go holds the guarded interrupt and the guarded rewind-picker close: every interrupt key shuttle sends into a pane passes the pane guard here, bar the guarded dismissal of a known mid-session picker during a send's idle wait.
 package shuttleengine
 
 import (

@@ -993,10 +993,38 @@ func (e *pickerOnlyEngine) RewindPicker(capture string) bool {
 	return strings.Contains(capture, "REWIND-PICKER")
 }
 
+// dismissPickerEngine is readinessEngine plus the DismissiblePickerReader capability: a capture shows the picker when it contains "COMPACT-PICKER", and Escape closes it.
+type dismissPickerEngine struct {
+	readinessEngine
+}
+
+func (e *dismissPickerEngine) DismissiblePicker(capture string) (string, []PaneInput, bool) {
+	if !strings.Contains(capture, "COMPACT-PICKER") {
+		return "", nil, false
+	}
+	return "compact", []PaneInput{{Key: "Escape"}}, true
+}
+
 var (
-	_ RewindPickerReader = (*pickerEngine)(nil)
-	_ RewindPickerReader = (*pickerOnlyEngine)(nil)
+	_ RewindPickerReader      = (*pickerEngine)(nil)
+	_ RewindPickerReader      = (*pickerOnlyEngine)(nil)
+	_ DismissiblePickerReader = (*dismissPickerEngine)(nil)
 )
+
+// guardedDismissPickerEngine is dismissPickerEngine plus the InterruptGuard capability: a capture shows a running turn when it contains "RUNNING", and the interrupt settle is settle.
+type guardedDismissPickerEngine struct {
+	dismissPickerEngine
+
+	settle time.Duration
+}
+
+func (e *guardedDismissPickerEngine) RunningTurn(capture string) bool {
+	return strings.Contains(capture, "RUNNING")
+}
+
+func (e *guardedDismissPickerEngine) InterruptSettle() time.Duration { return e.settle }
+
+var _ InterruptGuard = (*guardedDismissPickerEngine)(nil)
 
 // idleReed is a fakeReed whose pane reads busyFrame until idleAt on its clock and "IDLE" after, followed by the last text typed.
 // A zero idleAt reads idle at once, and a zero failAt never fails a capture.
@@ -1043,12 +1071,16 @@ var _ ReedOps = (*idleReed)(nil)
 // tuiReed is a fakeReed standing in for a Claude pane over time on its clock.
 // The pane reads busy until busyUntil and "IDLE" after, then the history of submitted texts and the input box after a caret.
 // Typed text lands in the box, C-u empties it, and Enter submits the box into the history once swallowEnterUntil has passed.
+// While picker is set the pane shows it alone, and Escape clears it unless pickerSticky is set.
 type tuiReed struct {
 	*fakeReed
 
 	clock             Clock
 	busyUntil         time.Time
 	swallowEnterUntil time.Time
+
+	picker       string
+	pickerSticky bool
 
 	box     string
 	history []string
@@ -1101,6 +1133,10 @@ func (r *tuiReed) SendKey(guid, key string) error {
 		if !r.clock.Now().Before(r.swallowEnterUntil) {
 			r.submitBox()
 		}
+	case "Escape":
+		if !r.pickerSticky {
+			r.picker = ""
+		}
 	}
 	return r.fakeReed.SendKey(guid, key)
 }
@@ -1133,6 +1169,9 @@ func (r *tuiReed) CapturePaneStyled(guid string) (string, error) {
 
 // frame draws the pane with drawnSuggestion after the caret while the box is empty.
 func (r *tuiReed) frame(drawnSuggestion string) string {
+	if r.picker != "" {
+		return r.picker
+	}
 	box := r.box
 	if box == "" {
 		box = drawnSuggestion

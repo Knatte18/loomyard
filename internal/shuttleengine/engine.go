@@ -391,6 +391,12 @@ type RewindPickerReader interface {
 	RewindPicker(capture string) bool
 }
 
+// DismissiblePickerReader is an optional capability beside Engine: the provider's reading of a known mid-session picker that covers its input box and that the provider's own keys close while keeping the current setting.
+type DismissiblePickerReader interface {
+	// DismissiblePicker reports whether capture shows such a picker in place of the input box, and returns the picker's name and the keys that close it.
+	DismissiblePicker(capture string) (name string, keys []PaneInput, ok bool)
+}
+
 // StyledBoxReader is an optional capability beside Engine: the provider's way of turning a styled pane capture into the plain capture its box readings take.
 type StyledBoxReader interface {
 	// PlainBoxCapture takes a capture reed's CapturePaneStyled returned and answers the plain capture:

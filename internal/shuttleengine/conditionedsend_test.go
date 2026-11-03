@@ -56,6 +56,7 @@ func TestRunner_SendConditioned(t *testing.T) {
 		wantIs          error
 		wantBusyError   bool
 		wantDraft       bool
+		wantNoInputBox  bool
 		wantTurnStarted bool
 		// wantTyped is whether the line reached the pane.
 		wantTyped bool
@@ -70,7 +71,7 @@ func TestRunner_SendConditioned(t *testing.T) {
 		{name: "draft", events: stalled, box: "half a thought", wantBusyError: true, wantDraft: true, wantIs: ErrSessionBusy, wantBox: "half a thought"},
 		{name: "lone stray character", events: stalled, box: "x", wantBusyError: true, wantDraft: true, wantIs: ErrSessionBusy, wantBox: "x"},
 		{name: "operator active", events: stalled, active: true, wantBusyError: true, wantIs: ErrSessionBusy},
-		{name: "no input box", events: stalled, frame: "IDLE\nsome menu", wantBusyError: true, wantIs: ErrSessionBusy},
+		{name: "no input box", events: stalled, frame: "IDLE\nsome menu", wantBusyError: true, wantNoInputBox: true, wantIs: ErrSessionBusy},
 		{name: "rewind picker", events: stalled, frame: "REWIND-PICKER\n1. an entry", wantIs: ErrRewindPickerOpen},
 		{name: "not landed", events: stalled, swallowEnter: true, wantIs: ErrSubmissionNotLanded, wantTyped: true, wantBox: line, wantSubmitKeys: true},
 		{name: "pending record of an earlier send", events: stalled, pasteEngine: true, startsTurn: true, wantTurnStarted: true, wantTyped: true},
@@ -131,8 +132,8 @@ func TestRunner_SendConditioned(t *testing.T) {
 				t.Fatalf("SendConditioned() error = %v, want it to wrap %v", err, tt.wantIs)
 			}
 			var busy *SessionBusyError
-			if got := errors.As(err, &busy); got != tt.wantBusyError || (got && busy.Draft != tt.wantDraft) {
-				t.Errorf("SendConditioned() error = %v, want a *SessionBusyError = %v with Draft %v", err, tt.wantBusyError, tt.wantDraft)
+			if got := errors.As(err, &busy); got != tt.wantBusyError || (got && (busy.Draft != tt.wantDraft || busy.NoInputBox != tt.wantNoInputBox)) {
+				t.Errorf("SendConditioned() error = %v, want a *SessionBusyError = %v with Draft %v and NoInputBox %v", err, tt.wantBusyError, tt.wantDraft, tt.wantNoInputBox)
 			}
 			if turnStarted != tt.wantTurnStarted {
 				t.Errorf("turnStarted = %v, want %v", turnStarted, tt.wantTurnStarted)

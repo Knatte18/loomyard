@@ -339,6 +339,10 @@
 // The close waits the engine's interrupt settle, captures the pane once more and sends nothing further, so it never selects an entry.
 // It always fails the operation with ErrRewindPickerOpen, which never wraps ErrSessionBusy, so nothing is typed or interrupted after it.
 // A verified send whose picker capture fails skips the close when the idle wait's polls follow, and fails closed when no polls do.
+// During a verified send's idle wait, a held reading whose capture an engine with DismissiblePickerReader reads as a known mid-session picker gets that picker's keys, at most once per send.
+// The keys keep the provider's current setting and go out only when the operator was not active in the quiet window and the engine's InterruptGuard, where it has one, reads no running turn.
+// The pane then settles for the engine's interrupt settle and the wait reads it again, so the send goes on once the input box is back.
+// A send still held by a pane showing no input box fails with a SessionBusyError whose NoInputBox is set.
 // Runner.InterruptRestoring is the interrupt for a caller that must leave the box empty: its key goes only through that same guarded interrupt, and it then clears the prompt the provider restores into the box.
 // For an engine with RestoredPromptClearer and InputBoxReader, it reads the box before the key, and only a box read empty then is cleared after it.
 // After the engine's interrupt settle it reads the box, and a box still empty gets one more settle and one more read.
@@ -407,6 +411,7 @@
 // A failed outcome carries the failing entry's findings text on GateOutcome.Findings beside that terminal reason, because finalize removes the findings file with the run directory.
 // A failed entry with budget remaining is re-prompted with one default line naming the findings file, unless the entry sets GateEntry.Reprompt, whose rendered line is sent instead.
 // Every send validates its text, so a renderer returning several lines, or an empty or whitespace-only line, fails the send and ends the loop with the attempts spent so far.
+// A re-prompt held by a busy session spends no attempt and is re-sent on a later tick, but one held maxNoInputBoxReprompts times in a row by a pane showing no input box ends the loop with the attempts spent so far, so a picker shuttle cannot dismiss ends the wait instead of holding the run until its deadline.
 // A pending answer holds the run at a turn boundary without re-prompting or counting a failure:
 // the wait loop sends the entry's carried text once, keeps polling, and re-evaluates with no new arrival while the writer is idle at most once per gateRecheckEvery.
 // The deadline and liveness checks keep running, and a deadline or liveness finalize evaluates each entry's optional Final closure in place of Gate, reporting the entry waiting.
