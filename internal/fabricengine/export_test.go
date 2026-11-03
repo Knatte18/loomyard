@@ -710,7 +710,14 @@ func CleanupRemoteWarpWithHookForTest(t *Topology, l *lymcwd.Location, apply boo
 // A nil argument keeps the production behaviour for that part.
 // It sets the seam on the one Topology, so parallel tests inject per instance.
 func SetLeftoverSeamForTest(t *Topology, remove func(container, target string) (removed, wasDir bool, err error), sleep func(delay time.Duration)) {
-	t.leftover = leftoverSeam{remove: remove, sleep: sleep}
+	t.leftover.remove = remove
+	t.leftover.sleep = sleep
+}
+
+// SetLeftoverRefillForTest makes t's Remove call refill with each worktree path a `git worktree remove` exited cleanly on, before it looks for a directory left on disk, so a test plays a late writer refilling it.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetLeftoverRefillForTest(t *Topology, refill func(target string)) {
+	t.leftover.refill = refill
 }
 
 // SetTeardownWaitForTest shortens how long t's Remove waits for the pair's teardown lock.

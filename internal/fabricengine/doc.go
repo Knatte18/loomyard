@@ -586,7 +586,9 @@
 // worktree carrying state it will not discard — and treating every one of those refusals as licence
 // to delete the directory turned an ordinary typo into the loss of a whole git clone, gitdir
 // included, reported as success.
-// A directory git deregistered but left on disk, as when a late writer refilled it while git deleted it, is finished through the contained removal `removeWorktreeLeftover`, which retries a late-writer failure (a not-empty directory, or on Windows a file its writer still holds open) after one second and then two, three attempts in all, and returns any other failure at once.
+// A directory git deregistered but left on disk, on either side of the pair, is finished through the contained removal `removeWorktreeLeftover`:
+// one git failed to delete, as when a late writer refilled it while git deleted it, and one on disk after git's clean exit, which a late writer such as a build or language server refilled with git-ignored output once git had deleted it.
+// The removal retries a late-writer failure (a not-empty directory, or on Windows a file its writer still holds open) after one second and then two, three attempts in all, and returns any other failure at once.
 // The hub's prime worktree is refused by name before any teardown begins, since it is the warp
 // repository rather than a pair.
 // After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:

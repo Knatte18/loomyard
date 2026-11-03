@@ -849,7 +849,7 @@ func (t *Topology) rollbackAdd(rec *Mutations, l *lymcwd.Location, slug, warpBra
 	// A reused records worktree predates this Add and stays.
 	// remote is hardcoded false here: Add pushes nothing, and an adopted branch's copy on origin is not this Add's to delete.
 	if !weftReused {
-		if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, t.cfg.BranchPrefix, ""); err != nil {
+		if _, err := removeWeftWorktree(rec, l, slug, weftBranch, true, !weftBranchAdopted, false, t.cfg.BranchPrefix, "", t.leftover); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}

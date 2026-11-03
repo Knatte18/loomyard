@@ -228,6 +228,46 @@ func TestAddRollback_WarpBranchDeletedUnderEmptyPrefix(t *testing.T) {
 	}
 }
 
+// TestAddRollback_FinishesRefilledWeftWorktree forces Add to fail after its weft worktree exists, has a late writer refill that directory after the rollback's clean `git worktree remove`, and asserts the rollback still deletes it.
+func TestAddRollback_FinishesRefilledWeftWorktree(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "refilled-rollback"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	weftDir := fabricengine.RecordsWorktreePath(l, slug)
+
+	plantLauncherBlocker(t, l, slug)
+
+	refilled := false
+	fabricengine.SetLeftoverRefillForTest(h.Topology, func(target string) {
+		if target != weftDir {
+			return
+		}
+		refilled = true
+		output := filepath.Join(weftDir, "obj", "project.assets.json")
+		if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+			t.Errorf("refill %s: %v", weftDir, err)
+			return
+		}
+		if err := os.WriteFile(output, []byte("{}\n"), 0o644); err != nil {
+			t.Errorf("refill %s: %v", weftDir, err)
+		}
+	})
+
+	if _, err := h.Topology.Add(l, slug, fabricengine.AddOptions{SkipPush: true}); err == nil {
+		t.Fatalf("Add should have failed (launcher blocker)")
+	}
+
+	if !refilled {
+		t.Fatalf("no late writer refilled %s; want the refill to run after the rollback's clean git exit", weftDir)
+	}
+	if _, err := os.Lstat(weftDir); !os.IsNotExist(err) {
+		t.Errorf("weft worktree dir %s still on disk after the rollback (stat error = %v)", weftDir, err)
+	}
+}
+
 // TestAddRollback_AdoptedWarpBranchLocalCopyDeleted forces Add to fail after it adopted a live pair's warp branch from origin, and asserts the rollback deletes the local copy and leaves origin's branch untouched.
 func TestAddRollback_AdoptedWarpBranchLocalCopyDeleted(t *testing.T) {
 	tiergate.Require(t, 1)

@@ -1346,14 +1346,16 @@ func removePath(rec *Mutations, req pathRequest) error {
 // leftoverRemoveAttempts bounds removeWorktreeLeftover: the first removal and two retries.
 const leftoverRemoveAttempts = 3
 
-// leftoverSeam holds the removal and the sleep behind removeWorktreeLeftover.
-// A nil field means production: removeContainedPath over the whole subtree, and time.Sleep.
+// leftoverSeam holds the removal and the sleep behind removeWorktreeLeftover, and the refill a late writer makes after a clean `git worktree remove`.
+// A nil field means production: removeContainedPath over the whole subtree, time.Sleep, and no refill.
 type leftoverSeam struct {
 	remove func(container, target string) (removed, wasDir bool, err error)
 	sleep  func(delay time.Duration)
+	// refill runs on target after a `git worktree remove` of it exited cleanly, so a test plays the late writer that refills the directory.
+	refill func(target string)
 }
 
-// removeWorktreeLeftover finishes the removal of a task worktree directory that `git worktree remove` deregistered but left on disk.
+// removeWorktreeLeftover finishes the removal of a worktree directory still on disk after `git worktree remove` deregistered it.
 // Its caller's git run is its ownership proof: that run passed the gate's registered-linked-worktree and dirtiness checks on this same target and had already accepted discarding it, so no check runs here, and containment is kept by the removal's os.Root under container.
 // A removal that fails with a late writer's error (a refilled directory, or on Windows a file its writer still holds open) is retried after one second and then two, three attempts in all; any other failure is returned at once.
 // A removal appends KindPathRemoved for target, as removePath does.
@@ -1391,6 +1393,39 @@ func removeWorktreeLeftover(rec *Mutations, container, target string, seam lefto
 		}
 	}
 	return fmt.Errorf("remove %s: %w", target, err)
+}
+
+// finishGitWorktreeRemoval completes a `git worktree remove` of target run from repoDir, given gitErr, the error removeGitWorktree returned for it.
+// A clean exit with target still on disk is a directory a late writer, such as a build or language server writing git-ignored output, refilled after git deleted it;
+// a git failure that left target deregistered and on disk is git dropping the registration and failing on the directory.
+// Either directory is removed through removeWorktreeLeftover, under container, and a nil error then means the worktree is gone.
+// Any other outcome returns gitErr unchanged: a clean exit with nothing left, a failure before git ran, a failure that left target registered, a failure after which the repository's worktrees cannot be listed, or one that left nothing on disk.
+func finishGitWorktreeRemoval(rec *Mutations, repoDir, container, target string, gitErr error, seam leftoverSeam) error {
+	if gitErr == nil {
+		if seam.refill != nil {
+			seam.refill(target)
+		}
+	} else {
+		var gitRunErr *gitexec.GitError
+		if !errors.As(gitErr, &gitRunErr) {
+			return gitErr
+		}
+		// An unlistable repository proves nothing about target, so it is treated as registered: the recursive delete needs the proof that git dropped the registration.
+		entries, listErr := List(repoDir)
+		if listErr != nil || listsLinkedWorktree(entries, target) {
+			return gitErr
+		}
+	}
+	if !pathPresent(target) {
+		return gitErr
+	}
+	if err := removeWorktreeLeftover(rec, container, target, seam); err != nil {
+		if gitErr != nil {
+			return fmt.Errorf("git worktree remove %s deregistered it and failed (%v), and finishing the directory's removal failed: %w", target, gitErr, err)
+		}
+		return fmt.Errorf("git worktree remove %s succeeded, but the directory was refilled on disk and finishing its removal failed; it is no longer a worktree, so stop whatever refills it and delete it by hand; a pair that remains is then removed by running remove again: %w", target, err)
+	}
+	return nil
 }
 
 // removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,

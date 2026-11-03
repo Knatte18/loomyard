@@ -187,7 +187,8 @@ type weftTeardownResult struct {
 // A branch origin moved since is kept and reported in the result, never as a failure.
 // rec is the calling verb's own recorder.
 // It is threaded through to removeGitWorktree, deleteBranch, and the remote deletion below.
-func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix, leaseSHA string) (weftTeardownResult, error) {
+// A worktree directory git deregistered but left on disk is finished through finishGitWorktreeRemoval, with leftover as its seam.
+func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix, leaseSHA string, leftover leftoverSeam) (weftTeardownResult, error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -206,7 +207,7 @@ func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string,
 		dirtiness: dirtyScopeAll(),
 		force:     force,
 	}
-	if err := removeGitWorktree(rec, req, weftRoot); err != nil {
+	if err := finishGitWorktreeRemoval(rec, weftRoot, l.HubPath, weftPath, removeGitWorktree(rec, req, weftRoot), leftover); err != nil {
 		firstErr = err
 	}
 

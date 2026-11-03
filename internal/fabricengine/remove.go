@@ -336,7 +336,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	var teardown weftTeardownResult
 	var siblingSteps []string
 	if local {
-		siblingSteps, err = removeLocalWeft(rec, l, slug, weftBranch, t.cfg.BranchPrefix)
+		siblingSteps, err = removeLocalWeft(rec, l, slug, weftBranch, t.cfg.BranchPrefix, t.leftover)
 		if remote {
 			teardown.remoteSkippedReason = "the pair is local-only: nothing of it is on origin, so --remote has nothing to do"
 		}
@@ -444,9 +444,10 @@ func regenerateHubWorkspaceNow(rec *Mutations, l *lymcwd.Location) (skipped bool
 }
 
 // removeLocalWeft tears down a local pair's sibling without touching origin: its worktree goes through removeGitWorktree with dirtyRecordsDisposable, so uncommitted records are discarded, then its local branch is deleted and stale worktree registrations are pruned.
+// A worktree directory git deregistered but left on disk is finished through finishGitWorktreeRemoval, with leftover as its seam.
 // It returns the steps that changed state, in the order they ran, ending with RemoveStepRecordsDropped when the branch carried records away.
 // A worktree that survives a failed removal is an error; a missing worktree or branch is nothing to do.
-func removeLocalWeft(rec *Mutations, l *lymcwd.Location, slug, branch, branchPrefix string) (steps []string, err error) {
+func removeLocalWeft(rec *Mutations, l *lymcwd.Location, slug, branch, branchPrefix string, leftover leftoverSeam) (steps []string, err error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		return nil, fmt.Errorf("resolve weft repo root: %w", err)
@@ -465,7 +466,8 @@ func removeLocalWeft(rec *Mutations, l *lymcwd.Location, slug, branch, branchPre
 			dirtiness: dirtyRecordsDisposable(),
 			force:     false,
 		}
-		if removeErr := removeGitWorktree(rec, req, weftRoot); removeErr != nil && pathPresent(weftPath) {
+		removeErr := finishGitWorktreeRemoval(rec, weftRoot, l.HubPath, weftPath, removeGitWorktree(rec, req, weftRoot), leftover)
+		if removeErr != nil && pathPresent(weftPath) {
 			return nil, fmt.Errorf("warp worktree removed, but weft teardown failed and the weft worktree remains at %s: %w", weftPath, removeErr)
 		}
 	}
@@ -534,7 +536,7 @@ func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftB
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
 	// after a "successful" Remove is a half-torn pair the operator was never told about. This check
 	// reads the error return alone, never the teardown struct: the remote outcome never affects it.
-	teardown, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, remote, t.cfg.BranchPrefix, leaseSHA)
+	teardown, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, remote, t.cfg.BranchPrefix, leaseSHA, t.leftover)
 	if weftErr != nil {
 		weftTarget := RecordsWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
@@ -1001,6 +1003,7 @@ func refusePrimeSlug(l *lymcwd.Location, slug string) error {
 // therefore delete exactly the untracked files git had just declined to discard.
 //
 // When git exits nonzero having deleted the registration and the directory is still on disk, the directory is finished through removeWorktreeLeftover, with leftover as its seam.
+// A directory on disk after git's clean exit, refilled by a late writer once git deleted it, is finished the same way.
 func removeWarpWorktreeDir(rec *Mutations, l *lymcwd.Location, target string, force bool, leftover leftoverSeam) error {
 	req := pathRequest{
 		what:      "remove warp worktree",
@@ -1014,7 +1017,7 @@ func removeWarpWorktreeDir(rec *Mutations, l *lymcwd.Location, target string, fo
 
 	err := removeGitWorktree(rec, req, l.WorktreePath())
 	if err == nil {
-		return nil
+		return finishGitWorktreeRemoval(rec, l.WorktreePath(), l.HubPath, target, nil, leftover)
 	}
 
 	var refusal *destructiveRefusal
@@ -1105,6 +1108,11 @@ func isRegisteredLinkedWorktreeIn(repoDir, target string) bool {
 	if err != nil {
 		return false
 	}
+	return listsLinkedWorktree(entries, target)
+}
+
+// listsLinkedWorktree reports whether entries, a repository's worktree list, holds target as a worktree other than the main one.
+func listsLinkedWorktree(entries []WorktreeEntry, target string) bool {
 	cleanTarget := filepath.Clean(target)
 	for _, entry := range entries {
 		if entry.Main {
