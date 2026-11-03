@@ -11,7 +11,17 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
+
+// runStateExemptRels returns the anchor-relative directories under `_lym` whose uncommitted content the worktree-clean check ignores: the run-records root, which holds only lym's own run records.
+// lym writes there while a run handles a stop, such as settle records, tackler and arbiter attempts and stop markers.
+// The status commits stage the settle records, while the other run-record files, the stop and condition-stop markers among them, stay uncommitted until a later records commit or the run's removal.
+// The check ignores them because they are lym's own bookkeeping in flight, never work a run could lose.
+// It is the one place that decides which lym state the check skips.
+func runStateExemptRels() []string {
+	return []string{shedrun.RunsRootRel()}
+}
 
 // Check resolves cwd into a *lymcwd.Location and validates the tier-1/tier-2 preconditions against
 // it.
@@ -67,7 +77,7 @@ func CheckResolved(l *lymcwd.Location) (Report, error) {
 
 	// Check 2: worktree pair cleanliness. Collected, not short-circuited — a
 	// dirty side does not prevent the remaining checks from also reporting.
-	clean, reason, err := fabricengine.Clean(l)
+	clean, reason, err := fabricengine.Clean(l, runStateExemptRels()...)
 	if err != nil {
 		return Report{}, err
 	}

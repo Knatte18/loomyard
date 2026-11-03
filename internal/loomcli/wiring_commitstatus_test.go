@@ -156,7 +156,15 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantDrive   bool
 		wantArbiter bool
 		wantTackler bool
+		wantSettle  bool
 	}{
+		{
+			name: "settle records",
+			setup: func(t *testing.T, loc *lymcwd.Location) {
+				writeFile(t, shedrun.SettleRecords(loc, shedrun.SelfRunID), "{}\n")
+			},
+			wantSettle: true,
+		},
 		{
 			name: "arbiter directory holding only an empty attempt directory",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
@@ -287,6 +295,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantTackler {
 				want = append(want, shedrun.TacklerRel(location, shedrun.SelfRunID))
+			}
+			if tt.wantSettle {
+				want = append(want, shedrun.SettleRecordsRel(location, shedrun.SelfRunID))
 			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {

@@ -54,10 +54,15 @@ const (
 // detail is the trimmed stdout — the porcelain listing itself — returned even when err is nil, for
 // the one caller (warpclean.go's dirtyReason) that surfaces it to its own caller; every other site
 // ignores it.
-func worktreeDirty(scope dirtyScope, dir string) (dirty bool, detail string, err error) {
+//
+// pathspec, when given, limits the probe to the paths it matches, relative to dir.
+func worktreeDirty(scope dirtyScope, dir string, pathspec ...string) (dirty bool, detail string, err error) {
 	args := []string{"status", "--porcelain"}
 	if scope == scopeTracked {
 		args = append(args, "--untracked-files=no")
+	}
+	if len(pathspec) > 0 {
+		args = append(append(args, "--"), pathspec...)
 	}
 
 	stdout, runErr := gitexec.Run(args, dir)

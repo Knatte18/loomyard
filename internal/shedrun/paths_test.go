@@ -126,6 +126,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string { return filepath.Join(l.AnchorPath(), ".lym", "shed", "land.lock") }},
 		{"SeedRel", func(l *lymcwd.Location) string { return SeedRel(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "seed.json") }},
+		{"SettleRecordsRel", func(l *lymcwd.Location) string { return SettleRecordsRel(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "go-settle.jsonl") }},
 		{"StatusRel", func(l *lymcwd.Location) string { return StatusRel(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join("_lym", "shed", worktreeName, "status.json") }},
 	}

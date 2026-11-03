@@ -45,7 +45,7 @@
 // BattenWatchedContent renders the pid on the first line and, when known, the prime's batten scratch directory and the Run-Shed row's name on the next two.
 // ParseBattenWatched reads it back, and a one-line marker parses with an empty scratch directory and row.
 //
-// RunsRootRel names the anchor-relative run-records root, because fabricengine's Add drops everything under it from a freshly forked pair.
+// RunsRootRel names the anchor-relative run-records root, so a caller that needs the whole run-records tree need not name the shed segment itself.
 // RunsRoot and ScratchRoot are its absolute durable and ephemeral forms, the directories every run directory and scratch directory sit under.
 // RunDirRel is a run directory's anchor-relative form, the pathspec of a records commit that deletes the whole directory.
 //

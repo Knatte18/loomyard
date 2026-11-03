@@ -241,6 +241,12 @@ func StatusRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), "status.json")
 }
 
+// SettleRecordsRel returns the worktree-anchor-relative form of SettleRecords' path: the join of lymdirs.LymDirName, shedDirName, the run's directory segment under l, and settleRecordsFileName.
+// It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
+func SettleRecordsRel(l *lymcwd.Location, runID string) string {
+	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), settleRecordsFileName)
+}
+
 // noticeEpisodeFileName is the file in a run's durable directory holding the episode keys of the run notices dobby sent for it, one per line.
 const noticeEpisodeFileName = "notice-episode"
 
@@ -335,14 +341,14 @@ func CancelMarkerLock(l *lymcwd.Location, runID string) string {
 }
 
 // SettleRecords returns the path to the Go driver's settle records, settleRecordsFileName under RunDir(l, runID).
-// It sits beside the drive reports, so a run's records commit stages it with the run directory and a dirty-path check counts it as run state.
+// It sits beside the drive reports, and a status commit stages it through SettleRecordsRel.
 func SettleRecords(l *lymcwd.Location, runID string) string {
 	return filepath.Join(RunDir(l, runID), settleRecordsFileName)
 }
 
 // RunsRootRel returns the worktree-anchor-relative path of the run-records root: the join of lymdirs.LymDirName and shedDirName, the directory every run's RunDir sits under.
 // It takes no *lymcwd.Location, because the root carries no run-id and so needs none of runSegment's alias resolution.
-// It exists so fabricengine's Add can drop the whole run-records tree from a freshly forked pair without naming the shed segment itself.
+// A caller that needs the whole run-records tree uses it, so none of them names the shed segment itself.
 // The path is anchor-relative, the same shape SeedRel and StatusRel return, suitable as a fabricengine commit's relPaths.
 func RunsRootRel() string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName)

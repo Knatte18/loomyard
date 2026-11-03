@@ -168,4 +168,12 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	if want = append(want, shedrun.NoticeEpisodeRel(loc, runID)); !reflect.DeepEqual(got, want) {
 		t.Errorf("battenRunCommitPaths with a notice marker on disk = %v; want %v", got, want)
 	}
+
+	if err := os.WriteFile(shedrun.SettleRecords(loc, runID), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write settle records: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	if want = append(want, shedrun.SettleRecordsRel(loc, runID)); !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with settle records on disk = %v; want %v", got, want)
+	}
 }

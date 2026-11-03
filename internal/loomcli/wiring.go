@@ -82,7 +82,7 @@ type commitStatusDeps struct {
 	SetBoardStatus func(status string) error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.TacklerRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.TacklerRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it, plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
 // The tackler directory, staged under the same rule, carries each tackler attempt's record, prompt, verdict and envelope.
 // The loom durable directory is staged whole rather than its friction directory alone:
@@ -112,6 +112,9 @@ func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	}
 	if holdsFile(shedrun.TacklerDir(location, runID)) {
 		paths = append(paths, shedrun.TacklerRel(location, runID))
+	}
+	if _, err := os.Stat(shedrun.SettleRecords(location, runID)); err == nil {
+		paths = append(paths, shedrun.SettleRecordsRel(location, runID))
 	}
 	return paths
 }
@@ -191,7 +194,7 @@ func holdsFile(dir string) bool {
 	return found
 }
 
-// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec (the status file, plus the review round record, the loom durable directory and the drive reports when each holds a file), Spawn from spawnStatusPush, which pushes the run records and, in a task pair, the task branch, and Push from fabricengine.PushPairAnchored, the same push run synchronously.
+// loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec, Spawn from spawnStatusPush, which pushes the run records and, in a task pair, the task branch, and Push from fabricengine.PushPairAnchored, the same push run synchronously.
 func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusDeps {
 	return commitStatusDeps{
 		MergeActive: func() (bool, error) {

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/preflight"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -33,8 +34,14 @@ import (
 // and the slug for WireJunctions.
 func setupFixture(t *testing.T) (*hubforge.Hub, string) {
 	t.Helper()
+	return setupAnchoredFixture(t, ".")
+}
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+// setupAnchoredFixture is setupFixture for a hub anchored at anchor.
+func setupAnchoredFixture(t *testing.T, anchor string) (*hubforge.Hub, string) {
+	t.Helper()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: anchor})
 	slug := filepath.Base(h.Location.WorktreePath())
 
 	hubforge.SeedFabricConfig(t, h, "branch_prefix: \"\"\npathspec: _extra\n")
@@ -401,6 +408,67 @@ func TestCheckResolved_Failures(t *testing.T) {
 			}
 			assertCheckSet(t, report, tt.want...)
 		})
+	}
+}
+
+// TestCheckResolved_RunStateUnderLymIsExempt writes, untracked, every file lym's stop and settle paths write into a run's directory under `_lym`, and asserts the worktree-clean check passes over them.
+// Fabric's own unscoped Clean must see the files first, so the pass is never a gitignore's doing.
+// A file under `_lym` outside the run-records root then still refuses.
+// Each anchor builds its own hub, since a subpath anchor moves `_lym` below the worktree's root.
+func TestCheckResolved_RunStateUnderLymIsExempt(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	for _, anchor := range []string{".", "backend"} {
+		t.Run("Anchor_"+anchor, func(t *testing.T) {
+			t.Parallel()
+
+			h, _ := setupAnchoredFixture(t, anchor)
+			l := h.Location
+			runID := shedrun.SelfRunID
+			runState := []string{
+				shedrun.SettleRecords(l, runID),
+				filepath.Join(shedrun.TacklerAttemptDir(l, runID, 1), "verdict.md"),
+				filepath.Join(shedrun.ArbiterAttemptDir(l, runID, 1), "verdict.md"),
+				filepath.Join(shedrun.DriveReportsDir(l, runID), "report.md"),
+				shedrun.StopMarker(l, runID),
+				shedrun.ConditionStopMarker(l, runID),
+				shedrun.NoticeEpisodeFile(l, runID),
+				shedrun.StatusFile(l, runID),
+				shedrun.SeedFile(l, runID),
+			}
+			for _, path := range runState {
+				writeFile(t, path)
+			}
+
+			if clean, _, err := fabricengine.Clean(l); err != nil || clean {
+				t.Fatalf("fabricengine.Clean() = (%v, %v); want (false, nil) with the run state written", clean, err)
+			}
+
+			report, err := preflight.CheckResolved(l)
+			if err != nil {
+				t.Fatalf("CheckResolved: %v", err)
+			}
+			assertCheckSet(t, report)
+
+			writeFile(t, filepath.Join(l.AnchorPath(), lymdirs.LymDirName, "plan", "plan.md"))
+			report, err = preflight.CheckResolved(l)
+			if err != nil {
+				t.Fatalf("CheckResolved: %v", err)
+			}
+			assertCheckSet(t, report, preflight.CheckWorktreeClean)
+		})
+	}
+}
+
+// writeFile writes a file at path, creating its directory.
+func writeFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create directory of %s: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
 	}
 }
 
