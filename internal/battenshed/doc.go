@@ -71,7 +71,8 @@
 // The settings are read from the pair's own config stack when the row is entered, after Seed-Child has written the task's run settings into the pair's local layer, so a task's run_settings sets them per task.
 // The commands are the open_window_command, seed_ide_command and open_ide_command keys, read from the template and the board default layer only, so a task's run settings and a worktree's own batten.yaml cannot change them;
 // `lym config batten --layer default --set <key>=<value>` from the prime changes one, and a different value in another layer is ignored with a warning.
-// A command may hold the placeholders {lym}, {slug} and {task_dir}.
+// A command may hold the placeholders {lym}, {slug}, {task_dir} and {title}, the slug opened with the task's board handle, `T4: <slug>`, or the slug alone when the board names none;
+// Open-Window's default command titles the window with {title}.
 // A run resumed past Open-Window runs that command again when batten.open_window is on and no client is attached to the pair's reed session, so a window closed or left on another machine opens afresh; a resume with a client attached opens none.
 //
 // The InnerRun row checks its child once per Call and never waits inside one: a Call is one pass, which the scheduling dobby runs again and again.

@@ -20,7 +20,7 @@
 // The cancel of a beam project first runs the hub's origin reconcile and refuses while the beam has members, naming each to land or cancel first, or, once the beam's pawl run holds its entry, to cancel and move off the beam; with origin unreachable it refuses naming the reconcile's way forward.
 // A beam with no members is ended like a task, its dobby with its run, and its orch and watcher are then stopped, a failure there only a warning on the report; `lym beam create <slug>` starts the run again.
 //
-// "lym batten overview" (overview.go) is the hidden pane verb `lym beam start` runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `beam: <slug>`.
+// "lym batten overview" (overview.go) is the hidden pane verb `lym beam start` runs in the runs strand of the prime and of each beam, whose window reed names `beam: prime` or `<handle>: beam: <slug>`.
 // It draws the window's dobby section, then a blank line and its orch section; each run shows once, in the dobby section.
 // The dobby section is the lines of the dobby of the worktree the pane runs in (overviewdobby.go), rendered by `DobbyLines` from the `dobbyengine.View` a `DobbyViewReader` reads:
 // a header saying whether the dobby is alive, with its `max_runs` and `land_notice`, or not running with `lym beam start` as the way forward;

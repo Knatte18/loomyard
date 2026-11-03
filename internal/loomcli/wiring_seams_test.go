@@ -57,6 +57,7 @@ var intentionallyNil = map[string]string{
 	"CreateWorktree":                      "batten-only seam, filled by battencli",
 	"ExecutableSetting":                   "no tapestry or darn row is a Command row; battencli alone fills it",
 	"Command.TaskDir":                     "no tapestry or darn row is a Command row; battencli alone fills it",
+	"Command.Title":                       "no tapestry or darn row is a Command row; battencli alone fills it",
 	"Command.LogPath":                     "no tapestry or darn row is a Command row; battencli alone fills it",
 	"Command.Run":                         "no tapestry or darn row is a Command row; battencli alone fills it",
 	"InnerRun.Spawn":                      "batten-only seam, filled by battencli",

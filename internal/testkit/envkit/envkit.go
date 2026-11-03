@@ -568,6 +568,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Lym:     "lym",
 			Slug:    "fullenv-slug",
 			TaskDir: func() (string, error) { return "", nil },
+			Title:   func() string { return "fullenv-slug" },
 			Dir:     dir,
 			LogPath: func(string) string { return "" },
 			Run: func(context.Context, string, string, string, time.Duration) (shedadapters.CommandResult, error) {

@@ -384,8 +384,8 @@
 //  2. The command is read through ExecutableSetting, which the owner builds over the template and the board default layer only; an unreadable or non-string command is an error naming the key and the `lym config <module> --layer default --set <key>=<value>` correction.
 //     When Setting answers a different non-empty command for the key, the row warns that value is ignored.
 //  3. An empty command is Done with no process.
-//  4. The placeholders {lym}, {slug} and {task_dir} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
-//     any other brace text, ${HOME} included, passes through literally, and TaskDir is called only when {task_dir} appears.
+//  4. The placeholders {lym}, {slug}, {task_dir} and {title} are replaced, each value quoted by verifyrun.QuoteArg for the shell the command runs under;
+//     any other brace text, ${HOME} included, passes through literally, and TaskDir and Title are each called only when their placeholder appears.
 //     A value cmd cannot quote, one holding a percent sign, makes the row Done with no process and a warning naming the placeholder and its way forward.
 //  5. The command runs once through Run, in Dir with the row's log path and timeout.
 //     An exit of 0 is Done; a non-zero exit, a timeout and a runner error are each Done with a warning naming the log path.

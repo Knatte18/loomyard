@@ -1,4 +1,4 @@
-// handles_test.go — tests of entry handles: their assignment on write and load, and the Handle selector.
+// handles_test.go — tests of entry handles: their assignment on write and load, the Handle selector and the title a handle opens.
 
 package boardengine_test
 
@@ -184,5 +184,38 @@ func TestHandles_UndecidedLetterKeepsNoDuplicate(t *testing.T) {
 
 	if got := handlesOf(t, b); !sameHandles(got, want) {
 		t.Errorf("handles = %v; want %v", got, want)
+	}
+}
+
+// TestTitleWithHandle pins that a name opens with its entry's handle, and that it stands alone when the board cannot give one.
+func TestTitleWithHandle(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// board is the board.json the board directory holds; empty means none.
+		board string
+		slug  string
+		want  string
+	}{
+		{"AnEntryWithAHandleOpensTheName", `{"version":1,"entries":[{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}]}`, "run", "T4: window"},
+		{"ABoardWithoutTheEntryKeepsTheName", `{"version":1,"entries":[{"id":1,"slug":"other","kind":"task","labels":["bug"],"handle":"T4"}]}`, "run", "window"},
+		{"AnEntryWithNoHandleKeepsTheName", `{"version":1,"entries":[{"id":1,"slug":"run","kind":"note","labels":["removed-type"]}]}`, "run", "window"},
+		{"AnUnreadableBoardKeepsTheName", `{"version":1,"entries":[`, "run", "window"},
+		{"NoBoardKeepsTheName", "", "run", "window"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardPath := t.TempDir()
+			if tt.board != "" {
+				if err := os.WriteFile(filepath.Join(boardPath, "board.json"), []byte(tt.board), 0o644); err != nil {
+					t.Fatalf("write board.json: %v", err)
+				}
+			}
+			if got := boardengine.TitleWithHandle(boardPath, tt.slug, "window"); got != tt.want {
+				t.Errorf("TitleWithHandle(%q, %q) = %q; want %q", tt.slug, "window", got, tt.want)
+			}
+		})
 	}
 }

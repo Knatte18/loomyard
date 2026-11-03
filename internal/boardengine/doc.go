@@ -70,6 +70,7 @@
 // So a handle stays while its entry lives, a removed entry's number is given out again, a promote or a type change moves the entry to the lowest free number of its new letter, and a board.json written before handles gets them in id order on load, persisted by the next write.
 // A note whose letter cannot be decided, its type label no longer configured or the board path-only, keeps its stored handle unless an entry of lower id holds it, which clears it.
 // A handle is not scope: the run lock and the revised date ignore it.
+// `TitleWithHandle` opens a window's name with its run's handle, `T4: <name>`, reading the local board file, and leaves the name alone when the board names no handle for the slug or cannot be read.
 // Every Board and Store method that takes a selector takes a Handle beside a slug string and a numeric id, matching the letter case-insensitively.
 //
 // # Priority

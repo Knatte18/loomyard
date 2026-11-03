@@ -11,7 +11,7 @@
 //
 // The orch is brought up by `orchcli.BeamUp`, which `lym beam start` calls, and stopped by `orchcli.BeamDown`, which `lym beam stop` calls; no orch verb starts it.
 // A bring-up is idempotent.
-// It first ensures the `runs` strand, the session's first overview window named `beam: prime`, or `beam: <slug>` in a beam, running `lym batten overview`, which shows the worktree's dobby with each run it drives above the orch context lines, so on a fresh session the beam's window is the first window and the orchestrator has a window of its own; a failure there only warns.
+// It first ensures the `runs` strand, the session's first overview window named `beam: prime`, or in a beam `beam: <slug>` opened with the beam's board handle as in `P1: beam: <slug>`, running `lym batten overview`, which shows the worktree's dobby with each run it drives above the orch context lines, so on a fresh session the beam's window is the first window and the orchestrator has a window of its own; a failure there only warns.
 // It leaves one live orchestrator strand and one watcher bound to it, then reports.
 // It never attaches or switches a tmux client;
 // `lym reed attach` is the only way into the session.

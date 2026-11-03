@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/friction"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -297,7 +298,7 @@ func (c *loomCLI) ensureStatusStrand() error {
 	if err != nil {
 		return err
 	}
-	addSpec := statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe), c.recipe)
+	addSpec := c.statusStrandSpec(exe)
 	var strand reedengine.Strand
 	if strandAction == statusStrandReplace {
 		// A replace goes through ReplaceStrand so the status strand keeps its top slot. A failure is
@@ -320,6 +321,17 @@ func (c *loomCLI) ensureStatusStrand() error {
 		}
 	}
 	return nil
+}
+
+// statusStrandSpec builds the spec the status strand is added or replaced with: the checklist pane command of the lym binary at exe, in a window titled for this run's recipe and board handle.
+func (c *loomCLI) statusStrandSpec(exe string) reedengine.AddSpec {
+	return statusStrandAddSpec(statusStrandCmd(shell.ForGOOS(), exe), statusWindowTitle(c.location, c.recipe))
+}
+
+// statusWindowTitle returns the name of the status strand's window for a run of recipe in the worktree at location, read from the board at the call:
+// the recipe opened with the run's board handle, such as `T4: tapestry`, or the recipe alone when the board names no handle for the worktree's slug or cannot be read.
+func statusWindowTitle(location *lymcwd.Location, recipe string) string {
+	return boardengine.TitleWithHandle(fabricengine.BoardDir(location.HubPath), location.WorktreeName, recipe)
 }
 
 // wireLanding assembles Env.Landing: it opens the fabric, reads the landing branches and tells landingDeps the hub's language skills.

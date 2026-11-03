@@ -44,6 +44,8 @@ type CommandDeps struct {
 	Lym, Slug string
 	// TaskDir returns the value of the {task_dir} placeholder; it is called only when the command holds that placeholder.
 	TaskDir func() (string, error)
+	// Title returns the value of the {title} placeholder, the title of the run's window; it is called only when the command holds that placeholder.
+	Title func() string
 	// Dir is the directory the command runs in.
 	Dir string
 	// LogPath returns the log file of row's command.
@@ -114,6 +116,9 @@ func (p *CommandProducer) Call(ctx context.Context) (shedengine.Outcome, shedeng
 			return fail("resolve the task worktree for {task_dir}: %v; way forward: correct it, then %s", err, p.deps.Rerun)
 		}
 		values["task_dir"] = taskDir
+	}
+	if strings.Contains(command, "{title}") {
+		values["title"] = p.deps.Title()
 	}
 	goos := p.deps.GOOS
 	if goos == "" {

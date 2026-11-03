@@ -74,6 +74,13 @@ func TestCommandProducer(t *testing.T) {
 			wantCommand: "open " + quote("linux", "/bin/lym") + " " + quote("linux", "slug-one") + " " + quote("linux", awkward),
 		},
 		{
+			name:        "the title placeholder reaches sh as one quoted word",
+			command:     "open --title {title}",
+			goos:        "linux",
+			wantRuns:    1,
+			wantCommand: "open --title " + quote("linux", "T4: slug-one"),
+		},
+		{
 			name:     "a percent in task dir under cmd runs nothing and warns",
 			command:  "open {task_dir}",
 			taskDir:  `C:\hub 100%`,
@@ -122,6 +129,7 @@ func TestCommandProducer(t *testing.T) {
 				Lym:               "/bin/lym",
 				Slug:              "slug-one",
 				TaskDir:           func() (string, error) { return tt.taskDir, tt.taskDirErr },
+				Title:             func() string { return "T4: slug-one" },
 				Dir:               "/hub/prime",
 				LogPath:           func(string) string { return logPath },
 				Run: func(_ context.Context, dir, command, gotLog string, timeout time.Duration) (CommandResult, error) {

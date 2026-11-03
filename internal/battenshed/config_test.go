@@ -51,7 +51,7 @@ func TestLoadConfig(t *testing.T) {
 			t.Fatalf("yaml.Unmarshal(template) = %v; want nil", err)
 		}
 		wantCommands := map[string]string{
-			"open_window_command": "{lym} reed window {task_dir} --title {slug}",
+			"open_window_command": "{lym} reed window {task_dir} --title {title}",
 			"seed_ide_command":    "{lym} ide seed {slug}",
 			"open_ide_command":    "{lym} ide open {slug}",
 		}

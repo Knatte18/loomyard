@@ -165,7 +165,7 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	c.cfg.Model, c.cfg.Effort = "opus", "high"
 	c.stencilsDir = stencilkit.Seed(t)
 	c.location = locationkit.Location(t.TempDir(), "main", "")
-	c.runsWindowTitle = "beam: prime"
+	c.runsWindowTitle = func() string { return harnessRunsWindowTitle }
 	boardDir := fabricengine.BoardDir(c.location.HubPath)
 	if err := os.MkdirAll(boardDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -199,6 +199,9 @@ func newStartHarness(t *testing.T, strands ...reedengine.StrandStatus) *startHar
 	}
 	return h
 }
+
+// harnessRunsWindowTitle is the title the harness's runsWindowTitle answers, distinct from every title the production func computes so a spec carrying it proves the func's answer reached the spec.
+const harnessRunsWindowTitle = "harness-runs-window"
 
 // startTestIndex is the operator index the harness hands the bring-up.
 const startTestIndex = "- start-test-command: from the harness\n"
@@ -280,7 +283,7 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	t.Parallel()
 
 	otherBuild := statuspane.BuildIdentity{Path: "/older/lym", Size: 9, ModTime: 9}
-	wantDisplay := render.Display{Anchor: render.AnchorOverview, Order: RunsStrandOrder, Title: "beam: prime"}
+	wantDisplay := render.Display{Anchor: render.AnchorOverview, Order: RunsStrandOrder, Title: harnessRunsWindowTitle}
 	tests := []struct {
 		name    string
 		strands []reedengine.StrandStatus

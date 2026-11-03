@@ -1,4 +1,4 @@
-// handles.go — an entry's short handle, such as T4 or B2: its letter, its parse and its assignment over the whole entry list.
+// handles.go — an entry's short handle, such as T4 or B2: its letter, its parse, its assignment over the whole entry list and the window title it opens.
 
 package boardengine
 
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/Knatte18/loomyard/internal/logger"
 )
 
 // Handle selects an entry by its handle, beside a slug string and a numeric id, wherever a Board or Store method takes a selector.
@@ -124,6 +126,25 @@ func assignHandles(tasks []Task, vocab *Vocabulary) {
 		}
 		tasks[i].Handle = letter + strconv.Itoa(number)
 	}
+}
+
+// handleTitleSeparator joins an entry's handle to the name it opens in a title.
+const handleTitleSeparator = ": "
+
+// TitleWithHandle returns name opened with the handle of the entry slug on the board under boardDir, as `<handle>: <name>`, so a window named for a run shows the handle the operator calls the run by.
+// It returns name alone when the board holds no entry slug, the entry carries no handle, or the board cannot be read, which it logs at Warn: a title never fails its caller.
+func TitleWithHandle(boardDir, slug, name string) string {
+	tasks, err := ReadTasks(boardDir)
+	if err != nil {
+		logger.Warn("board: could not read the board for a title's handle; titling with the name alone", "slug", slug, "name", name, "cause", err)
+		return name
+	}
+	for _, task := range tasks {
+		if task.Slug == slug && task.Handle != "" {
+			return task.Handle + handleTitleSeparator + name
+		}
+	}
+	return name
 }
 
 // compareHandles orders two handles by letter, then by number, with an unparsable or empty handle after every parsable one.

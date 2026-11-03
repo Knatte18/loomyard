@@ -99,8 +99,9 @@ type orchCLI struct {
 	executable func() (string, error)
 	// currentBuild identifies the running lym build, which tells a runs strand of this build from an older one.
 	currentBuild func() (statuspane.BuildIdentity, error)
-	// runsWindowTitle names the runs strand's window: `beam: prime` in the prime, `beam: <slug>` in a beam.
-	runsWindowTitle string
+	// runsWindowTitle names the runs strand's window when the strand is added or replaced: `beam: prime` in the prime, `beam: <slug>` in a beam, opened with the beam's board handle when the board names one.
+	// A live strand of the running build is kept as it is, so a handle the board assigns after the window opened shows from the strand's next replacement.
+	runsWindowTitle func() string
 	// reconcile judges and moves the hub's branches against origin, which a bring-up with Prepare runs before it decides anything about the strand.
 	reconcile func() (fabricengine.OriginReport, error)
 	// readBeamFacts reads the owner, standing anchor change and landing hold the bring-up's refusals judge; nil, as in a hand-built harness, refuses nothing.
@@ -207,7 +208,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 
 	c.location = location
-	c.runsWindowTitle = runsWindowTitleOf(location.WorktreeName, beam)
+	c.runsWindowTitle = func() string { return runsWindowTitleIn(location, beam) }
 	c.cfg = orchCfg
 	c.shuttleCfg = shuttleCfg
 	engines, err := shuttleengines.New(shuttleCfg, fabricengine.ConfigDirs(location))

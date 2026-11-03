@@ -1,12 +1,14 @@
-// Package boardkit builds a hub fixture whose board directory holds only the board config.
+// Package boardkit builds board fixtures: a hub whose board directory holds only the board config, and a board file holding given entries.
 //
 // It gives tests that open the hub's board through boardengine.OpenHub a hub with no git and no other fixture.
+// It gives tests that read the board's entries a board file without a Board.
 // The kit imports only boardengine, configengine, fabricengine and the standard library.
 package boardkit
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -40,4 +42,18 @@ func HubWithBoardConfig(t *testing.T) string {
 		t.Fatalf("WriteFile(%q) = %v; want nil", configFile, err)
 	}
 	return hub
+}
+
+// WriteBoard writes the board file under boardDir holding entries, each one entry's JSON object, creating boardDir when it is absent and replacing any board file there.
+// It fails the test on a setup error.
+func WriteBoard(t *testing.T, boardDir string, entries ...string) {
+	t.Helper()
+	if err := os.MkdirAll(boardDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) = %v; want nil", boardDir, err)
+	}
+	path := filepath.Join(boardDir, boardengine.BoardFileRel())
+	content := `{"version":1,"entries":[` + strings.Join(entries, ",") + `]}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", path, err)
+	}
 }

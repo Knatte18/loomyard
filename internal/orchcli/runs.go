@@ -1,4 +1,4 @@
-// runs.go ensures the `runs` strand of the prime or a beam: the session's first overview window, named `beam: <slug>`, running `lym batten overview`, which `start` brings up before the orchestrator strand.
+// runs.go ensures the `runs` strand of the prime or a beam: the session's first overview window, named `beam: prime` or `<handle>: beam: <slug>`, running `lym batten overview`, which `start` brings up before the orchestrator strand.
 
 package orchcli
 
@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -37,6 +40,16 @@ func runsWindowTitleOf(worktree string, beam bool) string {
 	return runsWindowPrefix + runsWindowPrimeLabel
 }
 
+// runsWindowTitleIn returns the name of the runs strand's window in the worktree at location, read from the board at the call:
+// `beam: prime` in the prime, and in a beam `beam: <slug>` opened with the beam project's board handle, such as `P1: beam: <slug>`, or bare when the board names no handle or cannot be read.
+func runsWindowTitleIn(location *lymcwd.Location, beam bool) string {
+	title := runsWindowTitleOf(location.WorktreeName, beam)
+	if !beam {
+		return title
+	}
+	return boardengine.TitleWithHandle(fabricengine.BoardDir(location.HubPath), location.WorktreeName, title)
+}
+
 // runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command and window title: the session's first overview window, with no size, no segment and no color.
 func runsStrandAddSpec(cmd, title string) reedengine.AddSpec {
 	return reedengine.AddSpec{
@@ -64,7 +77,7 @@ func (c *orchCLI) ensureRunsStrand() string {
 	}
 
 	sidecarPath := filepath.Join(c.paths.Dir, runsSidecarFile)
-	spec := runsStrandAddSpec(runsStrandCmd(shell.ForGOOS(), exe), c.runsWindowTitle)
+	spec := runsStrandAddSpec(runsStrandCmd(shell.ForGOOS(), exe), c.runsWindowTitle())
 
 	var runs *reedengine.StrandStatus
 	for i := range strands {

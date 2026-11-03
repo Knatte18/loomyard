@@ -14,12 +14,15 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/statuspane"
+	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
+	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/scankit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -669,16 +672,16 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
-		recipe      string
+		title       string
 		wantDisplay render.Display
 	}{
-		{"PawlRecipeTitlesTheWindowPawl", "pawl", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "pawl"}},
-		{"TapestryRecipeTitlesTheWindowTapestry", "tapestry", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "tapestry"}},
+		{"ABareRecipeTitlesTheWindow", "pawl", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "pawl"}},
+		{"AHandleTitledRecipeTitlesTheWindow", "T4: tapestry", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "T4: tapestry"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := statusStrandAddSpec("watch-cmd", tt.recipe)
+			got := statusStrandAddSpec("watch-cmd", tt.title)
 			if got.Display.Order <= orchcli.RunsStrandOrder {
 				t.Errorf("Display.Order = %d; want it after the runs strand's %d", got.Display.Order, orchcli.RunsStrandOrder)
 			}
@@ -693,6 +696,52 @@ func TestStatusStrandAddSpec(t *testing.T) {
 			}
 			if got.Display != tt.wantDisplay {
 				t.Errorf("Display = %+v; want %+v", got.Display, tt.wantDisplay)
+			}
+		})
+	}
+}
+
+// TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe pins that the spec ensureStatusStrand hands to reed carries the handle-opened recipe title and the checklist command.
+func TestStatusStrandSpec_TitlesTheWindowWithTheRunsHandleAndRecipe(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	location := locationkit.Location(t.TempDir(), "run", "")
+	boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`)
+	c := &loomCLI{location: location, recipe: "darn"}
+
+	got := c.statusStrandSpec("/fixed/lym")
+
+	if want := "T4: darn"; got.Display.Title != want {
+		t.Errorf("statusStrandSpec().Display.Title = %q; want %q", got.Display.Title, want)
+	}
+	if want := statusStrandCmd(shell.ForGOOS(), "/fixed/lym"); got.Cmd != want {
+		t.Errorf("statusStrandSpec().Cmd = %q; want %q", got.Cmd, want)
+	}
+}
+
+// TestStatusWindowTitle pins that the status window opens its recipe with the run's board handle, and keeps the bare recipe when the board names none.
+func TestStatusWindowTitle(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// entry is the one board entry the hub's board holds; empty means the hub has no board.
+		entry string
+		want  string
+	}{
+		{"TheRunsHandleOpensTheRecipe", `{"id":1,"slug":"run","kind":"task","labels":["bug"],"handle":"T4"}`, "T4: tapestry"},
+		{"AnEntryOfAnotherSlugKeepsTheRecipe", `{"id":1,"slug":"other","kind":"task","labels":["bug"],"handle":"T4"}`, "tapestry"},
+		{"NoBoardKeepsTheRecipe", "", "tapestry"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := locationkit.Location(t.TempDir(), "run", "")
+			if tt.entry != "" {
+				boardkit.WriteBoard(t, fabricengine.BoardDir(location.HubPath), tt.entry)
+			}
+			if got := statusWindowTitle(location, "tapestry"); got != tt.want {
+				t.Errorf("statusWindowTitle(run, tapestry) = %q; want %q", got, tt.want)
 			}
 		})
 	}

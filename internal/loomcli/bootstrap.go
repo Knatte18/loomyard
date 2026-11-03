@@ -26,15 +26,15 @@ const statusStrandDisplayName = loomengine.LoomStatusStrandName
 // statusStrandOrder is the status strand's overview order key, one place after the runs strand's, so the checklist window sits right after the beam overview.
 const statusStrandOrder = orchcli.RunsStrandOrder + 1
 
-// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command and the run's recipe name.
-// It always takes an overview window titled with the recipe, ordered after the runs strand's window when the session has one.
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command and window title.
+// It always takes an overview window titled title, ordered after the runs strand's window when the session has one.
 // It has no size and no segment, so its window button takes the plain style.
 // IfAbsent stays false because ensureStatusStrand does its own keep/replace/add dance.
-func statusStrandAddSpec(cmd, recipe string) reedengine.AddSpec {
+func statusStrandAddSpec(cmd, title string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: statusStrandDisplayName,
 		Cmd:          cmd,
-		Display:      render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: recipe},
+		Display:      render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: title},
 	}
 }
 
