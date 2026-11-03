@@ -384,7 +384,8 @@ and "paused_by" (the pause's scope); a run no pause covers carries neither.
 
 With --watch, it performs the same read once as a pre-flight, then tails
 the file and never exits, printing a line only when the composed activity
-actually CHANGES rather than once per poll -- so a quiet pane means the
+actually CHANGES rather than once per poll: the row, the state, or a wait's
+kind or detail, never a wait's elapsed time alone. A quiet pane thus means the
 current producer is still working, not that the tail has stopped. This is
 the one documented interactive-handoff exception on this verb, taken
 narrowly on the tail only, after every fallible step has already run

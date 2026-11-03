@@ -554,7 +554,7 @@ User-facing modules each get one `lym <module>` namespace:
   `step` bootstraps idempotently, exactly as `start` does, and drives exactly one producer through `shedengine.Shed`'s own `Step`, emitting a JSON envelope; it spawns no detached driver, making it the single-producer primitive an external supervisor drives.
   `step --until-stop` runs one child step after another in a loop and returns the one envelope of the first stop, with a `loop` object beside the stop step's envelope.
   A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active to the loop's watchdog and as a live wait to dobby.
-  `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll.
+  `status` reports the current phase as a single JSON envelope and, with `--watch`, tails it, printing a line only when the composed activity changes rather than once per poll; a wait's growing elapsed time alone is no change.
   On a terminal `status` renders a human view instead, and `--json` forces the envelope there; `--watch --json` is refused.
   While a run waits on a verify or a shuttle wait, `status` also carries a waiting note naming the producer, what it waits on and for how long.
   The envelope carries `run_id`, `progress` (the main-line position and bounce count over the recipe's producer graph) and `last_step` (the record `lym shed step` keeps under `.lym`).

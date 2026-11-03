@@ -128,6 +128,8 @@ A holders clause is dropped when no slot is held or the holders cannot be read.
 `<elapsed>` is whole seconds under a minute, whole minutes under an hour and hours with minutes beyond (`45s`, `6m`, `1h12m`),
 and the attempt clause of a verify is dropped when no attempt counter applies.
 The key is absent when none of the waits applies, or when the run is in any state other than `running`.
+`lym loom status --watch` appends the same note to its line, but decides whether a poll prints by the note with every `<elapsed>` left out,
+so a wait whose elapsed time alone grows prints no new line.
 It is read from the markers, the wait records, the parent lock wait record and the round store, never from the status file,
 so the file's schema above is unchanged.
 It is display only: no Go decision reads it.

@@ -124,7 +124,7 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 				Size:    statuspane.TerminalSize(os.Stdout),
 				Resized: statuspane.NotifyResize(cmd.Context()),
 			}
-			pane.Run(cmd.Context(), c.checklistPoll(location))
+			pane.Run(cmd.Context(), c.checklistPoll(location, reviewWaitingFor(location)))
 			return nil
 		},
 	}
@@ -133,9 +133,8 @@ lines in view. The loom-status strand runs it. It reads files only.`,
 // checklistPoll returns the pane's poll for the worktree at location.
 // The self run's seed is read until one read succeeds, and its recipe's rows once after that.
 // The run's arbiter attempts and the pause record's coverage of the pair are read from disk on every frame.
-// While the run is running, the state line carries the note the worktree's Waiting hook reports.
-func (c *loomCLI) checklistPoll(location *lymcwd.Location) func() statuspane.Frame {
-	waiting := reviewWaitingFor(location)
+// While the run is running, the wait line carries the full text of the note waiting reports, elapsed time included; a nil waiting reports none.
+func (c *loomCLI) checklistPoll(location *lymcwd.Location, waiting func(st shedengine.Status) (shedverbs.WaitNote, error)) func() statuspane.Frame {
 	var (
 		seedRead  bool
 		rows      []loomrecipe.RecipeRow
@@ -166,7 +165,7 @@ func (c *loomCLI) checklistPoll(location *lymcwd.Location) func() statuspane.Fra
 		// A hook error drops the note rather than the frame; a settled run waits on nothing.
 		if waiting != nil && poll.Found && poll.Status.State == shedengine.StateRunning {
 			if note, err := waiting(poll.Status); err == nil {
-				waitNote = note
+				waitNote = note.Text
 			}
 		}
 		now := time.Now()

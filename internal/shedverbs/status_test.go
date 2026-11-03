@@ -313,14 +313,22 @@ func TestUnavailableLine_DedupesAcrossPolls(t *testing.T) {
 	}
 }
 
-// TestPrintStatusLinesOnChange_LineSequences drives PrintStatusLinesOnChange through a finite polls count with an injected sleep and no wall-clock wait, covering the dedupe rule: only changes print, a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, and the first line always prints.
+// TestPrintStatusLinesOnChange_LineSequences drives PrintStatusLinesOnChange through a finite polls count with an injected sleep and no wall-clock wait, covering the dedupe rule: only changes print, a repeated unavailable line prints once, a line reprints after the tail returned to an earlier line, the first line always prints, and a line whose key is unchanged is suppressed though its text changed.
 func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
 		name  string
 		polls []string
-		want  []string
+		// keys are the polls' change keys; nil makes each polled line its own key.
+		keys []string
+		want []string
 	}{
+		{
+			name:  "ElapsedOnlyChangeIsSuppressed",
+			polls: []string{"loom running | waiting verify running 0s", "loom running | waiting verify running 1s", "loom running | waiting verify running 2s (attempt 2)"},
+			keys:  []string{"loom running | waiting verify running <elapsed>", "loom running | waiting verify running <elapsed>", "loom running | waiting verify running <elapsed> (attempt 2)"},
+			want:  []string{"loom running | waiting verify running 0s", "loom running | waiting verify running 2s (attempt 2)"},
+		},
 		{
 			name:  "ChangeOnlyPrinting",
 			polls: []string{"a", "a", "b", "b", "b", "c"},
@@ -346,10 +354,13 @@ func TestPrintStatusLinesOnChange_LineSequences(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			next := 0
-			poll := func() string {
-				line := tt.polls[next]
+			poll := func() (string, string) {
+				line, key := tt.polls[next], tt.polls[next]
+				if tt.keys != nil {
+					key = tt.keys[next]
+				}
 				next++
-				return line
+				return line, key
 			}
 			sleeps := 0
 
@@ -685,10 +696,10 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 	calls := 0
 	gotProducer := ""
 	note := "the parent's review"
-	hook := func(st shedengine.Status) (string, error) {
+	hook := func(st shedengine.Status) (WaitNote, error) {
 		calls++
 		gotProducer = st.CurrentProducer
-		return note, nil
+		return WaitNote{Text: note, Steady: "steady form of " + note}, nil
 	}
 
 	t.Run("running with a note", func(t *testing.T) {
@@ -742,33 +753,45 @@ func TestStatusCmd_WaitingNote_RunningOnly(t *testing.T) {
 func TestStatusCmd_WaitingErrorVerbatim(t *testing.T) {
 	tiergate.Require(t, 0)
 	wantErr := errors.New("waiting exploded")
-	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return "", wantErr }})
+	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (WaitNote, error) { return WaitNote{}, wantErr }})
 	env, code := execEnvelope(t, statusCmd(statusTexts(), spec), nil)
 	if code != 1 || env["error"] != wantErr.Error() {
 		t.Errorf("error = %v (exit %d); want verbatim %q", env["error"], code, wantErr.Error())
 	}
 }
 
-// TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note while it is non-empty, so the line changes when the wait starts or ends,
-// and survives a hook error.
+// TestStatusWatchLine_AppendsWaitingNote asserts the polled watch line gains the note's text while it is non-empty, so the line changes when the wait starts or ends.
+// It also asserts the line's change key carries the note's steady form in its place, and that both survive a hook error.
 func TestStatusWatchLine_AppendsWaitingNote(t *testing.T) {
 	tiergate.Require(t, 0)
-	note := "the parent's review"
+	note := WaitNote{Text: "verify running 6s", Steady: "verify running <elapsed>"}
 	var hookErr error
-	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (string, error) { return note, hookErr }})
+	spec := seededStatusSpec(t, Hooks{Waiting: func(shedengine.Status) (WaitNote, error) { return note, hookErr }})
 	spec.StatusLabel = "loom"
 
-	with := statusWatchLine(spec)
-	if !strings.HasSuffix(with, " | waiting "+note) {
-		t.Errorf("line = %q; want a trailing waiting note", with)
+	with, withKey := statusWatchLine(spec)
+	if !strings.HasSuffix(with, " | waiting "+note.Text) {
+		t.Errorf("line = %q; want a trailing waiting note %q", with, note.Text)
 	}
-	note = ""
-	without := statusWatchLine(spec)
+	if want := strings.TrimSuffix(with, note.Text) + note.Steady; withKey != want {
+		t.Errorf("key = %q; want %q", withKey, want)
+	}
+	note = WaitNote{}
+	without, withoutKey := statusWatchLine(spec)
 	if strings.Contains(without, "waiting") || !strings.HasPrefix(without, "loom running") || with == without {
 		t.Errorf("line without a note = %q (with: %q)", without, with)
 	}
-	note, hookErr = "x", errors.New("boom")
-	if got := statusWatchLine(spec); got != without {
-		t.Errorf("line on hook error = %q; want %q", got, without)
+	if withoutKey != without {
+		t.Errorf("key without a note = %q; want the line %q", withoutKey, without)
+	}
+	note, hookErr = WaitNote{Text: "x", Steady: "x"}, errors.New("boom")
+	if got, gotKey := statusWatchLine(spec); got != without || gotKey != without {
+		t.Errorf("line, key on hook error = %q, %q; want %q for both", got, gotKey, without)
+	}
+
+	absentDir := t.TempDir()
+	unreadable := &Spec{StatusPath: filepath.Join(absentDir, "absent.json"), StatusLockPath: filepath.Join(absentDir, "status.lock"), StatusLabel: "loom"}
+	if got, gotKey := statusWatchLine(unreadable); got != UnavailableLine("loom") || gotKey != got {
+		t.Errorf("line, key for an unreadable status file = %q, %q; want %q for both", got, gotKey, UnavailableLine("loom"))
 	}
 }

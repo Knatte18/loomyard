@@ -15,9 +15,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/verifytree"
 )
+
+// elapsedPlaceholder stands in for every elapsed time in a wait note's steady form, so that form changes only when what the run waits on changes.
+const elapsedPlaceholder = "<elapsed>"
 
 // formatElapsed renders d as whole seconds under a minute, whole minutes under an hour and hours with minutes beyond: `45s`, `6m`, `1h12m`.
 func formatElapsed(d time.Duration) string {
@@ -31,13 +35,21 @@ func formatElapsed(d time.Duration) string {
 	}
 }
 
+// timedNote builds a wait note whose one time-varying part is elapsed:
+// render receives elapsed formatted for the note's text and elapsedPlaceholder for its steady form.
+func timedNote(render func(elapsed string) string, elapsed time.Duration) shedverbs.WaitNote {
+	return shedverbs.WaitNote{Text: render(formatElapsed(elapsed)), Steady: render(elapsedPlaceholder)}
+}
+
 // formatWaitNote renders one wait as `<producer>: <what> running <elapsed> (<detail>)`, dropping the parenthesis when detail is empty.
-func formatWaitNote(producer, what string, elapsed time.Duration, detail string) string {
-	note := fmt.Sprintf("%s: %s running %s", producer, what, formatElapsed(elapsed))
-	if detail == "" {
-		return note
-	}
-	return note + " (" + detail + ")"
+func formatWaitNote(producer, what string, elapsed time.Duration, detail string) shedverbs.WaitNote {
+	return timedNote(func(shown string) string {
+		note := fmt.Sprintf("%s: %s running %s", producer, what, shown)
+		if detail == "" {
+			return note
+		}
+		return note + " (" + detail + ")"
+	}, elapsed)
 }
 
 // formatHolders renders the gate-slot holders as `<worktree> <site>, <worktree> <site>`.
@@ -62,30 +74,36 @@ func readHolders(holders func() ([]gateslot.Holder, error)) string {
 // Each record renders as `<producer>: <site> waiting for a gate slot <elapsed>`, oldest first and joined with `; `, followed once by `(holders: <worktree> <site>, ...)` when holders names any.
 // With no live record the note is next's; with one or more, next's non-empty note follows after `; `.
 // A record whose process is dead reads as absent, so a crashed wait never sticks in the status line.
-func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
-	return func(st shedengine.Status) (string, error) {
+func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
+	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
 		waits, err := gateslot.ReadWaits(waitDir)
 		if err != nil {
-			return "", err
+			return shedverbs.WaitNote{}, err
 		}
 		if len(waits) == 0 {
 			return next(st)
 		}
 		sort.SliceStable(waits, func(i, j int) bool { return waits[i].Started.Before(waits[j].Started) })
-		clauses := make([]string, len(waits))
+		texts := make([]string, len(waits))
+		steadies := make([]string, len(waits))
 		for i, wait := range waits {
-			clauses[i] = fmt.Sprintf("%s: %s waiting for a gate slot %s", st.CurrentProducer, wait.Site, formatElapsed(now().Sub(wait.Started)))
+			clause := timedNote(func(shown string) string {
+				return fmt.Sprintf("%s: %s waiting for a gate slot %s", st.CurrentProducer, wait.Site, shown)
+			}, now().Sub(wait.Started))
+			texts[i], steadies[i] = clause.Text, clause.Steady
 		}
-		note := strings.Join(clauses, "; ")
+		note := shedverbs.WaitNote{Text: strings.Join(texts, "; "), Steady: strings.Join(steadies, "; ")}
 		if named := readHolders(holders); named != "" {
-			note += " (holders: " + named + ")"
+			note.Text += " (holders: " + named + ")"
+			note.Steady += " (holders: " + named + ")"
 		}
 		rest, err := next(st)
 		if err != nil {
-			return "", err
+			return shedverbs.WaitNote{}, err
 		}
-		if rest != "" {
-			note += "; " + rest
+		if rest.Text != "" {
+			note.Text += "; " + rest.Text
+			note.Steady += "; " + rest.Steady
 		}
 		return note, nil
 	}
@@ -97,24 +115,28 @@ func gateWaiting(waitDir string, holders func() ([]gateslot.Holder, error), now 
 // The holders clause is dropped when holders names none or fails.
 // The note names the run's current producer and measures elapsed time from now.
 // A marker whose pid is dead reads as absent, so a crashed verify never sticks in the status line.
-func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
-	return func(st shedengine.Status) (string, error) {
+func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error), now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
+	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
 		m, live, err := verifytree.ReadMarker(markerPath)
 		if err != nil {
-			return "", err
+			return shedverbs.WaitNote{}, err
 		}
 		if !live {
 			return next(st)
 		}
 		if m.State == verifytree.MarkerStatePaused {
-			return fmt.Sprintf("%s: verify held by a pause %s (%s)", st.CurrentProducer, formatElapsed(now().Sub(m.WaitStarted)), m.Site), nil
+			return timedNote(func(shown string) string {
+				return fmt.Sprintf("%s: verify held by a pause %s (%s)", st.CurrentProducer, shown, m.Site)
+			}, now().Sub(m.WaitStarted)), nil
 		}
 		if m.State == verifytree.MarkerStateWaiting {
 			detail := m.Site
 			if named := readHolders(holders); named != "" {
 				detail += "; holders: " + named
 			}
-			return fmt.Sprintf("%s: verify waiting for a gate slot %s (%s)", st.CurrentProducer, formatElapsed(now().Sub(m.WaitStarted)), detail), nil
+			return timedNote(func(shown string) string {
+				return fmt.Sprintf("%s: verify waiting for a gate slot %s (%s)", st.CurrentProducer, shown, detail)
+			}, now().Sub(m.WaitStarted)), nil
 		}
 		var detail []string
 		if m.Attempt > 0 {
@@ -129,11 +151,11 @@ func verifyWaiting(markerPath string, holders func() ([]gateslot.Holder, error),
 // The note names the run's current producer and the wait's kind, with no detail clause.
 // readMarker returns false for a marker whose pid is dead,
 // so a crashed wait never sticks in the status line.
-func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
-	return func(st shedengine.Status) (string, error) {
+func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
+	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
 		marker, live, err := readMarker()
 		if err != nil {
-			return "", err
+			return shedverbs.WaitNote{}, err
 		}
 		if !live {
 			return next(st)
@@ -145,26 +167,28 @@ func shuttleWaiting(readMarker func() (shuttleengine.WaitMarker, bool, error), n
 // parentLockWaiting returns the Waiting hook that reports a live parent lock wait from the record at waitPath, and falls through to next otherwise.
 // The note reads `<producer>: waiting for the parent lock on <branch> held by <slug> <elapsed>`, elapsed measured from the record's start.
 // A record whose writer is dead under alive reads as absent, so a wait left by a dead step is ignored.
-func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bool, now func() time.Time, next func(st shedengine.Status) (string, error)) func(st shedengine.Status) (string, error) {
-	return func(st shedengine.Status) (string, error) {
+func parentLockWaiting(waitPath string, alive func(pid int, startTime string) bool, now func() time.Time, next func(st shedengine.Status) (shedverbs.WaitNote, error)) func(st shedengine.Status) (shedverbs.WaitNote, error) {
+	return func(st shedengine.Status) (shedverbs.WaitNote, error) {
 		wait, found, err := parentlock.ReadWait(waitPath, alive)
 		if err != nil {
-			return "", err
+			return shedverbs.WaitNote{}, err
 		}
 		if !found {
 			return next(st)
 		}
-		return fmt.Sprintf("%s: waiting for the parent lock on %s held by %s %s", st.CurrentProducer, wait.Branch, wait.Holder, formatElapsed(now().Sub(wait.Started))), nil
+		return timedNote(func(shown string) string {
+			return fmt.Sprintf("%s: waiting for the parent lock on %s held by %s %s", st.CurrentProducer, wait.Branch, wait.Holder, shown)
+		}, now().Sub(wait.Started)), nil
 	}
 }
 
 // reviewWaitingFor builds the Waiting hook for loc's worktree, or nil when no location is wired.
 // A gate wait is reported first and never hides the rest; after it come a parent lock wait, a verify and a shuttle wait, of which the first live one wins.
-func reviewWaitingFor(loc *lymcwd.Location) func(st shedengine.Status) (string, error) {
+func reviewWaitingFor(loc *lymcwd.Location) func(st shedengine.Status) (shedverbs.WaitNote, error) {
 	if loc == nil {
 		return nil
 	}
-	noWait := func(shedengine.Status) (string, error) { return "", nil }
+	noWait := func(shedengine.Status) (shedverbs.WaitNote, error) { return shedverbs.WaitNote{}, nil }
 	readShuttleMarker := func() (shuttleengine.WaitMarker, bool, error) {
 		cfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(loc), "shuttle")
 		if err != nil {

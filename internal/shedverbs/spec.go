@@ -36,6 +36,16 @@ const (
 	InterruptPolicyHandback = "handback"
 )
 
+// WaitNote names, in one line, what a running run is waiting on.
+// The zero WaitNote means the run waits on nothing.
+type WaitNote struct {
+	// Text is the note status shows, elapsed times included.
+	Text string
+	// Steady is the same note with every elapsed time held fixed, so it changes only when what the run waits on changes;
+	// the --watch tail compares it, never Text, to decide whether a poll prints a line.
+	Steady string
+}
+
 // Hooks carries the module-specific extension points the generic verb bodies call at fixed
 // points in their own sequence. Every field is nil-by-default and skipped when nil, so a module
 // that needs none of them may leave the whole struct at its zero value.
@@ -92,15 +102,15 @@ type Hooks struct {
 	// PreGoto runs in goto's RunE after the --to check and before shedengine.Goto.
 	// A non-nil error is reported verbatim on the error envelope and the status file is not touched.
 	PreGoto func(ctx context.Context, target string) error
-	// Waiting names, in one line, what a running run is waiting on; empty means it waits on nothing.
+	// Waiting names what a running run is waiting on; an empty Text means it waits on nothing.
 	// It receives the status file's content,
 	// so a product can name the current producer.
 	// status calls it only when the status file's state is running,
-	// and a non-empty note adds a waiting key to the envelope, replaces the plain running state in the human header and extends the --watch line.
+	// and a non-empty Text adds a waiting key to the envelope, replaces the plain running state in the human header and extends the --watch line.
 	// A non-nil error is reported verbatim on the error envelope, like StatusExtras;
 	// the --watch line drops the note on an error rather than ending the tail.
 	// The hook closes over whatever location the arming module was told, so shedverbs stays path-free.
-	Waiting func(st shedengine.Status) (string, error)
+	Waiting func(st shedengine.Status) (WaitNote, error)
 	// AfterInterrupt runs when the loop stops on a child step that ended without an envelope, after the failed stop is written and before its envelope is written, so it reads the status the stop leaves.
 	// It receives the stop row, the one the status file names once the child exited, the cause and the first trace file of the child, or its captured stderr when it left no trace.
 	// Its return is the envelope's friction key, like AfterStep's.

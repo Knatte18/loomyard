@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,8 +27,18 @@ import (
 // fallthroughNote is the fixed note the fake next step returns, so a row can tell a fall-through from a reported wait.
 const fallthroughNote = "next step note"
 
-// fixedNextStep is the hook chain's next step in place of a real wait: it always returns fallthroughNote.
-func fixedNextStep(shedengine.Status) (string, error) { return fallthroughNote, nil }
+// fixedNextStep is the hook chain's next step in place of a real wait: it always returns fallthroughNote as both text and steady form.
+func fixedNextStep(shedengine.Status) (shedverbs.WaitNote, error) {
+	return shedverbs.WaitNote{Text: fallthroughNote, Steady: fallthroughNote}, nil
+}
+
+// steadyOf returns text with each of the told elapsed renderings replaced by elapsedPlaceholder, the steady form a note of that text must carry.
+func steadyOf(text string, elapsed ...string) string {
+	for _, shown := range elapsed {
+		text = strings.ReplaceAll(text, shown, elapsedPlaceholder)
+	}
+	return text
+}
 
 // writeShuttleMarker writes a wait marker of the given kind held by pid into a run directory under runRoot.
 func writeShuttleMarker(t *testing.T, runRoot, kind string, pid int) {
@@ -78,6 +89,7 @@ func TestLiveRunStrands_SkipsRunWithGoneWaiter(t *testing.T) {
 // TestShuttleWaiting asserts the hook chain's order.
 // Gate wait records are reported ahead of a live verify marker, and a live verify marker ahead of a live shuttle marker.
 // A dead shuttle marker falls through to the next step.
+// Every note's steady form is its text with each elapsed time replaced by the placeholder.
 func TestShuttleWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -173,8 +185,11 @@ func TestShuttleWaiting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if note != tt.want {
-				t.Errorf("note = %q; want %q", note, tt.want)
+			if note.Text != tt.want {
+				t.Errorf("note = %q; want %q", note.Text, tt.want)
+			}
+			if want := steadyOf(tt.want, "6m", "3m"); note.Steady != want {
+				t.Errorf("steady = %q; want %q", note.Steady, want)
 			}
 		})
 	}
@@ -203,6 +218,7 @@ func writeWaitingVerifyMarker(t *testing.T, pid int) string {
 }
 
 // TestVerifyWaiting asserts a live verify marker is reported ahead of the next step, and a dead or absent marker falls through to it.
+// Every note's steady form is its text with the elapsed time replaced by the placeholder.
 func TestVerifyWaiting(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -300,7 +316,10 @@ func TestVerifyWaiting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tt.check(t, note)
+			tt.check(t, note.Text)
+			if want := steadyOf(note.Text, "6m"); note.Steady != want {
+				t.Errorf("steady = %q; want %q", note.Steady, want)
+			}
 		})
 	}
 }
@@ -334,7 +353,9 @@ func TestParentLockWaiting(t *testing.T) {
 	t.Parallel()
 	started := time.Date(2026, 10, 3, 9, 0, 0, 0, time.UTC)
 	now := func() time.Time { return started.Add(6 * time.Minute) }
-	next := func(shedengine.Status) (string, error) { return "next note", nil }
+	next := func(shedengine.Status) (shedverbs.WaitNote, error) {
+		return shedverbs.WaitNote{Text: "next note", Steady: "next note"}, nil
+	}
 	alive := func(int, string) bool { return true }
 	dead := func(int, string) bool { return false }
 	writeWait := func(t *testing.T, path string) {
@@ -368,8 +389,11 @@ func TestParentLockWaiting(t *testing.T) {
 
 			got, err := parentLockWaiting(path, tt.alive, now, next)(shedengine.Status{CurrentProducer: "Parent-Align"})
 
-			if (err != nil) != tt.wantErr || got != tt.want {
-				t.Errorf("note, err = %q, %v; want %q, error %v", got, err, tt.want, tt.wantErr)
+			if (err != nil) != tt.wantErr || got.Text != tt.want {
+				t.Errorf("note, err = %q, %v; want %q, error %v", got.Text, err, tt.want, tt.wantErr)
+			}
+			if want := steadyOf(tt.want, "6m"); got.Steady != want {
+				t.Errorf("steady = %q; want %q", got.Steady, want)
 			}
 		})
 	}

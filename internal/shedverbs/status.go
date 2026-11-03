@@ -1,6 +1,6 @@
 // status.go implements the generic `status` verb body: a one-shot JSON envelope of the current
 // phase, and (from the status --watch tail, added onto this same file) a --watch mode that tails
-// the same status file, printing a line only when the composed activity actually changes.
+// the same status file, printing a line only when the composed activity changes, a growing elapsed time aside.
 
 package shedverbs
 
@@ -64,31 +64,32 @@ func RenderStatusLine(label string, st shedengine.Status) string {
 	return line
 }
 
-// UnavailableLine composes the line the watch tail prints when a poll cannot read the status file,
-// for the told label. It must be computed once outside the poll loop rather than per poll: the tail
-// dedupes on printed text, so a line recomposed per poll that ever differed by a byte would turn a
-// transient fault into its own flood, which is the whole thing the dedupe exists to prevent.
+// UnavailableLine composes the line the watch tail prints for the told label when a poll cannot read the status file.
+// The line is also its own change key.
+// It must be computed once outside the poll loop rather than per poll, since the tail dedupes on that key.
+// A line recomposed per poll that ever differed by a byte would turn a transient fault into its own flood, which is the whole thing the dedupe exists to prevent.
 func UnavailableLine(label string) string {
 	return label + " status unavailable (status file transiently unreadable)"
 }
 
-// PrintStatusLinesOnChange runs the watch tail: it polls, prints the polled line into out only when
-// that line differs from the one it last printed, and sleeps between polls.
+// PrintStatusLinesOnChange runs the watch tail:
+// it polls a line and its change key, prints the line into out only when the key differs from the one of the line it last printed, and sleeps between polls.
 //
-// Suppressing an unchanged line is the whole point. A producer call lasts minutes while the tail
-// polls every second, so printing unconditionally fills tmux's scrollback and buries the one line an
-// operator actually needs -- the moment the activity changes -- among the identical ones around it.
+// Suppressing an unchanged line is the whole point.
+// A producer call lasts minutes while the tail polls every second.
+// Printing every poll fills tmux's scrollback and buries the one line an operator needs, the moment the activity changes, among identical ones.
+// The key leaves out what changes on every poll, such as a wait's elapsed time, which the line still shows.
 //
-// polls bounds the loop so a test can drive a finite sequence with no wall-clock wait; a
-// non-positive polls means poll forever, which is what the production call passes.
-func PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), polls int) {
-	lastPrinted := ""
+// polls bounds the loop so a test can drive a finite sequence with no wall-clock wait;
+// a non-positive polls means poll forever, which is what the production call passes.
+func PrintStatusLinesOnChange(out io.Writer, poll func() (line, key string), sleep func(), polls int) {
+	lastKey := ""
 	printedAny := false
 	for i := 0; polls <= 0 || i < polls; i++ {
-		line := poll()
-		if !printedAny || line != lastPrinted {
+		line, key := poll()
+		if !printedAny || key != lastKey {
 			fmt.Fprintln(out, line)
-			lastPrinted = line
+			lastKey = key
 			printedAny = true
 		}
 		sleep()
@@ -96,10 +97,10 @@ func PrintStatusLinesOnChange(out io.Writer, poll func() string, sleep func(), p
 }
 
 // waitingNote asks spec.Hooks.Waiting what a running run waits on.
-// It returns the empty note when the hook is nil or the state is not running, so the hook never runs against a settled run.
-func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
+// It returns the zero note when the hook is nil or the state is not running, so the hook never runs against a settled run.
+func waitingNote(spec *Spec, st shedengine.Status) (WaitNote, error) {
 	if spec.Hooks.Waiting == nil || st.State != shedengine.StateRunning {
-		return "", nil
+		return WaitNote{}, nil
 	}
 	return spec.Hooks.Waiting(st)
 }
@@ -109,22 +110,27 @@ func waitingNote(spec *Spec, st shedengine.Status) (string, error) {
 // A read failure or a !found inside the poll renders the unavailable line, never terminates the tail, and never writes an envelope:
 // the pane is expected to survive the driver rewriting the file underneath it.
 func runStatusWatch(out io.Writer, spec *Spec, interval time.Duration) {
-	poll := func() string { return statusWatchLine(spec) }
+	poll := func() (string, string) { return statusWatchLine(spec) }
 	PrintStatusLinesOnChange(out, poll, func() { time.Sleep(interval) }, 0)
 }
 
-// statusWatchLine renders one poll of the --watch tail: the status line, with " | waiting <note>" appended while the Waiting hook reports a note.
+// statusWatchLine renders one poll of the --watch tail as a line and its change key.
+// The line is the status line with " | waiting <note>" appended while the Waiting hook reports a note.
+// The key carries the note's steady form in place of its text.
 // A hook error drops the note rather than ending the tail.
-func statusWatchLine(spec *Spec) string {
+func statusWatchLine(spec *Spec) (line, key string) {
 	polled, found, err := state.ReadJSON[shedengine.Status](spec.StatusPath, spec.StatusLockPath)
 	if err != nil || !found {
-		return UnavailableLine(spec.StatusLabel)
+		unavailable := UnavailableLine(spec.StatusLabel)
+		return unavailable, unavailable
 	}
-	line := RenderStatusLine(spec.StatusLabel, polled)
-	if note, noteErr := waitingNote(spec, polled); noteErr == nil && note != "" {
-		line += " | waiting " + note
+	line = RenderStatusLine(spec.StatusLabel, polled)
+	key = line
+	if note, noteErr := waitingNote(spec, polled); noteErr == nil && note.Text != "" {
+		line += " | waiting " + note.Text
+		key += " | waiting " + note.Steady
 	}
-	return line
+	return line, key
 }
 
 // statusCmd builds the generic `status` subcommand, registering the two flags -- --watch and
@@ -212,11 +218,11 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 				clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{"trace_dir": traceDir}))
 				return nil
 			}
-			if waiting != "" {
-				core["waiting"] = waiting
+			if waiting.Text != "" {
+				core["waiting"] = waiting.Text
 			}
 			if !asJSON && writerIsTerminal(out) {
-				fmt.Fprint(out, RenderStatusHuman(spec.StatusLabel, spec.RunID, st, spec.Routing, waiting))
+				fmt.Fprint(out, RenderStatusHuman(spec.StatusLabel, spec.RunID, st, spec.Routing, waiting.Text))
 				return nil
 			}
 			clihelp.SetExit(ctx, output.Ok(out, core))
@@ -225,7 +231,7 @@ func statusCmd(texts VerbTexts, spec *Spec) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the JSON envelope even on a terminal, where the one-shot status otherwise prints a human view; refused with --watch")
-	cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file, printing a line only when the activity changes, instead of emitting a single JSON envelope")
+	cmd.Flags().BoolVar(&watch, "watch", false, "tail the status file, printing a line only when the activity changes, a growing elapsed time aside, instead of emitting a single JSON envelope")
 	cmd.Flags().DurationVar(&interval, "interval", time.Second, "poll interval for --watch; exists so a test can drive the poll fast without a real wall-clock wait")
 
 	return cmd

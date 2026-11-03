@@ -17,10 +17,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomrecipe"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -1250,6 +1253,43 @@ func TestRenderChecklist(t *testing.T) {
 			t.Errorf("readChecklistArbiters(absent directory) = %+v; want none", absent)
 		}
 	})
+}
+
+// TestChecklistPoll_WaitLineKeepsTheNoteText asserts the pane's wait line carries the Waiting hook's text, elapsed time included, never its steady form, and that a settled run waits on nothing.
+func TestChecklistPoll_WaitLineKeepsTheNoteText(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		state shedengine.State
+		want  string
+	}{
+		{"Running", shedengine.StateRunning, "waiting Build: verify running 6m"},
+		{"Done", shedengine.StateDone, "waiting on nothing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			location := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "wt", AnchorRel: "."}
+			statusFile := shedrun.StatusFile(location, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(statusFile), 0o755); err != nil {
+				t.Fatalf("mkdir run dir: %v", err)
+			}
+			status := shedengine.Status{State: tt.state, CurrentProducer: "Build", Activity: shedengine.Activity{Now: "Build"}}
+			if err := state.WriteJSON(statusFile, filepath.Join(filepath.Dir(statusFile), "status.lock"), status); err != nil {
+				t.Fatalf("write status: %v", err)
+			}
+			waiting := func(shedengine.Status) (shedverbs.WaitNote, error) {
+				return shedverbs.WaitNote{Text: "Build: verify running 6m", Steady: "Build: verify running <elapsed>"}, nil
+			}
+
+			frame := (&loomCLI{}).checklistPoll(location, waiting)()
+			if got := frame.Lines[len(frame.Lines)-1]; got != tt.want {
+				t.Errorf("wait line = %q; want %q", got, tt.want)
+			}
+		})
+	}
 }
 
 func TestChecklistCmd_ReportsAResolutionFailureOnTheEnvelope(t *testing.T) {
