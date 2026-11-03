@@ -679,7 +679,7 @@ func reconcilePairFor(t *testing.T, result fabricengine.ReconcileResult, slug st
 }
 
 // TestReconcile_RestoresDeletedLaunchers proves Reconcile restores a pair's missing launcher directory and reports it.
-// It also proves a local-only pair that has none is skipped and a failed restore stays a Detail note.
+// It also proves a failed restore stays a Detail note.
 // Without the report a pair whose directory was deleted read already_healthy until it was removed and re-added.
 func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -713,20 +713,6 @@ func TestReconcile_RestoresDeletedLaunchers(t *testing.T) {
 		}
 		if got := reconcilePairFor(t, reconcile(t), slug).Action; got != fabricengine.ReconcileActionAlreadyHealthy {
 			t.Errorf("second Reconcile() action = %q; want %q", got, fabricengine.ReconcileActionAlreadyHealthy)
-		}
-	})
-
-	t.Run("SkipsALocalOnlyPair", func(t *testing.T) {
-		const slug = "launchers-local"
-		if _, err := h.Topology.AddLocal(l, slug); err != nil {
-			t.Fatalf("AddLocal: %v", err)
-		}
-
-		if got := reconcilePairFor(t, reconcile(t), slug).Action; got != fabricengine.ReconcileActionAlreadyHealthy {
-			t.Errorf("Reconcile() action = %q; want %q", got, fabricengine.ReconcileActionAlreadyHealthy)
-		}
-		if _, err := os.Stat(fabricengine.LauncherDir(l, slug)); !os.IsNotExist(err) {
-			t.Errorf("Reconcile() created a launcher dir for a local-only pair (stat err = %v)", err)
 		}
 	})
 

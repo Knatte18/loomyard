@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -45,7 +46,7 @@ type AddOptions struct {
 	Parent string
 	// Beam writes the beam mark into the new pair's origin record.
 	Beam bool
-	// AdoptLocal makes the pair over an unmarked local warp branch that already exists, instead of refusing with ErrBranchExists.
+	// AdoptLocal makes the pair over a local warp branch that already exists, instead of refusing with ErrBranchExists.
 	// The adopted branch is checked out into the new worktree and is never deleted by a rollback.
 	// The flag sets it, and otherwise only batten's resume does, together with AdoptOnly, to re-make a live pair; an unattended run never adopts a stale branch left under a reused slug.
 	AdoptLocal bool
@@ -68,15 +69,11 @@ func (o AddOptions) syncOptions() SyncOptions {
 
 // AddResult contains the result of successfully adding a new worktree pair.
 // It embeds MutationRecord, which carries the mutation record accumulated over the call.
-// Local is true for a local-only pair.
-// LocalMarkCleared lists the adopted branches whose local-only mark a plain add cleared, making the adopted pair ordinary.
 type AddResult struct {
 	MutationRecord
-	Slug             string   `json:"slug"`
-	Branch           string   `json:"branch"`
-	Path             string   `json:"path"`
-	Local            bool     `json:"local,omitempty"`
-	LocalMarkCleared []string `json:"local_mark_cleared,omitempty"`
+	Slug   string `json:"slug"`
+	Branch string `json:"branch"`
+	Path   string `json:"path"`
 }
 
 // ErrBranchExists is Add's refusal when the warp branch a slug would create already exists.
@@ -129,51 +126,6 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 	return relative, nil
 }
 
-// localAddKind says which existing branch made AddLocal refuse, which decides the way forward its message names.
-type localAddKind int
-
-const (
-	// localAddUnmarkedWarp is an unmarked local warp branch.
-	localAddUnmarkedWarp localAddKind = iota
-	// localAddUnmarkedWeft is an unmarked local weft branch.
-	localAddUnmarkedWeft
-	// localAddOriginRef is a branch held by an origin remote-tracking ref.
-	localAddOriginRef
-)
-
-// ErrLocalAddOverOrdinary is AddLocal's refusal when a branch of the slug's pair already exists as an ordinary pair's branch, locally unmarked or as an origin remote-tracking ref.
-// It keeps --local from adopting an ordinary pair and silencing its pushes.
-// It fires before the first mutation.
-type ErrLocalAddOverOrdinary struct {
-	// Slug is the slug AddLocal was asked to create.
-	Slug string
-	// Branch is the existing branch, prefix and suffix included.
-	Branch string
-
-	kind localAddKind
-}
-
-// Error implements the error interface, naming the way forward for the branch that tripped the refusal.
-func (e *ErrLocalAddOverOrdinary) Error() string {
-	switch e.kind {
-	case localAddUnmarkedWarp:
-		return fmt.Sprintf(
-			"cannot add a local-only pair: warp branch %q already exists unmarked; switch a pair onto it with \"lym fabric checkout %s\", delete it first with \"git branch -D %s\" if it is a leftover from a removed pair, or use another slug",
-			e.Branch, e.Branch, e.Branch,
-		)
-	case localAddUnmarkedWeft:
-		return fmt.Sprintf(
-			"cannot add a local-only pair: weft branch %q already exists locally and is not marked local; run \"lym fabric add %s\" to make an ordinary pair over it",
-			e.Branch, e.Slug,
-		)
-	default:
-		return fmt.Sprintf(
-			"cannot add a local-only pair: branch %q exists on origin; run \"lym fabric add %s\" to make an ordinary pair over it",
-			e.Branch, e.Slug,
-		)
-	}
-}
-
 // Add creates a new paired warp and weft git worktree with the given slug.
 // It validates the slug, creates both worktrees, wires junctions, records and commits the pair's
 // parent-branch and parent-worktree provenance (the acting worktree's name), rolling back all changes on any failure.
@@ -197,9 +149,7 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // Then Add drops the remote-tracking ref and the upstream setting of each branch the probes read absent on origin, a removed pair's weft or warp branch deleted there,
 // so a reconcile before the new pair's first push does not read the branch as gone; a drop that fails fails the Add before any worktree is made, naming the branch.
 // The dropped ref names a branch origin does not hold, so no origin head is lost, and a rollback restores neither the ref nor the setting.
-// A warp branch that exists locally and carries the local-only mark is adopted rather than refused;
-// as its last step Add clears the mark of each adopted branch and lists it in AddResult.LocalMarkCleared, so the adopted pair is ordinary.
-// An unmarked existing warp branch is refused with ErrBranchExists, unless opts.AdoptLocal adopts it too.
+// An existing local warp branch is refused with ErrBranchExists, unless opts.AdoptLocal adopts it.
 // An AdoptLocal add refuses, before any mutation, a warp branch checked out in another worktree and a records branch checked out in another records worktree with an *ErrAdoptLocalCheckedOut, naming the worktree and the way forward.
 // A records worktree directory that stands without being a registered worktree refuses with *ErrRecordsWorktreeNotPair, and a task worktree path that exists with *ErrTaskPathTaken.
 // With opts.AdoptOnly, Add re-makes a live pair and forks nothing: a weft branch that is not live is refused with *ErrNotLive (Records true), and so is a task branch that is neither local nor on origin, each matching ErrPairNotLive, before any mutation.
@@ -218,20 +168,7 @@ func (e *ErrLocalAddOverOrdinary) Error() string {
 // and the record is removed once the pair is wired at the anchor.
 // A failure anywhere rolls the whole pair back, the record with it.
 // An adopted weft branch that already has an origin record keeps its parent fields; with opts.Beam the record gains the beam mark in an origin commit.
-func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (AddResult, error) {
-	return t.add(l, slug, opts, false)
-}
-
-// AddLocal creates a local-only pair: the same worktrees and provenance record as Add.
-// No origin is read or written, no launcher is created, and both branches are marked local so no push publishes them.
-// It refuses with *ErrLocalAddOverOrdinary when either branch already exists as an ordinary pair's branch, locally unmarked or as an origin remote-tracking ref;
-// a branch that carries the mark is adopted.
-func (t *Topology) AddLocal(l *lymcwd.Location, slug string) (AddResult, error) {
-	return t.add(l, slug, AddOptions{SkipPush: true}, true)
-}
-
-// add is the body of Add and AddLocal; local selects the local-only path.
-func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local bool) (res AddResult, err error) {
+func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res AddResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
@@ -240,14 +177,11 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		return AddResult{}, err
 	}
 
-	// A local pair reads no origin and is never pushed, so it takes no teardown lock.
-	if !local {
-		releaseTeardown, lockErr := t.lockPairTeardown(rec, l, slug, false, "re-run the command that made the pair")
-		if lockErr != nil {
-			return AddResult{}, lockErr
-		}
-		defer releaseTeardown()
+	releaseTeardown, lockErr := t.lockPairTeardown(rec, l, slug, false, "re-run the command that made the pair")
+	if lockErr != nil {
+		return AddResult{}, lockErr
 	}
+	defer releaseTeardown()
 
 	// A named parent replaces the acting worktree as the fork point, and the fork takes its last commit only, so neither worktree's tracked dirt is checked.
 	// An adopt-only add forks nothing, so it checks no source dirt, resolves no parent and checks no fork point.
@@ -312,33 +246,22 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	if existsErr != nil {
 		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, existsErr)
 	}
-	warpBranchMarked := false
-	if warpBranchExists {
-		warpBranchMarked, err = gitrepo.New(l.WorktreePath()).BranchMarkedLocal(warpBranch)
-		if err != nil {
-			return AddResult{}, fmt.Errorf("read local mark of warp branch %q: %w", warpBranch, err)
-		}
-		if !warpBranchMarked && !local && !opts.AdoptLocal {
-			return AddResult{}, &ErrBranchExists{Branch: warpBranch}
-		}
+	if warpBranchExists && !opts.AdoptLocal {
+		return AddResult{}, &ErrBranchExists{Branch: warpBranch}
 	}
-	// A marked warp branch is a local pair's kept branch: both paths adopt it, and so does a command naming AdoptLocal.
-	warpAdopted := warpBranchExists && (warpBranchMarked || opts.AdoptLocal)
+	warpAdopted := warpBranchExists
 
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		return AddResult{}, &ErrTaskPathTaken{Path: target}
 	}
 
-	// A local pair reads no origin, so it needs no remote.
-	if !local {
-		stdout, err := gitexec.Run([]string{"remote"}, l.WorktreePath())
-		if err != nil {
-			return AddResult{}, fmt.Errorf("list warp remotes: %w", err)
-		}
-		if strings.TrimSpace(stdout) == "" {
-			return AddResult{}, fmt.Errorf("no remote configured")
-		}
+	stdout, err := gitexec.Run([]string{"remote"}, l.WorktreePath())
+	if err != nil {
+		return AddResult{}, fmt.Errorf("list warp remotes: %w", err)
+	}
+	if strings.TrimSpace(stdout) == "" {
+		return AddResult{}, fmt.Errorf("no remote configured")
 	}
 
 	if !weftRepoExists(l) {
@@ -370,12 +293,6 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	}
 
 	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
-
-	if local {
-		if err := checkLocalAddOverOrdinary(l, slug, warpBranch, weftBranch, warpBranchExists && !warpBranchMarked, weftBranchAlreadyExists); err != nil {
-			return AddResult{}, err
-		}
-	}
 
 	// An adopt-only add also guards a records branch another records worktree holds when the task branch comes from origin, which would otherwise fail later as a plain worktree-add error.
 	if opts.AdoptLocal && (warpAdopted || (opts.AdoptOnly && weftBranchAlreadyExists)) {
@@ -426,20 +343,37 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	var warpPush addWarpBranch
 	// warpAbsentOnOrigin is whether the warp probe ran and read the branch absent on origin.
 	warpAbsentOnOrigin := false
-	if !opts.SkipPush && !opts.SkipGit {
+	probeOrigins := !opts.SkipPush && !opts.SkipGit
+	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
+	// AdoptOnly is the exception: its probe only learns whether origin holds the branch, and the adopted branch is never fetched or replaced from origin.
+	probeWarp := probeOrigins && (!warpAdopted || opts.AdoptOnly)
+	// The warp branch's origin tip is read beside the weft probe, so the add waits on one round of network, and judged once the weft answer says whether the pair is live.
+	var warpTip string
+	var warpTipErr error
+	var warpRead sync.WaitGroup
+	if probeWarp {
+		warpRead.Add(1)
+		go func() {
+			defer warpRead.Done()
+			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
+		}()
+	}
+	if probeOrigins {
 		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
-		if err != nil {
-			return AddResult{}, err
-		}
+	}
+	warpRead.Wait()
+	if err != nil {
+		return AddResult{}, err
 	}
 	if opts.AdoptOnly && !weftOld.live {
 		return AddResult{}, &ErrNotLive{Branch: weftBranch, Records: true}
 	}
-	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
-	// AdoptOnly is the exception: its probe only learns whether origin holds the branch, and the adopted branch is never fetched or replaced from origin.
-	if !opts.SkipPush && !opts.SkipGit && (!warpAdopted || opts.AdoptOnly) {
+	if probeWarp {
+		if warpTipErr != nil {
+			return AddResult{}, warpTipErr
+		}
 		var warpOnOrigin bool
-		warpAdoptTip, warpOnOrigin, err = probeWarpLeftover(l, slug, warpBranch, weftOld.live)
+		warpAdoptTip, warpOnOrigin, err = judgeWarpLeftover(l, slug, warpBranch, warpTip, weftOld.live)
 		if err != nil {
 			return AddResult{}, err
 		}
@@ -495,7 +429,7 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		return AddResult{}, fmt.Errorf("create worktree %q for branch %q failed: %w", target, warpBranch, err)
 	}
 	if warpAdopted {
-		// The branch predates this call: rollbackAdd must leave it, and its mark, as it found them.
+		// The branch predates this call: rollbackAdd must leave it as it found it.
 		warpPush.adopted = true
 	} else {
 		// The `-b warpBranch` argument to the worktree add above means this same call created a branch,
@@ -619,7 +553,7 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		t.beforeWire()
 	}
 
-	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists, ahead of the local marks and the launchers,
+	// (10b) Wire the new worktree's warp junctions as soon as the weft worktree exists, ahead of the launchers,
 	// so a hub reader polling the half-built pair meets a warp worktree without its junction for as short a time as possible.
 	// The wired name-set comes from the repo-wide BoardDir base (not any per-pair weft base or acting-worktree config):
 	// every worktree must converge to the same repo-wide pathspec, matching Checkout's re-point call.
@@ -635,24 +569,9 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		return AddResult{}, fmt.Errorf("wire junctions: %w", err)
 	}
 
-	// Both worktrees exist: a local pair marks its two branches before the origin record's commit, so no push can carry that commit out.
-	if local {
-		if err := gitrepo.New(l.WorktreePath()).MarkBranchLocal(warpBranch); err != nil {
-			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-			return AddResult{}, err
-		}
-		if err := gitrepo.New(weftRepoRoot).MarkBranchLocal(weftBranch); err != nil {
-			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-			return AddResult{}, err
-		}
-	}
-
-	// A local pair gets no launchers.
-	if !local {
-		if err := writeLaunchers(rec, pairAt, slug); err != nil {
-			_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-			return AddResult{}, err
-		}
+	if err := writeLaunchers(rec, pairAt, slug); err != nil {
+		_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
+		return AddResult{}, err
 	}
 
 	// (10c) Record and commit the pair's provenance now that the pair is fully wired;
@@ -725,38 +644,6 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 		}
 	}
 
-	// The last step: an ordinary add clears the mark of each branch it adopted, and a local pair keeps its marks.
-	// A clear that fails after an earlier one succeeded restores the earlier mark, so the rollback leaves no adopted branch unmarked.
-	var cleared []string
-	var clearedRepos []*gitrepo.Repo
-	if !local {
-		adoptions := []struct {
-			repo    *gitrepo.Repo
-			branch  string
-			adopted bool
-		}{
-			{gitrepo.New(l.WorktreePath()), warpBranch, warpAdopted},
-			{gitrepo.New(weftRepoRoot), weftBranch, weftAdopted},
-		}
-		for _, adoption := range adoptions {
-			if !adoption.adopted {
-				continue
-			}
-			wasMarked, clearErr := adoption.repo.ClearBranchLocalMark(adoption.branch)
-			if clearErr != nil {
-				for i, branch := range cleared {
-					_ = clearedRepos[i].MarkBranchLocal(branch)
-				}
-				_ = t.rollbackAdd(rec, pairAt, slug, warpBranch, weftBranch, target, weftBranchAlreadyExists, weftReused, warpTok, &warpPush)
-				return AddResult{}, clearErr
-			}
-			if wasMarked {
-				cleared = append(cleared, adoption.branch)
-				clearedRepos = append(clearedRepos, adoption.repo)
-			}
-		}
-	}
-
 	// The pair is complete, so the worktree seam hears of it last; a seam failure is logged by the call and never fails the add.
 	if pair, locateErr := lymcwd.ResolveWorktree(target); locateErr != nil {
 		logger.Warn("fabricengine: locating the new worktree for the worktree seam failed (non-fatal)", "verb", "add", "slug", slug, "error", locateErr)
@@ -765,58 +652,17 @@ func (t *Topology) add(l *lymcwd.Location, slug string, opts AddOptions, local b
 	}
 
 	return AddResult{
-		Slug:             slug,
-		Branch:           warpBranch,
-		Path:             target,
-		Local:            local,
-		LocalMarkCleared: cleared,
+		Slug:   slug,
+		Branch: warpBranch,
+		Path:   target,
 	}, nil
-}
-
-// checkLocalAddOverOrdinary returns *ErrLocalAddOverOrdinary when a branch of the slug's pair is an ordinary pair's, and nil when AddLocal may proceed.
-// The checks run warp local, weft local, then origin remote-tracking refs (read locally, no network), and the first match decides.
-// warpUnmarked and weftExists are what the caller already read: an unmarked local warp branch, and whether the weft branch exists locally.
-func checkLocalAddOverOrdinary(l *lymcwd.Location, slug, warpBranch, weftBranch string, warpUnmarked, weftExists bool) error {
-	if warpUnmarked {
-		return &ErrLocalAddOverOrdinary{Slug: slug, Branch: warpBranch, kind: localAddUnmarkedWarp}
-	}
-	weftRepoRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return fmt.Errorf("resolve weft repo root: %w", err)
-	}
-	weftRepo := gitrepo.New(weftRepoRoot)
-	if weftExists {
-		marked, err := weftRepo.BranchMarkedLocal(weftBranch)
-		if err != nil {
-			return fmt.Errorf("read local mark of weft branch %q: %w", weftBranch, err)
-		}
-		if !marked {
-			return &ErrLocalAddOverOrdinary{Slug: slug, Branch: weftBranch, kind: localAddUnmarkedWeft}
-		}
-	}
-	for _, tracked := range []struct {
-		repo   *gitrepo.Repo
-		branch string
-	}{
-		{gitrepo.New(l.WorktreePath()), warpBranch},
-		{weftRepo, weftBranch},
-	} {
-		_, err := tracked.repo.RefSHA("refs/remotes/" + originRemoteName + "/" + tracked.branch)
-		if err == nil {
-			return &ErrLocalAddOverOrdinary{Slug: slug, Branch: tracked.branch, kind: localAddOriginRef}
-		}
-		if !errors.Is(err, gitrepo.ErrRefNotFound) {
-			return fmt.Errorf("read origin ref of branch %q: %w", tracked.branch, err)
-		}
-	}
-	return nil
 }
 
 // addWarpBranch is what Add knows about the warp branch it created or adopted, handed to rollbackAdd.
 type addWarpBranch struct {
 	// tok proves this Add created the branch; the zero value proves nothing.
 	tok createdBranchToken
-	// adopted is whether the branch existed before this Add, in which case a rollback leaves it, and its mark, as it found them.
+	// adopted is whether the branch existed before this Add, in which case a rollback leaves it as it found it.
 	adopted bool
 }
 

@@ -4,7 +4,6 @@ package gitrepo_test
 
 import (
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/gitkit"
@@ -81,23 +80,6 @@ func TestPushBranch(t *testing.T) {
 		}
 		if got := remoteBranchSHA(t, bareRemote, "feat"); got != advanced {
 			t.Errorf("origin feat = %s; want it unchanged at %s", got, advanced)
-		}
-	})
-
-	t.Run("a local-only branch is refused before git runs", func(t *testing.T) {
-		t.Parallel()
-
-		container, bareRemote, clonePath, repo := newPushedMainClone(t)
-		commitOnUncheckedBranch(t, clonePath, "feat")
-		if err := repo.MarkBranchLocal("feat"); err != nil {
-			t.Fatalf("MarkBranchLocal() error = %v; want nil", err)
-		}
-
-		if err := repo.PushBranch("origin", "feat"); !errors.Is(err, gitrepo.ErrLocalBranch) {
-			t.Fatalf("PushBranch() error = %v; want it to match ErrLocalBranch", err)
-		}
-		if heads := remoteHeads(t, container, bareRemote); strings.Contains(heads, "refs/heads/feat") {
-			t.Errorf("origin heads = %q; want no refs/heads/feat", heads)
 		}
 	})
 }

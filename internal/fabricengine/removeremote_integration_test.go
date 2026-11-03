@@ -212,11 +212,9 @@ func TestRemove_RemoteFalseLeavesRemoteBranchIntact(t *testing.T) {
 	}
 }
 
-// TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact covers case 2: Remove's existing
-// partial-teardown guarantees are unchanged when the remote deletion fails: the weft worktree is
-// gone, the verb returns a nil error, RemoteBranchError is populated, and the failure has not been
-// picked up by the teardown's own error accumulation. Induced the same way as Cleanup's own case: a
-// weft origin pointing at an absent path.
+// TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact covers case 2: an unreachable weft origin fails the remote steps, which run after the local teardown.
+// The weft worktree is gone and the archive failure is the returned error.
+// Induced the same way as Cleanup's own case: a weft origin pointing at an absent path.
 func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -231,14 +229,14 @@ func TestRemove_RemoteFailureLeavesPartialTeardownGuaranteesIntact(t *testing.T)
 
 	mustBreakOrigin(t, weftRoot)
 
-	// The archive step pushes to the same origin before any teardown, so an unreachable origin now fails Remove there, ahead of the remote deletion, with the pair still intact.
+	// The remote steps run after the local teardown, so the archive push fails against the unreachable origin, ahead of the remote deletion, with the weft worktree already gone.
 	if _, err := topology.Remove(l, slug, false, true); err == nil {
 		t.Fatalf("Remove(%q, remote=true) = nil error; want the archive push failure against the unreachable origin", slug)
 	}
 
 	weftTarget := fabricengine.RecordsWorktreePath(l, slug)
-	if _, statErr := os.Stat(weftTarget); statErr != nil {
-		t.Errorf("weft worktree missing at %s; want the pair left intact by the failed archive: %v", weftTarget, statErr)
+	if _, statErr := os.Stat(weftTarget); !os.IsNotExist(statErr) {
+		t.Errorf("weft worktree at %s: Stat error = %v; want it removed before the remote steps", weftTarget, statErr)
 	}
 }
 

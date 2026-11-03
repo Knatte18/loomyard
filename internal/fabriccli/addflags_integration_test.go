@@ -1,4 +1,4 @@
-// addflags_integration_test.go drives the fabric CLI's `add --parent` and `add --adopt-local` over one real hub, with the refusals of `--local` combined with either.
+// addflags_integration_test.go drives the fabric CLI's `add --parent` and `add --adopt-local` over one real hub.
 // Package fabriccli_test, sharing the single TestMain in testmain_test.go.
 
 package fabriccli_test
@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestFabricAdd_ParentAndAdoptLocal adds a beam, a member forked from it and a pair over an existing local branch, then the two refused `--local` combinations.
+// TestFabricAdd_ParentAndAdoptLocal adds a beam, a member forked from it and a pair over an existing local branch.
 // Steps run serially in this order over one hub.
 func TestFabricAdd_ParentAndAdoptLocal(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -64,30 +64,6 @@ func TestFabricAdd_ParentAndAdoptLocal(t *testing.T) {
 		envelope.RequireOK(t, output)
 		if got := strings.TrimSpace(gitOutputCLI(t, h.PairCodeWorktree(slug), "rev-parse", "HEAD")); got != commit {
 			t.Errorf("adopted pair HEAD = %s; want the branch's commit %s", got, commit)
-		}
-	})
-
-	t.Run("LocalRefusesBothFlags", func(t *testing.T) {
-		tests := []struct {
-			name string
-			flag []string
-			want string
-		}{
-			{"Parent", []string{"--parent", beam}, "--parent"},
-			{"AdoptLocal", []string{"--adopt-local"}, "--adopt-local"},
-		}
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				slug := "local-" + strings.ToLower(tt.name)
-				code, output := runFabric(t, prime, append([]string{"add", slug, "--local"}, tt.flag...)...)
-				if code == 0 {
-					t.Fatalf("add --local %v exit = 0; want a refusal\noutput: %s", tt.flag, output)
-				}
-				envelope.RequireErr(t, output, tt.want)
-				if out := strings.TrimSpace(gitOutputCLI(t, prime, "branch", "--list", slug)); out != "" {
-					t.Errorf("branch %s exists after the refusal: %q; want none", slug, out)
-				}
-			})
 		}
 	})
 }

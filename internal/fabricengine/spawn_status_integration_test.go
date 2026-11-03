@@ -1,4 +1,4 @@
-// spawn_status_integration_test.go covers SpawnStatusPush, the one entry point for a status push, over a hubforge hub: the prime rule, the slug roles, the board working directory and the local-branch check.
+// spawn_status_integration_test.go covers SpawnStatusPush, the one entry point for a status push, over a hubforge hub: the prime rule, the slug roles, and the board working directory.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -8,12 +8,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
@@ -22,11 +20,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime, a task pair, a local pair and a pair whose code branch alone is marked and a pair whose records branch alone is marked.
+// TestSpawnStatusPush covers the request SpawnStatusPush builds from the prime and a task pair.
 // Serial: SwapPushRecorderForTest sets the package-level spawnDetachedPushFn.
 func TestSpawnStatusPush(t *testing.T) {
 	tiergate.Require(t, 1)
-	const localSlug = "localpair"
 	pairSlug := hubforge.TemplatePairSlug
 
 	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: ".", Pairs: []string{pairSlug}})
@@ -59,8 +56,8 @@ func TestSpawnStatusPush(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SpawnStatusPush: %v", err)
 		}
-		if !res.Spawned || len(res.LocalSkipped) != 0 {
-			t.Errorf("result = %+v; want spawned with nothing skipped", res)
+		if !res.Spawned {
+			t.Errorf("result = %+v; want spawned", res)
 		}
 		requireOneCall(t, "", h.PrimeRecords(), "s", "")
 	})
@@ -129,93 +126,6 @@ func TestSpawnStatusPush(t *testing.T) {
 		requireOneCall(t, h.PairCodeWorktree(pairSlug), h.PairRecordsSibling(pairSlug), pairSlug, pairSlug)
 		if got := logged.String(); strings.Count(got, "parent lock records unreadable") != 1 {
 			t.Errorf("log = %q; want one warning that the parent lock records are unreadable", got)
-		}
-	})
-
-	t.Run("OrdinaryPairWithMarkedCodeBranchPushesRecordsOnly", func(t *testing.T) {
-		recorder.Reset()
-		l := resolve(t, h.PairCodeWorktree(pairSlug))
-		code := gitrepo.New(h.PairCodeWorktree(pairSlug))
-		branch, err := code.CurrentBranch()
-		if err != nil {
-			t.Fatalf("CurrentBranch: %v", err)
-		}
-		if err := code.MarkBranchLocal(branch); err != nil {
-			t.Fatalf("MarkBranchLocal: %v", err)
-		}
-		t.Cleanup(func() { code.ClearBranchLocalMark(branch) }) //nolint:errcheck
-
-		res, err := fabricengine.SpawnStatusPush(l, "")
-		if err != nil {
-			t.Fatalf("SpawnStatusPush: %v", err)
-		}
-		if !res.Spawned || !slices.Equal(res.LocalSkipped, []string{branch}) {
-			t.Errorf("result = %+v; want spawned with only %q skipped", res, branch)
-		}
-		requireOneCall(t, "", h.PairRecordsSibling(pairSlug), pairSlug, pairSlug)
-	})
-
-	t.Run("OrdinaryPairWithMarkedRecordsBranchSpawnsNothing", func(t *testing.T) {
-		recorder.Reset()
-		l := resolve(t, h.PairCodeWorktree(pairSlug))
-		records := gitrepo.New(h.PairRecordsSibling(pairSlug))
-		branch, err := records.CurrentBranch()
-		if err != nil {
-			t.Fatalf("CurrentBranch: %v", err)
-		}
-		if err := records.MarkBranchLocal(branch); err != nil {
-			t.Fatalf("MarkBranchLocal: %v", err)
-		}
-		t.Cleanup(func() { records.ClearBranchLocalMark(branch) }) //nolint:errcheck
-
-		res, err := fabricengine.SpawnStatusPush(l, "")
-		if err != nil {
-			t.Fatalf("SpawnStatusPush: %v", err)
-		}
-		if res.Spawned || !slices.Equal(res.LocalSkipped, []string{branch}) {
-			t.Errorf("result = %+v; want nothing spawned and only %q skipped", res, branch)
-		}
-		if calls := recorder.Calls(); len(calls) != 0 {
-			t.Errorf("recorded requests = %+v; want none without a records side", calls)
-		}
-	})
-
-	t.Run("LocalPairSpawnsNothingAndItsCommitReportsTheSkip", func(t *testing.T) {
-		recorder.Reset()
-		if _, err := h.Topology.AddLocal(h.Location, localSlug); err != nil {
-			t.Fatalf("AddLocal: %v", err)
-		}
-		l := resolve(t, h.PairCodeWorktree(localSlug))
-
-		res, err := fabricengine.SpawnStatusPush(l, "")
-		if err != nil {
-			t.Fatalf("SpawnStatusPush: %v", err)
-		}
-		wantSkipped := []string{localSlug, fabricengine.RecordsBranchName(localSlug)}
-		if res.Spawned || !slices.Equal(res.LocalSkipped, wantSkipped) {
-			t.Errorf("result = %+v; want nothing spawned and %q skipped", res, wantSkipped)
-		}
-		if calls := recorder.Calls(); len(calls) != 0 {
-			t.Errorf("recorded requests = %+v; want none for a local pair", calls)
-		}
-
-		f, err := fabricengine.Open(l)
-		if err != nil {
-			t.Fatalf("Open: %v", err)
-		}
-		fabricengine.WriteWarpFileForTest(t, h.PairCodeWorktree(localSlug), "local-file.txt", "local change")
-		commit, err := f.Commit([]string{"local-file.txt"}, "local commit", nil, fabricengine.SyncOptions{})
-		if err != nil {
-			t.Fatalf("Commit: %v", err)
-		}
-		if !commit.Committed() {
-			t.Errorf("Commit landed nothing: %+v", commit)
-		}
-		if !slices.Equal(commit.PushLocalSkipped, wantSkipped) {
-			t.Errorf("PushLocalSkipped = %q; want %q", commit.PushLocalSkipped, wantSkipped)
-		}
-		if calls := recorder.Calls(); len(calls) != 0 {
-			t.Errorf("recorded requests after the commit = %+v; want none for a local pair", calls)
 		}
 	})
 }

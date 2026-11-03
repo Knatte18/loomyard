@@ -181,11 +181,11 @@ func TestRemove_TeardownLockAgainstThePairsPush(t *testing.T) {
 
 	t.Run("FailedRemoveRespawnsThePairsPushWithBothWorktrees", func(t *testing.T) {
 		h := newPairHub(t)
-		mustBreakOrigin(t, mustRecordsRepoRoot(t, h.Location))
+		t.Cleanup(fabricengine.SetRemoveAfterLockHookForTest(func() error { return errors.New("injected failure after the teardown lock") }))
 		recorder := fabricengine.SwapPushRecorderForTest(t)
 
 		if _, err := h.Topology.Remove(h.Location, slug, false, false); err == nil {
-			t.Fatalf("Remove with an unreachable origin = nil error; want the archive failure")
+			t.Fatalf("Remove with a failure after the lock = nil error; want the injected failure")
 		}
 
 		calls := recorder.Calls()

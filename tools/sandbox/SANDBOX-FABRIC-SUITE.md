@@ -570,21 +570,6 @@ Two `integration`-tagged tests do drive the unstubbed seams either side of the c
 
 ---
 
-### F23 -- Local-only pair (`add --local`, `push`)
-
-**Covers:** fabric
-
-**Goal:** "Add a local-only pair and confirm it pushes nothing, then confirm `--local` never takes over an ordinary pair."
-
-**Watch:** Run `lym fabric add --local <slug>` from the prime and confirm the envelope carries `local: true` and no `push_spawned` entry, that no `_launchers/<slug>` exists, and that `git config branch.<slug>.lymlocal` reads `true` in the warp repo and `git config branch.<slug>-weft.lymlocal` in the weft repo.
-Run `lym fabric push` from the new pair and confirm it exits 0 with `local_skipped` naming both branches, and that neither branch exists on either origin (`git ls-remote origin <branch>` in each repo).
-Add an ordinary pair with another slug, remove both of its worktrees with `git worktree remove`, and run `lym fabric add --local <that-slug>`: confirm it refuses before creating anything, naming `lym fabric checkout` and `git branch -D`.
-Remove the local pair's two worktrees and its weft branch by hand, then run a plain `lym fabric add <slug>` over the kept warp branch and confirm it succeeds with `local_mark_cleared` naming the cleared branches and the mark gone from `git config`.
-
-**Verdict:** `OK` / `WARN` / `FAIL`
-
----
-
 ## Session log format
 
 After running all scenarios, record a short session summary:
@@ -616,7 +601,6 @@ F19: <OK|WARN|FAIL> -- <one-line note if not OK>
 F20: <OK|WARN|FAIL> -- <one-line note if not OK>
 F21: <OK|WARN|FAIL> -- <one-line note if not OK>
 F22: <OK|WARN|FAIL> -- <one-line note if not OK>
-F23: <OK|WARN|FAIL> -- <one-line note if not OK>
 
 sandbox-report.json written: <count of WARN/FAIL items>
 ```

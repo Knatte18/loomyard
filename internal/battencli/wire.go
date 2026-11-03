@@ -365,7 +365,8 @@ func createRefusal(err error, slug, taskBranch string) error {
 
 // finishRemoval turns the composite's RemovePair outcome into the Worktree-Teardown row's verdict.
 // A pair of which nothing remains is the row's done post-condition, since shedengine persists the transition only after the producer returns and a process killed right after the removal re-enters the row.
-// Remove reports a failed remote deletion without failing; it is returned here so the row halts resumable, and the resumed row retries the deletion.
+// Remove hands its remote steps to a detached child and returns without their outcome; the child mails the orch a failed step with its way forward.
+// A failed remote deletion Remove did report, when the steps ran in process, is returned here so the row halts resumable, and the resumed row retries the deletion.
 func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error {
 	if errors.Is(err, fabricengine.ErrPairNotFound) {
 		logger.Info("battencli: teardown found nothing of the pair left, done", "slug", slug)

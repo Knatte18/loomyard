@@ -108,7 +108,7 @@ type Teardown struct {
 	gone    func(slug string) (bool, error)
 	quiet   func(slug string) (quietState, error)
 	refusal func(slug string, force bool) error
-	// endOwned ends the pair's registered processes, sparing the calling process and its ancestors and every process of a role in spare.
+	// endOwned ends the pair's registered processes, sparing the calling process and its ancestors, every process of a role in spare, and always a teardown child.
 	endOwned func(slug string, spare ...string) ([]runproc.Ended, error)
 	// driverLockHeld reports whether the present task worktree's Go-driver lock is held.
 	driverLockHeld func(slug string) (bool, error)
@@ -617,8 +617,9 @@ func sessionsOfOtherPairs(live, pairSessions []string) []string {
 
 // endOwnedProcesses ends the pair's registered processes through the hub's owner record.
 // The calling process and its ancestors are spared, so batten's own teardown, run inside a registered batten, never ends itself, and so is every process of a role in spare.
+// A teardown child, which holds the slug's teardown lock to run the remote steps of an earlier teardown, is always spared: only an operator's deliberate end of it stops those steps.
 func (t *Teardown) endOwnedProcesses(slug string, spare ...string) ([]runproc.Ended, error) {
-	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), spare...)
+	return runproc.EndSparing(fabricengine.RunProcDir(t.prime.HubPath), slug, os.Getpid(), append(spare, runproc.RoleTeardown)...)
 }
 
 // driverLockHeldIn reports whether the present task worktree's Go-driver lock is held.

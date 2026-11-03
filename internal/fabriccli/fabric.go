@@ -132,38 +132,28 @@ pair's next push.
 The command errors if the worktree is on a detached HEAD or an unborn branch,
 because a fork point cannot be determined in either case.
 
-With --local the pair is local-only: no origin is read or written, no launcher
-is created, no push is spawned, and both branches are marked local so
-no fabric push publishes them. A plain "lym fabric add" over a local pair's kept
-branches adopts them and clears the marks. --local refuses a slug whose branch
-already belongs to an ordinary pair.
-
 With --parent <slug> the pair forks from that live pair of the hub, its last
 commit and its records branch, not from the acting worktree. The parent's
 uncommitted changes are not carried and are not checked.
 
-With --adopt-local the pair is made over an unmarked local branch of the slug
-that already exists. Neither it nor its records branch may be checked out
+With --adopt-local the pair is made over a local branch of the slug that
+already exists. Neither it nor its records branch may be checked out
 elsewhere. Over the default branch the pair is a root pair with no parent.
-
---local takes neither flag.
 
 Example:
   lym fabric add my-task
-  lym fabric add --local my-task
   lym fabric add my-task --parent my-beam
   lym fabric add my-task --adopt-local`,
 		RunE: clihelp.WrapRunCtx(func(ctx context.Context, out io.Writer, args []string) int {
-			local, _ := addCmd.Flags().GetBool("local")
 			parent, _ := addCmd.Flags().GetString("parent")
 			adoptLocal, _ := addCmd.Flags().GetBool("adopt-local")
-			return runAdd(ctx, out, args, local, addOptionsFromEnv(parent, adoptLocal))
+			return runAdd(ctx, out, args, addOptionsFromEnv(parent, adoptLocal))
 		}),
 	}
-	addCmd.Flags().Bool("local", false, "create a local-only pair: no origin is read or written, no launcher is created, and both branches are marked local so no fabric push publishes them")
 	addCmd.Flags().String("parent", "", "fork the new pair from this live pair of the hub instead of from the acting worktree")
 	addCmd.Flags().Bool("adopt-local", false, "make the pair over a local branch of the slug that already exists, instead of refusing it")
 	cmd.AddCommand(addCmd)
+	cmd.AddCommand(teardownChildCmd())
 
 	// list
 	cmd.AddCommand(&cobra.Command{
@@ -295,8 +285,8 @@ not reported already-healthy.
 
 It also restores a pair's launcher directory (_launchers/<slug>) when it has
 gone missing, reporting launchers_restored rather than already_healthy. The
-hub's prime worktree and a local-only pair are skipped: neither has a launcher
-directory, so there is nothing there to repair.
+hub's prime worktree is skipped: it has no launcher directory, so there is
+nothing there to repair.
 
 It also removes fabric's retired portal links (under _portals) and the old
 workspace file under _launchers, and keeps anything else found there, naming it
@@ -517,15 +507,7 @@ func resolveWarpLocation(ctx context.Context) (cwd string, l *lymcwd.Location, e
 }
 
 // runAdd executes the fabric add subcommand. Under cobra, args[0] is the slug.
-// With local it creates a local-only pair, spawns no detached push and reports local: true.
-// A local pair takes neither opts.Parent nor opts.AdoptLocal, and the add is refused before any mutation naming the flag to drop.
-func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts fabricengine.AddOptions) int {
-	if local && opts.Parent != "" {
-		return output.Err(out, "--local cannot be combined with --parent: a local-only pair forks from the acting worktree; way forward: drop --parent, or drop --local")
-	}
-	if local && opts.AdoptLocal {
-		return output.Err(out, "--local cannot be combined with --adopt-local: a local-only pair already adopts its own marked branches; way forward: drop --adopt-local, or drop --local")
-	}
+func runAdd(ctx context.Context, out io.Writer, args []string, opts fabricengine.AddOptions) int {
 	// Nothing has been mutated yet at cwd/location resolution: a bare output.Err carries no record.
 	_, l, err := resolveWarpLocation(ctx)
 	if err != nil {
@@ -545,30 +527,14 @@ func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts 
 
 	// args[0] is the slug; cobra has already consumed "add" from the argument list.
 	slug := args[0]
-	var r fabricengine.AddResult
-	if local {
-		r, err = top.AddLocal(l, slug)
-	} else {
-		r, err = top.Add(l, slug, opts)
-	}
+	r, err := top.Add(l, slug, opts)
 	if err != nil {
-		// A leftover or local-over-ordinary refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
+		// A leftover refusal fires before Add's first mutation, so it is a pre-flight failure: a bare output.Err.
 		var leftover *fabricengine.ErrRemoteLeftover
-		var overOrdinary *fabricengine.ErrLocalAddOverOrdinary
-		if errors.As(err, &leftover) || errors.As(err, &overOrdinary) {
+		if errors.As(err, &leftover) {
 			return output.Err(out, err.Error())
 		}
 		return errWithRecord(out, r.Mutated(), err)
-	}
-	if local {
-		rec := fabricengine.NewMutations(l.HubPath)
-		rec.Extend(r.Mutated())
-		return okWithRecord(out, rec.Snapshot(), map[string]any{
-			"slug":   r.Slug,
-			"branch": r.Branch,
-			"path":   r.Path,
-			"local":  true,
-		})
 	}
 	// Add pushes nothing: the new pair's branches go out through a detached push, as sync's do, so the verb returns without waiting on the remote.
 	// A failed spawn leaves the pair whole with its branches local, and the pair's next detached push carries them, so it is reported but never fails the verb.
@@ -579,9 +545,6 @@ func runAdd(ctx context.Context, out io.Writer, args []string, local bool, opts 
 		"slug":   r.Slug,
 		"branch": r.Branch,
 		"path":   r.Path,
-	}
-	if len(r.LocalMarkCleared) > 0 {
-		fields["local_mark_cleared"] = r.LocalMarkCleared
 	}
 	pairLocation, err := lymcwd.ResolveWorktree(codeWorktree)
 	if err == nil {
@@ -1168,7 +1131,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// code_branch_kept_reason, remote_branch_kept_reason, remote_code_branch_kept_reason, stray_path, local, local_mark_branch, dropped_records_tip, origin_archive_tag, abandoned_session and warning appear only when set.
+// code_branch_kept_reason, remote_branch_kept_reason, remote_code_branch_kept_reason, stray_path, origin_archive_tag, remote_handed_off, abandoned_session and warning appear only when set.
 // ended_processes, the {pid, role} of each registered process the session end ended, is always present and empty when none.
 func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult, warning string) map[string]any {
 	steps := r.Steps
@@ -1200,17 +1163,11 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	if r.StrayPath != "" {
 		fields["stray_path"] = r.StrayPath
 	}
-	if r.Local {
-		fields["local"] = true
-	}
-	if r.LocalMarkBranch != "" {
-		fields["local_mark_branch"] = r.LocalMarkBranch
-	}
-	if r.DroppedRecordsTip != "" {
-		fields["dropped_records_tip"] = r.DroppedRecordsTip
-	}
 	if r.OriginArchiveTag != "" {
 		fields["origin_archive_tag"] = r.OriginArchiveTag
+	}
+	if r.RemoteHandedOff {
+		fields["remote_handed_off"] = true
 	}
 	if session.AbandonedSession != "" {
 		fields["abandoned_session"] = session.AbandonedSession

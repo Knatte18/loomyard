@@ -216,10 +216,7 @@ func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, ru
 			return committed, err
 		}),
 		Spawn: check.guardedSpawn(func() error {
-			res, err := spawnStatusPush(location, "")
-			if len(res.LocalSkipped) > 0 {
-				logger.Info("loomcli: status push left out local-only branches", "branches", res.LocalSkipped)
-			}
+			_, err := spawnStatusPush(location, "")
 			return err
 		}),
 		Push: check.guardedPush(func() error {

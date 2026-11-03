@@ -237,13 +237,10 @@ func TestRegenerateHubWorkspace(t *testing.T) {
 			hubforge.AddPair(t, h, "b-task")
 			hubforge.AddPair(t, h, "a-task")
 			hubforge.AddPairWith(t, h, "c-skip-push", fabricengine.AddOptions{SkipPush: true})
-			if _, err := h.Topology.AddLocal(h.Location, "d-local"); err != nil {
-				t.Fatalf("AddLocal: %v", err)
-			}
 
 			path, _ := regenerateHub(t, h)
 
-			assertFolders(t, h, path, primeBranch(t, h), "Bolt", "a-task", "b-task", "c-skip-push", "d-local")
+			assertFolders(t, h, path, primeBranch(t, h), "Bolt", "a-task", "b-task", "c-skip-push")
 		})
 	}
 

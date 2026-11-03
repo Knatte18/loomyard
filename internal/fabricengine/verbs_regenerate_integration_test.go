@@ -96,7 +96,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		assertFoldersAndNoPortals(t, h, fabricengine.HubWorkspacePath(h.Location), primeBranch(t, h), "Bolt")
 	})
 
-	t.Run("AddAddLocalAndRemoveTrackThePairsAndRecordTheWrite", func(t *testing.T) {
+	t.Run("AddAndRemoveTrackThePairsAndRecordTheWrite", func(t *testing.T) {
 		t.Parallel()
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		path := fabricengine.HubWorkspacePath(h.Location)
@@ -109,15 +109,8 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		}
 		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task")
 
-		local, err := h.Topology.AddLocal(h.Location, "local-task")
-		if err != nil {
-			t.Fatalf("AddLocal: %v", err)
-		}
-		localRecord := local.Mutated()
-		if !recordedFileWrite(&localRecord, h.Path, path) {
-			t.Errorf("AddLocal recorded no file_written for the workspace file: %+v", localRecord.Entries())
-		}
-		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task", "local-task")
+		hubforge.AddPairWith(t, h, "b-task", fabricengine.AddOptions{SkipPush: true})
+		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "a-task", "b-task")
 
 		removed, err := h.Topology.Remove(h.Location, "a-task", true, false)
 		if err != nil {
@@ -127,7 +120,7 @@ func TestVerbsRegenerateHubWorkspace(t *testing.T) {
 		if !recordedFileWrite(&removedRecord, h.Path, path) {
 			t.Errorf("Remove recorded no file_written for the workspace file: %+v", removedRecord.Entries())
 		}
-		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "local-task")
+		assertFoldersAndNoPortals(t, h, path, prime, "Bolt", "b-task")
 	})
 
 	t.Run("PruneRegeneratesOnlyWhenApplying", func(t *testing.T) {

@@ -57,16 +57,13 @@ func headOrEmpty(path string) (string, error) {
 }
 
 // pushSideDetached pushes one side of the detached push through pushClassified.
-// A failure it recorded and a branch carrying the local-only mark leave the commits unpushed for a later push and return nil, as the detached child always has;
+// A failure it recorded leaves the commits unpushed for a later push and returns nil, as the detached child always has;
 // any other error is returned.
 func pushSideDetached(rec *Mutations, hubPath, side, path string, opts SyncOptions, retryRecords func() (bool, error)) error {
 	err := pushClassified(rec, hubPath, side, path, opts, retryRecords)
 	var failed *PushFailedError
 	switch {
 	case err == nil:
-		return nil
-	case errors.Is(err, gitrepo.ErrLocalBranch):
-		logger.Info("fabricengine: local-only branch, not pushed", "path", path)
 		return nil
 	case errors.As(err, &failed):
 		logger.Warn("fabricengine: push failed and was recorded; commits left unpushed", "path", path, "class", string(failed.Record.Class), "error", err)

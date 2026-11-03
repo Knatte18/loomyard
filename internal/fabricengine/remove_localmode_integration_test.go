@@ -31,6 +31,25 @@ func newLocalModePair(t *testing.T, slug string) *hubforge.Hub {
 	return h
 }
 
+// removePairWorktreesByHand removes both worktrees of slug's pair with git, leaving both branches.
+func removePairWorktreesByHand(t *testing.T, h *hubforge.Hub, slug string) {
+	t.Helper()
+
+	gitkit.MustRun(t, h.PrimeWorktree(), "git", "worktree", "remove", "--force", h.PairCodeWorktree(slug))
+	gitkit.MustRun(t, h.PrimeRecords(), "git", "worktree", "remove", "--force", h.PairRecordsSibling(slug))
+}
+
+// requireNoPairWorktrees fails when either worktree of slug's pair exists.
+func requireNoPairWorktrees(t *testing.T, h *hubforge.Hub, slug string) {
+	t.Helper()
+
+	for _, p := range []string{h.PairCodeWorktree(slug), h.PairRecordsSibling(slug)} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Errorf("%s exists; want no worktree (stat err = %v)", p, err)
+		}
+	}
+}
+
 // holdLockForTest takes the write lock at path, creating its directory, and releases it when the test ends.
 func holdLockForTest(t *testing.T, path string) {
 	t.Helper()

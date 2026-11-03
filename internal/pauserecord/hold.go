@@ -338,6 +338,13 @@ func SetGateExemptAll() (restore func()) {
 	return func() { replaceGateExemptAll(previous) }
 }
 
+// GateExemptsAll reports whether the installed gate lets every live entry pass; it is false with no gate installed.
+// A parent reads it to hand its exemption to a child, which installs its own gate.
+func GateExemptsAll() bool {
+	current := installedGate.Load()
+	return current != nil && current.ExemptAll
+}
+
 // replaceGateExemptAll sets ExemptAll on the current gate and returns the value it replaced; it replaces nothing when no gate is installed.
 func replaceGateExemptAll(exemptAll bool) bool {
 	for {

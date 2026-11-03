@@ -156,16 +156,15 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 	return weftLeftover{}, &ErrRemoteLeftover{Slug: slug, Branch: weftBranch, RemoteTip: originTip, kind: leftoverDivergedAdoptedWeft}
 }
 
-// probeWarpLeftover inspects the warp origin for warpBranch, run in the warp worktree.
+// judgeWarpLeftover judges tip, the origin tip of warpBranch the caller read with remoteHeadTip in the warp worktree, empty when origin lacks the branch.
 // It returns the origin tip Add adopts, or "" when it forks from HEAD, and onOrigin, whether origin holds the branch at all.
 // For a live pair a present origin branch is adopted whatever its relation to HEAD.
 // For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from, and refuses otherwise.
-// It never fetches.
-func probeWarpLeftover(l *lymcwd.Location, slug, warpBranch string, live bool) (adoptTip string, onOrigin bool, err error) {
+// It touches no remote.
+func judgeWarpLeftover(l *lymcwd.Location, slug, warpBranch, tip string, live bool) (adoptTip string, onOrigin bool, err error) {
 	dir := l.WorktreePath()
-	tip, err := remoteHeadTip(dir, warpBranch)
-	if err != nil || tip == "" {
-		return "", false, err
+	if tip == "" {
+		return "", false, nil
 	}
 	if live {
 		return tip, true, nil

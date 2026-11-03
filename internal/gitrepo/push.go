@@ -55,7 +55,6 @@ const remoteRefAbsentTrigger = "remote ref does not exist"
 // retrying.
 // The worktree must be clean.
 // Callers must re-read CurrentSHA after Push if SHAs were captured beforehand.
-// A branch carrying the local-only mark is refused with an error satisfying errors.Is(err, ErrLocalBranch).
 func (r *Repo) Push() error {
 	return r.pushWithRebaseRetry()
 }
@@ -79,7 +78,7 @@ func (e abortedRebaseError) Unwrap() error { return ErrPullRebaseFailed }
 // push.autoSetupRemote=true so first push establishes tracking.
 // A rebase that failed and was aborted returns an error satisfying errors.Is(err, ErrPullRebaseFailed).
 func (r *Repo) pushWithRebaseRetry() error {
-	err := r.pushPlainWithRetry("", "")
+	err := r.pushPlainWithRetry("", "", "")
 	if err == nil {
 		return nil
 	}
@@ -121,7 +120,7 @@ func (r *Repo) pushWithRebaseRetry() error {
 		return abortedRebaseError{message: fmt.Sprintf("gitrepo: git pull --rebase: %s", rebaseGitErr.Stderr)}
 	}
 
-	err = r.pushPlainWithRetry("", "")
+	err = r.pushPlainWithRetry("", "", "")
 	if err != nil {
 		return fmt.Errorf("gitrepo: git push (retry after rebase): %w", err)
 	}
@@ -130,24 +129,16 @@ func (r *Repo) pushWithRebaseRetry() error {
 
 // pushPlainWithRetry runs the plain push through PushWithRetry, each attempt under the remote-refs lock and every backoff outside it.
 // With remote and branch both empty it pushes the checked-out branch to its configured destination; a branch that cannot be read leaves the ref empty, so nothing is retried.
-// With a named branch it pushes refs/heads/<branch> to the same ref on remote, and the branch need not be checked out.
-// A branch carrying the local-only mark is refused with ErrLocalBranch before git runs, and a mark that cannot be read is returned as the error.
-func (r *Repo) pushPlainWithRetry(remote, branch string) error {
+// With a named branch it pushes source, or refs/heads/<branch> when source is empty, to refs/heads/<branch> on remote, and the branch need not be checked out.
+func (r *Repo) pushPlainWithRetry(remote, source, branch string) error {
 	pushArgs := []string{"-c", "push.autoSetupRemote=true", "push"}
 	if branch == "" {
-		if err := r.refuseMarkedCurrentBranch(); err != nil {
-			return err
-		}
 		branch, _ = r.CurrentBranch()
 	} else {
-		marked, err := r.BranchMarkedLocal(branch)
-		if err != nil {
-			return err
+		if source == "" {
+			source = "refs/heads/" + branch
 		}
-		if marked {
-			return ErrLocalBranch
-		}
-		pushArgs = append(pushArgs, remote, "refs/heads/"+branch+":refs/heads/"+branch)
+		pushArgs = append(pushArgs, remote, source+":refs/heads/"+branch)
 	}
 	return PushWithRetry(func() error {
 		return r.withRemoteRefs(func() error {
@@ -160,11 +151,19 @@ func (r *Repo) pushPlainWithRetry(remote, branch string) error {
 // PushBranch pushes the local branch to the same-named branch on the named remote, without rebasing or forcing; the branch need not be checked out.
 // A rejection returns an error wrapping ErrPushRejected with git's rejection line, a refusal for want of authentication or permission wraps ErrPushAuthRefused,
 // and a retryable remote refusal that outlasts the bounded retry wraps ErrPushRetriesExhausted.
-// A branch carrying the local-only mark is refused with ErrLocalBranch before git runs.
 // The push writes the branch's remote-tracking ref, each attempt under the remote-refs lock.
 func (r *Repo) PushBranch(remote, branch string) error {
-	return mapPlainPushError(r.pushPlainWithRetry(remote, branch))
+	return mapPlainPushError(r.pushPlainWithRetry(remote, "", branch))
 }
+
+// PushCommit pushes the commit sha to the branch on the named remote, without rebasing or forcing, so it needs no local branch.
+// It answers the errors PushBranch answers, and its push writes the branch's remote-tracking ref, each attempt under the remote-refs lock.
+func (r *Repo) PushCommit(remote, sha, branch string) error {
+	return mapPlainPushError(r.pushPlainWithRetry(remote, sha, branch))
+}
+
+// configKeyNotSetExit is the exit code `git config --unset` answers when the key is absent.
+const configKeyNotSetExit = 5
 
 // DropRemoteTracking deletes the remote-tracking ref refs/remotes/<remote>/<branch> and unsets branch.<branch>.remote and branch.<branch>.merge, all in one hold of the remote-refs lock.
 // An absent tracking ref and an absent upstream setting are no error, so a repeated call succeeds; any other git failure is returned.
@@ -187,13 +186,12 @@ func (r *Repo) DropRemoteTracking(remote, branch string) error {
 
 // PushRebaseFree runs git push without rebasing, establishing upstream via
 // push.autoSetupRemote=true.
-// A rejection, as not a fast-forward or for a remote reason such as a declining hook, returns an error wrapping ErrPushRejected with git's rejection line;
-// it returns an error satisfying errors.Is(err, ErrLocalBranch) for a branch carrying the local-only mark.
+// A rejection, as not a fast-forward or for a remote reason such as a declining hook, returns an error wrapping ErrPushRejected with git's rejection line.
 // A remote "(failed)" or "cannot lock ref" refusal is retried a bounded number of times, and an exhausted retry wraps ErrPushRetriesExhausted rather than mapping to ErrPushRejected.
 // A refusal for want of authentication or permission wraps ErrPushAuthRefused with git's refusal line, is never retried, and never maps to ErrPushRejected.
 // It takes no push-serialising lock of its own; each attempt runs under the repository's remote-refs lock.
 func (r *Repo) PushRebaseFree() error {
-	return mapPlainPushError(r.pushPlainWithRetry("", ""))
+	return mapPlainPushError(r.pushPlainWithRetry("", "", ""))
 }
 
 // mapPlainPushError maps the error of a plain push to the package's classified push errors.
@@ -318,9 +316,6 @@ func containsAny(s string, substrs []string) bool {
 // Returns immediately if nothing is unpushed once the lock is acquired.
 // Shares Push's rebase-retry and SHA invalidation caveat.
 func (r *Repo) PushCoalesced() error {
-	if err := r.refuseMarkedCurrentBranch(); err != nil {
-		return err
-	}
 	l, err := lock.AcquireWriteLock(filepath.Join(r.path, PushLockFileName))
 	if err != nil {
 		return fmt.Errorf("gitrepo: acquire push lock: %w", err)

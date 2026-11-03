@@ -41,7 +41,7 @@
 // Admit passes the gate as Network does and admits the process until its release runs; while an admission stands, every network call of the process passes at once, still marked in flight, whichever goroutine or repository makes the call.
 // A caller takes it before a lock other processes wait on, so a pause never holds the lock's holder.
 // SetGateExemptAll sets `Gate.ExemptAll` on the installed gate, so its waiter lets every live entry pass, for the one process an explicit operator verb runs in; it does nothing with no gate installed, and the returned function restores the previous value.
-// The exemption never reaches a child, which installs its own gate.
+// The exemption never reaches a child, which installs its own gate; GateExemptsAll reports it, so a parent can hand it to a child in the child's own input.
 // A gate with `Defer` set, which only a detached push or board-sync child installs, hands off to the function `SetGateDeferral` stored when `GateCovered` reads a live entry covering the process, before any wait; that function is the child's exit and does not return.
 // With none stored, or one that returns, the gate waits as before, so it still fails no call.
 // `GateCovered` applies exactly the exemptions the gate's waits apply, and reads false with no gate installed or an unreadable record.

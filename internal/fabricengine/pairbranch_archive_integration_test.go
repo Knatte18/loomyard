@@ -229,8 +229,8 @@ func TestCleanup_ApplyArchivesEachOrphanBeforeDeleting(t *testing.T) {
 	})
 }
 
-// TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep covers a failed archive: the entry carries the error, the branch stays, and Cleanup itself still returns no error.
-func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
+// TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep covers a failed remote archive: the branch was deleted locally under its local archive tag, the entry carries the error, and Cleanup itself still returns no error.
+func TestCleanup_ArchiveFailureKeepsTheLocalTagAndContinuesSweep(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
@@ -239,6 +239,7 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	l := h.Location
 	weftRoot := mustRecordsRepoRoot(t, l)
 	mustCreateOrphanWeftBranch(t, weftRoot, branch)
+	tip := gitkit.RevParse(t, weftRoot, branch)
 	mustBreakOrigin(t, weftRoot)
 
 	res, err := h.Topology.Cleanup(l, true, false, true)
@@ -247,11 +248,12 @@ func TestCleanup_ArchiveFailureKeepsBranchAndContinuesSweep(t *testing.T) {
 	}
 
 	entry := findCleanupEntry(t, res.Entries, branch)
-	if entry.Error == "" || entry.Deleted {
-		t.Errorf("entry = %+v; want Error set and Deleted false", *entry)
+	if entry.Error == "" || !entry.Deleted {
+		t.Errorf("entry = %+v; want Error set and Deleted true", *entry)
 	}
-	if !gitkit.BranchExists(t, weftRoot, branch) {
-		t.Errorf("branch %q was deleted despite the failed archive", branch)
+	slug, _ := fabricengine.WeftWarpSlug(branch)
+	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabricengine.ArchiveTagName(slug, tip)); got != tip {
+		t.Errorf("local archive tag points at %s; want the orphan's tip %s kept", got, tip)
 	}
 }
 

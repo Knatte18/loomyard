@@ -7,6 +7,7 @@
 package fabricengine_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,10 +152,12 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 	weftRoot := mustRecordsRepoRoot(t, l)
 	topology := h.Topology
 	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	weftTip := gitkit.RevParse(t, weftRoot, fabricengine.RecordsBranchName(slug))
 	mustBreakOrigin(t, weftRoot)
 
-	if _, err := topology.Remove(l, slug, false, false); err == nil {
-		t.Fatalf("Remove with an unreachable origin = nil error; want the archive failure")
+	_, err := topology.Remove(l, slug, false, false)
+	if !errors.Is(err, fabricengine.ErrArchiveFailed) {
+		t.Fatalf("Remove with an unreachable origin error = %v; want one wrapping ErrArchiveFailed", err)
 	}
 
 	for _, p := range []string{
@@ -162,15 +165,12 @@ func TestRemove_UnreachableOriginFailsClosed(t *testing.T) {
 		fabricengine.RecordsWorktreePath(l, slug),
 		fabricengine.LauncherDir(l, slug),
 	} {
-		if _, err := os.Lstat(p); err != nil {
-			t.Errorf("%s missing after a failed archive: %v", p, err)
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Errorf("%s after a failed remote archive: Lstat error = %v; want the local teardown done", p, err)
 		}
 	}
-	if !gitkit.BranchExists(t, weftRoot, fabricengine.RecordsBranchName(slug)) {
-		t.Errorf("weft branch gone after a failed archive")
-	}
-	if !gitkit.BranchExists(t, l.WorktreePath(), slug) {
-		t.Errorf("warp branch gone after a failed archive")
+	if got := gitkit.RevParse(t, weftRoot, "refs/tags/"+fabricengine.ArchiveTagName(slug, weftTip)); got != weftTip {
+		t.Errorf("local archive tag points at %s; want the weft tip %s kept", got, weftTip)
 	}
 }
 

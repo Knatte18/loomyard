@@ -95,10 +95,7 @@ func battenCommitStatusDeps(location *lymcwd.Location, runID string) commitStatu
 			return committed, err
 		},
 		Spawn: func() error {
-			res, err := spawnStatusPush(location, runID)
-			if len(res.LocalSkipped) > 0 {
-				logger.Info("battencli: status push left out local-only branches", "branches", res.LocalSkipped)
-			}
+			_, err := spawnStatusPush(location, runID)
 			return err
 		},
 	}

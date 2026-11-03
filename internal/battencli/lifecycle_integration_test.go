@@ -729,7 +729,7 @@ func stepTeardown_FailedRemoteDeletionHaltsResumably(t *testing.T, h *hubforge.H
 	}
 }
 
-// stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the records origin before teardown and asserts the removal half halts on the failed archive with the pair still in place and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
+// stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably breaks the records origin before teardown and asserts the removal half halts on the failed archive, the local teardown done ahead of it and the resume named, then that a resume once the remote is reachable again archives the records and finishes the teardown.
 func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *hubforge.Hub) {
 	slug := "batten-remote-unreachable"
 	hubforge.AddPair(t, h, slug)
@@ -753,8 +753,8 @@ func stepTeardown_UnreachableRemoteHaltsBeforeRemovalResumably(t *testing.T, h *
 	if !strings.Contains(err.Error(), "lym batten run "+slug) {
 		t.Errorf("Teardown.Remove() error = %q; want it to name the resume", err.Error())
 	}
-	if !pathExists(h.PairCodeWorktree(slug)) {
-		t.Errorf("task worktree removed; want the pair left in place when the archive fails")
+	if pathExists(h.PairCodeWorktree(slug)) {
+		t.Errorf("task worktree present; want the local teardown done before the remote archive failed")
 	}
 
 	gitkit.MustRun(t, recordsRepoRoot, "git", "remote", "set-url", "origin", h.RecordsBare)

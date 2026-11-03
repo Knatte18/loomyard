@@ -24,7 +24,7 @@
 //     Topology.RemoveRefusal answers whether Remove would refuse, with nothing touched.
 //     A refusal is returned unchanged, so a refused removal leaves the session and its strands live and ends no registered process.
 //  3. Owned-process end.
-//     runproc.End ends every process registered under the pair's slug, batten, the driver, the step loop and the pair's pushes among them, and the processes below them, sparing the calling process and its ancestors.
+//     runproc.End ends every process registered under the pair's slug, batten, the driver, the step loop and the pair's pushes among them, and the processes below them, sparing the calling process and its ancestors, and always a teardown child, which holds the slug's teardown lock to run the remote steps of an earlier teardown.
 //     It runs for a present or a gone task worktree, so neither batten's strand revival nor the driver's re-step races what follows.
 //     A *runproc.SurvivorsError with Request.RefuseWhenBusy returns an ErrDriverBusy refusal naming each survivor's pid and role, with no loop end and no session end;
 //     without RefuseWhenBusy the survivors are logged at Warn, set on SessionResult.Survivors, and the sequence goes on.

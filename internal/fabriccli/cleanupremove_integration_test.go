@@ -373,7 +373,7 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 		{"CleanupRemoteFailureExitsNonZero", func(t *testing.T) {
 			// A cleanup run whose weft origin is unreachable exits non-zero, emits "ok":false, and still carries the full entries array with the failing branch's own reason.
 			// Induced by pointing the weft repo's origin at a filesystem path that does not exist.
-			// The archive tag push is the first remote step and runs before any deletion, so its failure keeps the branch and the envelope reports "partial":false with the reason in the entry's error.
+			// The remote steps run after the local delete, so the archive tag push fails with the branch already deleted locally under its local tag, and the envelope reports "partial":true with the reason in the entry's error.
 			// Asserts the envelope carries no "refusal" key — a synthesised fmt.Errorf can never match RefusalOf.
 			branch := fabricengine.RecordsBranchName("cli-cleanup-remote-fail")
 			remoteEnvelopeCreateOrphanBranch(t, weftRoot, branch)
@@ -388,8 +388,8 @@ func TestRunCLI_CleanupRemoveScenario(t *testing.T) {
 			if env.OK {
 				t.Errorf("envelope ok = true; want false\noutput: %s", output)
 			}
-			if env.Partial != nil && *env.Partial {
-				t.Errorf("envelope partial = true; want false — the failed archive precedes every deletion\noutput: %s", output)
+			if env.Partial == nil || !*env.Partial {
+				t.Errorf("envelope partial = %v; want true — the local delete precedes the failed remote archive\noutput: %s", env.Partial, output)
 			}
 			if _, present := env.Raw["refusal"]; present {
 				t.Errorf("envelope carries a \"refusal\" key; want none — a synthesised error is never a gate refusal\noutput: %s", output)

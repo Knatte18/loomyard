@@ -484,8 +484,7 @@ func (t *Topology) repairPairWiring(rec *Mutations, warpLayout *lymcwd.Location,
 //
 // The launcher directory is part of the managed topology, since Add creates it and Remove and Prune tear it down.
 // A pair whose directory was deleted would otherwise read already_healthy until it was removed and re-added.
-// The hub's prime worktree is skipped, since Clone never gave it one, and so is a pair whose warp branch carries the local-only mark, since AddLocal creates none.
-// A failed mark read appends its raw read error to the Detail and restores nothing.
+// The hub's prime worktree is skipped, since Clone never gave it one.
 // A restore failure is a Detail note, never an Error or a changed Action:
 // the launchers are convenience plumbing, and failing to rebuild them must not downgrade a verdict about the pair's git topology.
 // rec is Reconcile's own recorder, threaded through to writeLaunchers.
@@ -496,15 +495,6 @@ func restoreLaunchers(rec *Mutations, warpLayout *lymcwd.Location, slug, warpBra
 	}
 
 	if _, err := os.Stat(LauncherDir(warpLayout, slug)); !os.IsNotExist(err) {
-		return false
-	}
-
-	marked, markErr := gitrepo.New(warpLayout.WorktreePath()).BranchMarkedLocal(warpBranch)
-	if markErr != nil {
-		appendPrDetail(pr, fmt.Sprintf("local-only mark read failed: %v", markErr))
-		return false
-	}
-	if marked {
 		return false
 	}
 

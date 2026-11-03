@@ -500,6 +500,24 @@ func TestNetwork(t *testing.T) {
 		}
 	})
 
+	t.Run("GateExemptsAll reports the exemption of the installed gate", func(t *testing.T) {
+		if GateExemptsAll() {
+			t.Fatalf("GateExemptsAll() = true with no gate installed; want false")
+		}
+		defer InstallGate(Gate{})()
+		if GateExemptsAll() {
+			t.Fatalf("GateExemptsAll() = true with a plain gate; want false")
+		}
+		restore := SetGateExemptAll()
+		if !GateExemptsAll() {
+			t.Fatalf("GateExemptsAll() = false after SetGateExemptAll; want true")
+		}
+		restore()
+		if GateExemptsAll() {
+			t.Fatalf("GateExemptsAll() = true after the release; want false")
+		}
+	})
+
 	t.Run("SetGateExempt with no gate installed is a no-op", func(t *testing.T) {
 		restore := SetGateExempt(ScopeHub, epoch)
 		restore()

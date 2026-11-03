@@ -311,9 +311,6 @@ Related commands:
 			if pushRes.CodePushSkipped != "" {
 				fields["code_push_skipped"] = pushRes.CodePushSkipped
 			}
-			if len(pushRes.LocalSkipped) > 0 {
-				fields["local_skipped"] = pushRes.LocalSkipped
-			}
 			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
 			return nil
 		},
@@ -383,7 +380,6 @@ return immediately — the push happens in the background, coalesced under
 fabric's push lock.
 In the hub's prime only the weft branch is handed over, because the prime's
 code branch is the operator's parent branch to push.
-A branch marked local-only is left out, and the envelope's local_skipped names it.
 
 Related commands:
   lym fabric commit — commit only
@@ -414,11 +410,7 @@ Related commands:
 			if spawn.Request.WeftPath != "" {
 				rec.Append(fabricengine.KindPushSpawned, spawn.Request.WeftPath, "detached")
 			}
-			fields := map[string]any{}
-			if len(spawn.LocalSkipped) > 0 {
-				fields["local_skipped"] = spawn.LocalSkipped
-			}
-			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), fields))
+			clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{}))
 			return nil
 		},
 	}

@@ -27,20 +27,15 @@
 //
 // # Add
 //
-// `lym fabric add --local` creates a local-only pair: no origin is read or written, no launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
-// Its envelope carries `local: true`, and `lym fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
-// A `lym fabric push` that meets the pair's teardown lock held exclusive pushes nothing and returns an ok envelope with `push_skipped` beside `local_skipped`, the commits left local for the pair's next push.
-// A `--local` add over a slug whose branch belongs to an ordinary pair is a pre-mutation refusal naming the way forward.
-// A plain `add` over a local pair's kept branches adopts them and clears the marks, listing the cleared branches in `local_mark_cleared`, so the pair becomes ordinary.
-// `lym fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over an unmarked local branch that already exists (`AddOptions.AdoptLocal`).
+// A `lym fabric push` that meets the pair's teardown lock held exclusive pushes nothing and returns an ok envelope with `push_skipped`, the commits left local for the pair's next push.
+// `lym fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over a local branch that already exists (`AddOptions.AdoptLocal`).
 // `--adopt-local` sets `AdoptLocal`, and otherwise only batten's resume does, together with `AdoptOnly`, so no unattended run adopts a stale local branch under a reused slug.
-// `--local` with either flag is refused before any mutation, naming the flag to drop.
 //
 // # Remove
 //
 // `lym fabric remove` ends the pair's reed session before removing a worktree, so no strand outlives it;
 // `abandoned_session` names a foreign session reed did not kill.
-// Pending run records in the weft worktree are committed before the archive tag is pushed, so only changes outside the record paths need `--force`.
+// Pending run records in the weft worktree are committed before the archive tag is made, so only changes outside the record paths need `--force`.
 // `ended_processes` lists the `{pid, role}` of each registered process the session end ended, and is empty when none.
 // `origin_archive_tag` names the second archive tag, at an origin weft tip the local tip does not contain, and is present only when that tag was pushed.
 // `warning` is present when the removal left the slug's batten run record standing, and names the step that settles it.
@@ -61,7 +56,7 @@
 // Either removes the pair through the local request, and a pair with neither reading runs the ordinary request.
 //
 // The removal exempts this process's network gate from every live pause for its duration, so its own network calls pass under any pause;
-// its detached children keep their own gates, and `--force` still answers dirtiness only.
+// the teardown child it starts for the remote steps runs exempt too, since the job carries the exemption, while the push children it respawns keep their own gates, and `--force` still answers dirtiness only.
 //
 // A pair whose task worktree was already removed by hand is finished: the remaining teardown runs, and the envelope reports `finished: true` and the `steps` performed.
 // A path at the task worktree's location that is not a registered linked worktree is reported in `stray_path` and never deleted, and a slug of which nothing remains is refused as pair not found.

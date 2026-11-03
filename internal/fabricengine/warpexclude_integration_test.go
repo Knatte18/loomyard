@@ -43,10 +43,10 @@ func requireWarpExcludeOnce(t *testing.T, dir string) {
 // TestSeedWarpExclude_SeedsWarpOnlyOnce covers the warp exclude list end to end.
 // A pair's warp exclude holds each listed path once however often wiring and SeedWarpExclude run.
 // The weft exclude and the wired names hold none, and removing the pair keeps the lines.
-// A re-wired pair gets stripped lines back, AddLocal seeds them, and an unparseable fabric config fails the wiring before it seeds anything.
+// A re-wired pair gets stripped lines back, and an unparseable fabric config fails the wiring before it seeds anything.
 // In a hub with an anchor every line names the anchor and none names the root.
 //
-//testtiming:keep the warp exclude lines seeded once into the warp only, outside the wired names and surviving Remove, re-seeded by Reconcile's re-wire and AddLocal, and an unparseable config failing wiring; coverage of its blocks by other tests does not show an assertion of this
+//testtiming:keep the warp exclude lines seeded once into the warp only, outside the wired names and surviving Remove, re-seeded by Reconcile's re-wire, and an unparseable config failing wiring; coverage of its blocks by other tests does not show an assertion of this
 func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -125,16 +125,6 @@ func TestSeedWarpExclude_SeedsWarpOnlyOnce(t *testing.T) {
 			t.Errorf("junction %s not repaired by Reconcile: %v", link, err)
 		}
 		requireWarpExcludeOnce(t, warp)
-	})
-
-	t.Run("add_local_seeds_the_lines", func(t *testing.T) {
-		t.Parallel()
-		const slug = "localexcludepair"
-		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		if _, err := h.Topology.AddLocal(h.Location, slug); err != nil {
-			t.Fatalf("AddLocal: %v", err)
-		}
-		requireWarpExcludeOnce(t, fabricengine.WorktreePath(h.Location, slug))
 	})
 
 	t.Run("anchored_hub_seeds_the_lines_under_the_anchor", func(t *testing.T) {

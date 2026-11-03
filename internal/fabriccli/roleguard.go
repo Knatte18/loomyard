@@ -36,6 +36,7 @@ func readerVerb(cmd *cobra.Command) bool {
 // An unset, empty, unparseable or slug-free name passes.
 // The detached push child every commit spawns carries a hidden bypass flag and inherits the strand name, so a push with a bypass flag passes;
 // a bypass flag on any other subcommand is refused.
+// The hidden teardown child a removal spawns inherits the strand name the same way, so it passes too.
 // The guard reads the strand name and nothing else, so it stops a mistaken call, not a session that rewrites the variable.
 func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 	name, err := agentname.Parse(strandName)
@@ -43,6 +44,9 @@ func sandboxedRoleRefusal(cmd *cobra.Command, strandName string) string {
 		return ""
 	}
 	if agentname.MatchesRole(name.Role, agentname.RoleDriver) || agentname.MatchesRole(name.Role, agentname.RoleOrch) {
+		return ""
+	}
+	if cmd.Name() == fabricengine.TeardownChildVerb {
 		return ""
 	}
 	injectedWeft, _ := cmd.Flags().GetString("weft-path")

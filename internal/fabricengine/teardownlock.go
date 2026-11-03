@@ -129,19 +129,24 @@ func (t *Topology) lockPairTeardown(rec *Mutations, l *lymcwd.Location, slug str
 	if err != nil {
 		return nil, fmt.Errorf("take the teardown lock of the pair %q: %w", slug, err)
 	}
-	if !acquired && try {
-		return nil, fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
-	}
 	if !acquired {
-		return nil, fmt.Errorf("a push or removal of the pair %q is still running or waiting under a pause; %s once it finishes or the pause is resumed, or end the stuck push child, whose pid `lym tender status` lists under the pair's owner: %w", slug, rerun, ErrPairPushRunning)
+		return nil, teardownLockRefusal(slug, try, rerun)
 	}
 	return func() { _ = held.Release() }, nil
 }
 
+// teardownLockRefusal is the refusal of a teardown lock of slug that another holder kept: an error wrapping ErrPairBusy after one attempt with try set, else one wrapping ErrPairPushRunning that names rerun.
+func teardownLockRefusal(slug string, try bool, rerun string) error {
+	if try {
+		return fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
+	}
+	return fmt.Errorf("a push or removal of the pair %q is still running or waiting under a pause; %s once it finishes or the pause is resumed, or end the stuck push or teardown child, whose pid `lym tender status` lists under the pair's owner: %w", slug, rerun, ErrPairPushRunning)
+}
+
 // respawnPairPush spawns the push of the pair's worktrees that survive a failed Remove, so a child that exited on the held teardown lock loses nothing.
 // l is the location Remove ran from, the prime, so the pair's own location is built from it.
-// A local pair's records are never pushed, and a failed spawn is logged: the pair's next push carries its commits.
-func respawnPairPush(l *lymcwd.Location, slug string, local bool) {
+// A failed spawn is logged: the pair's next push carries its commits.
+func respawnPairPush(l *lymcwd.Location, slug string) {
 	taskWorktree := WorktreePath(l, slug)
 	recordsWorktree := RecordsWorktreePath(l, slug)
 
@@ -155,7 +160,7 @@ func respawnPairPush(l *lymcwd.Location, slug string, local bool) {
 		if _, err := SpawnStatusPush(pairLocation, ""); err != nil {
 			logger.Warn("fabricengine: respawning the pair's push after a failed remove failed", "slug", slug, "error", err)
 		}
-	case pathPresent(recordsWorktree) && !local:
+	case pathPresent(recordsWorktree):
 		req := PushSpawn{WeftPath: recordsWorktree, PauseSlug: slug, TeardownSlug: slug, WorkDir: BoltDir(l.HubPath)}
 		if err := spawnDetachedPushFn(req); err != nil {
 			logger.Warn("fabricengine: respawning the pair's records push after a failed remove failed", "slug", slug, "error", err)

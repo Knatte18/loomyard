@@ -99,9 +99,6 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 		return job.push()
 	}
 	job.branch = branch
-	if marked, err := job.repo.BranchMarkedLocal(branch); err != nil || marked {
-		return job.push()
-	}
 	if side == failedPushSideCode {
 		job.prime = job.isPrimeWorktree()
 	}
@@ -120,9 +117,6 @@ func pushClassified(rec *Mutations, hubPath, side, path string, opts SyncOptions
 	pushErr := job.push()
 	if pushErr == nil {
 		return job.landed(hadUnpushed, hadUnpushedErr)
-	}
-	if errors.Is(pushErr, gitrepo.ErrLocalBranch) {
-		return pushErr
 	}
 	if errors.Is(pushErr, gitrepo.ErrPushRejected) {
 		retry := retryRecords

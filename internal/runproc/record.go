@@ -41,6 +41,8 @@ const (
 	RoleSession = "session"
 	// RoleGate is a detached `lym gate` runner of a capped gate call.
 	RoleGate = "gate"
+	// RoleTeardown is the detached child that holds a pair's teardown lock to run the remote steps of its teardown.
+	RoleTeardown = "teardown"
 )
 
 // Record is one registered process of a run.

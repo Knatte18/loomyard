@@ -2,7 +2,7 @@
 // A PushSpawn is one detached push request: the side paths to push, the two slug flags the child is told, and the directory it starts in.
 // PauseSlugFlag names the pause entry the child's network calls are held under;
 // TeardownSlugFlag names the pair whose teardown the child must not outlive.
-// SpawnStatusPush is the one entry point for a status push: from a location alone it applies the prime rule, the slug roles and the local-branch check.
+// SpawnStatusPush is the one entry point for a status push: from a location alone it applies the prime rule and the slug roles.
 // SpawnDetachedPush starts the child a request describes, which re-enters the fabric CLI's bypass mode and pushes whichever side(s) the request carries.
 // PushWarpAt is the synchronous, no-Fabric-instance push of the warp side through gitrepo.PushCoalesced.
 // It has no production caller: the detached child's bypass handler (internal/fabriccli's
@@ -55,11 +55,9 @@ type PushSpawn struct {
 
 // SpawnResult reports what SpawnStatusPush did.
 // Spawned reports whether a child was requested, and Request is what it was asked to push.
-// LocalSkipped names each branch left out of the request because it is local-only.
 type SpawnResult struct {
-	Spawned      bool
-	Request      PushSpawn
-	LocalSkipped []string
+	Spawned bool
+	Request PushSpawn
 }
 
 // SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
@@ -146,50 +144,29 @@ func absoluteOrAsGiven(path string) string {
 // In the hub's prime only the records side is pushed, held under gateSlug and with no teardown slug;
 // in a task pair both sides are pushed, held and teardown-guarded under the pair's own slug.
 // The child starts in the hub's board worktree, outside both of the pair's worktrees.
-// A side whose current branch is local-only is left out of the request and named in LocalSkipped, and with no side left no child is spawned.
-// A local-only records branch spawns nothing either, since the child's push cannot run without the records side.
 // A failed or never-run push leaves the commits local; the next detached push carries them, and creates a never-pushed branch's upstream.
 func SpawnStatusPush(l *lymcwd.Location, gateSlug string) (SpawnResult, error) {
-	req, localSkipped, err := statusPushRequest(l, gateSlug)
+	req, err := statusPushRequest(l, gateSlug)
 	if err != nil {
 		return SpawnResult{}, err
 	}
-	res := SpawnResult{Request: req, LocalSkipped: localSkipped}
-	if req.WeftPath == "" {
-		return res, nil
-	}
-	res.Spawned = true
-	return res, spawnDetachedPushFn(req)
+	return SpawnResult{Request: req, Spawned: true}, spawnDetachedPushFn(req)
 }
 
-// statusPushRequest builds the detached push request for l's status records and names the local-only branches it left out.
-func statusPushRequest(l *lymcwd.Location, gateSlug string) (req PushSpawn, localSkipped []string, err error) {
+// statusPushRequest builds the detached push request for l's status records.
+func statusPushRequest(l *lymcwd.Location, gateSlug string) (PushSpawn, error) {
 	isPrime, err := IsPrimeWorktree(l)
 	if err != nil {
-		return PushSpawn{}, nil, err
+		return PushSpawn{}, err
 	}
-	req = PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoltDir(l.HubPath)}
+	req := PushSpawn{WeftPath: RecordsWorktree(l), PauseSlug: gateSlug, WorkDir: BoltDir(l.HubPath)}
 	if !isPrime {
 		req.WarpPath = l.WorktreePath()
 		req.PauseSlug = l.WorktreeName
 		req.TeardownSlug = l.WorktreeName
 		req.ParentLocked = parentLockHeldBy(l)
 	}
-
-	for _, side := range []*string{&req.WarpPath, &req.WeftPath} {
-		if *side == "" {
-			continue
-		}
-		branch, marked, err := localMarkOfCurrentBranch(*side)
-		if err != nil {
-			return PushSpawn{}, nil, err
-		}
-		if marked {
-			localSkipped = append(localSkipped, branch)
-			*side = ""
-		}
-	}
-	return req, localSkipped, nil
+	return req, nil
 }
 
 // parentLockHeldBy reports whether a live parent lock record names l's pair slug, which holds exactly for the pushes a Finalize spawns past its parent-side merge.
@@ -202,18 +179,6 @@ func parentLockHeldBy(l *lymcwd.Location) bool {
 		return false
 	}
 	return held
-}
-
-// localMarkOfCurrentBranch returns the branch checked out at worktree and whether it carries the local-only mark.
-// A detached HEAD has no branch to mark, so it reads unmarked.
-func localMarkOfCurrentBranch(worktree string) (branch string, marked bool, err error) {
-	repo := gitrepo.New(worktree)
-	branch, err = repo.CurrentBranch()
-	if err != nil {
-		return "", false, nil
-	}
-	marked, err = repo.BranchMarkedLocal(branch)
-	return branch, marked, err
 }
 
 // SpawnPairPush launches the detached push of the task pair at l: its code worktree and its paired records worktree.

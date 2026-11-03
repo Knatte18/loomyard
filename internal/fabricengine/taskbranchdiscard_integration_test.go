@@ -123,7 +123,7 @@ func TestDiscardTaskBranch(t *testing.T) {
 		}
 	})
 
-	t.Run("RefusedArchivePushDeletesNothing", func(t *testing.T) {
+	t.Run("RefusedArchivePushKeepsOriginAndTheLocalTag", func(t *testing.T) {
 		t.Parallel()
 		const slug = "discard-hook"
 		h, _ := discardHub(t, slug)
@@ -131,13 +131,17 @@ func TestDiscardTaskBranch(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(h.CodeBare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
 			t.Fatalf("install pre-receive hook: %v", err)
 		}
+		localTip := gitkit.RevParse(t, h.PrimeWorktree(), slug)
 
 		_, err := h.Topology.DiscardTaskBranch(h.Location, slug)
 		if !errors.Is(err, fabricengine.ErrArchiveFailed) {
 			t.Fatalf("DiscardTaskBranch error = %v; want one wrapping ErrArchiveFailed", err)
 		}
-		if !gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
-			t.Errorf("task branch %q gone locally; want it kept", slug)
+		if got := gitkit.RevParse(t, h.PrimeWorktree(), "refs/tags/"+fabricengine.ArchiveTagName(slug, localTip)); got != localTip {
+			t.Errorf("local archive tag points at %s; want the local tip %s", got, localTip)
+		}
+		if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
+			t.Errorf("task branch %q kept locally; want it deleted under its local archive tag", slug)
 		}
 		if !gitkit.BranchExists(t, h.CodeBare, slug) {
 			t.Errorf("task branch %q gone from origin; want it kept", slug)

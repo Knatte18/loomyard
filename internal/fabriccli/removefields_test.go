@@ -85,20 +85,6 @@ func TestRemoveFields(t *testing.T) {
 			},
 		},
 		{
-			name: "LocalPairKeys",
-			result: fabricengine.RemoveResult{
-				Slug:              "s",
-				Local:             true,
-				LocalMarkBranch:   "task/s",
-				DroppedRecordsTip: "abc123",
-			},
-			wantFields: map[string]any{
-				"local":               true,
-				"local_mark_branch":   "task/s",
-				"dropped_records_tip": "abc123",
-			},
-		},
-		{
 			name:       "RemoteBranchKeptReason",
 			result:     fabricengine.RemoveResult{Slug: "s", RemoteBranchKeptReason: "kept: moved"},
 			wantFields: map[string]any{"remote_branch_kept_reason": "kept: moved"},
@@ -107,6 +93,11 @@ func TestRemoveFields(t *testing.T) {
 			name:       "OriginArchiveTag",
 			result:     fabricengine.RemoveResult{Slug: "s", OriginArchiveTag: "archive/s/abc123"},
 			wantFields: map[string]any{"origin_archive_tag": "archive/s/abc123"},
+		},
+		{
+			name:       "RemoteHandedOff",
+			result:     fabricengine.RemoveResult{Slug: "s", RemoteHandedOff: true},
+			wantFields: map[string]any{"remote_handed_off": true},
 		},
 		{
 			name:       "WarningNamesTheBattenFollowUp",
@@ -131,7 +122,7 @@ func TestRemoveFields(t *testing.T) {
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
 				"stray_path", "abandoned_session", "remote_branch_kept_reason", "remote_code_branch_kept_reason", "code_branch_kept_reason",
-				"local", "local_mark_branch", "dropped_records_tip", "origin_archive_tag", "warning",
+				"origin_archive_tag", "remote_handed_off", "warning",
 			},
 			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted, session_ended and ended_processes.
 			wantKeyCount: 7 + 5,

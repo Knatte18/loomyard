@@ -649,7 +649,7 @@ func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
 
 // ArchiveWeftTipForTest runs archiveWeftTip without a branch push or a sleep seam and returns the local tip's tag, the skipped reason and the error, for package fabricengine_test tests that cannot read weftArchive's unexported fields.
 func ArchiveWeftTipForTest(rec *Mutations, l *lymcwd.Location, slug, weftBranch string) (tag, skippedReason string, err error) {
-	archive, skippedReason, err := archiveWeftTip(rec, l, slug, weftBranch, false, nil)
+	archive, skippedReason, err := archiveWeftTip(rec, l, slug, weftBranch, "", false, nil)
 	return archive.localTag, skippedReason, err
 }
 
@@ -691,7 +691,8 @@ func SetAddFailAfterWarpHookForTest(t testing.TB, hook func() error) {
 // DeleteTaskBranchAtTipForTest re-exports deleteTaskBranchAtTip for package fabricengine_test integration tests that need to hand the gated deletion a tip other than the one currently on origin, to prove the lease holds.
 // It passes a throwaway NewMutations("") recorder, since its callers assert nothing about the record.
 func DeleteTaskBranchAtTipForTest(l *lymcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
-	return deleteTaskBranchAtTip(NewMutations(""), l, warpBranch, parentBranch, tip)
+	deleted, keptReason, _ = deleteTaskBranchAtTip(NewMutations(""), l, warpBranch, parentBranch, tip)
+	return deleted, keptReason
 }
 
 // CommitPendingRecordsForTest re-exports commitPendingRecords for package fabricengine_test integration tests that drive a sibling location Remove would refuse or tear down before the commit is observable on its own.

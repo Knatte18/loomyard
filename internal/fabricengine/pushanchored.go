@@ -62,7 +62,6 @@ func pushLockBusyError(lockDir string, lockWait time.Duration) error {
 // It resolves its target the same way CommitAnchoredPaths does, from l alone via RecordsWorktree(l),
 // so a caller outside the Fabric Vocabulary Invariant's owner set never learns the weft exists.
 // It pushes the records side only, and waits for the push: it is the entry for a caller outside that owner set that needs the records side on the remote before it goes on.
-// A records branch carrying the local-only mark is not pushed and is named in PushResult.LocalSkipped, with a nil error.
 //
 // The push runs under the weft-side absorbing push lock,
 // so it never races a detached push child or another pushing verb.
@@ -88,7 +87,7 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 		return PushResult{}, nil
 	}
 
-	request, _, err := statusPushRequest(l, "")
+	request, err := statusPushRequest(l, "")
 	if err != nil {
 		return PushResult{}, err
 	}
@@ -98,18 +97,9 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	}
 	owed := map[string]PushSpawn{pushSideRecords: {WeftPath: target, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}}
 
-	var localSkipped []string
 	step := func() (progressed bool, err error) {
-		localSkipped = nil
 		retryWeft := func() (bool, error) { return retryWeftPush(rec, l.HubPath, target) }
-		if err := pushClassified(rec, l.HubPath, failedPushSideRecords, target, opts, retryWeft); err != nil {
-			if errors.Is(err, gitrepo.ErrLocalBranch) {
-				localSkipped = localSkippedBranch(gitrepo.New(target))
-				return false, nil
-			}
-			return false, err
-		}
-		return false, nil
+		return false, pushClassified(rec, l.HubPath, failedPushSideRecords, target, opts, retryWeft)
 	}
 
 	acquired, err := coalesceFlagged(lockDir, owed, acquirePushLock(lockWait), step)
@@ -119,7 +109,7 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 	if !acquired {
 		return PushResult{}, pushLockBusyError(lockDir, lockWait)
 	}
-	return PushResult{LocalSkipped: localSkipped}, nil
+	return PushResult{}, nil
 }
 
 // PushPairAnchored pushes the unpushed commits of l's code worktree and of its paired records sibling, rebase-free, under the weft-side absorbing push lock.
@@ -127,7 +117,7 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // a code branch with unpushed commits is reported in PushResult.CodePushSkipped, naming the branch and saying it was left for the operator to push.
 // Otherwise the code side is pushed first.
 // The records side is attempted even when the code side failed.
-// A side whose HEAD is unborn is skipped, and so is a side whose branch carries the local-only mark, which PushResult.LocalSkipped names.
+// A side whose HEAD is unborn is skipped.
 // Each side retries a rejection over the push backoff, after a fetch, while the remote tip is contained in local HEAD.
 // A failing side's error is wrapped as `fabricengine: push <side> side at <path>: %w` with the side named code or records,
 // so errors.Is(err, gitrepo.ErrPushRejected) holds for a rejected side;
@@ -160,7 +150,7 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 	warpPath := l.WorktreePath()
 	weftPath := RecordsWorktree(l)
 
-	request, _, err := statusPushRequest(l, "")
+	request, err := statusPushRequest(l, "")
 	if err != nil {
 		return PushResult{}, err
 	}
@@ -186,7 +176,6 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 		owed[pushSideCode] = PushSpawn{WarpPath: warpPath, PauseSlug: request.PauseSlug, TeardownSlug: request.TeardownSlug}
 	}
 
-	var localSkipped []string
 	var codePushSkipped string
 	pushSide := func(side, path string) error {
 		head, err := headOrEmpty(path)
@@ -201,17 +190,12 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 			retryRecords = func() (bool, error) { return retryWeftPush(rec, l.HubPath, path) }
 		}
 		if err := pushClassified(rec, l.HubPath, side, path, opts, retryRecords); err != nil {
-			if errors.Is(err, gitrepo.ErrLocalBranch) {
-				localSkipped = append(localSkipped, localSkippedBranch(gitrepo.New(path))...)
-				return nil
-			}
 			return fmt.Errorf("fabricengine: push %s side at %s: %w", side, path, err)
 		}
 		return nil
 	}
 
 	step := func() (progressed bool, err error) {
-		localSkipped = nil
 		codePushSkipped = ""
 		var warpErr error
 		if isPrime {
@@ -227,17 +211,7 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 	if err == nil && !acquired {
 		return PushResult{}, pushLockBusyError(lockDir, lockWait)
 	}
-	return PushResult{CodePushSkipped: codePushSkipped, LocalSkipped: localSkipped}, err
-}
-
-// localSkippedBranch returns repo's current branch as the one-entry LocalSkipped list of a push the local-only mark refused.
-// The mark is read from that branch, so the name is readable; an unreadable one yields an empty list.
-func localSkippedBranch(repo *gitrepo.Repo) []string {
-	branch, err := repo.CurrentBranch()
-	if err != nil {
-		return nil
-	}
-	return []string{branch}
+	return PushResult{CodePushSkipped: codePushSkipped}, err
 }
 
 // unpushedCodeBranchNote returns the CodePushSkipped text for the code worktree at path, or "" when its branch has nothing unpushed or the state cannot be read.

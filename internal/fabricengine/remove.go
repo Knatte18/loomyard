@@ -1,6 +1,7 @@
 // remove.go implements Remove: every refusal — slug, prime, target-exists, merge-in-progress and the no-force dirtiness checks with their status probes — runs first, through the read-only probe RemoveRefusal, and leaves the hub and the weft origin untouched.
-// Then the sibling's pending records are committed (commitPendingRecords) and the weft tip is archived,
-// and only then are the launchers torn down, so a refused call never loses a launcher or pushes a tag that misses uncommitted records.
+// Then the sibling's pending records are committed (commitPendingRecords) and the weft tip is tagged locally for its archive.
+// Only then are the launchers and worktrees torn down, so a refused call never loses a launcher or tags a tip that misses uncommitted records.
+// The pushes of the weft tip and the tag, and every delete on origin, run last in the detached teardown child.
 // The weft branch it removes is RecordsBranchName(warpBranch).
 // After both worktrees are gone it also deletes the pair's local warp branch, but only when the
 // destructive gate proves no work is lost: every commit is on another ref or already landed on the
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
@@ -43,10 +45,11 @@ func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
 var ErrPairNotFound = errors.New("pair not found")
 
 // The steps a Remove call reports in RemoveResult.Steps, a closed set; each is appended only after it changed state.
+// The two origin steps are the teardown child's, so they are listed only when its steps ran in process.
 const (
 	// RemoveStepRecordCommit is the commit of the sibling's pending records.
 	RemoveStepRecordCommit = "record_commit"
-	// RemoveStepArchive is the archive tag pushed to origin.
+	// RemoveStepArchive is the archive tag made on the local weft tip before the teardown; its push to origin is the teardown child's.
 	RemoveStepArchive = "archive"
 	// RemoveStepLaunchers is the removal of the pair's launcher directory.
 	RemoveStepLaunchers = "launchers"
@@ -62,8 +65,6 @@ const (
 	RemoveStepSiblingBranchOnOrigin = "sibling_branch_on_origin"
 	// RemoveStepTaskBranchOnOrigin is the deletion of the task's branch on origin.
 	RemoveStepTaskBranchOnOrigin = "task_branch_on_origin"
-	// RemoveStepRecordsDropped is the discarding of a local pair's records with its sibling branch.
-	RemoveStepRecordsDropped = "records_dropped"
 )
 
 // RemoveResult contains the result of successfully removing a worktree pair.
@@ -74,6 +75,7 @@ type RemoveResult struct {
 	Path         string `json:"path"`
 	LinksRemoved int    `json:"links_removed"`
 	// Steps lists the steps this call performed, in order, from the RemoveStep constants; always an array.
+	// A teardown child's steps are listed only when they ran in process, so RemoveStepArchive then stands for the local tag alone.
 	Steps []string `json:"steps"`
 	// Finished is true when the task worktree was already gone at entry, so the call completed a half-removed pair.
 	Finished bool `json:"finished"`
@@ -104,19 +106,15 @@ type RemoveResult struct {
 	// RemoteCodeBranchKeptReason is non-empty when remote was set and the task branch on origin was left in place, naming why: the gate's refusal or a failure to look it up or delete it.
 	// A kept branch is not a failure of Remove.
 	RemoteCodeBranchKeptReason string `json:"remote_code_branch_kept_reason,omitempty"`
-	// ArchiveTag names the archive/<slug>/<tip> tag of the local weft tip pushed to the weft origin before the teardown;
-	// empty when none was pushed.
+	// ArchiveTag names the archive/<slug>/<tip> tag made on the local weft tip before the teardown, whose push to the weft origin is the teardown child's;
+	// empty when none was made.
 	ArchiveTag string `json:"archive_tag,omitempty"`
 	// OriginArchiveTag names the second archive tag, at origin's weft tip, pushed when that tip is neither the local tip nor an ancestor of it; empty when none was needed.
 	OriginArchiveTag string `json:"origin_archive_tag,omitempty"`
 	// ArchiveSkippedReason is non-empty when no archive was attempted — today only a weft repo with no origin remote configured.
 	ArchiveSkippedReason string `json:"archive_skipped_reason,omitempty"`
-	// Local is true when the pair carried the local-only mark, so the call ran no origin step and archived nothing.
-	Local bool `json:"local,omitempty"`
-	// LocalMarkBranch names the branch the mark was read from: the task branch when it is marked, else the sibling branch.
-	LocalMarkBranch string `json:"local_mark_branch,omitempty"`
-	// DroppedRecordsTip is the tip of the sibling branch whose records a local pair's remove discarded; empty when no sibling branch survived.
-	DroppedRecordsTip string `json:"dropped_records_tip,omitempty"`
+	// RemoteHandedOff is true when the remote steps went to the detached teardown child, which runs them after Remove returns; the remote outcome fields then stay empty.
+	RemoteHandedOff bool `json:"remote_handed_off,omitempty"`
 	// SetAsideTag names the local set-aside/<slug>/<tip> tag a local removal put on the weft tip in place of an archive tag; empty when none was put.
 	SetAsideTag string `json:"set_aside_tag,omitempty"`
 	// WorkspaceSkipped is true when a local removal found the hub workspace lock held and left the workspace file stale.
@@ -136,35 +134,31 @@ type RemoveResult struct {
 // licence to delete the clone.
 // Its no-force dirtiness checks, status probes included, are refusals like the rest: a refusal leaves the hub and the weft origin untouched, with no tag pushed and nothing torn down.
 // The sibling's dirtiness inside the record pathspec is no refusal: Remove commits it first, with or without force, so the archive covers it.
-// After every refusal and before its first teardown mutation, Remove archives the pair's weft tip (archiveWeftTip), so the run records on the branch outlive its deletion.
-// When origin lacks the local tip it first pushes the weft branch alone, with no code branch, and a refusal of that push is only logged.
-// It then pushes an archive/<slug>/<tip> tag of the local tip to the weft origin, and a second tag at origin's tip when that tip is neither the local tip nor an ancestor of it, reported in OriginArchiveTag.
-// A failed archive returns its error with everything still in place, so a plain re-run retries it.
-// A failure after the archive leaves the tag in place for the re-run to reuse.
-// The archive runs whatever remote says, since it protects the local branch's commits as much as the remote copy, and force does not skip it: force answers dirtiness only.
-// A weft repo with no origin proceeds, with ArchiveSkippedReason set on the result.
-// Launcher cleanup runs after the archive but before the git removal.
-// remote gates whether the pair's weft branch, once deleted locally, is also deleted on the weft
-// repo's origin remote; a remote deletion failure never makes Remove return a non-nil error.
-// That deletion is leased on the origin tip the archive read, or on the local tip when the archive's branch push landed, so a branch origin moved since stays on origin and is reported in RemoteBranchKeptReason;
-// an origin that held no weft branch at the archive read gets no deletion.
+// After every refusal and before its first teardown mutation, Remove tags the pair's local weft tip archive/<slug>/<tip>, reported in ArchiveTag, so the run records on the branch outlive its deletion.
+// A failed tag returns its error, wrapping ErrArchiveFailed, with everything still in place, so a plain re-run retries it.
+// The tag is taken whatever remote says, and force does not skip it: force answers dirtiness only.
+// A weft repo with no origin proceeds untagged, with ArchiveSkippedReason set on the result.
+// Launcher cleanup runs after the tag but before the git removal.
 // Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
 // the destructive gate, which refuses unless the branch's work is on another ref or landed on the
 // parent recorded in the pair's origin record; a refusal fills CodeBranchKeptReason and Remove still
 // succeeds. force never answers that check.
-// With remote, Remove then deletes the task branch on the warp repository's origin, through the same gate and a lease on the observed remote tip, when the tip's work is landed;
-// a refusal, a lost lease or a failed push fills RemoteCodeBranchKeptReason and Remove still succeeds.
+// The remote steps run last, in a detached child that holds the pair's teardown lock, and Remove returns without waiting on them, reporting RemoteHandedOff.
+// In order, the child pushes the local weft tip to origin when origin lacks it, a refusal only logged;
+// pushes the archive tag, and a second tag at origin's tip when that tip is neither the local tip nor an ancestor of it;
+// with remote, deletes the weft branch on origin, leased on the origin tip it read or on the local tip once its push landed, keeping a branch origin moved since;
+// and with remote, deletes the task branch on origin, through the landed-work gate and a lease on the observed remote tip.
+// A failed remote step is logged and mailed to the hub's orch with its way forward; a kept branch is no failure.
+// In a test binary the remote steps run in process before Remove returns, and fill ArchiveTag, OriginArchiveTag, the RemoteBranch and RemoteCodeBranch fields and their steps, an archive failure returned as the error.
 // The recorded parent is read before any teardown, since the record lives in the weft worktree the
 // teardown deletes.
 // A pair whose task worktree is already gone is finished rather than refused: Remove performs whatever teardown remains, in the same order and through the same gates, and reports it in Steps with Finished set.
 // With nothing of the pair left it returns an error wrapping ErrPairNotFound.
-// A sibling branch present only on origin is archived from there and, with remote, deleted there; without remote it stays and the result says so.
+// A sibling branch present only on origin is archived from there by the child and, with remote, deleted there; without remote it stays.
 // A path at the task worktree's location that is not a registered linked worktree is reported in StrayPath and never deleted.
-// A pair one of whose surviving branches carries the local-only mark is removed as local: after the same refusals, it commits and archives nothing, runs no origin step and discards the sibling's records with its branch, uncommitted ones included, without force.
-// It reports Local, LocalMarkBranch and the dropped sibling tip, and with remote sets RemoteSkippedReason to say the pair is not on origin.
-// After the refusals and the pair inspection, and before its first mutation, local path included, Remove takes the pair's teardown lock exclusive, waiting at most the topology's teardown wait for a push of the pair to let go of it;
+// After the refusals and the pair inspection, and before its first mutation, Remove has the teardown child take the pair's teardown lock exclusive, waiting at most the topology's teardown wait for a push of the pair to let go of it;
 // when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning.
-// It holds the lock past its last step, the archive's branch push and tag pushes included, and a failure after taking it that leaves a worktree of the pair in place respawns the pair's push once the lock is released.
+// The child holds the lock past the remote steps, and a failure after taking it that leaves a worktree of the pair in place releases the lock and respawns the pair's push.
 // After a successful teardown, and before it returns, Remove disables auto gc in both hub stores and runs a best-effort foreground `git gc --auto` in each;
 // a failure there is logged and never fails the Remove, and a refused or failed Remove runs none of it.
 func (t *Topology) Remove(l *lymcwd.Location, slug string, force, remote bool) (res RemoveResult, err error) {
@@ -215,15 +209,18 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 
 	// The pair's detached pushes hold this lock shared, so no push runs against a worktree this call deletes.
 	// A failure after this point that leaves a worktree behind respawns the pair's push once the lock is released, since a child may have exited on the held lock.
-	// A local removal respawns nothing: the surviving worktree's commits stay local for the next reconcile.
-	releaseTeardown, err := t.lockPairTeardown(rec, l, slug, localMode, fmt.Sprintf("re-run `lym fabric remove %s`", slug))
+	// A local removal holds the lock itself and respawns nothing: the surviving worktree's commits stay local for the next reconcile.
+	hold, err := t.holdTeardown(rec, rec, l, slug, localMode, fmt.Sprintf("re-run `lym fabric remove %s`", slug), !localMode)
 	if err != nil {
 		return RemoveResult{}, err
 	}
+	handedOver := false
 	defer func() {
-		releaseTeardown()
+		if !handedOver {
+			hold.finish(nil)
+		}
 		if err != nil && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
-			respawnPairPush(l, slug, pair.localMark != "")
+			respawnPairPush(l, slug)
 		}
 	}()
 
@@ -241,51 +238,31 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		parentBranch = origin.ParentBranch
 	}
 
-	local := pair.localMark != ""
-	droppedRecordsTip := ""
-	archiveTag, originArchiveTag, archiveSkippedReason, setAsideTagName := "", "", "", ""
-	// The origin tip the archive read, which the sibling branch's delete on origin is leased on.
-	leaseTip := ""
-	if local {
-		// A local pair's records are disposable: nothing is committed or archived, and the sibling branch's tip is only reported.
-		if pair.siblingBranch {
-			weftRoot, err := RecordsRepoRoot(l)
-			if err != nil {
-				return RemoveResult{}, fmt.Errorf("resolve weft repo root: %w", err)
-			}
-			droppedRecordsTip, err = gitrepo.New(weftRoot).RefSHA("refs/heads/" + weftBranch)
-			if err != nil {
-				return RemoveResult{}, fmt.Errorf("read the sibling branch tip: %w", err)
-			}
-		}
-	} else {
-		// Commit the sibling's pending records so the archive tag covers them; force answers dirtiness only, so it never skips this step either.
-		committed, err := commitPendingRecords(rec, l, slug, warpBranch, localMode)
+	weftTip, archiveTag, archiveSkippedReason, setAsideTagName := "", "", "", ""
+	// Commit the sibling's pending records so the archive tag covers them; force answers dirtiness only, so it never skips this step either.
+	committed, err := commitPendingRecords(rec, l, slug, warpBranch, localMode)
+	if err != nil {
+		return RemoveResult{}, err
+	}
+	if committed {
+		steps = append(steps, RemoveStepRecordCommit)
+	}
+
+	if localMode {
+		// The weft tip is kept under a local tag, since no origin step may run; the tag covers what the pushed archive tag would have.
+		setAsideTagName, err = setAsideWeftTip(rec, l, slug, weftBranch, pair.siblingBranch)
 		if err != nil {
 			return RemoveResult{}, err
 		}
-		if committed {
-			steps = append(steps, RemoveStepRecordCommit)
+	} else {
+		// Tag the weft tip after every refusal and before the first teardown mutation: a failed tag leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
+		// force answers dirtiness only, so it never skips this step; the tag's push is the teardown child's.
+		weftTip, archiveTag, archiveSkippedReason, err = tagWeftTipForArchive(l, slug, weftBranch)
+		if err != nil {
+			return RemoveResult{}, err
 		}
-
-		if localMode {
-			// The weft tip is kept under a local tag, since no origin step may run; the tag covers what the pushed archive tag would have.
-			setAsideTagName, err = setAsideWeftTip(rec, l, slug, weftBranch, pair.siblingBranch)
-			if err != nil {
-				return RemoveResult{}, err
-			}
-		} else {
-			// Archive the weft tip after every refusal and before the first teardown mutation: a failed archive leaves the worktrees, launchers and both branches untouched, so a plain re-run retries it.
-			// force answers dirtiness only, so it never skips this step.
-			var archive weftArchive
-			archive, archiveSkippedReason, err = archiveWeftTip(rec, l, slug, weftBranch, true, t.archiveSleep)
-			if err != nil {
-				return RemoveResult{}, err
-			}
-			archiveTag, originArchiveTag, leaseTip = archive.localTag, archive.originTag, archive.leaseTip
-			if archiveTag != "" {
-				steps = append(steps, RemoveStepArchive)
-			}
+		if archiveTag != "" {
+			steps = append(steps, RemoveStepArchive)
 		}
 	}
 
@@ -333,17 +310,8 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		_, _ = gitexec.Run([]string{"worktree", "prune"}, l.WorktreePath())
 	}
 
-	var teardown weftTeardownResult
-	var siblingSteps []string
-	if local {
-		siblingSteps, err = removeLocalWeft(rec, l, slug, weftBranch, t.cfg.BranchPrefix, t.leftover)
-		if remote {
-			teardown.remoteSkippedReason = "the pair is local-only: nothing of it is on origin, so --remote has nothing to do"
-		}
-	} else if !localMode || pair.siblingWorktree || pair.siblingBranch {
-		// A sibling with neither worktree nor branch could only be found on origin, which a local removal never asks, so it counts as already gone there.
-		teardown, siblingSteps, err = t.removeSibling(rec, l, slug, weftBranch, pair, force, remote, leaseTip)
-	}
+	// A sibling with neither worktree nor branch could only be found on origin, which only the teardown child asks.
+	siblingSteps, err := t.removeSibling(rec, l, slug, weftBranch, pair, force)
 	if err != nil {
 		return RemoveResult{}, err
 	}
@@ -356,14 +324,6 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	warpDeleted, warpKeptReason := deleteWarpBranch(rec, l, warpBranch, parentBranch)
 	if warpDeleted {
 		steps = append(steps, RemoveStepTaskBranch)
-	}
-
-	remoteWarpDeleted, remoteWarpKeptReason := false, ""
-	if remote && !local {
-		remoteWarpDeleted, remoteWarpKeptReason = deleteTaskBranchOnOrigin(rec, l, warpBranch, parentBranch)
-		if remoteWarpDeleted {
-			steps = append(steps, RemoveStepTaskBranchOnOrigin)
-		}
 	}
 
 	for _, side := range []struct{ repo, branch string }{{failedPushSideCode, warpBranch}, {failedPushSideRecords, weftBranch}} {
@@ -385,30 +345,61 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	if pair.strayPath {
 		strayPath = target
 	}
-	return RemoveResult{
+	res = RemoveResult{
 		Slug:                 slug,
 		Path:                 target,
 		LinksRemoved:         linksRemoved,
-		RemoteBranchDeleted:  teardown.remoteBranchDeleted,
-		RemoteBranchError:    teardown.remoteBranchError,
-		RemoteSkippedReason:  teardown.remoteSkippedReason,
 		CodeBranchDeleted:    warpDeleted,
 		CodeBranchKeptReason: warpKeptReason,
+		ArchiveTag:           archiveTag,
+		ArchiveSkippedReason: archiveSkippedReason,
+		Steps:                steps,
+		Finished:             !pair.taskWorktree,
+		StrayPath:            strayPath,
+		SetAsideTag:          setAsideTagName,
+	}
+	if remote && archiveSkippedReason != "" {
+		res.RemoteSkippedReason = "no remote deletion attempted: " + strings.TrimPrefix(archiveSkippedReason, "no archive tag pushed: ")
+	}
+	if localMode {
+		return res, nil
+	}
 
-		RemoteBranchKeptReason:     teardown.remoteBranchKeptReason,
-		RemoteCodeBranchDeleted:    remoteWarpDeleted,
-		RemoteCodeBranchKeptReason: remoteWarpKeptReason,
-		ArchiveTag:                 archiveTag,
-		OriginArchiveTag:           originArchiveTag,
-		ArchiveSkippedReason:       archiveSkippedReason,
-		Steps:                      steps,
-		Finished:                   !pair.taskWorktree,
-		StrayPath:                  strayPath,
-		Local:                      local,
-		LocalMarkBranch:            pair.localMark,
-		DroppedRecordsTip:          droppedRecordsTip,
-		SetAsideTag:                setAsideTagName,
-	}, nil
+	// The remote steps go last, to the holder of the teardown lock, which releases it once they end.
+	handedOver = true
+	out := hold.finish(&remoteTeardownJob{
+		Kind:               remoteTeardownRemove,
+		Slug:               slug,
+		Worktree:           l.WorktreePath(),
+		BranchPrefix:       t.cfg.BranchPrefix,
+		WeftBranch:         weftBranch,
+		WeftTip:            weftTip,
+		DeleteWeftOnOrigin: remote && !weftBranchExists(l, weftBranch),
+		WarpBranch:         warpBranch,
+		ParentBranch:       parentBranch,
+		DeleteTaskOnOrigin: remote,
+	})
+	res.RemoteHandedOff = out.handedOff
+	if !out.ran {
+		return res, nil
+	}
+	res.ArchiveTag, res.OriginArchiveTag = out.archive.localTag, out.archive.originTag
+	// A sibling found only on origin had no local tip to tag, so its archive is the child's alone.
+	if res.ArchiveTag != "" && !slices.Contains(res.Steps, RemoveStepArchive) {
+		res.Steps = append(res.Steps, RemoveStepArchive)
+	}
+	res.RemoteBranchDeleted, res.RemoteBranchError, res.RemoteBranchKeptReason = out.weft.RemoteDeleted, out.weft.RemoteError, out.weft.RemoteKeptReason
+	res.RemoteCodeBranchDeleted, res.RemoteCodeBranchKeptReason = out.taskDeleted, out.taskKept
+	if res.RemoteSkippedReason == "" {
+		res.RemoteSkippedReason = out.weftKeptOnOrigin
+	}
+	if out.weft.RemoteDeleted {
+		res.Steps = append(res.Steps, RemoveStepSiblingBranchOnOrigin)
+	}
+	if out.taskDeleted {
+		res.Steps = append(res.Steps, RemoveStepTaskBranchOnOrigin)
+	}
+	return res, out.err
 }
 
 // housekeepHook, nil in production, runs with the slug just before a Remove's store housekeeping, so a test observes whether the housekeeping ran.
@@ -443,86 +434,12 @@ func regenerateHubWorkspaceNow(rec *Mutations, l *lymcwd.Location) (skipped bool
 	return errors.Is(err, errHubWorkspaceLockHeld)
 }
 
-// removeLocalWeft tears down a local pair's sibling without touching origin: its worktree goes through removeGitWorktree with dirtyRecordsDisposable, so uncommitted records are discarded, then its local branch is deleted and stale worktree registrations are pruned.
-// A worktree directory git deregistered but left on disk is finished through finishGitWorktreeRemoval, with leftover as its seam.
-// It returns the steps that changed state, in the order they ran, ending with RemoveStepRecordsDropped when the branch carried records away.
-// A worktree that survives a failed removal is an error; a missing worktree or branch is nothing to do.
-func removeLocalWeft(rec *Mutations, l *lymcwd.Location, slug, branch, branchPrefix string, leftover leftoverSeam) (steps []string, err error) {
-	weftRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return nil, fmt.Errorf("resolve weft repo root: %w", err)
-	}
-	weftPath := RecordsWorktreePath(l, slug)
-	hadWorktree := pathPresent(weftPath)
-	hadBranch := weftBranchExists(l, branch)
-
-	if hadWorktree {
-		req := pathRequest{
-			what:      "remove weft worktree",
-			container: l.HubPath,
-			target:    weftPath,
-			slug:      nil,
-			ownership: ownedRegisteredLinkedWorktree(weftRoot),
-			dirtiness: dirtyRecordsDisposable(),
-			force:     false,
-		}
-		removeErr := finishGitWorktreeRemoval(rec, weftRoot, l.HubPath, weftPath, removeGitWorktree(rec, req, weftRoot), leftover)
-		if removeErr != nil && pathPresent(weftPath) {
-			return nil, fmt.Errorf("warp worktree removed, but weft teardown failed and the weft worktree remains at %s: %w", weftPath, removeErr)
-		}
-	}
-	if hadWorktree {
-		steps = append(steps, RemoveStepSiblingWorktree)
-	}
-
-	// A registration left by a hand-removed worktree blocks the branch deletion.
-	_, _ = gitexec.Run([]string{"worktree", "prune"}, weftRoot)
-
-	if hadBranch {
-		branchReq := branchRequest{
-			what:      "delete weft branch",
-			repoDir:   weftRoot,
-			branch:    branch,
-			ownership: ownedManagedBranch(l, branchPrefix),
-			dirtiness: dirtyCheckedOutBranch(),
-			force:     false,
-		}
-		if deleteErr := deleteBranch(rec, branchReq); deleteErr != nil {
-			return nil, deleteErr
-		}
-		steps = append(steps, RemoveStepSiblingBranch, RemoveStepRecordsDropped)
-	}
-	return steps, nil
-}
-
-// removeSibling tears down whatever of the pair's sibling remains: its worktree and local branch through removeWeftWorktree, or, when only origin holds the branch, its copy there.
-// Without remote an origin-only copy stays, and the returned teardown says so.
-// leaseSHA is the origin tip the archive read, which the delete on origin is leased on; empty means origin held no copy, so none is deleted.
+// removeSibling tears down whatever of the pair's sibling remains locally, its worktree and local branch, through removeWeftWorktree; a copy on origin is the teardown child's.
 // It returns the steps that changed state, in the order they ran.
-func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftBranch string, pair pairState, force, remote bool, leaseSHA string) (weftTeardownResult, []string, error) {
+func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftBranch string, pair pairState, force bool) ([]string, error) {
 	var steps []string
-
 	if !pair.siblingWorktree && !pair.siblingBranch {
-		weftRoot, err := RecordsRepoRoot(l)
-		if err != nil {
-			return weftTeardownResult{}, nil, fmt.Errorf("resolve weft repo root: %w", err)
-		}
-		if _, urlErr := gitrepo.New(weftRoot).RemoteURL(originRemoteName); urlErr != nil {
-			return weftTeardownResult{}, nil, nil
-		}
-		// The archive read origin's tip under the teardown lock: an empty one means origin holds no copy.
-		if leaseSHA == "" {
-			return weftTeardownResult{}, nil, nil
-		}
-		if !remote {
-			return weftTeardownResult{remoteSkippedReason: fmt.Sprintf("the sibling branch %q exists only on %q and was kept; pass --remote to delete it", weftBranch, originRemoteName)}, nil, nil
-		}
-		entry := CleanupBranchEntry{Branch: weftBranch}
-		deleteWeftBranchOnRemote(rec, l, weftBranch, t.cfg.BranchPrefix, weftRoot, leaseSHA, &entry)
-		if entry.RemoteDeleted {
-			steps = append(steps, RemoveStepSiblingBranchOnOrigin)
-		}
-		return weftTeardownResult{remoteBranchDeleted: entry.RemoteDeleted, remoteBranchError: entry.RemoteError, remoteBranchKeptReason: entry.RemoteKeptReason}, steps, nil
+		return nil, nil
 	}
 
 	if !pair.siblingWorktree {
@@ -535,12 +452,12 @@ func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftB
 	// A weft-teardown failure is tolerated only when the weft worktree is actually gone (already
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
 	// after a "successful" Remove is a half-torn pair the operator was never told about. This check
-	// reads the error return alone, never the teardown struct: the remote outcome never affects it.
-	teardown, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, remote, t.cfg.BranchPrefix, leaseSHA, t.leftover)
+	// reads the error return alone.
+	_, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, false, t.cfg.BranchPrefix, "", t.leftover)
 	if weftErr != nil {
 		weftTarget := RecordsWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
-			return weftTeardownResult{}, nil, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"warp worktree removed, but weft teardown failed and the weft worktree remains at %s: %w",
 				weftTarget, weftErr)
 		}
@@ -551,10 +468,7 @@ func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftB
 	if pair.siblingBranch && !weftBranchExists(l, weftBranch) {
 		steps = append(steps, RemoveStepSiblingBranch)
 	}
-	if teardown.remoteBranchDeleted {
-		steps = append(steps, RemoveStepSiblingBranchOnOrigin)
-	}
-	return teardown, steps, nil
+	return steps, nil
 }
 
 // pairState is what of a pair is on disk or in the repositories' local refs when Remove looks, taken without touching the network.
@@ -569,8 +483,6 @@ type pairState struct {
 	taskBranch, siblingBranch bool
 	// launchers reports the hub-level launcher directory Remove tears down.
 	launchers bool
-	// localMark names the surviving branch carrying the local-only mark: the task branch when it is marked, else the sibling branch; empty when neither is.
-	localMark string
 }
 
 // inspectPair reads pairState for slug.
@@ -597,31 +509,6 @@ func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, erro
 	}
 	s.taskBranch = taskBranch
 	s.siblingBranch = weftBranchExists(l, RecordsBranchName(t.cfg.BranchPrefix+slug))
-
-	warpBranch := t.cfg.BranchPrefix + slug
-	if s.taskBranch {
-		marked, err := gitrepo.New(l.WorktreePath()).BranchMarkedLocal(warpBranch)
-		if err != nil {
-			return pairState{}, fmt.Errorf("read the local-only mark of %s: %w", warpBranch, err)
-		}
-		if marked {
-			s.localMark = warpBranch
-		}
-	}
-	if s.localMark == "" && s.siblingBranch {
-		weftRoot, err := RecordsRepoRoot(l)
-		if err != nil {
-			return pairState{}, fmt.Errorf("resolve weft repo root: %w", err)
-		}
-		weftBranch := RecordsBranchName(warpBranch)
-		marked, err := gitrepo.New(weftRoot).BranchMarkedLocal(weftBranch)
-		if err != nil {
-			return pairState{}, fmt.Errorf("read the local-only mark of %s: %w", weftBranch, err)
-		}
-		if marked {
-			s.localMark = weftBranch
-		}
-	}
 	return s, nil
 }
 
@@ -706,26 +593,28 @@ func deleteWarpBranch(rec *Mutations, l *lymcwd.Location, warpBranch, parentBran
 // It observes the tip (ls-remote), fetches it so its objects are local, then deletes through deleteTaskBranchAtTip, leased to the observed tip.
 // An absent remote branch, or a warp repo with no origin, is neither deleted nor a reason.
 // Every refusal and failure is a kept reason rather than an error, as in deleteWarpBranch.
-func deleteTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string) {
+// failed is set when the kept reason is a failed lookup, fetch or delete, which the caller reports; a refusal and a moved tip leave it false.
+func deleteTaskBranchOnOrigin(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch string) (deleted bool, keptReason string, failed bool) {
 	repoDir := l.WorktreePath()
 	if _, err := gitrepo.New(repoDir).RemoteURL(originRemoteName); err != nil {
-		return false, ""
+		return false, "", false
 	}
 	tip, err := remoteHeadTip(repoDir, warpBranch)
 	if err != nil {
-		return false, err.Error()
+		return false, err.Error(), true
 	}
 	if tip == "" {
-		return false, ""
+		return false, "", false
 	}
 	if _, err := gitrepo.New(repoDir).FetchWithArgs(originRemoteName, "refs/heads/"+warpBranch); err != nil {
-		return false, fmt.Sprintf("fetch task branch %s from %s: %v", warpBranch, originRemoteName, err)
+		return false, fmt.Sprintf("fetch task branch %s from %s: %v", warpBranch, originRemoteName, err), true
 	}
 	return deleteTaskBranchAtTip(rec, l, warpBranch, parentBranch, tip)
 }
 
 // deleteTaskBranchAtTip is deleteTaskBranchOnOrigin's gated deletion, leased to tip: a remote tip that moved since tip was observed fails the lease and nothing is deleted.
-func deleteTaskBranchAtTip(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string) {
+// A refusal and a rejected lease are kept reasons; any other failure of the delete is a kept reason with failed set.
+func deleteTaskBranchAtTip(rec *Mutations, l *lymcwd.Location, warpBranch, parentBranch, tip string) (deleted bool, keptReason string, failed bool) {
 	deleted, err := deleteRemoteBranch(rec, remoteBranchRequest{
 		what:      "delete task branch on remote",
 		repoDir:   l.WorktreePath(),
@@ -737,12 +626,12 @@ func deleteTaskBranchAtTip(rec *Mutations, l *lymcwd.Location, warpBranch, paren
 		force:     false,
 	})
 	if err == nil {
-		return deleted, ""
+		return deleted, "", false
 	}
 	if refusal, ok := RefusalOf(err); ok {
-		return false, refusal.Reason
+		return false, refusal.Reason, false
 	}
-	return false, fmt.Sprintf("delete task branch %s on %s: %v", warpBranch, originRemoteName, err)
+	return false, fmt.Sprintf("delete task branch %s on %s: %v", warpBranch, originRemoteName, err), !errors.Is(err, gitrepo.ErrLeaseRejected)
 }
 
 // RemoveRefusal reports the refusal Remove would raise for slug before its first mutation, or nil when none applies.

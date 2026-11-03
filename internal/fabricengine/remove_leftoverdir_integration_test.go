@@ -29,8 +29,6 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 	tests := []struct {
 		name string
 		slug string
-		// local builds the pair with AddLocal on a dead-origin hub, so its sibling goes through the local-only teardown.
-		local bool
 		// sibling puts the sibling worktree under test, else the task worktree.
 		sibling bool
 		// readOnly commits a file under a directory made read-only in the worktree under test, so git deregisters it and fails to delete it;
@@ -47,7 +45,6 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 	}{
 		{name: "a task worktree refilled after git's clean exit is removed", slug: "refilled-task", wantStep: fabricengine.RemoveStepTaskWorktree},
 		{name: "a sibling worktree refilled after git's clean exit is removed", slug: "refilled-sibling", sibling: true, wantStep: fabricengine.RemoveStepSiblingWorktree},
-		{name: "a local pair's sibling worktree refilled after git's clean exit is removed", slug: "refilled-local", local: true, sibling: true, wantStep: fabricengine.RemoveStepSiblingWorktree},
 		{name: "a sibling worktree git deregistered and failed to delete is removed", slug: "undeleted-sibling", sibling: true, readOnly: true, wantStep: fabricengine.RemoveStepSiblingWorktree},
 		{name: "a refilled task worktree whose removal fails is returned and kept", slug: "refilled-kept", removeErr: fs.ErrPermission, wantErrContains: "delete it by hand; a pair that remains is then removed by running remove again"},
 		{name: "a sibling worktree git deregistered whose removal fails is returned and kept", slug: "undeleted-kept", sibling: true, readOnly: true, removeErr: fs.ErrPermission, wantErrContains: "deregistered it and failed"},
@@ -65,13 +62,8 @@ func TestRemove_FinishesWorktreeDirGitLeftOnDisk(t *testing.T) {
 				t.Skip("a read-only directory stops git's delete only for a non-root user")
 			}
 
-			var h *hubforge.Hub
-			if tt.local {
-				h = addLocalPairOnDeadOrigin(t, tt.slug)
-			} else {
-				h = hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-				hubforge.AddPairWith(t, h, tt.slug, fabricengine.AddOptions{})
-			}
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			hubforge.AddPairWith(t, h, tt.slug, fabricengine.AddOptions{})
 			l := h.Location
 			dir := fabricengine.WorktreePath(l, tt.slug)
 			if tt.sibling {

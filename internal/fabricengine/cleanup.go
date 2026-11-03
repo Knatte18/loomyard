@@ -98,13 +98,11 @@ type CleanupBranchEntry struct {
 	// RemoteKeptReason is non-empty when this branch's copy on the remote was left in place because it moved after the archive read its tip.
 	// A kept branch is another process's live branch, not a failure, so it sets no RemoteError.
 	RemoteKeptReason string `json:"remote_kept_reason,omitempty"`
-	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before this branch was deleted; empty on a dry run, when no origin is configured, and when the archive failed.
+	// ArchiveTag names the archive/<slug>/<tip> tag made on the local tip before this branch was deleted, whose push to the weft origin is the teardown child's; empty on a dry run, when no origin is configured, and when the archive failed.
 	// An archive failure sets Error and leaves the branch, local and remote, in place.
 	ArchiveTag string `json:"archive_tag,omitempty"`
 	// OriginArchiveTag names the second archive tag, at origin's tip of this branch, pushed when that tip is neither the local tip nor an ancestor of it; empty when none was needed.
 	OriginArchiveTag string `json:"origin_archive_tag,omitempty"`
-	// Local is true when the branch carries the local-only mark: it is never archived or deleted on origin, so the entry carries no ArchiveTag.
-	Local bool `json:"local,omitempty"`
 	// Skipped is true when the sweep left the branch whole because the teardown lock of its slug was held; SkippedReason names the lock and the re-run.
 	// A skipped entry sets no Error, and a later sweep takes the slug.
 	Skipped bool `json:"skipped,omitempty"`
@@ -142,7 +140,6 @@ type CleanupResult struct {
 // Under apply, each orphan whose slug's teardown lock one try takes, and whose pair is not found live under it, has its branch tip archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
 // An orphan whose slug's teardown lock is held is skipped whole, with Skipped and SkippedReason set, and a lock error other than a held lock fills Error and keeps the branch; an orphan a worktree turned live since the enumeration gets no entry.
 // The sweep pushes no weft branch, and an orphan whose origin tip the local tip does not contain gets a second archive tag at that tip, named in the entry's OriginArchiveTag.
-// An orphan carrying the local-only mark is reported with Local set, dry run included; under apply it is neither archived nor deleted on origin, and goes locally as a disposable records branch.
 func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
@@ -185,10 +182,6 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 	if err != nil {
 		return CleanupResult{}, fmt.Errorf("list weft branches: %w", err)
 	}
-	weftRepoRoot, err := RecordsRepoRoot(l)
-	if err != nil {
-		return CleanupResult{}, fmt.Errorf("resolve weft repo root: %w", err)
-	}
 
 	for _, weftBranch := range weftBranches {
 		branch := weftBranch.Branch
@@ -228,22 +221,7 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 			continue
 		}
 
-		marked, markErr := gitrepo.New(weftRepoRoot).BranchMarkedLocal(branch)
-		if markErr != nil {
-			entry.Error = fmt.Sprintf("read the local-only mark of weft branch %q: %v", branch, markErr)
-			result.Entries = append(result.Entries, entry)
-			continue
-		}
-		entry.Local = marked
-
 		if !apply {
-			result.Entries = append(result.Entries, entry)
-			continue
-		}
-
-		if marked {
-			// A local pair's orphan records branch was never archived or pushed: it goes locally as a disposable records branch, and origin is never asked.
-			entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
 			result.Entries = append(result.Entries, entry)
 			continue
 		}
@@ -286,17 +264,18 @@ func liveWarpBranchSet(l *lymcwd.Location) (map[string]bool, error) {
 	return live, nil
 }
 
-// cleanupOrphan archives and deletes one orphan weft branch, and under remoteWeftRoot, when it is non-empty, deletes it on origin, all under the teardown lock of its slug taken by one try.
+// cleanupOrphan tags and deletes one orphan weft branch locally under the teardown lock of its slug, taken by one try, and hands the remote half to the lock's holder:
+// pushing the archive tags and, under remoteWeftRoot when it is non-empty, deleting the branch on origin leased on the tip the archive read.
 // A held lock marks entry skipped and any other lock error fills entry.Error, each keeping the branch whole.
 // It re-reads the live warp branches under the lock and reports false, so the caller records no entry, when a worktree now sits on the orphan's paired warp branch, since the sweep listed them before an Add of the slug may have finished.
-// A failed archive fills entry.Error and keeps the branch, local and remote.
+// A failed local tag fills entry.Error and keeps the branch; a remote half that ran in process fills the entry's tags and remote outcome, and a failed one fills entry.Error.
 func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch string, entry *CleanupBranchEntry, remoteWeftRoot string, result *CleanupResult) (record bool) {
 	slug := strings.TrimPrefix(warpBranch, t.cfg.BranchPrefix)
 	if t.cleanupAfterEnumerate != nil {
 		t.cleanupAfterEnumerate()
 	}
 	// The lock file is the sweep's scratch state, not a mutation of the pair, so it joins no record: a sweep whose archive fails before any deletion stays unmutated.
-	release, lockErr := t.lockPairTeardown(NewMutations(l.HubPath), l, slug, true, cleanupSweepRerun)
+	hold, lockErr := t.holdTeardown(NewMutations(l.HubPath), rec, l, slug, true, cleanupSweepRerun, true)
 	switch {
 	case errors.Is(lockErr, ErrPairBusy):
 		entry.Skipped = true
@@ -306,7 +285,12 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 		entry.Error = fmt.Sprintf("take the teardown lock of weft branch %q failed: %v", entry.Branch, lockErr)
 		return true
 	}
-	defer release()
+	var job *remoteTeardownJob
+	defer func() {
+		if job == nil {
+			hold.finish(nil)
+		}
+	}()
 
 	live, err := liveWarpBranchSet(l)
 	if err != nil {
@@ -317,19 +301,29 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 		return false
 	}
 
-	archive, archiveSkipped, archiveErr := archiveWeftTip(rec, l, slug, entry.Branch, false, t.archiveSleep)
-	if archiveErr != nil {
-		entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", entry.Branch, archiveErr)
+	tip, archiveTag, archiveSkipped, err := tagWeftTipForArchive(l, slug, entry.Branch)
+	if err != nil {
+		entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", entry.Branch, err)
 		return true
 	}
-	entry.ArchiveTag, entry.OriginArchiveTag = archive.localTag, archive.originTag
+	entry.ArchiveTag = archiveTag
 	if archiveSkipped != "" && result.ArchiveSkippedReason == "" {
 		result.ArchiveSkippedReason = archiveSkipped
 	}
 
 	entry.Deleted = deleteWeftBranch(rec, l, entry.Branch, t.cfg.BranchPrefix, entry)
-	if entry.Deleted && remoteWeftRoot != "" {
-		deleteWeftBranchOnRemote(rec, l, entry.Branch, t.cfg.BranchPrefix, remoteWeftRoot, archive.leaseTip, entry)
+	if archiveSkipped != "" {
+		return true
+	}
+	job = &remoteTeardownJob{Kind: remoteTeardownCleanup, Slug: slug, Worktree: l.WorktreePath(), BranchPrefix: t.cfg.BranchPrefix, WeftBranch: entry.Branch, WeftTip: tip, DeleteWeftOnOrigin: entry.Deleted && remoteWeftRoot != ""}
+	out := hold.finish(job)
+	if out.ran {
+		if out.err != nil {
+			entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", entry.Branch, out.err)
+			return true
+		}
+		entry.ArchiveTag, entry.OriginArchiveTag = out.archive.localTag, out.archive.originTag
+		entry.RemoteDeleted, entry.RemoteError, entry.RemoteKeptReason = out.weft.RemoteDeleted, out.weft.RemoteError, out.weft.RemoteKeptReason
 	}
 	return true
 }
