@@ -5,11 +5,14 @@
 //   - apply == false → dry-run/report only; nothing is deleted.
 //   - apply == true  → deletes every orphan weft branch that is not the primary weft branch, not
 //     checked out at a worktree, and not unmanaged (no "-weft" suffix, e.g. inherited from history
-//     predating fabric's uniform naming scheme).
+//     predating fabric's uniform naming scheme), whose slug's teardown lock the sweep takes by one
+//     try and whose pair is not found live under that lock.
 //   - remote is independent of --force and requires apply to delete anything (remote alone with
 //     apply false is still a dry run): when true, every orphan weft branch actually deleted locally
-//     is also deleted on the weft repo's origin remote. A weft repo with no origin remote configured
-//     reports that once per verb, on the result's RemoteSkippedReason, rather than once per branch.
+//     is also deleted on the weft repo's origin remote, leased on the origin tip its archive read, so a
+//     branch origin moved since is kept and reported on the entry's RemoteKeptReason. A weft repo with
+//     no origin remote configured reports that once per verb, on the result's RemoteSkippedReason,
+//     rather than once per branch.
 //
 // force is reserved and currently consulted by no gate in this verb; see Topology.Cleanup's own
 // doc comment.
@@ -57,6 +60,7 @@
 package fabricengine
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -65,6 +69,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
+
+// removeBeforeWeftDeleteHook, nil in production, runs right before each leased delete of a weft branch on origin, so a test can move origin's branch between the archive's read and the delete.
+var removeBeforeWeftDeleteHook func()
 
 // CleanupBranchEntry describes the fate of one orphaned weft branch under Cleanup.
 type CleanupBranchEntry struct {
@@ -88,11 +95,21 @@ type CleanupBranchEntry struct {
 	// RemoteError is non-empty when the remote deletion was attempted and did not succeed. Its text
 	// always names the layer that said no — the gate's own refusal, or the remote deletion itself.
 	RemoteError string `json:"remote_error,omitempty"`
+	// RemoteKeptReason is non-empty when this branch's copy on the remote was left in place because it moved after the archive read its tip.
+	// A kept branch is another process's live branch, not a failure, so it sets no RemoteError.
+	RemoteKeptReason string `json:"remote_kept_reason,omitempty"`
 	// ArchiveTag names the archive/<slug>/<tip> tag pushed to the weft origin before this branch was deleted; empty on a dry run, when no origin is configured, and when the archive failed.
 	// An archive failure sets Error and leaves the branch, local and remote, in place.
 	ArchiveTag string `json:"archive_tag,omitempty"`
+	// OriginArchiveTag names the second archive tag, at origin's tip of this branch, pushed when that tip is neither the local tip nor an ancestor of it; empty when none was needed.
+	OriginArchiveTag string `json:"origin_archive_tag,omitempty"`
 	// Local is true when the branch carries the local-only mark: it is never archived or deleted on origin, so the entry carries no ArchiveTag.
 	Local bool `json:"local,omitempty"`
+	// Skipped is true when the sweep left the branch whole because the teardown lock of its slug was held; SkippedReason names the lock and the re-run.
+	// A skipped entry sets no Error, and a later sweep takes the slug.
+	Skipped bool `json:"skipped,omitempty"`
+	// SkippedReason is the reason a Skipped entry was skipped.
+	SkippedReason string `json:"skipped_reason,omitempty"`
 }
 
 // CleanupResult is the top-level result type returned by Cleanup.
@@ -121,17 +138,14 @@ type CleanupResult struct {
 // remote gates whether an orphan weft branch actually deleted locally is also deleted on the weft
 // repo's origin remote; see this file's header for the flag matrix. A remote deletion failure never
 // makes Cleanup return a non-nil error — it is recorded on the entry and the sweep continues.
-// Under apply, each orphan branch's tip is archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
+// The remote deletion is leased on the origin tip the archive read, so a branch origin moved since stays on origin and is reported in the entry's RemoteKeptReason; an orphan origin holds no copy of gets no remote deletion.
+// Under apply, each orphan whose slug's teardown lock one try takes, and whose pair is not found live under it, has its branch tip archived (archiveWeftTip) before the branch is deleted, whatever remote says; an archive failure fills the entry's Error and keeps the branch, local and remote, without aborting the sweep.
+// An orphan whose slug's teardown lock is held is skipped whole, with Skipped and SkippedReason set, and a lock error other than a held lock fills Error and keeps the branch; an orphan a worktree turned live since the enumeration gets no entry.
+// The sweep pushes no weft branch, and an orphan whose origin tip the local tip does not contain gets a second archive tag at that tip, named in the entry's OriginArchiveTag.
 // An orphan carrying the local-only mark is reported with Local set, dry run included; under apply it is neither archived nor deleted on origin, and goes locally as a disposable records branch.
 func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res CleanupResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
-
-	// Enumerate warp worktrees using git-registered entries only.
-	entries, err := List(l.WorktreePath())
-	if err != nil {
-		return CleanupResult{}, fmt.Errorf("list warp worktrees: %w", err)
-	}
 
 	primaryWeft, err := primaryWeftBranch(l)
 	if err != nil {
@@ -161,15 +175,9 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 		}
 	}
 
-	// Build the set of live warp branches; unreadable branches (stale registrations) skip.
-	liveWarpBranches := make(map[string]bool, len(entries))
-	for _, entry := range entries {
-		warpPath := filepath.Clean(filepath.FromSlash(entry.Path))
-		branch, branchErr := readBranch(warpPath)
-		if branchErr != nil {
-			continue
-		}
-		liveWarpBranches[branch] = true
+	liveWarpBranches, err := liveWarpBranchSet(l)
+	if err != nil {
+		return CleanupResult{}, err
 	}
 
 	// Enumerate all branches in the weft repo to find orphans.
@@ -240,27 +248,90 @@ func (t *Topology) Cleanup(l *lymcwd.Location, apply, force, remote bool) (res C
 			continue
 		}
 
-		// Archive whatever remote says; a failed archive leaves the branch, local and remote, in place.
-		slug := strings.TrimPrefix(warpBranch, t.cfg.BranchPrefix)
-		archiveTag, archiveSkipped, archiveErr := archiveWeftTip(rec, l, slug, branch)
-		if archiveErr != nil {
-			entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", branch, archiveErr)
+		remoteWeftRoot := ""
+		if remote && remoteOK {
+			remoteWeftRoot = weftRepoRootForRemote
+		}
+		if t.cleanupOrphan(rec, l, warpBranch, &entry, remoteWeftRoot, &result) {
 			result.Entries = append(result.Entries, entry)
-			continue
 		}
-		entry.ArchiveTag = archiveTag
-		if archiveSkipped != "" && result.ArchiveSkippedReason == "" {
-			result.ArchiveSkippedReason = archiveSkipped
-		}
-
-		entry.Deleted = deleteWeftBranch(rec, l, branch, t.cfg.BranchPrefix, &entry)
-		if entry.Deleted && remote && remoteOK {
-			deleteWeftBranchOnRemote(rec, l, branch, t.cfg.BranchPrefix, weftRepoRootForRemote, &entry)
-		}
-		result.Entries = append(result.Entries, entry)
 	}
 
 	return result, nil
+}
+
+// cleanupSweepRerun is the re-run the sweeps name when a slug's teardown lock is held: no verb is named, since more than one command reaches the sweeps.
+const cleanupSweepRerun = "re-run the cleanup once it finishes"
+
+// teardownLockHeldReason is why a sweep keeps a slug whose teardown lock a push or a removal holds.
+func teardownLockHeldReason(slug string) string {
+	return fmt.Sprintf("kept: the teardown lock of the pair %q is held by a push or a removal; %s", slug, cleanupSweepRerun)
+}
+
+// liveWarpBranchSet lists the branches some warp worktree has checked out, from the git-registered worktrees only.
+// A worktree whose branch cannot be read, a stale registration, is skipped.
+func liveWarpBranchSet(l *lymcwd.Location) (map[string]bool, error) {
+	entries, err := List(l.WorktreePath())
+	if err != nil {
+		return nil, fmt.Errorf("list warp worktrees: %w", err)
+	}
+	live := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		branch, branchErr := readBranch(filepath.Clean(filepath.FromSlash(entry.Path)))
+		if branchErr != nil {
+			continue
+		}
+		live[branch] = true
+	}
+	return live, nil
+}
+
+// cleanupOrphan archives and deletes one orphan weft branch, and under remoteWeftRoot, when it is non-empty, deletes it on origin, all under the teardown lock of its slug taken by one try.
+// A held lock marks entry skipped and any other lock error fills entry.Error, each keeping the branch whole.
+// It re-reads the live warp branches under the lock and reports false, so the caller records no entry, when a worktree now sits on the orphan's paired warp branch, since the sweep listed them before an Add of the slug may have finished.
+// A failed archive fills entry.Error and keeps the branch, local and remote.
+func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch string, entry *CleanupBranchEntry, remoteWeftRoot string, result *CleanupResult) (record bool) {
+	slug := strings.TrimPrefix(warpBranch, t.cfg.BranchPrefix)
+	if t.cleanupAfterEnumerate != nil {
+		t.cleanupAfterEnumerate()
+	}
+	// The lock file is the sweep's scratch state, not a mutation of the pair, so it joins no record: a sweep whose archive fails before any deletion stays unmutated.
+	release, lockErr := t.lockPairTeardown(NewMutations(l.HubPath), l, slug, true, cleanupSweepRerun)
+	switch {
+	case errors.Is(lockErr, ErrPairBusy):
+		entry.Skipped = true
+		entry.SkippedReason = teardownLockHeldReason(slug)
+		return true
+	case lockErr != nil:
+		entry.Error = fmt.Sprintf("take the teardown lock of weft branch %q failed: %v", entry.Branch, lockErr)
+		return true
+	}
+	defer release()
+
+	live, err := liveWarpBranchSet(l)
+	if err != nil {
+		entry.Error = fmt.Sprintf("re-read the warp worktrees of weft branch %q failed: %v", entry.Branch, err)
+		return true
+	}
+	if live[warpBranch] {
+		return false
+	}
+
+	archive, archiveSkipped, archiveErr := archiveWeftTip(rec, l, slug, entry.Branch, false, t.archiveSleep)
+	if archiveErr != nil {
+		entry.Error = fmt.Sprintf("archive weft branch %q failed: %v", entry.Branch, archiveErr)
+		return true
+	}
+	entry.ArchiveTag, entry.OriginArchiveTag = archive.localTag, archive.originTag
+	if archiveSkipped != "" && result.ArchiveSkippedReason == "" {
+		result.ArchiveSkippedReason = archiveSkipped
+	}
+
+	entry.Deleted = deleteWeftBranch(rec, l, entry.Branch, t.cfg.BranchPrefix, entry)
+	if entry.Deleted && remoteWeftRoot != "" {
+		deleteWeftBranchOnRemote(rec, l, entry.Branch, t.cfg.BranchPrefix, remoteWeftRoot, archive.leaseTip, entry)
+	}
+	return true
 }
 
 // primaryWeftBranch returns the weft branch paired with the repo's primary warp branch — the one
@@ -363,9 +434,14 @@ func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch, branchPrefix s
 // deleteRemoteBranch executor, recording the outcome on entry. It runs only after deleteWeftBranch
 // has already returned true for the same branch: the gate's ownership and dirtiness answers come
 // from local state, so a branch it refuses to delete locally must never lose its remote copy either.
+// The deletion is leased on leaseSHA, the origin tip the caller's archive read: an empty leaseSHA means origin held no copy, so nothing is deleted and nothing is reported,
+// and a branch origin moved since is kept and reported in entry.RemoteKeptReason, never in entry.RemoteError.
 // A remote failure never aborts the sweep. It distinguishes a gate refusal from an operational
 // failure so entry.RemoteError always names the layer that actually said no.
-func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branchPrefix, weftRepoRoot string, entry *CleanupBranchEntry) {
+func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branchPrefix, weftRepoRoot, leaseSHA string, entry *CleanupBranchEntry) {
+	if leaseSHA == "" {
+		return
+	}
 	req := remoteBranchRequest{
 		what:      "delete weft branch on remote",
 		repoDir:   weftRepoRoot,
@@ -373,10 +449,18 @@ func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branch
 		branch:    branch,
 		ownership: ownedManagedBranch(l, branchPrefix),
 		dirtiness: dirtyCheckedOutBranch(),
+		leaseSHA:  leaseSHA,
 		force:     false,
+	}
+	if removeBeforeWeftDeleteHook != nil {
+		removeBeforeWeftDeleteHook()
 	}
 	deleted, err := deleteRemoteBranch(rec, req)
 	if err != nil {
+		if errors.Is(err, gitrepo.ErrLeaseRejected) {
+			entry.RemoteKeptReason = fmt.Sprintf("kept: origin's weft branch %q moved during the removal, so it is another process's live branch", branch)
+			return
+		}
 		if refusal, ok := RefusalOf(err); ok {
 			entry.RemoteError = fmt.Sprintf("gate refused remote deletion of %q: %s", branch, refusal.Reason)
 		} else {

@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/proc"
@@ -320,6 +321,8 @@ func EndOwnedElsewhere(location *lymcwd.Location, slug string) ([]runproc.Ended,
 		end: func() ([]runproc.Ended, error) {
 			return runproc.End(fabricengine.RunProcDir(location.HubPath), slug, os.Getpid())
 		},
+		battenRecord: func() (shedengine.Status, bool, error) { return pairteardown.ReadBattenRecord(location, slug) },
+		ownerHeld:    func() (bool, error) { return pairteardown.OwnerPauseHeld(location, slug) },
 	}.run()
 }
 
@@ -334,6 +337,31 @@ type ownedElsewhereEnder struct {
 	parentHolds func() (bool, error)
 	// end ends the processes registered under the slug.
 	end func() ([]runproc.Ended, error)
+	// battenRecord reads the slug's batten run record on the prime; found is false when the run has none.
+	// Nil reads as no record.
+	battenRecord func() (status shedengine.Status, found bool, err error)
+	// ownerHeld reports whether an owner pause covers the slug.
+	// Nil reads as none.
+	ownerHeld func() (bool, error)
+}
+
+// removeFollowUp words the step that settles the slug's batten run record, which a removal of the pair leaves standing.
+// It is empty when no step is owed, and when a read fails, which is logged.
+func (e ownedElsewhereEnder) removeFollowUp() string {
+	if e.battenRecord == nil || e.ownerHeld == nil {
+		return ""
+	}
+	record, found, err := e.battenRecord()
+	if err != nil {
+		logger.Warn("tendercli: the batten record could not be read, so the failed end names no follow-up of the removal", "slug", e.slug, "error", err)
+		return ""
+	}
+	held, err := e.ownerHeld()
+	if err != nil {
+		logger.Warn("tendercli: the owner pause could not be read, so the failed end names no follow-up of the removal", "slug", e.slug, "error", err)
+		return ""
+	}
+	return pairteardown.BattenFollowUp(e.slug, record, found, held)
 }
 
 // run ends the slug's owned processes and returns what it ended.
@@ -356,7 +384,11 @@ func (e ownedElsewhereEnder) run() ([]runproc.Ended, error) {
 	}
 	ended, err := e.end()
 	if err != nil {
-		return ended, fmt.Errorf("end the processes of %s: %w; run `lym fabric remove %s`, or `lym reed down` in the pair, while the pair exists, and `lym tender reap` once it is gone", e.slug, err, e.slug)
+		wayForward := fmt.Sprintf("run `lym fabric remove %s`, or `lym reed down` in the pair, while the pair exists, and `lym tender reap` once it is gone", e.slug)
+		if followUp := e.removeFollowUp(); followUp != "" {
+			wayForward += "; " + followUp
+		}
+		return ended, fmt.Errorf("end the processes of %s: %w; %s", e.slug, err, wayForward)
 	}
 	return ended, nil
 }

@@ -13,10 +13,11 @@ import (
 )
 
 // refuseAdoptLocalCheckedOut refuses an adoption of warpBranch while a worktree holds it, and of weftBranch while a records worktree holds it.
-// Each refusal names the worktree and the way forward that releases the branch without tearing any pair down.
+// Each refusal is an *ErrAdoptLocalCheckedOut naming the worktree and the way forward that releases the branch without tearing any pair down.
 // weftExists is whether weftBranch exists locally; a branch that does not has no worktree holding it.
+// reusedWeft is the records worktree path the add reuses, or empty; that worktree does not count as another records worktree holding the branch.
 // It reads and mutates nothing.
-func refuseAdoptLocalCheckedOut(l *lymcwd.Location, slug, warpBranch, weftBranch string, weftExists bool) error {
+func refuseAdoptLocalCheckedOut(l *lymcwd.Location, slug, warpBranch, weftBranch string, weftExists bool, reusedWeft string) error {
 	warpEntries, err := List(l.AnchorPath())
 	if err != nil {
 		return err
@@ -24,7 +25,7 @@ func refuseAdoptLocalCheckedOut(l *lymcwd.Location, slug, warpBranch, weftBranch
 	for _, entry := range warpEntries {
 		if !entry.Prunable && entry.Branch == warpBranch {
 			path := filepath.FromSlash(entry.Path)
-			return fmt.Errorf("--adopt-local: branch %q is checked out in %s; way forward: run `lym fabric checkout <other branch>` in %s to move it off the branch, then re-run `lym fabric add %s --adopt-local`", warpBranch, path, path, slug)
+			return &ErrAdoptLocalCheckedOut{Branch: warpBranch, Path: path, slug: slug}
 		}
 	}
 	if !weftExists {
@@ -41,7 +42,10 @@ func refuseAdoptLocalCheckedOut(l *lymcwd.Location, slug, warpBranch, weftBranch
 	for _, entry := range weftEntries {
 		if !entry.Prunable && entry.Branch == weftBranch {
 			path := filepath.FromSlash(entry.Path)
-			return fmt.Errorf("--adopt-local: records branch %q is checked out in the records worktree %s; way forward: in %s switch off it, back to its own pair's records branch with `git switch <records branch>`, or detached with `git switch --detach` when it belongs to no pair, then re-run `lym fabric add %s --adopt-local`", weftBranch, path, path, slug)
+			if reusedWeft != "" && samePath(entry.Path, reusedWeft) {
+				continue
+			}
+			return &ErrAdoptLocalCheckedOut{Branch: weftBranch, Path: path, Records: true, slug: slug}
 		}
 	}
 	return nil

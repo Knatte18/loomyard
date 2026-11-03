@@ -33,6 +33,7 @@ func TestPlanPass(t *testing.T) {
 		{"OriginOwedGivesFullWithNoReopen", func(run *RunView, _ *RunState) { run.OriginOwed = true }, probe, false, passFullNoReopen},
 		{"AnotherProducerGivesFull", func(run *RunView, _ *RunState) { run.Producer = "Land" }, probe, false, passFull},
 		{"HaltedGivesNone", func(run *RunView, _ *RunState) { run.State = "blocked" }, probe, false, passNone},
+		{"FailedGivesNone", func(run *RunView, _ *RunState) { run.State = "failed" }, probe, false, passNone},
 		{"CancelMarkedGivesNone", func(run *RunView, _ *RunState) { run.CancelMarker = true }, probe, false, passNone},
 		{"InFlightGivesNone", nil, passTrigger{ProbeTick: true, InFlight: true}, false, passNone},
 		{"HeldDriverLockReadsAsInFlight", func(run *RunView, _ *RunState) { run.DriverLockHeld = true }, probe, false, passNone},

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/creelengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -248,18 +249,22 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 	webster := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Webster"}
 	finalizeRunning := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Finalize"}
 	finalizeFailed := shedengine.Status{State: shedengine.StateFailed, CurrentProducer: "Finalize", Transient: "git-transport"}
+	runShed := shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}
 	tests := []struct {
-		name        string
-		status      shedengine.Status
-		noStatus    bool
-		statusErr   error
-		restepped   bool
-		restepErr   error
-		parentHolds bool
-		parentErr   error
-		endErr      error
-		wantEnds    int
-		wantErr     error
+		name   string
+		status shedengine.Status
+		// battenRun is the batten run record the follow-up reads, absent when nil; wantFollowUp is whether a failed end must name the cancel after the removal.
+		battenRun    *shedengine.Status
+		wantFollowUp bool
+		noStatus     bool
+		statusErr    error
+		restepped    bool
+		restepErr    error
+		parentHolds  bool
+		parentErr    error
+		endErr       error
+		wantEnds     int
+		wantErr      error
 	}{
 		{name: "StatusOffFinalize_Ends", status: webster, wantEnds: 1},
 		{name: "FinalizeRunningWithParentHoldingTheWork_EndsNothing", status: finalizeRunning, parentHolds: true},
@@ -272,6 +277,7 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 		{name: "NoStatusFileOrWorktree_Ends", noStatus: true, wantEnds: 1},
 		{name: "SurvivorsError_ReturnedWithTheWayForward", status: webster, endErr: survivors, wantEnds: 1, wantErr: survivors},
 		{name: "EndError_ReturnedWithTheWayForward", status: webster, endErr: failure, wantEnds: 1, wantErr: failure},
+		{name: "EndErrorWithABattenRecordBeforeLand_NamesTheCancelAfterTheRemoval", status: webster, battenRun: &runShed, endErr: failure, wantEnds: 1, wantErr: failure, wantFollowUp: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -288,6 +294,13 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 					ends++
 					return nil, tt.endErr
 				},
+				battenRecord: func() (shedengine.Status, bool, error) {
+					if tt.battenRun == nil {
+						return shedengine.Status{}, false, nil
+					}
+					return *tt.battenRun, true, nil
+				},
+				ownerHeld: func() (bool, error) { return false, nil },
 			}
 
 			_, err := ender.run()
@@ -304,6 +317,10 @@ func TestOwnedElsewhereEnder(t *testing.T) {
 					if !strings.Contains(err.Error(), step) {
 						t.Errorf("run() = %q; want it to name %s", err, step)
 					}
+				}
+				removal, cancel := strings.Index(err.Error(), "`lym fabric remove task`"), strings.Index(err.Error(), "`lym batten cancel task --remove`")
+				if (cancel >= 0) != tt.wantFollowUp || (tt.wantFollowUp && cancel < removal) {
+					t.Errorf("run() = %q; want the cancel named after the removal = %v", err, tt.wantFollowUp)
 				}
 			}
 		})

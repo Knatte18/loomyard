@@ -29,6 +29,7 @@ The entry binds lym's own code only.
 - `Unwire` removes warp junctions and exclude entries only; weft-side `_lym` and `.lym` content is always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `Cleanup`) first pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records stay reachable.
   A rolled-back `Add` is excepted, and `force` never skips the tag.
+  `Remove` first pushes the weft branch when origin lacks its local tip, then the tag, and a diverged or ahead origin tip gets a tag of its own.
   A rolled-back `Add` also deletes the warp branch it created, locally only: `Add` pushes nothing, so no origin branch is its to delete.
 - `Add` leaves the new pair's branches committed locally; its callers push them through the detached `SpawnPairPush`, never a synchronous push.
 - `Remove` first commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; `force` skips neither the commit nor the tag.

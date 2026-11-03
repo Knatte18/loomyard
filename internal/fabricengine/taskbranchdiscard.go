@@ -28,9 +28,18 @@ type DiscardResult struct {
 // When one tip contains the other only the containing tip is archived; otherwise both are.
 // A branch present neither locally nor on origin returns a zero result and no error.
 // A lost origin lease or a refused gate is returned as an error naming the branch.
+// Before its first tip read it takes the slug's teardown lock exclusive and holds it across the archive and the remote delete, waiting at most the topology's teardown wait;
+// when the wait runs out it returns an error wrapping ErrPairPushRunning that names re-running the command that discarded the task branch, with nothing archived or deleted.
 func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res DiscardResult, err error) {
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
+
+	// The lock file is hub scratch and outlives the call, not a change to the pair, so it goes to a record of its own and a slug with no branch keeps a zero result.
+	releaseTeardown, err := t.lockPairTeardown(NewMutations(l.HubPath), l, slug, false, "re-run the command that discarded the task branch")
+	if err != nil {
+		return DiscardResult{}, err
+	}
+	defer releaseTeardown()
 
 	repoDir := l.WorktreePath()
 	warpBranch := t.cfg.BranchPrefix + slug
@@ -76,10 +85,10 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 func (t *Topology) archiveDiscardedTips(rec *Mutations, repoDir, slug, localTip, originTip string) (localTag, originTag string, err error) {
 	switch {
 	case originTip == "":
-		localTag, err = archiveTaskTip(rec, repoDir, slug, localTip)
+		localTag, err = archiveTaskTip(rec, repoDir, slug, localTip, t.archiveSleep)
 		return localTag, "", err
 	case localTip == "":
-		originTag, err = archiveTaskTip(rec, repoDir, slug, originTip)
+		originTag, err = archiveTaskTip(rec, repoDir, slug, originTip, t.archiveSleep)
 		return "", originTag, err
 	}
 
@@ -88,7 +97,7 @@ func (t *Topology) archiveDiscardedTips(rec *Mutations, repoDir, slug, localTip,
 		return "", "", fmt.Errorf("compare the local and origin tips of the task branch: %w", err)
 	}
 	if localInOrigin {
-		tag, err := archiveTaskTip(rec, repoDir, slug, originTip)
+		tag, err := archiveTaskTip(rec, repoDir, slug, originTip, t.archiveSleep)
 		return tag, tag, err
 	}
 	originInLocal, err := isAncestorOrEqual(repoDir, originTip, localTip)
@@ -96,13 +105,13 @@ func (t *Topology) archiveDiscardedTips(rec *Mutations, repoDir, slug, localTip,
 		return "", "", fmt.Errorf("compare the local and origin tips of the task branch: %w", err)
 	}
 	if originInLocal {
-		tag, err := archiveTaskTip(rec, repoDir, slug, localTip)
+		tag, err := archiveTaskTip(rec, repoDir, slug, localTip, t.archiveSleep)
 		return tag, tag, err
 	}
-	if localTag, err = archiveTaskTip(rec, repoDir, slug, localTip); err != nil {
+	if localTag, err = archiveTaskTip(rec, repoDir, slug, localTip, t.archiveSleep); err != nil {
 		return "", "", err
 	}
-	originTag, err = archiveTaskTip(rec, repoDir, slug, originTip)
+	originTag, err = archiveTaskTip(rec, repoDir, slug, originTip, t.archiveSleep)
 	return localTag, originTag, err
 }
 

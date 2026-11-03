@@ -98,6 +98,8 @@
 // A teardown reporting busy leaves the pair, and its entry is ended with the busy flag and a way forward naming the wait, `BusyOnDriver` or `BusyOnLock`, then a re-run of `lym cleanup --apply`; any other teardown error is on the entry and stops no other.
 // The teardowns' mutations join the report's record, a removed pair's branches leave the report, and no move touches the branches of a pair the step judged.
 // The run scope reports its own run ended like any other and calls no teardown, since its driver is the caller; a judge-only scope reports the teardowns it would run and runs none.
+// A run scope whose task worktree is not a registered worktree of the code repository refuses, naming the missing pair worktree, unless `ReconcileScope.PairMayBeAbsent` is set, which only a batten resume sets.
+// With the option, which also counts a registration whose directory is gone and not yet pruned as absent, the run's entry is judged from origin's Bolt alone, with no branch of its own and no parent branch, and reads `PairAbsent`, which the report's `Summary` marks.
 //
 // Any scope but judge-only then moves, in this order: it passes the rest of the ended set to every replay.
 // Bolt moves first, then the prime's records branch, the prime's code branch and each pair's, a pair's records before its code.
@@ -589,6 +591,12 @@
 // repository rather than a pair.
 // After its refusals — the no-force dirtiness checks and their status probes among them — and before its first mutation, `Remove` archives the pair's weft tip:
 // `archiveWeftTip` pushes an `archive/<slug>/<tip>` tag to the weft origin, so the run records on the weft branch stay reachable once the branch is deleted.
+// `Remove` first reads origin's weft tip and, when origin lacks the local tip, pushes the weft branch alone, rebase-free and with no code branch, so the tag never goes out ahead of the tip it names; a refused branch push is logged only.
+// It then pushes the tag of the local tip, and a second tag, reported as `OriginArchiveTag`, at origin's tip when that tip is neither the local tip nor an ancestor of it, a diverged or ahead tip.
+// The `Cleanup` sweep archives both tips the same way and pushes no branch.
+// With `remote`, the delete of a weft branch on origin, in `Remove` and in the `Cleanup` sweep alike, is leased on the origin tip the archive read, or on the local tip when the archive's branch push landed.
+// A branch origin moved since stays on origin and is reported in `RemoteBranchKeptReason` (JSON `remote_branch_kept_reason`) or the sweep entry's `RemoteKeptReason`, never as a failure, and an origin that held no weft branch at the archive read gets no delete.
+// The tag push retries a `missing necessary objects` refusal beside `(failed)` and `cannot lock ref`, sleeping through the topology's archive sleep seam.
 // A failed archive returns its error with the worktrees, launchers and both branches still in place, so a plain re-run retries it; `force` and `remote` never skip it, and a weft repo with no origin proceeds with `ArchiveSkippedReason` set.
 // Just before the archive, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
@@ -609,6 +617,9 @@
 // `PairStatus`, `PruneEntry` and `ReconcilePairResult` carry the pair's paths as `CodeWorktree` and `RecordsWorktree` (JSON `code_worktree`, `records_worktree`).
 //
 // `Cleanup` sweeps local leftovers.
+// Under apply it takes each orphan's slug's teardown lock with one try before it archives or deletes anything of the slug: a held lock skips the slug whole (`Skipped`, `SkippedReason`), another lock error fills the entry's `Error`, and an orphan a worktree turned live since the enumeration gets no entry.
+// `CleanupRemoteWarp` takes the same one try per candidate before its leased delete, and keeps the candidate with a `Reason` when the lock is held or a hub worktree has the branch checked out.
+// A skipped slug is swept by a later run, and the try never waits.
 // `CleanupRemoteWarp` is the separate origin sweep: it classifies leftover task branches on origin against the open-PR heads its caller supplies and, with apply, deletes the landed ones; a nil open-PR set refuses every deletion.
 //
 // `Add` (add.go) handles a re-add after a plain `Remove`, which leaves both remote branches behind, and a pair moved from another machine.
@@ -627,6 +638,10 @@
 // A pair that is not live has a removed pair's leftovers: the archive tag is the orphan proof,
 // and a remote weft tip equal to, or an ancestor of, an `archive/<slug>/*` tag's target on origin is replaceable.
 // The warp side of such a pair is refused unless the remote warp tip is an ancestor of `HEAD`.
+// Once the refusals have passed and before the first worktree is made, `Add` drops the remote-tracking ref and the upstream setting (`gitrepo.DropRemoteTracking`) of each branch the probes read absent on origin, weft or warp,
+// so a reconcile before the new pair's first push does not judge a removed pair's tracking ref as a branch gone from origin.
+// The dropped ref names a branch origin does not hold, so no origin head is lost; a failed drop fails the `Add` before anything is made, and a rollback restores neither the ref nor the setting.
+// No probe runs under `SkipGit` or `SkipPush`, so nothing is dropped.
 // A replaceable weft leftover is deleted at step 11, `Add`'s last, through the destructive gate with a lease on the probed tip, so a branch that moved since the probe is refused and `Add` rolls back.
 // `Add` pushes neither branch: its callers spawn the pair's detached push through `SpawnPairPush`, and the leftover's deletion keeps that push from being rejected.
 // A failed or never-run push leaves both branches committed locally, and the pair's next detached push, which every fabric commit and sync spawns, carries them and creates a never-pushed branch's upstream.
@@ -699,9 +714,24 @@
 //
 // With `AddOptions.AdoptLocal`, `Add` makes a pair over an unmarked local warp branch that already exists, instead of refusing `ErrBranchExists`.
 // The branch is checked out into the new worktree (`git worktree add <path> <branch>`) and, like an adopted marked branch, is never deleted by the rollback; the weft side follows the usual rules, adopting a live records branch and otherwise forking from the parent's records branch.
-// Only `lym fabric add --adopt-local` sets it, so an unattended run never adopts a stale branch left under a reused slug.
-// Before any mutation `refuseAdoptLocalCheckedOut` refuses a warp branch checked out in another worktree (`lym fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
+// The `--adopt-local` flag sets it, and otherwise only batten's resume does, under `AdoptOnly`, so an unattended run never adopts a stale branch left under a reused slug.
+// Before any mutation `refuseAdoptLocalCheckedOut` refuses, with an `*ErrAdoptLocalCheckedOut`, a warp branch checked out in another worktree (`lym fabric checkout <other branch>` in it) and a records branch checked out in another records worktree (`git switch` off it in that worktree, or `git switch --detach` when it belongs to no pair).
 // The origin record's parent comes from `Parent` or the acting worktree, except when the adopted branch is the warp's default branch: then `parent_branch` and `parent_worktree` are empty, a root pair, which batten's Land row refuses to land on.
+//
+// With `AddOptions.AdoptOnly`, set only together with `AdoptLocal`, `Add` re-makes a live pair and forks nothing (addadoptonly.go).
+// A weft branch that is absent locally and on origin, or whose origin tip an `archive/<slug>/*` tag covers, and a task branch that is neither local nor on origin, return `*ErrNotLive` before any mutation; it matches the sentinel `ErrPairNotLive` under `errors.Is`, and `errors.As` reads the branch and whether it is the records branch.
+// It skips every check that guards only a fork: `ErrSourceDirty`, the acting worktree's HEAD, the fork point's marker, and the parent, which the adopted weft's origin record names; an adopted weft with no origin record is written none.
+// The warp probe also runs for an adopted local task branch, only to learn whether origin holds it: the branch is never fetched or replaced from origin, and a stale remote-tracking ref for a branch origin lacks is dropped.
+// A records worktree that stands registered, not prunable, on the weft branch is reused: `Add` makes only the task worktree, takes the anchor that worktree records, fast-forwards a behind branch by fetching origin's tip by SHA and merging it inside that worktree, and a rollback leaves the worktree and its branch in place.
+// A records worktree directory that stands without being such a worktree returns `*ErrRecordsWorktreeNotPair`, an existing task worktree path `*ErrTaskPathTaken`.
+// Under `AdoptOnly` the checked-out guard also covers a records branch another records worktree holds when the task branch comes from origin.
+// `PruneRegistrations` runs `git worktree prune` in the code and the records repository, so a pair whose worktree directories were deleted by hand holds no stale registration when it is re-made.
+//
+// Three read-only reads of the records repository serve a caller that restores a pair's records once the pair is gone (recordsreads.go); none writes a branch, a tag or a remote-tracking ref.
+// `SlugRecordsTags` lists a slug's `archive/<slug>/*` tags on origin and its local `archive/<slug>/*` and `set-aside/<slug>/*` tags, each as a `RecordsTag` with its peeled commit, whether origin holds it, whether only origin does, the commit's committer time and the content of each requested path found at the commit, resolved under the anchor that commit itself records.
+// A commit only origin holds is fetched by SHA first, and a records repository with no origin lists local tags only.
+// `RecordsBranchFile` reads one anchored file of a records branch, from the local branch when it exists and otherwise from origin's copy fetched by SHA, and reports it absent when the branch or the file is.
+// `RecordsBranchHasUpstream` reports whether the records repository configures `branch.<branch>.remote` or `branch.<branch>.merge`.
 //
 // # The one-repo illusion at the public API boundary
 //
@@ -758,6 +788,11 @@
 // `Remove` takes the lock exclusive after its refusals and the pair inspection, and before its first mutation, local path included, waiting at most the topology's teardown wait (`StatusPushLockWait`);
 // when the wait runs out it returns an error wrapping `ErrPairPushRunning` with nothing mutated.
 // It holds the lock past the worktree teardown and the store housekeeping, and releases it as its last step.
+// `Add`, not `AddLocal`, takes the lock exclusive right after slug validation and before its origin probes, holds it to its return, rollback included, and waits as `Remove` does;
+// when the wait runs out it returns, before any mutation, an error wrapping `ErrPairPushRunning` that names re-running the command that made the pair.
+// `DiscardTaskBranch` takes it exclusive the same way before its first tip read and holds it across its archive and remote delete, its wait-out refusal naming a re-run of the command that discarded the task branch.
+// `PushPairAnchored` takes it shared for a non-prime pair, before the weft push lock, through `lock.TryAcquireReadLock`, and holds it through the push;
+// while any holder has it exclusive the push sends nothing and returns an empty `PushResult` and an error wrapping `ErrPairPushRunning`, and the commits stay local for the pair's next push.
 // A `Remove` that fails after taking the lock and leaves a worktree of the pair in place respawns the pair's push once the lock is released:
 // through `SpawnStatusPush` over the pair's location while the task worktree stands, else a records-side-only request when only the records worktree stands and the pair is not local.
 // A push of the prime's records side carries no teardown slug, so it never delays a `Remove`.

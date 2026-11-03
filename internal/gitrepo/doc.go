@@ -54,7 +54,7 @@
 //     fetch-without-merge sibling, refreshing remote-tracking refs without
 //     ever moving the local branch.
 //   - HoldRemoteRefs takes the repository's remote-refs lock, a file in the common git dir every worktree shares.
-//     Fetch, FetchWithArgs, Pull and every push method run git under it, waiting while it is held,
+//     Fetch, FetchWithArgs, Pull, every push method including PushBranch, and DropRemoteTracking, which deletes a branch's remote-tracking ref and upstream setting, run git under it, waiting while it is held,
 //     since a fetch and a push both write the shared remote-tracking refs and two concurrent writers of one ref make the loser fail.
 //     A caller that reads origin and then judges the tracking refs holds it across both.
 //     It passes the process's pause gate before it takes the lock and stays admitted until the release, so a pause never holds a lock holder that other processes wait on.
@@ -66,7 +66,8 @@
 //     the commits reachable from a tip and not from a base, newest first, via `git rev-list`.
 //     MergeBase returns two commits' best common ancestor, read through go-git.
 //   - UpdateRemoteBranchLeased moves a remote branch to a SHA, backwards included, only while the remote branch still sits at the SHA the caller read;
-//     a moved branch is ErrLeaseRejected, distinct from any other push failure.
+//     DeleteRemoteBranchLeased deletes it under the same lease;
+//     a moved branch is ErrLeaseRejected in both, distinct from any other push failure.
 //   - ResetHard is the SHA-validated hard-reset surface (see below).
 //   - ResetKeep moves HEAD and the index to a SHA and carries uncommitted changes across, refusing with nothing changed when one sits in a path the move would rewrite.
 //   - CurrentBranch reads the branch HEAD points to, and errors on a detached HEAD.
@@ -196,7 +197,8 @@
 // A push is tried up to four times in total with a doubling backoff from one second, inside whatever lock the caller holds and without rebasing or forcing.
 // A retryable refusal never triggers the rebase-retry.
 // A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error, never ErrPushRejected.
-// PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes.
+// PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes;
+// PushWithRetryReasons adds reasons the caller names as retryable beside those two forms.
 // PushCoalesced adds cross-process coalescing on top: it acquires a
 // single-pusher lock file, .gitrepo-push.lock, in the repo's
 // worktree root before checking whether anything is actually unpushed, so a

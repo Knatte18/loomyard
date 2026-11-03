@@ -136,7 +136,7 @@ func (m *ParentAlign) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 
 	// The run-scope reconcile judges and never moves the parent.
-	if outcome, out, err, stop := reconcileVerdict(ctx, parentAlignName, m.deps.Reconcile); stop {
+	if outcome, out, err, stop := reconcileVerdict(ctx, parentAlignName, m.deps.Reconcile, m.deps.RemoveFollowUp); stop {
 		return outcome, out, err
 	}
 

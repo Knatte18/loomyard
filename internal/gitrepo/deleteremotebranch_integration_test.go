@@ -97,7 +97,7 @@ func TestDeleteRemoteBranch(t *testing.T) {
 				t.Errorf("bare remote heads after leased delete = %q; want no refs/heads/%s", heads, branch)
 			}
 		}},
-		// A lease whose SHA the remote branch has since moved past fails and leaves the branch at its advanced tip.
+		// A lease whose SHA the remote branch has since moved past fails with ErrLeaseRejected, still naming the leased SHA, and leaves the branch at its advanced tip.
 		{"a stale lease errors and keeps the branch", func(t *testing.T) {
 			const branch = "leased-stale"
 			staleTip := pushFeatureBranch(t, cloneAPath, branch)
@@ -107,8 +107,12 @@ func TestDeleteRemoteBranch(t *testing.T) {
 			advanced := gitkit.CommitFile(t, cloneBPath, "advance.txt", "advanced", "advance "+branch)
 			gitkit.Git(t, cloneBPath, "push", "origin", branch)
 
-			if err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip); err == nil {
-				t.Fatal("DeleteRemoteBranchLeased() with a stale lease error = nil; want an error")
+			err := repoA.DeleteRemoteBranchLeased("origin", branch, staleTip)
+			if !errors.Is(err, gitrepo.ErrLeaseRejected) {
+				t.Fatalf("DeleteRemoteBranchLeased() with a stale lease error = %v; want it to match ErrLeaseRejected", err)
+			}
+			if !strings.Contains(err.Error(), "leased at "+staleTip) {
+				t.Errorf("DeleteRemoteBranchLeased() error = %q; want it to name %q", err, "leased at "+staleTip)
 			}
 			heads := remoteHeads(t, container, bareRemote)
 			if !strings.Contains(heads, advanced+"\trefs/heads/"+branch) {

@@ -218,6 +218,7 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 			return machine, owner, subject, err
 		},
 		ReadStatus: func() (shedengine.Status, bool, error) { return readBattenStatus(location, slug) },
+		OwnerHeld:  func() (bool, error) { return pairteardown.OwnerPauseHeld(location, slug) },
 		BoardStatus: func() (*string, bool, error) {
 			hubBoard, err := board()
 			if err != nil {

@@ -11,6 +11,7 @@ package fabricengine_test
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -438,4 +439,121 @@ func TestAdd_WeftReplaceLeaseRaceRefused(t *testing.T) {
 	if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != moved {
 		t.Errorf("origin weft branch %q = %q; want the moved tip %q", weftBranch, got, moved)
 	}
+}
+
+// plantStaleTracking leaves branch's remote-tracking ref at tip and its upstream setting in the repository at dir, as a removed pair's push left them.
+func plantStaleTracking(dir, branch, tip string) {
+	mustGit(dir, "update-ref", "refs/remotes/origin/"+branch, tip)
+	mustGit(dir, "config", "branch."+branch+".remote", "origin")
+	mustGit(dir, "config", "branch."+branch+".merge", "refs/heads/"+branch)
+}
+
+// requireTrackingStanding asserts the repository at dir holds branch's remote-tracking ref and upstream merge setting, or neither.
+func requireTrackingStanding(t *testing.T, dir, branch string, want bool) {
+	t.Helper()
+
+	_, _, refCode, err := gitexec.RunGit([]string{"show-ref", "--verify", "--quiet", "refs/remotes/origin/" + branch}, dir)
+	if err != nil {
+		t.Fatalf("show-ref in %s: %v", dir, err)
+	}
+	_, _, configCode, err := gitexec.RunGit([]string{"config", "--get", "branch." + branch + ".merge"}, dir)
+	if err != nil {
+		t.Fatalf("config --get in %s: %v", dir, err)
+	}
+	if got := refCode == 0; got != want {
+		t.Errorf("remote-tracking ref of %q standing in %s = %v; want %v", branch, dir, got, want)
+	}
+	if got := configCode == 0; got != want {
+		t.Errorf("upstream merge setting of %q standing in %s = %v; want %v", branch, dir, got, want)
+	}
+}
+
+// staleTrackingHub returns the hub of a removed pair for slug whose origin branch on one side is deleted while that side's repository keeps the tracking ref and upstream setting.
+// The local warp branch a removal may leave is deleted, so the next Add forks.
+func staleTrackingHub(t *testing.T, slug string, records bool) *hubforge.Hub {
+	t.Helper()
+
+	h := removedPair(t, slug)
+	if gitkit.BranchExists(t, h.PrimeWorktree(), slug) {
+		mustGit(h.PrimeWorktree(), "branch", "-D", slug)
+	}
+	if records {
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		tip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		mustGit(h.RecordsBare, "branch", "-D", weftBranch)
+		plantStaleTracking(h.PrimeRecords(), weftBranch, tip)
+		return h
+	}
+	tip := gitkit.RevParse(t, h.PrimeWorktree(), "HEAD")
+	mustGit(h.CodeBare, "branch", "-D", slug)
+	plantStaleTracking(h.PrimeWorktree(), slug, tip)
+	return h
+}
+
+// TestAdd_DropsStaleTrackingRef covers a removed pair's remote-tracking ref and upstream setting for a branch origin no longer holds: Add drops them on the side whose branch origin lacks, before it makes anything.
+func TestAdd_DropsStaleTrackingRef(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("a weft branch deleted on origin", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "stale-records"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := staleTrackingHub(t, slug, true)
+		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, true)
+
+		if _, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{}); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+
+		requireTrackingStanding(t, h.PrimeRecords(), weftBranch, false)
+		report, err := fabricengine.ReconcileOrigin(h.Location, fabricengine.ReconcileScope{Run: slug, JudgeOnly: true}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		if err != nil {
+			t.Fatalf("ReconcileOrigin: %v", err)
+		}
+		for _, outcome := range report.Branches {
+			if outcome.State == fabricengine.BranchGone && (outcome.Branch == slug || outcome.Branch == weftBranch) {
+				t.Errorf("reconcile read the new pair's branch %q as gone from origin", outcome.Branch)
+			}
+		}
+	})
+
+	t.Run("a warp branch deleted on origin", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "stale-warp"
+		h := staleTrackingHub(t, slug, false)
+		requireTrackingStanding(t, h.PrimeWorktree(), slug, true)
+
+		if _, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{}); err != nil {
+			t.Fatalf("Add: %v", err)
+		}
+
+		requireTrackingStanding(t, h.PrimeWorktree(), slug, false)
+	})
+
+	t.Run("a drop that fails refuses the Add before anything is made", func(t *testing.T) {
+		t.Parallel()
+
+		const slug = "stale-locked"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := staleTrackingHub(t, slug, true)
+		commonDir := gitkit.Git(t, h.PrimeRecords(), "rev-parse", "--git-common-dir")
+		if !filepath.IsAbs(commonDir) {
+			commonDir = filepath.Join(h.PrimeRecords(), commonDir)
+		}
+		if err := os.WriteFile(filepath.Join(commonDir, "config.lock"), nil, 0o644); err != nil {
+			t.Fatalf("plant config.lock: %v", err)
+		}
+
+		_, err := h.Topology.Add(h.Location, slug, fabricengine.AddOptions{})
+		if err == nil {
+			t.Fatal("Add succeeded; want the failed drop to refuse it")
+		}
+		if !strings.Contains(err.Error(), weftBranch) {
+			t.Errorf("message %q does not name branch %q", err.Error(), weftBranch)
+		}
+		requireNothingCreated(t, h, slug)
+	})
 }

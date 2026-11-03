@@ -82,6 +82,8 @@ type SessionResult struct {
 type Result struct {
 	Session SessionResult
 	Removal fabricengine.RemoveResult
+	// Warning names the step that settles the pair's batten run record, which the removal left standing; empty when no step is owed or the caller settles the record itself.
+	Warning string
 }
 
 // quietState is one quiet probe's answer.
@@ -144,6 +146,13 @@ type Teardown struct {
 	// writeClaim sets the status of the slug's board entry, or clears it with a nil status.
 	writeClaim func(slug string, status *string) error
 
+	// battenRecord reads the batten run record of the slug on the prime; found is false when the run has none.
+	// Nil reads as no record.
+	battenRecord func(slug string) (status shedengine.Status, found bool, err error)
+	// ownerHeld reports whether an owner pause covers the slug.
+	// Nil reads as none.
+	ownerHeld func(slug string) (bool, error)
+
 	// killCapture terminates the pair's drift capture job, which ends the capture child and its command on Windows.
 	killCapture func(slug string) (bool, error)
 	// killLoop kills the pair's loop and its in-flight step tree.
@@ -201,6 +210,8 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 	t.battenRun = t.battenRunState
 	t.readClaim = t.readBoardClaim
 	t.writeClaim = t.writeBoardClaim
+	t.battenRecord = func(slug string) (shedengine.Status, bool, error) { return ReadBattenRecord(prime, slug) }
+	t.ownerHeld = func(slug string) (bool, error) { return OwnerPauseHeld(prime, slug) }
 	t.remove = func(req Request) (fabricengine.RemoveResult, error) {
 		top, err := t.topology()
 		if err != nil {
@@ -462,13 +473,20 @@ func (t *Teardown) takeSnapshot(req Request) (snapshotOutcome, error) {
 }
 
 // Run is EndSession then RemovePair; a failed EndSession never reaches RemovePair.
+// After a successful removal of a request without LeaveClaim it sets Result.Warning from the batten run record the removal left standing.
 func (t *Teardown) Run(ctx context.Context, req Request) (Result, error) {
 	session, err := t.EndSession(ctx, req)
 	if err != nil {
 		return Result{Session: session}, err
 	}
 	removal, err := t.RemovePair(req)
-	return Result{Session: session, Removal: removal}, err
+	result := Result{Session: session, Removal: removal}
+	if err == nil && !req.LeaveClaim {
+		if followUp := followUpOver(req.Slug, t.battenRecord, t.ownerHeld); followUp != "" {
+			result.Warning = fmt.Sprintf("the batten run of %s still stands; %s", req.Slug, followUp)
+		}
+	}
+	return result, err
 }
 
 // waitQuiet probes until the driver is quiet or the bound is spent, and reports whether a busy driver was left to the caller's policy.

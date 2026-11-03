@@ -113,6 +113,12 @@ type Deps struct {
 	// Nil means "no reconcile", following CommitStatus's nil-is-absent convention.
 	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
 	Reconcile func() (fabricengine.OriginReport, error)
+	// RemoveFollowUp returns the step that settles the run's batten record, which a stopped reason whose way forward names `lym fabric remove` ends in instead of the resume, since the removal deletes the task worktree the resume runs in.
+	// An empty answer keeps the resume.
+	//
+	// Nil means "no follow-up", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	RemoveFollowUp func() string
 
 	// Slug is the run's slug, which Finalize's owner halts and repair note name in the adopt commands they give.
 	// Told by the caller.

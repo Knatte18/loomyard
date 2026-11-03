@@ -275,6 +275,7 @@
 // A watching batten announces the run and retries a matching verify halt itself, so only the parent notice, a question and a friction-failed done are sent; an unwatched run also gets one line naming the run-id and the report.
 // A paused stop that carries no reason also writes a `go-driver-paused` friction note.
 // A done run commits its records, and one that finished with `friction: failed` also gets a report and a notice without being parked.
+// `lym loom commit-records` pushes the pair's records with its task branch; a push skipped while the slug's teardown lock is held exclusive is an ok envelope with `push_skipped`, its commit left local for the pair's next push.
 //
 // A hand-over runs only at a binary-eligible stop, once per stop key and build, over a clean tree outside the run's records and never under a pause.
 // It records the hand-over, leaves the stop report and the park marker, releases the driver lock and spawns a fresh `lym loom drive` of the on-disk build, which re-steps;
@@ -346,6 +347,7 @@
 // a HEAD that differs restores both files and names the re-run of the verb, never `lym fabric commit`.
 //
 // The landing wiring reads the run's start from the pair's seed and fails on a seed it cannot decode.
+// `landingDeps` tells landingshed the follow-up of a removal, `pairteardown.FollowUpFor` over the prime's batten record of the run's slug and the owner pause, so a stopped reason that sends the operator to `lym fabric remove` names the step that settles that record.
 //
 // # Review subjects
 //

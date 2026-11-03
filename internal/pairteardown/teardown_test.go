@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
@@ -19,6 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -48,6 +50,9 @@ type fakeSubstrates struct {
 	// battenSeeded and battenState are what batten's run reads answer.
 	battenSeeded bool
 	battenState  string
+	// runRecord is the batten run record the follow-up reads, absent when nil; ownerPaused is whether an owner pause covers the slug.
+	runRecord   *shedengine.Status
+	ownerPaused bool
 	// claim is the board entry's status when claimFound; claimReadErr fails the read.
 	claim        *string
 	claimFound   bool
@@ -200,6 +205,13 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			}
 			return nil
 		},
+		battenRecord: func(string) (shedengine.Status, bool, error) {
+			if f.runRecord == nil {
+				return shedengine.Status{}, false, nil
+			}
+			return *f.runRecord, true, nil
+		},
+		ownerHeld: func(string) (bool, error) { return f.ownerPaused, nil },
 		sleep: func(context.Context, time.Duration) error {
 			f.sleeps++
 			return nil
@@ -248,6 +260,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 	const sessionEnd = reads + "quiet,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=true)"
 	const skippedEnd = "awaitOrPass,refusal,endOwned,driverLock,killCapture,kill,seize,await,end,release(ended=true)"
 	survivors := []runproc.Ended{{PID: 4242, Role: runproc.RoleLoop}}
+	runShed := &shedengine.Status{State: shedengine.StateRunning, CurrentProducer: battenrecipe.NameRunShed}
 	tests := []struct {
 		name string
 		// run selects Teardown.Run over Teardown.EndSession.
@@ -293,6 +306,10 @@ func TestTeardown_CallSequence(t *testing.T) {
 		// wantEnded and wantSurvivors are the EndedProcesses and Survivors of the returned session result.
 		wantEnded     []runproc.Ended
 		wantSurvivors []runproc.Ended
+		// runRecord and ownerPaused script the follow-up's reads; wantWarning is the Result.Warning a Run must return.
+		runRecord   *shedengine.Status
+		ownerPaused bool
+		wantWarning string
 		// gone makes the task worktree read as gone.
 		gone    bool
 		request Request
@@ -675,6 +692,32 @@ func TestTeardown_CallSequence(t *testing.T) {
 			wantCalls:  skippedEnd + ",archive,remove",
 		},
 		{
+			name:        "BattenRecordBeforeLandWarnsWithTheCancelFollowUp",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			runRecord:   runShed,
+			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim",
+			wantWarning: "the batten run of slug still stands; " + BattenFollowUp("slug", *runShed, true, false),
+		},
+		{
+			name:        "OwnerPauseCoveringTheSlugGivesNoWarning",
+			run:         true,
+			quiets:      []quietState{{quiet: true}},
+			request:     Request{Slug: "slug"},
+			runRecord:   runShed,
+			ownerPaused: true,
+			wantCalls:   sessionEnd + ",landed,archive,remove,readClaim",
+		},
+		{
+			name:      "LeaveClaimGivesNoWarning",
+			run:       true,
+			quiets:    []quietState{{quiet: true}},
+			request:   Request{Slug: "slug", Verdict: fabricengine.EntryEnded, LeaveClaim: true},
+			runRecord: runShed,
+			wantCalls: skippedEnd + ",archive,remove",
+		},
+		{
 			name:              "SnapshotRefusedBusyStopsBeforeAfterSnapshotAndRemove",
 			run:               true,
 			quiets:            []quietState{{quiet: true}},
@@ -806,6 +849,7 @@ func TestTeardown_CallSequence(t *testing.T) {
 				endedProcs: tt.endedProcs, endOwnedErr: tt.endOwnedErr, driverLockHeld: tt.driverLockHeld,
 				driverPID: tt.driverPID, driverFound: tt.driverFound, battenAlive: tt.battenAlive,
 				paused: tt.paused, hubEntry: tt.hubEntry, pausedErr: tt.pausedErr, awaitOrPassErr: tt.awaitOrPassErr, owned: tt.owned,
+				runRecord: tt.runRecord, ownerPaused: tt.ownerPaused,
 			}
 			td := f.teardown()
 			if tt.goos != "" {
@@ -830,10 +874,12 @@ func TestTeardown_CallSequence(t *testing.T) {
 			var session SessionResult
 			var err error
 			var removal fabricengine.RemoveResult
+			var warning string
 			if tt.run {
 				var result Result
 				result, err = td.Run(context.Background(), tt.request)
 				removal = result.Removal
+				warning = result.Warning
 			} else {
 				session, err = td.EndSession(context.Background(), tt.request)
 			}
@@ -860,6 +906,9 @@ func TestTeardown_CallSequence(t *testing.T) {
 			}
 			if removal.SnapshotTag != tt.wantSnapshotTag {
 				t.Errorf("SnapshotTag = %q, want %q", removal.SnapshotTag, tt.wantSnapshotTag)
+			}
+			if warning != tt.wantWarning {
+				t.Errorf("Warning = %q, want %q", warning, tt.wantWarning)
 			}
 			if f.sleeps != tt.wantSleeps {
 				t.Errorf("sleeps = %d, want %d", f.sleeps, tt.wantSleeps)

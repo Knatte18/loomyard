@@ -200,13 +200,10 @@ func runLockHeld(lockPath string) (bool, error) {
 // An absent pair is refused by name rather than left to the resolver's generic "not a git
 // repository": batten's status is durable, so a run resumed on another machine reaches every row
 // past Worktree-Create with no pair here.
-// Recreating it is not attempted, since fabric's Add refuses a pre-existing branch by design -- and
-// the refusal below names no fabric command as a substitute: "lym fabric checkout" switches the
-// CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it
-// would mutate prime itself rather than restore anything.
-// Deleting the pair's branches alone rewinds nothing: the resumed run re-enters its persisted row,
-// not Worktree-Create, so the abandon path names batten's own run directory as well, and both
-// branch copies, since the ones on the remote make a fresh create's push refuse.
+// This function re-makes nothing.
+// The refusal names the resume, "lym batten run", whose pre-run re-adopts a pair that is still live and otherwise stops naming the restore of each branch.
+// It names no fabric command as a substitute.
+// "lym fabric checkout" switches the CALLER's own worktree onto the named branch, so run from prime, as every batten verb must be, it would mutate prime itself rather than restore anything.
 func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location, error) {
 	worktreePath, err := presentTaskWorktreePath(prime, slug)
 	if err != nil {
@@ -216,13 +213,14 @@ func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location
 }
 
 // presentTaskWorktreePath returns the task worktree's root for slug, refusing an absent one by name (see taskWorktreeLocation).
+// The refusal reaches a worktree that disappears mid-run, and the cancel and goto verbs, which resolve the task worktree without a resume.
 func presentTaskWorktreePath(prime *lymcwd.Location, slug string) (string, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand -- batten does not recreate a pair from its branch, and no \"lym fabric\" command currently does either (creating one refuses when its branch already exists). Resolve it by hand, one of two ways: restore the worktree pair yourself from its branches, outside lym's own automation, which keeps the task's work, then resume this run; or abandon this run by deleting its run directory %s (a change on the pair's fabric sibling) and the pair's branches, local and remote, after which \"lym batten run %s\" starts over from a fresh create -- discarding any of the task's work not already merged",
-				slug, worktreePath, shedrun.RunDir(prime, slug), slug,
+				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand; way forward: run \"lym batten run %s\" from the prime, whose resume re-adopts the pair when its branches are still live and otherwise stops naming the restore of each branch, and then repeating the refused command",
+				slug, worktreePath, slug,
 			)
 		}
 		return "", err

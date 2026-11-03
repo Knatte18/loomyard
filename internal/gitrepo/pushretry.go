@@ -1,5 +1,5 @@
 // pushretry.go — the bounded retry the plain, never-forced push primitives wrap around a push.
-// It repeats a push only when the server refuses the pushed ref with a bare "(failed)" or a remote "cannot lock ref".
+// It repeats a push only when the server refuses the pushed ref with a bare "(failed)", a remote "cannot lock ref", or a reason the caller names as an extra retryable reason.
 
 package gitrepo
 
@@ -39,9 +39,9 @@ func PushBackoffDelays() []time.Duration {
 const remoteRejectedPrefix = "! [remote rejected]"
 
 // retryablePushRefusal reports whether err is a push whose stderr holds a "! [remote rejected] <src> -> <dst> (<reason>)" line for ref, and returns that line.
-// The line belongs to ref when src and dst both equal ref in its short form or its full refs/heads/ or refs/tags/ form, and it is retryable when the reason is exactly "(failed)" or contains "cannot lock ref".
+// The line belongs to ref when src and dst both equal ref in its short form or its full refs/heads/ or refs/tags/ form, and it is retryable when the reason is exactly "(failed)" or contains "cannot lock ref" or one of extraReasons.
 // Every other stderr line is ignored, and an empty ref matches no line.
-func retryablePushRefusal(err error, ref string) (line string, retryable bool) {
+func retryablePushRefusal(err error, ref string, extraReasons []string) (line string, retryable bool) {
 	var gitErr *gitexec.GitError
 	if ref == "" || !errors.As(err, &gitErr) {
 		return "", false
@@ -64,7 +64,7 @@ func retryablePushRefusal(err error, ref string) (line string, retryable bool) {
 		if !namesRef(strings.TrimSpace(source), ref) || !namesRef(strings.TrimSpace(destination), ref) {
 			continue
 		}
-		if reason == "(failed)" || strings.Contains(reason, "cannot lock ref") {
+		if reason == "(failed)" || strings.Contains(reason, "cannot lock ref") || containsAny(reason, extraReasons) {
 			return candidate, true
 		}
 	}
@@ -85,11 +85,19 @@ func namesRef(name, ref string) bool {
 // PushWithRetry calls push up to one time more than delays holds, sleeping each delay in order between attempts, only while push fails with a retryable remote refusal of ref.
 // A non-retryable error returns unchanged on its attempt; an exhausted retry returns an error wrapping ErrPushRetriesExhausted and the last push error.
 // A nil sleep sleeps the delay plus up to half of it as jitter.
+// Only a bare "(failed)" and a "cannot lock ref" reason are retryable.
 //
 // On the records repository the refusal `! [remote rejected] main -> main (failed)` is a ref-update race:
 // the remote refuses a ref update that raced another update of that repository's `main` (board writes and other runs' record pushes), and the local ref is not stale.
 // The retry is the intended path for it, and the Warn each retry logs is the signal that surfaced the race.
 func PushWithRetry(push func() error, ref string, delays []time.Duration, sleep func(time.Duration)) error {
+	return PushWithRetryReasons(push, ref, delays, sleep, nil)
+}
+
+// PushWithRetryReasons is PushWithRetry for a caller that also treats a remote refusal of ref whose reason contains one of extraReasons as retryable.
+// The predicate still reads only the "remote rejected" line naming ref, and the number of attempts stays one more than delays holds,
+// so a refusal that never clears still ends in an error wrapping ErrPushRetriesExhausted.
+func PushWithRetryReasons(push func() error, ref string, delays []time.Duration, sleep func(time.Duration), extraReasons []string) error {
 	if sleep == nil {
 		sleep = func(delay time.Duration) { time.Sleep(delay + rand.N(delay/2+1)) }
 	}
@@ -98,7 +106,7 @@ func PushWithRetry(push func() error, ref string, delays []time.Duration, sleep 
 		if err == nil {
 			return nil
 		}
-		line, retryable := retryablePushRefusal(err, ref)
+		line, retryable := retryablePushRefusal(err, ref, extraReasons)
 		if !retryable {
 			return err
 		}

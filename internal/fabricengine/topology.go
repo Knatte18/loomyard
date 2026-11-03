@@ -23,10 +23,14 @@ type Topology struct {
 	leftover leftoverSeam
 	// inFlight answers which other pairs' sessions are live when a pair is removed; nil answers none.
 	inFlight InFlightProbe
-	// teardownWait bounds how long Remove waits for a push of the pair to let go of the pair's teardown lock.
+	// teardownWait bounds how long Remove, Add and the task-branch discard wait for the pair's teardown lock.
 	teardownWait time.Duration
+	// archiveSleep sleeps between the attempts of an archive-tag push; nil sleeps for real.
+	archiveSleep func(time.Duration)
 	// beforeWire runs in Add once the weft worktree exists and before the junctions are wired; nil in production.
 	beforeWire func()
+	// cleanupAfterEnumerate runs in Cleanup once per orphan right before the slug's teardown lock is taken; nil in production.
+	cleanupAfterEnumerate func()
 }
 
 // SetInFlightProbe sets the probe Remove's store housekeeping consults before it runs gc.

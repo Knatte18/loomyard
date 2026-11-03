@@ -29,6 +29,7 @@
 //
 // `PauseOwnedElsewhere` pauses a run another machine owns, and `EndOwnedElsewhere` then ends the run's owned processes on this machine, so a driver chain parked under the owner pause never outlives an adoption.
 // The pause stands whatever the end does: a failed end or a survivor is logged at Warn, naming `lym fabric remove <slug>`, or `lym reed down` in the pair while it exists, and `lym tender reap` once it is gone.
+// A failed end also ends in the step that settles the run's batten record when `pairteardown.BattenFollowUp` words one, which the removal would otherwise leave standing.
 // A run whose Finalize is past its parent-side merge keeps its processes, since it finishes its landing on either machine; its pair's removal ends them.
 // A task worktree with no status file, or none at all, is ended by slug, since no Finalize can be running there.
 // The end spares the calling process and its ancestors, so inside `lym batten run` batten survives its own probe's end, keeping its owner hold and probe, and the pair's removal ends it.

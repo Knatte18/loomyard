@@ -255,6 +255,9 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != (len(tt.wantRepair) > 0) {
 				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, len(tt.wantRepair) > 0)
 			}
+			if strings.Contains(reason, "lym batten cancel") {
+				t.Errorf("reason = %q; want it free of `lym batten cancel`, since a cancel lifts the owner pause of a landed run", reason)
+			}
 		})
 	}
 }
@@ -539,6 +542,9 @@ func TestFinalize_StuckReasons(t *testing.T) {
 		// wantHalt is whether the Stuck must carry Halt, and wantNotInReason names text the reason must not carry.
 		wantHalt        bool
 		wantNotInReason string
+		// followUp is what Deps.RemoveFollowUp returns, empty wiring none; parentHolds makes Deps.ParentHoldsTaskWork read true.
+		followUp    string
+		parentHolds bool
 	}{
 		{
 			name:     "run origin ended after its landing halts naming the landing and the cleanup from the prime",
@@ -558,6 +564,27 @@ func TestFinalize_StuckReasons(t *testing.T) {
 				return `branch parent is diverged against origin; way forward: reconcile parent in the prime; then run "lym loom resume"`
 			},
 			wantNotInReason: "lym cleanup --apply",
+		},
+		{
+			name: "stopped branch naming the removal ends in the follow-up in place of the resume",
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
+			},
+			followUp:        "then run `lym batten cancel me --remove`",
+			wantInOrder:     []string{"lym fabric remove me", "then run `lym batten cancel me --remove`"},
+			wantNotInReason: "lym loom resume",
+		},
+		{
+			name: "a parent already holding the task's work keeps the resume and carries no follow-up",
+			report: &fabricengine.OriginReport{
+				Branches: []fabricengine.BranchOutcome{{Branch: "parent", State: fabricengine.BranchDiverged, WayForward: "run `lym fabric remove me` to clear it"}},
+				Entries:  []fabricengine.EntryOutcome{{Slug: "me", State: fabricengine.EntryStopped, WayForward: "run `lym fabric remove me` to clear it"}},
+			},
+			followUp:        "then run `lym batten cancel me --remove`",
+			parentHolds:     true,
+			wantInOrder:     []string{"lym fabric remove me", `then run "lym loom resume"`},
+			wantNotInReason: "lym batten cancel",
 		},
 		{
 			name:         "parent opener error names the parent branch",
@@ -676,6 +703,12 @@ func TestFinalize_StuckReasons(t *testing.T) {
 			deps.RecordLanding = func(string) error { markCalled = true; return nil }
 			if tt.recordsErr != nil {
 				deps.CommitParentRecords = func() error { return tt.recordsErr }
+			}
+			if tt.followUp != "" {
+				deps.RemoveFollowUp = func() string { return tt.followUp }
+			}
+			if tt.parentHolds {
+				deps.ParentHoldsTaskWork = func() (bool, error) { return true, nil }
 			}
 			if tt.report != nil {
 				deps.Reconcile = func() (fabricengine.OriginReport, error) { return *tt.report, nil }

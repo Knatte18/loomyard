@@ -41,6 +41,8 @@ type cancelDeps struct {
 	Owner func() (machine, owner, subject string, err error)
 	// ReadStatus reads batten's status file for the slug.
 	ReadStatus func() (status shedengine.Status, found bool, err error)
+	// OwnerHeld reports whether an owner pause covers the slug, which a refusal that sends the operator to remove the pair reads to word the step that settles the run's record.
+	OwnerHeld func() (bool, error)
 	// BoardStatus reads the status of the slug's entry on the local board.
 	BoardStatus func() (status *string, found bool, err error)
 	// RecordsPresent reports whether the slug's records run directory exists, or is deleted on disk but still tracked at the records HEAD.
@@ -533,7 +535,7 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 			if stoppedOnlyByAnchor(slug, report.Branches) {
 				break
 			}
-			return false, stoppedRefusal(slug, "cancel", fmt.Sprintf("then run %s again", rerun), entry, report.Branches)
+			return false, cancelStoppedRefusal(slug, fmt.Sprintf("then run %s again", rerun), entry, report.Branches, deps)
 		case fabricengine.EntryEnded:
 			if entry.How != "done" {
 				break
@@ -548,6 +550,31 @@ func judgeOrigin(slug, rerun string, deps cancelDeps) (endOnly bool, err error) 
 		}
 	}
 	return false, nil
+}
+
+// cancelStoppedRefusal words the refusal of a cancel whose run origin's judgment stopped, ending in reentry.
+// A refusal that names the pair's removal ends instead in the step that settles the run's batten record, read from batten's status and the owner pause, since the removal leaves the record standing and a cancel at Land would release a landed entry.
+// A read that fails is logged and keeps reentry, and so does an empty follow-up.
+func cancelStoppedRefusal(slug, reentry string, entry fabricengine.EntryOutcome, branches []fabricengine.BranchOutcome, deps cancelDeps) error {
+	refusal := stoppedRefusal(slug, "cancel", reentry, entry, branches)
+	if !strings.Contains(refusal.Error(), fabricRemoveCommand) {
+		return refusal
+	}
+	status, found, err := deps.ReadStatus()
+	if err != nil {
+		logger.Warn("battencli: batten's status could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
+		return refusal
+	}
+	held, err := deps.OwnerHeld()
+	if err != nil {
+		logger.Warn("battencli: the owner pause could not be read, so the refusal names no follow-up of the removal", "slug", slug, "cause", err)
+		return refusal
+	}
+	followUp := pairteardown.BattenFollowUp(slug, status, found, held)
+	if followUp == "" {
+		return refusal
+	}
+	return withFollowUp(refusal, reentry, followUp)
 }
 
 // stoppedOnlyByAnchor reports whether every branch stopping the entry of slug is anchor_stopped, and at least one is.

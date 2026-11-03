@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -16,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -230,6 +232,7 @@ func (c *battenCLI) claimBoardEntry(slug string) error {
 // With no status file, or a status still at Worktree-Create whose pair this machine does not hold, it is the start check;
 // a status at Worktree-Teardown whose task worktree is gone takes no reconcile, since the run-scope reconcile refuses a slug with no pair worktree and the teardown only finishes what is left of the pair:
 // the local board alone judges its owner, and no origin-owed marker is written;
+// a status at any other row whose task worktree is gone, on a receiver that carries the re-adoption seams, runs readoptGonePair in place of the resume reconcile;
 // otherwise it is the resume reconcile, which also judges the owner.
 // A receiver with no owner seams runs the resume reconcile for a found status bar that teardown, and checks nothing for an absent one.
 func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
@@ -241,6 +244,15 @@ func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 		if !present {
 			logger.Info("battencli: teardown resume with its pair gone, judging the owner on the local board only", "slug", c.slug)
 			return c.refuseOwnedElsewhereOnLocalBoard("")
+		}
+	}
+	if found && c.readopt.Add != nil && status.CurrentProducer != battenrecipe.NameWorktreeCreate && status.CurrentProducer != battenrecipe.NameWorktreeTeardown {
+		gone, err := c.readopt.Gone(c.slug)
+		if err != nil {
+			return fmt.Errorf("battencli: whether the task worktree of %q is gone could not be read: %w; fix the cause it names, then re-run lym batten run %s", c.slug, err, c.slug)
+		}
+		if gone {
+			return c.readoptGonePair()
 		}
 	}
 	if c.owner.Machine == nil {
@@ -265,12 +277,27 @@ func (c *battenCLI) ownerPreflight(found bool, status shedengine.Status) error {
 }
 
 // preflightRunOwner reads the run's status file and runs ownerPreflight over it.
+// A refusal whose text names `lym fabric remove` ends in the step that settles the run's batten record, which replaces the refusal's trailing re-run, since the removal leaves the record standing and the re-run would reach a pair that is gone.
+// A refusal naming no removal, a read of the owner pause that fails, which is logged, and an empty follow-up leave the refusal unchanged.
 func (c *battenCLI) preflightRunOwner() error {
 	status, found, err := state.ReadJSON[shedengine.Status](c.shedPaths.StatusPath, c.shedPaths.StatusLockPath)
 	if err != nil {
 		return errors.New("battencli: decode status file " + c.shedPaths.StatusPath + ": " + err.Error())
 	}
-	return c.ownerPreflight(found, status)
+	refusal := c.ownerPreflight(found, status)
+	if refusal == nil || !strings.Contains(refusal.Error(), fabricRemoveCommand) {
+		return refusal
+	}
+	held, err := pairteardown.OwnerPauseHeld(c.location, c.slug)
+	if err != nil {
+		logger.Warn("battencli: the owner pause could not be read, so the refusal names no follow-up of the removal", "slug", c.slug, "cause", err)
+		return refusal
+	}
+	followUp := pairteardown.BattenFollowUp(c.slug, status, found, held)
+	if followUp == "" {
+		return refusal
+	}
+	return withFollowUp(refusal, resumeReentry(c.slug), followUp)
 }
 
 // refuseOwnedElsewhereOnLocalBoard judges a resume that ran no origin reconcile against the local Bolt.

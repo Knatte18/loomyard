@@ -1148,7 +1148,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return errWithRecord(out, r.Mutated(), err)
 	}
 
-	fields := removeFields(r, res.Session)
+	fields := removeFields(r, res.Session, res.Warning)
 
 	// Keyed on RemoteBranchError alone — never on RemoteSkippedReason — so that a missing origin
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
@@ -1168,9 +1168,9 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 
 // removeFields builds the envelope fields for a remove result.
 // New RemoveResult fields must be added here explicitly — the map is hand-built, not reflected.
-// code_branch_kept_reason, remote_code_branch_kept_reason, stray_path, local, local_mark_branch, dropped_records_tip and abandoned_session appear only when set.
+// code_branch_kept_reason, remote_branch_kept_reason, remote_code_branch_kept_reason, stray_path, local, local_mark_branch, dropped_records_tip, origin_archive_tag, abandoned_session and warning appear only when set.
 // ended_processes, the {pid, role} of each registered process the session end ended, is always present and empty when none.
-func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult) map[string]any {
+func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResult, warning string) map[string]any {
 	steps := r.Steps
 	if steps == nil {
 		steps = []string{}
@@ -1191,6 +1191,9 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	if r.CodeBranchKeptReason != "" {
 		fields["code_branch_kept_reason"] = r.CodeBranchKeptReason
 	}
+	if r.RemoteBranchKeptReason != "" {
+		fields["remote_branch_kept_reason"] = r.RemoteBranchKeptReason
+	}
 	if r.RemoteCodeBranchKeptReason != "" {
 		fields["remote_code_branch_kept_reason"] = r.RemoteCodeBranchKeptReason
 	}
@@ -1206,8 +1209,14 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	if r.DroppedRecordsTip != "" {
 		fields["dropped_records_tip"] = r.DroppedRecordsTip
 	}
+	if r.OriginArchiveTag != "" {
+		fields["origin_archive_tag"] = r.OriginArchiveTag
+	}
 	if session.AbandonedSession != "" {
 		fields["abandoned_session"] = session.AbandonedSession
+	}
+	if warning != "" {
+		fields["warning"] = warning
 	}
 	endedProcesses := make([]map[string]any, len(session.EndedProcesses))
 	for i, ended := range session.EndedProcesses {

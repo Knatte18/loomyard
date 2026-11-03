@@ -138,6 +138,8 @@
 // A run origin ended is a Stuck with Halt naming the landing or the board removal, with `lym cleanup --apply` from the prime as the way forward;
 // a run its branches stop is a Stuck naming the branch, its state and its way forward, then `lym loom resume` in the task worktree;
 // an unreachable origin logs a Warn and proceeds, so the row fails on its own remote steps, and a reconcile error is an error.
+// A stopped reason whose way forward names `lym fabric remove` ends in the text of `Deps.RemoveFollowUp` in place of that resume, since the removal deletes the task worktree the resume runs in;
+// an empty answer and a nil seam keep the resume, and so does a Finalize whose parent already holds the task's work.
 // With an upstream and no push skip it fetches and merges the parent's upstream tip, read from the fetching tips read and never the local tip, so a landing another run made locally and has not pushed is never merged in.
 // Under the told push skip, or with no upstream, it takes the parent lock through the shared guard only for the read of the local tip and releases it before the merge, which then runs unlocked.
 // A paused lock wait and an unreadable lock record are Stuck with Halt, so the run stops at the row.

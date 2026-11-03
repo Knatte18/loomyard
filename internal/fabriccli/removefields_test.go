@@ -21,6 +21,7 @@ func TestRemoveFields(t *testing.T) {
 		name    string
 		result  fabricengine.RemoveResult
 		session pairteardown.SessionResult
+		warning string
 		// wantFields are keys that must be present with exactly this value.
 		wantFields map[string]any
 		// wantAbsent are keys that must not be present.
@@ -98,6 +99,22 @@ func TestRemoveFields(t *testing.T) {
 			},
 		},
 		{
+			name:       "RemoteBranchKeptReason",
+			result:     fabricengine.RemoveResult{Slug: "s", RemoteBranchKeptReason: "kept: moved"},
+			wantFields: map[string]any{"remote_branch_kept_reason": "kept: moved"},
+		},
+		{
+			name:       "OriginArchiveTag",
+			result:     fabricengine.RemoveResult{Slug: "s", OriginArchiveTag: "archive/s/abc123"},
+			wantFields: map[string]any{"origin_archive_tag": "archive/s/abc123"},
+		},
+		{
+			name:       "WarningNamesTheBattenFollowUp",
+			result:     fabricengine.RemoveResult{Slug: "s"},
+			warning:    "the batten run of s still stands; then run `lym batten cancel s --remove`",
+			wantFields: map[string]any{"warning": "the batten run of s still stands; then run `lym batten cancel s --remove`"},
+		},
+		{
 			name:   "EndedProcessesListed",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			session: pairteardown.SessionResult{EndedProcesses: []runproc.Ended{
@@ -113,8 +130,8 @@ func TestRemoveFields(t *testing.T) {
 			name:   "ConditionalKeysAbsentWhenEmpty",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
-				"stray_path", "abandoned_session", "remote_code_branch_kept_reason", "code_branch_kept_reason",
-				"local", "local_mark_branch", "dropped_records_tip",
+				"stray_path", "abandoned_session", "remote_branch_kept_reason", "remote_code_branch_kept_reason", "code_branch_kept_reason",
+				"local", "local_mark_branch", "dropped_records_tip", "origin_archive_tag", "warning",
 			},
 			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted, session_ended and ended_processes.
 			wantKeyCount: 7 + 5,
@@ -124,7 +141,7 @@ func TestRemoveFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			f := removeFields(tt.result, tt.session)
+			f := removeFields(tt.result, tt.session, tt.warning)
 
 			for key, want := range tt.wantFields {
 				got, present := f[key]

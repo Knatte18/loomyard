@@ -39,10 +39,14 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 	}
 	driven := map[string]dobbyengine.RunState{slug: {}}
 	tests := []struct {
-		name        string
-		status      *shedengine.Status
-		dobbyRuns   map[string]dobbyengine.RunState
-		marker      bool
+		name      string
+		status    *shedengine.Status
+		dobbyRuns map[string]dobbyengine.RunState
+		marker    bool
+		// goneReads makes the receiver's re-adoption seam read the task worktree as gone.
+		goneReads bool
+		// goneErrors makes the receiver's re-adoption seam fail to read whether the task worktree is gone.
+		goneErrors  bool
 		wantRefusal string
 	}{
 		{name: "a running Run-Shed run the state names passes", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven},
@@ -53,6 +57,8 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 		{name: "a run with no state record refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), wantRefusal: "does not name it"},
 		{name: "a run with a full pass owed refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: map[string]dobbyengine.RunState{slug: {FullPassOwed: true}}, wantRefusal: "owes it a full pass"},
 		{name: "a run with an origin-owed marker refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, marker: true, wantRefusal: "without origin"},
+		{name: "a run whose task worktree is gone refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneReads: true, wantRefusal: "its task worktree is gone"},
+		{name: "a run whose task worktree cannot be read as present refuses", status: runShed(shedengine.StateRunning, battenrecipe.NameRunShed), dobbyRuns: driven, goneErrors: true, wantRefusal: "whether its task worktree is gone does not read"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,6 +69,12 @@ func TestBattenPreRun_ContinuePass(t *testing.T) {
 				t.Fatal(err)
 			}
 			c.continuePass = true
+			if tt.goneReads {
+				c.readopt.Gone = func(string) (bool, error) { return true, nil }
+			}
+			if tt.goneErrors {
+				c.readopt.Gone = func(string) (bool, error) { return false, errors.New("git worktree list failed") }
+			}
 
 			geometry, err := hubgeom.DobbyGeometry(c.location, c.location.WorktreeName)
 			if err != nil {

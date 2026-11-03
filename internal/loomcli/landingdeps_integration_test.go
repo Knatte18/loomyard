@@ -325,3 +325,17 @@ func TestLandingDeps_RecordLandingWritesWhereTheDobbyReads(t *testing.T) {
 		t.Errorf("ReadLandedCommit(prime, task) = %q, %v; want abc123, nil", got, err)
 	}
 }
+
+// TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable asserts the RemoveFollowUp seam returns no step when the hub holds no readable prime.
+func TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
+	deps := landingDeps(l, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(l), parentLockDeps(l, shedrun.SelfRunID, "", ""))
+
+	if got := deps.RemoveFollowUp(); got != "" {
+		t.Errorf("RemoveFollowUp() = %q over a hub with no readable prime; want empty", got)
+	}
+}

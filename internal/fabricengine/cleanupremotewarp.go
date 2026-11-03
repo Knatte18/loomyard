@@ -23,8 +23,9 @@ type RemoteWarpBranchEntry struct {
 	// Deleted reports whether the branch was observably deleted from origin.
 	Deleted bool `json:"deleted"`
 	// Reason names the condition that kept a non-candidate; empty for a candidate.
+	// Under apply it also names why a candidate was kept: its slug's teardown lock was held, or a hub worktree now has the branch checked out.
 	Reason string `json:"reason,omitempty"`
-	// Error is non-empty when apply tried to delete a candidate and the gate refused or the lease failed.
+	// Error is non-empty when apply tried to delete a candidate and the gate refused, the lease failed or the slug's teardown lock could not be taken for a reason other than being held.
 	Error string `json:"error,omitempty"`
 }
 
@@ -42,8 +43,9 @@ type RemoteWarpCleanupResult struct {
 // with a non-empty BranchPrefix, a branch lacking it is unmanaged.
 // A managed branch is a deletion candidate unless it is origin's default branch, is checked out in a hub worktree, is in openPRHeads, or carries work not landed on the default branch.
 // Every other entry carries the reason it was kept.
-// Without apply nothing is deleted; with apply each candidate goes through the destructive gate, leased to the tip observed at enumeration,
+// Without apply nothing is deleted; with apply each candidate whose slug's teardown lock one try takes, and which no hub worktree has checked out under that lock, goes through the destructive gate, leased to the tip observed at enumeration,
 // and a refusal or a lost lease fills that entry's Error while the sweep continues.
+// A candidate whose lock is held, or which a worktree now has checked out, is kept with a Reason, and a lock error other than a held lock fills its Error.
 // Cleanup is untouched and fabricengine imports no GitHub client, so the caller composes the two.
 // A nil openPRHeads means the caller could not establish the open pull request set: every deletion is then refused and entries are returned only.
 // Callers that can establish it pass a non-nil map, empty when no pull request is open.
@@ -86,13 +88,9 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 		return res, err
 	}
 
-	worktrees, err := List(repoDir)
+	checkedOut, err := checkedOutBranches(repoDir)
 	if err != nil {
-		return res, fmt.Errorf("list warp worktrees: %w", err)
-	}
-	checkedOut := make(map[string]bool, len(worktrees))
-	for _, wt := range worktrees {
-		checkedOut[wt.Branch] = true
+		return res, err
 	}
 
 	// One fetch makes every observed tip's objects local and brings the default branch's tracking ref up to date, which is the parent the landed check compares against.
@@ -123,28 +121,72 @@ func (t *Topology) cleanupRemoteWarp(l *lymcwd.Location, apply bool, openPRHeads
 		if !entry.Candidate {
 			continue
 		}
-		deleted, delErr := deleteRemoteBranch(rec, remoteBranchRequest{
-			what:      "delete leftover task branch on remote",
-			repoDir:   repoDir,
-			remote:    originRemoteName,
-			branch:    entry.Branch,
-			ownership: ownedPairWarpBranch(entry.Branch, defaultBranch),
-			dirtiness: dirtyUnlandedRemoteTip(parent),
-			leaseSHA:  tips[entry.Branch],
-			force:     false,
-		})
-		switch {
-		case delErr == nil:
-			entry.Deleted = deleted
-		default:
-			if refusal, ok := RefusalOf(delErr); ok {
-				entry.Error = refusal.Reason
-			} else {
-				entry.Error = fmt.Sprintf("delete leftover task branch %s on %s: %v", entry.Branch, originRemoteName, delErr)
-			}
-		}
+		t.deleteLeftoverUnderLock(rec, l, entry, defaultBranch, parent, tips[entry.Branch])
 	}
 	return res, nil
+}
+
+// checkedOutBranches lists the branches some worktree of the repository at repoDir has checked out.
+func checkedOutBranches(repoDir string) (map[string]bool, error) {
+	worktrees, err := List(repoDir)
+	if err != nil {
+		return nil, fmt.Errorf("list warp worktrees: %w", err)
+	}
+	checkedOut := make(map[string]bool, len(worktrees))
+	for _, wt := range worktrees {
+		checkedOut[wt.Branch] = true
+	}
+	return checkedOut, nil
+}
+
+// deleteLeftoverUnderLock deletes the candidate entry names on origin, leased to tip, under the teardown lock of its slug taken by one try.
+// A held lock keeps the candidate with a Reason and any other lock error fills Error.
+// It re-reads under the lock whether a hub worktree has the branch checked out, since the sweep read them before an Add of the slug may have finished, and keeps the candidate with a Reason when one does.
+func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, entry *RemoteWarpBranchEntry, defaultBranch, parent, tip string) {
+	repoDir := l.WorktreePath()
+	slug := strings.TrimPrefix(entry.Branch, t.cfg.BranchPrefix)
+	// The lock file is the sweep's scratch state, not a mutation of the branch, so it joins no record.
+	release, lockErr := t.lockPairTeardown(NewMutations(l.HubPath), l, slug, true, cleanupSweepRerun)
+	switch {
+	case errors.Is(lockErr, ErrPairBusy):
+		entry.Reason = teardownLockHeldReason(slug)
+		return
+	case lockErr != nil:
+		entry.Error = fmt.Sprintf("take the teardown lock of the pair %q failed: %v", slug, lockErr)
+		return
+	}
+	defer release()
+
+	checkedOut, err := checkedOutBranches(repoDir)
+	if err != nil {
+		entry.Error = err.Error()
+		return
+	}
+	if checkedOut[entry.Branch] {
+		entry.Reason = "kept: a hub worktree now has the branch checked out, so its pair is live"
+		return
+	}
+
+	deleted, delErr := deleteRemoteBranch(rec, remoteBranchRequest{
+		what:      "delete leftover task branch on remote",
+		repoDir:   repoDir,
+		remote:    originRemoteName,
+		branch:    entry.Branch,
+		ownership: ownedPairWarpBranch(entry.Branch, defaultBranch),
+		dirtiness: dirtyUnlandedRemoteTip(parent),
+		leaseSHA:  tip,
+		force:     false,
+	})
+	switch {
+	case delErr == nil:
+		entry.Deleted = deleted
+	default:
+		if refusal, ok := RefusalOf(delErr); ok {
+			entry.Error = refusal.Reason
+		} else {
+			entry.Error = fmt.Sprintf("delete leftover task branch %s on %s: %v", entry.Branch, originRemoteName, delErr)
+		}
+	}
 }
 
 // keptReason names the first deletion condition branch fails before the landed check, or "" when it passes them all.

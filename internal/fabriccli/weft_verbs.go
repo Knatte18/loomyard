@@ -18,6 +18,7 @@
 package fabriccli
 
 import (
+	"errors"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -231,6 +232,9 @@ other side has been pushed.
 In the hub's prime only the records side is pushed, because the prime's code
 branch is the operator's parent branch: when it has unpushed commits the
 envelope carries code_push_skipped, naming the branch, and the operator pushes it.
+While a removal, an add or a discard of the pair holds its teardown lock, nothing
+is pushed and the envelope is ok with push_skipped naming the reason: the commits
+stay local for the pair's next push.
 
 Related commands:
   lym fabric commit — commit only
@@ -294,6 +298,11 @@ Related commands:
 			}
 			pushRes, err := fabricengine.PushPairAnchored(l, opts, fabricengine.LockWaitUnbounded)
 			rec.Extend(pushRes.Mutated())
+			if errors.Is(err, fabricengine.ErrPairPushRunning) {
+				logger.Warn("fabriccli: the push was skipped; the commits stay local for the pair's next push", "error", err)
+				clihelp.SetExit(cmd.Context(), okWithRecord(out, rec.Snapshot(), map[string]any{"push_skipped": err.Error()}))
+				return nil
+			}
 			if err != nil {
 				clihelp.SetExit(cmd.Context(), errWithRecord(out, rec.Snapshot(), err))
 				return nil

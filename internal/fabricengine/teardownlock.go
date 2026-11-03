@@ -1,7 +1,8 @@
-// teardownlock.go — the per-slug teardown lock that excludes Remove against the pair's own detached pushes.
+// teardownlock.go — the per-slug teardown lock that orders a slug's pair against its own pushes.
 // The lock file lives under the hub scratch directory, outside both of the pair's worktrees.
 // Neither the file nor a child's working directory or log therefore sits in a tree Remove deletes.
-// A detached push child holds it shared for its whole run; Remove holds it exclusive from before its first mutation to after its last step.
+// A push of the pair holds it shared for its whole run, a detached push child and a synchronous PushPairAnchored alike.
+// Remove, Add and the task-branch discard hold it exclusive from before their first mutation to after their last step.
 
 package fabricengine
 
@@ -20,8 +21,8 @@ import (
 // teardownLockDirName is the directory under the hub scratch directory that holds one teardown lock file per pair slug.
 const teardownLockDirName = "teardown"
 
-// ErrPairPushRunning is the sentinel Remove's refusal wraps when a push of the pair still holds the pair's teardown lock once the wait runs out.
-// Nothing has been mutated when it is returned, so re-running the remove once the push finishes retries it whole.
+// ErrPairPushRunning is the sentinel a refusal wraps when another holder still has the pair's teardown lock once the wait runs out: a removal, Add or task-branch discard that waits for a push or another exclusive holder, and a synchronous push that meets an exclusive holder and is skipped.
+// Nothing has been mutated or pushed when it is returned, so re-running the refused command once the holder finishes retries it whole.
 var ErrPairPushRunning = errors.New("a push of the pair is still running")
 
 // detachedPushHeldHook, nil in production, runs inside DetachedPush while it holds the teardown lock shared.
@@ -37,7 +38,8 @@ var removeAfterLockHook func() error
 // Nothing has been changed when it is returned, so the caller retries once the writer lets go.
 var ErrPairBusy = errors.New("the pair is busy: another writer holds its lock")
 
-// TeardownLockPath returns the lock file that excludes a removal of slug's pair against the pair's detached pushes: <HubScratchDir(hubPath)>/teardown/<slug>.lock.
+// TeardownLockPath returns the lock file that orders slug's pair against its pushes: <HubScratchDir(hubPath)>/teardown/<slug>.lock.
+// A push of the pair takes it shared; a removal, an Add and a task-branch discard of the slug take it exclusive.
 func TeardownLockPath(hubPath, slug string) string {
 	return filepath.Join(HubScratchDir(hubPath), teardownLockDirName, slug+".lock")
 }
@@ -104,11 +106,11 @@ func DetachedPush(hubPath string, req PushSpawn) (PushResult, error) {
 	return CoalescePushRequest(req, SyncOptions{})
 }
 
-// lockPairTeardown takes slug's teardown lock exclusive, waiting at most t.teardownWait for a push of the pair to let go of it.
+// lockPairTeardown takes slug's teardown lock exclusive, waiting at most t.teardownWait for a push of the pair or another exclusive holder to let go of it.
 // With try set it makes one attempt instead and returns an error wrapping ErrPairBusy when the lock is held.
-// It returns the release function, or an error wrapping ErrPairPushRunning when the wait runs out.
+// It returns the release function, or an error wrapping ErrPairPushRunning when the wait runs out; that error names rerun, the re-run of the caller's command that retries it.
 // A lock file this call brings into being is recorded in rec, whether or not the lock was won, since the file outlives the call.
-func (t *Topology) lockPairTeardown(rec *Mutations, l *lymcwd.Location, slug string, try bool) (release func(), err error) {
+func (t *Topology) lockPairTeardown(rec *Mutations, l *lymcwd.Location, slug string, try bool, rerun string) (release func(), err error) {
 	lockPath := TeardownLockPath(l.HubPath, slug)
 	existed := pathPresent(lockPath)
 	if err := ensureTeardownLockDir(l.HubPath, slug); err != nil {
@@ -131,7 +133,7 @@ func (t *Topology) lockPairTeardown(rec *Mutations, l *lymcwd.Location, slug str
 		return nil, fmt.Errorf("the teardown lock of the pair %q is held by a push or another removal: %w", slug, ErrPairBusy)
 	}
 	if !acquired {
-		return nil, fmt.Errorf("a push of the pair %q is still running or waiting under a pause; re-run `lym fabric remove %s` once the push finishes or the pause is resumed, or end the stuck push child, whose pid `lym tender status` lists under the pair's owner: %w", slug, slug, ErrPairPushRunning)
+		return nil, fmt.Errorf("a push or removal of the pair %q is still running or waiting under a pause; %s once it finishes or the pause is resumed, or end the stuck push child, whose pid `lym tender status` lists under the pair's owner: %w", slug, rerun, ErrPairPushRunning)
 	}
 	return func() { _ = held.Release() }, nil
 }

@@ -1,4 +1,8 @@
-// archive.go implements archiveWeftTip, the helper every weft-branch teardown of an existing pair calls before it deletes that branch: it tags the weft tip under the archive/<slug>/ namespace and pushes the tag to the weft origin, so the run records on that branch stay reachable after the branch is gone.
+// archive.go implements archiveWeftTip, the helper every weft-branch teardown of an existing pair calls before it deletes that branch:
+// it pushes the weft branch to the weft origin when origin lacks the local tip.
+// It tags the local tip under the archive/<slug>/ namespace and pushes the tag.
+// It tags and pushes an origin tip the local tip does not contain too,
+// so the run records on either tip stay reachable after the branch is gone.
 // Tag creation and push are not destructive, so this lives outside destroy.go.
 
 package fabricengine
@@ -11,14 +15,18 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 )
 
-// archiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
-const archiveTagSHALen = 12
+// ArchiveTagSHALen is how many leading hex digits of the tip SHA the archive tag name carries.
+const ArchiveTagSHALen = 12
+
+// archiveTagPushHook, nil in production, runs before each attempt of an archive-tag push with the tag's full ref; an error it returns is that attempt's failure.
+var archiveTagPushHook func(tagRef string) error
 
 // archiveTagPushDelays returns the delays the archive-tag push sleeps between its attempts when the remote refuses it retryably: 2 s doubling to 32 s, six attempts in all.
-// The schedule is longer than a plain push's because a teardown archives once and holds at most the pair's own teardown lock, which only that pair's detached pushes wait on, so waiting out a remote hiccup of about a minute beats failing the row.
+// The schedule is longer than a plain push's because a teardown archives once and holds the pair's teardown lock exclusive, which the pair's pushes, an Add and a discard of the slug meet too, so waiting out a remote hiccup of about a minute beats failing the row.
 func archiveTagPushDelays() []time.Duration {
 	return []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 16 * time.Second, 32 * time.Second}
 }
@@ -44,18 +52,48 @@ func ArchiveTagSlug(name string) (string, bool) {
 // It is worded without naming either side of the pair, for callers outside the fabric vocabulary owner set.
 var ErrArchiveFailed = errors.New("archiving the pair's records before teardown failed")
 
-// archiveWeftTip tags the tip of weftBranch as archive/<slug>/<first 12 hex of the tip SHA> and pushes that tag to the weft repo's origin.
-// The tip is the local refs/heads/<weftBranch> when present, else the origin's copy, fetched.
+// weftArchive is what archiveWeftTip archived.
+// The zero value says nothing was archived.
+type weftArchive struct {
+	// localTag is the archive tag at the local weft tip.
+	localTag string
+	// originTag is the archive tag at origin's weft tip, set only when that tip is neither the local tip nor an ancestor of it.
+	originTag string
+	// localTip is the local weft tip, or origin's when the branch exists only there.
+	localTip string
+	// originTip is origin's weft tip after any branch push, empty when origin has no weft branch.
+	originTip string
+	// leaseTip is the origin tip a later delete of the weft branch on origin is leased on.
+	// It is covered by localTag or originTag.
+	leaseTip string
+}
+
+// ArchiveTagName returns the archive tag name of a tip: archive/<slug>/<first 12 hex of tip>.
+// The tip must hold at least ArchiveTagSHALen characters.
+func ArchiveTagName(slug, tip string) string {
+	return ArchiveTagPrefix + slug + "/" + tip[:ArchiveTagSHALen]
+}
+
+// archiveWeftTip archives the tips of weftBranch under archive/<slug>/<first 12 hex of the tip SHA> tags pushed to the weft repo's origin.
+// The local tip is the local refs/heads/<weftBranch> when present, else the origin's copy, fetched.
 // The tag name is deterministic from slug and tip, so a resumed teardown on the same tip finds its own tag and succeeds, while a new tip archives under a new name.
 //
-// A weft branch carrying the local-only mark returns no tag, a skippedReason and no error, before any tip is resolved or origin is touched.
-// No origin remote returns no tag, a skippedReason and no error.
-// A branch present neither locally nor on origin returns no tag, no reason and no error, since there is nothing to archive.
-// An existing tag of that name pointing elsewhere, and any push failure, are returned errors.
-// A push the remote refuses with a bare "(failed)" or a remote "cannot lock ref" is retried on archiveTagPushDelays before it fails.
+// A weft branch carrying the local-only mark returns nothing archived, a skippedReason and no error, before any tip is resolved or origin is touched.
+// No origin remote returns nothing archived, a skippedReason and no error.
+// A branch present neither locally nor on origin returns nothing archived, no reason and no error, since there is nothing to archive.
+//
+// With a branch on both sides it reads origin's tip and fetches it by SHA when it differs from the local tip, so both tips are present locally to compare.
+// With pushBranch set and origin lacking the local tip, because origin has no branch or its tip is neither the local tip nor a descendant of it, it pushes the weft branch alone first:
+// rebase-free, the code branch not pushed, under the remote-refs lock.
+// A refused branch push is logged at Warn and never fails the archive.
+// It then tags and pushes the local tip, and, when origin's tip after that push is neither the local tip nor an ancestor of it, tags and pushes that tip too.
+// The returned weftArchive names the tags and the origin tip a later delete is leased on.
+//
+// An existing tag of that name pointing elsewhere, and any tag push failure, are returned errors.
+// A tag push the remote refuses with a bare "(failed)", a remote "cannot lock ref" or "missing necessary objects" is retried on archiveTagPushDelays before it fails, sleeping through sleep, and a nil sleep sleeps for real.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
-func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch string) (tag string, skippedReason string, err error) {
+func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch string, pushBranch bool, sleep func(time.Duration)) (archive weftArchive, skippedReason string, err error) {
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%w: %w", ErrArchiveFailed, err)
@@ -64,41 +102,85 @@ func archiveWeftTip(rec *Mutations, l *lymcwd.Location, slug, weftBranch string)
 
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
-		return "", "", fmt.Errorf("archive weft tip of %q: resolve weft repo: %w", weftBranch, err)
+		return weftArchive{}, "", fmt.Errorf("archive weft tip of %q: resolve weft repo: %w", weftBranch, err)
 	}
 
 	marked, err := gitrepo.New(weftRoot).BranchMarkedLocal(weftBranch)
 	if err != nil {
-		return "", "", fmt.Errorf("archive weft tip of %q: %w", weftBranch, err)
+		return weftArchive{}, "", fmt.Errorf("archive weft tip of %q: %w", weftBranch, err)
 	}
 	if marked {
-		return "", "the branch is local-only, so it is not archived", nil
+		return weftArchive{}, "the branch is local-only, so it is not archived", nil
 	}
 
 	if _, urlErr := gitrepo.New(weftRoot).RemoteURL(originRemoteName); urlErr != nil {
-		return "", fmt.Sprintf(
+		return weftArchive{}, fmt.Sprintf(
 			"no archive tag pushed: the weft repo has no %q remote configured: %v",
 			originRemoteName, urlErr), nil
 	}
 
 	tip, err := resolveArchiveTip(weftRoot, weftBranch)
 	if err != nil {
-		return "", "", err
+		return weftArchive{}, "", err
 	}
 	if tip == "" {
-		return "", "", nil
+		return weftArchive{}, "", nil
 	}
 
-	tag, err = tagAndPushArchiveTip(rec, weftRoot, slug, tip, "weft")
-	return tag, "", err
+	originTip, err := remoteHeadTip(weftRoot, weftBranch)
+	if err != nil {
+		return weftArchive{}, "", fmt.Errorf("push archive tag %q to %q: read the tip of weft branch %q there: %w", ArchiveTagName(slug, tip), originRemoteName, weftBranch, err)
+	}
+	if originTip != "" && originTip != tip {
+		if _, err := gitrepo.New(weftRoot).FetchWithArgs(originRemoteName, originTip); err != nil {
+			return weftArchive{}, "", fmt.Errorf("fetch the tip %s of weft branch %q from %q: %w", originTip, weftBranch, originRemoteName, err)
+		}
+	}
+
+	if pushBranch {
+		originHoldsTip := originTip == tip
+		if originTip != "" && !originHoldsTip {
+			originHoldsTip, err = isAncestorOrEqual(weftRoot, tip, originTip)
+			if err != nil {
+				return weftArchive{}, "", fmt.Errorf("compare the local and origin tips of weft branch %q: %w", weftBranch, err)
+			}
+		}
+		if !originHoldsTip {
+			if pushErr := gitrepo.New(weftRoot).PushBranch(originRemoteName, weftBranch); pushErr != nil {
+				logger.Warn("fabricengine: pushing the weft branch before its archive tag failed; the tag still holds the local tip", "branch", weftBranch, "error", pushErr)
+			} else {
+				originTip = tip
+			}
+		}
+	}
+
+	localTag, err := tagAndPushArchiveTip(rec, weftRoot, slug, tip, "weft", sleep)
+	if err != nil {
+		return weftArchive{}, "", err
+	}
+	archive = weftArchive{localTag: localTag, localTip: tip, originTip: originTip, leaseTip: originTip}
+
+	if originTip != "" && originTip != tip {
+		originBehind, err := isAncestorOrEqual(weftRoot, originTip, tip)
+		if err != nil {
+			return weftArchive{}, "", fmt.Errorf("compare the origin and local tips of weft branch %q: %w", weftBranch, err)
+		}
+		if !originBehind {
+			archive.originTag, err = tagAndPushArchiveTip(rec, weftRoot, slug, originTip, "weft", sleep)
+			if err != nil {
+				return weftArchive{}, "", err
+			}
+		}
+	}
+	return archive, "", nil
 }
 
 // archiveTaskTip tags tip, a commit of the task branch of slug, as archive/<slug>/<first 12 hex of tip> in the repo at repoDir and pushes that tag to its origin.
-// A tag already at tip is reused, one of that name elsewhere is refused, and a push the remote refuses retryably is retried on archiveTagPushDelays.
+// A tag already at tip is reused, one of that name elsewhere is refused, and a push the remote refuses retryably is retried on archiveTagPushDelays, sleeping through sleep; a nil sleep sleeps for real.
 // Every returned error wraps ErrArchiveFailed.
 // KindTagPushed is recorded on rec only after the push observably succeeded.
-func archiveTaskTip(rec *Mutations, repoDir, slug, tip string) (string, error) {
-	tag, err := tagAndPushArchiveTip(rec, repoDir, slug, tip, "task")
+func archiveTaskTip(rec *Mutations, repoDir, slug, tip string, sleep func(time.Duration)) (string, error) {
+	tag, err := tagAndPushArchiveTip(rec, repoDir, slug, tip, "task", sleep)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrArchiveFailed, err)
 	}
@@ -107,8 +189,9 @@ func archiveTaskTip(rec *Mutations, repoDir, slug, tip string) (string, error) {
 
 // tagAndPushArchiveTip tags tip as archive/<slug>/<first 12 hex of tip> in the repo at repoDir, reusing a tag already at tip, and pushes it to origin.
 // side names the branch's side in the refusal for a tag of that name sitting elsewhere.
-func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string) (string, error) {
-	tag := ArchiveTagPrefix + slug + "/" + tip[:archiveTagSHALen]
+// A push refused with a bare "(failed)", a "cannot lock ref" or "missing necessary objects" is retried on archiveTagPushDelays, sleeping through sleep.
+func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string, sleep func(time.Duration)) (string, error) {
+	tag := ArchiveTagName(slug, tip)
 	tagRef := "refs/tags/" + tag
 
 	existing, err := gitexec.Run([]string{"for-each-ref", "--format=%(objectname)", tagRef}, repoDir)
@@ -125,10 +208,15 @@ func tagAndPushArchiveTip(rec *Mutations, repoDir, slug, tip, side string) (stri
 	}
 
 	pushTag := func() error {
+		if archiveTagPushHook != nil {
+			if err := archiveTagPushHook(tagRef); err != nil {
+				return err
+			}
+		}
 		_, err := gitexec.Run([]string{"push", originRemoteName, tagRef}, repoDir)
 		return err
 	}
-	if err := gitrepo.PushWithRetry(pushTag, tagRef, archiveTagPushDelays(), nil); err != nil {
+	if err := gitrepo.PushWithRetryReasons(pushTag, tagRef, archiveTagPushDelays(), sleep, []string{"missing necessary objects"}); err != nil {
 		return "", fmt.Errorf("push archive tag %q to %q: %w", tag, originRemoteName, err)
 	}
 	rec.Append(KindTagPushed, repoDir, tag)

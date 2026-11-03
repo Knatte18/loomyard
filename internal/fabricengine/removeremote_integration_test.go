@@ -13,6 +13,7 @@ package fabricengine_test
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -59,6 +60,130 @@ func TestRemove_RemoteTrueDeletesWeftBranchOnRemote(t *testing.T) {
 	if seen != 1 {
 		t.Errorf("mutation record has %d %s entries for %q; want exactly 1", seen, fabricengine.KindRemoteBranchDeleted, weftBranch)
 	}
+}
+
+// TestRemove_LeasedWeftDelete covers the lease on Remove's delete of the weft branch on origin: it is leased on the tip the archive read or pushed, a branch origin moved since is kept and reported, and an origin that held no branch gets no delete.
+// One hub per row, each removing with remote true; the rows set a package-level hook, so neither the test nor its rows are parallel.
+func TestRemove_LeasedWeftDelete(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	newPairHub := func(t *testing.T, slug string) *hubforge.Hub {
+		t.Helper()
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+		return h
+	}
+
+	t.Run("OriginMovedBeforeTheDeleteKeepsItsBranchAndReportsKept", func(t *testing.T) {
+		const slug = "leased-moved"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := newPairHub(t, slug)
+		var movedTip string
+		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() {
+			pushCommitToOrigin(t, h.RecordsBare, weftBranch)
+			movedTip = gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		})
+
+		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		if err != nil {
+			t.Fatalf("Remove error = %v; want a kept branch to leave the removal successful", err)
+		}
+		if res.RemoteBranchDeleted || res.RemoteBranchError != "" || !strings.Contains(res.RemoteBranchKeptReason, weftBranch) {
+			t.Errorf("RemoteBranchDeleted = %v, RemoteBranchError = %q, RemoteBranchKeptReason = %q; want not deleted, no error and a kept reason naming %q", res.RemoteBranchDeleted, res.RemoteBranchError, res.RemoteBranchKeptReason, weftBranch)
+		}
+		if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != movedTip {
+			t.Errorf("origin weft branch = %s; want it kept at the moved tip %s", got, movedTip)
+		}
+	})
+
+	t.Run("OriginWithoutABranchAndARefusedPushGetsNoDelete", func(t *testing.T) {
+		const slug = "leased-no-origin-branch"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := newPairHub(t, slug)
+		gitkit.Git(t, h.RecordsBare, "update-ref", "-d", "refs/heads/"+weftBranch)
+		installUpdateHook(t, h.RecordsBare, "case \"$1\" in\nrefs/heads/"+weftBranch+")\n  echo \"weft branch updates refused\" >&2\n  exit 1\n  ;;\nesac")
+		deletes := 0
+		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() { deletes++ })
+
+		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		if err != nil {
+			t.Fatalf("Remove error = %v", err)
+		}
+		if deletes != 0 || res.RemoteBranchDeleted || res.RemoteBranchError != "" || res.RemoteBranchKeptReason != "" {
+			t.Errorf("deletes attempted = %d, RemoteBranchDeleted = %v, RemoteBranchError = %q, RemoteBranchKeptReason = %q; want no delete attempted and nothing reported", deletes, res.RemoteBranchDeleted, res.RemoteBranchError, res.RemoteBranchKeptReason)
+		}
+	})
+
+	t.Run("OriginLackingTheLocalTipIsPushedThenDeletedUnderALeaseOnThePushedTip", func(t *testing.T) {
+		const slug = "leased-pushed-tip"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := newPairHub(t, slug)
+		tip := gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
+		var originAtDelete string
+		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() {
+			originAtDelete = gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		})
+
+		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		if err != nil {
+			t.Fatalf("Remove error = %v", err)
+		}
+		if originAtDelete != tip {
+			t.Errorf("origin weft branch right before the delete = %q; want the pushed local tip %s", originAtDelete, tip)
+		}
+		if !res.RemoteBranchDeleted || res.RemoteBranchError != "" || res.RemoteBranchKeptReason != "" {
+			t.Errorf("RemoteBranchDeleted = %v, RemoteBranchError = %q, RemoteBranchKeptReason = %q; want the pushed branch deleted", res.RemoteBranchDeleted, res.RemoteBranchError, res.RemoteBranchKeptReason)
+		}
+		if gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
+			t.Errorf("weft branch %q still on origin", weftBranch)
+		}
+	})
+
+	t.Run("OriginOnlyBranchIsDeletedUnderALeaseOnTheTipTheArchiveRead", func(t *testing.T) {
+		const slug = "leased-origin-only"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := newPairHub(t, slug)
+		readTip := gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		leaveSiblingBranchOnlyOnOrigin(t, h, slug)
+		var originAtDelete string
+		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() {
+			originAtDelete = gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		})
+
+		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		if err != nil {
+			t.Fatalf("Remove error = %v", err)
+		}
+		if originAtDelete != readTip {
+			t.Errorf("origin weft branch right before the delete = %q; want the archived tip %s", originAtDelete, readTip)
+		}
+		if !res.RemoteBranchDeleted || res.RemoteBranchKeptReason != "" || gitkit.BranchExists(t, h.RecordsBare, weftBranch) {
+			t.Errorf("RemoteBranchDeleted = %v, RemoteBranchKeptReason = %q; want the origin-only branch deleted", res.RemoteBranchDeleted, res.RemoteBranchKeptReason)
+		}
+	})
+
+	t.Run("OriginOnlyBranchThatMovedIsKeptAndReported", func(t *testing.T) {
+		const slug = "leased-origin-only-moved"
+		weftBranch := fabricengine.RecordsBranchName(slug)
+		h := newPairHub(t, slug)
+		leaveSiblingBranchOnlyOnOrigin(t, h, slug)
+		var movedTip string
+		fabricengine.SetRemoveBeforeWeftDeleteHookForTest(t, func() {
+			pushCommitToOrigin(t, h.RecordsBare, weftBranch)
+			movedTip = gitkit.RevParse(t, h.RecordsBare, weftBranch)
+		})
+
+		res, err := h.Topology.Remove(h.Location, slug, false, true)
+		if err != nil {
+			t.Fatalf("Remove error = %v", err)
+		}
+		if res.RemoteBranchDeleted || res.RemoteBranchError != "" || !strings.Contains(res.RemoteBranchKeptReason, weftBranch) {
+			t.Errorf("RemoteBranchDeleted = %v, RemoteBranchError = %q, RemoteBranchKeptReason = %q; want the moved origin-only branch kept and reported", res.RemoteBranchDeleted, res.RemoteBranchError, res.RemoteBranchKeptReason)
+		}
+		if got := gitkit.RevParse(t, h.RecordsBare, weftBranch); got != movedTip {
+			t.Errorf("origin weft branch = %s; want it kept at the moved tip %s", got, movedTip)
+		}
+	})
 }
 
 // TestRemove_RemoteFalseLeavesRemoteBranchIntact covers the same case's negative half: remote false

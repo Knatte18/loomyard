@@ -34,7 +34,8 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 			return fz.ownerHalt(ctx, fmt.Sprintf("could not read whether the parent branch already holds the task's work: %v; %s", err, ownerRerun))
 		}
 		if held {
-			return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile)
+			// The work already reached the parent while the batten record still reads before Land, so a follow-up naming the cancel would release a landed entry.
+			return reconcileVerdict(ctx, finalizeName, fz.deps.Reconcile, nil)
 		}
 	}
 
@@ -47,7 +48,7 @@ func (fz *Finalize) ownerChecks(ctx context.Context) (shedengine.Outcome, sheden
 		if report.Unreachable {
 			return fz.ownerHalt(ctx, fmt.Sprintf("origin was unreachable, so who owns this run could not be judged; %s once origin answers", ownerRerun))
 		}
-		if outcome, out, err, stop := reportVerdict(ctx, finalizeName, report); stop {
+		if outcome, out, err, stop := reportVerdict(ctx, finalizeName, report, fz.deps.RemoveFollowUp); stop {
 			return outcome, out, err, true
 		}
 	}

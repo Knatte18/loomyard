@@ -7,12 +7,14 @@
 package loomcli
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/spf13/cobra"
@@ -24,6 +26,7 @@ const commitRecordsMessage = "loom: commit run records"
 // commitRecordsVerb commits the run's records and pushes them, with the task branch in a task pair, over d and reports a JSON envelope, returning the exit code.
 // A mid-merge sibling is skipped exactly as the status seam skips it, as a success with committed false;
 // a probe error, a commit error and a push error are each an error envelope.
+// A push skipped because a removal, an Add or a discard of the pair holds its teardown lock exclusive is no error: the envelope is ok with committed true and push_skipped carrying the reason, and the commit stays local for the pair's next push.
 // A clean tree is not an error: committing an already-clean pathspec is a no-op.
 func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 	active, err := d.MergeActive()
@@ -40,6 +43,10 @@ func commitRecordsVerb(out io.Writer, d commitStatusDeps) int {
 		return output.Err(out, "loom: commit-records: commit failed: "+err.Error()+"; way forward: transient, re-run lym loom commit-records")
 	}
 	if err := d.Push(); err != nil {
+		if errors.Is(err, fabricengine.ErrPairPushRunning) {
+			logger.Warn("loom: commit-records: the push was skipped; the commit stays local for the pair's next push", "error", err)
+			return output.Ok(out, map[string]any{"committed": true, "push_skipped": err.Error()})
+		}
 		message := "loom: commit-records: the commit landed locally but the push failed: " + err.Error()
 		// A classified push failure's text already ends in its class's way forward.
 		if fabricengine.HasUnclassifiedFailure(err) {

@@ -269,7 +269,7 @@ func writeSnapshotTree(repoRoot string, node *snapshotTreeNode) (string, error) 
 // A tag already on sha is kept.
 // It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
 func snapshotTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
-	tag := setAsideTagPrefix + slug + "/" + sha[:archiveTagSHALen]
+	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag snapshot commit %s: %w", sha, err)

@@ -683,7 +683,8 @@ func TestChildSpawnError(t *testing.T) {
 
 // TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal asserts an unmaterialized task worktree is reported on its own terms.
 // taskWorktreePresent, the create row's idempotency probe, answers false with no error, so a genuinely absent worktree still reaches fabric's own create rather than short-circuiting the row.
-// taskWorktreeLocation names the run and the expected path and points at a real remedy, never a fabric command that would actually mutate prime itself, rather than the resolver's generic "not a git repository" failure.
+// taskWorktreeGone reads an absent path as gone by a stat alone.
+// taskWorktreeLocation names the run and the expected path and points at the resume, never a fabric command that would actually mutate prime itself, rather than the resolver's generic "not a git repository" failure.
 //
 // The present case needs a real git worktree and so lives at the integration tier (TestBattenIntegration_Rows); this suite stays untagged and never spawns git.
 //
@@ -702,11 +703,16 @@ func TestTaskWorktree_AbsentPairIsAnAnswerAndANamedRefusal(t *testing.T) {
 		t.Error("taskWorktreePresent(prime, \"never-created\") = true; want false")
 	}
 
+	gone, err := taskWorktreeGone(prime, "never-created")
+	if err != nil || !gone {
+		t.Errorf("taskWorktreeGone(prime, \"never-created\") = %v, %v; want true, nil", gone, err)
+	}
+
 	_, err = taskWorktreeLocation(prime, "never-created")
 	if err == nil {
 		t.Fatal("taskWorktreeLocation(prime, \"never-created\") = nil error; want a named refusal")
 	}
-	for _, want := range []string{"never-created", "is not present at", "Resolve it by hand", shedrun.RunDir(prime, "never-created"), "local and remote", "discarding any of the task's work"} {
+	for _, want := range []string{"never-created", "is not present at", "lym batten run never-created", "repeating the refused command"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("taskWorktreeLocation(...) = %q; want it to contain %q", err.Error(), want)
 		}

@@ -1895,7 +1895,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 		rec.Extend(res.Mutations)
 	}()
 
-	targets, _, _, _, err := originTargets(l, ReconcileScope{Run: slug})
+	targets, _, _, _, _, err := originTargets(l, ReconcileScope{Run: slug})
 	if err != nil {
 		return res, err
 	}
@@ -1957,7 +1957,7 @@ func DropLocal(rec *Mutations, l *lymcwd.Location, slug string) (res DropLocalRe
 // A tag already on sha is kept, and one on another commit is an error.
 // It appends KindTagCreated, with the repository root as the target and the tag name as the detail, only after the tag exists.
 func keepArchiveTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, error) {
-	tag := ArchiveTagPrefix + slug + "/" + sha[:archiveTagSHALen]
+	tag := ArchiveTagName(slug, sha)
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag local tip %s: %w", sha, err)

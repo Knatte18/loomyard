@@ -382,6 +382,9 @@ func (c *battenCLI) armAt(location *lymcwd.Location, runID string, explicit bool
 	if c.guard.Marker == nil {
 		c.guard = hubStartGuard(location, runID)
 	}
+	if verb == "run" && c.readopt.Add == nil {
+		c.readopt = hubReadoptSeams(location)
+	}
 	c.preDrive = c.preDriveCheck
 
 	// The guard's reads are local and its refusals come before the board pull, the prime claim and every write below.
@@ -618,7 +621,8 @@ func (r *continueRefusal) Error() string {
 	return fmt.Sprintf("battencli: %q is not a run a continue pass may continue: %s; way forward: run `lym batten run %s`", r.slug, r.reason, r.slug)
 }
 
-// refuseContinuePass refuses a continue pass unless batten's status reads running at Run-Shed, the state record of the run's parent worktree's dobby names the run as one it drives with no full pass owed, and no origin-owed marker stands.
+// refuseContinuePass refuses a continue pass unless batten's status reads running at Run-Shed, the task worktree is present, the state record of the run's parent worktree's dobby names the run as one it drives with no full pass owed, and no origin-owed marker stands.
+// A gone task worktree owes a full pass, whose resume re-adopts a live pair.
 // It reads the dobby's state record through the parent worktree's geometry, and a record that is absent or does not name the run reads as a run dobby does not drive.
 func (c *battenCLI) refuseContinuePass() error {
 	refuse := func(reason string) error { return &continueRefusal{reason: reason, slug: c.slug} }
@@ -632,6 +636,15 @@ func (c *battenCLI) refuseContinuePass() error {
 	}
 	if status.State != shedengine.StateRunning || status.CurrentProducer != battenrecipe.NameRunShed {
 		return refuse(fmt.Sprintf("its status reads %s at %s, not running at %s", status.State, status.CurrentProducer, battenrecipe.NameRunShed))
+	}
+	if c.readopt.Gone != nil {
+		gone, err := c.readopt.Gone(c.slug)
+		if err != nil {
+			return refuse(fmt.Sprintf("whether its task worktree is gone does not read: %v", err))
+		}
+		if gone {
+			return refuse("its task worktree is gone")
+		}
 	}
 
 	parent, err := parentWorktree(c.location, c.slug)

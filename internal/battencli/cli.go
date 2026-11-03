@@ -157,6 +157,8 @@ type battenCLI struct {
 	pairStart func(parent string) error
 	// reconcile runs the run-scope origin reconcile of a slug the pre-run resumes; Command wires it to reconcileRun, and nil reads as no reconcile, which only a hand-populated receiver has.
 	reconcile func(slug string) (fabricengine.OriginReport, error)
+	// readopt carries the seams that re-make a live pair whose task worktree is gone; armAt fills it for the run verb, and a receiver that calls no run-verb arm leaves it zero, which reads as no re-adoption.
+	readopt readoptSeams
 	// continuePass carries "run"'s hidden --continue-pass value: the pass is one dobby schedules into a run it already drives, so the pre-run skips the resume's origin reconcile, the Open-Window re-run and the pause refusal.
 	continuePass bool
 	// noReopen carries "run"'s hidden --no-reopen value, which skips only the Open-Window re-run.

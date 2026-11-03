@@ -60,12 +60,14 @@ func (e *ErrRemoteLeftover) Error() string {
 // live is true when the pair is live: Add adopts the weft branch, from the local copy or from origin, instead of forking one.
 // fastForwardTo is the origin tip a live pair's behind local weft branch advances to, empty when it needs no advance.
 // tip and tag are the remote weft tip and the archive tag covering it, set only for an archived leftover Add replaces.
-// A zero answer means there is nothing on origin and the pair is not live.
+// originAbsent is true when origin holds no such weft branch, whether or not a local copy makes the pair live.
+// When no probe runs Add assumes only live, from the local branch, so originAbsent stays false and nothing is dropped.
 type weftLeftover struct {
 	live          bool
 	fastForwardTo string
 	tip           string
 	tag           string
+	originAbsent  bool
 }
 
 // probeWeftLeftover inspects the weft origin for weftBranch, run in the weft repo against originRemoteName.
@@ -73,9 +75,9 @@ type weftLeftover struct {
 // an origin tip that equals or is an ancestor of the local tip needs nothing,
 // a local tip that is a strict ancestor of the origin tip becomes fastForwardTo,
 // and a true divergence is refused.
-// Without it, an absent remote branch returns the zero answer,
-// an origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag),
-// and any other origin tip makes the pair live.
+// Without it, an absent remote branch returns the answer with only originAbsent set.
+// An origin tip covered by an archive/<slug>/* tag whose target equals or descends from it is a replaceable leftover (tip and tag).
+// Any other origin tip makes the pair live.
 func probeWeftLeftover(l *lymcwd.Location, slug, weftBranch string, localExists bool) (weftLeftover, error) {
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -86,7 +88,7 @@ func probeWeftLeftover(l *lymcwd.Location, slug, weftBranch string, localExists 
 		return weftLeftover{}, err
 	}
 	if tip == "" {
-		return weftLeftover{live: localExists}, nil
+		return weftLeftover{live: localExists, originAbsent: true}, nil
 	}
 
 	if localExists {
@@ -155,24 +157,46 @@ func probeLiveLocalWeft(weftRoot, slug, weftBranch, originTip string) (weftLefto
 }
 
 // probeWarpLeftover inspects the warp origin for warpBranch, run in the warp worktree.
-// It returns the origin tip Add adopts, or "" when it forks from HEAD.
+// It returns the origin tip Add adopts, or "" when it forks from HEAD, and onOrigin, whether origin holds the branch at all.
 // For a live pair a present origin branch is adopted whatever its relation to HEAD.
 // For a pair that is not live it returns "" when the branch is absent or its tip equals or is an ancestor of the HEAD the new branch forks from, and refuses otherwise.
 // It never fetches.
-func probeWarpLeftover(l *lymcwd.Location, slug, warpBranch string, live bool) (adoptTip string, err error) {
+func probeWarpLeftover(l *lymcwd.Location, slug, warpBranch string, live bool) (adoptTip string, onOrigin bool, err error) {
 	dir := l.WorktreePath()
 	tip, err := remoteHeadTip(dir, warpBranch)
 	if err != nil || tip == "" {
-		return "", err
+		return "", false, err
 	}
 	if live {
-		return tip, nil
+		return tip, true, nil
 	}
 	ok, err := isAncestorOrEqual(dir, tip, "HEAD")
 	if err != nil || ok {
-		return "", err
+		return "", true, err
 	}
-	return "", &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
+	return "", true, &ErrRemoteLeftover{Slug: slug, Branch: warpBranch, RemoteTip: tip, kind: leftoverDivergedWarp}
+}
+
+// dropStaleOriginTracking drops the remote-tracking ref and upstream setting of the weft branch when weftAbsent, and of the warp branch when warpAbsent.
+// Each drop runs in its own repository, and the flags are the probes' answers that origin holds no such branch.
+// A ref and setting a removed pair left for a branch origin lacks would otherwise make a later reconcile read the new pair's unpushed branch as gone from origin.
+// A failed drop is returned naming the branch.
+func dropStaleOriginTracking(l *lymcwd.Location, weftBranch string, weftAbsent bool, warpBranch string, warpAbsent bool) error {
+	if weftAbsent {
+		weftRoot, err := RecordsRepoRoot(l)
+		if err != nil {
+			return fmt.Errorf("resolve weft repo root: %w", err)
+		}
+		if err := gitrepo.New(weftRoot).DropRemoteTracking(originRemoteName, weftBranch); err != nil {
+			return fmt.Errorf("drop the stale remote-tracking ref of weft branch %q: %w", weftBranch, err)
+		}
+	}
+	if warpAbsent {
+		if err := gitrepo.New(l.WorktreePath()).DropRemoteTracking(originRemoteName, warpBranch); err != nil {
+			return fmt.Errorf("drop the stale remote-tracking ref of warp branch %q: %w", warpBranch, err)
+		}
+	}
+	return nil
 }
 
 // remoteHeadTip returns the SHA of branch on originRemoteName as seen from dir, or "" when it is absent.

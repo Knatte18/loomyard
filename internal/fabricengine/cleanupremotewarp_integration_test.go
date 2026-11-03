@@ -7,6 +7,8 @@
 package fabricengine_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -121,37 +123,112 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := sweepFixture(t)
+	t.Run("DeletesOnlyTheCandidate", func(t *testing.T) {
+		t.Parallel()
 
-	res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
-	if err != nil {
-		t.Fatalf("CleanupRemoteWarp error = %v", err)
-	}
-	got := remoteWarpEntries(res)
+		h := sweepFixture(t)
 
-	if e := got["gone-landed"]; !e.Deleted || e.Error != "" {
-		t.Errorf("gone-landed = %+v; want deleted", e)
-	}
-	if originHasBranch(t, h.CodeBare, "gone-landed") {
-		t.Errorf("gone-landed still on origin")
-	}
-	for _, kept := range []string{"unmanaged", "live", "has-pr", "gone-unlanded"} {
-		if !originHasBranch(t, h.CodeBare, kept) {
-			t.Errorf("%q was deleted from origin", kept)
+		res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v", err)
 		}
-	}
-	deletions := 0
-	for _, m := range res.Mutations.Entries() {
-		if m.Kind == fabricengine.KindRemoteBranchDeleted {
-			deletions++
-			if m.Target != "gone-landed" {
-				t.Errorf("recorded deletion of %q; want only gone-landed", m.Target)
+		got := remoteWarpEntries(res)
+
+		if e := got["gone-landed"]; !e.Deleted || e.Error != "" {
+			t.Errorf("gone-landed = %+v; want deleted", e)
+		}
+		if originHasBranch(t, h.CodeBare, "gone-landed") {
+			t.Errorf("gone-landed still on origin")
+		}
+		for _, kept := range []string{"unmanaged", "live", "has-pr", "gone-unlanded"} {
+			if !originHasBranch(t, h.CodeBare, kept) {
+				t.Errorf("%q was deleted from origin", kept)
 			}
 		}
-	}
-	if deletions != 1 {
-		t.Errorf("recorded %d %s mutations; want exactly 1", deletions, fabricengine.KindRemoteBranchDeleted)
-	}
+		deletions := 0
+		for _, m := range res.Mutations.Entries() {
+			if m.Kind == fabricengine.KindRemoteBranchDeleted {
+				deletions++
+				if m.Target != "gone-landed" {
+					t.Errorf("recorded deletion of %q; want only gone-landed", m.Target)
+				}
+			}
+		}
+		if deletions != 1 {
+			t.Errorf("recorded %d %s mutations; want exactly 1", deletions, fabricengine.KindRemoteBranchDeleted)
+		}
+	})
+
+	t.Run("KeepsTheCandidateWhoseTeardownLockIsHeld", func(t *testing.T) {
+		t.Parallel()
+
+		h := sweepFixture(t)
+		holdTeardownLock(t, h, "gone-landed")
+
+		res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v", err)
+		}
+
+		e := remoteWarpEntries(res)["gone-landed"]
+		if e.Deleted || e.Error != "" || !strings.Contains(e.Reason, "teardown lock") {
+			t.Errorf("gone-landed = %+v; want kept with a reason naming the teardown lock and no Error", e)
+		}
+		if !originHasBranch(t, h.CodeBare, "gone-landed") {
+			t.Errorf("gone-landed was deleted from origin despite the held lock")
+		}
+	})
+
+	t.Run("RecordsTheLockErrorWhenTheLockDirectoryCannotBeMade", func(t *testing.T) {
+		t.Parallel()
+
+		h := sweepFixture(t)
+		scratch := fabricengine.HubScratchDir(h.Path)
+		teardown := filepath.Join(scratch, "teardown")
+		if err := os.RemoveAll(teardown); err != nil {
+			t.Fatalf("remove %s: %v", teardown, err)
+		}
+		if err := os.MkdirAll(scratch, 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", scratch, err)
+		}
+		if err := os.WriteFile(teardown, []byte("not a directory"), 0o644); err != nil {
+			t.Fatalf("plant a file at the teardown lock directory: %v", err)
+		}
+
+		res, err := h.Topology.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v; want the lock error on the entry only", err)
+		}
+
+		e := remoteWarpEntries(res)["gone-landed"]
+		if e.Deleted || e.Error == "" || e.Reason != "" {
+			t.Errorf("gone-landed = %+v; want Error set, no Reason and not deleted", e)
+		}
+		if !originHasBranch(t, h.CodeBare, "gone-landed") {
+			t.Errorf("gone-landed was deleted from origin despite the lock error")
+		}
+	})
+
+	t.Run("KeepsTheCandidateAWorktreeNowHolds", func(t *testing.T) {
+		t.Parallel()
+
+		h := sweepFixture(t)
+
+		res, err := fabricengine.CleanupRemoteWarpWithHookForTest(h.Topology, h.Location, true, map[string]bool{"has-pr": true}, func() {
+			gitkit.Git(t, h.PrimeWorktree(), "worktree", "add", "-b", "gone-landed", filepath.Join(t.TempDir(), "live"))
+		})
+		if err != nil {
+			t.Fatalf("CleanupRemoteWarp error = %v", err)
+		}
+
+		e := remoteWarpEntries(res)["gone-landed"]
+		if e.Deleted || e.Error != "" || !strings.Contains(e.Reason, "pair is live") {
+			t.Errorf("gone-landed = %+v; want kept with a reason naming the live pair and no Error", e)
+		}
+		if !originHasBranch(t, h.CodeBare, "gone-landed") {
+			t.Errorf("gone-landed was deleted from origin despite the checked-out worktree")
+		}
+	})
 }
 
 func TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -124,7 +125,7 @@ func resumeRefusal(slug string, report fabricengine.OriginReport) error {
 		case fabricengine.EntryOwnedElsewhere:
 			return ownedElsewhereFor(slug, entry.Owner, entry.AdoptSubject)
 		case fabricengine.EntryStopped:
-			return stoppedRefusal(slug, "resume", fmt.Sprintf("then re-run lym batten run %s", slug), entry, report.Branches)
+			return stoppedRefusal(slug, "resume", resumeReentry(slug), entry, report.Branches)
 		}
 	}
 	return nil
@@ -156,4 +157,33 @@ func stoppedRefusal(slug, act, reentry string, entry fabricengine.EntryOutcome, 
 		return fmt.Errorf("battencli: cannot %s %q: branch %s is %s against origin; %s; %s", act, slug, branch.Branch, branch.State, branch.WayForward, reentry)
 	}
 	return fmt.Errorf("battencli: cannot %s %q: origin reconcile stopped it; %s; %s", act, slug, entry.WayForward, reentry)
+}
+
+// fabricRemoveCommand is the removal a way forward names for a branch that only the removal clears.
+const fabricRemoveCommand = "lym fabric remove"
+
+// resumeReentry is the step that ends a resume refusal: the run, run again.
+func resumeReentry(slug string) string {
+	return fmt.Sprintf("then re-run lym batten run %s", slug)
+}
+
+// rewordedError is an error whose text a follow-up replaced, which still matches whatever the original error matches.
+type rewordedError struct {
+	error
+	text string
+}
+
+// Error returns the reworded text.
+func (e rewordedError) Error() string { return e.text }
+
+// Unwrap returns the error whose text was replaced.
+func (e rewordedError) Unwrap() error { return e.error }
+
+// withFollowUp ends refusal's text in followUp: it replaces the trailing "; <reentry>" when refusal ends in it, and is appended after "; " otherwise.
+func withFollowUp(refusal error, reentry, followUp string) error {
+	text := refusal.Error()
+	if head, ok := strings.CutSuffix(text, "; "+reentry); ok {
+		text = head
+	}
+	return rewordedError{error: refusal, text: text + "; " + followUp}
 }

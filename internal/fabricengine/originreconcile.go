@@ -32,9 +32,12 @@ const cleanupRerun = "then re-run lym cleanup --apply from the prime"
 // An empty Run is the hub scope: Bolt, the prime's code and records branches, and those of every local pair.
 // A slug is the run scope: Bolt, the run's parent branch on both sides, read from the pair's origin record, and the run's own pair.
 // JudgeOnly judges and fetches objects but moves no ref, for a dry run.
+// PairMayBeAbsent, meaningful only with Run set, lets the run scope judge a run whose task worktree is not a registered worktree of the code repository, or is registered with its directory gone:
+// the run's entry is judged from origin's board with no branch of its own and no parent branch, instead of the reconcile refusing.
 type ReconcileScope struct {
-	Run       string
-	JudgeOnly bool
+	Run             string
+	JudgeOnly       bool
+	PairMayBeAbsent bool
 }
 
 // ReconcileOptions bounds a reconcile's remote calls, every field injectable.
@@ -209,6 +212,7 @@ const (
 // Removed is set once the teardown removed that pair, with the Tags it kept work under and the reasons it Kept anything.
 // Error is the message of a teardown that failed for any reason but being busy, leaving the pair for a later `lym cleanup --apply`.
 // Owner names the machine that owns an owned_elsewhere entry, and AdoptSubject the beam or `root` that `lym adopt` takes to move it; an empty AdoptSubject reads as the slug.
+// PairAbsent marks the run scope's own entry when its task worktree was not a registered worktree, so the entry was judged with no branch of its own.
 type EntryOutcome struct {
 	Slug         string
 	State        EntryState
@@ -222,6 +226,7 @@ type EntryOutcome struct {
 	Tags         []string
 	Kept         []string
 	Error        string
+	PairAbsent   bool `json:"pair_absent,omitempty"`
 }
 
 // adoptSubject returns what `lym adopt` takes to move the entry: its AdoptSubject, the slug when the owner reader left it empty.
@@ -281,6 +286,12 @@ func (r OriginReport) Summary() string {
 	for _, entry := range r.Entries {
 		if entry.State == EntryOwnedElsewhere {
 			lines = append(lines, fmt.Sprintf("owned elsewhere: %s by %s; `lym adopt %s` takes it over", entry.Slug, entry.Owner, entry.adoptSubject()))
+		}
+	}
+
+	for _, entry := range r.Entries {
+		if entry.PairAbsent {
+			lines = append(lines, fmt.Sprintf("pair absent: %s (%s); its task worktree is gone, so it was judged from origin's board alone", entry.Slug, entry.State))
 		}
 	}
 
@@ -608,32 +619,43 @@ type originTarget struct {
 
 // originTargets lists the branches of the scope that have an origin tracking ref, since a branch never pushed has no origin head to judge against.
 // It also returns the slug of every pair the scope covers, for classifying their entries, and the repository directories the network calls run in.
-func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTarget, pairs []string, warpDir, recordsDir string, err error) {
+// A run scope whose task worktree is not registered refuses, unless scope.PairMayBeAbsent is set: then, and also for a registration whose directory is gone and not yet pruned, absent is true, the slug still joins pairs, and no warp or records branch of the run or of its parent is listed, while Bolt's target still is.
+func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTarget, pairs []string, warpDir, recordsDir string, absent bool, err error) {
 	warpEntries, err := List(l.AnchorPath())
 	if err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", "", false, err
 	}
 	recordsDir, err = RecordsRepoRoot(l)
 	if err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", "", false, err
 	}
 	recordsEntries, err := List(recordsDir)
 	if err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", "", false, err
 	}
 
 	wanted := func(entry WorktreeEntry) bool { return true }
 	if scope.Run != "" {
-		origin, found, err := ReadOriginFor(l, scope.Run)
-		if err != nil {
-			return nil, nil, "", "", err
-		}
 		own := WorktreePath(l, scope.Run)
-		if !slices.ContainsFunc(warpEntries, func(entry WorktreeEntry) bool { return samePath(entry.Path, own) }) {
-			return nil, nil, "", "", fmt.Errorf("fabricengine: origin reconcile of run %s: no pair worktree %s", scope.Run, own)
-		}
-		wanted = func(entry WorktreeEntry) bool {
-			return samePath(entry.Path, own) || (found && entry.Branch == origin.ParentBranch)
+		ownIndex := slices.IndexFunc(warpEntries, func(entry WorktreeEntry) bool { return samePath(entry.Path, own) })
+		registered := ownIndex >= 0
+		// A registration whose directory is gone reads as an absent pair only for a scope that may find its pair absent; every other scope keeps judging as before.
+		absentPair := !registered || (warpEntries[ownIndex].Prunable && scope.PairMayBeAbsent)
+		switch {
+		case !registered && !scope.PairMayBeAbsent:
+			return nil, nil, "", "", false, fmt.Errorf("fabricengine: origin reconcile of run %s: no pair worktree %s", scope.Run, own)
+		case absentPair:
+			absent = true
+			pairs = append(pairs, scope.Run)
+			wanted = func(WorktreeEntry) bool { return false }
+		default:
+			origin, found, err := ReadOriginFor(l, scope.Run)
+			if err != nil {
+				return nil, nil, "", "", false, err
+			}
+			wanted = func(entry WorktreeEntry) bool {
+				return samePath(entry.Path, own) || (found && entry.Branch == origin.ParentBranch)
+			}
 		}
 	}
 
@@ -675,12 +697,12 @@ func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTa
 			continue
 		}
 		if err != nil {
-			return nil, nil, "", "", err
+			return nil, nil, "", "", false, err
 		}
 		target.tracking = sha
 		kept = append(kept, target)
 	}
-	return kept, pairs, warpDir, recordsDir, nil
+	return kept, pairs, warpDir, recordsDir, absent, nil
 }
 
 // samePath reports whether a porcelain worktree path and a path built by fabric name the same directory.
@@ -703,7 +725,7 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations.Extend(rec.Snapshot()) }()
 
-	targets, pairs, warpDir, recordsDir, err := originTargets(l, scope)
+	targets, pairs, warpDir, recordsDir, pairAbsent, err := originTargets(l, scope)
 	if err != nil {
 		return res, err
 	}
@@ -747,6 +769,13 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 	}
 
 	res.Entries = mergeEndedEntries(classifyEntries(scope, recorded, res.Branches, owners, subjects), endedEntries)
+	if pairAbsent {
+		for i := range res.Entries {
+			if res.Entries[i].Slug == scope.Run {
+				res.Entries[i].PairAbsent = true
+			}
+		}
+	}
 	return res, nil
 }
 

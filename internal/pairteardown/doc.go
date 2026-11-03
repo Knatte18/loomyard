@@ -84,6 +84,16 @@
 // A removal with Request.LeaveClaim set, in origin mode, reads no landed answer and settles no claim, leaving the claim to the caller, which clears it under its own locks.
 // A run whose Finalize merged but failed its done mark and stopped on its push holds no Finalize Done, so its entry ends cleared, for the operator to mark done with `lym board set-status`.
 //
+// # Batten follow-up
+//
+// A removal leaves the batten run record of the pair's slug standing, and the next batten run of the slug then meets a pair that is gone.
+// BattenFollowUp words the step that settles that record from the record and from whether an owner pause covers the slug.
+// A record before Land names the batten cancel that clears it, and a record at Land names the batten run whose failed stop words the restore of each branch the removal took, never a cancel, since the run's work already reached its parent.
+// A slug with no record, a record past its Land row and a slug an owner pause covers give no follow-up.
+// Teardown.Run sets Result.Warning to it, behind the slug, after a successful removal of a request without LeaveClaim, since a cancel's own removal settles the record itself.
+// A failed read of the record or of the owner pause is logged and adds no warning.
+// A refusal or stopped reason elsewhere that quotes `lym fabric remove` ends in the same text, which its package reads through ReadBattenRecord, OwnerPauseHeld and FollowUpFor.
+//
 // # Local mode
 //
 // Request.Local removes the pair through Topology.RemoveLocal: no origin step, and no board read or write, so the claim settlement is skipped whole.

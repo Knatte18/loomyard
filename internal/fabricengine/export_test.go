@@ -647,8 +647,26 @@ func ResetMergeSidesForTest(f *Fabric, rec *Mutations, warpSHA string) error {
 	return f.resetMergeSides(rec, warpSHA)
 }
 
-// ArchiveWeftTipForTest re-exports archiveWeftTip, which has no verb caller yet, for archive_integration_test.go to drive directly.
-var ArchiveWeftTipForTest = archiveWeftTip
+// ArchiveWeftTipForTest runs archiveWeftTip without a branch push or a sleep seam and returns the local tip's tag, the skipped reason and the error, for package fabricengine_test tests that cannot read weftArchive's unexported fields.
+func ArchiveWeftTipForTest(rec *Mutations, l *lymcwd.Location, slug, weftBranch string) (tag, skippedReason string, err error) {
+	archive, skippedReason, err := archiveWeftTip(rec, l, slug, weftBranch, false, nil)
+	return archive.localTag, skippedReason, err
+}
+
+// SetArchiveTagPushHookForTest sets archiveTagPushHook to hook and restores nil in t.Cleanup.
+// It mutates a package var, so it is usable only from a non-parallel test.
+func SetArchiveTagPushHookForTest(t testing.TB, hook func(tagRef string) error) {
+	t.Helper()
+
+	archiveTagPushHook = hook
+	t.Cleanup(func() { archiveTagPushHook = nil })
+}
+
+// SetArchiveSleepForTest makes t's archive-tag pushes sleep through sleep between their attempts instead of for real.
+// It sets the seam on the one Topology, so parallel tests inject per instance.
+func SetArchiveSleepForTest(t *Topology, sleep func(time.Duration)) {
+	t.archiveSleep = sleep
+}
 
 // SetAddBeforeWeftReplaceHookForTest sets addBeforeWeftReplaceHook to fn and restores the previous value in t.Cleanup.
 // It mutates a package var, so it is usable only from a non-parallel test, like the spawnDetachedPushFn swap.
@@ -701,6 +719,12 @@ func SetTeardownWaitForTest(t *Topology, wait time.Duration) {
 	t.teardownWait = wait
 }
 
+// SetCleanupAfterEnumerateForTest makes t's Cleanup call hook once per orphan, right before it takes the orphan's slug's teardown lock.
+// It sets the hook on the one Topology, so parallel tests inject per instance.
+func SetCleanupAfterEnumerateForTest(t *Topology, hook func()) {
+	t.cleanupAfterEnumerate = hook
+}
+
 // SetTeardownHooksForTest sets the two teardown hooks until the test ends and restores nil on cleanup.
 // A nil argument leaves that hook unset.
 // It changes process-global state, so the calling test must not be parallel.
@@ -729,6 +753,15 @@ func SetRemoveAfterLockHookForTest(hook func() error) (restore func()) {
 	previous := removeAfterLockHook
 	removeAfterLockHook = hook
 	return func() { removeAfterLockHook = previous }
+}
+
+// SetRemoveBeforeWeftDeleteHookForTest sets the hook that runs right before each leased delete of a weft branch on origin and restores nil in t.Cleanup.
+// It mutates a package var, so it is usable only from a non-parallel test.
+func SetRemoveBeforeWeftDeleteHookForTest(t testing.TB, hook func()) {
+	t.Helper()
+
+	removeBeforeWeftDeleteHook = hook
+	t.Cleanup(func() { removeBeforeWeftDeleteHook = nil })
 }
 
 // DropSeedCommitsForTest re-exports dropSeedCommits for package fabricengine_test integration tests that drive the board seed-commit drop's gate directly.

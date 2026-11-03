@@ -68,6 +68,7 @@ var nilLegal = map[string]bool{
 	"Landing.ConfigChanges":            true,
 	"Landing.Notify":                   true,
 	"Landing.Reconcile":                true,
+	"Landing.RemoveFollowUp":           true,
 	"Landing.ParentHoldsTaskWork":      true,
 	"Landing.ParentOwner":              true,
 	"Landing.AdoptSubject":             true,

@@ -6,6 +6,7 @@ Go pushes a run's records side, and in a task pair the code branch goes with it.
 - The push is never left to an agent.
 - A per-transition status push is spawned through fabric's detached push, never run by the seam that committed; only `commit-records` pushes synchronously.
 - The prime's pushes stay records-only, its code branch being the operator's.
+- A teardown's archive step pushes the weft branch alone, with no code branch, before the archive tag that names its tip, and a refusal of that push is logged only, since the removal archives and deletes the branch anyway.
 
 ## A refused push stays visible
 

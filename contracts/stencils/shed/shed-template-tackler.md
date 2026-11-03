@@ -46,6 +46,11 @@ Read the stop envelope to see which one you hold.
 2. The stop step's trace copy `{{.trace_copy}}` and its captured stderr `{{.stderr_path}}`.
 3. The child traces under `{{.trace_dir}}`, only when those leave the cause open.
 
+A verdict that rests on a commit or branch being absent from a remote first reads the remote tip with `git ls-remote <remote> <ref>`.
+A branch is absent only when `ls-remote` answers no line for its ref.
+The commit the stop names is present when it equals the tip, or when it is an ancestor of the tip by `git merge-base --is-ancestor` where the tip is known locally; otherwise it is unsettled, and never read as absent.
+Both commands only read, so they stay inside the rule against git commands that change anything.
+
 The shed driver's log is `{{.driver_log}}`.
 You may also run any read-only `lym` command or read any file in `{{.worktree}}`.
 A path reading `none` is absent.

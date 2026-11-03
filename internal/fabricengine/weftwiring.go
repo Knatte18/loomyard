@@ -171,6 +171,8 @@ type weftTeardownResult struct {
 	// remoteSkippedReason carries the once-per-call reason no remote deletion was attempted at all;
 	// RemoveResult.RemoteSkippedReason names its causes.
 	remoteSkippedReason string
+	// remoteBranchKeptReason is non-empty when origin's branch moved after the archive read its tip, so the leased remote deletion kept it.
+	remoteBranchKeptReason string
 }
 
 // removeWeftWorktree tears down the weft worktree, optionally its branch, and
@@ -180,9 +182,12 @@ type weftTeardownResult struct {
 // it.
 // branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
 // function has no config in scope of its own.
-// rec is the calling verb's own recorder, threaded through to removeGitWorktree, deleteBranch, and
-// deleteRemoteBranch below.
-func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix string) (weftTeardownResult, error) {
+// leaseSHA is the origin tip the remote deletion is leased on, the tip the caller's archive read.
+// With an origin configured, an empty leaseSHA means origin held no copy of the branch, and nothing is deleted there.
+// A branch origin moved since is kept and reported in the result, never as a failure.
+// rec is the calling verb's own recorder.
+// It is threaded through to removeGitWorktree, deleteBranch, and the remote deletion below.
+func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix, leaseSHA string) (weftTeardownResult, error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -225,27 +230,11 @@ func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string,
 					"no remote deletion attempted: the weft repo has no %q remote configured: %v",
 					originRemoteName, urlErr)
 			} else {
-				remoteReq := remoteBranchRequest{
-					what:      "delete weft branch on remote",
-					repoDir:   weftRoot,
-					remote:    originRemoteName,
-					branch:    branch,
-					ownership: ownedManagedBranch(l, branchPrefix),
-					dirtiness: dirtyCheckedOutBranch(),
-					force:     false,
-				}
-				deleted, remoteErr := deleteRemoteBranch(rec, remoteReq)
-				if remoteErr != nil {
-					if refusal, ok := RefusalOf(remoteErr); ok {
-						result.remoteBranchError = fmt.Sprintf(
-							"gate refused remote deletion of %q: %s", branch, refusal.Reason)
-					} else {
-						result.remoteBranchError = fmt.Sprintf(
-							"delete remote branch %q on %q failed: %v", branch, originRemoteName, remoteErr)
-					}
-				} else {
-					result.remoteBranchDeleted = deleted
-				}
+				entry := CleanupBranchEntry{Branch: branch}
+				deleteWeftBranchOnRemote(rec, l, branch, branchPrefix, weftRoot, leaseSHA, &entry)
+				result.remoteBranchDeleted = entry.RemoteDeleted
+				result.remoteBranchError = entry.RemoteError
+				result.remoteBranchKeptReason = entry.RemoteKeptReason
 			}
 		}
 	}

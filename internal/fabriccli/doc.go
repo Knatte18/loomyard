@@ -29,10 +29,11 @@
 //
 // `lym fabric add --local` creates a local-only pair: no origin is read or written, no launcher is created, no push is spawned, and both branches carry gitrepo's local mark, so no fabric push publishes them.
 // Its envelope carries `local: true`, and `lym fabric push` from the pair adds `local_skipped`, naming the branches it left unpublished.
+// A `lym fabric push` that meets the pair's teardown lock held exclusive pushes nothing and returns an ok envelope with `push_skipped` beside `local_skipped`, the commits left local for the pair's next push.
 // A `--local` add over a slug whose branch belongs to an ordinary pair is a pre-mutation refusal naming the way forward.
 // A plain `add` over a local pair's kept branches adopts them and clears the marks, listing the cleared branches in `local_mark_cleared`, so the pair becomes ordinary.
 // `lym fabric add --parent <slug>` forks the pair from that live pair of the hub (`AddOptions.Parent`), and `--adopt-local` makes it over an unmarked local branch that already exists (`AddOptions.AdoptLocal`).
-// `--adopt-local` is the only route that sets `AdoptLocal`, so no unattended run adopts a stale local branch under a reused slug.
+// `--adopt-local` sets `AdoptLocal`, and otherwise only batten's resume does, together with `AdoptOnly`, so no unattended run adopts a stale local branch under a reused slug.
 // `--local` with either flag is refused before any mutation, naming the flag to drop.
 //
 // # Remove
@@ -41,6 +42,8 @@
 // `abandoned_session` names a foreign session reed did not kill.
 // Pending run records in the weft worktree are committed before the archive tag is pushed, so only changes outside the record paths need `--force`.
 // `ended_processes` lists the `{pid, role}` of each registered process the session end ended, and is empty when none.
+// `origin_archive_tag` names the second archive tag, at an origin weft tip the local tip does not contain, and is present only when that tag was pushed.
+// `warning` is present when the removal left the slug's batten run record standing, and names the step that settles it.
 //
 // The removal first runs the run-scope origin reconcile of the slug, which `PATTERN-owner-machine` requires before acting on a run after an absence, and turns its report into a verdict on the slug's entry.
 // A stopped entry is refused naming the first branch that stops it, its way forward and the re-run of the removal, with nothing ended.
@@ -65,7 +68,7 @@
 // A slug naming hub geometry is refused: the prime worktree, a reserved hub entry or a name ending in the weft suffix, the set `add` refuses.
 // When git declines to remove the worktree, fabric reports git's reason and deletes nothing unless the target is a registered linked worktree of this repo.
 //
-// With `--remote`, a weft repo with no origin reports `remote_skipped_reason` and still exits 0, a failed remote deletion exits non-zero with `remote_branch_error`, and a task branch not yet landed is kept on the warp origin with `remote_code_branch_kept_reason`.
+// With `--remote`, a weft repo with no origin reports `remote_skipped_reason` and still exits 0, a failed remote deletion exits non-zero with `remote_branch_error`, a weft branch that moved on origin since the archive read it is kept with `remote_branch_kept_reason` and exits 0, and a task branch not yet landed is kept on the warp origin with `remote_code_branch_kept_reason`.
 //
 // # Cleanup
 //

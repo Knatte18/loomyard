@@ -672,6 +672,82 @@ func TestReconcileOrigin_Judge(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("A run scope that may find its pair absent judges the run's entry from origin's board with no branch of its own, and refuses without the option", func(t *testing.T) {
+		// absentHub returns a hub whose task worktree is gone: removed through git, or with staleRegistration its directory deleted and the registration left for prune.
+		absentHub := func(t *testing.T, staleRegistration bool) *originHub {
+			t.Helper()
+			hub := newOriginHub(t)
+			originPair(t, hub, "task")
+			writeStatus(t, hub, "task", "Implementer")
+			if staleRegistration {
+				if err := os.RemoveAll(hub.PairCodeWorktree("task")); err != nil {
+					t.Fatalf("delete the task worktree directory: %v", err)
+				}
+				return hub
+			}
+			gitkit.Git(t, hub.PrimeWorktree(), "worktree", "remove", "--force", hub.PairCodeWorktree("task"))
+			return hub
+		}
+		ownedElsewhere := func(t *testing.T, hub *originHub) fabricengine.OriginSeams {
+			publishBoard(t, hub, boardEntry("task"))
+			return fabricengine.OriginSeams{OwnerOf: func(_ string, ledger []byte, slug string) (string, string, bool, error) {
+				return "other-machine", "task", strings.Contains(string(ledger), slug), nil
+			}}
+		}
+
+		for _, row := range []struct {
+			name              string
+			prepare           func(t *testing.T, hub *originHub) fabricengine.OriginSeams
+			want              fabricengine.EntryState
+			staleRegistration bool
+		}{
+			{"an active entry", func(t *testing.T, hub *originHub) fabricengine.OriginSeams { return fabricengine.OriginSeams{} }, fabricengine.EntryActive, false},
+			{"an entry origin's board gives to another machine", ownedElsewhere, fabricengine.EntryOwnedElsewhere, false},
+			{"an entry origin's board gives to another machine, its task worktree directory deleted without a prune", ownedElsewhere, fabricengine.EntryOwnedElsewhere, true},
+			{"an entry origin's board marks done", func(t *testing.T, hub *originHub) fabricengine.OriginSeams {
+				branch := publishBoard(t, hub, boardEntry("task"))
+				originBoard(t, hub, branch, boardEntry("task", withBoardStatus("done")))
+				return fabricengine.OriginSeams{Teardown: func(request fabricengine.EndedTeardown) (fabricengine.TeardownReport, error) {
+					t.Errorf("teardown called for %+v; want none for the run scope's own run", request)
+					return fabricengine.TeardownReport{}, nil
+				}}
+			}, fabricengine.EntryEnded, false},
+		} {
+			hub := absentHub(t, row.staleRegistration)
+			seams := row.prepare(t, hub)
+
+			report, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{Run: "task", PairMayBeAbsent: true}, seams, fabricengine.ReconcileOptions{})
+
+			if err != nil {
+				t.Errorf("%s: ReconcileOrigin() error = %v; want nil", row.name, err)
+				continue
+			}
+			entry := entryOf(t, report, "task")
+			if entry.State != row.want || !entry.PairAbsent {
+				t.Errorf("%s: entry = %+v; want state %q with PairAbsent", row.name, entry, row.want)
+			}
+			for _, branch := range report.Branches {
+				if branch.Repo != "bolt" {
+					t.Errorf("%s: judged %s branch %q; want Bolt alone, with no branch of the absent pair or its parent", row.name, branch.Repo, branch.Branch)
+				}
+			}
+			if !strings.Contains(report.Summary(), "pair absent: task") {
+				t.Errorf("%s: Summary() = %q; want the pair absent mark", row.name, report.Summary())
+			}
+		}
+
+		hub := absentHub(t, false)
+		_, err := fabricengine.ReconcileOrigin(hub.Location, fabricengine.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{})
+		if err == nil || !strings.Contains(err.Error(), "no pair worktree") {
+			t.Errorf("ReconcileOrigin() without the option error = %v; want one naming no pair worktree", err)
+		}
+
+		stale := absentHub(t, true)
+		if _, err := fabricengine.ReconcileOrigin(stale.Location, fabricengine.ReconcileScope{Run: "task"}, fabricengine.OriginSeams{}, fabricengine.ReconcileOptions{}); err != nil {
+			t.Errorf("ReconcileOrigin() of a stale registration without the option error = %v; want nil", err)
+		}
+	})
 }
 
 // rewoundBranch is a task branch whose origin was reset back to base past first and second, by another machine.

@@ -137,6 +137,10 @@ func PushAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Duration) 
 // LockWaitUnbounded blocks.
 // Each side it pushes is marked pending before the lock is taken and re-read after it is released,
 // so a code commit made while another holder pushes is pushed by whichever holder releases last.
+// For a pair, not the prime, it first takes the pair's teardown lock shared and holds it through the push.
+// While any holder has that lock exclusive it pushes nothing and returns an empty PushResult and an error wrapping ErrPairPushRunning that names the pair;
+// the commits stay local for the pair's next push.
+// The prime's records push takes no teardown lock.
 //
 // Every side that observably advanced is recorded in the returned PushResult.
 // Returns (PushResult{}, nil) immediately, with no lock taken, when opts.SkipGit or opts.SkipPush is true.
@@ -159,6 +163,19 @@ func PushPairAnchored(l *lymcwd.Location, opts SyncOptions, lockWait time.Durati
 	request, _, err := statusPushRequest(l, "")
 	if err != nil {
 		return PushResult{}, err
+	}
+	if request.TeardownSlug != "" {
+		if err := ensureTeardownLockDir(l.HubPath, request.TeardownSlug); err != nil {
+			return PushResult{}, err
+		}
+		heldTeardown, acquired, err := lock.TryAcquireReadLock(TeardownLockPath(l.HubPath, request.TeardownSlug))
+		if err != nil {
+			return PushResult{}, fmt.Errorf("fabricengine: take the teardown lock: %w", err)
+		}
+		if !acquired {
+			return PushResult{}, fmt.Errorf("the pair %q is being made, discarded or removed, so nothing was pushed and its commits stay local for the pair's next push: %w", request.TeardownSlug, ErrPairPushRunning)
+		}
+		defer func() { _ = heldTeardown.Release() }()
 	}
 	lockDir, err := ensureWeftLockDirAt(weftPath)
 	if err != nil {

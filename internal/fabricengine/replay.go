@@ -479,7 +479,7 @@ func setAsideTag(rec *Mutations, repo *gitrepo.Repo, slug, sha string) (string, 
 		}
 		slug = "replayer/" + ledgerName
 	}
-	tag := setAsideTagPrefix + slug + "/" + sha[:archiveTagSHALen]
+	tag := setAsideTagPrefix + slug + "/" + sha[:ArchiveTagSHALen]
 	commonDir, err := repo.CommonDir()
 	if err != nil {
 		return "", fmt.Errorf("tag set-aside commit %s: %w", sha, err)

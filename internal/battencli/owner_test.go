@@ -14,7 +14,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -262,6 +264,58 @@ func TestOwnerPreflight_TeardownResume(t *testing.T) {
 			stands, standsErr := OriginOwed(c.location, c.slug)
 			if standsErr != nil || stands {
 				t.Errorf("OriginOwed() = %v, %v; want false, nil", stands, standsErr)
+			}
+		})
+	}
+}
+
+// TestPreflightRunOwner_RemoveFollowUp pins that a resume refusal whose way forward names `lym fabric remove` ends in the step that settles the run's batten record in place of the re-run, and that a refusal naming no removal is returned unchanged.
+func TestPreflightRunOwner_RemoveFollowUp(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const slug = "some-slug"
+	record := shedengine.Status{State: shedengine.StateBlocked, CurrentProducer: battenrecipe.NameRunShed}
+	tests := []struct {
+		name       string
+		wayForward string
+		// wantFollowUp is whether the refusal must end in BattenFollowUp's text in place of the re-run.
+		wantFollowUp bool
+	}{
+		{name: "BranchNamingTheRemovalEndsInTheFollowUp", wayForward: "run `lym fabric remove some-slug` to clear the gone branch", wantFollowUp: true},
+		{name: "BranchNamingNoRemovalIsUnchanged", wayForward: "reset it"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newFakeReceiver(t, nil)
+			// A .git directory tells hubgeom the receiver's location is the prime, which the owner pause read needs.
+			if err := os.MkdirAll(filepath.Join(c.location.WorktreePath(), ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := state.WriteJSON(c.shedPaths.StatusPath, c.shedPaths.StatusLockPath, record); err != nil {
+				t.Fatalf("write the status file: %v", err)
+			}
+			c.reconcile = func(string) (fabricengine.OriginReport, error) {
+				return fabricengine.OriginReport{
+					Entries:  []fabricengine.EntryOutcome{{Slug: slug, State: fabricengine.EntryStopped, WayForward: tt.wayForward}},
+					Branches: []fabricengine.BranchOutcome{{Branch: "some-slug-records", Repo: "records", Slug: slug, State: fabricengine.BranchDiverged, WayForward: tt.wayForward}},
+				}, nil
+			}
+
+			err := c.preflightRunOwner()
+
+			if err == nil {
+				t.Fatal("preflightRunOwner() = nil; want the stopped refusal")
+			}
+			ending := resumeReentry(slug)
+			if tt.wantFollowUp {
+				ending = pairteardown.BattenFollowUp(slug, record, true, false)
+			}
+			want := fmt.Sprintf("battencli: cannot resume %q: branch some-slug-records is diverged against origin; %s; %s", slug, tt.wayForward, ending)
+			if err.Error() != want {
+				t.Errorf("preflightRunOwner() = %q; want %q", err.Error(), want)
 			}
 		})
 	}

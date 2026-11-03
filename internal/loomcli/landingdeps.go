@@ -127,7 +127,16 @@ func landingDeps(
 		},
 		CommitParentRecords: parentRecordsCommitter(l, seedSlug(l.WorktreeName)),
 		Reconcile:           runReconciler(l, seedSlug(l.WorktreeName)),
-		Slug:                seedSlug(l.WorktreeName),
+		// RemoveFollowUp names the step that settles the run's batten record when a stopped reason sends the operator to remove the pair, read over the prime at call time.
+		RemoveFollowUp: func() string {
+			prime, err := primeOfHub(l)
+			if err != nil {
+				logger.Warn("loomcli: the hub's prime is unreadable, so a stopped reason names no follow-up of the removal", "cause", err)
+				return ""
+			}
+			return pairteardown.FollowUpFor(prime, seedSlug(l.WorktreeName))
+		},
+		Slug: seedSlug(l.WorktreeName),
 		// AdoptSubject is the beam's own slug for a pawl run, and the task's beam or `root` for any other.
 		AdoptSubject: func() (string, error) {
 			_, subject, err := ownerOfSubject(l, seedSlug(l.WorktreeName))

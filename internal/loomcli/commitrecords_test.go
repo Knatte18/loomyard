@@ -28,7 +28,7 @@ func stubRecordsDeps(active bool, probeErr, commitErr, pushErr error) (commitSta
 	}, &commits, &pushes
 }
 
-// TestCommitRecordsVerb_Success asserts a clean tree commits then pushes once each, and a mid-merge tree commits and pushes nothing and reports a skipped reason.
+// TestCommitRecordsVerb_Success asserts a clean tree commits then pushes once each, a mid-merge tree commits and pushes nothing and reports a skipped reason, and a push skipped under the pair's teardown lock is an ok envelope with push_skipped.
 func TestCommitRecordsVerb_Success(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
@@ -36,13 +36,15 @@ func TestCommitRecordsVerb_Success(t *testing.T) {
 		midMerge                bool
 		wantCommits, wantPushes int
 		wantOutput              []string
+		pushErr                 error
 	}{
-		{"ordinary path commits then pushes", false, 1, 1, nil},
-		{"mid-merge skips", true, 0, 0, []string{`"committed":false`, "mid-merge"}},
+		{"ordinary path commits then pushes", false, 1, 1, nil, nil},
+		{"mid-merge skips", true, 0, 0, []string{`"committed":false`, "mid-merge"}, nil},
+		{"push skipped under the teardown lock", false, 1, 1, []string{`"committed":true`, `"push_skipped"`}, fmt.Errorf("push: %w", fabricengine.ErrPairPushRunning)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			deps, commits, pushes := stubRecordsDeps(tt.midMerge, nil, nil, nil)
+			deps, commits, pushes := stubRecordsDeps(tt.midMerge, nil, nil, tt.pushErr)
 			var out bytes.Buffer
 			if code := commitRecordsVerb(&out, deps); code != 0 {
 				t.Fatalf("exit = %d; want 0; output %s", code, out.String())
