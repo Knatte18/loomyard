@@ -117,25 +117,6 @@ func TestAddStrandLocked(t *testing.T) {
 		})
 	}
 
-	t.Run("SecondOverviewUnderAnotherNameRefused", func(t *testing.T) {
-		e := newTestEngine(t)
-		overview := render.Display{Anchor: render.AnchorOverview}
-		seeded := &ReedState{Strands: []Strand{{GUID: "keeper-guid", Name: "keeper", Display: overview}}}
-
-		_, err := e.addStrandLocked(seeded, AddSpec{Cmd: "x", NameOverride: "second", Display: overview})
-		if err == nil {
-			t.Fatal("addStrandLocked = nil error, want the second overview refused")
-		}
-		for _, want := range []string{"keeper", "lym reed remove"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Errorf("error = %q, want it to contain %q", err, want)
-			}
-		}
-		if len(seeded.Strands) != 1 {
-			t.Errorf("st.Strands = %+v, want no record registered on a rejected add", seeded.Strands)
-		}
-	})
-
 	t.Run("OverviewDisplayValidation", func(t *testing.T) {
 		tests := []struct {
 			name    string
@@ -254,6 +235,7 @@ func TestNeedsLaunchOnSurface(t *testing.T) {
 // A visible->hidden update, a mistyped anchor, an unknown guid and a move into or out of the own-window anchor or between window groups are rejected with the strand's display unchanged.
 // A persisted display the pane does not match would poison every later apply.
 // A hidden->hidden update and a focus-only change of an own-window strand are accepted and launch nothing.
+// An overview strand's order change is rejected too, while a focus-only change of an overview strand is accepted.
 // A window-move refusal names the way forward, lym reed remove.
 func TestUpdateStrandLocked(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -276,6 +258,8 @@ func TestUpdateStrandLocked(t *testing.T) {
 		{"GroupedToUngroupedOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", visible, moveWayForward},
 		{"OverviewToOwnWindowRejected", Strand{GUID: "g1", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOwnWindow}, moveWayForward},
 		{"OwnWindowToOverviewRejected", Strand{GUID: "g1", PaneID: "%1", Display: render.Display{Anchor: render.AnchorOwnWindow}}, "g1", overview, moveWayForward},
+		{"OverviewOrderChangeRejected", Strand{GUID: "g1", Name: "status", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOverview, Order: 1}, moveWayForward + " --name status, then have its spawner add it again with the new order"},
+		{"OverviewFocusOnlyChangeAccepted", Strand{GUID: "g1", PaneID: "%1", Display: overview}, "g1", render.Display{Anchor: render.AnchorOverview, Focus: true}, ""},
 		{"HiddenToOwnWindowRejected", Strand{GUID: "g1", Display: hidden, Cmd: "claude"}, "g1", own, moveWayForward},
 		{"OwnWindowGroupChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "other", WindowSize: 2}, moveWayForward},
 		{"OwnWindowSizeChangeRejected", Strand{GUID: "g1", PaneID: "%1", Display: own}, "g1", render.Display{Anchor: render.AnchorOwnWindow, Window: "pair", WindowSize: 3}, moveWayForward},

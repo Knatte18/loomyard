@@ -81,12 +81,15 @@ func validateDisplay(display render.Display) error {
 	}
 }
 
-// refuseWindowMove refuses an update that moves a strand into or out of the own-window or overview anchor, between those two, or changes an own-window strand's window group.
+// refuseWindowMove refuses an update that moves a strand into or out of the own-window or overview anchor, between those two, changes an overview strand's order, or changes an own-window strand's window group.
 // A strand's pane lives in a window of its own from launch on, so such a move would strand the pane where the new display does not expect it.
 // The error names the way forward: remove the strand and add it again.
 func refuseWindowMove(name string, current, next render.Display) error {
 	if isOwnWindow(current) != isOwnWindow(next) || isOverview(current) != isOverview(next) {
 		return fmt.Errorf("strand %q cannot move between own-window, overview and another anchor; way forward: lym reed remove --name %s, then add it again with the new anchor", name, name)
+	}
+	if isOverview(current) && current.Order != next.Order {
+		return fmt.Errorf("strand %q cannot change its overview order; way forward: lym reed remove --name %s, then have its spawner add it again with the new order", name, name)
 	}
 	if isOwnWindow(current) && (current.Window != next.Window || current.WindowSize != next.WindowSize) {
 		return fmt.Errorf("strand %q cannot change its window group; way forward: lym reed remove --name %s, then add it again with the new group", name, name)
@@ -398,14 +401,6 @@ func (e *Engine) addStrandLocked(st *ReedState, spec AddSpec) (Strand, error) {
 		}
 		if wouldFormCycle(st.Strands, guid, spec.Parent) {
 			return Strand{}, fmt.Errorf("parent %q would form a cycle", spec.Parent)
-		}
-	}
-
-	if isOverview(spec.Display) {
-		for _, held := range st.Strands {
-			if isOverview(held.Display) {
-				return Strand{}, fmt.Errorf("strand %q already holds the overview window; way forward: lym reed remove --name %s, then add this strand again", held.Name, held.Name)
-			}
 		}
 	}
 
@@ -832,7 +827,7 @@ func sessionReapRoots(live []LivePane) []int {
 //
 // Before any kill, an own window whose every listed pane is being killed is about to end.
 // The session's current window is read once, and only when a window ends; endedCurrent reports that it was among the ending windows.
-// With selectOnEnd set, such a viewer is moved first to the relevant window among those left (the newest live agent, else the overview, never the shell), and with none left to tmux; a viewer on any other window is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
+// With selectOnEnd set, such a viewer is moved first to the relevant window among those left (the newest live agent, else the lowest-index overview, never the shell), and with none left to tmux; a viewer on any other window is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // leftWindows names the own windows that lose a pane but keep at least one, for the caller to lay out again.
 func (e *Engine) killStrandPanes(st *ReedState, paneIDs []string, selectOnEnd bool) (reapPIDs []int, leftWindows []string, endedCurrent bool) {
 	var killPaneIDs []string

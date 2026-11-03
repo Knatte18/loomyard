@@ -255,7 +255,7 @@ func (e *Engine) newWindowLocked(placement []string, argv []string) (string, err
 // An overview window is never selected here.
 // It is placed behind every earlier agent window and before the shell window, and a relaunch keeps the place of the window its old pane was in.
 // It carries no command, so the pane is the default login shell like every strand pane.
-// An overview strand's window is named by its display's Title, overviewWindowName when that is empty, and opens before the lowest-index window, hidden ones included, so it holds the lowest index; it carries the own marker and the overview marker but neither @strand_color nor @lym_unseen.
+// An overview strand's window is named by its display's Title, overviewWindowName when that is empty, and opens after the last overview window whose order key is not higher than its own, else before the lowest-index window, hidden ones included; it carries the own marker and the overview marker but neither @strand_color nor @lym_unseen.
 // A non-empty group is recorded on the window, which is how a group's shared window is found later.
 // A window option that fails to set is logged and never fails the open; a window missing the own marker is only never ended by reconcile.
 func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group string) (string, error) {
@@ -280,7 +280,7 @@ func (e *Engine) openOwnWindowLocked(st *ReedState, s *Strand, name, group strin
 	selectNew := false
 	if overview {
 		name = overviewWindowTitle(s.Display)
-		placement = overviewWindowInsertArgs(windows)
+		placement = overviewWindowInsertArgs(windows, overviewWindowKeys(st.Strands, windowByPane), s.Display.Order)
 	} else {
 		selectNew = e.newAgentWindowTakesViewerLocked(s.Display)
 	}

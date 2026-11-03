@@ -215,7 +215,7 @@ func clearConflictingPaneBindings(st *ReedState) []string {
 
 // reconcileLocked reconciles the persisted table against live panes.
 // Kills panes per planReconcile's schedule; clears bindings for gone panes.
-// It also ends the own windows no strand holds, moving a viewer on one to the relevant window first (the newest live agent, else the overview, never the shell); those windows are not in killed, since no window 0 pane went.
+// It also ends the own windows no strand holds, moving a viewer on one to the relevant window first (the newest live agent, else the lowest-index overview, never the shell); those windows are not in killed, since no window 0 pane went.
 // A viewer on any other window is never moved.
 func (e *Engine) reconcileLocked(st *ReedState, live []LivePane, windows []windowPane) (killed []string, err error) {
 	plan := planReconcile(st.Strands, live, windows, newReapPolicy(st, live), e.strandsElsewhereLocked(st.Strands, windows))

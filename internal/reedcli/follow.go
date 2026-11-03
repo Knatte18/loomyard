@@ -35,7 +35,8 @@ func (c *reedCLI) followCmd() *cobra.Command {
 		Use:   "follow",
 		Short: "turn follow on for a tmux session and select its relevant window",
 		Long: `follow turns the follow state of the told session on and selects the
-session's relevant window: the newest live agent window, else the overview.
+session's relevant window: the newest live agent window, else the
+lowest-index overview window.
 It reads no working directory, no config and no state, and prints nothing
 on success: the status bar's follow button calls it through tmux's
 run-shell.

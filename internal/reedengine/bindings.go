@@ -107,7 +107,7 @@ func followClickCommand(followJump bool) string {
 // followJump reports that the follow button's jump line is pinned in followCommandOption, so a click that turns follow on runs it.
 // M-Down and M-Up write follow off, then step to the next and previous window with tmux's own wrap, in every window, and the step then goes on if it landed on a window carrying @lym_hidden.
 // The write comes first so it lands also when the step wraps onto the current window.
-// Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the overview, and back onto the strands' window, the shell.
+// Hidden windows sit after the shell window, so one conditional step reaches a visible window: forward onto the session's first window, the lowest-index overview, and back onto the strands' window, the shell.
 // The status click and each step are dispatched by chained commands, joined by tmux's escaped `\;` separator argument, since only one range type matches a click.
 // The click dispatch ends in the follow button's branch, then, when buttonClick holds, the button branch:
 // a click on a range named by buttonRangePrefix runs the line pinned in buttonCommandOption, resolved through the session's own options.

@@ -23,8 +23,7 @@ import (
 const LoomDriverStrandName = agentname.RoleDriver
 
 // LoomStatusStrandName is the role of the strand `lym loom start` adds to draw a run's gate checklist.
-// It is pinned because reed's add refuses an add whose explicit role another strand already holds, so every add and lookup must use it,
-// and a beam's orch bring-up reads it to take the session's overview window from that strand.
+// It is pinned because reed's add refuses an add whose explicit role another strand already holds, so every add and lookup must use it.
 const LoomStatusStrandName = "loom-status"
 
 // LegacyLoomDriverStrandName names a driver strand recorded before agent names existed.

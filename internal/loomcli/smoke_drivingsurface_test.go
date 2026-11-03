@@ -2,7 +2,7 @@
 // On the start side, an llm-seeded start keeps exactly one status strand.
 // On the step side, "lym loom step" and "lym shed step" bring reed up and never add, replace or remove a status strand, whatever driver the run was seeded with.
 // A start re-arms the session's follow state and selects the run's relevant window, and a resume leaves a follow-off session off.
-// A start in a session whose overview window a runs strand holds adds the status strand in a window of its own.
+// A start puts the status strand in the overview window after the runs strand, replacing an own-window one an older build left.
 // ensureStatusStrand's branches are pinned at Tier 1 through resolveStatusStrandAction;
 // what only a real tmux server can show is that a step leaves reed's strand table without a status strand, and leaves a pre-existing one alone.
 //
@@ -13,6 +13,7 @@ package loomcli
 
 import (
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -22,6 +23,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/lymbin"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -123,7 +126,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			if _, err := eng.Up(); err != nil {
 				t.Fatalf("reed up: %v", err)
 			}
-			added, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", nil))
+			added, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", shedrun.RecipeTapestry))
 			if err != nil {
 				t.Fatalf("add status strand: %v", err)
 			}
@@ -172,8 +175,8 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		})
 	})
 
-	// A beam's session holds a runs strand in the overview window, so a start there adds the status strand in a window of its own.
-	t.Run("start beside a runs strand adds the status strand in its own window", func(t *testing.T) {
+	// A beam's session holds a runs strand in its first overview window, and an older build left the status strand in a window of its own with a sidecar naming another build, so a start puts the status strand into the overview window after the runs strand's.
+	t.Run("start beside a runs strand puts an own-window status strand into the overview window after it", func(t *testing.T) {
 		_, loc, worktree, _ := newWiredPairFixture(t)
 		registerBootstrapTeardown(t, loc, worktree)
 		seedLLMDriver(t, loc)
@@ -185,10 +188,22 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		runsSpec := reedengine.AddSpec{
 			NameOverride: orchcli.RunsStrandName,
 			Cmd:          "sleep 3600",
-			Display:      render.Display{Anchor: render.AnchorOverview},
+			Display:      render.Display{Anchor: render.AnchorOverview, Order: orchcli.RunsStrandOrder, Title: "beam: smoke"},
 		}
 		if _, err := eng.AddStrand(runsSpec); err != nil {
 			t.Fatalf("add runs strand: %v", err)
+		}
+		older, err := eng.AddStrand(reedengine.AddSpec{
+			NameOverride: statusStrandDisplayName,
+			Cmd:          "sleep 3600",
+			Display:      render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true},
+		})
+		if err != nil {
+			t.Fatalf("add the older status strand: %v", err)
+		}
+		olderBuild := statuspane.BuildIdentity{Path: "/older/lym", Size: 9, ModTime: 9}
+		if err := statuspane.WriteSidecar(statusSidecarPath(loc), older.GUID, olderBuild); err != nil {
+			t.Fatalf("write the status sidecar: %v", err)
 		}
 
 		out, _, err := runLoomCLIWithEnvNoFatal(exe, worktree, skipWalkPush, verbSmokeTimeout, "loom", "start", "--no-attach")
@@ -199,10 +214,45 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 		if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {
 			t.Fatalf("status strands after the start = %d; want 1; output: %s", count, out)
 		}
-		statusWindow := windowID(t, eng, statusStrandPane(t, eng))
-		runsWindow := windowID(t, eng, strandPane(t, eng, orchcli.RunsStrandName))
-		if statusWindow == runsWindow {
+		status, err := eng.Status()
+		if err != nil {
+			t.Fatalf("reed status: %v", err)
+		}
+		for _, s := range status.Strands {
+			if agentname.Matches(s.Name, statusStrandDisplayName) && s.GUID == older.GUID {
+				t.Errorf("status strand guid = %s, the older strand's; want it replaced; output: %s", s.GUID, out)
+			}
+		}
+		statusPane := statusStrandPane(t, eng)
+		statusWindow := windowID(t, eng, statusPane)
+		runsPane := strandPane(t, eng, orchcli.RunsStrandName)
+		if statusWindow == windowID(t, eng, runsPane) {
 			t.Errorf("status strand window = %s, the runs strand's window; want a window of its own; output: %s", statusWindow, out)
+		}
+		display := func(pane, format string) string {
+			t.Helper()
+			shown, err := exec.Command(tmuxBinaryPath(t), "-L", eng.Socket(), "display-message", "-p", "-t", pane, format).Output()
+			if err != nil {
+				t.Fatalf("read %s of %s: %v", format, pane, err)
+			}
+			return strings.TrimSpace(string(shown))
+		}
+		if got := display(statusPane, "#{@lym_overview}"); got != "1" {
+			t.Errorf("status window @lym_overview = %q; want 1; output: %s", got, out)
+		}
+		if got := display(statusPane, "#{window_name}"); got != shedrun.RecipeTapestry {
+			t.Errorf("status window name = %q; want %q, the seeded recipe; output: %s", got, shedrun.RecipeTapestry, out)
+		}
+		statusIndex, err := strconv.Atoi(display(statusPane, "#{window_index}"))
+		if err != nil {
+			t.Fatalf("status window index: %v", err)
+		}
+		runsIndex, err := strconv.Atoi(display(runsPane, "#{window_index}"))
+		if err != nil {
+			t.Fatalf("runs window index: %v", err)
+		}
+		if statusIndex != runsIndex+1 {
+			t.Errorf("status window index = %d; want %d, one above the runs window; output: %s", statusIndex, runsIndex+1, out)
 		}
 	})
 
@@ -226,7 +276,7 @@ func TestSmokeStatusStrandAcrossDriverSeeds(t *testing.T) {
 			if _, err := eng.Up(); err != nil {
 				t.Fatalf("reed up: %v", err)
 			}
-			if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", nil)); err != nil {
+			if _, err := eng.AddStrand(statusStrandAddSpec("sleep 3600", shedrun.RecipeTapestry)); err != nil {
 				t.Fatalf("add status strand: %v", err)
 			}
 			if count := statusStrandCount(t, eng, statusStrandDisplayName); count != 1 {

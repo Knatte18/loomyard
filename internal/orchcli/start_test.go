@@ -280,7 +280,7 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 	t.Parallel()
 
 	otherBuild := statuspane.BuildIdentity{Path: "/older/lym", Size: 9, ModTime: 9}
-	wantDisplay := render.Display{Anchor: render.AnchorOverview, Title: "beam: prime"}
+	wantDisplay := render.Display{Anchor: render.AnchorOverview, Order: RunsStrandOrder, Title: "beam: prime"}
 	tests := []struct {
 		name    string
 		strands []reedengine.StrandStatus
@@ -322,10 +322,10 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 			wantSidecarGUID: "replaced-runs",
 		},
 		{
-			name:            "a loom status strand holding the overview is replaced by the runs strand",
-			strands:         []reedengine.StrandStatus{{GUID: "r1", Name: "loom-status", Live: true}},
-			wantCalls:       []string{"replace", withdrawOrch, "start", withdrawOrch, releaseOrch},
-			wantSidecarGUID: "replaced-runs",
+			name:            "a loom status strand gets the runs strand added beside it, untouched",
+			strands:         []reedengine.StrandStatus{{GUID: "s1", Name: "loom-status", Live: true}},
+			wantCalls:       []string{"add", withdrawOrch, "start", withdrawOrch, releaseOrch},
+			wantSidecarGUID: "added-runs",
 		},
 		{
 			name:            "a stale runs strand is replaced when a loom status strand precedes it",
@@ -376,6 +376,9 @@ func TestStart_EnsuresTheRunsStrandBeforeTheOrch(t *testing.T) {
 
 			if !slices.Equal(h.calls, tt.wantCalls) {
 				t.Errorf("calls = %v; want %v", h.calls, tt.wantCalls)
+			}
+			if !slices.Contains(tt.wantCalls, "replace") && (len(h.strands.replaced) != 0 || len(h.strands.removed) != 0) {
+				t.Errorf("replaced = %v, removed = %v; want no strand replaced or removed", h.strands.replaced, h.strands.removed)
 			}
 			var specs []reedengine.AddSpec
 			for _, added := range h.strands.added {

@@ -5,15 +5,17 @@ package reedengine
 
 import (
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWindowOrder pins the fallback placements of an own window, over listings that parseSessionWindows reads.
+// TestWindowOrder pins the fallback placements of an own window and the overview placement by order key, over listings that parseSessionWindows reads.
 // The relaunch and shell placements are pinned by TestWindowOrder_RealTmux alone.
 func TestWindowOrder(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -24,8 +26,10 @@ func TestWindowOrder(t *testing.T) {
 		listing  string
 		shell    string
 		previous string
-		// overview selects overviewWindowInsertArgs, which reads the listing alone.
+		// overview selects overviewWindowInsertArgs, which reads the listing, the overview windows' keys and the new window's order.
 		overview bool
+		keys     map[string]int
+		order    int
 		want     []string
 	}{
 		{
@@ -37,6 +41,30 @@ func TestWindowOrder(t *testing.T) {
 		{
 			name:     "the overview with no window gives the plain form",
 			overview: true,
+		},
+		{
+			name:     "an overview with a lower key than the listed one goes before the lowest window",
+			listing:  "@4 0 0 0 pawl\n@2 1 0 0 shell\n",
+			overview: true,
+			keys:     map[string]int{"@4": 1},
+			order:    0,
+			want:     []string{"-b", "-t", "@4"},
+		},
+		{
+			name:     "an overview with a key equal to the last listed one goes after it",
+			listing:  "@0 0 0 0 beam: prime\n@1 1 0 0 pawl\n@2 2 0 0 shell\n",
+			overview: true,
+			keys:     map[string]int{"@0": 0, "@1": 1},
+			order:    1,
+			want:     []string{"-a", "-t", "@1"},
+		},
+		{
+			name:     "an overview between two keys goes after the lower one",
+			listing:  "@0 0 0 0 beam: prime\n@1 1 0 0 pawl\n@2 2 0 0 shell\n",
+			overview: true,
+			keys:     map[string]int{"@0": 0, "@1": 1},
+			order:    0,
+			want:     []string{"-a", "-t", "@0"},
 		},
 		{
 			name:    "no shell window goes after the highest non-hidden window",
@@ -63,7 +91,7 @@ func TestWindowOrder(t *testing.T) {
 			t.Parallel()
 			windows := parseSessionWindows(tt.listing)
 			if tt.overview {
-				if got := overviewWindowInsertArgs(windows); !slices.Equal(got, tt.want) {
+				if got := overviewWindowInsertArgs(windows, tt.keys, tt.order); !slices.Equal(got, tt.want) {
 					t.Errorf("overviewWindowInsertArgs() = %v, want %v", got, tt.want)
 				}
 				return
@@ -74,6 +102,25 @@ func TestWindowOrder(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("overviewWindowKeys maps an overview strand's pane to its window and order", func(t *testing.T) {
+		t.Parallel()
+		overview := func(order int) render.Display {
+			return render.Display{Anchor: render.AnchorOverview, Order: order}
+		}
+		strands := []Strand{
+			{GUID: "a", PaneID: "%1", Display: overview(0)},
+			{GUID: "b", PaneID: "%2", Display: overview(1)},
+			{GUID: "agent", PaneID: "%3", Display: render.Display{Anchor: render.AnchorOwnWindow}},
+			{GUID: "unlaunched", Display: overview(2)},
+			{GUID: "unlisted", PaneID: "%9", Display: overview(3)},
+		}
+		windowByPane := map[string]string{"%1": "@1", "%2": "@2", "%3": "@3"}
+		want := map[string]int{"@1": 0, "@2": 1}
+		if got := overviewWindowKeys(strands, windowByPane); !maps.Equal(got, want) {
+			t.Errorf("overviewWindowKeys() = %v, want %v", got, want)
+		}
+	})
 }
 
 // TestEnsureShellWindow drives the shell window check through its callers, OpenWindow and AttachArgv.

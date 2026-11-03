@@ -27,7 +27,7 @@ func (e *Engine) followingLocked() bool {
 	return strings.TrimSpace(out) != "off"
 }
 
-// FollowRun turns the session's follow state on and selects the relevant window: the newest live agent window, else the overview, else nothing.
+// FollowRun turns the session's follow state on and selects the relevant window: the newest live agent window, else the lowest-index overview window, else nothing.
 // It returns the no-session and state-load errors; a failed option write is logged at Warn and the select still runs, and a failed listing or select is logged and never fails the call.
 // It sets one session option and selects one window of the engine's own session, and persists no state.
 func (e *Engine) FollowRun() error {
@@ -56,11 +56,12 @@ const followTargetFormat = "#{window_id} #{window_index} #{?#{@lym_own},1,0} #{?
 
 // followTargetWindow returns the window a follow jump lands on, read from a followTargetFormat listing.
 // It is the same rule as relevantWindow, read from window options instead of reed state:
-// among the windows carrying the own option and not the overview one, the highest-index window holding a pane that is not dead, else the window carrying the overview option, else the empty string.
+// among the windows carrying the own option and not the overview one, the highest-index window holding a pane that is not dead, else the lowest-index window carrying the overview option, else the empty string.
 // An overview window opened by an older lym carries no overview marker and so counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
 // A line it cannot parse is skipped.
 func followTargetWindow(listing string) string {
-	best, bestIndex, overview := "", -1, ""
+	best, bestIndex := "", -1
+	overview, overviewIndex := "", -1
 	for _, line := range strings.Split(listing, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) != 5 {
@@ -73,7 +74,9 @@ func followTargetWindow(listing string) string {
 		own, isOverview, dead := fields[2] == "1", fields[3] == "1", fields[4] == "1"
 		switch {
 		case isOverview:
-			overview = fields[0]
+			if overview == "" || index < overviewIndex {
+				overview, overviewIndex = fields[0], index
+			}
 		case own && !dead && index > bestIndex:
 			best, bestIndex = fields[0], index
 		}

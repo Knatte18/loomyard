@@ -1,4 +1,4 @@
-// runs.go ensures the `runs` strand of the prime or a beam: the session's overview window, named `beam: <slug>`, running `lym batten overview`, which `start` brings up before the orchestrator strand.
+// runs.go ensures the `runs` strand of the prime or a beam: the session's first overview window, named `beam: <slug>`, running `lym batten overview`, which `start` brings up before the orchestrator strand.
 
 package orchcli
 
@@ -8,7 +8,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/logger"
-	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -16,8 +15,10 @@ import (
 )
 
 // RunsStrandName is the role the runs strand is added and addressed by in the reed session of the prime or a beam.
-// A loom bootstrap in a beam's session reads it to leave the session's one overview window to this strand.
 const RunsStrandName = "runs"
+
+// RunsStrandOrder is the runs strand's overview order key, zero, so the beam overview is the session's first window.
+const RunsStrandOrder = 0
 
 // runsSidecarFile is the filename, under the orch directory, of the sidecar recording the runs strand's guid and the lym build that launched it.
 const runsSidecarFile = "runs-strand.json"
@@ -36,18 +37,16 @@ func runsWindowTitleOf(worktree string, beam bool) string {
 	return runsWindowPrefix + runsWindowPrimeLabel
 }
 
-// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command and window title: the session's overview window, with no size, no segment and no color.
+// runsStrandAddSpec builds the runs strand's reedengine.AddSpec for the given pane command and window title: the session's first overview window, with no size, no segment and no color.
 func runsStrandAddSpec(cmd, title string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: RunsStrandName,
 		Cmd:          cmd,
-		Display:      render.Display{Anchor: render.AnchorOverview, Title: title},
+		Display:      render.Display{Anchor: render.AnchorOverview, Order: RunsStrandOrder, Title: title},
 	}
 }
 
 // ensureRunsStrand adds the runs strand when the session has none, keeps a live one that the sidecar records as launched by this build, and replaces any other, then records the strand and the build in the sidecar.
-// With no runs strand it replaces a loom status strand instead of adding beside it.
-// A pawl run's loom bootstrap may have put that strand in the session's one overview window first, and reed refuses a second overview strand.
 // It touches no other strand.
 // It returns the warning naming a failure, empty when there is none, and never fails `start`: the overview is the operator's view, not the orchestrator's bookkeeping.
 func (c *orchCLI) ensureRunsStrand() string {
@@ -67,13 +66,11 @@ func (c *orchCLI) ensureRunsStrand() string {
 	sidecarPath := filepath.Join(c.paths.Dir, runsSidecarFile)
 	spec := runsStrandAddSpec(runsStrandCmd(shell.ForGOOS(), exe), c.runsWindowTitle)
 
-	var runs, loomStatus *reedengine.StrandStatus
+	var runs *reedengine.StrandStatus
 	for i := range strands {
-		switch {
-		case runs == nil && agentname.Matches(strands[i].Name, RunsStrandName):
+		if agentname.Matches(strands[i].Name, RunsStrandName) {
 			runs = &strands[i]
-		case loomStatus == nil && agentname.Matches(strands[i].Name, loomengine.LoomStatusStrandName):
-			loomStatus = &strands[i]
+			break
 		}
 	}
 
@@ -84,10 +81,6 @@ func (c *orchCLI) ensureRunsStrand() string {
 	case runs != nil:
 		if strand, err = c.strands.ReplaceStrand(runs.GUID, spec); err != nil {
 			return runsStrandWarning("could not replace the runs strand, so the beam overview is missing or stale", err)
-		}
-	case loomStatus != nil:
-		if strand, err = c.strands.ReplaceStrand(loomStatus.GUID, spec); err != nil {
-			return runsStrandWarning("could not take the overview window from the loom status strand, so the beam overview is missing", err)
 		}
 	default:
 		if strand, err = c.strands.AddStrand(spec); err != nil {

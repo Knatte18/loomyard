@@ -51,6 +51,14 @@ func TestFollowSessionVia(t *testing.T) {
 			},
 		},
 		{
+			name:    "NoLiveAgentSelectsTheLowestIndexOverviewOfTwo",
+			session: session,
+			listing: "@0 5 0 0 0\n@3 0 1 1 0\n@5 1 1 1 0\n",
+			wantCalls: func(s string) [][]string {
+				return [][]string{list(s), setOn(s), selectWindow("@3")}
+			},
+		},
+		{
 			name:    "NeitherAgentNorOverviewSetsTheOptionAndSelectsNothing",
 			session: session,
 			listing: "@0 5 0 0 0\n",

@@ -507,4 +507,133 @@ func TestWindowOrder_RealTmux(t *testing.T) {
 		}
 		assertFollow("off")
 	})
+
+	const primeTitle = "beam: prime"
+	primeDisplay := render.Display{Anchor: render.AnchorOverview, Title: primeTitle}
+	pawlDisplay := render.Display{Anchor: render.AnchorOverview, Title: "pawl", Order: 1}
+	// wantOverviewTitlesFirst asserts the overview windows named by titles come first in that order, then every other visible window but the shell in listing order, then the shell, then the hidden windows.
+	wantOverviewTitlesFirst := func(titles ...string) {
+		t.Helper()
+		want := slices.Clone(titles)
+		var hidden []string
+		for _, w := range windows() {
+			switch {
+			case slices.Contains(titles, w.Name) || w.Name == shellWindowName:
+			case w.Hidden:
+				hidden = append(hidden, w.Name)
+			default:
+				want = append(want, w.Name)
+			}
+		}
+		wantNames(append(append(want, shellWindowName), hidden...)...)
+	}
+	var pawl, afterBoth, third Strand
+
+	t.Run("AnOverviewWithAHigherKeyOpensAfterTheFirstThenAnAgentAfterBoth", func(t *testing.T) {
+		shellWindow := shellWindowID()
+		selectWindow(shellWindow)
+		var err error
+		pawl, err = e.AddStrand(AddSpec{NameOverride: "pawl", Cmd: "exit", Display: pawlDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(pawl): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+		marks, err := e.tmux.output("display-message", "-p", "-t", windowOfPane(t, e, pawl.PaneID), "[#{@lym_own}][#{@lym_unseen}][#{@strand_color}][#{@lym_overview}]")
+		if err != nil {
+			t.Fatalf("read the pawl window marks: %v", err)
+		}
+		if got := strings.TrimSpace(marks); got != "[1][][][1]" {
+			t.Errorf("pawl window marks = %q, want the own and overview markers alone", got)
+		}
+		if got := currentWindow(); got != shellWindow {
+			t.Errorf("current window = %s, want the viewer left on the shell window %s", got, shellWindow)
+		}
+
+		afterBoth = add("after-both", "sleep 300")
+		indexOf := func(window string) int {
+			t.Helper()
+			listed, ok := findSessionWindow(windows(), window)
+			if !ok {
+				t.Fatalf("window %s is not listed", window)
+			}
+			return listed.Index
+		}
+		agentIndex := indexOf(windowOfPane(t, e, afterBoth.PaneID))
+		if pawlIndex := indexOf(windowOfPane(t, e, pawl.PaneID)); agentIndex <= pawlIndex {
+			t.Errorf("agent window index = %d, want it after the pawl window at %d", agentIndex, pawlIndex)
+		}
+		if shellIndex := indexOf(shellWindow); agentIndex >= shellIndex {
+			t.Errorf("agent window index = %d, want it before the shell window at %d", agentIndex, shellIndex)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+	})
+
+	t.Run("RelaunchingOrReplacingEitherOverviewKeepsTheOrder", func(t *testing.T) {
+		waitUntil(t, 10*time.Second, "pawl's pane never died", func() bool { return paneDead(pawl.PaneID) })
+		var err error
+		pawl, err = e.AddStrand(AddSpec{NameOverride: "pawl", IfAbsent: true, Cmd: "exit", Display: pawlDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(pawl, IfAbsent): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+
+		pawl, err = e.ReplaceStrand(pawl.GUID, AddSpec{NameOverride: "pawl", Cmd: "exit", Display: pawlDisplay})
+		if err != nil {
+			t.Fatalf("ReplaceStrand(pawl): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+
+		selectWindow(windowOfPane(t, e, overview.PaneID))
+		overview, err = e.ReplaceStrand(overview.GUID, AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: primeDisplay})
+		if err != nil {
+			t.Fatalf("ReplaceStrand(overview): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+		if got, want := currentWindow(), windowOfPane(t, e, overview.PaneID); got != want {
+			t.Errorf("current window = %s, want the new %s window %s", got, primeTitle, want)
+		}
+	})
+
+	t.Run("AddedInTheOtherOrderTheOverviewsEndInTheSameOrder", func(t *testing.T) {
+		if _, err := e.RemoveStrand(overview.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(overview): %v", err)
+		}
+		var err error
+		overview, err = e.AddStrand(AddSpec{NameOverride: "status", Cmd: "sleep 300", Display: primeDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(overview): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl")
+	})
+
+	t.Run("EqualKeysSitInTheOrderTheyLastOpened", func(t *testing.T) {
+		thirdDisplay := render.Display{Anchor: render.AnchorOverview, Title: "third", Order: 1}
+		var err error
+		third, err = e.AddStrand(AddSpec{NameOverride: "third", Cmd: "sleep 300", Display: thirdDisplay})
+		if err != nil {
+			t.Fatalf("AddStrand(third): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "pawl", "third")
+
+		if pawl, err = e.ReplaceStrand(pawl.GUID, AddSpec{NameOverride: "pawl", Cmd: "exit", Display: pawlDisplay}); err != nil {
+			t.Fatalf("ReplaceStrand(pawl): %v", err)
+		}
+		wantOverviewTitlesFirst(primeTitle, "third", "pawl")
+	})
+
+	t.Run("WithNoLiveAgentEndingTheViewedLowestOverviewSelectsTheNextLowest", func(t *testing.T) {
+		if _, err := e.RemoveStrand(afterBoth.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(after-both): %v", err)
+		}
+		thirdWindow := windowOfPane(t, e, third.PaneID)
+		selectWindow(windowOfPane(t, e, overview.PaneID))
+
+		if _, err := e.RemoveStrand(overview.GUID, false); err != nil {
+			t.Fatalf("RemoveStrand(overview): %v", err)
+		}
+
+		if got := currentWindow(); got != thirdWindow {
+			t.Errorf("current window = %s, want the lowest remaining overview window %s, never pawl's or the shell's", got, thirdWindow)
+		}
+	})
 }

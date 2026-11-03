@@ -167,7 +167,7 @@ func isOwnWindow(d render.Display) bool {
 	return d.Anchor == render.AnchorOwnWindow || isOverview(d)
 }
 
-// isOverview reports whether d places a strand in the session's overview window.
+// isOverview reports whether d places a strand in an overview window, one of the session's first windows.
 func isOverview(d render.Display) bool {
 	return d.Anchor == render.AnchorOverview
 }
@@ -421,16 +421,16 @@ func (e *Engine) moveShellWindowStrandsLocked(st *ReedState, shellWindow string,
 	return moved
 }
 
-// agentWindowPanes sorts the listed panes bound to strands of st by window: live holds each window with a bound own-window pane that is not dead, bound each window with any such pane, and overview the window of the overview strand's pane.
+// agentWindowPanes sorts the listed panes bound to strands of st by window: live holds each window with a bound own-window pane that is not dead, bound each window with any such pane, and overview each window with a pane bound to an overview strand.
 // Panes in a window of skip are left out.
-func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (live, bound map[string]bool, overview string) {
+func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (live, bound, overview map[string]bool) {
 	displayByPane := make(map[string]render.Display, len(st.Strands))
 	for _, s := range st.Strands {
 		if s.PaneID != "" {
 			displayByPane[s.PaneID] = s.Display
 		}
 	}
-	live, bound = make(map[string]bool), make(map[string]bool)
+	live, bound, overview = make(map[string]bool), make(map[string]bool), make(map[string]bool)
 	for _, p := range panes {
 		display, held := displayByPane[p.PaneID]
 		if !held || skip[p.WindowID] {
@@ -438,7 +438,7 @@ func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (
 		}
 		switch {
 		case isOverview(display):
-			overview = p.WindowID
+			overview[p.WindowID] = true
 		case display.Anchor == render.AnchorOwnWindow:
 			bound[p.WindowID] = true
 			if !p.Dead {
@@ -450,24 +450,25 @@ func agentWindowPanes(st *ReedState, panes []windowPane, skip map[string]bool) (
 }
 
 // relevantWindow returns the window an automatic switch lands on, among the listed windows not in ending.
-// That is the highest-index agent window holding a pane that is not dead, else the overview strand's window, else the empty string.
+// That is the highest-index agent window holding a pane that is not dead, else the lowest-index window holding an overview strand's pane, else the empty string.
 // An agent window is a window holding a pane bound to an own-window strand, so the overview, the shell and hidden windows are never one.
 // By start order the highest index is the newest live agent.
 func relevantWindow(st *ReedState, windows []sessionWindow, panes []windowPane, ending map[string]bool) string {
 	live, _, overview := agentWindowPanes(st, panes, ending)
 	best, bestIndex := "", -1
+	lowestOverview, lowestOverviewIndex := "", -1
 	for _, w := range windows {
 		if live[w.ID] && w.Index > bestIndex {
 			best, bestIndex = w.ID, w.Index
+		}
+		if overview[w.ID] && (lowestOverview == "" || w.Index < lowestOverviewIndex) {
+			lowestOverview, lowestOverviewIndex = w.ID, w.Index
 		}
 	}
 	if best != "" {
 		return best
 	}
-	if _, listed := findSessionWindow(windows, overview); listed {
-		return overview
-	}
-	return ""
+	return lowestOverview
 }
 
 // newAgentWindowSelected reports whether a new agent window takes the viewer, given the follow state.
@@ -511,7 +512,7 @@ func (e *Engine) currentWindowIsAmongLocked(windows []string) bool {
 	return slices.Contains(windows, current)
 }
 
-// selectRelevantWindowIfCurrentLocked selects relevantWindow among the windows left when the session's current window is one of ending, so a viewer on a window about to end lands on the newest live agent or the overview, never the shell.
+// selectRelevantWindowIfCurrentLocked selects relevantWindow among the windows left when the session's current window is one of ending, so a viewer on a window about to end lands on the newest live agent or the lowest-index overview, never the shell.
 // A viewer elsewhere is never moved, and with no window left to select it selects nothing and leaves the choice to tmux.
 // Every failure is logged and never fails the step.
 func (e *Engine) selectRelevantWindowIfCurrentLocked(st *ReedState, ending []string) {

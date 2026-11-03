@@ -26,6 +26,7 @@ func TestDisplayDecodesRetiredKeysIgnored(t *testing.T) {
 		{"SharingSize", `{"anchor":"below-parent","focus":true,"size":{"kind":"sharing"}}`, Display{Anchor: AnchorOwnWindow, Focus: true}, false},
 		{"RetiredTopReadsAsOwnWindow", `{"anchor":"top","focus":true}`, Display{Anchor: AnchorOwnWindow, Focus: true}, false},
 		{"HiddenIsKeptAsWritten", `{"anchor":"hidden","focus":false}`, Display{Anchor: AnchorHidden}, false},
+		{"OverviewWithNoOrderKeyReadsKeyZero", `{"anchor":"overview","focus":false,"title":"beam: x"}`, Display{Anchor: AnchorOverview, Title: "beam: x"}, false},
 		{"NonStringAnchorIsADecodeError", `{"anchor":1,"focus":true}`, Display{}, true},
 	}
 	for _, tt := range tests {
@@ -66,16 +67,24 @@ func TestDisplayMarshalsWithoutRetiredKeys(t *testing.T) {
 		t.Errorf("marshalled Display %s carries a keepViewer key for a false KeepViewer", raw)
 	}
 
-	want := Display{Anchor: AnchorOwnWindow, KeepViewer: true}
-	raw, err = json.Marshal(want)
-	if err != nil {
-		t.Fatalf("Marshal keep-viewer Display: %v", err)
+	if strings.Contains(string(raw), `"order"`) {
+		t.Errorf("marshalled Display %s carries an order key for a zero Order", raw)
 	}
-	var got Display
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("Unmarshal %s: %v", raw, err)
-	}
-	if got != want {
-		t.Errorf("Display round-tripped through %s as %+v, want %+v", raw, got, want)
+
+	for _, want := range []Display{
+		{Anchor: AnchorOwnWindow, KeepViewer: true},
+		{Anchor: AnchorOverview, Title: "pawl", Order: 1},
+	} {
+		raw, err = json.Marshal(want)
+		if err != nil {
+			t.Fatalf("Marshal Display %+v: %v", want, err)
+		}
+		var got Display
+		if err := json.Unmarshal(raw, &got); err != nil {
+			t.Fatalf("Unmarshal %s: %v", raw, err)
+		}
+		if got != want {
+			t.Errorf("Display round-tripped through %s as %+v, want %+v", raw, got, want)
+		}
 	}
 }

@@ -78,7 +78,7 @@
 // It is the only reed code that issues switch-client.
 //
 // FollowSession (follow.go) is the engine-less function behind `lym reed follow`: it addresses a told session of a told server by socket path and issues list-panes, set-option @lym_follow on and, when a window is relevant, select-window, and nothing else.
-// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lym_own and not @lym_overview that holds a pane that is not dead, else the window carrying @lym_overview, else none.
+// It reads no working directory, config or state, so it picks the window from tmux facts alone: the highest-index window carrying @lym_own and not @lym_overview that holds a pane that is not dead, else the lowest-index window carrying @lym_overview, else none.
 // openOwnWindowLocked sets the window option @lym_overview beside @lym_own on an overview window, so that rule can tell the overview from an agent window; an overview window opened by an older lym carries no marker and counts as an agent window, which it can win only when no other agent is live, the same outcome as the overview fallback.
 // A failed listing, which is how an unknown session answers, returns an error before any write, a failed option write returns before any select, and a failed select returns an error naming the window.
 //
@@ -106,7 +106,7 @@
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lym_unseen.
 // Outside Windows, the geometry pins also pin the session hook `session-window-changed` with `set-option -w -u @lym_unseen`, so selecting the window clears the mark; boot and every attach pre-flight run the pin.
 // On Windows no hook is pinned and the mark is never set.
-// The shell button is a range=user|shell button labelled shell, lit while the shell window is active; line 1 follows window index order, so the overview's button is first, the agents' follow in start order and the shell button comes last.
+// The shell button is a range=user|shell button labelled shell, lit while the shell window is active; line 1 follows window index order, so the overview windows' buttons are first, the agents' follow in start order and the shell button comes last.
 // An overview window's button is an own-window button with no @strand_color, which renders as the plain window-button style.
 // A window carrying @lym_hidden still gets no button, and no Go decision reads @strand_color or @lym_unseen.
 // Line 2 lists the sessions, then, right-aligned, the check mark and the time.
@@ -119,7 +119,7 @@
 // The name-repair loop never re-pins, and the global status-bar options refresh at boot and attach and with the bindings' stale-build re-pin, which pins the status formats and the bar style before the bindings.
 // Bound: between an older binary's boot or attach and the newest binary's next op, follow can show on lines 2 and 3; a session an older binary boots or attaches keeps status 2, without line 3, until the newest binary next attaches it, since the re-pin restores only the global options.
 // The pin starts with `unbind-key -n M-z`, which removes the Alt+z an older build bound, since a `bind-key` re-pin never removes a binding; reed binds no zoom key.
-// Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lym_hidden goes on, forward to the session's first window, the overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
+// Alt+Up and Alt+Down step to the previous or next window in index order, in every window and wrapping with tmux's own window wrap: a step that lands on a window carrying @lym_hidden goes on, forward to the session's first window, the lowest-index overview, and back to the strands' window, the shell, which is one conditional step since hidden windows sit after the shell (on psmux, where the order is best-effort, a step may land on a hidden window);
 // Alt+Left and Alt+Right run `lym reed switch --prev|--next` in the background through run-shell, naming the absolute path of the `lym` that pinned them (panebin.go's composeSwitchCommand), never PATH's;
 // and a left click on the status bar dispatches on its range: the shell button selects the strands' window, a window button selects that window, a session button switches the client to that session, the follow button toggles the follow state, and a button range named by buttonRangePrefix runs `lym reed button`.
 // The button line (panebin.go's composeButtonCommand) rides the server-global option @lym_button_command, set when it resolves and unset otherwise, and the one global binding resolves it through `#{E:...}` with the session's own options.
@@ -364,10 +364,10 @@
 // Bound: a pane id reused after a server restart can name a sibling worktree's pane until the binding goes.
 // The pane-generation read (generation.go) stays session-scoped and outside the seam: it reads session fields only, so it keeps the "=<session>:" form, which expands them, where the bare "=<session>" form expands every session field to empty (verified live, tmux 3.6).
 //
-// Window order (windoworder.go): a session's windows read, in index order, the overview window, the agents' own windows in start order, then the window named shell, then the hidden windows.
+// Window order (windoworder.go): a session's windows read, in index order, the overview windows in ascending order key, the agents' own windows in start order, then the window named shell, then the hidden windows.
 // Every window is created through newWindowLocked (spawn.go) as `new-window -d` plus placement arguments, listed from `list-windows` in index order under the op lock:
 // an own window opens `-a -t <previous window>` for a relaunch, which keeps its window's place and ends the old one behind it, else `-b -t <shell window>`, else `-a -t <highest-index non-hidden window>`;
-// the overview window opens `-b -t <lowest-index window>`, hidden windows included; a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
+// an overview window opens `-a -t <highest-index overview window whose order key is not higher than its own>`, else `-b -t <lowest-index window>`, hidden windows included; a hidden window opens `-a -t <highest-index window>`; with nothing to place against the plain form `-t '=<session>:'` is used.
 // A placed new-window the multiplexer refuses on Windows (psmux) logs at Debug and is retried once in the plain form, so the order is best-effort there and nothing fails.
 // The shell window is the window of the recorded console pane (Selvage), named shell with automatic-rename off, which is how a fresh boot names its one window.
 // A session booted by an older lym is brought into that order by ensureShellWindowLocked, which runs wherever a window opens, once the boot marks the strands' window and at the head of every attach pre-flight, also when no client size is known:
@@ -410,26 +410,26 @@
 // followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
 // Only @lym_follow, @lym_button_spec and @lym_button_dir are decision-bearing session options.
 // An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lym_unseen, @lym_hidden or a wait mark.
-// relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the overview strand's window, else none.
+// relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the lowest-index overview window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
 // Beside another attached client, or when the client listing fails, it appends the selection only while follow reads on, reading the follow state only then and never writing it, so with follow on an attach moves every client of the session to the relevant window, including one on a window it reached outside reed's bindings, and a failed follow read counts as off.
 // A new agent window is selected by openOwnWindowLocked, for an own-window strand and never the overview, when newAgentWindowSelected holds: always for a Focus strand, never for one whose display sets only KeepViewer, otherwise exactly when the follow state reads on; it then carries no @lym_unseen.
 // With follow on, a new agent window takes the viewer wherever it is, the shell included; with follow off, it leaves the viewer where it is.
 // Opening a window never changes the follow state.
-// FollowRun is the one engine operation that turns follow on, beside the engine-less FollowSession: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the overview, else nothing, for whichever client views the session.
+// FollowRun is the one engine operation that turns follow on, beside the engine-less FollowSession: under the operation lock it sets the option on and selects the relevant window, the newest live agent window, else the lowest-index overview window, else nothing, for whichever client views the session.
 // It persists no state, a failed option write is logged and the select still runs, and AddStrand, ReplaceStrand, Resume and Up never call it.
 // Every client of a session shares its current window, so the one select-window moves each attached client.
 // A viewed window ending, by RemoveStrand, by ReplaceStrand and by reconcile ending an orphan own window (selectRelevantWindowIfCurrentLocked), moves a viewer on it to the relevant window among those left, never the shell, and with none left to tmux; this move neither reads nor changes the follow state.
 // A viewer elsewhere is never moved, and a strand leaving a shared window that stays open ends no window and switches nothing.
 // An automatic switch races an operator's own window change by at most one switch.
 //
-// Overview anchor: the overview anchor places one strand per session, alone in a window of its own that opens at the lowest index and never joins a group.
+// Overview anchor: the overview anchor places any number of strands, each alone in a window of its own at the session's lowest indexes in ascending order key (render.Display.Order, an absent key reading as zero), and never joins a group.
+// A new, relaunched or replacement overview window opens after the last overview window whose key is not higher than its own, else before the lowest-index window, so equal keys sit in the order they last opened.
 // The window takes the display's Title as its name, overview when the display carries none; the orch's runs strand names it after its beam.
-// Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark, the one-per-session refusal and the focus rules ask isOverview.
+// Everything that reads a window of its own, reconcile, presentPanes, the strands' window resolver and the relaunch's old-pane kill, treats an overview pane as an own-window one (isOwnWindow); only the placement, the name, the unseen mark and the focus rules ask isOverview.
 // The window carries @lym_own like an own window and sets neither @lym_unseen nor @strand_color, so its button takes the plain window-button style.
-// An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors.
-// AddStrand refuses a second overview strand while another strand, live or dormant, holds the anchor, naming that strand and lym reed remove.
-// ReplaceStrand removes the old strand before its add, so replacing the overview strand itself is never refused; replacing another strand with an overview strand is refused only while a third strand holds the anchor.
+// An overview display takes no window group, and UpdateStrand refuses a move between the overview and own-window anchors and a change of an overview strand's order.
+// ReplaceStrand removes the old strand before its add, so the replacement takes its place among the overview windows by its own key.
 // A replacement overview strand that ends the window the operator is viewing selects its own new window once the launch succeeded; a replacement whose old strand shared a window that stays open ends no window and switches nothing.
 //
 // Session targeting: every -t argument that names a SESSION is passed in

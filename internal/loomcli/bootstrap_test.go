@@ -15,6 +15,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/shell"
@@ -668,17 +669,19 @@ func TestStatusStrandAddSpec(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name        string
-		strands     []reedengine.StrandStatus
+		recipe      string
 		wantDisplay render.Display
 	}{
-		{"NoStrandsTakesTheOverview", nil, render.Display{Anchor: render.AnchorOverview}},
-		{"OtherStrandsLeaveItTheOverview", []reedengine.StrandStatus{{GUID: "o", Name: "tst:main:orch", Live: true}}, render.Display{Anchor: render.AnchorOverview}},
-		{"ABeamRunsStrandSendsItToAWindowOfItsOwn", []reedengine.StrandStatus{{GUID: "r", Name: "runs", Live: true}}, render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}},
+		{"PawlRecipeTitlesTheWindowPawl", "pawl", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "pawl"}},
+		{"TapestryRecipeTitlesTheWindowTapestry", "tapestry", render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: "tapestry"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := statusStrandAddSpec("watch-cmd", tt.strands)
+			got := statusStrandAddSpec("watch-cmd", tt.recipe)
+			if got.Display.Order <= orchcli.RunsStrandOrder {
+				t.Errorf("Display.Order = %d; want it after the runs strand's %d", got.Display.Order, orchcli.RunsStrandOrder)
+			}
 			if got.NameOverride != statusStrandDisplayName {
 				t.Errorf("NameOverride = %q; want %q", got.NameOverride, statusStrandDisplayName)
 			}

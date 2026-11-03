@@ -331,7 +331,8 @@ func assertStrandOptionsReasserted(t *testing.T, fake *fakeTmux, wantShellPins i
 	}
 }
 
-// relevantWindowFixture returns the state and the scripted window listings of a session with the shell window @0, the overview @3 at index 0 and two agent windows, alpha @1 and beta @2 in start order.
+// relevantWindowFixture returns the state and the scripted window listings of a session with the shell window @0, the overviews runs @4 at index 0 and status @3 at index 1, and two agent windows, alpha @1 and beta @2 in start order.
+// The pane listing lists status's pane after runs's, so a rule that keeps the last-listed overview answers status.
 // alphaDead and betaDead mark that agent's pane dead.
 // The strands also hold the strand of goodAttachStrands, whose pane is not listed.
 func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows, panes string) {
@@ -345,18 +346,20 @@ func relevantWindowFixture(alphaDead, betaDead bool) (strands []Strand, windows,
 	strands = append(goodAttachStrands(),
 		Strand{GUID: "alpha", Name: "alpha", PaneID: "%10", Display: own},
 		Strand{GUID: "beta", Name: "beta", PaneID: "%11", Display: own},
-		Strand{GUID: "status", Name: "status", PaneID: "%12", Display: render.Display{Anchor: render.AnchorOverview}},
+		Strand{GUID: "runs", Name: "runs", PaneID: "%13", Display: render.Display{Anchor: render.AnchorOverview}},
+		Strand{GUID: "status", Name: "status", PaneID: "%12", Display: render.Display{Anchor: render.AnchorOverview, Order: 1}},
 	)
-	windows = "@3 0 0 0 overview\n@1 1 0 0 alpha\n@2 2 0 0 beta\n@0 3 0 0 shell\n"
+	windows = "@4 0 0 0 runs\n@3 1 0 0 overview\n@1 2 0 0 alpha\n@2 3 0 0 beta\n@0 4 0 0 shell\n"
 	panes = "@0 0 - %1 0 4321 a\n" +
 		"@1 1 - %10 " + flag(alphaDead) + " 5001 alpha\n" +
 		"@2 1 - %11 " + flag(betaDead) + " 5002 beta\n" +
+		"@4 1 - %13 0 5004 runs\n" +
 		"@3 1 - %12 0 5003 status\n"
 	return strands, windows, panes
 }
 
 // TestAttachArgv_SelectsTheRelevantWindow pins the window selection AttachArgv appends to the bare argv:
-// `; select-window -t <window>` for the newest live agent window, else the overview, else nothing.
+// `; select-window -t <window>` for the newest live agent window, else the lowest-index overview, else nothing.
 // Beside another attached client, or a failed client listing, the selection is kept only while the follow state reads on, an unset option included, and dropped while it reads off or its read fails.
 // Attach reads the follow state only then and never writes it.
 func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
@@ -376,7 +379,7 @@ func TestAttachArgv_SelectsTheRelevantWindow(t *testing.T) {
 	}{
 		{name: "NewestLiveAgent", cols: cols, rows: rows, wantWindow: "@2"},
 		{name: "NewestAgentDeadFallsBackToTheOlderLiveAgent", betaDead: true, cols: cols, rows: rows, wantWindow: "@1"},
-		{name: "NoLiveAgentFallsBackToTheOverview", alphaDead: true, betaDead: true, cols: cols, rows: rows, wantWindow: "@3"},
+		{name: "NoLiveAgentFallsBackToTheLowestIndexOverview", alphaDead: true, betaDead: true, cols: cols, rows: rows, wantWindow: "@4"},
 		{name: "NeitherAgentNorOverviewAppendsNothing", noOwn: true, cols: cols, rows: rows},
 		{name: "AnotherClientWithFollowOffAppendsNothing", clients: "tty0 80 24", follow: "off", cols: cols, rows: rows},
 		{name: "AnotherClientWithFollowUnsetSelectsTheRelevantWindow", clients: "tty0 80 24", follow: "", cols: cols, rows: rows, wantWindow: "@2"},

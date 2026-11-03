@@ -1,8 +1,8 @@
 // bar.go declares the tmux format strings of reed's three-line status bar.
 // The strings are built from tmux 3.6's own default status-format shape (list mode, the #{W:}, #{P:} and #{S:} loops, the < and > markers).
 // They read strands through the pane user options @strand and @strand_color and the window user option @lym_strands, never through the current window.
-// They read own windows, the overview window among them, through the window user options @lym_own, @strand_color and @lym_unseen.
-// Line 1 follows window index order: the overview, the agents in start order, then the shell button.
+// They read own windows, the overview windows among them, through the window user options @lym_own, @strand_color and @lym_unseen.
+// Line 1 follows window index order: the overview windows first, then the agents in start order, then the shell button.
 // A window carrying the window user option @lym_hidden still gets no button.
 // Line 2 lists the session carrying the session user option @lym_prime_session first, then every other session in the #{S:} loop's own order.
 // Line 2 ends with the current session's check mark, the session user options @lym_check, @lym_check_state and @lym_check_start, before the clock.

@@ -21,7 +21,7 @@ type Anchor string
 const (
 	// AnchorOwnWindow gives a strand a tmux window of its own, or its group's shared window, apart from the shell window.
 	AnchorOwnWindow Anchor = "own-window"
-	// AnchorOverview gives the session's one overview strand a window of its own that is always the session's first window.
+	// AnchorOverview gives a strand a window of its own among the session's first windows, in ascending Display.Order.
 	AnchorOverview Anchor = "overview"
 	// AnchorHidden places a strand in no window.
 	// A hidden strand never owns a pane.
@@ -65,4 +65,7 @@ type Display struct {
 	// Title names the overview window; empty names it overview.
 	// It is read only for an overview strand.
 	Title string `json:"title,omitempty"`
+	// Order is the overview strand's place among the session's overview windows, lowest first.
+	// It is read only for an overview strand, and its zero value is the first place.
+	Order int `json:"order,omitempty"`
 }

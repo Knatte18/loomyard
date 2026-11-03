@@ -23,23 +23,18 @@ import (
 // so the bootstrap's re-entrant call finds the pane it created on an earlier invocation instead of having its add refused.
 const statusStrandDisplayName = loomengine.LoomStatusStrandName
 
-// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command, placed by the session's strands.
-// It takes the session's overview window, unless strands hold a beam's runs strand, which holds that window in a beam's session.
-// There it takes a window of its own that never takes the viewer, since reed refuses a second overview strand.
-// Either way it has no size and no segment, so its window button takes the plain style.
+// statusStrandOrder is the status strand's overview order key, one place after the runs strand's, so the checklist window sits right after the beam overview.
+const statusStrandOrder = orchcli.RunsStrandOrder + 1
+
+// statusStrandAddSpec builds the status strand's reedengine.AddSpec for the given pane command and the run's recipe name.
+// It always takes an overview window titled with the recipe, ordered after the runs strand's window when the session has one.
+// It has no size and no segment, so its window button takes the plain style.
 // IfAbsent stays false because ensureStatusStrand does its own keep/replace/add dance.
-func statusStrandAddSpec(cmd string, strands []reedengine.StrandStatus) reedengine.AddSpec {
-	display := render.Display{Anchor: render.AnchorOverview}
-	for _, s := range strands {
-		if agentname.Matches(s.Name, orchcli.RunsStrandName) {
-			display = render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}
-			break
-		}
-	}
+func statusStrandAddSpec(cmd, recipe string) reedengine.AddSpec {
 	return reedengine.AddSpec{
 		NameOverride: statusStrandDisplayName,
 		Cmd:          cmd,
-		Display:      display,
+		Display:      render.Display{Anchor: render.AnchorOverview, Order: statusStrandOrder, Title: recipe},
 	}
 }
 

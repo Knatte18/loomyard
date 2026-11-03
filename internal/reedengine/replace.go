@@ -38,7 +38,6 @@ func moveStrandTo(strands []Strand, guid string, idx int) []Strand {
 // An overview replacement that ends the window the operator is viewing selects the new overview window once the launch succeeded;
 // any other replacement moves such a viewer to the strands' window as RemoveStrand does.
 // A replacement whose old strand shared a window that stays open ends no window and switches nothing.
-// The overview anchor admits one strand per session: replacing the overview strand itself is never refused, and replacing another strand with an overview strand is refused only while a third strand holds the overview.
 func (e *Engine) ReplaceStrand(guid string, spec AddSpec) (Strand, error) {
 	var result Strand
 	err := e.withOpLock(func() error {

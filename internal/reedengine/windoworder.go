@@ -1,4 +1,4 @@
-// windoworder.go fixes the order of a session's windows: the overview window, agent windows in start order, then the window named shell, then the hidden windows.
+// windoworder.go fixes the order of a session's windows: the overview windows in ascending order key, agent windows in start order, then the window named shell, then the hidden windows.
 // It lists the session's windows, computes where a new window goes and repairs a session booted by an older lym.
 
 package reedengine
@@ -129,20 +129,45 @@ func ownWindowInsertArgs(windows []sessionWindow, shellWindow, previousWindow st
 	return nil
 }
 
-// overviewWindowInsertArgs returns the placement arguments for the overview window: before the lowest-index window, hidden ones included, so the overview holds the lowest index.
-// With no window listed it returns nothing, which opens the plain form.
-func overviewWindowInsertArgs(windows []sessionWindow) []string {
-	var lowest sessionWindow
-	found := false
-	for _, w := range windows {
-		if !found || w.Index < lowest.Index {
-			lowest, found = w, true
+// overviewWindowKeys maps the window id of each overview strand's bound pane to that strand's Display.Order, reading windowByPane, a session-wide pane-to-window listing.
+// A non-overview strand, a strand with no pane and a pane the listing lacks are left out.
+func overviewWindowKeys(strands []Strand, windowByPane map[string]string) map[string]int {
+	keys := make(map[string]int)
+	for _, s := range strands {
+		if !isOverview(s.Display) || s.PaneID == "" {
+			continue
+		}
+		if window, ok := windowByPane[s.PaneID]; ok {
+			keys[window] = s.Display.Order
 		}
 	}
-	if !found {
+	return keys
+}
+
+// overviewWindowInsertArgs returns the placement arguments for an overview window whose order key is order.
+// keys maps the overview windows to their order keys.
+// The window goes after the highest-index listed overview window whose key is not higher than order, so equal keys sit in the order they last opened;
+// with none it goes before the lowest-index window, hidden ones included, so it holds the lowest index.
+// With no window listed it returns nothing, which opens the plain form.
+func overviewWindowInsertArgs(windows []sessionWindow, keys map[string]int, order int) []string {
+	var lowest, after sessionWindow
+	foundLowest, foundAfter := false, false
+	for _, w := range windows {
+		if !foundLowest || w.Index < lowest.Index {
+			lowest, foundLowest = w, true
+		}
+		if key, ok := keys[w.ID]; ok && key <= order && (!foundAfter || w.Index > after.Index) {
+			after, foundAfter = w, true
+		}
+	}
+	switch {
+	case foundAfter:
+		return []string{"-a", "-t", after.ID}
+	case foundLowest:
+		return []string{"-b", "-t", lowest.ID}
+	default:
 		return nil
 	}
-	return []string{"-b", "-t", lowest.ID}
 }
 
 // hiddenWindowInsertArgs returns the placement arguments for a new hidden window: after the highest-index window, hidden ones included.

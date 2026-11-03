@@ -40,7 +40,7 @@ func bareAttachArgv(socket, session string) []string {
 // cols and rows are the attaching client's own terminal size, in columns and rows; the pre-flight compares them with every other attached client's size and warns on a mismatch.
 // A non-positive value means no client size is known, and no mismatch is warned about.
 //
-// Right after the shell window check, the pre-flight resolves the attach's window selection: a trailing `; select-window -t <relevant window>`, the newest live agent window, else the overview, never the shell.
+// Right after the shell window check, the pre-flight resolves the attach's window selection: a trailing `; select-window -t <relevant window>`, the newest live agent window, else the lowest-index overview, never the shell.
 // The selection is appended to every argv this returns past the state read.
 // When another client is attached, or the client listing fails, the selection is kept only while the session's follow state reads on, and dropped while it reads off or its read fails; it is dropped too when no window is relevant.
 // Failing to take the lock, read the session or the state still drops it, each logged at Warn.
