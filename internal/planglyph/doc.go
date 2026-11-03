@@ -26,6 +26,7 @@
 // The index's format, rework and dispatch validation append fabric-vocabulary-name (planparser.CheckFabricVocabularyName), a declared name the fabric-vocabulary scan would refuse.
 // Dispatch drops its findings against completed cards.
 // The index's format and rework validation also append card-fabric-reference and edit-test-file (planparser.CheckEditTestFile), which dispatch does not run.
+// edit-test-file admits a test file quarry's toc lists with no symbol, since no member glyph can name the edit there.
 // NewIndex returns the real planindex.Index, which a package that calls the code index receives from the CLI layer instead of importing planglyph (index.go).
 //
 // Every resolve-backed Finding.Check ID this package can raise, the canonical list a caller checks a claim against without reading Go source,

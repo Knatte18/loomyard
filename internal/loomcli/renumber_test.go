@@ -208,7 +208,7 @@ func TestRenumberVerbs(t *testing.T) {
 		check   func(t *testing.T, envelope map[string]any)
 	}{
 		{
-			name: "insert reports moves, the new file and prose mentions",
+			name: "insert reports moves, the new file and rewritten references",
 			run:  runInsert("2"),
 			check: func(t *testing.T, e map[string]any) {
 				if e["created"] != "02-new.md" {
@@ -218,22 +218,23 @@ func TestRenumberVerbs(t *testing.T) {
 				if len(moved) != 2 || moved[0].(map[string]any)["old_file"] != "03-gamma.md" || moved[0].(map[string]any)["new_file"] != "04-gamma.md" || moved[0].(map[string]any)["old_number"] != float64(3) || moved[0].(map[string]any)["new_number"] != float64(4) {
 					t.Errorf("moved = %v; want gamma and beta moved up by one, gamma first", e["moved"])
 				}
-				mentions, _ := e["prose_mentions"].([]any)
-				if len(mentions) != 1 || mentions[0].(map[string]any)["file"] != "01-alpha.md" || mentions[0].(map[string]any)["text"] != "**Intent:** Stands apart; see card 2. Feeds 4-gamma." {
-					t.Errorf("prose_mentions = %v; want alpha's line naming card 2", e["prose_mentions"])
+				if mentions, _ := e["prose_mentions"].([]any); len(mentions) != 0 {
+					t.Errorf("prose_mentions = %v; want none", e["prose_mentions"])
 				}
 				refs, _ := e["rewritten_refs"].([]any)
-				if len(refs) != 1 {
-					t.Fatalf("rewritten_refs = %v; want one entry", e["rewritten_refs"])
+				if len(refs) != 2 {
+					t.Fatalf("rewritten_refs = %v; want two entries", e["rewritten_refs"])
 				}
-				ref, _ := refs[0].(map[string]any)
-				if ref["file"] != "01-alpha.md" || ref["from"] != "3-gamma" || ref["to"] != "4-gamma" || ref["line"] == nil {
-					t.Errorf("rewritten_refs[0] = %v; want alpha's 3-gamma rewritten to 4-gamma", ref)
+				for i, want := range [][2]string{{"card 2", "card 3"}, {"3-gamma", "4-gamma"}} {
+					ref, _ := refs[i].(map[string]any)
+					if ref["file"] != "01-alpha.md" || ref["from"] != want[0] || ref["to"] != want[1] || ref["line"] == nil {
+						t.Errorf("rewritten_refs[%d] = %v; want alpha's %s rewritten to %s", i, ref, want[0], want[1])
+					}
 				}
 			},
 		},
 		{
-			name: "remove reports the removed file",
+			name: "remove reports the removed file and the line naming it",
 			run:  runRemove("2"),
 			check: func(t *testing.T, e map[string]any) {
 				if e["removed"] != "02-beta.md" {
@@ -241,6 +242,10 @@ func TestRenumberVerbs(t *testing.T) {
 				}
 				if moved, _ := e["moved"].([]any); len(moved) != 1 {
 					t.Errorf("moved = %v; want gamma moved down by one", e["moved"])
+				}
+				mentions, _ := e["prose_mentions"].([]any)
+				if len(mentions) != 1 || mentions[0].(map[string]any)["file"] != "01-alpha.md" || mentions[0].(map[string]any)["text"] != "**Intent:** Stands apart; see card 2. Feeds 2-gamma." {
+					t.Errorf("prose_mentions = %v; want alpha's line naming the removed card 2", e["prose_mentions"])
 				}
 			},
 		},

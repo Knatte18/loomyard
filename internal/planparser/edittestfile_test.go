@@ -4,13 +4,14 @@ package planparser_test
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestCheckEditTestFile covers the refs under Edit that the check refuses and the ones it admits: groups other than Edit, member glyphs, handles, paths the go tool ignores, other languages and done cards.
+// TestCheckEditTestFile covers the refs under Edit that the check refuses and the ones it admits: groups other than Edit, member glyphs, handles, paths the go tool ignores, files with no member glyph, other languages and done cards.
 func TestCheckEditTestFile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -41,9 +42,13 @@ func TestCheckEditTestFile(t *testing.T) {
 		cards    []planparser.Card
 		language string
 		done     []planparser.Card
-		want     []planparser.ValidationError
+		// glyphless lists the paths the check is told declare no member glyph.
+		glyphless []string
+		want      []planparser.ValidationError
 	}{
 		{name: "test file self glyph under Edit", cards: []planparser.Card{underEdit(testFile)}, want: []planparser.ValidationError{finding("1-one", testFile)}},
+		{name: "test file with no member glyph under Edit", cards: []planparser.Card{underEdit(testFile)}, glyphless: []string{"internal/x/foo_test.go"}},
+		{name: "another test file with no member glyph", cards: []planparser.Card{underEdit(testFile)}, glyphless: []string{"internal/x/bar_test.go"}, want: []planparser.ValidationError{finding("1-one", testFile)}},
 		{name: "test file self glyph under Extends", cards: []planparser.Card{underGroup(planparser.CardTypeExtends, testFile)}, want: []planparser.ValidationError{finding("1-one", testFile)}},
 		{name: "test file self glyph under Create", cards: []planparser.Card{underGroup(planparser.CardTypeCreate, testFile)}},
 		{name: "test file self glyph under Delete", cards: []planparser.Card{underGroup(planparser.CardTypeDelete, testFile)}},
@@ -73,7 +78,7 @@ func TestCheckEditTestFile(t *testing.T) {
 			t.Parallel()
 			plan := &planparser.Plan{Language: tt.language, Cards: tt.cards}
 
-			got := planparser.CheckEditTestFile(plan, tt.done)
+			got := planparser.CheckEditTestFile(plan, tt.done, func(path string) bool { return slices.Contains(tt.glyphless, path) })
 
 			if len(got) != len(tt.want) {
 				t.Fatalf("CheckEditTestFile() = %v; want %v", got, tt.want)

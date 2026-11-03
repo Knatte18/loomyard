@@ -22,6 +22,7 @@ func (noFabricReference) MatchSpelling(string) (string, bool) { return "", false
 
 // TestIndex_AppendsPlanChecks asserts the index reports a declared host-geometry name (fabric-vocabulary-name) and a test file under Edit (edit-test-file) through its format, rework and dispatch validations.
 // A completed card is dropped at dispatch for the first check, and at format validation for the second, which dispatch never runs.
+// A test file the repository holds with no symbol is admitted; one with a member, one the repository lacks and one quarry cannot parse are not.
 func TestIndex_AppendsPlanChecks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -54,8 +55,10 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 	idx := NewIndex(noFabricReference{})
 
 	tests := []struct {
-		name     string
-		run      func(plan *planparser.Plan) ([]Finding, error)
+		name string
+		// files, when set, makes the worktree root a repository holding them; it is an empty directory otherwise.
+		files    map[string]string
+		run      func(plan *planparser.Plan, root string) ([]Finding, error)
 		check    string
 		language string
 		card     planparser.Card
@@ -63,8 +66,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 	}{
 		{
 			name: "format with no done card",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateFormat(plan, t.TempDir(), nil)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
 			},
 			check:    "fabric-vocabulary-name",
 			language: "none",
@@ -73,8 +76,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "rework told the plan's first card",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateRework(plan, t.TempDir(), plan.FirstCard)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateRework(plan, root, plan.FirstCard)
 			},
 			check:    "fabric-vocabulary-name",
 			language: "none",
@@ -83,8 +86,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "dispatch with the card forthcoming",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateDispatch(plan, t.TempDir(), nil, plan.Cards)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateDispatch(plan, root, nil, plan.Cards)
 			},
 			check:    "fabric-vocabulary-name",
 			language: "none",
@@ -93,8 +96,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "dispatch with the card completed",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateDispatch(plan, t.TempDir(), plan.Cards, nil)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateDispatch(plan, root, plan.Cards, nil)
 			},
 			check:    "fabric-vocabulary-name",
 			language: "none",
@@ -103,8 +106,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "format over a plain name",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateFormat(plan, t.TempDir(), nil)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
 			},
 			check:    "fabric-vocabulary-name",
 			language: "none",
@@ -113,8 +116,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "format over a test file under Edit",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateFormat(plan, t.TempDir(), nil)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
 			},
 			check:    "edit-test-file",
 			language: "go",
@@ -123,8 +126,63 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "rework over a test file under Edit",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateRework(plan, t.TempDir(), plan.FirstCard)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateRework(plan, root, plan.FirstCard)
+			},
+			check:    "edit-test-file",
+			language: "go",
+			card:     editingTestFile,
+			want:     1,
+		},
+		{
+			name:  "format over a test file with no symbol",
+			files: map[string]string{"internal/x/x_test.go": "package x\n\nvar _ = 1\n"},
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
+			},
+			check:    "edit-test-file",
+			language: "go",
+			card:     editingTestFile,
+			want:     0,
+		},
+		{
+			name:  "rework over a test file with no symbol",
+			files: map[string]string{"internal/x/x_test.go": "package x\n\nvar _ = 1\n"},
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateRework(plan, root, plan.FirstCard)
+			},
+			check:    "edit-test-file",
+			language: "go",
+			card:     editingTestFile,
+			want:     0,
+		},
+		{
+			name:  "format over a test file with a member",
+			files: map[string]string{"internal/x/x_test.go": "package x\n\nimport \"testing\"\n\nfunc TestX(t *testing.T) {}\n"},
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
+			},
+			check:    "edit-test-file",
+			language: "go",
+			card:     editingTestFile,
+			want:     1,
+		},
+		{
+			name:  "format over a test file the repository lacks",
+			files: map[string]string{"internal/x/other.go": "package x\n"},
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
+			},
+			check:    "edit-test-file",
+			language: "go",
+			card:     editingTestFile,
+			want:     1,
+		},
+		{
+			name:  "format over a test file with a syntax error",
+			files: map[string]string{"internal/x/x_test.go": "package x\n\nfunc (\n"},
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, nil)
 			},
 			check:    "edit-test-file",
 			language: "go",
@@ -133,8 +191,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "dispatch over a test file under Edit",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateDispatch(plan, t.TempDir(), nil, plan.Cards)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateDispatch(plan, root, nil, plan.Cards)
 			},
 			check:    "edit-test-file",
 			language: "go",
@@ -143,8 +201,8 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 		},
 		{
 			name: "format with the test-file card done",
-			run: func(plan *planparser.Plan) ([]Finding, error) {
-				return idx.ValidateFormat(plan, t.TempDir(), plan.Cards)
+			run: func(plan *planparser.Plan, root string) ([]Finding, error) {
+				return idx.ValidateFormat(plan, root, plan.Cards)
 			},
 			check:    "edit-test-file",
 			language: "go",
@@ -159,8 +217,12 @@ func TestIndex_AppendsPlanChecks(t *testing.T) {
 			plan.Language = tc.language
 			plan.FirstCard = 1
 			plan.Cards = []planparser.Card{tc.card}
+			root := t.TempDir()
+			if tc.files != nil {
+				root = writeFixtureRepo(t, tc.files)
+			}
 
-			findings, _ := tc.run(plan)
+			findings, _ := tc.run(plan, root)
 
 			if got := countFindings(t, findings, tc.check); got != tc.want {
 				t.Errorf("%s findings = %d, want %d (all: %v)", tc.check, got, tc.want, findings)

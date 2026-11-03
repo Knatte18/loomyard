@@ -179,8 +179,8 @@ func renumberRefusal(verb string, err error) string {
 }
 
 // renumberEnvelope is the success envelope of insert-card and remove-card.
-// The rewritten refs are the card ids the renumber moved to their new numbers;
-// the prose mentions are lines naming a moved card by its bare old number, which the agent checks by hand.
+// The rewritten refs are the card ids and bare card references the renumber moved to their new numbers;
+// the prose mentions are lines left holding a bare reference with no faithful rewrite, which the agent fixes by hand.
 func renumberEnvelope(planDir string, res *planparser.RenumberResult) map[string]any {
 	moved := make([]map[string]any, 0, len(res.Moved))
 	for _, m := range res.Moved {
@@ -226,10 +226,12 @@ func (c *loomCLI) insertCardCmd() *cobra.Command {
 its file name prefix, its heading number, its explicit Commit: prefix and its
 Card Index number. The new card is a heading-only stub the agent fills with
 Edit or Write, and its Card Index line carries --intent. A card id naming a
-moved card, <N>-<slug> or its zero-padded file form, is rewritten to the new
-number in the overview and every card file and reported under rewritten_refs.
-Lines that name a moved card by its bare old number are reported under
-prose_mentions and never rewritten, so check each by hand.
+moved card, <N>-<slug> or its zero-padded file form, and a bare reference
+naming one, such as "card 4" or "cards 4-6", are rewritten to the new number
+in the overview and every card file and reported under rewritten_refs. Every
+reference is read as the numbering before the call. A bare range the new card
+falls inside is left as is and its line reported under prose_mentions, so fix
+each by hand.
 
 N runs from first_card to one past the last card, and must come after the last
 card webster has begun. The call is journaled, and an interrupted one is
@@ -260,10 +262,11 @@ func (c *loomCLI) removeCardCmd() *cobra.Command {
 		Long: `remove-card deletes card N and moves every later card down by one: its file
 name prefix, its heading number, its explicit Commit: prefix and its Card Index
 number. A card id naming a moved card, <N>-<slug> or its zero-padded file
-form, is rewritten to the new number in the overview and every card file and
-reported under rewritten_refs. Lines that name a moved card by its bare old
-number are reported under prose_mentions and never rewritten, so check each
-by hand.
+form, and a bare reference naming one, such as "card 5" or "cards 5-7", are
+rewritten to the new number in the overview and every card file and reported
+under rewritten_refs. Every reference is read as the numbering before the
+call. A bare reference naming card N, or a range card N falls inside, is left
+as is and its line reported under prose_mentions, so fix each by hand.
 
 N runs from first_card to the last card, must come after the last card webster
 has begun, and cannot be the plan's only card. The call is journaled, and an

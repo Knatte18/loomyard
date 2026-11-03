@@ -12,13 +12,14 @@ const editTestFileCheck = "edit-test-file"
 
 // CheckEditTestFile reports one edit-test-file finding per file self glyph under an Edit or Extends group of a card not in done whose path ends in `_test.go`.
 // A path with a segment the go tool ignores (`testdata`, `vendor`, or a name starting with `.` or `_`) is exempt, since no test there is compiled.
+// A path glyphless reports true for is exempt too: the file declares no member a card could name instead, such as one holding only blank-identifier vars, so the file is the only target the edit has.
 // A member glyph, a plan: handle and a path are skipped, as are the Create, Delete, Rename, Move, Prosa and Custom groups and Uses.
 // A plan whose language has no glyph alphabet is never checked.
 // The way forward names each changed test function, fake or helper as a member glyph, and declares each new one as a Create handle.
 // It sits outside ValidateFormat and Validate because the plan index appends it.
 // It takes the done set where CheckCardFabricReference filters nothing, because a completed card's file has already landed and no writer can fix it.
-// It reads plan text only, so it fires whether or not the file exists, and only refuses.
-func CheckEditTestFile(plan *Plan, done []Card) []ValidationError {
+// It reads plan text and asks glyphless only about a path it would otherwise refuse, and it only refuses.
+func CheckEditTestFile(plan *Plan, done []Card, glyphless func(path string) bool) []ValidationError {
 	if _, ok := planLanguage(plan); !ok {
 		return nil
 	}
@@ -45,7 +46,7 @@ func CheckEditTestFile(plan *Plan, done []Card) []ValidationError {
 					continue
 				}
 				path, _ := parsed.UnitPath()
-				if !strings.HasSuffix(path, "_test.go") || hasIgnoredSegment(path) {
+				if !strings.HasSuffix(path, "_test.go") || hasIgnoredSegment(path) || glyphless(path) {
 					continue
 				}
 				findings = append(findings, ValidationError{

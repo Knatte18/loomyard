@@ -4,6 +4,7 @@ package planglyph
 
 import (
 	"errors"
+	"path"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/planindex"
@@ -44,21 +45,38 @@ func (i index) Validate(plan *planparser.Plan, worktreeRoot string) ([]Finding, 
 }
 
 // ValidateFormat is the package's ValidateFormatAfter plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings, which sit outside planparser's entry points.
-// edit-test-file skips the done cards.
+// edit-test-file skips the done cards, and admits a test file quarry lists with no symbol.
 func (i index) ValidateFormat(plan *planparser.Plan, worktreeRoot string, done []planparser.Card) ([]Finding, error) {
 	findings, err := validateFormatAfter(plan, worktreeRoot, done, i.loader)
 	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
 	findings = append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...)
-	return append(findings, convertAll(planparser.CheckEditTestFile(plan, done))...), err
+	return append(findings, convertAll(planparser.CheckEditTestFile(plan, done, glyphlessFile(worktreeRoot)))...), err
 }
 
 // ValidateRework is the package's ValidateRework plus the card-fabric-reference, fabric-vocabulary-name and edit-test-file findings.
-// A rework generation is a fresh plan whose prior cards are archived, so edit-test-file skips no card.
+// A rework generation is a fresh plan whose prior cards are archived, so edit-test-file skips no card; it admits a test file quarry lists with no symbol.
 func (i index) ValidateRework(plan *planparser.Plan, worktreeRoot string, told int) ([]Finding, error) {
 	findings, err := validateRework(plan, worktreeRoot, told, i.loader)
 	findings = append(findings, convertAll(planparser.CheckCardFabricReference(plan, i.matcher))...)
 	findings = append(findings, convertAll(planparser.CheckFabricVocabularyName(plan))...)
-	return append(findings, convertAll(planparser.CheckEditTestFile(plan, nil))...), err
+	return append(findings, convertAll(planparser.CheckEditTestFile(plan, nil, glyphlessFile(worktreeRoot)))...), err
+}
+
+// glyphlessFile returns a test reporting whether quarry's toc of worktreeRoot lists the file at a repository-relative path, read whole, with no symbol, so a card has no member glyph to name in it.
+// A file quarry cannot list or read whole, the case for one that does not exist, is not glyphless.
+func glyphlessFile(worktreeRoot string) func(file string) bool {
+	return func(file string) bool {
+		answer, err := TOC(worktreeRoot, file)
+		if err != nil {
+			return false
+		}
+		for _, entry := range answer.Files {
+			if entry.Name == path.Base(file) {
+				return entry.Error == "" && !entry.Lossy && entry.Symbols != nil && len(*entry.Symbols) == 0
+			}
+		}
+		return false
+	}
 }
 
 // ValidateDispatch is the package's ValidateDispatch plus the fabric-vocabulary-name findings of the forthcoming cards.

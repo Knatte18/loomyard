@@ -32,7 +32,7 @@ type renumberFixture struct {
 	first       int
 }
 
-// newRenumberFixture writes cards alpha, beta, gamma and delta numbered from first, with card references in the framing, a plan section and gamma's intent.
+// newRenumberFixture writes cards alpha, beta, gamma and delta numbered from first, with card references in the framing, a command example in the framing that no renumber may change, a plan section (a list and two ranges) and gamma's intent, and a bare reference in delta's Card Index line.
 func newRenumberFixture(t *testing.T, first int) renumberFixture {
 	t.Helper()
 	return newRenumberFixtureWithBeta(t, first, "beta")
@@ -45,15 +45,16 @@ func newRenumberFixtureWithBeta(t *testing.T, first int, betaSlug string) renumb
 	planDir := filepath.Join(root, "plan")
 
 	plan := plankit.Plan{
-		Framing: fmt.Sprintf("Covers cards %d–%d.", first+1, first+2),
+		Framing: fmt.Sprintf("Covers cards %d–%d.\n\nRun `lym loom insert-card %d slug` to add one.", first+1, first+2, first+2),
 		Sections: []plankit.Section{
-			{Heading: "Shared Decisions", Body: fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+2)},
+			{Heading: "Shared Decisions", Body: fmt.Sprintf("- **Applies to:** cards %d, %d\n- **Spans:** cards %d–%d\n- **Pair:** cards %d–%d", first+1, first+2, first, first+2, first, first+1)},
 		},
 		Cards: []plankit.Card{
 			{Number: first, Slug: "alpha", Summary: "intent of alpha", Intent: fmt.Sprintf("Stands alone; see card %d.", first)},
 			{Number: first + 1, Slug: betaSlug, Summary: "intent of beta", Commit: fmt.Sprintf("%d: beta", first+1)},
 			{Number: first + 2, Slug: "gamma", Summary: "intent of gamma", Intent: gammaIntent(first)},
-			{Number: first + 3, Slug: "delta", Summary: "intent of delta"},
+			// delta's Card Index line holds a bare reference to a card that moves, which the scan leaves alone.
+			{Number: first + 3, Slug: "delta", Summary: fmt.Sprintf("intent of delta after card %d", first+2), Intent: "intent of delta"},
 		},
 	}
 	if first != 1 {
@@ -72,6 +73,60 @@ func newRenumberFixtureWithBeta(t *testing.T, first int, betaSlug string) renumb
 
 func gammaIntent(first int) string {
 	return fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+2, first+3)
+}
+
+// insertSecondProse maps each prose line of the fixture to its text once a card is inserted second: every bare reference moves up by one.
+func insertSecondProse(first int) map[string]string {
+	return map[string]string{
+		fmt.Sprintf("Covers cards %d–%d.", first+1, first+2):            fmt.Sprintf("Covers cards %d–%d.", first+2, first+3),
+		fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+2): fmt.Sprintf("- **Applies to:** cards %d, %d", first+2, first+3),
+		gammaIntent(first): fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+2, first+3, first+4),
+	}
+}
+
+// insertSecondMentions are the lines left holding a range the card inserted second falls inside or ends at.
+func insertSecondMentions(first int) []string {
+	return []string{
+		renumberOverview + ": " + fmt.Sprintf("- **Spans:** cards %d–%d", first, first+2),
+		renumberOverview + ": " + fmt.Sprintf("- **Pair:** cards %d–%d", first, first+1),
+	}
+}
+
+// insertThirdProse maps each prose line of the fixture that changes once a card is inserted third: a reference to the second card stays, and later ones move up by one.
+func insertThirdProse(first int) map[string]string {
+	return map[string]string{
+		fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+2): fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+3),
+		gammaIntent(first): fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+3, first+4),
+	}
+}
+
+// insertThirdMentions are the lines left holding a range the card inserted third ends at; the range ending before it stays unlisted.
+func insertThirdMentions(first int) []string {
+	return []string{
+		renumberOverview + ": " + fmt.Sprintf("Covers cards %d–%d.", first+1, first+2),
+		renumberOverview + ": " + fmt.Sprintf("- **Spans:** cards %d–%d", first, first+2),
+	}
+}
+
+// removeSecondProse maps gamma's intent to its text once the second card is removed: the reference naming the removed card stays, and the later one moves down by one.
+func removeSecondProse(first int) map[string]string {
+	return map[string]string{gammaIntent(first): fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+1, first+2)}
+}
+
+// removeSecondMentions are the lines left naming the removed second card, the framing's range among them.
+func removeSecondMentions(first int) []string {
+	return []string{
+		renumberOverview + ": " + fmt.Sprintf("Covers cards %d–%d.", first+1, first+2),
+		renumberOverview + ": " + fmt.Sprintf("- **Applies to:** cards %d, %d", first+1, first+2),
+		renumberOverview + ": " + fmt.Sprintf("- **Spans:** cards %d–%d", first, first+2),
+		renumberOverview + ": " + fmt.Sprintf("- **Pair:** cards %d–%d", first, first+1),
+		fmt.Sprintf("%02d-gamma.md: **Intent:** ", first+1) + fmt.Sprintf("Builds on card %d and wraps cards %d, %d.", first+1, first+1, first+2),
+	}
+}
+
+// removeLastMentions are the lines left naming the removed last card: gamma's intent alone.
+func removeLastMentions(first int) []string {
+	return []string{fmt.Sprintf("%02d-gamma.md: **Intent:** ", first+2) + gammaIntent(first)}
 }
 
 // snapshot returns the content of every file under root, keyed by slash-separated relative path.
@@ -202,16 +257,19 @@ func TestRenumber(t *testing.T) {
 		wantSlugs []string
 		// wantMoved is each move's old and new offset from the first card, in apply order.
 		wantMoved [][2]int
-		// wantMentions reports whether the framing, the plan section and gamma's intent name a moved card by its old number.
-		wantMentions bool
+		// wantProse maps each prose line the call rewrites, by its text before the call, to its text after it; nil when none is.
+		wantProse func(first int) map[string]string
+		// wantMentions lists the lines left holding a bare reference the call cannot rewrite, as "file: text"; nil when none is.
+		wantMentions func(first int) []string
 	}{
-		{name: "insert at a middle position", first: 1, call: insertAt, offset: 1, wantSlugs: []string{"alpha", "new", "beta", "gamma", "delta"}, wantMoved: [][2]int{{3, 4}, {2, 3}, {1, 2}}, wantMentions: true},
+		{name: "insert at a middle position", first: 1, call: insertAt, offset: 1, wantSlugs: []string{"alpha", "new", "beta", "gamma", "delta"}, wantMoved: [][2]int{{3, 4}, {2, 3}, {1, 2}}, wantProse: insertSecondProse, wantMentions: insertSecondMentions},
+		{name: "insert at the third position", first: 1, call: insertAt, offset: 2, wantSlugs: []string{"alpha", "beta", "new", "gamma", "delta"}, wantMoved: [][2]int{{3, 4}, {2, 3}}, wantProse: insertThirdProse, wantMentions: insertThirdMentions},
 		{name: "insert one past the last card", first: 1, call: insertAt, offset: 4, wantSlugs: []string{"alpha", "beta", "gamma", "delta", "new"}},
 		{name: "insert ignores a stray temporary journal", first: 1, strayTemp: true, call: insertAt, offset: 4, wantSlugs: []string{"alpha", "beta", "gamma", "delta", "new"}},
-		{name: "remove at a middle position", first: 1, call: removeAt, offset: 1, wantSlugs: []string{"alpha", "gamma", "delta"}, wantMoved: [][2]int{{2, 1}, {3, 2}}, wantMentions: true},
-		{name: "remove the last card", first: 1, call: removeAt, offset: 3, wantSlugs: []string{"alpha", "beta", "gamma"}},
-		{name: "insert on a plan starting above 1", first: 5, call: insertAt, offset: 1, wantSlugs: []string{"alpha", "new", "beta", "gamma", "delta"}, wantMoved: [][2]int{{3, 4}, {2, 3}, {1, 2}}, wantMentions: true},
-		{name: "remove on a plan starting above 1", first: 5, call: removeAt, offset: 1, wantSlugs: []string{"alpha", "gamma", "delta"}, wantMoved: [][2]int{{2, 1}, {3, 2}}, wantMentions: true},
+		{name: "remove at a middle position", first: 1, call: removeAt, offset: 1, wantSlugs: []string{"alpha", "gamma", "delta"}, wantMoved: [][2]int{{2, 1}, {3, 2}}, wantProse: removeSecondProse, wantMentions: removeSecondMentions},
+		{name: "remove the last card", first: 1, call: removeAt, offset: 3, wantSlugs: []string{"alpha", "beta", "gamma"}, wantMentions: removeLastMentions},
+		{name: "insert on a plan starting above 1", first: 5, call: insertAt, offset: 1, wantSlugs: []string{"alpha", "new", "beta", "gamma", "delta"}, wantMoved: [][2]int{{3, 4}, {2, 3}, {1, 2}}, wantProse: insertSecondProse, wantMentions: insertSecondMentions},
+		{name: "remove on a plan starting above 1", first: 5, call: removeAt, offset: 1, wantSlugs: []string{"alpha", "gamma", "delta"}, wantMoved: [][2]int{{2, 1}, {3, 2}}, wantProse: removeSecondProse, wantMentions: removeSecondMentions},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -262,12 +320,20 @@ func TestRenumber(t *testing.T) {
 				}
 			}
 
+			var prosePairs []string
+			if tc.wantProse != nil {
+				for from, to := range tc.wantProse(tc.first) {
+					prosePairs = append(prosePairs, from, to)
+				}
+			}
+			prose := strings.NewReplacer(prosePairs...)
+
 			var gotMoved [][2]int
 			for _, m := range result.Moved {
 				gotMoved = append(gotMoved, [2]int{m.OldNumber - tc.first, m.NewNumber - tc.first})
 				oldContent := before["plan/"+m.OldFile]
 				oldNumber, newNumber := fmt.Sprint(m.OldNumber), fmt.Sprint(m.NewNumber)
-				want := strings.NewReplacer("# Card "+oldNumber+" —", "# Card "+newNumber+" —", "`"+oldNumber+": ", "`"+newNumber+": ").Replace(oldContent)
+				want := prose.Replace(strings.NewReplacer("# Card "+oldNumber+" —", "# Card "+newNumber+" —", "`"+oldNumber+": ", "`"+newNumber+": ").Replace(oldContent))
 				if after["plan/"+m.NewFile] != want {
 					t.Errorf("moved card %s = %q; want %q", m.NewFile, after["plan/"+m.NewFile], want)
 				}
@@ -294,8 +360,8 @@ func TestRenumber(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(framedBefore) != string(framedAfter) {
-				t.Errorf("overview changed outside the Card Index")
+			if want := prose.Replace(string(framedBefore)); string(framedAfter) != want {
+				t.Errorf("overview outside the Card Index = %q; want %q", framedAfter, want)
 			}
 
 			if _, ok := after["scratch/sub/"+renumberJournalName]; ok {
@@ -313,13 +379,8 @@ func TestRenumber(t *testing.T) {
 			}
 
 			var wantMentions []string
-			if tc.wantMentions {
-				gammaFile := fmt.Sprintf("%02d-gamma.md", tc.first+slices.Index(tc.wantSlugs, "gamma"))
-				wantMentions = []string{
-					renumberOverview + ": " + fmt.Sprintf("Covers cards %d–%d.", tc.first+1, tc.first+2),
-					renumberOverview + ": " + fmt.Sprintf("- **Applies to:** cards %d, %d", tc.first+1, tc.first+2),
-					gammaFile + ": **Intent:** " + gammaIntent(tc.first),
-				}
+			if tc.wantMentions != nil {
+				wantMentions = tc.wantMentions(tc.first)
 			}
 			var gotMentions []string
 			for _, p := range result.ProseMentions {
@@ -356,7 +417,7 @@ func newCardIDFixture(t *testing.T) renumberFixture {
 }
 
 // TestRenumber_RewritesCardIDs covers the card-id rewrite of a renumber: every `<N>-<slug>` and zero-padded file form naming a moved card moves to the new number, in a moved card, a card that keeps its number and the overview.
-// A token that runs on into a longer slug or word, a removed card's id and a bare number stay, and a rewritten id is not reported again as a prose mention.
+// A token that runs on into a longer slug or word and a removed card's id stay, a card id is never read as a bare reference, and a bare reference moves with its card unless it names the removed one, which is reported.
 func TestRenumber_RewritesCardIDs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -375,11 +436,12 @@ func TestRenumber_RewritesCardIDs(t *testing.T) {
 			name: "Insert",
 			call: insertAt(1),
 			wantLines: map[string]string{
-				renumberOverview: "Order: 10-beta then 11-gamma; card 9 is bare.",
+				renumberOverview: "Order: 10-beta then 11-gamma; card 10 is bare.",
 				"08-alpha.md":    "**Intent:** Feeds `11-gamma` and `10-beta.md`; see 10-beta, not 9-betamax, 9-beta-two or x10-gamma.",
 				"12-delta.md":    "**Intent:** Follows 11-gamma, run with `--card 10-beta`.",
 			},
 			wantRewritten: []string{
+				renumberOverview + ": card 9 -> card 10",
 				renumberOverview + ": 9-beta -> 10-beta",
 				renumberOverview + ": 10-gamma -> 11-gamma",
 				"08-alpha.md: 10-gamma -> 11-gamma",
@@ -388,7 +450,6 @@ func TestRenumber_RewritesCardIDs(t *testing.T) {
 				"12-delta.md: 10-gamma -> 11-gamma",
 				"12-delta.md: 9-beta -> 10-beta",
 			},
-			wantMentions: []string{renumberOverview + ": Order: 10-beta then 11-gamma; card 9 is bare."},
 		},
 		{
 			name: "Remove",
@@ -403,6 +464,7 @@ func TestRenumber_RewritesCardIDs(t *testing.T) {
 				"08-alpha.md: 10-gamma -> 9-gamma",
 				"10-delta.md: 10-gamma -> 9-gamma",
 			},
+			wantMentions: []string{renumberOverview + ": Order: 9-beta then 9-gamma; card 9 is bare."},
 		},
 	}
 	for _, tt := range tests {
@@ -559,6 +621,12 @@ func TestRenumber_Refusals(t *testing.T) {
 	}
 }
 
+// referenceCardFour rewrites the first card so it keeps its number under an insert at the second position and changes only by its bare reference to card 4.
+func referenceCardFour(t *testing.T, fx renumberFixture) {
+	t.Helper()
+	plankit.WriteTree(t, fx.planDir, map[string]string{"01-alpha.md": "# Card 1 — alpha\n\n**Intent:** Waits for card 4.\n"})
+}
+
 func TestRenumber_IOFailureReversed(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -567,6 +635,8 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 		name  string
 		call  renumberCall
 		fault fault
+		// prepare, when set, changes the fixture before the call.
+		prepare func(t *testing.T, fx renumberFixture)
 		// want is the sentinel the failure ends in; a ErrRenumberReversalFailed row keeps the journal.
 		want error
 	}{
@@ -579,6 +649,7 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 		{name: "insert: new card write", call: insertAt(1), fault: fault{op: "WriteFile", base: "02-new.md", times: 1}},
 		{name: "insert: Card Index rewrite", call: insertAt(1), fault: fault{op: "WriteFile", base: renumberOverview, times: 1}},
 		{name: "insert: journal removal", call: insertAt(1), fault: fault{op: "Remove", base: renumberJournalName, times: 1}},
+		{name: "insert: Card Index rewrite after a card changed only by a bare reference", call: insertAt(1), prepare: referenceCardFour, fault: fault{op: "WriteFile", base: renumberOverview, times: 1}},
 		{name: "remove: journal directory creation", call: removeAt(1), fault: fault{op: "MkdirAll", base: "sub", times: 1}},
 		{name: "remove: temporary journal write", call: removeAt(1), fault: fault{op: "WriteFile", base: renumberJournalName + ".tmp", times: 1}},
 		{name: "remove: journal rename", call: removeAt(1), fault: fault{op: "Rename", base: renumberJournalName + ".tmp", times: 1}},
@@ -594,6 +665,9 @@ func TestRenumber_IOFailureReversed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			fx := newRenumberFixture(t, 1)
+			if tc.prepare != nil {
+				tc.prepare(t, fx)
+			}
 			before := snapshot(t, fx.root)
 			injected := tc.fault
 

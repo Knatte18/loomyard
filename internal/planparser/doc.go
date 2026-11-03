@@ -143,6 +143,7 @@
 // Only a caller holding the rework round's first card number, or a matcher for the fabric-reference rule, can run the first two.
 // CheckFabricVocabularyName needs no told input, but the plan index appends it beside CheckCardFabricReference.
 // CheckEditTestFile is appended by the plan index at format and rework validation, and takes the done set so format validation skips a completed card.
+// It also takes a test naming the files that declare no member glyph, which it admits, since only the index can read the tree.
 // CheckCardFabricReference scans the raw text the parse step records in Plan.OverviewText and Card.Text, so it reads no file and planparser stays the sole parser.
 // It also runs the path rule over each card id, since an id ending in the fabric suffix would turn every command naming the card, except a `lym gate` invocation, into a fabric reference to the implementer audit.
 //

@@ -1,4 +1,4 @@
-// renumber.go implements InsertCard and RemoveCard, the plan's write paths that add or drop one card, renumber the cards after it and rewrite the card ids naming them.
+// renumber.go implements InsertCard and RemoveCard, the plan's write paths that add or drop one card, renumber the cards after it and rewrite the card ids and bare card references naming them.
 // It also holds the plan scratch paths and the journal that makes an interrupted call restorable.
 
 package planparser
@@ -64,14 +64,15 @@ type MovedCard struct {
 	NewFile   string
 }
 
-// ProseMention is one line that refers to a card by an old number of a moved card and was left unchanged.
+// ProseMention is one line left holding a bare card reference a renumber has no faithful rewrite for: one naming the removed card, or a range the inserted or removed card falls inside.
+// Text is the line as the renumber leaves it.
 type ProseMention struct {
 	File string
 	Line int
 	Text string
 }
 
-// RewrittenRef is one card-id reference to a moved card that a renumber rewrote to the card's new number.
+// RewrittenRef is one reference to a moved card that a renumber rewrote to the card's new number: a card id, or a bare reference such as `card 3` or `cards 3–5`.
 // File is the plan file as the renumber leaves it, and From and To are the reference before and after.
 type RewrittenRef struct {
 	File string
@@ -82,7 +83,7 @@ type RewrittenRef struct {
 
 // RenumberResult is what InsertCard and RemoveCard changed.
 // Created holds the inserted card's file name, and Removed the removed card's.
-// RewrittenRefs holds the card-id references rewritten to a moved card's new number, and ProseMentions the lines that refer to a moved card by its bare old number.
+// RewrittenRefs holds the references rewritten to a moved card's new number, and ProseMentions the lines left holding a bare reference with no faithful rewrite.
 type RenumberResult struct {
 	Moved         []MovedCard
 	Created       []string
@@ -149,12 +150,11 @@ func InsertCard(ops RenumberIO, planDir, journalPath string, number int, slug, i
 	sort.Slice(moved, func(i, j int) bool { return moved[i].OldNumber > moved[j].OldNumber })
 
 	return applyRenumber(ops, planDir, journalPath, plan, renumberEdit{
-		moved:       moved,
-		created:     cardFileName(number, slug),
-		createdSlug: slug,
-		createdNew:  fmt.Sprintf("# Card %d — %s\n", number, slug),
-		indexLine:   fmt.Sprintf("%d — %s — %s", number, slug, intent),
-		position:    number,
+		moved:      moved,
+		created:    cardFileName(number, slug),
+		createdNew: fmt.Sprintf("# Card %d — %s\n", number, slug),
+		indexLine:  fmt.Sprintf("%d — %s — %s", number, slug, intent),
+		position:   number,
 	})
 }
 
@@ -196,13 +196,12 @@ func RemoveCard(ops RenumberIO, planDir, journalPath string, number int) (*Renum
 // renumberEdit is one renumber computed from the plan before any file is touched.
 // A non-empty removed drops that card's file and its Card Index line at position; a non-empty created adds the file with createdNew's bytes and indexLine at position.
 type renumberEdit struct {
-	moved       []MovedCard
-	removed     string
-	created     string
-	createdSlug string
-	createdNew  string
-	indexLine   string
-	position    int
+	moved      []MovedCard
+	removed    string
+	created    string
+	createdNew string
+	indexLine  string
+	position   int
 }
 
 // cardRange returns the lowest and highest card number of a consistent plan.
@@ -256,8 +255,19 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 		return data, nil
 	}
 
-	moves := movedSlugs(plan, edit.moved)
+	refEdit := referenceEdit{
+		moves:    movedSlugs(plan, edit.moved),
+		slugs:    make(map[int]string, len(plan.Cards)),
+		position: edit.position,
+		removing: edit.removed != "",
+	}
+	for _, c := range plan.Cards {
+		refEdit.slugs[c.Number] = c.Slug
+	}
+	headingLine := func(i int, _ string) bool { return i == 0 }
+
 	var rewritten []RewrittenRef
+	var kept []ProseMention
 	journal := renumberJournal{Files: map[string][]byte{}}
 	newBytes := make(map[string][]byte, len(edit.moved))
 	for _, m := range edit.moved {
@@ -266,9 +276,10 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 			return nil, err
 		}
 		journal.Files[m.OldFile] = data
-		moved, refs := rewriteCardIDs(string(moveCardBytes(data, m.OldNumber, m.NewNumber)), m.NewFile, moves)
+		moved, refs, left := renumberReferences(string(moveCardBytes(data, m.OldNumber, m.NewNumber)), m.NewFile, refEdit, headingLine)
 		newBytes[m.NewFile] = []byte(moved)
 		rewritten = append(rewritten, refs...)
+		kept = append(kept, left...)
 		journal.Created = append(journal.Created, m.NewFile)
 	}
 
@@ -276,14 +287,15 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 	var stayed []string
 	for _, c := range sortedCards(plan) {
 		name := cardFileName(c.Number, c.Slug)
-		if _, moving := moves[c.Number]; moving || name == edit.removed {
+		if _, moving := refEdit.moves[c.Number]; moving || name == edit.removed {
 			continue
 		}
 		data, err := read(name)
 		if err != nil {
 			return nil, err
 		}
-		after, refs := rewriteCardIDs(string(data), name, moves)
+		after, refs, left := renumberReferences(string(data), name, refEdit, headingLine)
+		kept = append(kept, left...)
 		if len(refs) == 0 {
 			continue
 		}
@@ -312,20 +324,27 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 	if err != nil {
 		return nil, err
 	}
-	newOverview, overviewRefs := rewriteCardIDs(newOverview, overviewFileName, moves)
+	newOverview, overviewRefs, overviewLeft := renumberReferences(newOverview, overviewFileName, refEdit, cardIndexLines(newOverview))
 	rewritten = append(rewritten, overviewRefs...)
+	kept = append(kept, overviewLeft...)
 	sort.SliceStable(rewritten, func(i, j int) bool {
 		if rewritten[i].File != rewritten[j].File {
 			return rewritten[i].File < rewritten[j].File
 		}
 		return rewritten[i].Line < rewritten[j].Line
 	})
+	sort.SliceStable(kept, func(i, j int) bool {
+		if kept[i].File != kept[j].File {
+			return kept[i].File < kept[j].File
+		}
+		return kept[i].Line < kept[j].Line
+	})
 
 	if err := writeRenumberJournal(ops, journalPath, journal); err != nil {
 		return nil, err
 	}
 
-	result := &RenumberResult{Moved: edit.moved, RewrittenRefs: rewritten}
+	result := &RenumberResult{Moved: edit.moved, RewrittenRefs: rewritten, ProseMentions: kept}
 	var steps []func() error
 	if edit.removed != "" {
 		steps = append(steps, func() error { return ops.Remove(filepath.Join(planDir, edit.removed)) })
@@ -348,11 +367,6 @@ func applyRenumber(ops RenumberIO, planDir, journalPath string, plan *Plan, edit
 	}
 	steps = append(steps,
 		func() error { return ops.WriteFile(overviewPath, []byte(newOverview), 0o644) },
-		func() error {
-			mentions, err := proseMentions(ops, planDir, planAfterRenumber(plan, edit), movedOldNumbers(edit.moved))
-			result.ProseMentions = mentions
-			return err
-		},
 		func() error { return ops.Remove(journalPath) },
 	)
 
@@ -469,38 +483,6 @@ func rewriteCardIDs(text, file string, moves map[int]cardIDMove) (string, []Rewr
 		lines[i] = b.String()
 	}
 	return strings.Join(lines, "\n"), refs
-}
-
-// movedOldNumbers returns the old number of every moved card.
-func movedOldNumbers(moved []MovedCard) []int {
-	numbers := make([]int, len(moved))
-	for i, m := range moved {
-		numbers[i] = m.OldNumber
-	}
-	return numbers
-}
-
-// planAfterRenumber returns the plan's card list as the edit leaves it, which is the file set the prose scan reads.
-func planAfterRenumber(plan *Plan, edit renumberEdit) *Plan {
-	newNumbers := make(map[int]int, len(edit.moved))
-	for _, m := range edit.moved {
-		newNumbers[m.OldNumber] = m.NewNumber
-	}
-
-	after := &Plan{Dir: plan.Dir}
-	for _, c := range plan.Cards {
-		if edit.removed != "" && c.Number == edit.position {
-			continue
-		}
-		if to, ok := newNumbers[c.Number]; ok {
-			c.Number = to
-		}
-		after.Cards = append(after.Cards, c)
-	}
-	if edit.created != "" {
-		after.Cards = append(after.Cards, Card{Number: edit.position, Slug: edit.createdSlug})
-	}
-	return after
 }
 
 // writeRenumberJournal encodes j and puts it at journalPath through a temporary file, so a journal on disk is always complete.
@@ -645,55 +627,127 @@ var cardMentionRe = regexp.MustCompile(`\b[Cc]ards?\s+\d+(?:(?:\s*,\s*(?:and\s+)
 // mentionNumberRe splits a card reference into its numbers and range dashes.
 var mentionNumberRe = regexp.MustCompile(`\d+|[–—-]`)
 
-// proseMentions scans the overview and every card file of plan for a card reference that names one of oldNumbers, a range's interior included.
-// A card's heading line, the Card Index lines and every card id of plan are skipped, and no line is rewritten.
-func proseMentions(ops RenumberIO, planDir string, plan *Plan, oldNumbers []int) ([]ProseMention, error) {
-	old := make(map[int]bool, len(oldNumbers))
-	for _, n := range oldNumbers {
-		old[n] = true
-	}
+// referenceEdit is what a renumber does to the references plan text makes to cards, each read against the numbering before the renumber.
+type referenceEdit struct {
+	// moves holds each moved card's slug and new number by its old number.
+	moves map[int]cardIDMove
+	// slugs holds every card's slug by its number before the renumber, so a card id is never read as a bare reference.
+	slugs map[int]string
+	// position is the number a card is inserted at, or removed from when removing is set.
+	position int
+	removing bool
+}
 
-	names := []string{overviewFileName}
-	slugs := make(map[int]string, len(plan.Cards))
-	for _, c := range sortedCards(plan) {
-		names = append(names, cardFileName(c.Number, c.Slug))
-		slugs[c.Number] = c.Slug
-	}
+// renumberReferences rewrites every bare card reference in text, then every card id, that names a moved card by its old number to the card's new number.
+// skip reports the lines that hold no prose, such as a card's heading or a Card Index line, whose bare references are left alone.
+// It returns the rewritten text, one RewrittenRef per rewritten reference, and one ProseMention per line left holding a bare reference with no faithful rewrite, each located in file.
+func renumberReferences(text, file string, edit referenceEdit, skip func(i int, line string) bool) (string, []RewrittenRef, []ProseMention) {
 	slugOf := func(number int) (string, bool) {
-		slug, ok := slugs[number]
+		slug, ok := edit.slugs[number]
 		return slug, ok
 	}
-
-	var mentions []ProseMention
-	for _, name := range names {
-		data, err := ops.ReadFile(filepath.Join(planDir, name))
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", name, err)
+	lines := strings.Split(text, "\n")
+	var refs []RewrittenRef
+	var keptAt []int
+	for i, line := range lines {
+		if skip(i, line) {
+			continue
 		}
-		lines := strings.Split(string(data), "\n")
-
-		skipFrom, skipTo := 0, 0
-		if name == overviewFileName {
-			_, body, _, _ := splitFrontmatter(string(data))
-			if headingIdx, end, err := cardIndexBounds(strings.Split(body, "\n")); err == nil {
-				shift := len(lines) - len(strings.Split(body, "\n"))
-				skipFrom, skipTo = shift+headingIdx+1, shift+end
-			}
+		rewritten, pairs, kept := rewriteCardMentions(line, maskCardIDs(line, slugOf), edit)
+		lines[i] = rewritten
+		for _, pair := range pairs {
+			refs = append(refs, RewrittenRef{File: file, Line: i + 1, From: pair[0], To: pair[1]})
 		}
-
-		for i, line := range lines {
-			if name != overviewFileName && i == 0 {
-				continue
-			}
-			if i >= skipFrom && i < skipTo && cardIndexLineRe.MatchString(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- "))) {
-				continue
-			}
-			if namesOldNumber(maskCardIDs(line, slugOf), old) {
-				mentions = append(mentions, ProseMention{File: name, Line: i + 1, Text: strings.TrimSpace(line)})
-			}
+		if kept {
+			keptAt = append(keptAt, i)
 		}
 	}
-	return mentions, nil
+
+	after, idRefs := rewriteCardIDs(strings.Join(lines, "\n"), file, edit.moves)
+	afterLines := strings.Split(after, "\n")
+	mentions := make([]ProseMention, 0, len(keptAt))
+	for _, i := range keptAt {
+		mentions = append(mentions, ProseMention{File: file, Line: i + 1, Text: strings.TrimSpace(afterLines[i])})
+	}
+	return after, append(refs, idRefs...), mentions
+}
+
+// rewriteCardMentions rewrites every bare card reference of line so each number naming a moved card names its new number.
+// masked is line with its card ids blanked to the same length, and is where the references are found.
+// A reference with no faithful rewrite is kept whole, and kept reports whether line holds one.
+// A match glued to a preceding hyphen is part of a word such as `insert-card 3`, not a reference, and is left alone.
+// It returns the rewritten line and each rewritten reference as its text before and after.
+func rewriteCardMentions(line, masked string, edit referenceEdit) (rewritten string, pairs [][2]string, kept bool) {
+	var b strings.Builder
+	last := 0
+	for _, span := range cardMentionRe.FindAllStringIndex(masked, -1) {
+		if span[0] > 0 && masked[span[0]-1] == '-' {
+			continue
+		}
+		ref := line[span[0]:span[1]]
+		tokens := mentionNumberRe.FindAllStringIndex(ref, -1)
+		if !edit.mapsFaithfully(ref, tokens) {
+			kept = true
+			continue
+		}
+
+		var to strings.Builder
+		at := 0
+		for _, tok := range tokens {
+			number, err := strconv.Atoi(ref[tok[0]:tok[1]])
+			if err != nil {
+				continue
+			}
+			if m, ok := edit.moves[number]; ok {
+				to.WriteString(ref[at:tok[0]])
+				to.WriteString(strconv.Itoa(m.to))
+				at = tok[1]
+			}
+		}
+		to.WriteString(ref[at:])
+		if to.String() == ref {
+			continue
+		}
+		b.WriteString(line[last:span[0]])
+		b.WriteString(to.String())
+		last = span[1]
+		pairs = append(pairs, [2]string{ref, to.String()})
+	}
+	b.WriteString(line[last:])
+	return b.String(), pairs, kept
+}
+
+// mapsFaithfully reports whether ref, a bare card reference split into its number and dash tokens, keeps its meaning once each moved number becomes its new one.
+// It does not when it names the removed card, or when one of its ranges takes in the position a card is inserted at or removed from, since the range would then gain or lose a card.
+func (e referenceEdit) mapsFaithfully(ref string, tokens [][]int) bool {
+	previous, inRange := 0, false
+	for _, tok := range tokens {
+		number, err := strconv.Atoi(ref[tok[0]:tok[1]])
+		if err != nil {
+			inRange = true
+			continue
+		}
+		if e.removing && number == e.position {
+			return false
+		}
+		if inRange && previous < e.position && e.position <= number {
+			return false
+		}
+		previous, inRange = number, false
+	}
+	return true
+}
+
+// cardIndexLines returns a skip test for renumberReferences over overview that holds for each Card Index line.
+// overview has already been through renumberCardIndex, so its Card Index section is known to be present.
+func cardIndexLines(overview string) func(i int, line string) bool {
+	_, body, _, _ := splitFrontmatter(overview)
+	bodyLines := strings.Split(body, "\n")
+	headingIdx, end, _ := cardIndexBounds(bodyLines)
+	shift := len(strings.Split(overview, "\n")) - len(bodyLines)
+	return func(i int, line string) bool {
+		return i > shift+headingIdx && i < shift+end && cardIndexLineRe.MatchString(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "- ")))
+	}
 }
 
 // maskCardIDs blanks every card-id token of line for a card slugOf knows, so a card id is never read as a bare card number.
@@ -709,31 +763,4 @@ func maskCardIDs(line string, slugOf func(number int) (string, bool)) string {
 		}
 	}
 	return string(masked)
-}
-
-// namesOldNumber reports whether line holds a card reference naming a number in old.
-func namesOldNumber(line string, old map[int]bool) bool {
-	for _, ref := range cardMentionRe.FindAllString(line, -1) {
-		previous, inRange := 0, false
-		for _, token := range mentionNumberRe.FindAllString(ref, -1) {
-			n, err := strconv.Atoi(token)
-			if err != nil {
-				inRange = true
-				continue
-			}
-			if old[n] {
-				return true
-			}
-			if inRange {
-				for k := previous + 1; k < n; k++ {
-					if old[k] {
-						return true
-					}
-				}
-				inRange = false
-			}
-			previous = n
-		}
-	}
-	return false
 }

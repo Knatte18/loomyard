@@ -123,9 +123,11 @@
 // `lym loom insert-card <position> <slug> --intent <intent>`, `lym loom remove-card <position>` and `lym loom restore-renumber` are the sanctioned way to add or drop one card of the plan and renumber the cards after it.
 // A renumber moves each later card's file name prefix, heading number, explicit `Commit:` prefix and Card Index number, and writes a heading-only stub for an inserted card, which the agent fills with Edit or Write.
 // A card id naming a moved card, `<N>-<slug>` or its zero-padded file form `<NN>-<slug>`, is rewritten to the card's new number in the overview and every card file, since the slug pins which card it means.
+// A bare card reference, `card <N>`, a list such as `cards <N>, <M> and <K>` or a range `cards <N>–<M>`, is read against the numbering before the call and rewritten the same way.
+// A bare reference naming the removed card, or a range the inserted or removed card falls inside, has no faithful rewrite and is left as is.
 // The success envelope carries `plan_dir`, `moved`, `created` or `removed`, `rewritten_refs` and `prose_mentions`.
-// `rewritten_refs` holds one `file`, `line`, `from` and `to` per rewritten card id.
-// `prose_mentions` holds the lines that name a moved card by its bare old number; they are never rewritten, since a bare number may already mean the new numbering, so the agent checks each by hand.
+// `rewritten_refs` holds one `file`, `line`, `from` and `to` per rewritten card id or bare reference.
+// `prose_mentions` holds the lines left holding a bare reference with no faithful rewrite, which the agent fixes by hand.
 // `restore-renumber` reports `plan_dir`, `journal`, `restored` and `removed`.
 //
 // Each verb takes webster's state-mutation lease first and releases it before it prints, so no begin-batch records a batch between the bound check and the renumber.

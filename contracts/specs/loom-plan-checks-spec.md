@@ -153,7 +153,7 @@ The other PATTERN checks are *loomshed*'s, and run only in a worktree with a `PA
 
 ## Tests, docs and names
 
-- `edit-test-file` — a `_test.go` file self glyph under `Edit` or `Extends`; a path holding a segment the go tool ignores is exempt.
+- `edit-test-file` — a `_test.go` file self glyph under `Edit` or `Extends`; a path holding a segment the go tool ignores is exempt, and so is a file `lym quarry toc` lists with no symbol, such as one holding only blank-identifier vars, since no member glyph can name the edit.
   Way forward: name each test function, fake or helper the card changes as a member glyph under `**Edit:**`, declare each new one as a `**Create:**` handle on the package directory or `<dir>_test`, keep a new test file a `**Create:**` path, and for a header-only change such as a build constraint, name every member of the file.
 - `test-tier-unstated` *(loomshed)* — under `go`, a `**Create:**` `_test.go` file whose Intent lines name no valid tier.
   The tiers are the hub's `gate.yaml` tier keys, read as whole words on the Intent lines that name the file by path or base name; a line naming another test file counts toward that file too.

@@ -17,8 +17,8 @@ optionally `**Commit:**` (must start `N: `) and `**Verify:**`.
 An implementation card lists the implementation's member glyphs under `**Edit:**`, beside the test members it changes or the `**Create:**` handles of the tests it adds.
 A new test file is a `**Create:**` path, written only for a surface no existing test file covers.
 
-`**Edit:**` lists the member glyphs the card changes, and a file path only for a file with no symbol to name: a non-Go file, or a whole file the card creates or deletes.
-A `_test.go` path under `**Edit:**` is refused by `edit-test-file` in `{{.specs_dir}}/loom/loom-plan-checks-spec.md`, which holds the way forward.
+`**Edit:**` lists the member glyphs the card changes, and a file path only for a file with no symbol to name: a non-Go file, a file `lym quarry toc` lists with no symbol, or a whole file the card creates or deletes.
+A `_test.go` path with a symbol to name under `**Edit:**` is refused by `edit-test-file` in `{{.specs_dir}}/loom/loom-plan-checks-spec.md`, which holds the way forward.
 A card names an existing test function, fake or helper it changes as a member glyph, for example `internal/x#TestFoo` or `internal/x#fakeClock`.
 A new test function is a `**Create:**` declaration with a `plan:` handle whose unit is the package directory, or `<dir>_test` for an external test package, never a file, so the plan does not pin the file a new test goes in.
 A card whose new tests reuse an existing test's setup, or call existing test helpers or fakes, names those members as glyphs under `**Uses:**`.

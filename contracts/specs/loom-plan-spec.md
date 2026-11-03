@@ -222,8 +222,9 @@ Cards are numbered flat across the plan, from the overview's `first_card:` (defa
 The file prefix `NN` (zero-padded) equals the heading `N`.
 
 A card is inserted or removed with `lym loom insert-card` or `lym loom remove-card`, which move every later card by one in file prefix, heading, explicit `Commit:` prefix and Card Index number.
-They rewrite every card id naming a moved card, `<N>-<slug>` or `<NN>-<slug>`, so a card refers to another card by its card id.
-They report, and never rewrite, lines that name a moved number bare in prose.
+They rewrite every card id naming a moved card, `<N>-<slug>` or `<NN>-<slug>`, and every bare reference naming one, such as `card N` or `cards N–M`, each read against the numbering before the call.
+A bare reference naming the removed card, or a range the inserted or removed card falls inside, has no faithful rewrite, so the verbs leave it as it is and report its line.
+A card id naming a moved card is rewritten and listed under `rewritten_refs`; one naming the removed card is left as it is and is not listed under `prose_mentions`, which holds bare references only.
 
 The default commit subject is `N: <name>`, from the heading.
 An explicit `**Commit:**` must start with the card's `N: ` (`commit-subject-mismatch`), since the `N:` subjects are the resume trail: a fresh session reads from `git log` which card the last one reached, and a half-done card restarts from a clean tree.
