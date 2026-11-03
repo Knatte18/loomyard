@@ -5,11 +5,13 @@ package driftengine
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -20,6 +22,12 @@ import (
 
 // ErrBreakawayRefused marks a capture start Windows refused for breakaway when the caller admits no detached fallback.
 var ErrBreakawayRefused = errors.New("drift: the capture start was refused breakaway")
+
+// LastingFaultKey is the key the capture child sets true in its JSON error envelope when its error is one a fresh start in the same directory cannot change, such as a cwd its worktree does not resolve from.
+const LastingFaultKey = "lasting_fault"
+
+// childErrorMaxRunes bounds the child's error text a start failure carries, so a halt stays one readable line.
+const childErrorMaxRunes = 400
 
 // childSpawn describes one start of the capture child, told to the spawn seam.
 type childSpawn struct {
@@ -64,7 +72,7 @@ type SpawnRequest struct {
 
 // StartCapture starts `<executable> drift capture-child` detached in the anchored directory and returns its pid once the capture record carries that pid, in any state.
 // The child writes that record after its precondition held under the capture lock, so the caller moves the run on only after the precondition held.
-// It refuses while the capture lock reads held, and returns an error naming the child's log when the child ends, or the bound runs out, before the record.
+// It refuses while the capture lock reads held, and returns an error naming the child's log and the error the log ends on when the child ends, or the bound runs out, before the record.
 func StartCapture(req SpawnRequest) (int, error) {
 	held, err := ProbeLock(req.Paths.CaptureLock)
 	if err != nil {
@@ -135,18 +143,68 @@ func awaitRunningRecord(req SpawnRequest, child spawnedChild, childLog string) e
 	}
 }
 
-// startFailure builds the error of a capture child that did not record its start.
-// Under FallbackDetach, the CLI's form, it names the way forward; otherwise the calling row words its own halt around it, so it names the child's log alone.
+// startFailure builds the error of a capture child that did not record its start, carrying the error the child's log ends on.
+// Under FallbackDetach, the CLI's form, it names the way forward, and for an error the child marked lasting it offers no fresh capture, which would end the same way;
+// otherwise the calling row words its own halt around it, so it names the child's log alone.
 func startFailure(req SpawnRequest, childLog, what string) error {
-	if req.FallbackDetach {
-		return childNoRecordError{fmt.Sprintf("drift: the capture child %s; way forward: read %s, then, once lym drift status shows the capture lock free, run lym drift capture again, or lym drift defer followed by lym loom resume", what, childLog)}
+	report := readChildReport(childLog)
+	event := "drift: the capture child " + what
+	if report.text != "" {
+		event += ": " + report.text
 	}
-	return childNoRecordError{fmt.Sprintf("drift: the capture child %s; its log is %s", what, childLog)}
+	switch {
+	case !req.FallbackDetach:
+		return childNoRecordError{text: fmt.Sprintf("%s; its log is %s", event, childLog), lasting: report.lasting}
+	case report.lasting:
+		return childNoRecordError{text: fmt.Sprintf("%s; lym drift capture again starts the child the same way and cannot change this error; way forward: lym drift defer followed by lym loom resume, or a fix of the error's cause; its log is %s", event, childLog), lasting: true}
+	}
+	return childNoRecordError{text: fmt.Sprintf("%s; way forward: read %s, then, once lym drift status shows the capture lock free, run lym drift capture again, or lym drift defer followed by lym loom resume", event, childLog)}
+}
+
+// childReport is the failure the capture child's log records.
+type childReport struct {
+	// text is the child's error on one line, bounded by childErrorMaxRunes; empty when the log holds no error envelope.
+	text string
+	// lasting is true when the child marked its error with LastingFaultKey.
+	lasting bool
+}
+
+// readChildReport reads the last JSON error envelope of the capture child's log.
+// A child that wrote none, such as one that crashed, and a log that cannot be read report nothing, so the error names the log alone.
+func readChildReport(childLog string) childReport {
+	data, err := os.ReadFile(childLog)
+	if err != nil {
+		return childReport{}
+	}
+	var report childReport
+	for _, line := range strings.Split(string(data), "\n") {
+		var envelope map[string]any
+		if json.Unmarshal([]byte(strings.TrimSpace(line)), &envelope) != nil || envelope["ok"] != false {
+			continue
+		}
+		if text, ok := envelope["error"].(string); ok {
+			report = childReport{text: boundChildError(text), lasting: envelope[LastingFaultKey] == true}
+		}
+	}
+	return report
+}
+
+// boundChildError folds text onto one line and cuts it to childErrorMaxRunes, marking a cut with an ellipsis.
+func boundChildError(text string) string {
+	runes := []rune(strings.Join(strings.Fields(text), " "))
+	if len(runes) <= childErrorMaxRunes {
+		return string(runes)
+	}
+	return string(runes[:childErrorMaxRunes-1]) + "…"
 }
 
 // childNoRecordError is a started capture child that did not record its start.
 // A calling row tells it from an environment fault that kept the child from starting, since only a child that ran and failed is a capture halt.
-type childNoRecordError struct{ text string }
+type childNoRecordError struct {
+	text string
+	// lasting is true when the child marked its error as one a fresh start cannot change.
+	lasting bool
+}
 
 func (e childNoRecordError) Error() string { return e.text }
 

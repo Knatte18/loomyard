@@ -24,7 +24,7 @@ import (
 
 // TestDrift_RunsInTheAnchoredDirectory covers the main capture's child, the compare and the side capture of a hub anchored at a subdirectory:
 // each declared command records its working directory, and every one must be the anchored directory.
-// A capture child started anywhere but the anchored directory cannot resolve its worktree and never records its start.
+// A capture child started anywhere but the anchored directory cannot resolve its worktree, never records its start, and marks its error as lasting.
 func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -74,6 +74,9 @@ verify_max_runs: 3
 	}
 
 	writeStatus("Drift-Await", shedengine.StateBlocked)
+	if env := lymRun(t, bin, pair, "capture-child"); env.OK || !strings.Contains(env.Error, "does not equal the anchored directory") || env.Raw[driftengine.LastingFaultKey] != true {
+		t.Errorf("lym drift capture-child at the worktree root = %+v; want its cwd refused and marked %s", env, driftengine.LastingFaultKey)
+	}
 	if env := lymRun(t, bin, anchor, "capture"); !env.OK {
 		t.Fatalf("lym drift capture: %s", env.Error)
 	}

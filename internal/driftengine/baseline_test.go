@@ -178,9 +178,11 @@ func TestDriftBaseline(t *testing.T) {
 		want       shedengine.Outcome
 		wantErr    string
 		wantReason []string
-		wantAgents int
-		wantStarts int
-		wantRuns   int
+		// wantNoReason lists text the reason must not hold.
+		wantNoReason []string
+		wantAgents   int
+		wantStarts   int
+		wantRuns     int
 		// wantCommit nil wants no commit at all.
 		wantCommit []string
 		// wantDeferrable is true for a Stuck that lym drift defer settles.
@@ -334,6 +336,19 @@ func TestDriftBaseline(t *testing.T) {
 			wantDeferrable: true,
 		},
 		{
+			name: "a child that ended on an error a resume cannot change is a capture halt offering only defer and a fix",
+			setup: func(f *baselineFixture) {
+				f.startErr = childNoRecordError{text: "drift: the capture child ended before it recorded its start: cwd /w does not equal the anchored directory /w/backend; its log is child.log", lasting: true}
+			},
+			want:           shedengine.Stuck,
+			wantReason:     []string{CaptureHaltPrefix, "does not equal the anchored directory", "child.log", "lym loom resume cannot change this error", "lym drift defer followed by lym loom resume", "fix of the error's cause"},
+			wantNoReason:   []string{"lym loom resume to capture again"},
+			wantAgents:     1,
+			wantStarts:     1,
+			wantCommit:     scopeAndReport,
+			wantDeferrable: true,
+		},
+		{
 			name:       "an environment fault starting the capture is an error that offers no defer",
 			setup:      func(f *baselineFixture) { f.startErr = errors.New("drift: resolve this binary: no such file") },
 			wantErr:    "resolve this binary",
@@ -406,6 +421,11 @@ func TestDriftBaseline(t *testing.T) {
 			for _, want := range tt.wantReason {
 				if !strings.Contains(pointer.Reason, want) {
 					t.Errorf("Call() reason = %q; want it to name %q", pointer.Reason, want)
+				}
+			}
+			for _, unwanted := range tt.wantNoReason {
+				if strings.Contains(pointer.Reason, unwanted) {
+					t.Errorf("Call() reason = %q; want it without %q", pointer.Reason, unwanted)
 				}
 			}
 			if strings.Contains(pointer.Reason, "remov") {

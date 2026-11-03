@@ -4,6 +4,7 @@ package driftengine
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,7 +54,7 @@ func writeRunning(t *testing.T, p Paths, pid int) {
 	}
 }
 
-// TestStartCapture covers the child's argv and run-process record, the wait for the child's own running record, a child that ends or stalls before it, a lock held before the start, and both breakaway branches.
+// TestStartCapture covers the child's argv and run-process record, the wait for the child's own running record, a child that ends or stalls before it with the error its log ends on, a lock held before the start, and both breakaway branches.
 func TestStartCapture(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -102,21 +103,67 @@ func TestStartCapture(t *testing.T) {
 		}
 	})
 
+	lastingEnvelope := fmt.Sprintf(`{"error":"cwd /w does not equal the anchored directory /w/backend","%s":true,"ok":false}`, LastingFaultKey)
 	failures := []struct {
 		name     string
 		fallback bool
 		exits    bool
-		want     []string
+		// log is what the child writes to its log before it ends.
+		log         string
+		want        []string
+		wantNot     []string
+		wantLasting bool
 	}{
-		{"a child that exits without its record, no fallback", false, true, []string{"ended before it recorded its start", "its log is", "capture-child-"}},
-		{"a child that exits without its record, with fallback", true, true, []string{"ended before it recorded its start", "capture-child-", "lym drift capture again", "lym drift defer followed by lym loom resume"}},
-		{"a child that stalls past the record bound, no fallback", false, false, []string{"did not record its start within", "its log is"}},
-		{"a child that stalls past the record bound, with fallback", true, false, []string{"did not record its start within", "lym drift capture again"}},
+		{name: "a child that exits without its record, no fallback", exits: true, want: []string{"ended before it recorded its start", "its log is", "capture-child-"}},
+		{name: "a child that exits without its record, with fallback", fallback: true, exits: true, want: []string{"ended before it recorded its start", "capture-child-", "run lym drift capture again", "lym drift defer followed by lym loom resume"}},
+		{name: "a child that stalls past the record bound, no fallback", want: []string{"did not record its start within", "its log is"}},
+		{name: "a child that stalls past the record bound, with fallback", fallback: true, want: []string{"did not record its start within", "lym drift capture again"}},
+		{
+			name:  "a child that ends on an error envelope carries its error on one line",
+			exits: true,
+			log:   "time=t level=INFO msg=start\n" + `{"error":"drift config key \"capture\":\n  missing","ok":false}` + "\n",
+			want:  []string{`ended before it recorded its start: drift config key "capture": missing; its log is`},
+		},
+		{
+			name:        "a lasting error offers no fresh capture, with fallback",
+			fallback:    true,
+			exits:       true,
+			log:         lastingEnvelope + "\n",
+			want:        []string{"does not equal the anchored directory", "cannot change this error", "lym drift defer followed by lym loom resume", "fix of the error's cause"},
+			wantNot:     []string{"run lym drift capture again"},
+			wantLasting: true,
+		},
+		{
+			name:        "a lasting error is marked for the calling row, no fallback",
+			exits:       true,
+			log:         lastingEnvelope + "\n",
+			want:        []string{"does not equal the anchored directory", "its log is"},
+			wantLasting: true,
+		},
+		{
+			name:  "the last error envelope wins and an ok envelope is skipped",
+			exits: true,
+			log: fmt.Sprintf(`{"error":"first error","%s":true,"ok":false}`, LastingFaultKey) + "\n" +
+				`{"error":"second error","ok":false}` + "\n" +
+				`{"error":"not an error","ok":true}` + "\n",
+			want:    []string{"ended before it recorded its start: second error;"},
+			wantNot: []string{"first error", "not an error"},
+		},
+		{
+			name:    "an overlong error is cut to the bound on a rune",
+			exits:   true,
+			log:     `{"error":"` + strings.Repeat("å", 2*childErrorMaxRunes) + `","ok":false}`,
+			want:    []string{strings.Repeat("å", childErrorMaxRunes-1) + "…"},
+			wantNot: []string{strings.Repeat("å", childErrorMaxRunes)},
+		},
 	}
 	for _, tt := range failures {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			f := newSpawnFixture(t, func(*spawnFixture, childSpawn) (<-chan struct{}, error) {
+			f := newSpawnFixture(t, func(_ *spawnFixture, spec childSpawn) (<-chan struct{}, error) {
+				if _, err := spec.log.WriteString(tt.log); err != nil {
+					t.Errorf("write the child log: %v", err)
+				}
 				exited := make(chan struct{})
 				if tt.exits {
 					close(exited)
@@ -134,6 +181,15 @@ func TestStartCapture(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("StartCapture() error = %q; want it to contain %q", err.Error(), want)
 				}
+			}
+			for _, unwanted := range tt.wantNot {
+				if strings.Contains(err.Error(), unwanted) {
+					t.Errorf("StartCapture() error = %q; want it without %q", err.Error(), unwanted)
+				}
+			}
+			var noRecord childNoRecordError
+			if !errors.As(err, &noRecord) || noRecord.lasting != tt.wantLasting {
+				t.Errorf("StartCapture() error = %#v; want a childNoRecordError with lasting = %v", err, tt.wantLasting)
 			}
 		})
 	}

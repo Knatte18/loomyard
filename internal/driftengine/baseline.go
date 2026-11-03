@@ -35,6 +35,7 @@ func NewDriftBaseline(name string, row Row, deps Deps) *DriftBaseline {
 // Otherwise the capture is a detached child and the pass returns once the child's record exists;
 // when a detached start is refused breakaway, the capture runs in this process.
 // A failed or refused capture, or a capture child that ended or stalled before it recorded its start, is a Stuck whose reason opens with CaptureHaltPrefix and names its ways forward, `lym drift defer` among them.
+// A child's halt carries the error its log ends on, and for an error the child marked lasting it drops the resume that captures again, naming only `lym drift defer` and a fix of the cause.
 // A start that fails for another reason, such as an unresolvable binary, an unwritable child log or a held capture lock, is an error.
 // Only the scope record and baseline.md are committed while a detached capture may still write its logs; all of the durable drift directory is committed once a capture has ended in this process.
 func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
@@ -145,6 +146,9 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 	switch {
 	case startErr == nil:
 		return shedengine.Done, done, nil
+	case errors.As(startErr, &noRecord) && noRecord.lasting:
+		reason := fmt.Sprintf("%sthe baseline capture did not start: %v; lym loom resume cannot change this error, since it starts the capture child the same way; way forward: lym drift defer followed by lym loom resume to go on with regression deferred, or a fix of the error's cause", CaptureHaltPrefix, startErr)
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	case errors.As(startErr, &noRecord):
 		reason := fmt.Sprintf("%sthe baseline capture did not start: %v; way forward: lym loom resume to capture again, or lym drift defer followed by lym loom resume to go on with regression deferred", CaptureHaltPrefix, startErr)
 		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil

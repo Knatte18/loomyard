@@ -31,6 +31,7 @@
 // RunSideCapture takes no lock and writes no record: it runs the same command into the next free numbered directory under the side directory.
 // CheckMainCapture is the main capture's precondition: the run is at Drift-Baseline, or blocked at Drift-Await, HEAD equals the branch point and the tracked tree is clean; each refusal names its way forward.
 // StartCapture spawns `drift capture-child` detached in the anchored directory, where a lym verb's cwd must be, with breakaway, registers it under the run's processes with role `capture` and returns its pid only once the capture record carries that pid, in any state, since a capture can fail between two reads.
+// A child that ends or stalls before that record is an error carrying the last JSON error envelope's error from the child's log, folded onto one bounded line, and whether the child marked it with LastingFaultKey as one a fresh start in the same directory cannot change.
 // A start Windows refuses for breakaway is retried plain-detached when the caller sets FallbackDetach, and is ErrBreakawayRefused otherwise.
 // ProbeLock reads whether an OS lock is held without creating a directory, and Active reads the capture lock and the compare marker.
 //
@@ -80,7 +81,7 @@
 // Scope off, a set awaited_at and a passed capture take no capture; a capture holding the lock is left running.
 // Otherwise it captures again: an undeclared capture command is a Stuck naming `lym config drift`, and a refusal of the capture's precondition is a Stuck whose reason opens with CaptureHaltPrefix and names `lym drift defer` with `lym loom resume`, and on a dirty tree restoring or stashing the listed paths.
 // The capture is the detached child: the pass returns Done once the child's record exists, and the recipe's Drift-Await row waits for the capture to end;
-// a child that does not start is a Stuck opening with CaptureHaltPrefix and naming `lym loom resume` and `lym drift defer` with `lym loom resume`;
+// a child that does not start is a Stuck opening with CaptureHaltPrefix and carrying the child's error, naming `lym loom resume` and `lym drift defer` with `lym loom resume`, or, for an error the child marked lasting, saying a resume cannot change it and naming only `lym drift defer` with `lym loom resume` and a fix of the cause;
 // when Windows refuses the detached start breakaway, the capture runs in the step's own process, so its command dies with the step.
 // A failed capture is a Stuck opening with CaptureHaltPrefix and naming the log, `lym drift capture` with `lym loom resume`, and `lym drift defer` with `lym loom resume`; the row carries no on_stuck, so each Stuck halts the run.
 // Every pass commits through Deps.Commit on its way out: the scope record and baseline.md while a detached capture may still write its logs, and all of the durable drift directory once a capture has ended in this process.

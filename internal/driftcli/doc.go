@@ -17,6 +17,7 @@
 //
 // `capture` checks the main capture's precondition, then starts `<this binary> drift capture-child` detached in the worktree's anchored directory with breakaway, falling back to a plain detached start where Windows refuses breakaway, and returns once the child's capture record reads running.
 // The child holds the capture's named job, runs the capture under the capture lock, re-checks the precondition under that lock and releases the job as its last act.
+// A child whose cwd is outside a git repository or is not the anchored directory marks its error envelope with driftengine.LastingFaultKey, since a fresh start runs in the same directory and fails the same way.
 // It writes nothing to its log once the capture has returned, because the Drift-Await row may commit the log once the lock is free.
 // Under go test the start returns an error and spawns nothing.
 //

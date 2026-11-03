@@ -16,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/proc"
 )
@@ -388,6 +389,11 @@ func runCaptureChild(cmd *cobra.Command) {
 
 	w, err := openWorktree(cmd)
 	if err != nil {
+		// Only a refusal fixed by the directory is lasting; a read error on the anchor marker may pass on a fresh start.
+		if errors.Is(err, lymcwd.ErrNotAGitRepo) || errors.Is(err, lymcwd.ErrCwdOutsideAnchor) {
+			clihelp.SetExit(ctx, output.ErrFields(out, err.Error(), map[string]any{driftengine.LastingFaultKey: true}))
+			return
+		}
 		fail(err)
 		return
 	}
