@@ -21,6 +21,9 @@ Read the task's subject: {{.subject_reading}}.
 It is the whole statement of the change the task makes.
 Also read the repository's README and its test setup, which name how the repository is built and tested.
 
+When the task states an output invariant, such as that every result stays unchanged, that it preserves behavior or that it is a pure refactoring, the invariant wins over any part of its design that would move output.
+Expect no drift from that design, and never resolve the contradiction yourself: name it in your report as a risk.
+
 ## Step 2 — Decide the scope
 
 The regression suite records a profile of the code's behavior on the task's branch point, and a later compare checks the task's code against it.
@@ -34,7 +37,7 @@ Otherwise choose the scope that fits what the task changes:
 
 - `off` for a task the suite cannot reach, as above.
 - `full` for every task the suite reaches, a pure refactoring and a task that changes behavior on purpose alike.
-  Intended drift stays in the compare: the verify agent accepts each test that drifts as you expect with a reason, and any other line that moves in the same test still shows as a regression.
+  Intended drift stays in the compare: the verify agent judges each drifted test against the task and your expectation, and any other line that moves in the same test still shows as a regression.
 - `partial` only for a task that makes some tests meaningless or nondeterministic, such as a test of a feature the task removes or one whose output the task makes vary from run to run; name each such test with `--skip <test>`, and leave the rest in the compare.
 
 Never skip a test because the task changes its output on purpose: a skipped test is never compared, so a regression in it goes unseen.
@@ -48,7 +51,10 @@ The verb refuses a second call, so call it once: when it refuses because a scope
 ## Step 4 — Write the baseline report
 
 Write your reasoning and the drift you expect, freeform, to `{{.baseline_path}}`.
-Name each test you expect to drift, the lines or values in it that will change and why, and say that every other line of it must stay as it is, so the agent that judges the compare later accepts the intended drift with a reason and treats any other drift as a regression.
+Name each test you expect to drift, the lines or values in it you expect to change and why, and say that every other line of it must stay as it is.
+State what you expect and why, never what will be accepted: write no acceptance reason and no tolerance under which drift passes.
+Judging and accepting drift belong to the verify agent and the run's parent.
+Under a stated output invariant, write that you expect no drift, and name each contradiction between the invariant and the design as a risk: what the design would move, and that the invariant says it must not.
 Name each skipped test and why it is skipped.
 When the scope was already recorded, write the report against that scope.
 
