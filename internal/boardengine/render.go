@@ -10,7 +10,7 @@
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file and the project's brief and, for a beam, its owner;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug with a Sketch link to the decision record under it for a discussed entry, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
 // every Tasks table adds the recipe after the slug, the configured default recipe for an empty one;
-// Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the open entries each waits on.
+// Running adds where its run stands and the entry's recorded owner machine, and Ready and the layers add the handles of the entries each waits on that are not done, a project judged by its landing members.
 // The section names, their meaning lines and the table columns are declared here alone;
 // the data holds only the kind and the labels.
 // No I/O — the caller writes the files.
@@ -300,27 +300,31 @@ func readmeOwners(ordered []TaskWithLayer, primeOwner string) func(slug string) 
 
 // boardView is the whole board as every board file reads it: the entries in RenderOrder's order, with the facts each file looks up across projects.
 type boardView struct {
-	ordered    []TaskWithLayer
-	bySlug     map[string]TaskWithLayer
-	primeOwner string
-	ownerOf    func(slug string) string
-	out        Outputs
-	now        time.Time
+	ordered      []TaskWithLayer
+	bySlug       map[string]TaskWithLayer
+	dependencies Dependencies
+	primeOwner   string
+	ownerOf      func(slug string) string
+	out          Outputs
+	now          time.Time
 }
 
 // newBoardView indexes ordered for rendering the board files with the given prime owner and outputs, every age as of now.
 func newBoardView(ordered []TaskWithLayer, primeOwner string, out Outputs, now time.Time) boardView {
 	bySlug := make(map[string]TaskWithLayer, len(ordered))
+	entries := make([]Task, 0, len(ordered))
 	for _, twl := range ordered {
 		bySlug[twl.Slug] = twl
+		entries = append(entries, twl.Task)
 	}
 	return boardView{
-		ordered:    ordered,
-		bySlug:     bySlug,
-		primeOwner: primeOwner,
-		ownerOf:    readmeOwners(ordered, primeOwner),
-		out:        out,
-		now:        now,
+		ordered:      ordered,
+		bySlug:       bySlug,
+		dependencies: NewDependencies(entries),
+		primeOwner:   primeOwner,
+		ownerOf:      readmeOwners(ordered, primeOwner),
+		out:          out,
+		now:          now,
 	}
 }
 
@@ -583,14 +587,14 @@ func (b boardView) childProjects(project Task) []TaskWithLayer {
 	return children
 }
 
-// afterCell is the handles of the open entries t depends on, one per line in depends_on order, a dependency the board holds no handle for shown by its slug.
+// afterCell is the handles of the entries t depends on that are not done, a project judged by its landing members too, one per line in depends_on order, a dependency the board holds no handle for shown by its slug.
 func (b boardView) afterCell(t Task) string {
 	var after []string
 	for _, dep := range t.DependsOn {
 		entry, found := b.bySlug[dep]
 		switch {
-		case found && isDone(entry.Task):
-			// A done dependency no longer holds t back.
+		case found && b.dependencies.met(dep):
+			// A met dependency no longer holds t back.
 		case found && entry.Handle != "":
 			after = append(after, cellText(entry.Handle))
 		default:

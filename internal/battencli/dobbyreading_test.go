@@ -88,9 +88,11 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	t.Parallel()
 	boardDir := t.TempDir()
 	entries := strings.Join([]string{
-		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep"],"notify_on_land":true}`,
+		`{"id":0,"slug":"released","title":"R","kind":"task","labels":["bug"],"depends_on":["open-dep","done-dep","pruned-dep","beam-dep"],"notify_on_land":true}`,
 		`{"id":1,"slug":"open-dep","title":"O","kind":"task","labels":["bug"],"status":"draft"}`,
 		`{"id":2,"slug":"done-dep","title":"D","kind":"task","labels":["bug"],"status":"done"}`,
+		`{"id":3,"slug":"beam-dep","title":"B","kind":"project","labels":["bug"],"beam":true,"status":"running · Beam-Await"}`,
+		`{"id":4,"slug":"beam-member","title":"M","kind":"task","labels":["bug"],"project":"beam-dep","status":"done"}`,
 	}, ",")
 	content := `{"version":1,"entries":[` + entries + `]}`
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
@@ -109,7 +111,7 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 		bySlug[view.Slug] = view
 	}
 	released := bySlug["released"]
-	if want := []string{"open-dep"}; !slices.Equal(released.PendingDependencies, want) {
+	if want := []string{"open-dep", "beam-dep"}; !slices.Equal(released.PendingDependencies, want) {
 		t.Errorf("DobbyTasks() released PendingDependencies = %v; want %v", released.PendingDependencies, want)
 	}
 	if released.Parent != "beam-a" {

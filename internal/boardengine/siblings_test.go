@@ -177,6 +177,26 @@ func TestWriteSiblings(t *testing.T) {
 			act:  setDeps("X", "D", "D"), want: []boardengine.Sibling{pair},
 		},
 		{
+			name: "a dependency on a project whose member an open sibling waits on",
+			seed: []map[string]any{siblingEntry("P", nil, map[string]any{"kind": "project"}), siblingEntry("M", nil, map[string]any{"project": "P"}), siblingEntry("X", board, nil), siblingEntry("Y", board, map[string]any{"depends_on": []string{"M"}})},
+			act:  setDeps("X", "P"), want: []boardengine.Sibling{{Task: "X", Sibling: "Y", Deps: []string{"P"}, Labels: board}},
+		},
+		{
+			name: "a dependency on a member of a project an open sibling waits on",
+			seed: []map[string]any{siblingEntry("P", nil, map[string]any{"kind": "project"}), siblingEntry("M", nil, map[string]any{"project": "P"}), siblingEntry("X", board, nil), siblingEntry("Y", board, map[string]any{"depends_on": []string{"P"}})},
+			act:  setDeps("X", "M"), want: []boardengine.Sibling{{Task: "X", Sibling: "Y", Deps: []string{"M"}, Labels: board}},
+		},
+		{
+			name: "a dependency on a project whose member a sibling waits on is done",
+			seed: []map[string]any{siblingEntry("P", nil, map[string]any{"kind": "project"}), siblingEntry("M", nil, map[string]any{"project": "P", "status": "done"}), siblingEntry("O", nil, map[string]any{"project": "P"}), siblingEntry("X", board, nil), siblingEntry("Y", board, map[string]any{"depends_on": []string{"M"}})},
+			act:  setDeps("X", "P"),
+		},
+		{
+			name: "a dependency on a project whose every member is done is met and not added",
+			seed: []map[string]any{siblingEntry("P", nil, map[string]any{"kind": "project"}), siblingEntry("M", nil, map[string]any{"project": "P", "status": "done"}), siblingEntry("X", board, nil), siblingEntry("Y", board, map[string]any{"depends_on": []string{"P"}})},
+			act:  setDeps("X", "P"),
+		},
+		{
 			name: "note refused a dependency",
 			seed: []map[string]any{siblingEntry("D", nil, nil), siblingEntry("Y", board, waitsOnD), siblingEntry("N", nil, map[string]any{"kind": "note"})},
 			act:  setDeps("N", "D"), refused: true,

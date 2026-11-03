@@ -280,6 +280,7 @@ func readmeFixture() []boardengine.Task {
 // A dependency naming no board entry shows in the After cell as a code span of its slug, and a draft task in a project file stands in its own Draft subsection after Ready.
 // A fifth row pins that a beam with a recorded owner on a board with no prime owner shows that owner in its own file.
 // A sixth row pins that a chain of nested projects stops deepening its headings at level six.
+// A seventh row pins that a task depending on an open project shows the project's handle under After, and one depending on a plain project whose every landing member is done leaves After empty and stands in Ready.
 func TestRenderReadmeGolden(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -856,6 +857,80 @@ func TestRenderReadmeGolden(t *testing.T) {
 				"\n" +
 				rootProjectHeading(2, 0, "none recorded") +
 				emptyProjectEntries(3),
+		},
+		{
+			name: "a project dependency shows by handle while the project is open and drops once every landing member is done",
+			tasks: []boardengine.Task{
+				{ID: 1, Handle: "P1", Slug: "open", Title: "Open", Kind: boardengine.KindProject},
+				{ID: 2, Handle: "P2", Slug: "finished", Title: "Finished", Kind: boardengine.KindProject},
+				{ID: 3, Handle: "T1", Slug: "member", Title: "Member", Kind: boardengine.KindTask, Project: "finished", Status: stringPtr("done")},
+				{ID: 4, Handle: "T2", Slug: "after-open", Title: "After open", Kind: boardengine.KindTask, DependsOn: []string{"open"}},
+				{ID: 5, Handle: "T3", Slug: "after-finished", Title: "After finished", Kind: boardengine.KindTask, DependsOn: []string{"finished"}},
+			},
+			want: "# Board\n" +
+				"\n" +
+				"Rendered 2026-10-12 09:30 UTC; every age below is as of then.\n" +
+				"Prime owner: none recorded.\n" +
+				"\n" +
+				"Tasks are grouped by dependency layer and notes by type.\n" +
+				"An entry waits only on the open entries it names under After, so the entries in one layer can run in parallel.\n" +
+				"\n" +
+				"## [P1 Open](project-open.md) (0)\n" +
+				"\n" +
+				"`open` · Owner none recorded\n" +
+				"\n" +
+				emptyProjectEntries(3) +
+				"\n" +
+				"## [P2 Finished](project-finished.md) (0)\n" +
+				"\n" +
+				"`finished` · Owner none recorded\n" +
+				"\n" +
+				"### Tasks (0)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"#### Ready (0)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"_None._\n" +
+				"\n" +
+				"### Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n" +
+				"\n" +
+				"### Done (1)\n" +
+				"\n" +
+				"Finished, awaiting `lym board prune --apply`.\n" +
+				"\n" +
+				"| # | Entry | Slug | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- |\n" +
+				"| T1 | **Member** | `member` |  |  |\n" +
+				"\n" +
+				rootProjectHeading(2, 2, "none recorded") +
+				"### Tasks (2)\n" +
+				"\n" +
+				"Concrete and claimable; only a task can run.\n" +
+				"\n" +
+				"#### Ready (1)\n" +
+				"\n" +
+				"Waits on nothing open; can start now.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T3 | **After finished** | `after-finished` | tapestry |  |  |  |\n" +
+				"\n" +
+				"#### Layer A (1)\n" +
+				"\n" +
+				"Waits only on Running, Ready or Draft entries.\n" +
+				"\n" +
+				"| # | Task | Slug | Recipe | After | Age<br>Revised | Labels |\n" +
+				"| --- | --- | --- | --- | --- | --- | --- |\n" +
+				"| T2 | **After open** | `after-open` | tapestry | P1 |  |  |\n" +
+				"\n" +
+				"### Notes (0)\n" +
+				"\n" +
+				"Not tasks: ideas and observations, merged into a task when one is promoted.\n",
 		},
 	}
 	for _, tt := range tests {

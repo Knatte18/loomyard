@@ -1,4 +1,4 @@
-// project.go — the write rules that keep a project's membership and its dependents consistent.
+// project.go — the write rules that keep a project's membership consistent.
 //
 // checkProjectRules judges the entries a write leaves against the entries as loaded, inside the write critical section.
 
@@ -7,7 +7,6 @@ package boardengine
 import (
 	"fmt"
 	"slices"
-	"strings"
 )
 
 // checkProjectRules refuses a write that leaves a project in a state its rules forbid.
@@ -27,13 +26,6 @@ func checkProjectRules(loaded, after []Task, pairExists func(slug string) bool) 
 
 	for _, task := range after {
 		before, existed := loadedBySlug[task.Slug]
-		if !existed || !slices.Equal(before.DependsOn, task.DependsOn) {
-			for _, dep := range task.DependsOn {
-				if afterBySlug[dep].Kind == KindProject {
-					return dependsOnProjectError(task.Slug, dep, after)
-				}
-			}
-		}
 		if (!existed || before.Project != task.Project) && task.Project != "" {
 			if err := checkProjectField(task, afterBySlug); err != nil {
 				return err
@@ -125,18 +117,4 @@ func checkOrderField(project Task, afterBySlug map[string]Task) error {
 		}
 	}
 	return nil
-}
-
-// dependsOnProjectError refuses entry's dependency on project, naming the project's task members as what to depend on and set-deps as the way to drop it.
-func dependsOnProjectError(entry, project string, entries []Task) error {
-	var members []string
-	for _, task := range entries {
-		if task.Project == project && task.Kind == KindTask {
-			members = append(members, task.Slug)
-		}
-	}
-	if len(members) == 0 {
-		return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project, which has no task member yet: drop the dependency with `lym board set-deps`", entry, project)
-	}
-	return fmt.Errorf("entry %q depends on project %q, and nothing depends on a project: depend on its members (%s) instead, or drop the dependency with `lym board set-deps`", entry, project, strings.Join(members, ", "))
 }

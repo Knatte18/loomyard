@@ -265,7 +265,7 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 // DobbyTasks reads the local board under boardDir as TaskViews.
 // Only a released task, one with an empty status, gets its parent worktree and owner read; the others carry neither.
 // A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets; a run status that does not read holds nothing.
-// A dependency no longer on the board was pruned as done.
+// A dependency is pending until its entry is done, whatever its kind, a plain project also once every landing member of it is done, and a dependency no longer on the board was pruned as done.
 func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
 	tasks, err := boardengine.ReadTasks(boardDir)
 	if err != nil {
@@ -279,18 +279,11 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	if err != nil {
 		return nil, err
 	}
-	statusOf := make(map[string]*string, len(tasks))
-	for _, task := range tasks {
-		statusOf[task.Slug] = task.Status
-	}
+	dependencies := boardengine.NewDependencies(tasks)
 	views := make([]dobbyengine.TaskView, 0, len(tasks))
 	for _, task := range tasks {
 		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand, Front: task.Front, Project: task.Project}
-		for _, dep := range task.DependsOn {
-			if status, present := statusOf[dep]; present && (status == nil || *status != "done") {
-				view.PendingDependencies = append(view.PendingDependencies, dep)
-			}
-		}
+		view.PendingDependencies = dependencies.Pending(task)
 		if task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status) {
 			parent, err := parents.Of(task.Slug)
 			if err != nil {

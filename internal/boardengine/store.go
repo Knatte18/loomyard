@@ -383,44 +383,28 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		}
 	}
 
-	adjacency := make(map[string][]string)
-	for _, t := range snapshot {
-		if t.Slug == incoming.Slug {
-			adjacency[t.Slug] = incoming.DependsOn
-		} else {
-			adjacency[t.Slug] = t.DependsOn
+	projected := slices.Clone(snapshot)
+	if index := slices.IndexFunc(projected, func(t Task) bool { return t.Slug == incoming.Slug }); index >= 0 {
+		projected[index] = incoming
+	} else {
+		projected = append(projected, incoming)
+	}
+	// A project waits on its landing members, so a dependency on a project that one of them leads back to is a cycle.
+	dependencies := NewDependencies(projected)
+	adjacency := make(map[string][]string, len(projected))
+	membership := make(map[string][]string, len(projected))
+	for _, t := range projected {
+		adjacency[t.Slug] = dependencies.waitsOn(t)
+		if t.Kind == KindProject {
+			membership[t.Slug] = dependencies.members[t.Slug]
 		}
 	}
-	if _, exists := adjacency[incoming.Slug]; !exists {
-		adjacency[incoming.Slug] = incoming.DependsOn
-	}
 
-	color := make(map[string]string) // "white", "gray", "black"
-	for slug := range adjacency {
-		color[slug] = "white"
-	}
-
-	var dfs func(slug string) error
-	dfs = func(slug string) error {
-		if color[slug] == "black" {
-			return nil
+	// A cycle made of project membership alone is left to checkProjectRules, whose refusal names the project field to correct.
+	if hit, cyclic := findCycle(adjacency, incoming.Slug); cyclic {
+		if _, membershipOnly := findCycle(membership, incoming.Slug); !membershipOnly {
+			return fmt.Errorf("cycle detected: %q -> %q", incoming.Slug, hit)
 		}
-		if color[slug] == "gray" {
-			return fmt.Errorf("cycle detected: %q -> %q", incoming.Slug, slug)
-		}
-
-		color[slug] = "gray"
-		for _, dep := range adjacency[slug] {
-			if err := dfs(dep); err != nil {
-				return err
-			}
-		}
-		color[slug] = "black"
-		return nil
-	}
-
-	if err := dfs(incoming.Slug); err != nil {
-		return err
 	}
 
 	if incoming.Isolated {
@@ -437,6 +421,33 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 		return validateLabels(incoming, *s.vocab)
 	}
 	return nil
+}
+
+// findCycle walks adjacency depth-first from start and reports the first slug it meets again on its own path.
+func findCycle(adjacency map[string][]string, start string) (string, bool) {
+	const (
+		onPath   = 1
+		finished = 2
+	)
+	state := make(map[string]int, len(adjacency))
+	var walk func(slug string) (string, bool)
+	walk = func(slug string) (string, bool) {
+		switch state[slug] {
+		case finished:
+			return "", false
+		case onPath:
+			return slug, true
+		}
+		state[slug] = onPath
+		for _, next := range adjacency[slug] {
+			if hit, cyclic := walk(next); cyclic {
+				return hit, true
+			}
+		}
+		state[slug] = finished
+		return "", false
+	}
+	return walk(start)
 }
 
 func isDone(t Task) bool {

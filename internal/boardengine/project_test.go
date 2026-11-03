@@ -42,50 +42,74 @@ func seedBoardJSON(t *testing.T, boardPath string, entries ...string) {
 	}
 }
 
-// TestProjectRules pins that a write setting or changing a task's depends_on to a project is refused naming the project's task members,
-// and that a stored dependency on a project takes any write that leaves it unchanged.
-func TestProjectRules(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
+// newDependencyBoard returns a board holding proj, an open project with the member task member, and outsider, a task under no project.
+func newDependencyBoard(t *testing.T) *boardengine.Board {
+	t.Helper()
 	var boardPath string
 	b := newProjectBoard(t, func(cfg *boardengine.Config) { boardPath = cfg.Path })
 	seedBoardJSON(t, boardPath,
 		`{"id":0,"slug":"proj","title":"Proj","kind":"project","labels":["bug"]}`,
 		`{"id":1,"slug":"member","title":"Member","kind":"task","labels":["bug"],"project":"proj"}`,
-		`{"id":2,"slug":"stale","title":"Stale","kind":"task","labels":["bug"],"depends_on":["proj"],"status":"done"}`,
+		`{"id":2,"slug":"outsider","title":"Outsider","kind":"task","labels":["bug"]}`,
 	)
+	return b
+}
 
+// TestProjectDependencies pins that every write path may make a task depend on a project,
+// and that a dependency leading from a project's member back to the project is refused as a cycle.
+func TestProjectDependencies(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
 	writes := []struct {
-		name  string
-		write func() error
+		name    string
+		written string
+		write   func(b *boardengine.Board) error
 	}{
-		{"an upsert of a new task", func() error {
+		{"AnUpsertOfANewTask", "fresh", func(b *boardengine.Board) error {
 			_, err := b.UpsertTask(map[string]any{"slug": "fresh", "kind": "task", "labels": bugLabels, "depends_on": []string{"proj"}})
 			return err
 		}},
-		{"set-deps", func() error {
-			_, err := b.SetDeps("member", []string{"proj"})
+		{"SetDeps", "outsider", func(b *boardengine.Board) error {
+			_, err := b.SetDeps("outsider", []string{"proj"})
 			return err
 		}},
-		{"a batch", func() error {
+		{"ABatch", "fresh", func(b *boardengine.Board) error {
 			_, err := b.UpsertTasksBatch([]map[string]any{{"slug": "fresh", "kind": "task", "labels": bugLabels, "depends_on": []string{"proj"}}})
 			return err
 		}},
 	}
 	for _, tt := range writes {
-		err := tt.write()
-		if err == nil || !strings.Contains(err.Error(), `"proj"`) || !strings.Contains(err.Error(), "member") || !strings.Contains(err.Error(), "set-deps") {
-			t.Errorf("%s: error = %v; want a refusal naming proj, its member and set-deps", tt.name, err)
-		}
-	}
-	if got, _, err := b.GetTask("fresh"); err != nil || got.Slug != "" {
-		t.Errorf("GetTask(fresh) = %+v, %v; want no entry, since every refused write left the board as it was", got, err)
+		t.Run("Accepted_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			b := newDependencyBoard(t)
+			if err := tt.write(b); err != nil {
+				t.Fatalf("write error = %v; want nil", err)
+			}
+			got, _, err := b.GetTask(tt.written)
+			if err != nil || !slices.Equal(got.DependsOn, []string{"proj"}) {
+				t.Errorf("GetTask(%s) depends_on = %v, %v; want [proj]", tt.written, got.DependsOn, err)
+			}
+		})
 	}
 
-	edited, err := b.UpsertTask(map[string]any{"slug": "stale", "body": "a later edit"})
-	if err != nil || edited.Body != "a later edit" {
-		t.Errorf("UpsertTask(stale) = %+v, %v; want the body edit to land, since its depends_on on proj is unchanged", edited, err)
-	}
+	t.Run("Refused_AMemberDependingOnItsOwnProject", func(t *testing.T) {
+		t.Parallel()
+		b := newDependencyBoard(t)
+		if _, err := b.SetDeps("member", []string{"proj"}); err == nil || !strings.Contains(err.Error(), "cycle") {
+			t.Errorf("SetDeps(member, [proj]) error = %v; want a cycle refusal", err)
+		}
+	})
+
+	t.Run("Refused_AMemberWaitingOnATaskThatWaitsOnItsProject", func(t *testing.T) {
+		t.Parallel()
+		b := newDependencyBoard(t)
+		if _, err := b.SetDeps("outsider", []string{"proj"}); err != nil {
+			t.Fatalf("SetDeps(outsider, [proj]) error = %v; want nil", err)
+		}
+		if _, err := b.SetDeps("member", []string{"outsider"}); err == nil || !strings.Contains(err.Error(), "cycle") {
+			t.Errorf("SetDeps(member, [outsider]) error = %v; want a cycle refusal", err)
+		}
+	})
 }
 
 // newMembershipBoard returns a board holding p1, an open project with the member m and a project member p2.

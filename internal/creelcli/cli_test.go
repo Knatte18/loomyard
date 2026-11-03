@@ -1244,14 +1244,16 @@ func TestCreelCLI(t *testing.T) {
 		r.delivery.SetIdle(beta, false)
 		var returnedStderr lockedBuffer
 		returnedCodes := make(chan int, 1)
+		postReturned := make(chan struct{})
 		go func() {
 			returnedCodes <- runCreelInto(r.cwd, failingWriter{}, &returnedStderr, "post", "--wait-reply", beta, "anyone?")
+			close(postReturned)
 		}()
 		r.awaitLogged(t, "anyone?")
-		r.clock.AwaitWaitsWhere(1, isSweepWait)
 		r.delivery.SetStrands(creelfake.LiveStrand(alpha))
-		r.sweepStep()
-		r.sweepLast()
+		// The probe advances above may have fired the sweep already, so a counted step could land while it runs and drop a sweep;
+		// stepping on every new sweep wait until the post returns cannot.
+		r.clock.AdvanceByWaitsWhere(isSweepWait, postReturned)
 		select {
 		case code := <-returnedCodes:
 			line := strings.TrimSuffix(returnedStderr.String(), "\n")

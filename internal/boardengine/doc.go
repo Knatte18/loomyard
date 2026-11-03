@@ -12,8 +12,10 @@
 // A project groups entries.
 // It carries a type label as a task does, and carries no depends_on, profile, run_settings or priority, and no recipe but `pawl`: a write giving it one is refused naming the entry and the field to drop.
 // Its project, order and beam keys are the membership and the beam flag: a project carries order and beam, no task or note does, and an older binary keeps all three as unknown keys.
-// No task depends on a project: a write that sets or changes an entry's depends_on to name one is refused, naming the project's task members as what to depend on, or `lym board set-deps` to drop the dependency.
-// A dependency on a project that a write leaves unchanged is never judged, so a done task naming a promoted project takes a later write.
+// A task may depend on any entry that lands, a project included, and Dependencies judges the dependency met once that entry is done:
+// a task or a beam when its status is done, which a beam's landing into its parent sets, and a plain project when its status is done or every landing member of it is done.
+// A landing member is a task or project under the project; a note never lands and holds no project open.
+// A dependency on a project waits on the project and its landing members not yet done: the write's cycle check follows a project to its members, so a member cannot wait on a task that waits on its own project, and the layers and the siblings check read it the same way.
 //
 // Membership is the project key on a task or note and the order key on a project, both accepted by an upsert.
 // A write that sets or changes one, an entry new to the board counting as set, is judged.
@@ -200,13 +202,14 @@
 // Draft follows Independent and is omitted when no task is draft, and a draft title cell opens with a `draft` code span before the bold title.
 // Ready holds the open, released tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
+// A dependency on a project that is not done counts too, and weighs as one on its deepest open landing member, so a task waiting on a project sits one layer below that member, in Layer A when the project's open members are all running, ready or draft, or it has none.
 // Layer A holds the tasks that wait only on Running, Ready or Draft entries, Layer B those that wait on something in Layer A, and so on; ComputeLayers names each task's subsection, and the same name is the layer field of `lym board list`.
 // Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lym board list` and `find` follow the same order.
 // A row opens with the entry's handle, and a Notes row adds the Prio column after it, H for a high priority, L for a low one and blank for normal.
 // The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, and then one `• ` bullet per run setting, a code span such as `loom: code_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, with a `Sketch` link to its decision record file under it, in the same cell, when the entry carries the discussed flag, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
 // The Running, Ready, layer and Draft tables add a Recipe column after the slug, the recipe the task runs, the board's `default_recipe` (`darn` in the template) when its recipe field is empty, followed by ` · ` and the run profile when the task names one, such as `tapestry · light`; a task naming no profile takes its recipe's default profile and shows the recipe alone.
 // The Notes and Done tables have no Recipe column.
-// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's effective owner machine, blank when none is recorded, and Ready, the layers and Draft add an After column, the handles of the open entries named in depends_on, one per line, an entry with no handle or no longer on the board named by its slug.
+// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's effective owner machine, blank when none is recorded, and Ready, the layers and Draft add an After column, the handles of the entries named in depends_on that are not done, a project as Dependencies judges it, one per line, an entry with no handle or no longer on the board named by its slug.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake
@@ -302,9 +305,10 @@
 // # Siblings
 //
 // A write that gives an open task a depends_on entry it did not have reports its siblings: the other open tasks that wait on that same entry while sharing a module label with the written task.
+// A dependency on a project waits on the project and each of its landing members not yet done, so a task waiting on a project and one waiting on a member of it wait on the same entry.
 // A module label is a label the vocabulary does not report as a type label, and SharedModuleLabels answers the overlap, in the written task's label order.
 // The written task's baseline is its own depends_on as loaded, together with the depends_on of every entry the write removed, so a merge warns only on dependencies none of the merged entries had.
-// A dependency listed twice counts once, a dependency that is done is not added, a done written task is skipped, and a sibling that is done or abandoned is not one; a running sibling is.
+// A dependency listed twice counts once, a dependency that is met is not added, a done written task is skipped, and a sibling that is done or abandoned is not one; a running sibling is.
 // A pair reached from both sides, as in a batch, is reported once with the dependencies of both sides.
 // SetDeps, UpsertTaskSiblings, UpsertTasksBatch and MergeTasks return the siblings, computed under the write lock from the entries as loaded and as the mutation left them.
 // The check never refuses, never changes a stored record and returns no siblings for a refused write.

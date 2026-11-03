@@ -28,12 +28,14 @@ func SharedModuleLabels(a, b Task, v Vocabulary) []string {
 }
 
 // addedSiblings returns the siblings of one write from the entries as loaded (before) and as the mutation left them (after).
-// A task X in after that is not done has the dependencies its depends_on gained over its baseline, minus any that are done;
+// A task X in after that is not done has the dependencies its depends_on gained over its baseline, minus any that are met;
 // X's baseline is its own depends_on in before together with the depends_on of every before entry absent from after, so a merge warns only on dependencies none of the merged entries had.
-// Every other entry in after that is neither done nor abandoned, waits on an added dependency and shares a module label with X is a sibling of X.
+// Every other entry in after that is neither done nor abandoned, waits on an entry an added dependency waits on and shares a module label with X is a sibling of X;
+// a dependency on a project waits on the project and on each of its landing members not yet done.
 // A pair found from both sides is reported once, in the first orientation in after order, with both sides' dependencies.
 // A write that adds no dependency returns nil.
 func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
+	dependencies := NewDependencies(after)
 	afterSlugs := make(map[string]Task, len(after))
 	for _, task := range after {
 		afterSlugs[task.Slug] = task
@@ -58,7 +60,7 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 			if slices.Contains(added, dep) || slices.Contains(beforeDeps[x.Slug], dep) || slices.Contains(removedDeps, dep) {
 				continue
 			}
-			if target, found := afterSlugs[dep]; found && isDone(target) {
+			if _, found := afterSlugs[dep]; found && dependencies.met(dep) {
 				continue
 			}
 			added = append(added, dep)
@@ -73,7 +75,9 @@ func addedSiblings(before, after []Task, v Vocabulary) []Sibling {
 			}
 			var shared []string
 			for _, dep := range added {
-				if slices.Contains(y.DependsOn, dep) {
+				if slices.ContainsFunc(y.DependsOn, func(yDep string) bool {
+					return yDep == dep || (!dependencies.met(yDep) && dependencies.overlap(dep, yDep))
+				}) {
 					shared = append(shared, dep)
 				}
 			}

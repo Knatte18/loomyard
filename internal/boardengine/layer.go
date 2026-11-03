@@ -23,13 +23,16 @@ const (
 
 // ComputeLayers assigns each task a bucket based on topological depth.
 // A task a run holds is runningLayer, by RunHolds as the run lock decides it.
-// An open project a run does not hold, a beam whose pawl run has not reached Parent-Align included, is projectLayer, never Ready or a letter, and counts as no entry's dependency depth.
+// An open project a run does not hold, a beam whose pawl run has not reached Parent-Align included, is projectLayer, never Ready or a letter.
 // An open draft task a run does not hold is draftLayer, whatever its dependencies or isolation, since nothing starts it until it is released;
 // a dependency on it weighs as one on a ready task.
 // An open task that is not a draft and has no open dependency is readyLayer, and every other task is the letter of its depth:
 // A waits only on running, ready or draft tasks, B on something in A, and so on.
-// A dependency on a done task adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
+// A met dependency adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
+// A dependency on a project that is not done weighs as one on its deepest open landing member, and as one on a ready task when it has none;
+// cycle detection follows a project to its landing members.
 func ComputeLayers(tasks []Task) (map[string]string, error) {
+	dependencies := NewDependencies(tasks)
 	layerMap := make(map[string]string)
 
 	for _, t := range tasks {
@@ -67,13 +70,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 
 		color[slug] = "gray"
 		t := taskMap[slug]
-		for _, dep := range t.DependsOn {
-			depTask, ok := taskMap[dep]
-			if !ok {
-				continue // Skip missing deps.
-			}
-			// Skip done tasks in cycle detection.
-			if isDone(*depTask) {
+		for _, dep := range dependencies.waitsOn(*t) {
+			if _, ok := taskMap[dep]; !ok || dependencies.met(dep) {
 				continue
 			}
 			if err := detectCycleDFS(dep); err != nil {
@@ -105,6 +103,22 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			return 0, nil
 		}
 
+		if t.Kind == KindProject {
+			projectDepth := 0
+			for _, member := range dependencies.waitsOn(*t) {
+				if dependencies.met(member) {
+					continue
+				}
+				d, err := getDepth(member)
+				if err != nil {
+					return 0, err
+				}
+				projectDepth = max(projectDepth, d)
+			}
+			depth[slug] = projectDepth
+			return projectDepth, nil
+		}
+
 		if layerMap[slug] != "" {
 			depth[slug] = 0 // Special tasks don't contribute to depth.
 			return 0, nil
@@ -112,12 +126,8 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 
 		maxDepth := -1
 		for _, dep := range t.DependsOn {
-			depTask, ok := taskMap[dep]
-			if !ok {
-				continue
-			}
-			// A done dependency adds no depth; a running one weighs as a ready one, at depth 0; a project adds none.
-			if isDone(*depTask) || depTask.Kind == KindProject {
+			// A met dependency adds no depth; a running one weighs as a ready one, at depth 0.
+			if _, ok := taskMap[dep]; !ok || dependencies.met(dep) {
 				continue
 			}
 			d, err := getDepth(dep)

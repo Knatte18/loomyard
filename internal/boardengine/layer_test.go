@@ -56,15 +56,52 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"run": "Running", "x": "A", "y": "B", "free": "Ready", "word": "Ready"},
 		},
 		{
-			name: "an open project is neither ready nor a letter and weighs on no dependent",
+			name: "an open project is neither ready nor a letter and weighs on a dependent as its deepest open member",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "open", Title: "Open", Kind: boardengine.KindProject},
 				{ID: 2, Slug: "held", Title: "Held", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Webster"))},
 				{ID: 3, Slug: "finished", Title: "Finished", Kind: boardengine.KindProject, Status: stringPtr("done")},
 				{ID: 4, Slug: "task", Title: "Task", Kind: boardengine.KindTask, DependsOn: []string{"open"}},
 				{ID: 5, Slug: "awaiting", Title: "Awaiting", Kind: boardengine.KindProject, Beam: true, Status: stringPtr(boardengine.RunStatus("running", "Beam-Await"))},
+				{ID: 6, Slug: "landed-member", Title: "Landed member", Kind: boardengine.KindTask, Project: "awaiting", Status: stringPtr("done")},
+				{ID: 7, Slug: "after-beam", Title: "After beam", Kind: boardengine.KindTask, DependsOn: []string{"awaiting"}},
+				{ID: 8, Slug: "complete", Title: "Complete", Kind: boardengine.KindProject},
+				{ID: 9, Slug: "complete-member", Title: "Complete member", Kind: boardengine.KindTask, Project: "complete", Status: stringPtr("done")},
+				{ID: 10, Slug: "after-complete", Title: "After complete", Kind: boardengine.KindTask, DependsOn: []string{"complete"}},
+				{ID: 11, Slug: "base", Title: "Base", Kind: boardengine.KindTask},
+				{ID: 12, Slug: "deep", Title: "Deep", Kind: boardengine.KindProject},
+				{ID: 13, Slug: "deep-member", Title: "Deep member", Kind: boardengine.KindTask, Project: "deep", DependsOn: []string{"base"}},
+				{ID: 14, Slug: "after-deep", Title: "After deep", Kind: boardengine.KindTask, DependsOn: []string{"deep"}},
 			},
-			want: map[string]string{"open": "Project", "held": "Running", "finished": "__done__", "task": "Ready", "awaiting": "Project"},
+			want: map[string]string{
+				"open": "Project", "held": "Running", "finished": "__done__", "task": "A", "awaiting": "Project",
+				"landed-member": "__done__", "after-beam": "A", "complete": "Project", "complete-member": "__done__", "after-complete": "Ready",
+				"base": "Ready", "deep": "Project", "deep-member": "A", "after-deep": "B",
+			},
+		},
+		{
+			name: "cycle through a project and its member",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "proj", Title: "Proj", Kind: boardengine.KindProject},
+				{ID: 2, Slug: "member", Title: "Member", Kind: boardengine.KindTask, Project: "proj", DependsOn: []string{"outsider"}},
+				{ID: 3, Slug: "outsider", Title: "Outsider", Kind: boardengine.KindTask, DependsOn: []string{"proj"}},
+			},
+			wantError: true,
+		},
+		{
+			name: "two projects each naming the other as their project are a cycle, not a crash",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "loop-a", Title: "Loop A", Kind: boardengine.KindProject, Project: "loop-b"},
+				{ID: 2, Slug: "loop-b", Title: "Loop B", Kind: boardengine.KindProject, Project: "loop-a"},
+			},
+			wantError: true,
+		},
+		{
+			name: "a project naming itself as its project is a cycle, not a crash",
+			tasks: []boardengine.Task{
+				{ID: 1, Slug: "self", Title: "Self", Kind: boardengine.KindProject, Project: "self"},
+			},
+			wantError: true,
 		},
 		{
 			name: "a draft task is Draft whatever its dependencies or isolation, and weighs as a ready one",
