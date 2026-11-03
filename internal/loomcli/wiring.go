@@ -80,6 +80,8 @@ type commitStatusDeps struct {
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
 	SetBoardStatus func(status string) error
+	// FinishedStatus is the board status a finished run writes, empty to write none.
+	FinishedStatus string
 }
 
 // statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.TacklerRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it, plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
@@ -228,12 +230,29 @@ func loomCommitStatusDeps(location *lymcwd.Location, runID string) commitStatusD
 }
 
 // boardStatus is the board entry status for a run transition: the shed state and the producer it stands at, so the README shows where each run is.
-// A finished run writes nothing, since landing marks the entry done itself.
-func boardStatus(producer, state string) (string, bool) {
+// A finished run writes finished, and nothing when finished is empty.
+func boardStatus(producer, state, finished string) (string, bool) {
 	if state == string(shedengine.StateDone) {
-		return "", false
+		return finished, finished != ""
 	}
 	return boardengine.RunStatus(state, producer), true
+}
+
+// finishedBoardStatus returns the board status a finished run of recipe writes.
+// A recipe with a Finalize row writes none, since its landing marks the entry done.
+// One with none lands nothing and writes the draft status, which releases the entry from its run lock without dobby starting it again.
+func finishedBoardStatus(recipe string) string {
+	if recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) {
+		return ""
+	}
+	return boardengine.StatusDraft
+}
+
+// commitStatusDeps returns loomCommitStatusDeps over location and the run, with the finished status of the run's recipe.
+func (c *loomCLI) commitStatusDeps(location *lymcwd.Location) commitStatusDeps {
+	deps := loomCommitStatusDeps(location, c.runID)
+	deps.FinishedStatus = finishedBoardStatus(c.recipe)
+	return deps
 }
 
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
@@ -248,7 +267,7 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 	}, "loom", "loomcli", nil)
 	lastBoardStatus := ""
 	return func(producer, state string) error {
-		if status, ok := boardStatus(producer, state); ok && deps.SetBoardStatus != nil && status != lastBoardStatus {
+		if status, ok := boardStatus(producer, state, deps.FinishedStatus); ok && deps.SetBoardStatus != nil && status != lastBoardStatus {
 			if err := deps.SetBoardStatus(status); err != nil {
 				logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
 			} else {
@@ -300,7 +319,7 @@ func (c *loomCLI) wireLightweight(location *lymcwd.Location, cwd string) error {
 		StatusPath:     shedrun.StatusFile(location, c.runID),
 		LockPath:       shedrun.RunLock(location, c.runID),
 		StatusLockPath: shedrun.StatusLock(location, c.runID),
-		CommitStatus:   newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
+		CommitStatus:   newCommitStatusSeam(c.commitStatusDeps(location)),
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,
@@ -862,6 +881,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// ApproveDiscussion copies the discussion decision record onto the run's board entry on Discussion-Bouncer's approved settle, before its commit seam.
 		// Storing is idempotent, so the failed-settle resume path converges.
 		ApproveDiscussion: func() error { return approveDiscussion(location, c.runID) },
+		// SeedDiscussedRecord seeds a discussed board entry's stored record into the run when the run enters the Motif block, so the block's gate passes over Discussion.
+		SeedDiscussedRecord: func() (bool, error) { return seedDiscussedRecord(location, c.runID, record) },
 		// CarryOver files each review segment's still-open findings in the decision record and commits that record alone, so no other dirty file rides along.
 		CarryOver: func(entry discussionparser.CarryOver) error { return writeCarryOver(location, entry) },
 		// The subject seams tell each Bouncer row what its segment judges, so a re-entry over an unchanged subject settles without a review.
@@ -936,7 +957,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// (which itself falls back to shedengine's internal default of ten), not a run-wide
 		// total -- the budget itself is per-producer and episode-scoped, counted from the
 		// persisted history rather than held in memory.
-		CommitStatus: newCommitStatusSeam(loomCommitStatusDeps(location, c.runID)),
+		CommitStatus: newCommitStatusSeam(c.commitStatusDeps(location)),
 
 		RunID:                   c.runID,
 		MissingStatusWayForward: loomMissingStatusWayForward,

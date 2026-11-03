@@ -56,6 +56,19 @@ var (
 	driftVerifyType   = reflect.TypeOf(&driftengine.DriftVerify{})
 )
 
+// blockProducerType returns the concrete type of the Block registry entry's producer, which shedrecipe does not export, for the shape table's Motif row.
+func blockProducerType() reflect.Type {
+	construct, err := shedrecipe.Lookup(shedrecipe.EngineBlock)
+	if err != nil {
+		panic(err)
+	}
+	p, err := construct(shedrecipe.RowIdentity{Name: loomshed.NameMotif}, nil, shedrecipe.Env{})
+	if err != nil {
+		panic(err)
+	}
+	return reflect.TypeOf(p)
+}
+
 // frictionReflectProducerType returns the dynamic type of the producer loomshed.NewFrictionReflect
 // builds, for the shape table's Friction-Reflect row.
 func frictionReflectProducerType() reflect.Type {
@@ -68,6 +81,7 @@ func frictionReflectProducerType() reflect.Type {
 
 var wantProducerTable = []wantProducerRow{
 	{loomshed.NamePreflight, "Preflight", reflect.TypeOf(preflightshed.NewPreflight("", ""))},
+	{loomshed.NameMotif, shedrecipe.EngineBlock, blockProducerType()},
 	{loomshed.NameDiscussionWrite, "DiscussionWrite", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NameDiscussionBouncer, "Bouncer", bouncerType},
 	{loomshed.NameDiscussionBurlerReview, "BurlerReview", burlerReviewType},

@@ -70,6 +70,7 @@ var intentionallyNil = map[string]string{
 	"PlanIndex":                           "loom-only seam, batten has no plan segment",
 	"CommitWebster":                       "loom-only seam, batten runs no webster",
 	"ApproveDiscussion":                   "loom-only seam, batten has no discussion segment",
+	"SeedDiscussedRecord":                 "loom-only seam, batten has no Motif block",
 	"Landing.BaseCommand":                 "loom-only seam, batten lands no branch",
 	"Landing.VerifyHold":                  "loom-only seam, batten lands no branch",
 	"Landing.GateTiers":                   "loom-only seam, batten lands no branch",

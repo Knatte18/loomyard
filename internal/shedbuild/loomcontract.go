@@ -14,13 +14,17 @@ import (
 const loomContract = "loom"
 
 // checkLoomContract refuses a recipe whose rows, edges or keys break the loom contract.
-// The contract is one record row, one build row after it on the on_done path from the entry, a Finalize row followed only by terminals, and a set verify_source.
+// The contract is one record row and, for a recipe that lands a change, one build row after it on the on_done path from the entry, a Finalize row followed only by terminals, and a set verify_source.
+// A recipe holding neither a build row nor a Finalize row is the contract's record-only form: it writes and reviews the record and lands nothing, so the record row is its whole contract.
 // It reads row engines, edges and the recipe's keys only, with the engine sets declared beside the registry, so a new loom recipe needs no change here.
 // Each refusal names the broken clause and its way forward, and the first broken clause in that order is the one returned.
 func checkLoomContract(r Recipe) error {
 	recordRow, err := onlyRowOf(r, shedrecipe.LoomRecordEngines, "record", "DiscussionWrite or RecordWrite")
 	if err != nil {
 		return err
+	}
+	if recordOnly(r) {
+		return nil
 	}
 	buildRow, err := onlyRowOf(r, shedrecipe.LoomBuildEngines, "build", "Implementer, DarnWrite, BeamAwait or SamplerSession")
 	if err != nil {
@@ -42,6 +46,13 @@ func checkLoomContract(r Recipe) error {
 		return errors.New("the recipe sets no verify_source; way forward: set verify_source to plan or tree_scope")
 	}
 	return nil
+}
+
+// recordOnly reports whether r holds neither a build row nor a Finalize row, the loom contract's record-only form.
+func recordOnly(r Recipe) bool {
+	return !slices.ContainsFunc(r.Producers, func(row Row) bool {
+		return slices.Contains(shedrecipe.LoomBuildEngines, row.Engine) || row.Engine == shedrecipe.LoomFinalizeEngine
+	})
 }
 
 // onlyRowOf returns the one row of r whose engine is in engines, and refuses zero or several naming role and the engines to choose from.

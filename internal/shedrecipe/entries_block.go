@@ -18,6 +18,13 @@ const EngineBlock = "Block"
 // BlockGateAlways is the block gate check that always holds, so the block runs on every pass.
 const BlockGateAlways = "always"
 
+// BlockGateUndiscussed is the block gate check that holds unless the run's board entry is flagged discussed.
+// For a discussed entry it seeds the entry's stored decision record into the run through Env.SeedDiscussedRecord and passes over the block.
+const BlockGateUndiscussed = "undiscussed"
+
+// undiscussedSkipReason is the reason the undiscussed gate records when it passes over its block.
+const undiscussedSkipReason = "the board entry is flagged discussed: its stored decision record is the run's, so the block's Discussion is passed over"
+
 // BlockGate builds a block row's entry gate from the told Env.
 type BlockGate func(env Env) (shedengine.EntryGate, error)
 
@@ -27,12 +34,32 @@ type BlockGates map[string]BlockGate
 // blockGates is the one table of block gate checks lym ships.
 // A new check is a row here, never code in a recipe or its builder.
 var blockGates = BlockGates{
-	BlockGateAlways: alwaysBlockGate,
+	BlockGateAlways:      alwaysBlockGate,
+	BlockGateUndiscussed: undiscussedBlockGate,
 }
 
 // alwaysBlockGate builds the gate of the BlockGateAlways check, which holds with an empty reason.
 func alwaysBlockGate(Env) (shedengine.EntryGate, error) {
 	return func() (bool, string, error) { return true, "", nil }, nil
+}
+
+// undiscussedBlockGate builds the gate of the BlockGateUndiscussed check over env.SeedDiscussedRecord, which must be non-nil.
+// The gate holds with an empty reason when the seam seeds nothing, and passes over the block with undiscussedSkipReason when it seeded the stored record.
+// The seam's error is the gate's.
+func undiscussedBlockGate(env Env) (shedengine.EntryGate, error) {
+	if err := requireSeam("block gate "+BlockGateUndiscussed, "SeedDiscussedRecord", env.SeedDiscussedRecord); err != nil {
+		return nil, err
+	}
+	return func() (bool, string, error) {
+		seeded, err := env.SeedDiscussedRecord()
+		if err != nil {
+			return false, "", err
+		}
+		if seeded {
+			return false, undiscussedSkipReason, nil
+		}
+		return true, "", nil
+	}, nil
 }
 
 // LookupBlockGate returns the block gate check name selects.

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -66,16 +66,16 @@ func rolePrefixViolations(recipe shedbuild.Recipe) []string {
 func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("RolePrefixes", func(t *testing.T) {
-		parse := func(t *testing.T, source []byte) shedbuild.Recipe {
+		parse := func(t *testing.T, name string) shedbuild.Recipe {
 			t.Helper()
-			recipe, err := shedbuild.Parse(source)
+			recipe, err := parseEmbeddedRecipe(name)
 			if err != nil {
-				t.Fatalf("shedbuild.Parse() = %v; want nil", err)
+				t.Fatalf("parseEmbeddedRecipe(%s) = %v; want nil", name, err)
 			}
 			return recipe
 		}
-		for name, source := range map[string][]byte{"TapestryRecipe": recipes.TapestryRecipe, "DarnRecipe": recipes.DarnRecipe} {
-			if got := rolePrefixViolations(parse(t, source)); len(got) != 0 {
+		for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+			if got := rolePrefixViolations(parse(t, name)); len(got) != 0 {
 				t.Errorf("%s: rolePrefixViolations = %v; want none", name, got)
 			}
 		}
@@ -108,7 +108,7 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 		}
 		for _, tt := range mutations {
 			t.Run(tt.name, func(t *testing.T) {
-				recipe := parse(t, recipes.TapestryRecipe)
+				recipe := parse(t, shedrun.RecipeTapestry)
 				tt.mutate(recipe)
 				if got := rolePrefixViolations(recipe); len(got) != 1 {
 					t.Errorf("rolePrefixViolations = %v; want exactly one violation", got)
@@ -117,10 +117,10 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 		}
 	})
 
-	for name, source := range map[string][]byte{"TapestryRecipe": recipes.TapestryRecipe, "DarnRecipe": recipes.DarnRecipe} {
-		recipe, err := shedbuild.Parse(source)
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+		recipe, err := parseEmbeddedRecipe(name)
 		if err != nil {
-			t.Fatalf("shedbuild.Parse(%s) = %v; want nil", name, err)
+			t.Fatalf("parseEmbeddedRecipe(%s) = %v; want nil", name, err)
 		}
 		bouncers := 0
 		for _, row := range recipe.Producers {

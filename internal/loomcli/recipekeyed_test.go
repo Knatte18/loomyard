@@ -1,5 +1,5 @@
 // recipekeyed_test.go pins the loomcli wiring branches that read the run's recipe rows and keys, per recipe name:
-// the verify source, the merge fixer's plan directory, the arbiter's recipe description and the landing failure tracer.
+// the verify source, the merge fixer's plan directory, the arbiter's recipe description, the landing failure tracer and the board status a finished run writes.
 
 package loomcli
 
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -19,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, arras, darn, pawl and sampler as the recipe's rows and keys give.
+// TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, motif, darn, pawl and sampler as the recipe's rows and keys give.
 func TestRecipeKeyedWiring(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -37,18 +38,19 @@ func TestRecipeKeyedWiring(t *testing.T) {
 		treeScope    bool
 		hasPlan      bool
 		wantFragment string
+		wantFinished string
 	}{
-		{"Tapestry", shedrun.RecipeTapestry, false, true, "a task driven from discussion to landing"},
-		{"Arras", shedrun.RecipeArras, false, true, "an arras run, a task driven from discussion to landing"},
-		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session"},
-		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life"},
-		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session"},
+		{"Tapestry", shedrun.RecipeTapestry, false, true, "a tapestry run, a task driven from discussion to landing", ""},
+		{"Motif", shedrun.RecipeMotif, false, false, "a motif run, a task's Discussion", boardengine.StatusDraft},
+		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session", ""},
+		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", ""},
+		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c := &loomCLI{recipe: tt.recipe, location: loc}
+			c := &loomCLI{recipe: tt.recipe, location: loc, runID: shedrun.SelfRunID}
 			if _, err := c.verifySource().command("finalize"); (err != nil) != tt.treeScope {
 				t.Errorf("verifySource().command(finalize) for %s error = %v; want an error exactly when the recipe takes the tree-scope source (%t)", tt.recipe, err, tt.treeScope)
 			}
@@ -63,6 +65,13 @@ func TestRecipeKeyedWiring(t *testing.T) {
 
 			if got := arbiterRecipeDescription(tt.recipe); !strings.Contains(got, tt.wantFragment) {
 				t.Errorf("arbiterRecipeDescription(%s) = %q; want it to contain %q", tt.recipe, got, tt.wantFragment)
+			}
+
+			if got := finishedBoardStatus(tt.recipe); got != tt.wantFinished {
+				t.Errorf("finishedBoardStatus(%s) = %q; want %q", tt.recipe, got, tt.wantFinished)
+			}
+			if got := c.commitStatusDeps(loc).FinishedStatus; got != tt.wantFinished {
+				t.Errorf("commitStatusDeps(%s).FinishedStatus = %q; want %q", tt.recipe, got, tt.wantFinished)
 			}
 
 			deps := landingDeps(loc, tt.recipe, websterengine.Geometry{}, "task", "main",

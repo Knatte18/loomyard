@@ -100,6 +100,16 @@ func boardSupportLog() []byte {
 		"## Question ledger\n")
 }
 
+// StoredRecordSupportLog renders the support log of a run whose decision record is its board entry's stored record, approved in an earlier run.
+func StoredRecordSupportLog() []byte {
+	return []byte("## Interview\n\n" +
+		"The decision record is the board entry's stored record, approved in an earlier run, so this run held no Discussion.\n\n" +
+		"## Rejected alternatives\n\n" +
+		"## Review rounds\n\n" +
+		"_No rounds yet._\n\n" +
+		"## Question ledger\n")
+}
+
 // Call implements shedengine.ShedProducer.
 // It removes the torn temp files a crash left in the discussion directory, writes whichever of the record and the support log is missing, commits the pair and reports Done with the record as its pointer.
 // A file that exists is never overwritten, so a resume keeps every entry added to the record after it was written.

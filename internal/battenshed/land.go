@@ -1,5 +1,6 @@
 // land.go implements NewLand, the producer that lands a finished child run into the prime:
 // it pulls the prime, runs the hub-wide deploy command, prunes the board and, when the pull's records side stopped, tells the orch.
+// A child run that landed no code only prunes the board.
 
 package battenshed
 
@@ -51,6 +52,9 @@ type DeployResult struct {
 
 // LandDeps carries every outside effect NewLand needs, each behind a seam so this package imports none of them and every path and command is told.
 type LandDeps struct {
+	// ChildLanded reports whether the child run landed code, which only a run that finished a Finalize did.
+	// A child that landed nothing is neither pulled for nor deployed, and posts no landing notice.
+	ChildLanded func() (bool, error)
 	// ParentBranch returns the child's recorded parent branch; empty means the origin record carries none.
 	ParentBranch func() (string, error)
 	// PrimeBranch returns the branch the prime is on.
@@ -93,7 +97,8 @@ type landProducer struct {
 var _ shedengine.ShedProducer = (*landProducer)(nil)
 
 // NewLand returns a shedengine.ShedProducer that lands the task worktree identified by slug.
-// Under the land lock it pulls the prime, runs the deploy command and prunes the board, then posts one notice only when the pull's records side stopped.
+// Under the land lock it pulls the prime, runs the deploy command and prunes the board, then posts one notice only when the pull's records side stopped;
+// a child that landed no code only prunes the board.
 // A failed step is Stuck naming it, and a pause seen during a wait is Stuck naming the goto that clears it; neither posts a notice, since the driver's hand-back tells the orch of a stop the stop chain did not settle.
 func NewLand(name, slug string, deps LandDeps, primeLock PrimeLock, scratchDir string) shedengine.ShedProducer {
 	if deps.Sleep == nil {
@@ -153,6 +158,7 @@ func (p *landProducer) pausedReason(what string) string {
 
 // Call implements shedengine.ShedProducer.
 // It runs, under the land lock, the prime check, the pull, the deploy, the board prune and the records-stop notice, each idempotent so a resume re-runs the row from the top.
+// A child that landed nothing skips all but the board prune.
 // Every failed step, a seam read error included, is Stuck naming the step; only a cancelled context is a hard error.
 func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -174,6 +180,18 @@ func (p *landProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine
 			logger.Warn("battenshed: release land lock failed", "producer", p.name, "slug", p.slug, "path", p.deps.LandLock.Path, "error", rerr)
 		}
 	}()
+
+	landed, err := p.deps.ChildLanded()
+	if err != nil {
+		return p.failure(ctx, "landing check", err)
+	}
+	if !landed {
+		logger.Info("battenshed: the child run landed no code; skipping pull and deploy", "producer", p.name, "slug", p.slug)
+		if err := p.deps.PruneBoard(); err != nil {
+			return p.failure(ctx, "board prune", err)
+		}
+		return shedengine.Done, shedengine.OutputPointer{}, nil
+	}
 
 	parent, err := p.deps.ParentBranch()
 	if err != nil {

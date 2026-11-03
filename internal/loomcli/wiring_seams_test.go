@@ -109,6 +109,7 @@ var intentionallyNil = map[string]string{
 	"Pawl.Down":                           "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Now":                            "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Sleep":                          "pawl-only seam, filled by wire for a pawl seed",
+	"Land.ChildLanded":                    "batten-only seam, filled by battencli",
 	"Land.PruneBoard":                     "batten-only seam, filled by battencli",
 	"Land.LandLock.Acquire":               "batten-only seam, filled by battencli",
 	"Land.PauseRequested":                 "batten-only seam, filled by battencli",

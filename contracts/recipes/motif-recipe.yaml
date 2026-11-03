@@ -1,12 +1,21 @@
-# motif-recipe.yaml is the recipe that makes a sketch, the decision record, from a task.
-# It is a block source only: the arras recipe runs it inline through its Motif block row, and no run is seeded with it.
-# Its rows are tapestry's Discussion rows, and internal/loomrecipe's TestBlockRecipes holds them equal to tapestry-recipe.yaml's.
-# Discussion-Bouncer sets no on_done: the block rewrites it to the block's exit.
+# motif-recipe.yaml is the recipe that makes a sketch, the decision record, from a task: Discussion-Write and the Discussion-Review ring.
+# It is the one definition of those rows: the tapestry recipe runs it inline through its Motif block row, and a board task may name it to run alone.
+# Discussion-Write carries no on_stuck, so its Stuck halts the run, for the reason tapestry-recipe.yaml's header gives for its writer rows.
+# The ring follows the shared-segment rule that header states: the three rows carry segment: Discussion-Review and role_prefix: discussion,
+# and their budget is loom.yaml's discussion_max_bounces, or review_max_bounces when it is absent.
 #
-# The recipe sets no contract, verify_source, amendment_target or profile_recipe: those belong to the run that holds the block.
+# Discussion-Bouncer sets no on_done.
+# Run alone, that ends the run once the approved record is stored on the board entry, so a motif run lands no code.
+# Inside a block, the block rewrites it to the block's exit.
+#
+# The top-level keys serve a motif run alone, since an expansion reads none of a block recipe's keys.
+# contract: loom takes the loom contract's record-only form, one record row and neither a build row nor a Finalize row, which needs no verify_source.
+# profile_recipe: tapestry gives a motif task tapestry's run-profile block and default profile.
 
 version: 1
 entry: Discussion-Write
+contract: loom
+profile_recipe: tapestry
 terminals:
   - Discussion-Bouncer
 
@@ -39,17 +48,35 @@ producers:
         - _lym/discussion/decision-record.md
         - _lym/discussion/support-log.md
       rubric_stencil: loom-rubric-discussion-review
+      # commit_seam is required rather than optional here: Discussion-Burler-Fix runs fix-scope: overlay
+      # and an overlay round runs no git at all, and nothing else in this segment commits, so without
+      # the seam every approved fix would stay uncommitted in fabric's records working tree.
       commit_seam: discussion
+      # approve_seam: discussion copies the approved decision record onto the run's board entry. The
+      # approved settle runs it before commit_seam fires, and a test pins the key on the row that
+      # approves the discussion and on no other.
       approve_seam: discussion
+      # carry_over names this row's own segment: the Bouncer files the round's still-open findings
+      # under it in the decision record's Open risks section, and a test pins it equal to segment.
       carry_over: Discussion-Review
+      # escalate_decisions makes this Bouncer send a round's decision-class findings to the run's
+      # parent; Discussion-Burler-Fix sets decisions_escalated so its fixer is given none and
+      # posts no notice of its own, and a test pins the two set together.
       escalate_decisions: true
+      # No model/effort/version key: the row refuses them as unknown keys, and loom.yaml's judge,
+      # seed and per-segment judge and seed keys are the only source of this row's passes' models.
 
   - name: Discussion-Burler-Review
     engine: BurlerReview
     segment: Discussion-Review
     on_stuck: Discussion-Burler-Fix
+    # BurlerReviewProducer never returns Done, so this edge is unreachable -- but an empty on_done
+    # is load-bearing and ends the whole run silently, which is a worse failure than a redundant
+    # edge, so it is set explicitly to the row it can never actually reach.
     on_done: Discussion-Burler-Fix
     config:
+      # The same run_subdir value as Discussion-Bouncer is what makes the three rows write into one
+      # shared run directory.
       run_subdir: discussion
       role_prefix: discussion
       reviewer_fan_setting: loom.discussion_reviewer_fan
@@ -65,20 +92,37 @@ producers:
             section contract over the discussion artifact pair is already enforced by this round's
             own gate over this round's own output, so re-deriving it here is duplicated work.
         rubric_stencil: loom-rubric-discussion-review
+        # fix-scope: overlay, not source: the target paths above are fabric records content reached through the
+        # junction, and the Fabric Git Invariant reserves committing that class of file to the loop
+        # owner, never an agent. Discussion-Bouncer's commit_seam: discussion key is what actually
+        # commits this round's approved settle.
         fix-scope: overlay
         tool-use: true
+      # No model/effort key: model choice lives in loom.yaml's reviewer and fixer model keys only.
+      # No timeout_s key, for the same Env fallback reason as Discussion-Bouncer.
 
   - name: Discussion-Burler-Fix
     engine: BurlerFix
     segment: Discussion-Review
     on_stuck: Discussion-Bouncer
+    # BurlerFixProducer never returns Done, so this edge is unreachable -- but an empty on_done is
+    # load-bearing and ends the whole run silently, which is a worse failure than a redundant edge,
+    # so it is set explicitly to the row it can never actually reach.
     on_done: Discussion-Bouncer
     config:
       run_subdir: discussion
       role_prefix: discussion
       fixer_fan_setting: loom.discussion_fixer_fan
+      # decisions_escalated says Discussion-Bouncer's escalate_decisions sends the round's
+      # decision-class findings to the parent, so this row keeps them out of the fixer's work
+      # and posts no notice of its own.
       decisions_escalated: true
+      # review_row names this segment's review row, which a refusal's way forward sends the
+      # operator back to.
       review_row: Discussion-Burler-Review
+      # gates holds this row's handoff until the artifact is mechanically valid: each entry names a
+      # validator and re-prompts the live session up to its attempts times, so a failure never
+      # reaches the row below.
       gates:
         - name: discussion
           attempts: 3
@@ -87,4 +131,5 @@ producers:
           paths:
             - _lym/discussion/decision-record.md
             - _lym/discussion/support-log.md
+        # fix-scope: overlay, for the reason the review row gives.
         fix-scope: overlay

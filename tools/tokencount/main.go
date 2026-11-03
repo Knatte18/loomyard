@@ -19,7 +19,7 @@
 // -since <YYYY-MM-DD> counts instead every finished run whose sessions changed on or after the start of that local day, whatever -last says, so the runs of every counted recipe over one period stand side by side.
 // A run's pair is torn down when it ends, which leaves an archive/<slug>/<sha> tag in
 // the prime's fabric repository (the one repository flag, -weft, default the current worktree's weft sibling).
-// A torn-down run is finished when the seed.json and status.json at its newest tag name the tapestry, the darn or the arras recipe and hold a Finalize history entry;
+// A torn-down run is finished when the seed.json and status.json at its newest tag name the tapestry or the darn recipe and hold a Finalize history entry;
 // a run stopped partway, such as a bench pair parked after Discussion-Write, or a run of another recipe, would count as one whose later steps cost nothing.
 // The report's header names the runs counted and, when the default skipped runs that are not finished, names those on one line.
 // Slugs named on the command line are counted as given, finished or not.

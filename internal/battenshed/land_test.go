@@ -23,22 +23,25 @@ type landFixture struct {
 
 	parent, prime       string
 	parentErr, primeErr error
-	dirty               [][]string
-	dirtyErr            error
-	pullErr             error
-	recordsStop         string
-	landing             LandingSettings
-	landingErr          error
-	deployResult        DeployResult
-	deployErr           error
-	pruneErr            error
-	pauseAfterSleeps    int
-	pauseErr            error
-	landLockBusy        int
-	landLockErr         error
-	primeLockBusy       int
-	historyLen          int
-	onSleep             func()
+	// childLandedNothing makes the child read as having finished no Finalize.
+	childLandedNothing bool
+	childLandedErr     error
+	dirty              [][]string
+	dirtyErr           error
+	pullErr            error
+	recordsStop        string
+	landing            LandingSettings
+	landingErr         error
+	deployResult       DeployResult
+	deployErr          error
+	pruneErr           error
+	pauseAfterSleeps   int
+	pauseErr           error
+	landLockBusy       int
+	landLockErr        error
+	primeLockBusy      int
+	historyLen         int
+	onSleep            func()
 	// orchUnrecorded makes the orch read as having no strand recorded to receive a notice.
 	orchUnrecorded bool
 
@@ -73,6 +76,7 @@ func (f *landFixture) sleep(ctx context.Context, d time.Duration) {
 
 func (f *landFixture) deps() LandDeps {
 	return LandDeps{
+		ChildLanded:  func() (bool, error) { return !f.childLandedNothing, f.childLandedErr },
 		ParentBranch: func() (string, error) { return f.parent, f.parentErr },
 		PrimeBranch:  func() (string, error) { return f.prime, f.primeErr },
 		PrimeDirty: func() ([]string, error) {
@@ -157,6 +161,7 @@ func (f *landFixture) producer() shedengine.ShedProducer {
 // A parent that is the prime's branch pulls, deploys once and prunes.
 // No landing with a clean pull queues a notice.
 // Another parent skips the pull and the deploy without reading the prime's tree, a parent outside the deploy list pulls only, and an empty deploy command runs nothing.
+// A child that landed no code only prunes, even when its parent is the prime's branch.
 func TestLand_Dispositions(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -173,6 +178,7 @@ func TestLand_Dispositions(t *testing.T) {
 		}, wantCalls: []string{"dirty", "pull", "prune"}},
 		{name: "EmptyDeployBranchesDeploysNothing", configure: func(f *landFixture) { f.landing.DeployBranches = []string{} }, wantCalls: []string{"dirty", "pull", "prune"}},
 		{name: "EmptyDeployRunsNothing", configure: func(f *landFixture) { f.landing.Deploy = "" }, wantCalls: []string{"dirty", "pull", "prune"}},
+		{name: "ChildThatLandedNothingOnlyPrunes", configure: func(f *landFixture) { f.childLandedNothing = true }, wantCalls: []string{"prune"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -210,6 +216,10 @@ func TestLand_FailingStepsAreStuckWithOneNotice(t *testing.T) {
 		{name: "PullRefusal", configure: func(f *landFixture) { f.pullErr = boom }, wantReason: "pull failed: boom"},
 		{name: "PrimeLockWaitSpent", configure: func(f *landFixture) { f.primeLockBusy = -1 }, wantReason: "/lock/prime"},
 		{name: "PruneFailure", configure: func(f *landFixture) { f.pruneErr = boom }, wantReason: "board prune failed: boom"},
+		{name: "ChildLandedReadError", configure: func(f *landFixture) { f.childLandedErr = boom }, wantReason: "landing check failed: boom"},
+		{name: "PruneFailureOfAChildThatLandedNothing", configure: func(f *landFixture) {
+			f.childLandedNothing, f.pruneErr = true, boom
+		}, wantReason: "board prune failed: boom"},
 		{name: "ParentBranchReadError", configure: func(f *landFixture) { f.parentErr = boom }, wantReason: "prime check failed: boom"},
 		{name: "ParentBranchEmpty", configure: func(f *landFixture) { f.parent = "" }, wantReason: "carries no parent branch"},
 		{name: "PrimeBranchReadError", configure: func(f *landFixture) { f.primeErr = boom }, wantReason: "prime check failed: boom"},

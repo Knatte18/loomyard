@@ -106,7 +106,7 @@ A block row carries only `name`, `block`, `block_gate` and `on_done`, and no eng
 The block row becomes an `engine: Block` row whose `on_done` is the sub-recipe's `entry` and whose skip target is the block's exit; the exit is the block row's own `on_done`, or, when that is empty, the exit of the block enclosing it, and an outermost block row must set `on_done`.
 Every inlined row's empty `on_done`, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
 Each inlined row carries its block path, the enclosing block rows' names joined by `/`, outermost first.
-A sub-recipe's `terminals` are not read, and a sub-recipe setting `contract`, `verify_source`, `amendment_target` or `profile_recipe` is refused, since those belong to the run.
+A sub-recipe's `terminals`, `contract`, `verify_source`, `amendment_target` and `profile_recipe` are not read, since those belong to the run, so a recipe that runs alone may also be a block.
 A recipe with no block row is returned unchanged.
 
 **Strictness.** Unknown keys and duplicate keys are errors at both document level and row level, and every message the decoder produces keeps its own yaml line number.
@@ -121,6 +121,7 @@ The clauses are checked in this order:
 4. A row whose engine is `shedrecipe.LoomFinalizeEngine` exists, and every row reached by following `on_done` from it is in `terminals`.
 5. `verify_source` is set.
 
+A recipe holding no build row and no `shedrecipe.LoomFinalizeEngine` row is the contract's record-only form: it writes and reviews the record and lands nothing, so clause 1 is its whole contract.
 A recipe without `contract: loom` is not checked and is no loom.
 
 **Validation split.** This package owns file shape and engine-name resolution alone.

@@ -134,7 +134,7 @@
 // A halted go child is also re-stepped once per halt and per lym build (innerrun_binaryrestep.go), so a fix deployed after a Go driver handed back lands without a parent turn.
 // The child is re-stepped, through the same Spawn seam as every bootstrap, only when it is blocked or failed, its reed state holds no driver strand, neither its run lock nor its driver lock is held;
 // the lym on disk must differ from the build the child's last step recorded, and the task pair must have no uncommitted or untracked path outside the run's records.
-// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lym loom resume` lifts it; a tapestry, arras, darn or sampler fixer's escalate halt, which the arbiter judges first, is marked and skipped too; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
+// A blocked halt that `InnerRunDeps.HandBack` marks as a landing halt is skipped and writes no marker, so only the orch's `lym loom resume` lifts it; a tapestry, darn or sampler fixer's escalate halt, which the arbiter judges first, is marked and skipped too; every other halt keeps the re-step, so a fix deployed in a new build can still clear it.
 // The `<row>-binary-restep` marker holds the halt's stop key and the build label, and is written only after the spawn returns success, so the re-step happens once per halt and build and survives a batten restart.
 // A spawn refused as not parked or as a busy pane, and a dirty tree, write no marker and are tried again at the next due check; the spawns are capped at five per halt and build.
 // Reading the build and the dirty paths costs a process, so the check runs once per interval, kept in the memory record:
@@ -182,6 +182,7 @@
 //
 // The Land row lands a child whose Run-Shed returned Done, in this order, each step idempotent so a resume re-runs the row from the top:
 // it takes the hub-level land lock for its whole body, polling a contended one from one second doubling to thirty with no time limit;
+// it asks whether the child landed code, which only a child that finished a Finalize did, and a child that landed nothing, such as a motif run, only prunes the board and posts no notice;
 // it checks the prime, where a child whose parent branch is not the prime's branch skips the pull and deploy and a prime with uncommitted tracked paths is waited on for ten minutes;
 // it pulls the prime under the prime lock and releases that lock at once, since batten never pushes the prime;
 // outside the prime lock it runs the landing config's hub-wide `deploy` command in the prime, for a parent branch in `deploy_branches` only, with a thirty-minute timeout and its output in the row's deploy log;

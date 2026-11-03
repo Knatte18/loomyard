@@ -245,6 +245,17 @@ func TestBuild_LoomContract(t *testing.T) {
 		}
 	})
 
+	t.Run("a record-only recipe, with neither a build row nor a Finalize row, passes with no verify_source", func(t *testing.T) {
+		t.Parallel()
+		r := validLoom()
+		setEngine("Build", "Stub")(&r)
+		setEngine("Land", "Stub")(&r)
+		r.VerifySource = ""
+		if err := checkLoomContract(r); err != nil {
+			t.Errorf("checkLoomContract(record-only recipe) = %v; want nil", err)
+		}
+	})
+
 	t.Run("a recipe without the contract is not checked", func(t *testing.T) {
 		t.Parallel()
 		r := Recipe{Producers: []Row{{Name: "Only", Engine: "Stub"}}}

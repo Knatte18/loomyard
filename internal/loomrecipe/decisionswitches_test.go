@@ -13,8 +13,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
-	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -23,13 +22,12 @@ import (
 func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	shipped := map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe}
-	for name, raw := range shipped {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			recipe, err := shedbuild.Parse(raw)
+			recipe, err := parseEmbeddedRecipe(name)
 			if err != nil {
-				t.Fatalf("shedbuild.Parse(%s recipe) error = %v; want nil", name, err)
+				t.Fatalf("parseEmbeddedRecipe(%s) error = %v; want nil", name, err)
 			}
 			var gotEscalate, gotEscalated []string
 			for _, row := range recipe.Producers {
@@ -43,7 +41,7 @@ func TestDecisionSwitches_SetTogetherOnLoomsDiscussionRowsOnly(t *testing.T) {
 			sort.Strings(gotEscalate)
 			sort.Strings(gotEscalated)
 			var wantEscalate, wantEscalated []string
-			if name == "tapestry" {
+			if name == shedrun.RecipeTapestry {
 				wantEscalate = []string{"Discussion-Bouncer"}
 				wantEscalated = []string{"Discussion-Burler-Fix"}
 			}

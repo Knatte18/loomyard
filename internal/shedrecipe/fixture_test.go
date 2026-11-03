@@ -273,6 +273,7 @@ func newTestEnv(t *testing.T) Env {
 			Remove:   func(context.Context) error { return nil },
 		},
 		Land: battenshed.LandDeps{
+			ChildLanded:  func() (bool, error) { return true, nil },
 			ParentBranch: func() (string, error) { return "main", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },

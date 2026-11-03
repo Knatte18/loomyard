@@ -679,7 +679,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shede
 // A passing gate with a fix review's findings pending, and a turn left, spawns the fixer on those findings.
 // A spent cap keeps the fixer's commits and halts with LandingStopPrefix, noting `spent` in the attempt record's Halt.
 // A resume after a halt at the fix review round cap lands the change when the operator accepted it at the task HEAD the resume finds, and otherwise runs the fix reviews afresh over the change as it then stands.
-// An escalate report halts with EscalateStopPrefix on a tapestry, arras, darn or sampler run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
+// An escalate report halts with EscalateStopPrefix on a tapestry, darn or sampler run (Deps.EscalateJudgedFirst) and with LandingStopPrefix on a pawl run;
 // an unusable turn and an attempt record that does not decode each halt with LandingStopPrefix, and a failed spawn is an error that spends no attempt.
 // done is false when the tree passed and its change is settled, and Call proceeds; otherwise the other values are what Call returns at once.
 func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {

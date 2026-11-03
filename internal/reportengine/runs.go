@@ -1,4 +1,4 @@
-// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, tapestry, arras or darn, and partial otherwise.
+// runs.go selects the finished runs of a report: one run per archive tag, full when its records show a finished run of a selected recipe, tapestry or darn, and partial otherwise.
 
 package reportengine
 
@@ -21,7 +21,7 @@ import (
 const SourceBatten = "batten"
 
 // runRecipes are the recipes whose seeded runs a report selects: each writes the tapestry run directory, status and Finalize row the selection reads.
-var runRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeArras}
+var runRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
 
 // RunRow is one full run.
 // Recipe is the recipe its seed names, one of the recipes a report selects.

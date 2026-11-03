@@ -21,11 +21,11 @@ Each row gives the English term, the Norwegian term, other languages where a ter
 ## What "taken" was searched against
 
 - Package names under `internal/` and the module names `lym --help` lists.
-- The recipe names in `contracts/recipes` (tapestry, darn, sampler, pawl, batten) and the row names in those recipes, such as Discussion, Plan, Webster, Describe, Finalize, Land and the Beam rows.
+- The recipe names in `contracts/recipes` (tapestry, motif, darn, sampler, pawl, batten) and the row names in those recipes, such as Discussion, Plan, Webster, Describe, Finalize, Land and the Beam rows.
 - The `lym` verbs of every module.
 - The role constants in Go code and the stencil families under the Bolt stencils directory, with their seats (chair, advisor, writer, implementer, reviewer, fixer).
 - The board's statuses and layers (draft, running, ready, project, done), its kinds (task, note, project), its handle letters and the labels from `lym board labels`.
-- Names that board entries and Go comments reserve: `motif`, `arras` and `cartoon` (the shed-sub-run-block task), `hardener` and `tenter` (the hardener note), `weaver` (the weaver note).
+- Names that board entries and Go comments reserve: `cartoon`, kept for a later Plan block beside the `motif` recipe (the shed-sub-run-block task), `hardener` and `tenter` (the hardener note), `weaver` (the weaver note).
 
 ## Tools and loom parts
 
@@ -34,7 +34,7 @@ Each row gives the English term, the Norwegian term, other languages where a ter
 | loom | vevstol, vev | sv vävstol; da væv; fr métier à tisser; de Webstuhl | the frame that holds the warp and weaves it | module | Taken: `loom`, the module (`lym loom`) that drives one task's phase machine over a per-worktree status file, on the generic shed engine. It walks the producer rows from Discussion through Plan and Webster to Finalize. |
 | warp | renning, varp | sv varp; da kæde; fr chaîne; de Kette | the lengthwise threads held under tension | module, artifact | Taken: `warp`, the code-repository half of a fabric pair. Every warp worktree has a weft worktree beside it. |
 | weft | veft, innslag, islett † | sv inslag; da islæt; fr trame; de Schuss | the crosswise thread woven through the warp | module, artifact | Taken: `weft`, the records-repository half of a fabric pair, kept in the `-weft` sibling directory of each warp worktree. |
-| shed | skille, trådskille | sv fack; da fag; fr pas; de Fach | the opening between raised and lowered warp threads | module | Taken: `shed`, the phase-machine layer (`lym shed`) that drives an addressed run through the generic run, step, status, pause and goto verbs. Its recipes are tapestry, darn, sampler, pawl and batten. |
+| shed | skille, trådskille | sv fack; da fag; fr pas; de Fach | the opening between raised and lowered warp threads | module | Taken: `shed`, the phase-machine layer (`lym shed`) that drives an addressed run through the generic run, step, status, pause and goto verbs. Its recipes are tapestry, motif, darn, sampler, pawl and batten. |
 | shuttle | skyttel | sv skyttel; da skyttel; fr navette; de Schützen, Webschiffchen | carries the weft through the shed | module | Taken: `shuttle`, the module (`lym shuttle`) that drives one LLM agent through a single run: a prompt goes in, and the agent's output files and a classified outcome come out. The provider behind it is swappable. |
 | reed | vevskje | sv vävsked; da vevskje †; fr peigne, ros; de Webblatt, Riet | the comb that spaces the warp and beats the weft in | module | Taken: `reed`, the module (`lym reed`) that drives a per-hub tmux server with one strand per pane. It adds, removes, resumes and attaches strands and renders their layout. |
 | heddle | hovel | sv solv; da solv; fr lisse; de Litze | the eye on a shaft that lifts one warp thread | module | Taken: `heddle`, the module (`lym heddle`) that delivers the instruction text agents get from two layers: the entries lym ships in its binary and the repository's own `heddle.json` in the Bolt checkout. |
@@ -124,7 +124,7 @@ Agent nouns name the one who does the work.
 | pile | flor †, polvarp (pile warp) | sv lugg; fr velours; de Flor | raised loops or cut ends on the surface | state | – |
 | terry | frotté | fr éponge; de Frottee | pile of uncut loops | state | – |
 | tapestry | billedvev, gobelenger (pl.) | sv gobelängvävnad; fr tapisserie; de Gobelin | weft-faced pictorial weave | recipe, artifact | Taken: `tapestry`, the full task recipe: Discussion, Plan, Webster, Code review, Describe and Finalize, each review step followed by its own fix step. |
-| arras | – | fr arras | a tapestry hung as a wall covering | artifact | Taken: `arras`, reserved as a recipe name by the shed-sub-run-block task, which lets a shed block run a whole sub-recipe inline as one producer. |
+| arras | – | fr arras | a tapestry hung as a wall covering | artifact | Free again: the arras recipe was removed when tapestry took its Motif block. |
 | overshot | – † | sv opphämta †; de Überschuss | pattern from long weft floats on a plain ground | state | – |
 | rep, ribbed weave | rips † | fr reps; de Rips | weave with fine crosswise ribs | state | – |
 | double cloth | dobbeltvev | fr double étoffe; de Doppelgewebe | two layers woven at once | state, recipe | – |
@@ -142,7 +142,7 @@ Agent nouns name the one who does the work.
 | draft | opptegning † | sv uppritning †; fr mise en carte; de Patrone | the written weaving pattern: threading, tie-up, treadling | artifact | Taken: `draft`, the board status of a task that is not released: every new task takes it, and a draft entry holds no run lock. The board layer `Draft` lists such tasks. |
 | cartoon | kartong | sv kartong; fr carton; de Karton | the full-size drawing placed behind the warp | artifact | Taken: `cartoon`, kept for a later Plan block by the shed-sub-run-block task. |
 | sample, swatch | prøve, vevprøve † | sv provlapp; fr échantillon; de Muster, Probe | a small piece woven to test a design | artifact | Close: `sampler`, the recipe and agent role described above. |
-| motif | motiv | sv motiv; fr motif; de Motiv | a repeated unit of a design | artifact, recipe | Taken: `motif`, reserved as a recipe name by the shed-sub-run-block task, which lets a shed block run a whole sub-recipe inline as one producer. |
+| motif | motiv | sv motiv; fr motif; de Motiv | a repeated unit of a design | artifact, recipe | Taken: `motif`, a recipe a board task may name, which runs Discussion alone, and which tapestry runs inline as its Motif block, a shed block that runs a whole sub-recipe as one producer. |
 | warp chain | renningskjede † | fr chaîne; de Kettfaden-Kette | the warp as a chain of ends after warping | artifact | – |
 | yarn | garn | sv garn; da garn; fr fil; de Garn | spun fibre ready to weave | artifact | – |
 | thread | tråd | sv tråd; fr fil; de Faden | a single strand | artifact | Close: `strand`, as below. |

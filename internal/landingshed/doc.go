@@ -68,7 +68,7 @@
 // A run whose Finalize merged into the local parent here is never read as ended, so a Finalize re-entered after its done mark proceeds;
 // a Finalize entering with no such merge, its entry done on origin, stops with Halt, since another machine landed the run.
 //
-// The owner checks let a run land only on the machine that owns it and its parent, so a tapestry run, an arras run and a darn run, landing with no orch turn, all pass them.
+// The owner checks let a run land only on the machine that owns it and its parent, so a tapestry run and a darn run, landing with no orch turn, all pass them.
 // Finalize reads Deps.ParentHoldsTaskWork first: a parent already holding the task's work marks a Finalize past its parent-side merge, which skips both owner checks and the unreachable halt.
 // Otherwise an unreachable origin halts, the run's owner is the owner of its owned_elsewhere entry, and the parent's owner comes from Deps.ParentOwner, read from the local board the reconcile left.
 // A run whose pair has no batten run record reads as owned here, since the reconcile judges only recorded pairs, but its parent's owner is still read.
@@ -111,7 +111,7 @@
 // AcceptFixReview is the operator's acceptance after that halt: it appends the open findings to the change description under `## Unresolved fix review findings` and records the task HEAD it accepted at, and the resume lands the change as it stands at that HEAD.
 // A resume with no acceptance clears the note and the rounds and runs the fix reviews afresh over the change as it then stands.
 // A spent cap keeps the fixer's commits and halts with LandingStopPrefix, naming the commits and noting `spent` in the record's Halt.
-// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry, arras, darn or sampler run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
+// An escalate report keeps the commits and halts naming the report, with EscalateStopPrefix on a tapestry, darn or sampler run; a turn that ended without a usable result halts, and a failed spawn is an error that spends no attempt.
 // An attempt record that does not decode halts naming the file, with removing it, which grants a fresh cap, as the way forward.
 // A Done clears the entry's attempt record.
 // The size and kind caps bound what a Finalize fix lets through without a reviewer: a fix within them lands with no perch, behind only the `finalize` gate it passed and the finalize mode's instruction to fix failing tests only.
@@ -178,7 +178,7 @@
 // No driver, batten, arbiter or record target routes a Parent-Align or Finalize failure to another row.
 // The recipe's owner tells it to shedverbs as Spec.HandBack, which marks the loop's stop envelope and the status as hand_back; the drivers read the predicate or that mark.
 //
-// An escalate report halts with a reason opening with EscalateStopPrefix on a tapestry, arras, darn or sampler run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
+// An escalate report halts with a reason opening with EscalateStopPrefix on a tapestry, darn or sampler run, which Deps.EscalateJudgedFirst tells, and with LandingStopPrefix on a pawl run, whose arbiter has no decision verb.
 // EscalateHalt is the prefix's only reader: a blocked stop at Parent-Align, Finalize or Merge-In whose reason opens with it.
 // Such a halt is no hand-back, so the driver's arbiter judges it first and batten's binary re-step leaves it alone.
 // Only a fixer's escalate changes route; a halt an older build parked under LandingStopPrefix stays a hand-back.

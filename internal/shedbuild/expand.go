@@ -19,9 +19,9 @@ import (
 // The block's exit is the row's on_done as its recipe file sets it, or, when that is empty, the exit of the block enclosing it.
 // An inlined row's empty on_done, and an inlined block row's empty skip target, become the exit of the innermost block enclosing the row.
 // Each inlined row's BlockPath is the names of the block rows enclosing it, outermost first, joined by "/".
-// A sub-recipe's terminals are not read; the parent's stay the run's.
+// A sub-recipe's terminals and top-level keys are not read; the parent's stay the run's, so a recipe that runs alone may also be a block.
 //
-// Every refusal names the block row and a way forward: a recipe the resolver cannot give, a nil resolver, a recipe that includes itself, a row name or segment an inlined row shares with a row outside its block, an inlined edge naming no row of its recipe, an outermost block row with no on_done, an on_done inside the block, and a sub-recipe setting a key that belongs to the run.
+// Every refusal names the block row and a way forward: a recipe the resolver cannot give, a nil resolver, a recipe that includes itself, a row name or segment an inlined row shares with a row outside its block, an inlined edge naming no row of its recipe, an outermost block row with no on_done, and an on_done inside the block.
 func Expand(r Recipe, resolve func(name string) ([]byte, error)) (Recipe, error) {
 	if !slices.ContainsFunc(r.Producers, func(row Row) bool { return row.Block != "" }) {
 		return r, nil
@@ -115,20 +115,6 @@ func (e *expander) inline(block Row, exit, path string, chain []string) (rows []
 	sub, err := Parse(data)
 	if err != nil {
 		return nil, "", blockError(block, "recipe %q: %w; way forward: set block to an embedded recipe's name", block.Block, err)
-	}
-
-	for _, key := range []struct {
-		name string
-		set  bool
-	}{
-		{"contract", sub.Contract != ""},
-		{"verify_source", sub.VerifySource != ""},
-		{"amendment_target", sub.AmendmentTarget != ""},
-		{"profile_recipe", sub.ProfileRecipe != ""},
-	} {
-		if key.set {
-			return nil, "", blockError(block, "recipe %q sets %s, which belongs to the run; way forward: remove %s from the block's recipe", block.Block, key.name, key.name)
-		}
 	}
 
 	own := make(map[string]bool, len(sub.Producers))

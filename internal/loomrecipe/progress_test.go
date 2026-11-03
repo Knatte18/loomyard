@@ -79,12 +79,8 @@ func TestRouting_ProgressAt(t *testing.T) {
 		}
 	})
 
-	t.Run("arras reads Preflight, Motif, Discussion-Write and Discussion-Review before the tapestry steps", func(t *testing.T) {
+	t.Run("Preflight, Motif, Discussion-Write and Discussion-Review come before Drift-Baseline", func(t *testing.T) {
 		t.Parallel()
-		arras, err := Routing(shedrun.RecipeArras, map[string]int{"Discussion-Review": 5, "Plan-Review": 5, "Code-Review": 5})
-		if err != nil {
-			t.Fatalf("Routing(arras) = _, %v; want nil", err)
-		}
 		for _, want := range []struct {
 			row  string
 			step int
@@ -98,7 +94,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 			// The step a pass-over of Motif moves to.
 			{loomshed.NameDriftBaseline, 5, loomshed.NameDriftBaseline},
 		} {
-			if got := arras.ProgressAt(want.row); got.Step != want.step || got.Name != want.name {
+			if got := routing.ProgressAt(want.row); got.Step != want.step || got.Name != want.name {
 				t.Errorf("ProgressAt(%q) = step %d %q; want step %d %q", want.row, got.Step, got.Name, want.step, want.name)
 			}
 		}

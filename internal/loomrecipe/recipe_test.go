@@ -95,10 +95,10 @@ func TestNew_ShapeMatchesRecipe(t *testing.T) {
 //
 // This goes through Parse/Build rather than through New deliberately: it needs the parsed Recipe
 // value, which New does not return, so it must not be "simplified" back onto New.
-// The arras recipe holds a block row, so its parsed recipe is expanded before it is built.
+// The tapestry recipe holds a block row, so its parsed recipe is expanded before it is built.
 func TestRecipe_StructuralCheckHasNoFindings(t *testing.T) {
 	tiergate.Require(t, 0)
-	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "arras": recipes.ArrasRecipe} {
+	for name, source := range map[string][]byte{"tapestry": recipes.TapestryRecipe, "darn": recipes.DarnRecipe, "pawl": recipes.PawlRecipe, "motif": recipes.MotifRecipe} {
 		t.Run(name, func(t *testing.T) {
 			env, _ := testEnv(t)
 
@@ -183,14 +183,14 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession, the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown and the arras recipe's Block, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession and the pawl recipe's BeamUp, BeamAwait, BeamDescribe and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	tiergate.Require(t, 0)
-	// The darn recipe's record row and writer, the sampler recipe's session row, the pawl recipe's own rows and the arras recipe's block row are ones a loom row can reach, beside the tapestry recipe's.
-	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown", "Block"}
+	// The darn recipe's record row and writer, the sampler recipe's session row and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's; the motif recipe's rows are all tapestry's.
+	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDescribe", "BeamDown"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -230,7 +230,6 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipePawl, recipes.PawlRecipe},
 		{shedrun.RecipeSampler, recipes.SamplerRecipe},
 		{shedrun.RecipeMotif, recipes.MotifRecipe},
-		{shedrun.RecipeArras, recipes.ArrasRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)
@@ -330,23 +329,20 @@ func TestEntryNumbers(t *testing.T) {
 		want   map[string]int
 	}{
 		{"loom", shedrun.RecipeTapestry, map[string]int{
-			"Preflight": 1, "Discussion-Write": 2,
-			"Discussion-Bouncer": 3, "Discussion-Burler-Review": 3, "Discussion-Burler-Fix": 3,
-			"Drift-Baseline": 4,
-			"Parts-Write":    5, "Parts-Plan-Write": 6,
-			"Plan-Write":   7,
-			"Plan-Bouncer": 8, "Plan-Burler-Review": 8, "Plan-Burler-Fix": 8,
-			"Drift-Await": 9,
-			"Webster":     10, "Parent-Align": 11,
-			"Drift-Verify": 12,
-			"Code-Bouncer": 13, "Code-Burler-Review": 13, "Code-Burler-Fix": 13,
-			"Describe": 14, "PR-Review": 15, "Finalize": 16, "Friction-Reflect": 17,
-		}},
-		{"arras", shedrun.RecipeArras, map[string]int{
 			"Preflight": 1, "Motif": 2, "Discussion-Write": 3,
 			"Discussion-Bouncer": 4, "Discussion-Burler-Review": 4, "Discussion-Burler-Fix": 4,
 			"Drift-Baseline": 5,
-			"Webster":        11, "Friction-Reflect": 18,
+			"Parts-Write":    6, "Parts-Plan-Write": 7,
+			"Plan-Write":   8,
+			"Plan-Bouncer": 9, "Plan-Burler-Review": 9, "Plan-Burler-Fix": 9,
+			"Drift-Await": 10,
+			"Webster":     11, "Parent-Align": 12,
+			"Drift-Verify": 13,
+			"Code-Bouncer": 14, "Code-Burler-Review": 14, "Code-Burler-Fix": 14,
+			"Describe": 15, "PR-Review": 16, "Finalize": 17, "Friction-Reflect": 18,
+		}},
+		{"motif", shedrun.RecipeMotif, map[string]int{
+			"Discussion-Write": 1, "Discussion-Bouncer": 2, "Discussion-Burler-Review": 2, "Discussion-Burler-Fix": 2,
 		}},
 		{"batten", shedrun.RecipeBatten, map[string]int{"Run-Shed": 6, "Land": 7}},
 		{"darn", shedrun.RecipeDarn, map[string]int{"Record-Write": 2, "Drift-Baseline": 3, "Drift-Await": 4, "Drift-Verify": 6, "Code-Bouncer": 7, "Code-Burler-Review": 7, "Code-Burler-Fix": 7}},

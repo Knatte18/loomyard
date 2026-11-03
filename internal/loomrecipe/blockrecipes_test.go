@@ -1,66 +1,52 @@
-// blockrecipes_test.go pins the motif and arras recipes against the tapestry recipe they are cut from.
+// blockrecipes_test.go pins the tapestry recipe's Motif block against tapestry's rows as they stood before the block, and the motif recipe run alone.
 
 package loomrecipe
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
 
-	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBlockRecipes asserts motif holds tapestry's Discussion rows, arras expands to tapestry's rows plus the Motif block row, arras keeps tapestry's top-level keys, and arras builds under the loom contract.
-func TestBlockRecipes(t *testing.T) {
+// tapestryBeforeMotifFile is the testdata file holding the tapestry recipe as it stood before its Discussion rows moved into the Motif block.
+const tapestryBeforeMotifFile = "tapestry-rows-before-motif.yaml"
+
+// motifRowNames are the motif recipe's rows, in file order.
+var motifRowNames = []string{loomshed.NameDiscussionWrite, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix}
+
+// TestTapestryMotifBlock asserts the expanded tapestry recipe is its recipe before the Motif block, config included:
+// the same rows with the Motif block row after Preflight and the Discussion rows inside the block, and the same top-level keys.
+func TestTapestryMotifBlock(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	parse := func(t *testing.T, source []byte) shedbuild.Recipe {
-		t.Helper()
-		recipe, err := shedbuild.Parse(source)
-		if err != nil {
-			t.Fatalf("shedbuild.Parse() = _, %v; want nil", err)
-		}
-		return recipe
+	source, err := os.ReadFile(filepath.Join("testdata", tapestryBeforeMotifFile))
+	if err != nil {
+		t.Fatalf("read %s: %v", tapestryBeforeMotifFile, err)
 	}
-	tapestry := parse(t, recipes.TapestryRecipe)
+	before, err := shedbuild.Parse(source)
+	if err != nil {
+		t.Fatalf("shedbuild.Parse(%s) = _, %v; want nil", tapestryBeforeMotifFile, err)
+	}
+	expanded, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
+	if err != nil {
+		t.Fatalf("parseEmbeddedRecipe(tapestry) = _, %v; want nil", err)
+	}
 
-	t.Run("motif holds tapestry's Discussion rows", func(t *testing.T) {
+	t.Run("rows", func(t *testing.T) {
 		t.Parallel()
-		motif := parse(t, recipes.MotifRecipe)
-
-		start := slices.IndexFunc(tapestry.Producers, func(row shedbuild.Row) bool { return row.Name == loomshed.NameDiscussionWrite })
-		if start < 0 {
-			t.Fatalf("the tapestry recipe has no %s row", loomshed.NameDiscussionWrite)
-		}
-		want := slices.Clone(tapestry.Producers[start : start+len(motif.Producers)])
-		for i := range want {
-			// The block rewrites the bouncer's empty on_done to its exit.
-			if want[i].Name == loomshed.NameDiscussionBouncer {
-				want[i].OnDone = ""
-			}
-		}
-		if !reflect.DeepEqual(motif.Producers, want) {
-			t.Errorf("motif rows = %+v; want tapestry's Discussion rows %+v", motif.Producers, want)
-		}
-	})
-
-	t.Run("arras expands to tapestry's rows plus the Motif block row", func(t *testing.T) {
-		t.Parallel()
-		expanded, err := parseEmbeddedRecipe(shedrun.RecipeArras)
-		if err != nil {
-			t.Fatalf("parseEmbeddedRecipe(arras) = _, %v; want nil", err)
-		}
-
 		var want []shedbuild.Row
-		for _, row := range tapestry.Producers {
-			switch row.Name {
-			case loomshed.NamePreflight:
+		for _, row := range before.Producers {
+			if row.Name == loomshed.NamePreflight {
 				row.OnDone = loomshed.NameMotif
 				want = append(want, row, shedbuild.Row{
 					Name:      loomshed.NameMotif,
@@ -68,39 +54,52 @@ func TestBlockRecipes(t *testing.T) {
 					OnDone:    loomshed.NameDiscussionWrite,
 					SkipTo:    loomshed.NameDriftBaseline,
 					Block:     shedrun.RecipeMotif,
-					BlockGate: shedrecipe.BlockGateAlways,
+					BlockGate: shedrecipe.BlockGateUndiscussed,
 				})
 				continue
-			case loomshed.NameDiscussionWrite, loomshed.NameDiscussionBouncer, loomshed.NameDiscussionBurlerReview, loomshed.NameDiscussionBurlerFix:
+			}
+			if slices.Contains(motifRowNames, row.Name) {
 				row.BlockPath = loomshed.NameMotif
 			}
 			want = append(want, row)
 		}
 		if !reflect.DeepEqual(expanded.Producers, want) {
-			t.Errorf("arras rows = %+v; want tapestry's rows with the Motif block row %+v", expanded.Producers, want)
+			t.Errorf("tapestry rows = %+v; want its rows before the Motif block, with the block row %+v", expanded.Producers, want)
 		}
 	})
 
-	t.Run("arras keeps tapestry's top-level keys", func(t *testing.T) {
+	t.Run("top-level keys", func(t *testing.T) {
 		t.Parallel()
-		arras := parse(t, recipes.ArrasRecipe)
-
-		if arras.ProfileRecipe != shedrun.RecipeTapestry {
-			t.Errorf("arras ProfileRecipe = %q; want %q", arras.ProfileRecipe, shedrun.RecipeTapestry)
-		}
-		arras.ProfileRecipe, arras.Producers = "", nil
-		want := tapestry
-		want.Producers = nil
-		if !reflect.DeepEqual(arras, want) {
-			t.Errorf("arras top-level keys = %+v; want tapestry's %+v", arras, want)
+		got, want := expanded, before
+		got.Producers, want.Producers = nil, nil
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("tapestry top-level keys = %+v; want %+v", got, want)
 		}
 	})
+}
 
-	t.Run("arras builds under the loom contract", func(t *testing.T) {
-		t.Parallel()
-		env, paths := testEnv(t)
-		if _, err := New(shedrun.RecipeArras, env, paths); err != nil {
-			t.Errorf("New(arras) = _, %v; want nil", err)
+// TestMotifRecipeRunsAlone asserts the motif recipe builds under the loom contract as a run of its own, holds the Discussion rows alone, and ends its run on Discussion-Bouncer's Done.
+func TestMotifRecipeRunsAlone(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	env, paths := testEnv(t)
+
+	shed, err := New(shedrun.RecipeMotif, env, paths)
+	if err != nil {
+		t.Fatalf("New(motif) = _, %v; want nil", err)
+	}
+	names := make([]string, 0, len(shed.Producers))
+	var bouncer shedengine.ProducerDef
+	for _, def := range shed.Producers {
+		names = append(names, def.Name)
+		if def.Name == loomshed.NameDiscussionBouncer {
+			bouncer = def
 		}
-	})
+	}
+	if !slices.Equal(names, motifRowNames) {
+		t.Errorf("New(motif) rows = %v; want %v", names, motifRowNames)
+	}
+	if bouncer.OnDone != "" {
+		t.Errorf("motif %s OnDone = %q; want empty, which ends the run", loomshed.NameDiscussionBouncer, bouncer.OnDone)
+	}
 }

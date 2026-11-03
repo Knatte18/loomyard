@@ -2,8 +2,8 @@
 // vocabulary (including the reserved literal "self"), and of the seed.json contract: the file that
 // records a run's chosen recipe, driver, and parameters at seed time.
 //
-// The recipe names a seed may hold are arras, batten, darn, pawl, sampler and tapestry (RecipeNames).
-// Motif, the recipe that makes a sketch, the decision record, is a block source only: another recipe runs it as a block, and no seed names it.
+// The recipe names a seed may hold are batten, darn, motif, pawl, sampler and tapestry (RecipeNames).
+// Motif, the recipe that makes a sketch, the decision record, runs alone and is also the tapestry recipe's Motif block.
 //
 // "Seed" here names one thing only -- the run-identity artefact this package reads and writes via
 // ReadSeed/WriteSeed. It is never shedverbs.KindUnseeded's sense (a status file); a run addressed by this

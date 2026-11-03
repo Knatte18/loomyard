@@ -31,14 +31,14 @@ func TestPrepareRunSettings(t *testing.T) {
 		like *battenshed.RunSettings
 	}{
 		{
-			name:     "an arras task naming no profile takes the template's tapestry default profile's tapestry block",
-			settings: battenshed.RunSettings{Recipe: "arras"},
+			name:     "a motif task naming no profile takes the template's tapestry default profile's tapestry block",
+			settings: battenshed.RunSettings{Recipe: "motif"},
 			like:     &battenshed.RunSettings{Recipe: "tapestry"},
 		},
 		{
-			name:        "an arras task naming light takes light's tapestry block",
+			name:        "a motif task naming light takes light's tapestry block",
 			profilesYML: profiles,
-			settings:    battenshed.RunSettings{Recipe: "arras", Profile: "light"},
+			settings:    battenshed.RunSettings{Recipe: "motif", Profile: "light"},
 			like:        &battenshed.RunSettings{Recipe: "tapestry", Profile: "light"},
 		},
 		{

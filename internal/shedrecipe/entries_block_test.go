@@ -3,6 +3,7 @@
 package shedrecipe
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -29,9 +30,54 @@ func TestBlockGates(t *testing.T) {
 		}
 	})
 
+	t.Run("undiscussed holds unless the seam seeded the stored record", func(t *testing.T) {
+		t.Parallel()
+		check, err := LookupBlockGate(BlockGateUndiscussed)
+		if err != nil {
+			t.Fatalf("LookupBlockGate(%q) error = %v; want nil", BlockGateUndiscussed, err)
+		}
+		seamErr := errors.New("board unreadable")
+		tests := []struct {
+			name       string
+			seeded     bool
+			err        error
+			wantHolds  bool
+			wantReason string
+			wantErr    error
+		}{
+			{"an entry not flagged discussed enters the block", false, nil, true, "", nil},
+			{"a discussed entry's seeded record passes over the block", true, nil, false, undiscussedSkipReason, nil},
+			{"a seam error is the gate's", false, seamErr, false, "", seamErr},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				gate, err := check(Env{SeedDiscussedRecord: func() (bool, error) { return tt.seeded, tt.err }})
+				if err != nil {
+					t.Fatalf("undiscussed check error = %v; want nil", err)
+				}
+				holds, reason, err := gate()
+				if holds != tt.wantHolds || reason != tt.wantReason || !errors.Is(err, tt.wantErr) {
+					t.Errorf("undiscussed gate() = %v, %q, %v; want %v, %q, %v", holds, reason, err, tt.wantHolds, tt.wantReason, tt.wantErr)
+				}
+			})
+		}
+	})
+
+	t.Run("undiscussed refuses an Env with no SeedDiscussedRecord seam", func(t *testing.T) {
+		t.Parallel()
+		check, err := LookupBlockGate(BlockGateUndiscussed)
+		if err != nil {
+			t.Fatalf("LookupBlockGate(%q) error = %v; want nil", BlockGateUndiscussed, err)
+		}
+		if _, err := check(Env{}); err == nil || !strings.Contains(err.Error(), "Env.SeedDiscussedRecord must not be nil") {
+			t.Errorf("undiscussed check(Env{}) error = %v; want it to name Env.SeedDiscussedRecord", err)
+		}
+	})
+
 	t.Run("the table lists its names sorted", func(t *testing.T) {
 		t.Parallel()
-		if got, want := BlockGateNames(), []string{BlockGateAlways}; !reflect.DeepEqual(got, want) {
+		if got, want := BlockGateNames(), []string{BlockGateAlways, BlockGateUndiscussed}; !reflect.DeepEqual(got, want) {
 			t.Errorf("BlockGateNames() = %v; want %v", got, want)
 		}
 	})

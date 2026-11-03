@@ -396,7 +396,7 @@ func TestComputeTiming(t *testing.T) {
 			},
 		},
 		{
-			name: "an arras run counts its Motif row under discussion, as a tapestry run counts its Discussion rows",
+			name: "a tapestry run counts its Motif block row under discussion, as it counts its Discussion rows",
 			setup: func(w *world) {
 				loom := []shedengine.HistoryEntry{
 					entryAt(loomshed.NamePreflight, secondsAfter(run, 300)),
@@ -404,7 +404,7 @@ func TestComputeTiming(t *testing.T) {
 					entryAt(loomshed.NamePlanWrite, secondsAfter(run, 1500)),
 					entryAt(loomshed.NameFinalize, secondsAfter(run, 1800)),
 				}
-				seed := fmt.Sprintf(`{"recipe":"arras","driver":"go","started_at":%q}`, run.Format(time.RFC3339))
+				seed := fmt.Sprintf(`{"recipe":"tapestry","driver":"go","started_at":%q}`, run.Format(time.RFC3339))
 				landedRun(w, "woven", "t1", 3, seed, loom)
 			},
 			check: func(t *testing.T, got TimingReport) {

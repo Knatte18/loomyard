@@ -76,18 +76,16 @@ const (
 	RecipePawl = "pawl"
 	// RecipeSampler names the sampler recipe, a run whose build is one interactive agent session with the operator.
 	RecipeSampler = "sampler"
-	// RecipeMotif names the motif recipe, the run that makes a sketch, the decision record, from a task.
-	// It is run only as a block of another recipe, never seeded on its own.
+	// RecipeMotif names the motif recipe, the run that makes a sketch, the decision record, from a task and lands no code.
+	// The tapestry recipe also runs it as its Motif block.
 	RecipeMotif = "motif"
-	// RecipeArras names the arras recipe, the tapestry recipe with its Discussion rows run as the Motif block.
-	RecipeArras = "arras"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeArras, RecipeBatten, RecipeDarn, RecipePawl, RecipeSampler, RecipeTapestry}
+	return []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

@@ -71,7 +71,9 @@
 // The Block entry builds the row a recipe's block row becomes once its sub-recipe is expanded into it.
 // It takes no Config key and reads no Env field; its producer returns Done at once, so the row's Done marks the run entering the block.
 // Whether the block runs is the row's entry gate, built from a block gate check.
-// BlockGates is the closed table of those checks, reached only through LookupBlockGate and BlockGateNames, and its one check is `always`, which holds with an empty reason.
+// BlockGates is the closed table of those checks, reached only through LookupBlockGate and BlockGateNames.
+// `always` holds with an empty reason.
+// `undiscussed` calls Env.SeedDiscussedRecord, which it requires: it holds when the seam seeds nothing, and passes over the block, naming the discussed board entry as its reason, when the seam seeded the entry's stored decision record.
 // A name the table lacks is refused with the names it holds, and a new check is a row of the table, never code per recipe.
 //
 // # The PRReview row

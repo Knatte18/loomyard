@@ -195,7 +195,7 @@ func seedChildEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduc
 }
 
 // landEntry is the Constructor for the "Land" registry row: it rejects any Config key.
-// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, PruneBoard and PauseRequested.
+// It validates Env.Slug, Env.ScratchDir, Env.PrimeLock.Acquire, Env.PrimeLock.Path, Env.Land.LandLock.Acquire, Env.Land.LandLock.Path and the Env.Land seams ChildLanded, ParentBranch, PrimeBranch, PrimeDirty, Pull, Landing, RunDeploy, PruneBoard and PauseRequested.
 // It returns battenshed.NewLand(name, env.Slug, env.Land, env.PrimeLock, env.ScratchDir).
 // It does not validate Env.Land.Sleep, Env.Land.Now or Env.Land.Notices, whose nil values are legitimate defaults.
 func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
@@ -224,6 +224,7 @@ func landEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, e
 		field string
 		value any
 	}{
+		{"Land.ChildLanded", env.Land.ChildLanded},
 		{"Land.ParentBranch", env.Land.ParentBranch},
 		{"Land.PrimeBranch", env.Land.PrimeBranch},
 		{"Land.PrimeDirty", env.Land.PrimeDirty},

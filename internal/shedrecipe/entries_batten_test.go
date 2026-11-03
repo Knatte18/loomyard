@@ -97,6 +97,7 @@ func lifecycleEntryCases() []lifecycleEntryCase {
 			zeroSeams: []lifecycleSeamCase{
 				{"PrimeLock.Acquire", func(env Env) Env { env.PrimeLock.Acquire = nil; return env }},
 				{"Land.LandLock.Acquire", func(env Env) Env { env.Land.LandLock.Acquire = nil; return env }},
+				{"Land.ChildLanded", func(env Env) Env { env.Land.ChildLanded = nil; return env }},
 				{"Land.ParentBranch", func(env Env) Env { env.Land.ParentBranch = nil; return env }},
 				{"Land.PrimeBranch", func(env Env) Env { env.Land.PrimeBranch = nil; return env }},
 				{"Land.PrimeDirty", func(env Env) Env { env.Land.PrimeDirty = nil; return env }},

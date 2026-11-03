@@ -147,19 +147,22 @@ func TestExpand(t *testing.T) {
 		}
 	})
 
-	t.Run("the parent's terminals stay the run's whatever the sub-recipe's terminals name", func(t *testing.T) {
+	t.Run("the parent's terminals and top-level keys stay the run's whatever the sub-recipe sets", func(t *testing.T) {
 		t.Parallel()
-		parent, err := Parse([]byte(parentYAML("on_done: Post")))
+		parent, err := Parse([]byte(strings.Replace(parentYAML("on_done: Post"), "terminals: [Post]", "terminals: [Post]\nverify_source: tree_scope\namendment_target: Pre", 1)))
 		if err != nil {
 			t.Fatalf("Parse(parent) = _, %v; want nil", err)
 		}
-		foreign := strings.Replace(sub, "terminals: [Post]", "terminals: [NotMine]", 1)
+		foreign := strings.Replace(sub, "terminals: [Post]", "terminals: [NotMine]\ncontract: loom\nverify_source: plan\namendment_target: S1\nprofile_recipe: sub", 1)
 		got, err := Expand(parent, mapResolver(map[string]string{"sub": foreign}))
 		if err != nil {
 			t.Fatalf("Expand(...) = _, %v; want nil", err)
 		}
 		if !reflect.DeepEqual(got.Terminals, []string{"Post"}) {
 			t.Errorf("Expand(...).Terminals = %v; want the parent's [Post]", got.Terminals)
+		}
+		if got.Contract != "" || got.VerifySource != "tree_scope" || got.AmendmentTarget != "Pre" || got.ProfileRecipe != "" {
+			t.Errorf("Expand(...) contract, verify_source, amendment_target, profile_recipe = %q, %q, %q, %q; want the parent's \"\", \"tree_scope\", \"Pre\", \"\"", got.Contract, got.VerifySource, got.AmendmentTarget, got.ProfileRecipe)
 		}
 	})
 
@@ -175,9 +178,6 @@ func TestExpand(t *testing.T) {
 		}
 	})
 
-	withKey := func(source, key string) string {
-		return strings.Replace(source, "producers:\n", key+"\nproducers:\n", 1)
-	}
 	refusals := []struct {
 		name       string
 		parent     string
@@ -265,30 +265,6 @@ func TestExpand(t *testing.T) {
 			parent:  parentYAML("on_done: S2"),
 			sources: map[string]string{"sub": sub},
 			want:    `shedbuild: block "Blk": on_done "S2" lies inside the block; way forward: set on_done to a row outside the block`,
-		},
-		{
-			name:    "a sub-recipe setting contract",
-			parent:  parentYAML("on_done: Post"),
-			sources: map[string]string{"sub": withKey(sub, "contract: loom")},
-			want:    `shedbuild: block "Blk": recipe "sub" sets contract, which belongs to the run; way forward: remove contract from the block's recipe`,
-		},
-		{
-			name:    "a sub-recipe setting verify_source",
-			parent:  parentYAML("on_done: Post"),
-			sources: map[string]string{"sub": withKey(sub, "verify_source: plan")},
-			want:    `recipe "sub" sets verify_source, which belongs to the run; way forward: remove verify_source from the block's recipe`,
-		},
-		{
-			name:    "a sub-recipe setting amendment_target",
-			parent:  parentYAML("on_done: Post"),
-			sources: map[string]string{"sub": withKey(sub, "amendment_target: S1")},
-			want:    `recipe "sub" sets amendment_target, which belongs to the run; way forward: remove amendment_target from the block's recipe`,
-		},
-		{
-			name:    "a sub-recipe setting profile_recipe",
-			parent:  parentYAML("on_done: Post"),
-			sources: map[string]string{"sub": withKey(sub, "profile_recipe: sub")},
-			want:    `recipe "sub" sets profile_recipe, which belongs to the run; way forward: remove profile_recipe from the block's recipe`,
 		},
 	}
 	for _, tt := range refusals {

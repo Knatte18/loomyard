@@ -138,7 +138,7 @@ func inFlight(hub, slug string) (bool, error) {
 }
 
 // countedRecipes are the recipes whose finished runs the default selection counts.
-var countedRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeArras}
+var countedRecipes = []string{shedrun.RecipeTapestry, shedrun.RecipeDarn}
 
 // recipeList joins countedRecipes for a sentence: commas between all but the last two, the conjunction before the last.
 func recipeList(conjunction string) string {

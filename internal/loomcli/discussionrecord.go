@@ -1,15 +1,19 @@
-// discussionrecord.go copies a run's Discussion decision record onto its board entry: the one store call loomcli makes, and the Discussion approval seam that uses it.
+// discussionrecord.go moves a run's Discussion decision record between the run and its board entry:
+// the one store call loomcli makes, the Discussion approval seam that uses it, and the Motif block's seam that seeds a discussed entry's stored record into the run.
 
 package loomcli
 
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
@@ -40,4 +44,37 @@ func approveDiscussion(location *lymcwd.Location, runID string) error {
 		return nil
 	}
 	return err
+}
+
+// seedDiscussedRecord is the body of the Motif block's undiscussed gate seam.
+// When the run's board entry is flagged discussed and holds its stored record, it writes that record as the run's decision record, writes the support log when none exists, commits the discussion directory and reports true,
+// so the run passes over Discussion and Plan-Write and the reviews read the record as they read one the run approved.
+// An absent entry, or one not flagged discussed, writes nothing and reports false.
+// A failed read, write or commit is returned, so the gate fails the run and a resume runs the gate again.
+func seedDiscussedRecord(location *lymcwd.Location, runID string, record runRecord) (bool, error) {
+	board, err := boardengine.OpenHub(location.HubPath)
+	if err != nil {
+		return false, err
+	}
+	stored, found, err := board.DecisionRecord(shedrun.ResolveRunID(location, runID))
+	if err != nil || !found {
+		return false, err
+	}
+	if err := os.MkdirAll(record.dir, 0o755); err != nil {
+		return false, fmt.Errorf("create the discussion directory for the stored decision record: %w", err)
+	}
+	if err := fsx.AtomicWriteBytes(record.path, stored); err != nil {
+		return false, fmt.Errorf("write the stored decision record: %w", err)
+	}
+	if _, err := os.Stat(record.supportLog); errors.Is(err, fs.ErrNotExist) {
+		if err := fsx.AtomicWriteBytes(record.supportLog, loomshed.StoredRecordSupportLog()); err != nil {
+			return false, fmt.Errorf("write the support log beside the stored decision record: %w", err)
+		}
+	} else if err != nil {
+		return false, fmt.Errorf("stat the support log: %w", err)
+	}
+	if err := commitDiscussion(location); err != nil {
+		return false, fmt.Errorf("commit the stored decision record: %w", err)
+	}
+	return true, nil
 }

@@ -43,7 +43,7 @@ const (
 	NameCodeBurlerFix    = "Code-Burler-Fix"
 	NamePRReview         = "PR-Review"
 
-	// NameMotif is the block row of the arras recipe that runs the motif recipe.
+	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"
 
 	NameDriftBaseline = "Drift-Baseline"

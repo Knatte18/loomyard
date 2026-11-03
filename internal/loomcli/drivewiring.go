@@ -135,7 +135,7 @@ func tacklerFor(dirs configengine.Dirs, recipe string, reg modelspec.Registry) (
 }
 
 // loomArbiterSeam builds the arbiter seam loom hands the shed driver.
-// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry, arras, darn or sampler landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
+// Merriam reports a batch it cannot carry on only as a stuck outcome, and a tapestry, darn or sampler landing merge fixer reports an escalate as a halt of its own, so the arbiter, not the tackler, is the first to judge a blocked stop at the Webster row or a landing escalate before it reaches the parent; no other stop is marked.
 func loomArbiterSeam(arbiterDeps shedarbiter.Deps, runID string) *sheddriver.ArbiterSeam {
 	seam := shedarbiter.Seam(arbiterDeps, runID, func(producer string) bool {
 		return arbiterstop.EscalationEligible(producer, arbiterDeps.Stop)

@@ -170,8 +170,8 @@ func TestValidateRecipe(t *testing.T) {
 		wantErr bool
 	}{
 		{"tapestry", RecipeTapestry, false},
-		{"arras", RecipeArras, false},
-		{"motif", RecipeMotif, true},
+		{"motif", RecipeMotif, false},
+		{"former arras name", "arras", true},
 		{"batten", RecipeBatten, false},
 		{"darn", RecipeDarn, false},
 		{"pawl", RecipePawl, false},
@@ -189,7 +189,7 @@ func TestValidateRecipe(t *testing.T) {
 			if !tt.wantErr {
 				return
 			}
-			for _, want := range []string{"unknown recipe", RecipeTapestry, RecipeArras} {
+			for _, want := range []string{"unknown recipe", RecipeTapestry, RecipeMotif} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("ValidateRecipe(%q) error = %q; want it to contain %q", tt.recipe, err.Error(), want)
 				}
@@ -202,7 +202,7 @@ func TestValidateRecipe(t *testing.T) {
 func TestRecipeNames(t *testing.T) {
 	tiergate.Require(t, 0)
 	got := RecipeNames()
-	want := []string{RecipeArras, RecipeBatten, RecipeDarn, RecipePawl, RecipeSampler, RecipeTapestry}
+	want := []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeSampler, RecipeTapestry}
 	if len(got) != len(want) {
 		t.Fatalf("RecipeNames() = %v; want %v", got, want)
 	}

@@ -94,7 +94,7 @@ var reviewRecipe = []loomrecipe.RecipeRow{
 	{Name: "PR-Rework", Segment: "PR"},
 }
 
-// motifRecipe is the shape of arras's expanded rows around its Motif block: the block row, then the block's Discussion rows, one of them a review segment, then the row the block exits to.
+// motifRecipe is the shape of tapestry's expanded rows around its Motif block: the block row, then the block's Discussion rows, one of them a review segment, then the row the block exits to.
 var motifRecipe = []loomrecipe.RecipeRow{
 	{Name: "Preflight"},
 	{Name: "Motif", IsBlock: true, SkipTo: "Drift-Baseline"},

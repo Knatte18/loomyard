@@ -421,12 +421,13 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				}},
 			}, nil
 		},
-		CommitParts:       func() error { return nil },
-		CommitPartsPlan:   func() error { return nil },
-		ApprovePlan:       func() error { return nil },
-		ApproveDiscussion: func() error { return nil },
-		SkipPlanReview:    func() (bool, error) { return false, nil },
-		CarryOver:         func(discussionparser.CarryOver) error { return nil },
+		CommitParts:         func() error { return nil },
+		CommitPartsPlan:     func() error { return nil },
+		ApprovePlan:         func() error { return nil },
+		ApproveDiscussion:   func() error { return nil },
+		SeedDiscussedRecord: func() (bool, error) { return false, nil },
+		SkipPlanReview:      func() (bool, error) { return false, nil },
+		CarryOver:           func(discussionparser.CarryOver) error { return nil },
 		DocumentSubject: func([]string) (shedadapters.Subject, bool, error) {
 			return shedadapters.Subject{Kind: shedadapters.SubjectDocument, Hash: "document-hash"}, true, nil
 		},
@@ -523,6 +524,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			Remove:   func(context.Context) error { return nil },
 		},
 		Land: battenshed.LandDeps{
+			ChildLanded:  func() (bool, error) { return true, nil },
 			ParentBranch: func() (string, error) { return "main", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },

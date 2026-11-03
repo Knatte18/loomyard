@@ -6,6 +6,7 @@ package loomcli
 import (
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -19,7 +20,10 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 	" A decision that adds, changes or removes a PATTERN entry also passes `--pattern-entry`, `--pattern-action` and, for `adds` or `changes`, `--pattern-text`, as `lym loom decision add --help` says."
 
 // arbiterRecipeDescription returns the description of recipe the arbiter stencil's recipe marker carries: what the run is and the repair verbs the arbiter may run.
-// A loom recipe with a Sampler-Session row is described as a task's result made with the operator in one interactive session, one with a Plan-Write row as a task driven from discussion to landing, labelled with the recipe's name, and any other as a task's code change driven from its decision record through one build session.
+// A loom recipe with a Sampler-Session row is described as a task's result made with the operator in one interactive session.
+// One with a Plan-Write row is described as a task driven from discussion to landing, labelled with the recipe's name.
+// One with no Finalize row is described as a task's Discussion that lands no code.
+// Any other is described as a task's code change driven from its decision record through one build session.
 func arbiterRecipeDescription(recipe string) string {
 	if recipe == shedrun.RecipePawl {
 		return "This is a pawl run, a beam's life driven through the loom engine. " + arbiterRepairVerbs
@@ -30,6 +34,9 @@ func arbiterRecipeDescription(recipe string) string {
 	if recipeHasEngine(recipe, planWriteEngine) {
 		label := recipeLabel(recipe)
 		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	}
+	if !recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) {
+		return "This is a " + recipeLabel(recipe) + " run, a task's Discussion: its decision record is written, reviewed and stored on the board entry, and the run lands no code. " + arbiterRepairVerbs
 	}
 	return "This is a " + recipeLabel(recipe) + " run, a task's code change driven from its decision record through one build session, its review and landing. " + arbiterRepairVerbs
 }

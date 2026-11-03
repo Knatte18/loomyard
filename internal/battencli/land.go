@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,9 +21,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/verifyrun"
 )
@@ -43,6 +46,13 @@ func pauseRequested(location *lymcwd.Location, slug string) func() (bool, error)
 func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd.Location, error)) battenshed.LandDeps {
 	landLockPath := LandLock(location)
 	return battenshed.LandDeps{
+		ChildLanded: func() (bool, error) {
+			taskLocation, err := locateTask()
+			if err != nil {
+				return false, err
+			}
+			return childFinalized(taskLocation)
+		},
 		ParentBranch: func() (string, error) {
 			taskLocation, err := locateTask()
 			if err != nil {
@@ -130,6 +140,21 @@ func landDeps(location *lymcwd.Location, slug string, locateTask func() (*lymcwd
 		PauseRequested: pauseRequested(location, slug),
 		Notices:        rowNotices(location, slug),
 	}
+}
+
+// childFinalized reports whether the run in taskLocation finished a Finalize: its status history holds a Finalize with outcome Done.
+// A run with no status file, or none that finalized, such as a motif run, landed no code.
+func childFinalized(taskLocation *lymcwd.Location) (bool, error) {
+	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(taskLocation, shedrun.SelfRunID), shedrun.StatusLock(taskLocation, shedrun.SelfRunID))
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil || !found {
+		return false, err
+	}
+	return slices.ContainsFunc(status.History, func(entry shedengine.HistoryEntry) bool {
+		return entry.Producer == loomshed.NameFinalize && entry.Outcome == shedengine.Done
+	}), nil
 }
 
 // pullStopOutcome splits a pull's error into the Land row's two outcomes.

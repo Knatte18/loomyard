@@ -9,6 +9,7 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -91,9 +92,9 @@ func fanSettingMismatches(r shedbuild.Recipe) []string {
 //testtiming:keep pins the exact references of the shipped recipes, which a recipe edit pointing a row at another key must fail, and self-checks each rule of fanSettingMismatches over hand-authored segments
 func TestShippedRecipes_FanSettingsAgreeWithinSegment(t *testing.T) {
 	tiergate.Require(t, 0)
-	loom, err := shedbuild.Parse(recipes.TapestryRecipe)
+	loom, err := parseEmbeddedRecipe(shedrun.RecipeTapestry)
 	if err != nil {
-		t.Fatalf("shedbuild.Parse(recipes.TapestryRecipe) error = %v; want nil", err)
+		t.Fatalf("parseEmbeddedRecipe(tapestry) error = %v; want nil", err)
 	}
 	darn, err := shedbuild.Parse(recipes.DarnRecipe)
 	if err != nil {

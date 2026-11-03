@@ -454,7 +454,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 	if !errors.Is(err, battenshed.ErrUnsupportedChildRecipe) {
 		t.Fatalf("WriteSeed(batten) error = %v; want it to wrap ErrUnsupportedChildRecipe", err)
 	}
-	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeArras, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
+	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
 		if !strings.Contains(err.Error(), admitted) {
 			t.Errorf("WriteSeed(batten) error = %q; want it to name the admitted recipe %q", err, admitted)
 		}
@@ -465,7 +465,7 @@ func TestWire_WriteSeedRefusesANonLoomChildBeforeTouchingTheWorktree(t *testing.
 		t.Errorf("WriteSeed(unknown) error = %v; want it to wrap ErrUnknownRecipe", err)
 	}
 
-	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeArras, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
+	for _, admitted := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler} {
 		err = c.env.SeedChild.WriteSeed(context.Background(), admitted, shedrun.DriverGo)
 		if errors.Is(err, battenshed.ErrUnsupportedChildRecipe) || errors.Is(err, battenshed.ErrUnknownRecipe) {
 			t.Fatalf("WriteSeed(%s) error = %v; want the child admitted past the recipe checks", admitted, err)
@@ -514,7 +514,7 @@ func TestChildSeedFor_CarriesRecipeDriverAndParams(t *testing.T) {
 	tiergate.Require(t, 0)
 	params := map[string]string{"parent": "main"}
 
-	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeArras} {
+	for _, recipe := range []string{shedrun.RecipeTapestry, shedrun.RecipeMotif} {
 		got := childSeedFor(recipe, shedrun.DriverLLM, params)
 		if got.Recipe != recipe || got.Driver != shedrun.DriverLLM || got.Params["parent"] != "main" {
 			t.Errorf("childSeedFor(%s) = %+v; want the given recipe, driver and params", recipe, got)

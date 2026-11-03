@@ -41,7 +41,7 @@ func DiscussionApprovalRow(recipe string) (string, bool, error) {
 // hasRow is false, and past false, for a recipe with no approval row.
 // Otherwise a run is past when currentRow, mapped through RetiredRows, is a row of the recipe after every row of the approval row's segment.
 // An empty currentRow, a row before or inside that segment, and a row the recipe does not hold are not past.
-// Only the recipe's own rows are read, so a row inside another recipe's sub-run block is never reached.
+// The recipe's rows are read expanded, so an approval row inside a block, as the tapestry recipe's Motif block holds it, is found where the run meets it.
 // An empty recipe name reads as the tapestry recipe, and a name that selects no embedded recipe is refused.
 func PastDiscussionApproval(recipe, currentRow string) (past, hasRow bool, err error) {
 	parsed, err := parseEmbeddedRecipe(recipe)

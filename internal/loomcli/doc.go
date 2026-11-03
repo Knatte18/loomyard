@@ -18,7 +18,11 @@
 // A run's decision record follows its recipe's rows through `runRecordOf`: a recipe with a Beam-Await row keeps the beam's project record under the beam's slug, and every other recipe the discussion record.
 // A task run's review rows are told its record as the PATTERN declaration path, a beam's project record declares none, and a loom recipe holds a landing's escalate halt for the arbiter first.
 // Discussion-Bouncer's approve seam stores the approved decision record on the run's board entry through the one `storeDecisionRecord` helper, logging and passing a done entry and failing the settle on any other store failure.
+// The Motif block's undiscussed gate seam does the reverse for an entry flagged discussed: it writes the entry's stored record as the run's decision record, writes a support log saying so when none exists and commits the discussion directory, so the gate passes over Discussion.
 // `decision add` copies the committed record onto the board entry after its commit once the run is past that approval, reporting a failed copy as `record_store_error` and never failing the verb, and `decision store` makes the same copy by hand, admitting the unnamed shell, the run's arbiter and its parent orch.
+// Each status transition writes `<state> · <producer>` on the run's board entry.
+// A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
+// A finished run of a recipe with no Finalize row, a motif run, writes the draft status, so the entry leaves its run lock and waits for the operator with its record stored.
 //
 // `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
 // The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.

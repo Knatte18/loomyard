@@ -63,21 +63,12 @@ func TestRecipeKeys(t *testing.T) {
 		wantRefusals      bool
 	}{
 		{
-			name:              "Arras",
-			recipe:            shedrun.RecipeArras,
+			name:              "MotifRunsAloneTakingTapestrysProfile",
+			recipe:            shedrun.RecipeMotif,
 			wantLoom:          true,
 			wantRecord:        "DiscussionWrite",
-			wantVerify:        "plan",
 			wantProfileRecipe: shedrun.RecipeTapestry,
-			wantEngines:       map[string]bool{"DiscussionWrite": true, "Block": true, "Implementer": true, "RecordWrite": false},
-			wantEngineRow:     map[string]string{"DiscussionWrite": "Discussion-Write", "Block": "Motif"},
-		},
-		{
-			name:              "MotifIsABlockSourceNotALoomRecipe",
-			recipe:            shedrun.RecipeMotif,
-			wantRecord:        "DiscussionWrite",
-			wantProfileRecipe: shedrun.RecipeMotif,
-			wantEngines:       map[string]bool{"DiscussionWrite": true, "Block": false, "Implementer": false},
+			wantEngines:       map[string]bool{"DiscussionWrite": true, "Block": false, "Implementer": false, "Finalize": false},
 		},
 		{
 			name:              "Tapestry",
@@ -87,10 +78,12 @@ func TestRecipeKeys(t *testing.T) {
 			wantVerify:        "plan",
 			wantProfileRecipe: shedrun.RecipeTapestry,
 			wantEngines: map[string]bool{
+				"Block":       true,
 				"Implementer": true,
 				"PlanWrite":   true,
 				"RecordWrite": false,
 			},
+			wantEngineRow: map[string]string{"DiscussionWrite": "Discussion-Write", "Block": "Motif"},
 			wantRetired: map[string]string{
 				"Merge-In":           "Parent-Align",
 				"Loom-Preflight":     "Preflight",

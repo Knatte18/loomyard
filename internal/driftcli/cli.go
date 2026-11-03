@@ -42,7 +42,7 @@ func Command() *cobra.Command {
 scope, from drift.scope when the task's run_settings or the hub set it and
 through its agent otherwise, a capture takes the suite's profile on the task's branch point,
 and Drift-Verify compares the task's code against it. The verbs run inside a
-tapestry, arras or darn run's worktree and judge the run's status, so each refusal names
+tapestry or darn run's worktree and judge the run's status, so each refusal names
 its way forward. See lym config drift for the capture and compare commands.`,
 		RunE: clihelp.GroupRunE,
 	}

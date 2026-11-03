@@ -102,6 +102,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		},
 		// Land is filled with trivial fakes: a parent that is not the prime's branch skips the pull and deploy, so the row lands over the fakes with nothing to read.
 		Land: battenshed.LandDeps{
+			ChildLanded:  func() (bool, error) { return true, nil },
 			ParentBranch: func() (string, error) { return "feature", nil },
 			PrimeBranch:  func() (string, error) { return "main", nil },
 			PrimeDirty:   func() ([]string, error) { return nil, nil },

@@ -131,6 +131,34 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 }
 
+// TestNewCommitStatusSeam_FinishedStatus asserts a finished run writes the seam's finished status to the board, after the run status it last wrote.
+func TestNewCommitStatusSeam_FinishedStatus(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	var written []string
+	seam := newCommitStatusSeam(commitStatusDeps{
+		MergeActive: func() (bool, error) { return false, nil },
+		Commit:      func(string) (bool, error) { return false, nil },
+		Spawn:       func() error { return nil },
+		SetBoardStatus: func(status string) error {
+			written = append(written, status)
+			return nil
+		},
+		FinishedStatus: "draft",
+	})
+	for _, state := range []string{"running", "done"} {
+		if err := seam("Discussion-Bouncer", state); err != nil {
+			t.Fatalf("seam(Discussion-Bouncer, %q) = %v; want nil", state, err)
+		}
+	}
+
+	want := []string{"running · Discussion-Bouncer", "draft"}
+	if !reflect.DeepEqual(written, want) {
+		t.Errorf("board writes = %q; want %q", written, want)
+	}
+}
+
 // TestStatusCommitPathspec asserts the pathspec always names the run's status file, and names each of the reviews directory, the loom durable directory and the drive-reports directory only when it holds a file at any depth:
 // empty directories, segment directories and subdirectories would make the commit's pathspec match nothing and fail, and an archive sibling alone still counts.
 //
