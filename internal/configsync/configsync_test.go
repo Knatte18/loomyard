@@ -559,6 +559,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		wantNotDropped []string
 		// loadUnchanged pins that lenses.Load over the board dir resolves the same before the dry run and after the apply.
 		loadUnchanged bool
+		// wantMigrated and wantLacking are the applied result's Migrated and Lacking, compared as they stand; nil skips the check.
+		wantMigrated []string
+		wantLacking  []string
+		// wantFileError means both the dry run and the apply return a *FileError naming the module and leave the hub file's bytes as they were.
+		wantFileError bool
 	}{
 		{
 			name:           "lenses default under lens_set drops a lens equal to the layer's prose and keeps one equal to the base's",
@@ -739,6 +744,33 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantSeed:     SeedHub,
 			wantContains: []string{"broad:"},
 			wantAbsent:   []string{"defaults:", "light:", "solid:", "docs:"},
+			wantMigrated: []string{},
+			wantLacking:  []string{},
+		},
+		{
+			name:         "profiles present under the recipe's former name are renamed in place and the template blocks they lack listed",
+			module:       "profiles",
+			hubFile:      "# operator note\ndefaults: {loom: solid}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 7}\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"# operator note", "defaults: {tapestry: solid}", "  tapestry:\n    loom: {plan_max_bounces: 7}"},
+			wantAbsent:   []string{"loom: solid", "  loom:\n    loom:", "sampler:", "darn:"},
+			wantMigrated: []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
+			wantLacking:  []string{"defaults.darn", "defaults.pawl", "solid.darn", "solid.pawl", "solid.sampler"},
+		},
+		{
+			name:         "profiles present with a former block differing from the current one keep both and list the pair",
+			module:       "profiles",
+			hubFile:      "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n",
+			wantSeed:     SeedHub,
+			wantContains: []string{"  loom:\n    loom: {plan_max_bounces: 7}", "  tapestry:\n    loom: {plan_max_bounces: 1}"},
+			wantMigrated: []string{},
+			wantLacking:  []string{"light.darn", "light.loom: differs from light.tapestry", "light.pawl", "light.sampler"},
+		},
+		{
+			name:          "profiles present that fails to parse is refused and left untouched",
+			module:        "profiles",
+			hubFile:       "light: [\n",
+			wantFileError: true,
 		},
 		{
 			name:         "darn present keeps its tree_scope trees and their targets",
@@ -776,6 +808,20 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 				loadedBefore = loadLensesAt(t, configengine.Dirs{Board: boardDir})
 			}
 
+			if tt.wantFileError {
+				for _, apply := range []bool{false, true} {
+					_, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{Apply: apply, SeedDefaults: tt.seedDefaults})
+					var fileErr *FileError
+					if !errors.As(err, &fileErr) || fileErr.Module != tt.module {
+						t.Errorf("ReconcileHubWideAt(apply=%v) error = %v; want a *FileError naming module %q", apply, err, tt.module)
+					}
+				}
+				if got, err := os.ReadFile(hubPath); err != nil || string(got) != tt.hubFile {
+					t.Errorf("hub file = %q, %v after the refused reconcile; want %q unchanged", got, err, tt.hubFile)
+				}
+				return
+			}
+
 			dry, err := ReconcileHubWideAt(boardDir, primeDir, HubWideOptions{SeedDefaults: tt.seedDefaults})
 			if err != nil {
 				t.Fatalf("ReconcileHubWideAt(dry): %v", err)
@@ -783,6 +829,12 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			dryResult := findResult(dry, tt.module)
 			if dryResult == nil || dryResult.Seed != tt.wantSeed || dryResult.Applied || dryResult.Layer != configengine.LayerDefault {
 				t.Errorf("dry-run result = %+v; want Seed %q, Layer default and Applied false", dryResult, tt.wantSeed)
+			}
+			if dryResult != nil && tt.wantMigrated != nil && !slices.Equal(dryResult.Migrated, tt.wantMigrated) {
+				t.Errorf("dry-run Migrated = %v; want %v", dryResult.Migrated, tt.wantMigrated)
+			}
+			if dryResult != nil && tt.wantLacking != nil && !slices.Equal(dryResult.Lacking, tt.wantLacking) {
+				t.Errorf("dry-run Lacking = %v; want %v", dryResult.Lacking, tt.wantLacking)
 			}
 			if tt.hubFile == "" {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -808,6 +860,15 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			}
 			if tt.wantKeptExtra != nil && !slices.Equal(sortedCopy(appliedResult.KeptExtra), tt.wantKeptExtra) {
 				t.Errorf("applied KeptExtra = %v; want %v", appliedResult.KeptExtra, tt.wantKeptExtra)
+			}
+			if tt.wantMigrated != nil && !slices.Equal(appliedResult.Migrated, tt.wantMigrated) {
+				t.Errorf("applied Migrated = %v; want %v", appliedResult.Migrated, tt.wantMigrated)
+			}
+			if tt.wantLacking != nil && !slices.Equal(appliedResult.Lacking, tt.wantLacking) {
+				t.Errorf("applied Lacking = %v; want %v", appliedResult.Lacking, tt.wantLacking)
+			}
+			if wantApplied := tt.hubFile == "" || len(tt.wantMigrated) > 0; tt.module == "profiles" && appliedResult.Applied != wantApplied {
+				t.Errorf("applied Applied = %v; want %v, since a present seed-only file is written only when migrated", appliedResult.Applied, wantApplied)
 			}
 			for _, name := range tt.wantDropped {
 				if !slices.Contains(appliedResult.Dropped, name) {

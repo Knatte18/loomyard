@@ -35,12 +35,9 @@ func ConfigTemplate() string {
 // It is hub-wide, and each profile, like the defaults entry, is one whole entry set from a JSON object.
 // No entry is open to the local layer: each template entry is classified cross-pair, since every pair naming it reads it, and a hub-wide module refuses an unclassified one.
 func ConfigSpec() configengine.Spec {
-	var templateEntries map[string]any
-	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &templateEntries); err != nil {
-		panic(fmt.Sprintf("runprofile: parse the embedded template: %v", err))
-	}
-	categories := make(map[string]configengine.Category, len(templateEntries))
-	for name := range templateEntries {
+	entries := templateEntries()
+	categories := make(map[string]configengine.Category, len(entries))
+	for name := range entries {
 		categories[name] = configengine.CategoryCrossPair
 	}
 	return configengine.Spec{
@@ -52,6 +49,16 @@ func ConfigSpec() configengine.Spec {
 		SeedOnly:     true,
 		Categories:   categories,
 	}
+}
+
+// templateEntries returns the embedded template's top-level entries, each profile and the defaults entry, decoded.
+// A template that does not parse is a build defect and panics.
+func templateEntries() map[string]any {
+	var entries map[string]any
+	if err := yaml.Unmarshal([]byte(ConfigTemplate()), &entries); err != nil {
+		panic(fmt.Sprintf("runprofile: parse the embedded template: %v", err))
+	}
+	return entries
 }
 
 // Profile maps a recipe name to that recipe's settings: module name to a mapping of that module's config keys, the shape of a board task's run_settings.
@@ -79,7 +86,8 @@ func (p Profiles) Lookup(name string) (Profile, error) {
 }
 
 // Settings returns the named profile's settings for recipe, module name to keys.
-// An unknown name, or a profile holding no block for recipe, is an error naming the way forward.
+// An unknown name, or a profile holding no block for recipe, is an error naming the way forward:
+// the reconcile that renames the block when the profile holds it under the recipe's former name, else naming another profile or adding the block.
 func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	profile, err := p.Lookup(name)
 	if err != nil {
@@ -87,14 +95,25 @@ func (p Profiles) Settings(name, recipe string) (map[string]any, error) {
 	}
 	settings, ok := profile[recipe]
 	if !ok {
+		if former, held := heldFormerName(profile, recipe); held {
+			return nil, fmt.Errorf("run profile %q holds no %s block but a %s block, the recipe's former name; way forward: %s", name, recipe, former, migrateWayForward)
+		}
 		return nil, fmt.Errorf("run profile %q holds no %s block (it covers: %s); way forward: name a profile that covers %s in the task's profile field, or add a %s block to %q with \"lym config profiles\" from the hub's prime worktree", name, recipe, strings.Join(slices.Sorted(maps.Keys(profile)), ", "), recipe, recipe, name)
 	}
 	return settings, nil
 }
 
 // Default returns the profile name recipe takes when a task names none, empty when the hub names no default for it.
-func (p Profiles) Default(recipe string) string {
-	return p.Defaults[recipe]
+// A default held only under recipe's former name is an error naming the reconcile that renames it.
+// Without the error the task would run on the hub's own config with no sign its default was missed.
+func (p Profiles) Default(recipe string) (string, error) {
+	if name, ok := p.Defaults[recipe]; ok {
+		return name, nil
+	}
+	if former, held := heldFormerName(p.Defaults, recipe); held {
+		return "", fmt.Errorf("the run profiles' %s hold no %s entry but a %s entry, the recipe's former name; way forward: %s", DefaultsEntry, recipe, former, migrateWayForward)
+	}
+	return "", nil
 }
 
 // Load reads the hub's run profiles through the layer stack under dirs.

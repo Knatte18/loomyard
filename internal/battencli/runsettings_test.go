@@ -94,6 +94,18 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantStuck:   []string{`"docs"`, "no tapestry block"},
 		},
 		{
+			name:        "a profile holding the recipe's block under its former name is Stuck naming the reconcile",
+			profilesYML: "old:\n  loom:\n    loom: {code_max_bounces: 1}\n",
+			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "old"},
+			wantStuck:   []string{`"old"`, "no tapestry block but a loom block", "lym config reconcile --layer default --apply"},
+		},
+		{
+			name:        "a default held under the recipe's former name is Stuck naming the reconcile",
+			profilesYML: "defaults: {loom: old}\nold:\n  loom:\n    loom: {code_max_bounces: 1}\n",
+			settings:    battenshed.RunSettings{Recipe: "tapestry"},
+			wantStuck:   []string{"no tapestry entry but a loom entry", "lym config reconcile --layer default --apply"},
+		},
+		{
 			name:        "a profiles file that does not decode is Stuck",
 			profilesYML: "light: 3\n",
 			settings:    battenshed.RunSettings{Recipe: "tapestry", Profile: "light"},

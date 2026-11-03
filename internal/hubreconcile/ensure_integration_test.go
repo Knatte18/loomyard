@@ -1292,6 +1292,32 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 	}
 }
 
+// The logger's output and the detached board sync are process-global, so this test does not call t.Parallel.
+func TestEnsure_WarnsOfTemplateUnitsASeedOnlyConfigFileLacks(t *testing.T) {
+	tiergate.Require(t, 1)
+	logs := logcapture.Capture(t)
+
+	h := hubforge.NewHub(t, ".")
+	geom := geometryOf(h)
+	const profilesLackingSampler = "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n"
+	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("profiles"), profilesLackingSampler, "fixture: a starting profile seeded before sampler")
+	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
+	recordBoardSyncs(t)
+
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("Ensure: %v", err)
+	}
+
+	for _, want := range []string{"lacks units its template holds or holds a pair to settle", "module=profiles", "light.sampler"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("log lacks %q:\n%s", want, logs.String())
+		}
+	}
+	if got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "profiles")); err != nil || string(got) != profilesLackingSampler {
+		t.Errorf("board profiles.yaml = %q, %v after Ensure; want it left as the operator wrote it", got, err)
+	}
+}
+
 // unpushedHubWide is a hub whose board holds a hub-wide config commit origin has not taken, since the detached board sync is recorded and never run.
 // origin is the records remote, hubWidePath the config file the commit changed and before the board's commit count ahead of that commit.
 // The build stamp is absent, so the next Ensure walks the hub again.

@@ -16,7 +16,7 @@ import (
 // prepareRunSettings returns the local-layer document of each module a board task's run settings and its run profile's block for the task's recipe, the task's keys laid over the profile's.
 // The recipe whose block and default profile apply is the one loomrecipe.ProfileRecipe resolves the task's recipe name to.
 // The profile is the task's own, else that recipe's default from the run profiles under dirs; with neither, the task's settings stand alone.
-// An unknown profile, a profile holding no block for the recipe, a profiles file that does not decode, or a refusal of the profile's or the task's settings, wraps battenshed.ErrInvalidRunSettings;
+// An unknown profile, a profile holding no block for the recipe, a default held only under the recipe's former name, a profiles file that does not decode, or a refusal of the profile's or the task's settings, wraps battenshed.ErrInvalidRunSettings;
 // a profiles file that cannot be read is returned as it is.
 func prepareRunSettings(dirs configengine.Dirs, settings battenshed.RunSettings) (map[string][]byte, error) {
 	profiles, err := runprofile.Load(dirs)
@@ -33,7 +33,10 @@ func prepareRunSettings(dirs configengine.Dirs, settings battenshed.RunSettings)
 	}
 	name := settings.Profile
 	if name == "" {
-		name = profiles.Default(recipe)
+		name, err = profiles.Default(recipe)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", battenshed.ErrInvalidRunSettings, err.Error())
+		}
 	}
 	var documents map[string][]byte
 	if name == "" {

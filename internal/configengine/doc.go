@@ -49,7 +49,7 @@
 //
 // The base layer ([BaseLayer]) is the lowest file layer, the repo default or hub file when `Board` is set, else the worktree file.
 // In a hub it is sparse over the template: a key-less base holds [SparseBaseHeader] and loads as a present base, its fill is not logged, and [Set] and [Edit] write it sparse, scaffolding an absent one through [BaseScaffold].
-// Only a [Spec] with `SeedOnly`, the operator's registry seeded whole and never rewritten, and a standalone worktree base stay full.
+// Only a [Spec] with `SeedOnly`, the operator's registry seeded whole and never filled or pruned, and a standalone worktree base stay full.
 // Every layer above the base is sparse.
 // Strictness applies to the base layer: [Load] errors on an absent base file with the way forward for its kind, [LoadOrTemplate] takes the template as the base and still stacks the upper layers present.
 // An absent upper file adds nothing, and so does an empty or comment-only local file.

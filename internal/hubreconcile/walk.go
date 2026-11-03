@@ -214,6 +214,10 @@ func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (ski
 			}
 			var written []string
 			for _, result := range results {
+				if len(result.Lacking) > 0 {
+					logger.Warn("hubreconcile: a seed-only config file lacks units its template holds or holds a pair to settle, and reconcile never changes either", "module", result.Module, "lacking", result.Lacking,
+						"way_forward", fmt.Sprintf("in \"lym config %s\" from the hub's prime worktree, add each lacking unit or leave it out on purpose, and keep one block of each pair that differs", result.Module))
+				}
 				if !result.Applied {
 					continue
 				}

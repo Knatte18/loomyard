@@ -627,6 +627,10 @@ func reconcileEnvelope(apply bool, results []configsync.Result) map[string]any {
 		if len(result.Dropped) > 0 {
 			m["dropped"] = result.Dropped
 		}
+		// lacking is exceptional too: only a seed-only module whose file lacks a template unit, or holds a pair its module leaves for the operator to settle, sets it.
+		if len(result.Lacking) > 0 {
+			m["lacking"] = result.Lacking
+		}
 		// seed is set only by a reconcile of the board dir's files.
 		if result.Seed != "" {
 			m["seed"] = result.Seed

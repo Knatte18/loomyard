@@ -82,6 +82,8 @@
 // With no `--layer` it reconciles the worktree's own and local files.
 // `lym config reconcile --layer default` reconciles every file under the Bolt checkout's `_lym/config/` instead, the hub-wide modules' files and each per-worktree module's repo default:
 // renamed keys are migrated, keys the template lacks are pruned, an absent file is seeded sparse, and each entry carries the `seed` it started from.
+// A seed-only file, such as `profiles`, is never filled or pruned: only its migration runs, such as renaming a profile's block held under a recipe's former name,
+// and the template units its module reports it lacking, such as a recipe block of a starting profile, or a pair it leaves for the operator to settle, such as a former recipe block differing from the current one, are listed under `lacking`.
 // It never fills a base, and its dry run and apply list the one-time base strip under `stripped` as pending, which only the hub reconcile of a start verb performs;
 // the envelope then carries a top-level `base_strip` field saying so, and `--apply` writes no board marker.
 // `--apply` with it passes the default-layer write guard above, then under the board write lock runs a dry run, so a file that fails to parse or migrate leaves every file unwritten, then writes, commits the written files in the Bolt checkout and pushes.

@@ -30,6 +30,8 @@
 // `lym config reconcile --apply`, with `--layer default` for a board file, is the one way to remove it.
 // A local override file is pruned of every such key, since its load refuses one.
 //
+// A seed-only file is never filled: the walk runs its module's migration and logs one Warn per module naming the template units the file lacks and the pairs it leaves for the operator to settle, with `lym config <module>` as the way forward.
+//
 // # The base strip
 //
 // Every non-seed-only base file on the board is sparse over the template.

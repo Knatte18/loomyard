@@ -200,6 +200,9 @@ type Result struct {
 	// Preserved lists, sorted, the dotted keys a sparse file holds that the template lacks and no retired key covers, left in place because the run did not prune unknown keys.
 	// Set on a dry run too.
 	Preserved []string
+	// Lacking lists the template units a seed-only module's file lacks and the pairs it holds for the operator to settle, as its module's Lacking hook reports them; reconcile never adds or changes either.
+	// Set only by ReconcileHubWideAt, on a dry run too.
+	Lacking []string
 }
 
 // Options configures ReconcileAll.
@@ -880,7 +883,9 @@ func primeConfig(primeBaseDir, module string) []byte {
 // a hub-wide module's hub file and a per-worktree module's repo default, which is that module's full base layer.
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
-// A seed-only module is reconciled as a full file: a present one is never rewritten, and an absent one is seeded whole.
+// A seed-only module is reconciled as a full file, never filled or pruned.
+// A present one, or the prime's copy seeding an absent default, runs the module's Migrate hook and is written only when that rewrote it.
+// Its Lacking hook's report goes in the result, and an absent one with no prime copy is seeded whole from the template.
 // Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of its retired keys, and nothing is ever added.
 // Under opts.PruneUnknown it is pruned of every other key the template lacks as well; without it such a key stays and is reported as Preserved.
 // A module's MigrateHubBase hook runs right after Migrate on a present hub file, and over the bytes of a prime or legacy seed on an absent one, so a hub file seeded in a pass holds what the hook adds at once, since the build stamp gates the next reconcile; no other reconcile path runs it.
@@ -933,14 +938,8 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			return nil, &FileError{Module: m.Name, Path: cfgPath, Err: fmt.Errorf("read config for %s: %w", m.Name, err)}
 		}
 
-		presentSeedOnly := !fileAbsent && m.SeedOnly
-		absentUnseeded := fileAbsent && !opts.SeedDefaults
-		if !m.HubWide && (presentSeedOnly || absentUnseeded) {
-			untouched := Result{Module: m.Name, Layer: configengine.LayerDefault}
-			if presentSeedOnly {
-				untouched.Seed = SeedHub
-			}
-			results = append(results, untouched)
+		if !m.HubWide && fileAbsent && !opts.SeedDefaults {
+			results = append(results, Result{Module: m.Name, Layer: configengine.LayerDefault})
 			continue
 		}
 
@@ -965,17 +964,25 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			}
 		}
 
-		var added, removed, keptExtra, dropped, stripped, preserved []string
+		var added, removed, keptExtra, dropped, stripped, preserved, lacking []string
 		var mergedBytes []byte
 		var reconcileErr error
 		changed := fileAbsent
 		switch {
 		case m.SeedOnly:
-			// An absent seed-only default is the prime's copy or the template, verbatim.
+			// An absent seed-only default is the prime's copy or the template, verbatim; a present file or prime copy is only migrated.
 			mergedBytes = existing
 			if mergedBytes == nil {
 				mergedBytes = []byte(m.Template())
 				added, reconcileErr = yamlengine.MissingKeys(mergedBytes, nil)
+				break
+			}
+			if m.Migrate != nil {
+				mergedBytes, migrated, reconcileErr = m.Migrate(mergedBytes)
+				changed = changed || len(migrated) > 0
+			}
+			if reconcileErr == nil && m.Lacking != nil {
+				lacking, reconcileErr = m.Lacking(mergedBytes)
 			}
 		case fileAbsent:
 			switch seed {
@@ -1052,6 +1059,7 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			Dropped:      dropped,
 			Stripped:     stripped,
 			Preserved:    preserved,
+			Lacking:      lacking,
 			MigratedFrom: migratedFrom,
 			Migrated:     migrated,
 			Seed:         seed,

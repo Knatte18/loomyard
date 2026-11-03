@@ -104,11 +104,11 @@ func TestTemplateLadder(t *testing.T) {
 	perch := func(rounds int) map[string]int {
 		return map[string]int{"max": rounds, "hard": rounds + 1}
 	}
-	if got := profiles.Default("pawl"); got != "light" {
-		t.Errorf("Default(pawl) = %q; want light", got)
+	if got, err := profiles.Default("pawl"); got != "light" || err != nil {
+		t.Errorf("Default(pawl) = %q, %v; want light", got, err)
 	}
-	if got := profiles.Default("sampler"); got != "" {
-		t.Errorf("Default(sampler) = %q; want none, so a sampler task naming no profile runs on the hub's config", got)
+	if got, err := profiles.Default("sampler"); got != "" || err != nil {
+		t.Errorf("Default(sampler) = %q, %v; want none, so a sampler task naming no profile runs on the hub's config", got, err)
 	}
 	tests := []struct {
 		profile                string
@@ -234,10 +234,10 @@ func TestSettings(t *testing.T) {
 		}
 	}
 
-	if got := profiles.Default("darn"); got != "docs" {
-		t.Errorf("Default(darn) = %q; want docs", got)
+	if got, err := profiles.Default("darn"); got != "docs" || err != nil {
+		t.Errorf("Default(darn) = %q, %v; want docs", got, err)
 	}
-	if got := profiles.Default("tapestry"); got != "" {
-		t.Errorf("Default(tapestry) = %q; want empty", got)
+	if got, err := profiles.Default("tapestry"); got != "" || err != nil {
+		t.Errorf("Default(tapestry) = %q, %v; want empty", got, err)
 	}
 }

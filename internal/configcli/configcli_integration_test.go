@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -369,11 +370,35 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("seed the machine file: %v", err)
 		}
 
+		// A starting profile seeded before sampler existed lacks its sampler block, which the dry run lists under lacking.
+		profilesFile := configengine.ConfigFile(boardDir, "profiles")
+		profilesOriginal, err := os.ReadFile(profilesFile)
+		if err != nil {
+			t.Fatalf("read the board profiles.yaml: %v", err)
+		}
+		const profilesLackingSampler = "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n"
+		if err := os.WriteFile(profilesFile, []byte(profilesLackingSampler), 0o644); err != nil {
+			t.Fatalf("plant a profile lacking its sampler block: %v", err)
+		}
+		restoreProfiles := sync.OnceFunc(func() {
+			if err := os.WriteFile(profilesFile, profilesOriginal, 0o644); err != nil {
+				t.Errorf("restore the board profiles.yaml: %v", err)
+			}
+		})
+		t.Cleanup(restoreProfiles)
+
 		code, result := runReconcileCLI(t, primeWorktreePath, "--layer", "default")
 		if code != 0 {
 			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
 		}
+		restoreProfiles()
+		if lacking := fmt.Sprint(reconcileModule(t, result, "profiles")["lacking"]); lacking != "[light.sampler]" {
+			t.Errorf("dry-run profiles lacking = %s; want [light.sampler]", lacking)
+		}
 		loom := reconcileBaseEntry(t, result, "loom")
+		if _, has := loom["lacking"]; has {
+			t.Errorf("dry-run loom entry = %v; want no lacking key for a module with no lacking units", loom)
+		}
 		if loom["layer"] != string(configengine.LayerDefault) || loom["seed"] != "hub" || loom["applied"] != false {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
 		}
@@ -544,7 +569,7 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err := os.WriteFile(gateFile, []byte("gates:\n  round: [0, 1]\n  publish: [0]\n"), 0o644); err != nil {
 			t.Fatalf("plant a publish gate in the board gate.yaml: %v", err)
 		}
-		appendPlanted("profiles", "retired-keys:\n  loom:\n    loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
+		appendPlanted("profiles", "retired-keys:\n  tapestry:\n    loom: {webster_max_bounces: 3, merge_max_bounces: 1}\n")
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesBefore, err := os.ReadFile(profilesFile)
 		if err != nil {
@@ -587,9 +612,9 @@ func TestConfigOverRealHub(t *testing.T) {
 		if err != nil {
 			t.Fatalf("runprofile.Load: %v", err)
 		}
-		profile, err := profiles.Settings("retired-keys", "loom")
+		profile, err := profiles.Settings("retired-keys", "tapestry")
 		if err != nil {
-			t.Fatalf("Settings(retired-keys, loom): %v", err)
+			t.Fatalf("Settings(retired-keys, tapestry): %v", err)
 		}
 		documents, err := configreg.LayerRunSettings("retired-keys", profile, nil)
 		if err != nil {

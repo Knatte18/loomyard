@@ -15,7 +15,12 @@
 // `light`, `docs` and `speed`'s tapestry block run the Code-Review round solo through `loom.code_reviewer_fan: ""`, while `solid`, `wide` and the rest take the hub's fan.
 // A round count of 0 turns a perch off, since its Bouncer then settles approved with no review round.
 //
-// The module is hub-wide and seed-only: the hub reconcile seeds an absent file with the template's entries and never rewrites a present one.
+// The module is hub-wide and seed-only: the hub reconcile seeds an absent file with the template's entries and never fills or prunes a present one.
+// It does rename a recipe block or `defaults` entry held under a recipe's former name, such as `loom` for `tapestry`, keeping its value.
+// A former block beside a current one is dropped only when it equals the current block;
+// a differing one stays, and reconcile reports it under `lacking` as `<entry>.<from>: differs from <entry>.<to>` for the operator to settle by hand.
+// It also reports under `lacking` each recipe block a template profile holds and the hub's profile of that name lacks, never adding it.
+// A profile or `defaults` holding a recipe only under its former name is refused at Seed-Child with that reconcile as the way forward.
 // Each profile, like `defaults`, is one whole entry, and `lym config profiles --set <name>='<json object>'` adds or replaces one whole entry;
 // renaming one is adding it under the new name and removing the old block in the editor, `lym config profiles`.
 // No key is open to the local layer.
