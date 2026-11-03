@@ -51,6 +51,8 @@
 //
 // `lym loom start` works in order.
 // It resolves the recorded parent branch, seeds the status file when absent and commits the seed into the fabric before anything else touches it.
+// Every start or step commits whatever the friction directory holds along with the seed.
+// A first seed clears the friction directory first, so the clear is committed with the seed and notes the fabric carried in, such as a beam pawl run's halt note, neither reach the task's reflection nor leave Preflight a dirty worktree.
 // An unseeded run is seeded with the driver `shed.yaml`'s `driver_kind` and its layers resolve to, `llm` by default;
 // a seeded run keeps its recorded driver whatever the key says later.
 // It brings up the worktree's tmux session;

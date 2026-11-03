@@ -100,3 +100,10 @@ func commitRecordsPathsHeld(rec *Mutations, weftPath, anchorRel string, relPaths
 func CommitAnchoredPaths(rec *Mutations, l *lymcwd.Location, relPaths []string, msg string, opts SyncOptions) (sha string, committed bool, err error) {
 	return CommitRecordsPaths(rec, RecordsWorktree(l), l.AnchorRel, relPaths, msg, opts)
 }
+
+// AnchoredPathHasContent reports whether the anchor-relative relPath matches a path the run-records worktree's index tracks or an untracked, non-ignored file on disk.
+// Git refuses a commit pathspec that matches nothing, so a caller asks it before handing CommitAnchoredPaths a directory that may be empty and untracked.
+// A tracked file deleted from disk still matches, so its deletion can be committed.
+func AnchoredPathHasContent(l *lymcwd.Location, relPath string) (bool, error) {
+	return entryMatchesWeft(RecordsWorktree(l), weftCommitPathspec(l.AnchorRel, []string{relPath})[0])
+}

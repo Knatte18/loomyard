@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -56,7 +57,12 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 	registerBootstrapTeardown(t, loc, worktree)
 	seedGoDriverRun(t, loc)
 
+	// The stale note is committed, as a beam pawl run's halt note is in the fabric its task runs branch from,
+	// so the first seed's clear must commit its deletion or Preflight refuses the dirty worktree.
 	stalePath := plantFrictionNote(t, loc, "left-over-from-an-earlier-task.md")
+	if _, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), loc, []string{loomengine.LoomFrictionDirRel()}, "test: commit an inherited friction note", fabricengine.SyncOptions{}); err != nil {
+		t.Fatalf("commit the inherited friction note: %v", err)
+	}
 
 	// The regression guard for the once-per-task friction clear that never shipped.
 	//
@@ -86,6 +92,13 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 		frictionDir := loomengine.LoomFrictionDir(loc)
 		if info, statErr := os.Stat(frictionDir); statErr != nil || !info.IsDir() {
 			t.Errorf("friction directory %q after first seed: stat err=%v; want it recreated as a directory", frictionDir, statErr)
+		}
+		persisted, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(loc, shedrun.SelfRunID), shedrun.StatusLock(loc, shedrun.SelfRunID))
+		if err != nil || !found {
+			t.Fatalf("read persisted status after step: found=%v err=%v", found, err)
+		}
+		if persisted.State == shedengine.StateBlocked || persisted.State == shedengine.StateFailed {
+			t.Errorf("status after the first step = %s (error %q, history %+v); want Preflight to pass over the committed clear of an inherited note", persisted.State, persisted.Error, persisted.History)
 		}
 	})
 
@@ -130,6 +143,10 @@ func TestSmokeStepBootstrapWiring(t *testing.T) {
 
 		if _, statErr := os.Stat(resumePath); statErr != nil {
 			t.Errorf("friction note written during this task is gone after a re-entry (stat err=%v); want it kept -- only a genuine first seed clears", statErr)
+		}
+		resumeSpec := filepath.Join(loc.AnchorRel, loomengine.LoomFrictionDirRel(), filepath.Base(resumePath))
+		if tracked := gitkit.LsFiles(t, fabricengine.RecordsWorktree(loc), "--", resumeSpec); len(tracked) != 1 {
+			t.Errorf("tracked entries for the resume note %s after a re-entry = %v; want it committed by the bootstrap's commit step", resumeSpec, tracked)
 		}
 	})
 

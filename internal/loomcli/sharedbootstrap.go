@@ -55,10 +55,10 @@ const (
 	bootstrapStageCommit
 )
 
-// seedAndCommitBootstrap resolves the parent branch, writes loom's own shedrun.Seed, seeds the
-// status file when absent, verifies seed ownership, and commits the seed, the status file, and the
-// origin record into the fabric -- today's steps 1 through 3 from start.go's RunE, held here
-// verbatim and in today's order so `step` can call the exact same sequence.
+// seedAndCommitBootstrap resolves the parent branch and writes loom's own shedrun.Seed.
+// It seeds the status file when absent and verifies seed ownership.
+// It then commits the seed, the status file, the origin record, and the friction directory when it holds tracked or untracked content into the fabric.
+// It holds today's steps 1 through 3 from start.go's RunE verbatim and in today's order, so `step` can call the exact same sequence.
 //
 // On success it returns the resolved parent branch, the run's effective driver, bootstrapStageNone,
 // and a nil error. On failure it returns two empty strings, the stage that failed, and the error
@@ -157,10 +157,24 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// record's own comment already gives: WriteSeed above is idempotent, so a prior invocation that
 	// wrote the seed to disk but crashed before this step committed it self-heals on the very next
 	// call.
-	commitPaths := bootstrapCommitPaths(c.location)
+	// The friction directory is committed too whenever it holds tracked or untracked content.
+	// A task worktree branches from a fabric that may carry committed notes, such as a beam pawl run's own halt note.
+	// Step 2b's first-seed clear deletes them, and that deletion left uncommitted would fail the same precondition row.
+	// Probing on every invocation self-heals a clear whose commit crashed.
+	// A resume's notes stay on disk and are committed here too.
+	// The probe is skipped under SkipGit, where the commit is a no-op and the fabric's git may be unusable.
+	syncOptions := fabricengine.EnvSyncOptions()
+	withFriction := false
+	if c.frictionDir != "" && !syncOptions.SkipGit {
+		withFriction, err = fabricengine.AnchoredPathHasContent(c.location, loomengine.LoomFrictionDirRel())
+		if err != nil {
+			return "", "", bootstrapStageCommit, err
+		}
+	}
+	commitPaths := bootstrapCommitPaths(c.location, withFriction)
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
-	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, fabricengine.EnvSyncOptions()); err != nil {
+	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, syncOptions); err != nil {
 		return "", "", bootstrapStageCommit, err
 	}
 
@@ -213,19 +227,26 @@ func loomSeedFor(recipe, parent, driver string) shedrun.Seed {
 	}
 }
 
-// bootstrapCommitPaths returns the three anchor-relative paths seedAndCommitBootstrap's step 3
-// commits unconditionally: the status file, the seed, and the origin record. It is a pure
-// function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the
-// pathspec's exact shape without a real fabric behind it.
-func bootstrapCommitPaths(location *lymcwd.Location) []string {
-	return []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
+// bootstrapCommitPaths returns the anchor-relative paths seedAndCommitBootstrap's step 3 commits:
+// the status file, the seed and the origin record always,
+// and the friction directory when withFriction is set, so a first seed's clear of notes the fabric already tracked is committed with the seed.
+// Git refuses a commit pathspec that matches nothing, so withFriction must be set only when the directory matches tracked or untracked content.
+// It is a pure function, factored out for the same reason loomSeedFor is -- so a Tier 1 test can pin the pathspec's exact shape without a real fabric behind it.
+func bootstrapCommitPaths(location *lymcwd.Location, withFriction bool) []string {
+	paths := []string{shedrun.StatusRel(location, shedrun.SelfRunID), shedrun.SeedRel(location, shedrun.SelfRunID), fabricengine.OriginRecordRel()}
+	if withFriction {
+		paths = append(paths, loomengine.LoomFrictionDirRel())
+	}
+	return paths
 }
 
 // ensureFrictionDirAfterSeed performs the once-per-task clear-and-create split immediately after
 // loomshed.Seed: on a genuine first seed (seedErr is nil), the friction directory is cleared before
 // being recreated, since a fresh task has no notes worth preserving; on an ErrSeedExists re-entry
 // (any other seedErr value), the directory is left untouched and only ensured to exist, since a
-// resume's notes are exactly the ones most worth reading. Both operations are skipped entirely when
+// resume's notes are exactly the ones most worth reading.
+// They stay on disk, and the bootstrap's commit step still commits whatever the directory holds.
+// Both operations are skipped entirely when
 // frictionDir is empty, which is how Tier 2's off state travels. A failed os.RemoveAll logs at Warn
 // and never fails this call; a failed friction.EnsureDir is handled entirely inside that function,
 // which never returns an error either.

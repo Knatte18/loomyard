@@ -597,6 +597,8 @@ User-facing modules each get one `lym <module>` namespace:
   The `Webster` row commits the plan directory alongside its run record.
   `commit-records` commits and pushes the run's records through fabric, pushing the task branch along with them — the status file, the review round record, friction notes and drive reports — and is what the loom driver's end-of-session command runs after the driver writes its stop report, and what a loom-launched driver runs at a hand-back before it parks until `lym loom start` resumes it; a tree with nothing to commit succeeds without a commit.
   Friction notes live under `_lym/loom/friction/` and drive reports under `_lym/shed/<slug>/drive-reports/`, both committed with the run.
+  Every `lym loom start` or `step` commits whatever the friction directory holds along with the seed.
+  A task's first one clears the directory first, so notes inherited from the fabric it branched from never reach its reflection or dirty its Preflight.
   Besides the agents' notes, the friction directory holds the Go-written halt notes, which name their anomaly kind, the crash-resume notes written at a `run` or `step` entry and `lym webster` refusal notes, and the driver's repair records.
   `lym loom start` writes a handoff voucher right before it spawns a driver, so a deliberate resume never reads as a crash.
   A tapestry run's tail is `Webster → Parent-Align → Drift-Verify → Code-Review → Describe → PR-Review → Finalize`, where `Code-Review` is the Code-Perch of `Code-Bouncer`, `Code-Burler-Review` and `Code-Burler-Fix`;

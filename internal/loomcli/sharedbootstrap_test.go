@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -181,21 +182,32 @@ func TestResolveSeedRecipe(t *testing.T) {
 	}
 }
 
-// TestBootstrapCommitPaths_IncludesSeedRel asserts bootstrapCommitPaths -- the pathspec
-// seedAndCommitBootstrap's step 3 commits unconditionally -- includes shedrun.SeedRel(shedrun.
-// SelfRunID) alongside the status file and origin record, so a crashed-and-resumed bootstrap's
-// seed self-heals into the fabric exactly as the status file and origin record already do.
-func TestBootstrapCommitPaths_IncludesSeedRel(t *testing.T) {
+// TestBootstrapCommitPaths asserts the pathspec seedAndCommitBootstrap's step 3 commits:
+// the status file, the seed and the origin record always,
+// so a crashed-and-resumed bootstrap's seed self-heals into the fabric, and the friction directory only when it holds tracked or untracked content.
+func TestBootstrapCommitPaths(t *testing.T) {
 	tiergate.Require(t, 0)
+	t.Parallel()
 	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "task-slug", AnchorRel: "."}
-	got := bootstrapCommitPaths(loc)
-
-	want := []string{
+	base := []string{
 		shedrun.StatusRel(loc, shedrun.SelfRunID),
 		shedrun.SeedRel(loc, shedrun.SelfRunID),
 		fabricengine.OriginRecordRel(),
 	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("bootstrapCommitPaths(loc) = %v; want %v", got, want)
+	tests := []struct {
+		name         string
+		withFriction bool
+		want         []string
+	}{
+		{"NoFrictionDirectory", false, base},
+		{"FrictionDirectoryHasContent", true, append(append([]string{}, base...), loomengine.LoomFrictionDirRel())},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := bootstrapCommitPaths(loc, tt.withFriction); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("bootstrapCommitPaths(loc, %v) = %v; want %v", tt.withFriction, got, tt.want)
+			}
+		})
 	}
 }
