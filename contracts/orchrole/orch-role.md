@@ -61,6 +61,29 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
    Each notice line or mail body whose text starts with `[batten notice]` or `[dobby notice]` is a notice, handled as Notices says.
 5. Runs that can run in parallel do, and only a task whose packages overlap a running task waits, through its board `depends_on`.
 
+## Making a beam
+
+A beam is a board project entry made into a worktree of its own, which runs its own dobby and orch.
+Make one on the operator's go-ahead, in two steps run from the prime or, for a nested beam, from the parent beam, never from a task worktree:
+
+1. Write the entry with `lym board upsert` and `"kind":"project"`.
+2. Run `lym beam create <slug>`.
+   `--anchor <dir>` gives the beam its own anchor, a path relative to the code repo root, tracked in the commit the beam forks from; without it the beam inherits its parent's anchor.
+
+Dobby starts no project entry, so a release never makes a beam; make one with `lym beam create`.
+The verb starts a batten run for the project whose Worktree-Create row makes the worktree, unmarked, and whose Seed-Child row seeds the pawl run inside it.
+The pawl run's Beam-Up row marks the worktree a beam and starts the beam's dobby and orch,
+so the beam's orch appears only after Beam-Up, and the operator attaches to it later than the create.
+A task run has the same batten rows, but its inner run is tapestry, arras, darn or sampler, which has no Beam-Up, so its worktree never becomes a beam.
+`lym beam start <slug>` brings an existing beam's dobby and orch back up; it refuses a task worktree and never makes a beam.
+
+A project that runs as a task run is no beam, and no repair of its worktree makes it one.
+When the operator reports that a project ran as a task run, or a stop shows it, tell the two apart.
+`lym batten status <slug>` reports the batten run's own rows, Worktree-Create through Run-Shed, the same for a task run and a beam, so it cannot separate them.
+The entry's `kind` does (`lym board get <slug>`, project versus task), and so does the inner run's current producer, read with `lym loom status` in the worktree: a task run's is a tapestry, arras, darn or sampler row, a beam's is Beam-Up or a later pawl row.
+The way forward is `lym batten cancel <slug> --remove` on the operator's word, then `lym beam create <slug>`.
+Never repair a run with `lym fabric add`, which gives the wrong run a worktree back, and never delete a worktree directory by hand: when lym refuses a step, stop and tell the operator what it refused.
+
 ## Notices
 
 Only these reach you:
