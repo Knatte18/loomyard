@@ -83,9 +83,13 @@ type API interface {
 	Status(ctx context.Context, number int) (Status, error)
 	// Close comments on a pull request, then closes it without merging.
 	Close(ctx context.Context, number int, comment string) error
+	// Reopen reopens a pull request closed without merging, so it can be merged.
+	Reopen(ctx context.Context, number int) error
 	// Merge merges a pull request whose head is expectedHead, squashing when squash is set.
 	// A merge GitHub refuses returns a *MergeRefusal.
 	Merge(ctx context.Context, number int, expectedHead string, squash bool, title, message string) error
+	// RequiresPullRequest reports whether a repository rule active on branch requires a pull request, so GitHub refuses a direct push to it.
+	RequiresPullRequest(ctx context.Context, branch string) (bool, error)
 }
 
 // Client is the pull requests of one GitHub repository, reached through an authenticated client.
@@ -200,6 +204,33 @@ func (c *Client) Close(ctx context.Context, number int, comment string) error {
 		return fmt.Errorf("pullrequest: comment posted on pull request #%d but closing it failed, so rerunning posts a second comment: %w", number, err)
 	}
 	return nil
+}
+
+// Reopen sets a closed pull request's state back to open.
+func (c *Client) Reopen(ctx context.Context, number int) error {
+	open := "open"
+	if _, _, err := c.gh.PullRequests.Edit(ctx, c.owner, c.repo, number, &github.PullRequest{State: &open}); err != nil {
+		return fmt.Errorf("pullrequest: reopen pull request #%d: %w", number, err)
+	}
+	return nil
+}
+
+// RequiresPullRequest reads every page of the repository rules active on branch and reports whether any of them is a pull_request rule.
+func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, error) {
+	opts := &github.ListOptions{PerPage: listPageSize}
+	for {
+		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, branch, opts)
+		if err != nil {
+			return false, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", branch, err)
+		}
+		if rules != nil && len(rules.PullRequest) > 0 {
+			return true, nil
+		}
+		if resp.NextPage == 0 {
+			return false, nil
+		}
+		opts.Page = resp.NextPage
+	}
 }
 
 // Merge merges a pull request whose head must equal expectedHead, squashing when squash is set, with the told commit title and message.

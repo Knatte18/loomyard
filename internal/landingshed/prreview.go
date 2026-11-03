@@ -25,7 +25,7 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
-// A no closes any pull request the run recorded and passes; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
 // The wait gates and pushes the agent's commits, and ends when the pull request is merged or approved, or closed or continued by the operator.
 // It takes no parent lock.
 type PRReview struct {
@@ -86,7 +86,14 @@ func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.O
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", p.name, err)
 	}
 
-	decision := ResolvePullRequest(p.deps.Slug, mode, field, origin, hasCommits)
+	_, recordFound, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
+	}
+	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, origin, hasCommits, recordFound)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	if decision.Halt != "" {
 		return stuckVerdict(ctx, p.name, decision.Halt, true)
 	}
@@ -210,8 +217,8 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	if err != nil {
 		return p.githubFailure(ctx, "open the GitHub client", err)
 	}
-	if found && rec.ClosedForContinue {
-		// The operator already ended this review and lym closed its pull request.
+	if found && rec.ReviewEnded {
+		// The operator already ended this review.
 		// A head past the one gated then means commits were added since that need review, so the review starts afresh.
 		if head == rec.GatedHead {
 			return p.wait(ctx, api, rec, nil, time.Time{})
@@ -489,7 +496,7 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	if err != nil {
 		return end("", shedengine.OutputPointer{}, err)
 	}
-	outcome, pointer, ended, err = p.judge(ctx, api, state, status, rec, head, dirty)
+	outcome, pointer, ended, err = p.judge(ctx, status, rec, head, dirty)
 	if err == nil && !ended && stopped {
 		if err = p.resumeSession(ctx); err != nil {
 			return end("", shedengine.OutputPointer{}, err)
@@ -635,12 +642,10 @@ func (p *PRReview) pollFailure(ctx context.Context, state *prWaitState, action s
 	return outcome, pointer, true, gerr
 }
 
-// continueComment is the comment lym closes the pull request with when the operator ends the review through the agent.
-const continueComment = "the operator ended the review through the PR-Review agent; lym closes this pull request and the run lands through Finalize"
-
 // judge reads the pull request's status against the record and the task worktree, and reports whether it ends the call.
-// A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to close.
-func (p *PRReview) judge(ctx context.Context, api pullrequest.API, state *prWaitState, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+// A merged pull request takes the merged verdicts whatever the continue flag says, since nothing is left to merge.
+// The operator's ending leaves the pull request as GitHub has it, for Finalize to merge on GitHub, so ending the review never lands the run by a direct push to the parent.
+func (p *PRReview) judge(ctx context.Context, status pullrequest.Status, rec pullrequest.Record, head string, dirty []string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	done := func() (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 		return shedengine.Done, shedengine.OutputPointer{}, true, nil
 	}
@@ -669,39 +674,45 @@ func (p *PRReview) judge(ctx context.Context, api pullrequest.API, state *prWait
 
 	case pullrequest.StateClosed:
 		switch {
-		case rec.ClosedForContinue && clean:
+		case rec.ReviewEnded && clean:
 			return done()
-		case rec.ClosedForContinue:
+		case rec.ReviewEnded:
 			return stuck(p.dirtyEndReason(rec.Number, dirty))
 		case rec.Continue && clean && gated:
-			if err := p.updateRecord(func(r *pullrequest.Record) { r.ClosedForContinue = true }); err != nil {
-				return "", shedengine.OutputPointer{}, true, err
-			}
-			return done()
+			return p.endReview(rec)
 		case rec.Continue:
 			return "", shedengine.OutputPointer{}, false, nil
 		}
 		return stuck(fmt.Sprintf("pull request #%d was closed on GitHub without being merged; way forward: reopen it on GitHub and run lym loom resume, or run lym batten cancel %s", rec.Number, p.deps.Slug))
 
 	case pullrequest.StateOpen:
+		if rec.ReviewEnded {
+			if clean {
+				return done()
+			}
+			return stuck(p.dirtyEndReason(rec.Number, dirty))
+		}
 		if rec.Continue {
 			if !clean || !gated {
 				return "", shedengine.OutputPointer{}, false, nil
 			}
-			if err := api.Close(ctx, rec.Number, continueComment); err != nil {
-				outcome, pointer, ended, ferr := p.pollFailure(ctx, state, "close the pull request", err)
-				return outcome, pointer, ended, ferr
-			}
-			if err := p.updateRecord(func(r *pullrequest.Record) { r.ClosedForContinue = true }); err != nil {
-				return "", shedengine.OutputPointer{}, true, err
-			}
-			return done()
+			return p.endReview(rec)
 		}
 		if status.Approved && !status.ChangesRequested && status.HeadSHA == rec.GatedHead && status.HeadSHA == head && clean {
 			return done()
 		}
 	}
 	return "", shedengine.OutputPointer{}, false, nil
+}
+
+// endReview records the operator's ending in the record, unless rec already carries it, and ends the call Done.
+func (p *PRReview) endReview(rec pullrequest.Record) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+	if !rec.ReviewEnded {
+		if err := p.updateRecord(func(r *pullrequest.Record) { r.ReviewEnded = true }); err != nil {
+			return "", shedengine.OutputPointer{}, true, err
+		}
+	}
+	return shedengine.Done, shedengine.OutputPointer{}, true, nil
 }
 
 // dirtyEndReason is the Stuck reason for a review that ended with uncommitted changes in the task worktree.

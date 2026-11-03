@@ -210,7 +210,7 @@ func (p *PRReview) resumeSession(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
 	}
-	if !found || rec.ClosedForContinue {
+	if !found || rec.ReviewEnded {
 		return nil
 	}
 	_, err = p.ensureSession(ctx, rec)

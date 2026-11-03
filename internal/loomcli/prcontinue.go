@@ -1,6 +1,6 @@
 // prcontinue.go implements the `pr-continue` loom verb: the PR-Review agent's flag that the operator is satisfied with the review and the run goes on.
 // The verb only sets Continue in the run's pull-request record.
-// The PR-Review row reads the flag, closes the pull request and ends the row, and Finalize then lands the run locally under its own gate and credit block.
+// The PR-Review row reads the flag, records the ending and ends the row, leaving the pull request open, and Finalize then merges it on GitHub under its own gate and credit block.
 
 package loomcli
 
@@ -19,7 +19,7 @@ import (
 const prContinueNoRecord = "loom: pr-continue: this run has no pull request record, so there is no review to end; way forward: wait until the PR-Review row has opened the pull request, then run lym loom pr-continue again"
 
 // prContinueVerb sets Continue in the pull-request record at recordPath, guarded by the lock at lockPath, and reports a JSON envelope naming the pull request, returning the exit code.
-// A record already carrying Continue or ClosedForContinue succeeds the same way and is not written again.
+// A record already carrying Continue or ReviewEnded succeeds the same way and is not written again.
 // A run with no record is refused, and an unreadable or unwritable record is an error envelope carrying the error.
 func prContinueVerb(out io.Writer, recordPath, lockPath string) int {
 	rec, found, err := pullrequest.ReadRecord(recordPath, lockPath)
@@ -29,7 +29,7 @@ func prContinueVerb(out io.Writer, recordPath, lockPath string) int {
 	if !found {
 		return output.Err(out, prContinueNoRecord)
 	}
-	if !rec.Continue && !rec.ClosedForContinue {
+	if !rec.Continue && !rec.ReviewEnded {
 		err := pullrequest.UpdateRecord(recordPath, lockPath, func(rec *pullrequest.Record) error {
 			rec.Continue = true
 			return nil
@@ -44,7 +44,7 @@ func prContinueVerb(out io.Writer, recordPath, lockPath string) int {
 	return output.Ok(out, map[string]any{
 		"continue": true,
 		"url":      rec.URL,
-		"note":     "the run will close pull request " + rec.URL + " and land through Finalize",
+		"note":     "the run ends the review and Finalize merges pull request " + rec.URL + " on GitHub",
 	})
 }
 
@@ -56,10 +56,10 @@ func (c *loomCLI) prContinueCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `pr-continue sets the run's continue flag in its pull request record. The
 PR-Review agent runs it in its task worktree when the operator asks it to
-continue. The PR-Review row then closes the pull request without merging it, and
-the run goes on through Finalize, which lands it locally under its own gate. It
-takes no arguments, and is refused until the PR-Review row has opened the pull
-request.
+continue. The PR-Review row then ends the review and leaves the pull request
+open, and the run goes on through Finalize, which merges it on GitHub under its
+own gate. It takes no arguments, and is refused until the PR-Review row has
+opened the pull request.
 
 Example:
   lym loom pr-continue`,

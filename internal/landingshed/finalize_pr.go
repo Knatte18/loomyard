@@ -100,10 +100,10 @@ func (fz *Finalize) githubFailure(ctx context.Context, action string, err error)
 	return fz.halt(ctx, LandingStopPrefix+githubHaltReason(action, err))
 }
 
-// pullRequestLanding decides, under the parent lock, how the landing relates to the run's pull request, following ResolvePullRequest and never the record alone.
+// pullRequestLanding decides, under the parent lock, how the landing relates to the run's pull request, following ResolvePullRequest, asked with GitHub's rules for the parent branch, and never the record alone.
 // A no closes a recorded pull request GitHub reports open, removes the record and lands locally.
 // A yes needs the recorded pull request: an absent record, and a closed pull request the operator did not end the review with, are halts.
-// A yes with the record's ClosedForContinue and a closed pull request lands locally, a merged pull request lands through the parent-side merge's already-landed path, and an open one is marked to merge on GitHub.
+// A yes never lands by a local merge pushed to the parent: a merged pull request lands through the parent-side merge's already-landed path, an open one is marked to merge on GitHub, and a closed one whose record carries the operator's ending is reopened and marked to merge, since GitHub merges only an open pull request.
 // A Finalize with no ParentMode seam skips the step and lands locally.
 // stop is true when Call returns the other values at once.
 func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
@@ -134,13 +134,16 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	if err != nil {
 		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read whether the task branch has commits beyond its parent: %w", finalizeName, err)))
 	}
-	decision := ResolvePullRequest(fz.deps.Slug, mode, field, origin, hasCommits)
-	if decision.Halt != "" {
-		return halt(decision.Halt)
-	}
 	rec, found, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
 	if err != nil {
 		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the pull request record: %w", finalizeName, err)))
+	}
+	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, field, origin, hasCommits, found)
+	if err != nil {
+		return ended(fz.errorStop(ctx, err))
+	}
+	if decision.Halt != "" {
+		return halt(decision.Halt)
 	}
 
 	if !decision.Open {
@@ -165,10 +168,13 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	case pullrequest.StateOpen:
 		return prLanding{merge: true, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
 	case pullrequest.StateClosed:
-		if rec.ClosedForContinue {
-			return prLanding{}, "", shedengine.OutputPointer{}, nil, false
+		if !rec.ReviewEnded {
+			return halt(fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug))
 		}
-		return halt(fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug))
+		if err := api.Reopen(ctx, rec.Number); err != nil {
+			return ended(fz.githubFailure(ctx, "reopen the pull request", err))
+		}
+		return prLanding{merge: true, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
 	}
 	return prLanding{}, "", shedengine.OutputPointer{}, nil, false
 }
@@ -259,7 +265,7 @@ func (fz *Finalize) mergeRefusalReason(rec pullrequest.Record, refusal *pullrequ
 	if refusal.Kind == pullrequest.RefusalMethod {
 		return fmt.Sprintf("GitHub refused the merge method for pull request %s: %s; way forward: set landing.yaml's squash to the method the repository allows with lym config landing --set squash=<true|false> in the prime worktree, or allow the method in the repository's settings, then run lym loom resume", rec.URL, refusal.Message)
 	}
-	return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; the operator alone runs lym loom goto PR-Review and asks the PR-Review agent to continue, which closes the pull request and lands the task locally through Finalize", rec.URL, refusal.Message)
+	return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: a second person approves the pull request again or settles the required check or conflict on GitHub, then runs lym loom resume; or the operator runs lym batten cancel %s", rec.URL, refusal.Message, fz.deps.Slug)
 }
 
 // mergedButNotPulledReason is the Stuck reason of a pull request merged on GitHub whose merge the parent pair could not take in.

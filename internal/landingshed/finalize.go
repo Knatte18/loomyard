@@ -167,9 +167,10 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 // The re-read and the landing are not atomic: a release between them is caught only by the parent push's rejection.
 // The landing commit carries the change description and, after a blank line, the credit block, when the config yields one.
 //
-// Right after the lock it follows the pull-request resolver: a no closes a recorded open pull request, drops the record and lands locally;
+// Right after the lock it follows the pull-request resolver, asked with GitHub's rules for the parent branch: a no closes a recorded open pull request, drops the record and lands locally;
+// a rules read that fails for a reason other than a transient or token one halts when a pull request is recorded, and closes nothing;
 // a yes needs the recorded pull request and halts without one, and halts on one closed without the operator's ending;
-// the operator's ending, a closed pull request whose record is marked closed for continue, lands locally with the gate and credit block, and a merged one lands through the already-landed path.
+// a closed pull request whose record carries the operator's ending is reopened and merged on GitHub like an open one, and a merged one lands through the already-landed path.
 // An open pull request is merged on GitHub just before the parent-side merge, with the pushed task head as its expected head, and the parent pair is fast-forwarded to the merge, so the parent-side merge then finds the parent holding the task's work.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's

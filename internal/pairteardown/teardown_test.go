@@ -1203,6 +1203,14 @@ func (a *closeRecordingAPI) Merge(context.Context, int, string, bool, string, st
 	panic("closeOpenPullRequest called Merge")
 }
 
+func (a *closeRecordingAPI) Reopen(context.Context, int) error {
+	panic("closeOpenPullRequest called Reopen")
+}
+
+func (a *closeRecordingAPI) RequiresPullRequest(context.Context, string) (bool, error) {
+	panic("closeOpenPullRequest called RequiresPullRequest")
+}
+
 // TestCloseOpenPullRequest asserts a torn-down pair's open pull request is closed with the comment, a merged or closed one and an absent record are left alone, and every failure warns and returns.
 // It captures the process-global logger, so it is not parallel.
 func TestCloseOpenPullRequest(t *testing.T) {

@@ -32,8 +32,9 @@ type Record struct {
 	Engine     string `json:"engine,omitempty"`
 	// Continue is the operator's continue flag, set by `lym loom pr-continue`.
 	Continue bool `json:"continue,omitempty"`
-	// ClosedForContinue records that the row closed the pull request on the continue flag.
-	ClosedForContinue bool `json:"closed_for_continue,omitempty"`
+	// ReviewEnded records that the row ended the review on the continue flag, leaving the pull request for Finalize to merge.
+	// Its key keeps the name of the older mark, set when the row closed the pull request on the flag, so a record an older build wrote reads the same.
+	ReviewEnded bool `json:"closed_for_continue,omitempty"`
 }
 
 // ErrNoRecord is returned by UpdateRecord when the record's file does not exist.

@@ -39,4 +39,4 @@ When the operator says they are satisfied and asks you to continue:
 
 1. Commit or discard your work so the worktree is clean.
 2. Run `lym loom pr-continue`.
-   It closes the pull request and lands the task through the ordinary landing, with its gate.
+   It ends the review, and the ordinary landing then merges the pull request on GitHub, after its gate.

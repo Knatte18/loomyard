@@ -93,6 +93,16 @@ func (f *fakePullRequestAPI) Merge(_ context.Context, number int, expectedHead s
 	return f.next("Merge", fmt.Sprintf("%d|%s|%v|%s|%s", number, expectedHead, squash, title, message)).err
 }
 
+func (f *fakePullRequestAPI) Reopen(_ context.Context, number int) error {
+	return f.next("Reopen", fmt.Sprint(number)).err
+}
+
+// RequiresPullRequest answers the scripted call's found as whether the branch's rules require a pull request.
+func (f *fakePullRequestAPI) RequiresPullRequest(_ context.Context, branch string) (bool, error) {
+	s := f.next("RequiresPullRequest", branch)
+	return s.found, s.err
+}
+
 func TestPRReview_Call(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -143,7 +153,50 @@ func TestPRReview_Call(t *testing.T) {
 		wantNoRecord bool
 	}{
 		{
-			name: "OffWithNoFieldIsDoneAndCallsNoGitHub", parentMode: "off", origin: githubOrigin,
+			name: "OffWithNoFieldReadsTheParentRulesAndIsDone", parentMode: "off", origin: githubOrigin,
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"RequiresPullRequest main"},
+		},
+		{
+			name: "OffWithAParentRuleRequiringAPullRequestOpensOne", parentMode: "off", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{found: true}}, "Create": {created}, "Status": {mergedAtHead}},
+			wantOutcome: shedengine.Done, wantPushes: 1,
+			wantCalls:  []string{"RequiresPullRequest main", "FindOpen task main", wantCreateCall, "Status 7"},
+			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: taskHead},
+		},
+		{
+			name: "AnUnreadableParentRuleReadsAsNoRuleAndIsDone", parentMode: "off", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"RequiresPullRequest main"},
+		},
+		{
+			name: "AnUnreadableParentRuleWithARecordedPullRequestHaltsAndKeepsThePullRequest", parentMode: "off", origin: githubOrigin,
+			record:      &pullrequest.Record{Number: 7},
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true,
+			wantReason: []string{"read GitHub's rules for the parent branch", "Not Found", "lym loom resume"},
+			wantCalls:  []string{"RequiresPullRequest main"},
+			wantRecord: &pullrequest.Record{Number: 7},
+		},
+		{
+			name: "AnUnresolvableTokenOnTheParentRuleReadReadsAsNoRuleAndIsDone", parentMode: "off", origin: githubOrigin,
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: githubclient.ErrTokenUnresolvable}}}},
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"RequiresPullRequest main"},
+		},
+		{
+			name: "ATransientParentRuleReadIsAnError", parentMode: "off", origin: githubOrigin,
+			scripts: map[string][]scriptedCall{"RequiresPullRequest": {{err: context.DeadlineExceeded}}},
+			wantErr: true, wantErrText: "read GitHub's rules for the parent branch",
+			wantCalls: []string{"RequiresPullRequest main"},
+		},
+		{
+			name: "AnEmptyTaskBranchUnderOffDoesNotReadTheParentRules", parentMode: "off", origin: githubOrigin, taskEmpty: true,
+			wantOutcome: shedengine.Done,
+		},
+		{
+			name: "ALocalOriginUnderOffDoesNotReadTheParentRules", parentMode: "off", origin: localOrigin,
 			wantOutcome: shedengine.Done,
 		},
 		{
@@ -158,7 +211,7 @@ func TestPRReview_Call(t *testing.T) {
 			record:      &pullrequest.Record{Number: 7},
 			scripts:     map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateMerged}}}},
 			wantOutcome: shedengine.Done, wantNoRecord: true,
-			wantCalls: []string{"Status 7"},
+			wantCalls: []string{"RequiresPullRequest main", "Status 7"},
 		},
 		{
 			name: "UnreadableParentModeHaltsNamingTheWorktree", parentErr: errors.New("bad yaml"), origin: githubOrigin,
@@ -195,16 +248,16 @@ func TestPRReview_Call(t *testing.T) {
 			wantRecord: &pullrequest.Record{Number: 9, URL: "u9", Base: "main", Head: "task", GatedHead: taskHead},
 		},
 		{
-			name: "ClosedForContinueAtTheGatedHeadKeepsTheRecordAndWaitsOnlyToJudgeIt", parentMode: "on", origin: githubOrigin,
-			record:      &pullrequest.Record{Number: 7, ClosedForContinue: true, GatedHead: taskHead},
+			name: "ReviewEndedAtTheGatedHeadKeepsTheRecordAndWaitsOnlyToJudgeIt", parentMode: "on", origin: githubOrigin,
+			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 			scripts:     map[string][]scriptedCall{"Status": {closed}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"Status 7"},
-			wantRecord: &pullrequest.Record{Number: 7, ClosedForContinue: true, GatedHead: taskHead},
+			wantRecord: &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: taskHead},
 		},
 		{
-			name: "ClosedForContinuePastTheGatedHeadOpensANewPullRequest", parentMode: "on", origin: githubOrigin,
-			record:      &pullrequest.Record{Number: 7, ClosedForContinue: true, GatedHead: recordedGated},
+			name: "ReviewEndedPastTheGatedHeadOpensANewPullRequest", parentMode: "on", origin: githubOrigin,
+			record:      &pullrequest.Record{Number: 7, ReviewEnded: true, GatedHead: recordedGated},
 			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 8, URL: "u8"}}}, "Status": {mergedAtHead}},
 			wantOutcome: shedengine.Done, wantPushes: 1,
 			wantCalls:  []string{"FindOpen task main", wantCreateCall, "Status 8"},
@@ -407,6 +460,25 @@ func TestPRReview_Call(t *testing.T) {
 		}
 		if len(fx.api.calls) != 0 {
 			t.Errorf("Call() made GitHub calls %v; want none", fx.api.calls)
+		}
+	})
+
+	t.Run("ContextCancelledBeforeTheParentRuleReadIsAnErrorWrappingTheCancel", func(t *testing.T) {
+		t.Parallel()
+		fx := newPRReviewFixture(t, "off", nil, "", githubOrigin, nil, map[string][]scriptedCall{"RequiresPullRequest": {{err: errors.New("rules unreadable")}}}, nil)
+		ctx, cancel := context.WithCancel(context.Background())
+		fx.deps.PullRequest.Origin = func() (Origin, error) {
+			cancel()
+			return githubOrigin, nil
+		}
+
+		outcome, _, err := NewPRReview("PR-Review", fx.deps).Call(ctx)
+
+		if !errors.Is(err, context.Canceled) || outcome != "" {
+			t.Errorf("Call() = %q, %v; want an empty outcome and an error wrapping context.Canceled", outcome, err)
+		}
+		if diff := cmp.Diff([]string{"RequiresPullRequest main"}, fx.api.calls); diff != "" {
+			t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
 		}
 	})
 

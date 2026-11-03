@@ -1,4 +1,4 @@
-// pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, each origin fact that blocks a pull request, and an empty task branch.
+// pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, a parent branch GitHub's rules guard, each origin fact that blocks a pull request, and an empty task branch.
 
 package landingshed
 
@@ -13,7 +13,7 @@ import (
 // TestResolvePullRequest stays serial: logcapture redirects the process-global logger.
 func TestResolvePullRequest(t *testing.T) {
 	tiergate.Require(t, 0)
-	const warnLine = "the entry's pull_request is off but the parent's beam.yaml pull_request is required"
+	const warnLine = "the entry's pull_request is off but the parent's beam.yaml pull_request is required or GitHub's rules for the parent branch require a pull request"
 	githubOrigin := Origin{URL: "https://github.com/o/r.git", Upstream: true}
 
 	t.Run("ModeAndFieldCombinations", func(t *testing.T) {
@@ -29,7 +29,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.parent+"_"+tt.field, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, githubOrigin, true)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, false, githubOrigin, true)
 				if got.Open != tt.wantOpen || got.Halt != "" || got.Reason == "" {
 					t.Errorf("ResolvePullRequest(%q, %q) = %+v; want Open %v, no halt and a reason", tt.parent, tt.field, got, tt.wantOpen)
 				}
@@ -39,9 +39,53 @@ func TestResolvePullRequest(t *testing.T) {
 				}
 			})
 		}
-		off := ResolvePullRequest("slug", "off", "", githubOrigin, true)
+		off := ResolvePullRequest("slug", "off", "", false, githubOrigin, true)
 		if want := "pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"; off.Reason != want {
 			t.Errorf("off reason = %q; want %q", off.Reason, want)
+		}
+	})
+
+	t.Run("ParentRule", func(t *testing.T) {
+		const ruleDemand = "GitHub's rules for the parent branch require a pull request"
+		local := Origin{URL: "/srv/hub.git", Upstream: true}
+		tests := []struct {
+			name           string
+			parent         string
+			field          string
+			origin         Origin
+			taskHasCommits bool
+			wantOpen       bool
+			// wantIn is a substring the halt holds when it is not empty, and otherwise the reason.
+			wantIn   string
+			wantHalt bool
+			wantWarn bool
+		}{
+			{name: "OffParentOpensOne", parent: "off", origin: githubOrigin, taskHasCommits: true, wantOpen: true, wantIn: "GitHub's rules for the parent branch require one"},
+			{name: "FieldOffStillOpensOneAndWarns", parent: "on", field: "off", origin: githubOrigin, taskHasCommits: true, wantOpen: true, wantIn: "GitHub's rules for the parent branch require one", wantWarn: true},
+			{name: "AMissingOriginFactHaltsWithNoCancelClause", parent: "off", field: "on", origin: local, taskHasCommits: true, wantHalt: true, wantIn: ruleDemand},
+			{name: "AnEmptyTaskBranchIsNo", parent: "off", origin: githubOrigin, wantIn: "the task branch has no commits beyond its parent"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				logs := logcapture.CaptureVerbose(t)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, true, tt.origin, tt.taskHasCommits)
+				if got.Open != tt.wantOpen || (got.Halt != "") != tt.wantHalt {
+					t.Fatalf("ResolvePullRequest(%q, %q, rule) = %+v; want Open %v, halt %v", tt.parent, tt.field, got, tt.wantOpen, tt.wantHalt)
+				}
+				text := got.Reason
+				if tt.wantHalt {
+					text = got.Halt
+				}
+				if !strings.Contains(text, tt.wantIn) {
+					t.Errorf("ResolvePullRequest() text = %q; want it to hold %q", text, tt.wantIn)
+				}
+				if strings.Contains(got.Halt, "lym batten cancel") {
+					t.Errorf("Halt = %q; want no cancel clause under a rule that requires a pull request", got.Halt)
+				}
+				if gotWarn := strings.Contains(logs.String(), warnLine); gotWarn != tt.wantWarn {
+					t.Errorf("warned = %v; want %v\n%s", gotWarn, tt.wantWarn, logs.String())
+				}
+			})
 		}
 	})
 
@@ -80,7 +124,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.origin, true)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, false, tt.origin, true)
 				if got.Open {
 					t.Fatalf("ResolvePullRequest() = %+v; want no pull request", got)
 				}
@@ -120,7 +164,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.origin, false)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, false, tt.origin, false)
 				if got.Open || got.Halt != "" || !strings.Contains(got.Reason, tt.wantIn) {
 					t.Errorf("ResolvePullRequest(%q, %q, %+v, false) = %+v; want no pull request, no halt and a reason holding %q", tt.parent, tt.field, tt.origin, got, tt.wantIn)
 				}

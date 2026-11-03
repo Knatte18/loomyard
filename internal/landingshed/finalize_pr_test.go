@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -44,7 +45,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 		}
 		return rec
 	}
-	closedForContinue := func(r *pullrequest.Record) { r.ClosedForContinue = true }
+	reviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
 	refusal := func(kind pullrequest.RefusalKind, message string) scriptedCall {
 		return scriptedCall{err: &pullrequest.MergeRefusal{Kind: kind, Message: message}}
@@ -81,6 +82,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 		// wantNotInReason are substrings the reason must not hold.
 		wantNotInReason []string
 		wantNoRecord    bool
+		// wantRecordKept asserts the record's file is still there.
+		wantRecordKept bool
 	}{
 		{
 			name: "UnreadableParentModeHaltsNamingTheWorktreeBehindTheLandingPrefix", parentErr: errors.New("bad yaml"),
@@ -93,23 +96,53 @@ func TestFinalize_PullRequest(t *testing.T) {
 		{
 			name: "NoClosesAnOpenRecordedPullRequestRemovesTheRecordAndMergesLocally", parentMode: "off", record: recorded(), scripts: statusScript(open),
 			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
-			wantCalls: []string{"Status 7", "Close 7 lym closed this pull request: pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"},
+			wantCalls: []string{"RequiresPullRequest main", "Status 7", "Close 7 lym closed this pull request: pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"},
+		},
+		{
+			name: "AnOffParentWhoseBranchRulesRequireAPullRequestMergesTheRecordedOneOnGitHub", parentMode: "off", record: recorded(),
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{found: true}}, "Status": {open}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantCalls: []string{"RequiresPullRequest main", "Status 7", wantGitHubMerge},
+		},
+		{
+			name: "ATransientParentRuleReadIsAnErrorStopWithNoMerge", parentMode: "off", record: recorded(),
+			scripts: map[string][]scriptedCall{"RequiresPullRequest": {{err: context.DeadlineExceeded}}},
+			wantErr: true, wantErrText: "read GitHub's rules for the parent branch", wantCalls: []string{"RequiresPullRequest main"},
+		},
+		{
+			name: "AnUnreadableParentRuleWithARecordedPullRequestHaltsClosesNothingAndKeepsTheRecord", parentMode: "off", record: recorded(),
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: githubErrorResponse(http.StatusNotFound, "Not Found")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"read GitHub's rules for the parent branch", "Not Found", "lym loom resume"},
+			wantCalls: []string{"RequiresPullRequest main"}, wantRecordKept: true,
+		},
+		{
+			name: "AnUnresolvableTokenOnTheParentRuleReadReadsAsNoRuleAndLandsLocally", parentMode: "off",
+			scripts:     map[string][]scriptedCall{"RequiresPullRequest": {{err: &url.Error{Op: "Get", URL: "https://api.github.com", Err: githubclient.ErrTokenUnresolvable}}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push", wantCalls: []string{"RequiresPullRequest main"},
 		},
 		{
 			name: "YesWithNoRecordHaltsNamingGotoPRReview", parentMode: "on",
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"has no pull request recorded", "lym loom goto PR-Review"},
 		},
 		{
-			name: "YesWithAClosedRecordNotClosedForContinueHaltsNamingReopenAndCancel", parentMode: "on", record: recorded(), scripts: statusScript(closed),
+			name: "YesWithAClosedRecordWithoutTheOperatorsEndingHaltsNamingReopenAndCancel", parentMode: "on", record: recorded(), scripts: statusScript(closed),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen it on GitHub", "lym loom goto PR-Review", "lym batten cancel me"}, wantCalls: []string{"Status 7"},
 		},
 		{
-			name: "AContinueFlagWithoutClosedForContinueHaltsAsWell", parentMode: "on", record: recorded(withContinue), scripts: statusScript(closed),
+			name: "AContinueFlagWithoutTheRecordedEndingHaltsAsWell", parentMode: "on", record: recorded(withContinue), scripts: statusScript(closed),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"closed without a merge"}, wantCalls: []string{"Status 7"},
 		},
 		{
-			name: "ClosedForContinueMergesLocallyWithNoGitHubMerge", parentMode: "on", record: recorded(closedForContinue), scripts: statusScript(closed),
-			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push", wantCalls: []string{"Status 7"},
+			name: "TheOperatorsEndingOnAClosedPullRequestReopensItAndMergesOnGitHub", parentMode: "on", record: recorded(reviewEnded),
+			scripts:     map[string][]scriptedCall{"Status": {closed}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantCalls: []string{"Status 7", "Reopen 7", wantGitHubMerge},
+		},
+		{
+			name: "AFailedReopenHaltsNamingGitHubsMessageAndMergesNothing", parentMode: "on", record: recorded(reviewEnded),
+			scripts:     map[string][]scriptedCall{"Status": {closed}, "Reopen": {{err: errors.New("state cannot be changed")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen the pull request", "state cannot be changed", "lym loom resume"},
+			wantCalls: []string{"Status 7", "Reopen 7"},
 		},
 		{
 			name: "AMergedPullRequestMakesNoGitHubMergeAndLandsThroughTheParentSideMerge", parentMode: "on", record: recorded(), scripts: statusScript(merged),
@@ -135,9 +168,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Done, wantMerges: 1, wantCalls: []string{"Status 7", wantGitHubMerge, wantGitHubMerge},
 		},
 		{
-			name: "APendingRefusalForOverAMinuteHaltsNamingAnApprovalAndTheOperatorsWay", parentMode: "on", record: recorded(),
+			name: "APendingRefusalForOverAMinuteHaltsNamingAnApprovalAndTheCancel", parentMode: "on", record: recorded(),
 			scripts:     mergeScript(open, refusal(pullrequest.RefusalPending, "Base branch was modified")),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Base branch was modified", "approves the pull request again", "lym loom goto PR-Review", "lym loom resume"},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Base branch was modified", "approves the pull request again", "lym batten cancel me", "lym loom resume"},
+			wantNotInReason: []string{"locally", "lym loom goto PR-Review"},
 			// Retries sleep 1, 2, 4, 8, 16 and 32 seconds, so the seventh refusal is the first past the minute.
 			wantCalls: append([]string{"Status 7"}, slices.Repeat([]string{wantGitHubMerge}, 7)...),
 		},
@@ -147,9 +181,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Merge commits are not allowed", "lym config landing --set squash=<true|false>", "lym loom resume"}, wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
-			name: "AnotherRefusalHaltsNamingGitHubsMessageAndGotoPRReview", parentMode: "on", record: recorded(),
+			name: "AnotherRefusalHaltsNamingGitHubsMessageAndTheCancel", parentMode: "on", record: recorded(),
 			scripts:     mergeScript(open, refusal(pullrequest.RefusalOther, "Required status check is expected")),
-			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "lym loom goto PR-Review", "ask"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "lym batten cancel me"}, wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
 			name: "ATransientMergeFailureIsAnError", parentMode: "on", record: recorded(),
@@ -289,8 +323,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 			if !lockHeldAtMode {
 				t.Error("the parent lock was not held when the pull-request mode was read; want the decision made under the lock")
 			}
-			if _, found, rerr := pullrequest.ReadRecord(deps.PullRequest.RecordPath, deps.PullRequest.RecordLockPath); rerr != nil || (tt.wantNoRecord && found) {
-				t.Errorf("ReadRecord() found = %v, error = %v; want no record left: %v", found, rerr, tt.wantNoRecord)
+			if _, found, rerr := pullrequest.ReadRecord(deps.PullRequest.RecordPath, deps.PullRequest.RecordLockPath); rerr != nil || (tt.wantNoRecord && found) || (tt.wantRecordKept && !found) {
+				t.Errorf("ReadRecord() found = %v, error = %v; want no record left: %v, record kept: %v", found, rerr, tt.wantNoRecord, tt.wantRecordKept)
 			}
 		})
 	}

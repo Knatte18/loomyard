@@ -21,7 +21,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-const pullsPath = "/repos/owner/repo/pulls"
+const (
+	pullsPath = "/repos/owner/repo/pulls"
+	rulesPath = "/repos/owner/repo/rules/branches"
+)
 
 // capturedRequest is one request the scripted server received.
 type capturedRequest struct {
@@ -99,6 +102,17 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		reply(409, `{"message": "At least 1 approving review is required by reviewers with write access."}`)
 	case "PUT " + pullsPath + "/14/merge":
 		reply(200, `{"merged": true, "sha": "m"}`)
+	case "GET " + rulesPath + "/guarded":
+		if r.URL.Query().Get("page") == "2" {
+			reply(200, `[{"type": "pull_request", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1, "parameters": {"required_approving_review_count": 0}}]`)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<%s%s/guarded?page=2>; rel="next"`, s.URL, rulesPath))
+		reply(200, `[{"type": "required_linear_history", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1}]`)
+	case "GET " + rulesPath + "/linear":
+		reply(200, `[{"type": "required_linear_history", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1}]`)
+	case "GET " + rulesPath + "/bare":
+		reply(200, `[]`)
 	default:
 		reply(404, `{"message": "Not Found"}`)
 	}
@@ -181,6 +195,39 @@ func TestClient_Calls(t *testing.T) {
 		}
 		if sent[1].method != "PATCH" || sent[1].path != pullsPath+"/5" || sent[1].body["state"] != "closed" {
 			t.Errorf("Close's second request = %s %s %v; want the closing PATCH", sent[1].method, sent[1].path, sent[1].body)
+		}
+	})
+
+	t.Run("ReopenSetsTheStateOpen", func(t *testing.T) {
+		if err := client.Reopen(ctx, 5); err != nil {
+			t.Fatalf("Reopen() error: %v", err)
+		}
+		sent := server.last(t)
+		want := map[string]any{"state": "open"}
+		if sent.method != "PATCH" || sent.path != pullsPath+"/5" || !reflect.DeepEqual(sent.body, want) {
+			t.Errorf("Reopen sent %s %s %v; want PATCH %s/5 %v", sent.method, sent.path, sent.body, pullsPath, want)
+		}
+		if err := client.Reopen(ctx, 99); err == nil {
+			t.Error("Reopen(99) error = nil; want the failure GitHub answered")
+		}
+	})
+
+	t.Run("RequiresPullRequest", func(t *testing.T) {
+		tests := []struct {
+			branch  string
+			want    bool
+			wantErr bool
+		}{
+			{branch: "guarded", want: true},
+			{branch: "linear", want: false},
+			{branch: "bare", want: false},
+			{branch: "unknown", wantErr: true},
+		}
+		for _, tt := range tests {
+			got, err := client.RequiresPullRequest(ctx, tt.branch)
+			if got != tt.want || (err != nil) != tt.wantErr {
+				t.Errorf("RequiresPullRequest(%s) = %v, %v; want %v, error %v", tt.branch, got, err, tt.want, tt.wantErr)
+			}
 		}
 	})
 

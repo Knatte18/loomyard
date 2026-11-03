@@ -209,7 +209,7 @@ func TestPRReview_Session(t *testing.T) {
 			cancelAtSleep: cancelAtFirstSleep, wantCanceled: true,
 		},
 		{
-			name: "ReentryWithAKeptClosedForContinueRecordStartsNone", record: recordedAtHead(withStrand("g-old", "sess-old"), func(r *pullrequest.Record) { r.ClosedForContinue = true }),
+			name: "ReentryWithAKeptReviewEndedRecordStartsNone", record: recordedAtHead(withStrand("g-old", "sess-old"), func(r *pullrequest.Record) { r.ReviewEnded = true }),
 			scripts:     map[string][]scriptedCall{"Status": {closed}},
 			wantOutcome: shedengine.Done,
 		},

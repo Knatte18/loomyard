@@ -127,7 +127,6 @@ func once(fn func()) func() {
 func TestPRReview_Wait(t *testing.T) {
 	tiergate.Require(t, 0)
 	// The wait captures the process-global logger, so this test and its subtests stay serial.
-	const continueClose = "Close 7 " + continueComment
 	const editSeven = "Edit 7|Change title|" + wantPRBody
 	open := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen}}
 	closed := scriptedCall{status: pullrequest.Status{State: pullrequest.StateClosed}}
@@ -156,7 +155,7 @@ func TestPRReview_Wait(t *testing.T) {
 		return rec
 	}
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
-	withClosedForContinue := func(r *pullrequest.Record) { r.ClosedForContinue = true }
+	withReviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
 	withStrand := func(r *pullrequest.Record) { r.StrandName = "pr-strand" }
 	writeContinue := func(w *waitWorld) {
 		err := pullrequest.UpdateRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, func(r *pullrequest.Record) error {
@@ -266,20 +265,20 @@ func TestPRReview_Wait(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen it on GitHub", "lym batten cancel the-slug"},
 		},
 		{
-			name: "ClosedForContinueOnACleanTreeIsDone", record: seed("h1", withClosedForContinue), scripts: statusScript(closed),
-			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7"}, wantRecord: seed("h1", withClosedForContinue),
+			name: "ReviewEndedOnAClosedPullRequestOnACleanTreeIsDone", record: seed("h1", withReviewEnded), scripts: statusScript(closed),
+			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7"}, wantRecord: seed("h1", withReviewEnded),
 		},
 		{
-			name: "ClosedForContinueOnADirtyTreeHaltsNamingTheFiles", record: seed("h1", withClosedForContinue), scripts: statusScript(closed), dirty: []string{"wip.go"},
+			name: "ReviewEndedOnADirtyTreeHaltsNamingTheFiles", record: seed("h1", withReviewEnded), scripts: statusScript(closed), dirty: []string{"wip.go"},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"uncommitted changes: wip.go", "discard them", "lym loom resume"},
 		},
 		{
 			name: "ContinueOnAClosedPullRequestAtTheGatedHeadIsDoneAndRecordsIt", record: seed("h1", withContinue), scripts: statusScript(closed),
-			wantOutcome: shedengine.Done, wantRecord: seed("h1", withContinue, withClosedForContinue),
+			wantOutcome: shedengine.Done, wantRecord: seed("h1", withContinue, withReviewEnded),
 		},
 		{
 			name: "ContinueOnAClosedPullRequestWithAnUngatedCleanHeadGatesItFirst", record: seed("h1", withContinue), scripts: statusScript(closed), head: "h2",
-			wantOutcome: shedengine.Done, wantRecord: &pullrequest.Record{Number: 7, URL: "u7", GatedHead: "h2", Continue: true, ClosedForContinue: true}, gatePushes: 1,
+			wantOutcome: shedengine.Done, wantRecord: &pullrequest.Record{Number: 7, URL: "u7", GatedHead: "h2", Continue: true, ReviewEnded: true}, gatePushes: 1,
 		},
 		{
 			name: "ContinueOnAClosedPullRequestOnADirtyTreeKeepsWaiting", record: seed("h1", withContinue), scripts: statusScript(closed), dirty: []string{"wip.go"},
@@ -297,12 +296,20 @@ func TestPRReview_Wait(t *testing.T) {
 			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7"},
 		},
 		{
-			name: "ContinueOnAnOpenPullRequestAtTheGatedHeadClosesItAndIsDone", record: seed("h1", withContinue), scripts: statusScript(open),
-			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7", editSeven, continueClose},
-			wantRecord: recorded("h1", withContinue, withClosedForContinue),
+			name: "ContinueOnAnOpenPullRequestAtTheGatedHeadRecordsTheEndingLeavesItOpenAndIsDone", record: seed("h1", withContinue), scripts: statusScript(open),
+			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7", editSeven},
+			wantRecord: recorded("h1", withContinue, withReviewEnded),
 		},
 		{
-			name:   "ContinueOnAnOpenPullRequestAtAnUngatedCleanHeadKeepsWaitingWithoutClosing",
+			name: "ReviewEndedOnAnOpenPullRequestOnACleanTreeIsDoneWithoutEditingIt", record: seed("h1", withContinue, withReviewEnded), scripts: statusScript(open),
+			wantOutcome: shedengine.Done, wantCalls: []string{"Status 7"}, wantRecord: seed("h1", withContinue, withReviewEnded),
+		},
+		{
+			name: "ReviewEndedOnAnOpenPullRequestOnADirtyTreeHaltsNamingTheFiles", record: seed("h1", withContinue, withReviewEnded), scripts: statusScript(open), dirty: []string{"wip.go"},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"uncommitted changes: wip.go", "discard them", "lym loom resume"},
+		},
+		{
+			name:   "ContinueOnAnOpenPullRequestAtAnUngatedCleanHeadKeepsWaitingWithoutEndingTheReview",
 			record: seed("h1", withContinue, func(r *pullrequest.Record) { r.MailedHead = "h2" }), scripts: statusScript(open), head: "h2",
 			setup:   func(w *waitWorld) { w.cancelAfter(2) },
 			wantErr: context.Canceled, wantCalls: []string{"Status 7", editSeven},
@@ -523,7 +530,7 @@ func TestPRReview_Wait(t *testing.T) {
 			wantOutcome: shedengine.Done, wantCalls: []string{"FindOpen task main", "Create task main|Change title|" + wantPRBody, "Status 7"},
 		},
 		{
-			name: "TheContinueFlagWrittenBetweenWakesPollsAtOnceAndClosesThePullRequest", record: seed("h1"), scripts: statusScript(open),
+			name: "TheContinueFlagWrittenBetweenWakesPollsAtOnceAndEndsTheReview", record: seed("h1"), scripts: statusScript(open),
 			setup: func(w *waitWorld) {
 				w.onSleep = func(w *waitWorld, n int) {
 					if n == 1 {
@@ -532,15 +539,15 @@ func TestPRReview_Wait(t *testing.T) {
 				}
 			},
 			wantOutcome: shedengine.Done,
-			wantCalls:   []string{"Status 7", editSeven, "Status 7", continueClose},
-			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
+			wantCalls:   []string{"Status 7", editSeven, "Status 7"},
+			wantRecord:  recorded("h1", withContinue, withReviewEnded),
 		},
 		{
-			name: "AChangeToTheRecordEndsTheSleepEarlyAndTheContinueFlagClosesThePullRequestAfterTheFloor", record: seed("h1"), scripts: statusScript(open),
+			name: "AChangeToTheRecordEndsTheSleepEarlyAndTheContinueFlagEndsTheReviewAfterTheFloor", record: seed("h1"), scripts: statusScript(open),
 			setup:       changeDuringFirstSleep(0),
 			wantOutcome: shedengine.Done,
-			wantCalls:   []string{"Status 7", editSeven, "Status 7", continueClose},
-			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
+			wantCalls:   []string{"Status 7", editSeven, "Status 7"},
+			wantRecord:  recorded("h1", withContinue, withReviewEnded),
 			check: func(t *testing.T, w *waitWorld, _ string) {
 				// The clock stands still in the cut sleep, so the rest of the floor is a whole second.
 				want := []time.Duration{time.Second, time.Second}
@@ -557,8 +564,8 @@ func TestPRReview_Wait(t *testing.T) {
 			setup:               changeDuringFirstSleep(400 * time.Millisecond),
 			restsFloorRemainder: true,
 			wantOutcome:         shedengine.Done,
-			wantCalls:           []string{"Status 7", editSeven, "Status 7", continueClose},
-			wantRecord:          recorded("h1", withContinue, withClosedForContinue),
+			wantCalls:           []string{"Status 7", editSeven, "Status 7"},
+			wantRecord:          recorded("h1", withContinue, withReviewEnded),
 			check: func(t *testing.T, w *waitWorld, _ string) {
 				want := []time.Duration{time.Second, 600 * time.Millisecond}
 				if diff := cmp.Diff(want, w.sleeps); diff != "" {
@@ -570,8 +577,8 @@ func TestPRReview_Wait(t *testing.T) {
 			name: "AChangeAfterTheFloorHasPassedWakesAtOnceWithoutAnotherSleep", record: seed("h1"), scripts: statusScript(open),
 			setup:       changeDuringFirstSleep(time.Second),
 			wantOutcome: shedengine.Done,
-			wantCalls:   []string{"Status 7", editSeven, "Status 7", continueClose},
-			wantRecord:  recorded("h1", withContinue, withClosedForContinue),
+			wantCalls:   []string{"Status 7", editSeven, "Status 7"},
+			wantRecord:  recorded("h1", withContinue, withReviewEnded),
 			check: func(t *testing.T, w *waitWorld, _ string) {
 				want := []time.Duration{time.Second}
 				if diff := cmp.Diff(want, w.sleeps); diff != "" {
