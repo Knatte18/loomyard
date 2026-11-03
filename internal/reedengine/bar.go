@@ -8,7 +8,7 @@
 // Line 2 ends with the current session's check mark, the session user options @lym_check, @lym_check_state and @lym_check_start, before the clock.
 // Line 3 is the follow button, then the action row read from the session user options @lym_buttons_plain and @lym_buttons_agent.
 // Every option read here is display only but one: no Go decision reads @strand_color, @lym_unseen, @lym_prime_session, a check mark's options or the action row's options, while @lym_follow, which the follow button shows, is the follow state that followingLocked reads.
-// The decision-bearing @lym_button_spec and @lym_button_dir are not read here; a button click reads them to decide what to run and where.
+// The decision-bearing @lym_button_spec, @lym_button_dir and @lym_button_answer are not read here; a button click reads them to decide what to run and where.
 
 package reedengine
 

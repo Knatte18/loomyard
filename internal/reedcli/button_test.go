@@ -1,4 +1,4 @@
-// button_test.go pins the run directory the `button` verb hands a click: the anchor recorded now for the worktree holding the rendered directory.
+// button_test.go pins the `button` verb's flag checks and the run directory it hands a click: the anchor recorded now for the worktree holding the rendered directory.
 
 package reedcli
 
@@ -9,8 +9,43 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+// TestValidateButtonFlags pins that a prompt's re-entry call needs the hash it was raised for.
+func TestValidateButtonFlags(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	told := reedengine.ButtonRequest{TmuxPath: "/usr/bin/tmux", SocketPath: "/sock", Session: "s", Range: "lymbtn0", Client: "/dev/pts/1"}
+	confirmedNoHash, answeredNoHash, answeredWithHash := told, told, told
+	confirmedNoHash.Confirmed = true
+	answeredNoHash.Answered = true
+	answeredWithHash.Answered, answeredWithHash.Hash = true, "abc"
+	tests := []struct {
+		name    string
+		req     reedengine.ButtonRequest
+		wantErr string
+	}{
+		{"PlainClickPasses", told, ""},
+		{"ConfirmedWithoutHashIsRefused", confirmedNoHash, "--confirmed needs --hash, the hash of the run text the prompt was raised for"},
+		{"AnsweredWithoutHashIsRefused", answeredNoHash, "--answered needs --hash, the hash of the run text the prompt was raised for"},
+		{"AnsweredWithHashPasses", answeredWithHash, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateButtonFlags(tt.req)
+			got := ""
+			if err != nil {
+				got = err.Error()
+			}
+			if got != tt.wantErr {
+				t.Errorf("validateButtonFlags(%+v) = %q; want %q", tt.req, got, tt.wantErr)
+			}
+		})
+	}
+}
 
 // TestButtonRunDirectory renders a run directory, records an anchor marker after it, and asks where the click runs.
 func TestButtonRunDirectory(t *testing.T) {

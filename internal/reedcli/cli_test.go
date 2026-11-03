@@ -72,7 +72,7 @@ func TestRunCLI_NotAGitRepo(t *testing.T) {
 	}
 }
 
-// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, follow refuses a missing --socket, --session or --tmux, and button refuses a missing --socket, --tmux, --session, --range or --client and a --confirmed without --hash, with a JSON error and a non-zero exit.
+// TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository verifies that switch refuses a missing or doubled direction and a missing --client, follow refuses a missing --socket, --session or --tmux, and button refuses a missing --socket, --tmux, --session, --range or --client and a --confirmed or --answered without --hash, with a JSON error and a non-zero exit.
 // It also verifies that button with every flag and a socket that does not exist exits 0 with no output.
 // It runs from a directory that is not a git repository, so a refusal naming the flag, not lymcwd.Resolve's not-a-git-repository error, proves the verb skips the root pre-run's resolution.
 func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
@@ -96,6 +96,7 @@ func TestRunCLI_Switch_RefusesBadFlagsAndNeedsNoRepository(t *testing.T) {
 		{name: "button missing range", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--client", "c"}, wantErr: "--range"},
 		{name: "button missing client", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0"}, wantErr: "--client"},
 		{name: "button confirmed without hash", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0", "--client", "c", "--confirmed"}, wantErr: "--hash"},
+		{name: "button answered without hash", args: []string{"button", "--socket", "/tmp/s", "--tmux", "tmux", "--session", "s", "--range", "lymbtn0", "--client", "c", "--answered"}, wantErr: "--hash"},
 		{name: "button with every flag needs no repository", args: []string{"button", "--socket", "/nonexistent/lym-socket", "--tmux", "/nonexistent/lym-tmux", "--session", "s", "--range", "lymbtn0", "--client", "c"}, wantOK: true},
 	}
 	for _, tt := range tests {

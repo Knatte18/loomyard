@@ -191,11 +191,17 @@ func composeButtonCommand(sh shell.Shell, executablePath func() (string, error),
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDirToWord("#{"+buttonDirOption+"}")), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess()), true
 }
 
-// composeConfirmedButtonLine returns the shell line a button's confirm prompt runs once answered yes: a change into dir, then exe invoked as `reed button` with req's values and `--confirmed --hash <hash>`, then `--strand <strand>` when strand is non-empty, on sh's dialect.
+// The flags a button's prompt re-enters the click verb with: buttonStageAnswered after the ask prompt, buttonStageConfirmed after a yes to the confirm prompt.
+const (
+	buttonStageAnswered  = "--answered"
+	buttonStageConfirmed = "--confirmed"
+)
+
+// composeButtonReentryLine returns the shell line a button's prompt runs once answered: a change into dir, then exe invoked as `reed button` with req's values, stage and `--hash <hash>`, then `--strand` and `--answer` with their values when values holds them, on sh's dialect.
 // Every value is quoted as one word.
-// The line opens with the directory change because run-shell does not format-expand its start directory, so the confirmed verb starts in the run directory.
+// The line opens with the directory change because run-shell does not format-expand its start directory, so the re-entered verb starts in the run directory.
 // The output of the directory change and of the verb is discarded and the line ends with status zero, so tmux opens no view mode on the target pane whatever either does.
-func composeConfirmedButtonLine(sh shell.Shell, exe string, req ButtonRequest, dir, hash, strand string) string {
+func composeButtonReentryLine(sh shell.Shell, exe string, req ButtonRequest, dir, stage, hash string, values map[string]string) string {
 	words := []string{
 		sh.Invoke(exe), "reed", "button",
 		"--socket", sh.Quote(req.SocketPath),
@@ -203,10 +209,12 @@ func composeConfirmedButtonLine(sh shell.Shell, exe string, req ButtonRequest, d
 		"--session", sh.Quote(req.Session),
 		"--range", sh.Quote(req.Range),
 		"--client", sh.Quote(req.Client),
-		"--confirmed", "--hash", sh.Quote(hash),
+		stage, "--hash", sh.Quote(hash),
 	}
-	if strand != "" {
-		words = append(words, "--strand", sh.Quote(strand))
+	for _, name := range []string{buttonStrandKey, buttonAnswerKey} {
+		if value, ok := values[name]; ok {
+			words = append(words, "--"+name, sh.Quote(value))
+		}
 	}
 	return sh.Chain(sh.DiscardOutput(sh.ChangeDir(dir)), sh.DiscardOutput(strings.Join(words, " ")), sh.ExitSuccess())
 }

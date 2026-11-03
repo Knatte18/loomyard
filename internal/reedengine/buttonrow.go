@@ -47,7 +47,11 @@ type buttonSpecEntry struct {
 	Run string `json:"run"`
 	// Confirm is the prompt asked before Run, with the static placeholders filled; empty asks nothing.
 	Confirm string `json:"confirm"`
-	// Strand reports that Run or Confirm still holds {strand} after the static fill.
+	// Ask is the prompt whose answer fills {answer}, asked before Confirm, with the static placeholders filled; empty asks nothing.
+	Ask string `json:"ask"`
+	// AskDefault fills {answer} when the answer to Ask is empty.
+	AskDefault string `json:"ask_default"`
+	// Strand reports that Run, Confirm or Ask still holds {strand} after the static fill.
 	Strand bool `json:"strand"`
 }
 
@@ -60,6 +64,7 @@ func buttonRangeFormat(index int, label string) string {
 // A standalone geometry, a failed button context, an unresolvable shell and a failed beam lookup each give empty rows and a zero spec, so line 3 shows follow alone.
 // Reed's entries come before the machine's, each valid entry numbered in that order.
 // An entry using {beam} is left out, with a Warn, when the beam's directory is absent on this machine.
+// An entry whose filled ask text holds a ',' is left out, with a Warn, since tmux splits a prompt at its commas.
 func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec) {
 	if e.geom.Buttons == nil {
 		return "", "", buttonSpec{}
@@ -104,20 +109,26 @@ func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec)
 	sh := shell.ForGOOS()
 	spec = buttonSpec{Shell: shellPath, Flag: sh.CommandFlag(), Dir: dir}
 	for _, entry := range entries {
-		if beam.Anchor == "" && (strings.Contains(entry.Run, "{beam}") || strings.Contains(entry.Confirm, "{beam}")) {
+		if beam.Anchor == "" && entry.names("beam") {
 			logger.Warn("reed: left out a button whose beam is not on this machine; take the beam onto this machine with lym adopt <beam>, and the row re-renders at the session's next attach",
 				"socket", e.Socket(), "session", e.SessionName(), "label", entry.Label, "beam", beam.Name)
 			continue
 		}
-		run := fillRunPlaceholders(sh, entry.Run, values)
-		confirm := fillConfirmPlaceholders(entry.Confirm, values)
+		ask := fillPromptPlaceholders(entry.Ask, values)
+		if strings.Contains(ask, ",") {
+			logger.Warn("reed: left out a button whose ask text holds a ',' after its placeholders were filled, which tmux would split into several prompts",
+				"socket", e.Socket(), "session", e.SessionName(), "label", entry.Label, "ask", ask)
+			continue
+		}
 		index := len(spec.Entries)
 		spec.Entries = append(spec.Entries, buttonSpecEntry{
-			Index:   index,
-			Label:   entry.Label,
-			Run:     run,
-			Confirm: confirm,
-			Strand:  strings.Contains(run, "{strand}") || strings.Contains(confirm, "{strand}"),
+			Index:      index,
+			Label:      entry.Label,
+			Run:        fillRunPlaceholders(sh, entry.Run, values),
+			Confirm:    fillPromptPlaceholders(entry.Confirm, values),
+			Ask:        ask,
+			AskDefault: entry.AskDefault,
+			Strand:     entry.names(buttonStrandKey),
 		})
 		fragment := buttonRangeFormat(index, entry.Label)
 		agent += fragment
@@ -131,10 +142,10 @@ func (e *Engine) composeButtonRowLocked() (plain, agent string, spec buttonSpec)
 	return plain, agent, spec
 }
 
-// usesBeamPlaceholder reports whether any entry's run or confirm text names {beam}.
+// usesBeamPlaceholder reports whether any entry's run, confirm or ask text names {beam}.
 func usesBeamPlaceholder(entries []buttonEntry) bool {
 	for _, entry := range entries {
-		if strings.Contains(entry.Run, "{beam}") || strings.Contains(entry.Confirm, "{beam}") {
+		if entry.names("beam") {
 			return true
 		}
 	}

@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestRunButton_RealTmux runs each kind of spec entry through a real server: a plain one in the run directory, one that exits non-zero, one behind a confirm prompt answered in the client's terminal, and one naming {strand}.
+// TestRunButton_RealTmux runs each kind of spec entry through a real server: a plain one in the run directory, one that exits non-zero, one behind a confirm prompt answered in the client's terminal, one naming {strand}, and one behind an ask prompt typed in the client's terminal.
 // It reads the logger's output through logcapture, which is process-global, so it does not call t.Parallel.
 func TestRunButton_RealTmux(t *testing.T) {
 	tiergate.Require(t, 2)
@@ -45,6 +45,7 @@ func TestRunButton_RealTmux(t *testing.T) {
 		{Index: 1, Label: "fail", Run: "echo first; exit 3"},
 		{Index: 2, Label: "ask", Run: "touch confirmed", Confirm: "go?"},
 		{Index: 3, Label: "name", Run: "printf %s {strand} > strand", Strand: true},
+		{Index: 4, Label: "say", Run: "printf %s {answer} > answer", Ask: "Say what:", AskDefault: "dflt"},
 	}}
 	specJSON, err := json.Marshal(spec)
 	if err != nil {
@@ -128,5 +129,78 @@ func TestRunButton_RealTmux(t *testing.T) {
 	}
 	if string(gotStrand) != strandName {
 		t.Errorf("the strand entry wrote %q, want the clicking pane's name %q", gotStrand, strandName)
+	}
+
+	// The rows share one client and one session option, so they run in order: the Escape row comes before the empty row, which proves the empty one reads a fresh answer and not the first row's.
+	const askRun = "printf %s {answer} > answer"
+	answerPath := filepath.Join(runDir, "answer")
+	asks := []struct {
+		name  string
+		typed string
+		// want is the file's content; wantNoFile says the click must leave no file and run no re-entry line.
+		want       string
+		wantNoFile bool
+	}{
+		{name: "AnswerWithEveryMetacharacterReachesTheFileIntact", typed: "it's \"q\" \\ $HOME ; ~ #{session_name} a  b\r", want: "it's \"q\" \\ $HOME ; ~ #{session_name} a  b"},
+		{name: "EscapeRunsNothing", typed: "\x1b", wantNoFile: true},
+		{name: "EmptyEnterTakesTheAskDefault", typed: "\r", want: "dflt"},
+	}
+	for _, tt := range asks {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, path := range []string{answerPath, recordPath} {
+				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					t.Fatalf("clear %s: %v", path, err)
+				}
+			}
+			answerTarget := exactSessionWindowTarget(e.SessionName())
+			if tt.wantNoFile {
+				// A template wrongly run by Escape would overwrite this value before its run-shell starts.
+				if err := e.tmux.run("set-option", "-t", answerTarget, buttonAnswerOption, "stale"); err != nil {
+					t.Fatalf("seed the answer option: %v", err)
+				}
+			}
+			pty.forget()
+			returned := make(chan struct{})
+			go func() {
+				defer close(returned)
+				runButtonVia(e.tmux, request("lymbtn4"), deps)
+			}()
+			waitUntil(t, 10*time.Second, "the ask prompt never drew", func() bool { return pty.drew("Say what:") })
+			if _, err := pty.master.WriteString(tt.typed); err != nil {
+				t.Fatalf("type the answer: %v", err)
+			}
+			waitUntil(t, 10*time.Second, "the click never returned after the answer was typed", func() bool {
+				select {
+				case <-returned:
+					return true
+				default:
+					return false
+				}
+			})
+
+			if tt.wantNoFile {
+				if _, err := os.Stat(recordPath); err == nil {
+					t.Errorf("an answered line ran after Escape, want no re-entry")
+				}
+				if got := strings.TrimSpace(mustTmuxOutput(t, e, "show-options", "-qv", "-t", answerTarget, buttonAnswerOption)); got != "stale" {
+					t.Errorf("the answer option = %q after Escape, want it left at %q", got, "stale")
+				}
+				return
+			}
+			waitUntil(t, 10*time.Second, "the answered line never ran the recorder", func() bool {
+				_, err := os.Stat(recordPath)
+				return err == nil
+			})
+			answered := request("lymbtn4")
+			answered.Answered, answered.Hash = true, buttonRunHash(askRun)
+			runButtonVia(e.tmux, answered, deps)
+			got, err := os.ReadFile(answerPath)
+			if err != nil {
+				t.Fatalf("read answer: %v", err)
+			}
+			if string(got) != tt.want {
+				t.Errorf("the ask entry wrote %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

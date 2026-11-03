@@ -1,4 +1,4 @@
-// buttonclick_test.go covers buttonclick.go's click of a status-bar button and the confirmed line it composes.
+// buttonclick_test.go covers buttonclick.go's click of a status-bar button and the re-entry lines its prompts run.
 // The click is driven through TmuxCmd's execHook seam with a stub process runner, so nothing is spawned.
 
 package reedengine
@@ -33,13 +33,27 @@ func TestRunButtonVia(t *testing.T) {
 	confirming := buttonSpecEntry{Index: 0, Label: "go", Run: "rm x", Confirm: "drop it?"}
 	stranded := buttonSpecEntry{Index: 0, Label: "go", Run: "printf %s {strand}", Strand: true}
 	strandedConfirming := buttonSpecEntry{Index: 0, Label: "go", Run: "kill {strand}", Confirm: "kill {strand}?", Strand: true}
+	asking := buttonSpecEntry{Index: 0, Label: "go", Run: "open {answer}", Ask: "Name:", AskDefault: "dflt"}
+	askingConfirming := buttonSpecEntry{Index: 0, Label: "go", Run: "open {answer}", Confirm: "open {answer}?", Ask: "Name:", AskDefault: "dflt"}
+	strandedAsking := buttonSpecEntry{Index: 0, Label: "go", Run: "tell {strand} {answer}", Ask: "Say:", Strand: true}
+	strandNamingAsk := buttonSpecEntry{Index: 0, Label: "go", Run: "tell {strand} {answer}", Ask: "Say to {strand}:", Strand: true}
 
-	// promptFor is the confirm-before argv a click on entry raises for the given strand, with the run directory dir.
-	promptFor := func(entry buttonSpecEntry, prompt, strand string) func(dir string) []string {
+	// promptRequest is the request every prompt's re-entry line is composed from.
+	promptRequest := ButtonRequest{TmuxPath: "tmux", SocketPath: "/sock", Session: "sess", Range: "lymbtn0", Client: "c1"}
+
+	// promptFor is the confirm-before argv a click on entry raises carrying values, with the run directory dir.
+	promptFor := func(entry buttonSpecEntry, prompt string, values map[string]string) func(dir string) []string {
 		return func(dir string) []string {
-			req := ButtonRequest{TmuxPath: "tmux", SocketPath: "/sock", Session: "sess", Range: "lymbtn0", Client: "c1"}
-			line := composeConfirmedButtonLine(posix, exe, req, dir, buttonRunHash(entry.Run), strand)
+			line := composeButtonReentryLine(posix, exe, promptRequest, dir, buttonStageConfirmed, buttonRunHash(entry.Run), values)
 			return []string{"confirm-before", "-t", "c1", "-p", prompt, "run-shell -b " + tmuxQuote(line)}
+		}
+	}
+
+	// askFor is the command-prompt argv a click on entry raises carrying values, with the run directory dir.
+	askFor := func(entry buttonSpecEntry, prompt string, values map[string]string) func(dir string) []string {
+		return func(dir string) []string {
+			line := composeButtonReentryLine(posix, exe, promptRequest, dir, buttonStageAnswered, buttonRunHash(entry.Run), values)
+			return []string{"command-prompt", "-t", "c1", "-p", prompt, `set-option -t "=sess:" @lym_button_answer "%%%" ; run-shell -b ` + tmuxQuote(line)}
 		}
 	}
 
@@ -50,10 +64,14 @@ func TestRunButtonVia(t *testing.T) {
 		specErr     error
 		rangeName   string
 		confirmed   bool
+		answered    bool
 		hash        string
 		strand      string
+		answer      string
 		strandRead  string
 		strandErr   error
+		answerRead  string
+		answerErr   error
 		exeErr      error
 		runOut      string
 		runCode     int
@@ -66,7 +84,7 @@ func TestRunButtonVia(t *testing.T) {
 		wantRun     bool
 		wantRunText string
 		wantMessage string
-		wantConfirm func(dir string) []string
+		wantPrompt  func(dir string) []string
 	}{
 		{name: "PlainEntryRunsWithTheSpecsShellFlagAndDirectory", entry: plain, wantRun: true, wantRunText: "echo hi"},
 		{name: "RangeWithNoEntryAtItsIndexShowsTheChangedMessage", entry: plain, rangeName: "lymbtn7", wantMessage: "lym: the buttons changed; click again"},
@@ -77,17 +95,28 @@ func TestRunButtonVia(t *testing.T) {
 		{name: "StrandEntryRunsWithTheClickedPanesNameQuoted", entry: stranded, strandRead: strandName, wantRun: true, wantRunText: "printf %s " + posix.Quote(strandName)},
 		{name: "StrandEntryWithAnEmptyReadRunsNothing", entry: stranded, wantMessage: "lym: go needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"},
 		{name: "StrandEntryWithAFailedReadRunsNothing", entry: stranded, strandErr: errors.New("no client"), wantMessage: "lym: go needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"},
-		{name: "ConfirmEntryRaisesThePromptAndRunsNothing", entry: confirming, wantConfirm: promptFor(confirming, "drop it? (y/n)", "")},
+		{name: "ConfirmEntryRaisesThePromptAndRunsNothing", entry: confirming, wantPrompt: promptFor(confirming, "drop it? (y/n)", nil)},
 		{name: "ConfirmEntryWithAnUnresolvableExecutableRaisesNothing", entry: confirming, exeErr: errors.New("no exe"), anchorMoved: true, wantMessage: "lym: go could not raise its prompt; see the lym log in ANCHOR/.lym/logs"},
 		{name: "ConfirmedCallWithTheMatchingHashRuns", entry: confirming, confirmed: true, hash: buttonRunHash(confirming.Run), wantRun: true, wantRunText: "rm x"},
 		{name: "ConfirmedCallWithAnotherHashRunsNothing", entry: confirming, confirmed: true, hash: "other", wantMessage: "lym: the buttons changed since go asked; click again"},
 		{name: "ConfirmedStrandThatIsNoNameRunsNothing", entry: strandedConfirming, confirmed: true, hash: buttonRunHash(strandedConfirming.Run), strand: "not a name", wantMessage: "lym: go: the strand name not a name is not a strand name; click the button again from the agent pane"},
 		{name: "ConfirmedStrandRunsWithTheCarriedName", entry: strandedConfirming, confirmed: true, hash: buttonRunHash(strandedConfirming.Run), strand: strandName, wantRun: true, wantRunText: "kill " + posix.Quote(strandName)},
-		{name: "PromptDoublesHashAndPercentOfAStrandValue", entry: strandedConfirming, strandRead: "a#b%c", wantConfirm: promptFor(strandedConfirming, "kill a##b%%c? (y/n)", "a#b%c")},
+		{name: "PromptDoublesHashAndPercentOfAStrandValue", entry: strandedConfirming, strandRead: "a#b%c", wantPrompt: promptFor(strandedConfirming, "kill a##b%%c? (y/n)", map[string]string{"strand": "a#b%c"})},
+		{name: "AskEntryRaisesTheAnswerPromptAndRunsNothing", entry: asking, wantPrompt: askFor(asking, "Name: ", nil)},
+		{name: "AskEntryNamingStrandCarriesTheStrandInTheAnsweredLine", entry: strandedAsking, strandRead: strandName, wantPrompt: askFor(strandedAsking, "Say: ", map[string]string{"strand": strandName})},
+		{name: "AskAndConfirmEntryRaisesTheAnswerPromptFirst", entry: askingConfirming, wantPrompt: askFor(askingConfirming, "Name: ", nil)},
+		{name: "AskTextHoldingACommaFromAStrandValueRaisesNoPrompt", entry: strandNamingAsk, strandRead: "a,b", wantMessage: "lym: go: the ask text holds a ','"},
+		{name: "AnsweredCallRunsWithTheStoredAnswerTrimmedAndQuoted", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: " a b\n", wantRun: true, wantRunText: "open " + posix.Quote("a b")},
+		{name: "AnsweredCallWithAnEmptyAnswerTakesTheAskDefault", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerRead: "\n", wantRun: true, wantRunText: "open " + posix.Quote("dflt")},
+		{name: "AnsweredCallWithAFailedAnswerReadRunsNothing", entry: asking, answered: true, hash: buttonRunHash(asking.Run), answerErr: errors.New("no server"), wantMessage: "lym: go could not read its answer; click again"},
+		{name: "AnsweredCallWithAnotherHashRunsNothing", entry: asking, answered: true, hash: "other", answerRead: "a", wantMessage: "lym: the buttons changed since go asked; click again"},
+		{name: "AnsweredStrandEntryRunsWithTheCarriedNameNotThePanes", entry: strandedAsking, answered: true, hash: buttonRunHash(strandedAsking.Run), strand: strandName, answerRead: "hi", wantRun: true, wantRunText: "tell " + posix.Quote(strandName) + " " + posix.Quote("hi")},
+		{name: "AnsweredConfirmEntryRaisesTheConfirmPromptCarryingTheAnswer", entry: askingConfirming, answered: true, hash: buttonRunHash(askingConfirming.Run), answerRead: "n#1", wantPrompt: promptFor(askingConfirming, "open n##1? (y/n)", map[string]string{"answer": "n#1"})},
+		{name: "ConfirmedAskEntryRunsWithTheCarriedAnswerAndReadsNoOption", entry: askingConfirming, confirmed: true, hash: buttonRunHash(askingConfirming.Run), answer: "n m", answerErr: errors.New("must not be read"), wantRun: true, wantRunText: "open " + posix.Quote("n m")},
 		{name: "RemovedDirectoryOfAPlainEntryRunsNothing", entry: plain, removeDir: true, wantMessage: "lym: go: DIR is gone; the row re-renders at the session's next attach"},
 		{name: "RemovedDirectoryOfAConfirmEntryRaisesNoPrompt", entry: confirming, removeDir: true, wantMessage: "lym: go: DIR is gone; the row re-renders at the session's next attach"},
 		{name: "AnchorMovedAfterTheRenderRunsInTheCurrentAnchor", entry: plain, anchorMoved: true, wantRun: true, wantRunText: "echo hi"},
-		{name: "AnchorMovedAfterTheRenderPromptsWithALineOpeningInTheCurrentAnchor", entry: confirming, anchorMoved: true, wantConfirm: promptFor(confirming, "drop it? (y/n)", "")},
+		{name: "AnchorMovedAfterTheRenderPromptsWithALineOpeningInTheCurrentAnchor", entry: confirming, anchorMoved: true, wantPrompt: promptFor(confirming, "drop it? (y/n)", nil)},
 		{name: "AnchorDirectoryThatIsGoneRunsNothingAndRaisesNoPrompt", entry: confirming, anchorGone: true, wantMessage: "lym: go: the anchor directory ANCHOR is gone; point the worktree's anchor at an existing directory"},
 		{name: "UnresolvableAnchorRunsNothing", entry: plain, anchorErr: errors.New("no repository"), wantMessage: "lym: go: the anchor of DIR does not resolve: no repository"},
 		{name: "NonZeroExitShowsTheFirstOutputLine", entry: plain, runOut: "first\nsecond", runCode: 3, wantRun: true, wantRunText: "echo hi", wantMessage: "lym: go failed (exit 3): first"},
@@ -122,7 +151,12 @@ func TestRunButtonVia(t *testing.T) {
 
 			cmd := newTmuxCmdForSocketPath("tmux", "/sock")
 			fake := installFakeTmuxOn(t, &cmd)
-			fake.answer("show-options", specText, tt.specErr)
+			fake.answerFunc("show-options", func(args []string) (string, error) {
+				if slices.Contains(args, buttonAnswerOption) {
+					return tt.answerRead, tt.answerErr
+				}
+				return specText, tt.specErr
+			})
 			fake.answerFunc("display-message", func(args []string) (string, error) {
 				if slices.Contains(args, "-p") {
 					return tt.strandRead, tt.strandErr
@@ -155,7 +189,7 @@ func TestRunButtonVia(t *testing.T) {
 			}
 			req := ButtonRequest{
 				TmuxPath: "tmux", SocketPath: "/sock", Session: "sess", Range: rangeName, Client: "c1",
-				Confirmed: tt.confirmed, Hash: tt.hash, Strand: tt.strand,
+				Confirmed: tt.confirmed, Answered: tt.answered, Hash: tt.hash, Strand: tt.strand, Answer: tt.answer,
 			}
 
 			runButtonVia(cmd, req, deps)
@@ -185,18 +219,18 @@ func TestRunButtonVia(t *testing.T) {
 				t.Errorf("messages shown = %q, want %q", messages, wantMessages)
 			}
 
-			confirms := fake.ArgvFor("confirm-before")
-			if tt.wantConfirm == nil {
-				if len(confirms) != 0 {
-					t.Errorf("confirm-before calls = %v, want none", confirms)
+			prompts := append(fake.ArgvFor("confirm-before"), fake.ArgvFor("command-prompt")...)
+			if tt.wantPrompt == nil {
+				if len(prompts) != 0 {
+					t.Errorf("prompt calls = %v, want none", prompts)
 				}
 			} else {
-				want := tt.wantConfirm(runDir)
-				if len(confirms) != 1 || !slices.Equal(confirms[0], want) {
-					t.Errorf("confirm-before calls = %q, want exactly %q", confirms, want)
+				want := tt.wantPrompt(runDir)
+				if len(prompts) != 1 || !slices.Equal(prompts[0], want) {
+					t.Errorf("prompt calls = %q, want exactly %q", prompts, want)
 				}
-				if line := want[len(want)-1]; !strings.HasPrefix(line, `run-shell -b "cd `) {
-					t.Errorf("confirmed line command = %q, want it to open with the change to the run directory", line)
+				if line := want[len(want)-1]; !strings.Contains(line, `run-shell -b "cd `) {
+					t.Errorf("prompt command = %q, want its re-entry line to open with the change to the run directory", line)
 				}
 			}
 
@@ -206,43 +240,63 @@ func TestRunButtonVia(t *testing.T) {
 		})
 	}
 
-	t.Run("ConfirmedLineAndTmuxQuoteForBothDialects", func(t *testing.T) {
+	t.Run("ReentryLineAndTmuxQuoteForBothDialects", func(t *testing.T) {
 		req := ButtonRequest{TmuxPath: "/t'mux", SocketPath: "/s ock", Session: "se ss", Range: "lymbtn0", Client: "/dev/pts/1"}
 		const dir = "/d i#r"
+		strandOnly := map[string]string{"strand": "tst:s:a"}
 		tests := []struct {
-			name         string
-			sh           shell.Shell
-			strand       string
-			wantLine     string
-			wantQuoted   string
-			wantQuoteArg string
+			name       string
+			sh         shell.Shell
+			stage      string
+			values     map[string]string
+			wantLine   string
+			wantQuoted string
 		}{
 			{
-				name:       "PosixWithStrand",
+				name:       "PosixConfirmedWithStrand",
 				sh:         shell.Posix(),
-				strand:     "tst:s:a",
+				stage:      buttonStageConfirmed,
+				values:     strandOnly,
 				wantLine:   `cd '/d i#r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' >/dev/null 2>&1; exit 0`,
 				wantQuoted: `"cd '/d i##r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' >/dev/null 2>&1; exit 0"`,
 			},
 			{
-				name:       "PosixWithoutStrand",
+				name:       "PosixConfirmedWithoutValues",
 				sh:         shell.Posix(),
+				stage:      buttonStageConfirmed,
 				wantLine:   `cd '/d i#r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' >/dev/null 2>&1; exit 0`,
 				wantQuoted: `"cd '/d i##r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' >/dev/null 2>&1; exit 0"`,
 			},
 			{
-				name:       "Pwsh",
+				name:       "PosixConfirmedWithStrandAndAnswer",
+				sh:         shell.Posix(),
+				stage:      buttonStageConfirmed,
+				values:     map[string]string{"answer": "n'm", "strand": "tst:s:a"},
+				wantLine:   `cd '/d i#r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' --answer 'n'\''m' >/dev/null 2>&1; exit 0`,
+				wantQuoted: `"cd '/d i##r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' --answer 'n'\\''m' >/dev/null 2>&1; exit 0"`,
+			},
+			{
+				name:       "PosixAnsweredWithStrand",
+				sh:         shell.Posix(),
+				stage:      buttonStageAnswered,
+				values:     strandOnly,
+				wantLine:   `cd '/d i#r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --answered --hash 'abc' --strand 'tst:s:a' >/dev/null 2>&1; exit 0`,
+				wantQuoted: `"cd '/d i##r' >/dev/null 2>&1; '/o pt/lym' reed button --socket '/s ock' --tmux '/t'\\''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --answered --hash 'abc' --strand 'tst:s:a' >/dev/null 2>&1; exit 0"`,
+			},
+			{
+				name:       "PwshConfirmedWithStrand",
 				sh:         shell.Pwsh(),
-				strand:     "tst:s:a",
+				stage:      buttonStageConfirmed,
+				values:     strandOnly,
 				wantLine:   `Set-Location -LiteralPath '/d i#r' *> $null; & '/o pt/lym' reed button --socket '/s ock' --tmux '/t''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' *> $null; exit 0`,
 				wantQuoted: `"Set-Location -LiteralPath '/d i##r' *> \$null; & '/o pt/lym' reed button --socket '/s ock' --tmux '/t''mux' --session 'se ss' --range 'lymbtn0' --client '/dev/pts/1' --confirmed --hash 'abc' --strand 'tst:s:a' *> \$null; exit 0"`,
 			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				line := composeConfirmedButtonLine(tt.sh, "/o pt/lym", req, dir, "abc", tt.strand)
+				line := composeButtonReentryLine(tt.sh, "/o pt/lym", req, dir, tt.stage, "abc", tt.values)
 				if line != tt.wantLine {
-					t.Errorf("composeConfirmedButtonLine = %q, want %q", line, tt.wantLine)
+					t.Errorf("composeButtonReentryLine = %q, want %q", line, tt.wantLine)
 				}
 				if got := tmuxQuote(line); got != tt.wantQuoted {
 					t.Errorf("tmuxQuote(line) = %q, want %q", got, tt.wantQuoted)
@@ -252,6 +306,9 @@ func TestRunButtonVia(t *testing.T) {
 
 		if got, want := tmuxQuote(`a"b$c\d#e`), `"a\"b\$c\\d##e"`; got != want {
 			t.Errorf("tmuxQuote with every special character = %q, want %q", got, want)
+		}
+		if got, want := tmuxString(`a"b$c\d#e`), `"a\"b\$c\\d#e"`; got != want {
+			t.Errorf("tmuxString with every special character = %q, want %q", got, want)
 		}
 	})
 }

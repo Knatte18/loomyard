@@ -1,5 +1,5 @@
 // follow.go holds the per-session follow state: the session option @lym_follow and the read that turns it into a decision.
-// The option is a decision-bearing session option reed reads, with @lym_button_spec and @lym_button_dir, which a button click reads, unlike @strand, @strand_color, @lym_unseen and the wait marks, which stay display only.
+// The option is a decision-bearing session option reed reads, with @lym_button_spec, @lym_button_dir and @lym_button_answer, which a button click reads, unlike @strand, @strand_color, @lym_unseen and the wait marks, which stay display only.
 
 package reedengine
 

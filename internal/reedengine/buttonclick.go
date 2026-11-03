@@ -1,5 +1,5 @@
-// buttonclick.go implements the engine-less click of a status-bar button: it finds the clicked entry in the session's spec option, confirms when the entry asks, runs it, logs it and shows a failure on the clicking client.
-// It reads no config and no reed state, only the session's @lym_button_spec, through the told anchor reader the current anchor of the worktree holding its run directory, and, for {strand}, the clicking client's active pane.
+// buttonclick.go implements the engine-less click of a status-bar button: it finds the clicked entry in the session's spec option, asks for its answer and confirms when the entry says so, runs it, logs it and shows a failure on the clicking client.
+// It reads no config and no reed state, only the session's @lym_button_spec, through the told anchor reader the current anchor of the worktree holding its run directory, for {strand} the clicking client's active pane, and for {answer} the session's @lym_button_answer.
 
 package reedengine
 
@@ -29,13 +29,21 @@ type ButtonRequest struct {
 	Range string
 	// Client is the clicking client, which prompts and messages go to.
 	Client string
-	// Confirmed reports that the operator already answered the entry's prompt, so Hash and Strand are the confirmed line's values.
+	// Confirmed reports that the operator already answered the entry's confirm prompt yes, so Hash, Strand and Answer are the confirmed line's values.
 	Confirmed bool
-	// Hash is the buttonRunHash of the run text the prompt was raised for; it is read only when Confirmed.
+	// Answered reports that the operator answered the entry's ask prompt, whose answer the session's buttonAnswerOption holds, so Hash and Strand are the answered line's values.
+	Answered bool
+	// Hash is the buttonRunHash of the run text the prompt was raised for; it is read only when Confirmed or Answered.
 	Hash string
 	// Strand is the strand name the prompt was raised for, set when the entry names {strand}.
 	Strand string
+	// Answer is the value that fills {answer}, carried by the confirmed line of an entry with an ask text.
+	Answer string
 }
+
+// buttonAnswerOption is the session user option an ask prompt stores its answer in, which the answered click reads.
+// The answer travels through an option rather than the answered line because tmux can escape it for its own parser but not quote it for a shell.
+const buttonAnswerOption = "@lym_button_answer"
 
 // buttonDeps are the process-level calls runButtonVia makes, replaceable by a test.
 type buttonDeps struct {
@@ -45,7 +53,7 @@ type buttonDeps struct {
 	executablePath func() (string, error)
 	// anchorOf returns the anchored directory, as recorded now, of the worktree holding dir.
 	anchorOf func(dir string) (string, error)
-	// sh is the dialect the run and confirm text and the confirmed line are quoted in.
+	// sh is the dialect the run text and the re-entry lines are quoted in.
 	sh shell.Shell
 }
 
@@ -64,8 +72,10 @@ func RunButton(req ButtonRequest, anchorOf func(dir string) (string, error)) {
 }
 
 // runButtonVia is RunButton's implementation over an already-built tmux command and its process-level calls, so a test can drive it through the execHook seam.
-// A clicked range with no entry, an unrendered spec, a gone run directory, a run directory whose anchor does not resolve, an anchor directory that is gone and a failed run each show one message on the clicking client and run nothing further.
-// An entry with a confirm text raises a prompt whose answer re-enters through a confirmed request, which runs the entry only when its run text still hashes to the prompt's hash.
+// A clicked range with no entry, an unrendered spec, a gone run directory, a run directory whose anchor does not resolve, an anchor directory that is gone, an ask text that holds a ',' after the placeholder fill and a failed run each show one message on the clicking client and run nothing further.
+// An entry with an ask text raises a prompt that stores its answer and re-enters through an answered request; Escape at that prompt runs nothing.
+// An entry with a confirm text then raises a prompt whose yes re-enters through a confirmed request carrying the answer.
+// An answered or confirmed request runs the entry only when its run text still hashes to the prompt's hash.
 func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 	say := func(text string) {
 		// display-message expands formats and strftime fields, so every # and % of the text is doubled to show literally.
@@ -93,10 +103,19 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 			say(problem)
 			return
 		}
-		values["strand"] = strand
+		values[buttonStrandKey] = strand
+	}
+	if entry.Ask != "" && (req.Answered || req.Confirmed) {
+		answer, problem := buttonAnswer(cmd, req, entry)
+		if problem != "" {
+			say(problem)
+			return
+		}
+		values[buttonAnswerKey] = answer
 	}
 	run := fillRunPlaceholders(deps.sh, entry.Run, values)
-	confirm := fillConfirmPlaceholders(entry.Confirm, values)
+	confirm := fillPromptPlaceholders(entry.Confirm, values)
+	ask := fillPromptPlaceholders(entry.Ask, values)
 
 	if info, err := os.Stat(spec.Dir); err != nil || !info.IsDir() {
 		say("lym: " + entry.Label + ": " + spec.Dir + " is gone; the row re-renders at the session's next attach")
@@ -119,20 +138,35 @@ func runButtonVia(cmd TmuxCmd, req ButtonRequest, deps buttonDeps) {
 	}
 
 	hash := buttonRunHash(entry.Run)
-	if req.Confirmed && req.Hash != hash {
+	if (req.Confirmed || req.Answered) && req.Hash != hash {
 		say("lym: the buttons changed since " + entry.Label + " asked; click again")
 		return
 	}
-	if entry.Confirm != "" && !req.Confirmed {
+	asking := entry.Ask != "" && !req.Answered && !req.Confirmed
+	if asking && strings.Contains(ask, ",") {
+		// A filled value can bring in the comma the static text may not hold, and tmux splits the prompt at it.
+		say("lym: " + entry.Label + ": the ask text holds a ','")
+		return
+	}
+	if asking || (entry.Confirm != "" && !req.Confirmed) {
 		exe, err := deps.executablePath()
 		if err != nil {
 			logger.Warn("reed: could not resolve this binary, raising no button prompt", "label", entry.Label, "err", err)
 			say("lym: " + entry.Label + " could not raise its prompt; see the lym log in " + runDir + "/.lym/logs")
 			return
 		}
-		line := composeConfirmedButtonLine(deps.sh, exe, req, runDir, hash, values["strand"])
-		if err := cmd.run("confirm-before", "-t", req.Client, "-p", confirm+" (y/n)", "run-shell -b "+tmuxQuote(line)); err != nil {
-			logger.Warn("reed: could not raise a button prompt", "label", entry.Label, "client", req.Client, "err", err)
+		var argv []string
+		if asking {
+			// %%% is the first %% of the template, so tmux puts the answer there with its quotes, backslashes, dollars, semicolons and tildes escaped for the double-quoted string.
+			line := composeButtonReentryLine(deps.sh, exe, req, runDir, buttonStageAnswered, hash, values)
+			template := "set-option -t " + tmuxString(exactSessionWindowTarget(req.Session)) + " " + buttonAnswerOption + ` "%%%" ; run-shell -b ` + tmuxQuote(line)
+			argv = []string{"command-prompt", "-t", req.Client, "-p", ask + " ", template}
+		} else {
+			line := composeButtonReentryLine(deps.sh, exe, req, runDir, buttonStageConfirmed, hash, values)
+			argv = []string{"confirm-before", "-t", req.Client, "-p", confirm + " (y/n)", "run-shell -b " + tmuxQuote(line)}
+		}
+		if err := cmd.run(argv...); err != nil {
+			logger.Warn("reed: could not raise a button prompt", "label", entry.Label, "client", req.Client, "prompt", argv[0], "err", err)
 		}
 		return
 	}
@@ -191,7 +225,7 @@ func findButtonEntry(spec buttonSpec, rangeName string) (buttonSpecEntry, bool) 
 // A confirmed click carries the name the prompt was raised for, which must parse as a strand name.
 // Any other click reads it from the clicking client's active pane.
 func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand, problem string) {
-	if req.Confirmed {
+	if req.Confirmed || req.Answered {
 		if _, err := agentname.Parse(req.Strand); err != nil {
 			return "", "lym: " + entry.Label + ": the strand name " + req.Strand + " is not a strand name; click the button again from the agent pane"
 		}
@@ -203,6 +237,25 @@ func buttonStrand(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (strand
 		return "", "lym: " + entry.Label + " needs the agent's name, which this pane lacks; reattach the session with lym reed attach and click again"
 	}
 	return name, ""
+}
+
+// buttonAnswer returns the value that fills {answer} for an answered or confirmed click, or the message to show instead.
+// A confirmed click carries the value.
+// An answered click reads the session's buttonAnswerOption, trimmed of surrounding space, and an empty answer takes the entry's ask default.
+func buttonAnswer(cmd TmuxCmd, req ButtonRequest, entry buttonSpecEntry) (answer, problem string) {
+	if req.Confirmed {
+		return req.Answer, ""
+	}
+	raw, err := cmd.output("show-options", "-qv", "-t", exactSessionWindowTarget(req.Session), buttonAnswerOption)
+	if err != nil {
+		logger.Warn("reed: could not read a button's answer", "label", entry.Label, "session", req.Session, "err", err)
+		return "", "lym: " + entry.Label + " could not read its answer; click again"
+	}
+	answer = strings.TrimSpace(raw)
+	if answer == "" {
+		answer = entry.AskDefault
+	}
+	return answer, ""
 }
 
 // runButtonScript starts shellPath with flag and script in dir, waits for it with no timeout, and returns its combined output and exit code.
@@ -233,7 +286,12 @@ func buttonRunHash(run string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// tmuxQuote wraps s in double quotes for tmux's command parser, escaping backslash, double quote and dollar sign with a backslash and doubling every #, since run-shell format-expands its command.
+// tmuxQuote wraps s in double quotes for tmux's command parser and doubles every #, since run-shell format-expands its command.
 func tmuxQuote(s string) string {
-	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, `#`, `##`).Replace(s) + `"`
+	return tmuxString(strings.ReplaceAll(s, "#", "##"))
+}
+
+// tmuxString wraps s in double quotes for tmux's command parser, escaping backslash, double quote and dollar sign with a backslash, for an argument tmux does not format-expand.
+func tmuxString(s string) string {
+	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`).Replace(s) + `"`
 }

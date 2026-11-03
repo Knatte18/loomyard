@@ -1,4 +1,4 @@
-// buttons_test.go pins the decoding and validation of button entries and the placeholder filling of their run and confirm text.
+// buttons_test.go pins the decoding and validation of button entries and the placeholder filling of their run, confirm and ask text.
 
 package reedengine
 
@@ -41,7 +41,7 @@ func TestPlaceButtons(t *testing.T) {
 		// wantWarn holds substrings of the captured log; empty means nothing is logged.
 		wantWarn []string
 	}{
-		{name: "TemplateTaskGroupComesBackWhole", buttons: templateButtons, place: ButtonPlaceTask, wantLabels: []string{"HALT", "CANCEL", "code", "term", "agent"}},
+		{name: "TemplateTaskGroupComesBackWhole", buttons: templateButtons, place: ButtonPlaceTask, wantLabels: []string{"HALT", "CANCEL", "code", "terminal", "agent"}},
 		{name: "EmptyPrimeTakesBeam", buttons: buttonsNode(t, "buttons: {beam: [{label: b, run: r}], prime: []}"), place: ButtonPlacePrime, wantLabels: []string{"b"}},
 		{name: "NonEmptyPrimeTakesOnlyPrime", buttons: buttonsNode(t, "buttons: {beam: [{label: b, run: r}], prime: [{label: p, run: r}]}"), place: ButtonPlacePrime, wantLabels: []string{"p"}},
 		{name: "PrimeAsMappingFallsBackToBeam", buttons: buttonsNode(t, "buttons: {beam: [{label: b, run: r}], prime: {label: p}}"), place: ButtonPlacePrime, wantLabels: []string{"b"}, wantWarn: []string{source, "prime"}},
@@ -51,6 +51,7 @@ func TestPlaceButtons(t *testing.T) {
 		{name: "ScalarEntryIsSkipped", buttons: buttonsNode(t, "buttons: {task: [oops, {label: ok, run: r}]}"), place: ButtonPlaceTask, wantLabels: []string{"ok"}, wantWarn: []string{source, "task", "index=0"}},
 		{name: "LabelAsListIsSkipped", buttons: buttonsNode(t, "buttons: {task: [{label: [a], run: r}, {label: ok, run: r}]}"), place: ButtonPlaceTask, wantLabels: []string{"ok"}, wantWarn: []string{source, "task", "index=0"}},
 		{name: "WindowAgentsWithStrandIsKept", buttons: buttonsNode(t, "buttons: {task: [{label: k, run: 'x {strand}', confirm: 'y {strand}', window: agents}]}"), place: ButtonPlaceTask, wantLabels: []string{"k"}},
+		{name: "AskWithAnswerAndDefaultIsKept", buttons: buttonsNode(t, "buttons: {task: [{label: k, run: 'x {answer}', confirm: 'y {answer}?', ask: 'Name:', ask_default: d}]}"), place: ButtonPlaceTask, wantLabels: []string{"k"}},
 	}
 	invalid := []struct{ name, entry string }{
 		{"EmptyLabel", "{label: '', run: r}"},
@@ -64,6 +65,14 @@ func TestPlaceButtons(t *testing.T) {
 		{"WindowAll", "{label: l, run: r, window: all}"},
 		{"StrandInRunWithoutAgents", "{label: l, run: 'x {strand}'}"},
 		{"StrandInConfirmWithoutAgents", "{label: l, run: r, confirm: 'x {strand}'}"},
+		{"StrandInAskWithoutAgents", "{label: l, run: r, ask: 'x {strand}'}"},
+		{"HashInAsk", "{label: l, run: r, ask: 'a#b'}"},
+		{"PercentInAsk", "{label: l, run: r, ask: 'a%b'}"},
+		{"TabInAsk", `{label: l, run: r, ask: "a\tb"}`},
+		{"CommaInAsk", "{label: l, run: r, ask: 'a,b'}"},
+		{"AnswerInRunWithoutAsk", "{label: l, run: 'x {answer}'}"},
+		{"AnswerInConfirmWithoutAsk", "{label: l, run: r, confirm: 'x {answer}'}"},
+		{"AskDefaultWithoutAsk", "{label: l, run: r, ask_default: d}"},
 	}
 	for _, bad := range invalid {
 		tests = append(tests, struct {
@@ -103,7 +112,7 @@ func TestPlaceButtons(t *testing.T) {
 	}
 }
 
-// TestFillButtonPlaceholders pins the quoting of run values, the literal brace text, and the doubling of confirm values, in both dialects.
+// TestFillButtonPlaceholders pins the quoting of run values, the literal brace text, and the doubling of prompt values, in both dialects.
 func TestFillButtonPlaceholders(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -125,8 +134,8 @@ func TestFillButtonPlaceholders(t *testing.T) {
 					t.Errorf("%s fillRunPlaceholders(%q) = %q; want %q", tt.name, tt.run, got, tt.want)
 				}
 			}
-			if got := fillConfirmPlaceholders("Cancel {slug}?", map[string]string{"slug": "a#b%c"}); got != "Cancel a##b%%c?" {
-				t.Errorf("fillConfirmPlaceholders = %q; want %q", got, "Cancel a##b%%c?")
+			if got := fillPromptPlaceholders("Cancel {slug}?", map[string]string{"slug": "a#b%c"}); got != "Cancel a##b%%c?" {
+				t.Errorf("fillPromptPlaceholders = %q; want %q", got, "Cancel a##b%%c?")
 			}
 		})
 	}

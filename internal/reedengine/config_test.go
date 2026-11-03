@@ -96,13 +96,13 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "HALT", Run: "lym tender pause {slug}"},
 		{Label: "CANCEL", Run: "lym batten cancel {slug}", Confirm: "Cancel {slug}?"},
 		{Label: "code", Run: "lym ide spawn {slug}"},
-		{Label: "term", Run: "lym reed window {worktree} --title {slug}"},
-		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"},
+		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 	}
 	wantBeamButtons := []buttonWant{
 		{Label: "code", Run: "lym ide spawn {slug}"},
-		{Label: "term", Run: "lym reed window {worktree} --title {slug}"},
-		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role agent --model 'opus[high]'"},
+		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
 	}
@@ -382,9 +382,11 @@ func TestLoadConfig_UnknownKeysFromAnOlderConfigAreIgnored(t *testing.T) {
 
 // buttonWant is one button entry as the shipped default set spells it.
 type buttonWant struct {
-	Label   string `yaml:"label"`
-	Run     string `yaml:"run"`
-	Confirm string `yaml:"confirm"`
+	Label      string `yaml:"label"`
+	Run        string `yaml:"run"`
+	Confirm    string `yaml:"confirm"`
+	Ask        string `yaml:"ask"`
+	AskDefault string `yaml:"ask_default"`
 }
 
 // shippedButtons is the buttons mapping decoded into its three groups.

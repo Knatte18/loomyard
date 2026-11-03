@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -32,6 +33,25 @@ import (
 type attachGeometryPTY struct {
 	master *os.File
 	cmd    *exec.Cmd
+
+	// mu guards output, which the drain goroutine appends to.
+	mu sync.Mutex
+	// output is what the child wrote to the pty since the last forget.
+	output strings.Builder
+}
+
+// drew reports whether the child has written text to the pty since the last forget.
+func (p *attachGeometryPTY) drew(text string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return strings.Contains(p.output.String(), text)
+}
+
+// forget discards what the child has written to the pty so far, so a later drew sees only newer output.
+func (p *attachGeometryPTY) forget() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.output.Reset()
 }
 
 // startInPTY opens a fresh /dev/ptmx master sized to cols x rows and starts argv[0] with the pty
@@ -97,16 +117,21 @@ func startInPTY(t *testing.T, argv []string, cols, rows int) *attachGeometryPTY 
 		_ = master.Close()
 	})
 
+	pty := &attachGeometryPTY{master: master, cmd: cmd}
 	go func() {
 		buf := make([]byte, 4096)
 		for {
-			if _, err := master.Read(buf); err != nil {
+			n, err := master.Read(buf)
+			if err != nil {
 				return
 			}
+			pty.mu.Lock()
+			pty.output.Write(buf[:n])
+			pty.mu.Unlock()
 		}
 	}()
 
-	return &attachGeometryPTY{master: master, cmd: cmd}
+	return pty
 }
 
 // setupAttachGeometryFixture boots a fresh integration engine and adds two strands — a

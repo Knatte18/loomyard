@@ -64,12 +64,13 @@
 // Segment colors are read from reed.yaml's segment_colors block, resolved only through Engine.segmentColor, and refused only at boot.
 // The buttons block of reed.yaml is carried as an uninterpreted node and decoded only at render.
 // The geometry tells the button context through Geometry.Buttons, nil in standalone mode.
-// buttons.go is the one decoder of button entries and applies the validity rules: a non-empty label and run, no '#', '%' or control character in a label or confirm text, a window of agents or none, and {strand} only with window: agents.
+// buttons.go is the one decoder of button entries and applies the validity rules: a non-empty label and run, no '#', '%' or control character in a label, confirm text or ask text, no ',' in an ask text, ask_default and {answer} only with an ask, a window of agents or none, and {strand} only with window: agents.
 //
 // The action row (buttonrow.go) is rendered by pinGeometryOptionsLocked, so at boot and at every attach pre-flight, in one tmux invocation of four set-option commands on the session.
 // composeButtonRowLocked takes reed's entries for the session's place first and the machine's after them, numbers the valid ones in that order, and draws entry N as the user range lymbtnN.
 // @lym_buttons_plain holds the entries without window: agents and @lym_buttons_agent every entry, so a window whose active pane carries @strand draws the second.
-// @lym_button_spec holds the JSON buttonSpec a click reads: the configured shell and its command flag, the run directory, and per entry its label, its run and confirm text with the static placeholders filled and whether {strand} is left for the click.
+// @lym_button_spec holds the JSON buttonSpec a click reads: the configured shell and its command flag, the run directory, and per entry its label, its run, confirm and ask text with the static placeholders filled, its ask_default, and whether {strand} is left for the click.
+// An entry whose filled ask text holds a ',' is left out of the spec, and a click whose ask text holds one after the {strand} fill raises no prompt.
 // @lym_button_dir holds the run directory as one word quoted in reed's shell dialect.
 // The run directory is the beam's anchor for a task, else the prime's anchor when the beam is absent from this machine, and the session's own anchor for the prime and a beam.
 // A standalone geometry, a failed context, an unresolvable shell and a failed beam lookup render empty options, so line 3 shows follow alone.
@@ -84,12 +85,16 @@
 //
 // RunButton (buttonclick.go) is the engine-less function behind `lym reed button`: it addresses a told session of a told server by socket path, reads the session's @lym_button_spec and runs the entry the clicked range `lymbtnN` names.
 // It reads no config and no reed state, and returns nothing: a failure is shown on the clicking client with display-message, and is logged.
-// The checks come in order: a spec that is missing, empty or not JSON, a range with no entry, a `{strand}` entry whose name cannot be read, a run directory that is gone, a run directory whose worktree's anchor does not resolve.
+// The checks come in order: a spec that is missing, empty or not JSON, a range with no entry, a `{strand}` entry whose name cannot be read, an answered `ask` entry whose answer cannot be read, a run directory that is gone, a run directory whose worktree's anchor does not resolve, an `ask` entry whose ask text holds a ',' after the `{strand}` fill.
 // A `{strand}` entry reads the clicking client's active pane for @lym_strand_name.
 // The entry runs in the current anchor of the worktree holding the rendered run directory, read at the click through the anchor reader RunButton is told:
 // the render is frozen until the next attach while an anchor marker can change after it, and a lym verb refuses anywhere but its worktree's anchor.
-// An entry with a confirm text raises `confirm-before` on the clicking client, whose command is a line (composeConfirmedButtonLine) that opens in that anchor and calls the verb again with `--confirmed`, the hash of the entry's run text and the strand name, discarding the output of the directory change and of the verb and ending with status zero.
-// A confirmed call runs the entry only when its hash still matches, so no run text crosses tmux's parsing.
+// An entry with an ask text raises `command-prompt` on the clicking client; its template stores the answer, escaped by tmux's `%%%`, in the session option @lym_button_answer and runs a line (composeButtonReentryLine) that opens in that anchor and calls the verb again with `--answered`, the hash of the entry's run text and the strand name.
+// The answered call reads the option, takes the entry's ask_default for an empty answer and fills `{answer}` with it, shell-quoted in the run text; an Escape at the prompt runs no template, so the click ends there.
+// An entry with a confirm text then raises `confirm-before`, whose line calls the verb again with `--confirmed`, the hash, the strand name and the answer.
+// Both lines discard the output of the directory change and of the verb and end with status zero.
+// An answered or confirmed call runs the entry only when its hash still matches, so no run text crosses tmux's parsing.
+// @lym_button_answer is decision-bearing: it is what the answered call fills `{answer}` with.
 // The entry runs as `<shell> <flag> <run>` in that anchor (runButtonScript), waits with no timeout, and logs its spawn and end at Info with its exit code and combined output; it sets no caller identity and is registered in no process table.
 // A non-zero exit or a failed start shows `lym: <label> failed (exit <code>): <first output line>`.
 // The verb runs only what the session's spec holds at the clicked index; anything that can run it against the socket can run an entry as itself, adding nothing over running the command directly.
@@ -100,7 +105,7 @@
 // The Selvage pane carries the user option @lym_console (consolePaneOption), set when it is split and re-asserted by every attach pre-flight.
 // The options are display only but @lym_strand_name: the status bar and the key bindings read them, no Go decision does, and Selvage never gets @strand or @strand_color.
 // @lym_strand_name is the one pane option a Go decision reads: a button click fills {strand} from it.
-// The session options @lym_follow, @lym_button_spec and @lym_button_dir are the decision-bearing session options; @strand, @strand_color, @lym_unseen, the wait marks and the two action row options stay display only.
+// The session options @lym_follow, @lym_button_spec, @lym_button_dir and @lym_button_answer are the decision-bearing session options; @strand, @strand_color, @lym_unseen, the wait marks and the two action row options stay display only.
 // A strand's Segment is an opaque field its spawner names through AddSpec.Segment; reed reads it only to look up the segment's color, which the strand an add or replace returns and Status carry as Color.
 // An own window gets a status-bar button on line 1 in its segment's color, read from the window options @lym_own and @strand_color, labelled with the window name and carrying its panes' wait marks.
 // The button is lit while the window is current, and otherwise that color on dark grey, underscored while the window carries @lym_unseen.
@@ -410,7 +415,7 @@
 // Focus rules: an agent window is a window holding a pane bound to an own-window strand; the overview, the shell and hidden windows are not agent windows.
 // The follow state is the session option @lym_follow (followSessionOption): boot sets it on off Windows, and it is off only while it reads off, so an unset option, as on Windows or in a session booted by an older lym, reads on.
 // followingLocked reads it, and a failed read counts as off for that one decision and is logged at Warn, so a broken read never moves a viewer.
-// Only @lym_follow, @lym_button_spec and @lym_button_dir are decision-bearing session options.
+// Only @lym_follow, @lym_button_spec, @lym_button_dir and @lym_button_answer are decision-bearing session options.
 // An automatic window switch happens only at three points, each deciding from reed state, window ids, strand roles, pane liveness and the follow state alone, never from @lym_unseen, @lym_hidden or a wait mark.
 // relevantWindow is the target of two of them: among the listed windows not about to end, the highest-index agent window holding a pane that is not dead, else the lowest-index overview window, else none.
 // Attach (attachWindowSelectionLocked, resolved by AttachArgv right after the shell check) appends `; select-window -t <relevant window>` to every argv it returns, and appends nothing when a listing fails or no window is relevant.
