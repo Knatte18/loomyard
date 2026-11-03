@@ -29,9 +29,12 @@ type startGuard struct {
 	// ParentBeam reads the beam the slug's pair forks from over the local board, "" meaning the prime.
 	// A nil ParentBeam reads every task as forked from the prime.
 	ParentBeam func() (string, error)
-	// Promoted reports whether the slug is a task whose local pair carries the beam mark, which only a promote stopped before its board write leaves.
-	// A project entry reads false, since a beam project is judged on its own.
+	// Promoted reports whether the board holds the slug as a task whose local pair carries the beam mark, which only a promote stopped before its board write leaves.
+	// A project entry reads false, since a beam project is judged on its own, and so does a slug the board no longer holds, such as a beam project its own Land pruned.
 	Promoted func() (bool, error)
+	// ReachedParent reports whether the run's work reached its parent, given batten's status, as a cancel judges it.
+	// A nil ReachedParent reads every run as not reached.
+	ReachedParent func(status shedengine.Status, found bool) (bool, error)
 	// Project reads whether the slug's board entry is a project, and whether its beam flag is set.
 	// A nil Project reads every entry as a task.
 	Project func() (project, beam bool, err error)
@@ -58,7 +61,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			if err != nil {
 				return false, err
 			}
-			if entry, held := owners.Entries[slug]; held && entry.IsProject {
+			if entry, held := owners.Entries[slug]; !held || !entry.IsTask {
 				return false, nil
 			}
 			origin, found, err := fabricengine.ReadOriginFor(location, slug)
@@ -82,6 +85,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			}
 			return origin.Beam, found, nil
 		},
+		ReachedParent: hubChildReachedParent(location, slug),
 		Draft: func() (bool, error) {
 			tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(location.HubPath))
 			if err != nil {
@@ -106,7 +110,8 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 
 // refuse judges verb's start or resume of slug, in order.
 // A present cancel marker refuses run, step and goto.
-// A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one.
+// A run or step of a task whose pair carries the beam mark refuses, with or without a status file, since only a stopped promote leaves one;
+// a run whose work reached its parent passes that check, since a cancel refuses it and only the run finishes it.
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
 // A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
 // A run or step with no status file of a task whose board status is draft refuses, naming the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
@@ -133,6 +138,13 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 		promoted, err := g.Promoted()
 		if err != nil {
 			return probeRefusal("the pair's origin record", slug, rerun, err)
+		}
+		if promoted && g.ReachedParent != nil {
+			reached, err := g.ReachedParent(status, found)
+			if err != nil {
+				return probeRefusal("whether the work reached its parent", slug, rerun, err)
+			}
+			promoted = !reached
 		}
 		if promoted {
 			return fmt.Errorf("the pair of %s carries the beam mark, so an interrupted promote of an older build left it and a run would restart the ended run inside a beam; way forward: run \"lym batten cancel %s --remove\" from the prime, then the release and the run again", slug, slug)

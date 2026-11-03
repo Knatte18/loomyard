@@ -44,6 +44,9 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// promoted is what the Promoted seam reads: a task whose pair carries the beam mark.
 		promoted    bool
 		promotedErr error
+		// reached is what the ReachedParent seam reads: the run's work reached its parent.
+		reached    bool
+		reachedErr error
 		// project and beam are what the Project seam reads; marked and unreadable describe the PairMark seam.
 		project, beam, marked, unreadable bool
 		projectErr                        error
@@ -228,6 +231,23 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"carries the beam mark", `run "lym batten cancel some-slug --remove" from the prime`},
 		},
 		{
+			name:     "MarkedPairTaskWhoseWorkReachedItsParentPasses",
+			verbs:    []string{"run", "step"},
+			promoted: true,
+			reached:  true,
+			found:    true,
+			producer: battenrecipe.NameWorktreeTeardown,
+		},
+		{
+			name:       "ReachedParentProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:      []string{"run", "step"},
+			promoted:   true,
+			reachedErr: errors.New("child status unreadable"),
+			found:      true,
+			producer:   battenrecipe.NameLand,
+			wantErrors: []string{"whether the work reached its parent", "child status unreadable", `run "lym batten {verb} some-slug" again`},
+		},
+		{
 			name:     "MarkedPairPassesTheVerbsThatDoNotStartARun",
 			verbs:    []string{"goto"},
 			promoted: true,
@@ -346,9 +366,12 @@ func TestStartGuard_Refuse(t *testing.T) {
 						PairParts:   func() (fabricengine.PairParts, error) { return tt.parts, tt.partsErr },
 						ParentBeam:  func() (string, error) { return tt.parentBeam, tt.beamErr },
 						Promoted:    func() (bool, error) { return tt.promoted, tt.promotedErr },
-						Project:     func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
-						PairMark:    func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
-						Draft:       func() (bool, error) { return tt.draft, tt.draftErr },
+						ReachedParent: func(shedengine.Status, bool) (bool, error) {
+							return tt.reached, tt.reachedErr
+						},
+						Project:  func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
+						PairMark: func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
+						Draft:    func() (bool, error) { return tt.draft, tt.draftErr },
 					}
 				}
 

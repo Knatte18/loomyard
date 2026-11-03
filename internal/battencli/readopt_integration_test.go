@@ -82,10 +82,20 @@ func removePairDirectories(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 }
 
+// plantIgnoredOutput makes path a directory holding only build output, as a removal that kept git-ignored files leaves it.
+func plantIgnoredOutput(path string) error {
+	output := filepath.Join(path, "bin", "app.dll")
+	if err := os.MkdirAll(filepath.Dir(output), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(output, []byte("build output"), 0o644)
+}
+
 // TestBattenIntegration_GoneTaskWorktree drives ownerPreflight over a hub whose pair lost both worktree directories.
 // A pair whose branches are live is re-made, and the resume reconcile reads none of its branches stopped.
 // A local branch origin lacks has its stale tracking ref dropped, so the pair's push creates it on origin again.
-// taskWorktreeGone reads a plain file and an empty directory at the task path as gone, and a resolving worktree as present.
+// taskWorktreePresent reads a plain file, an empty directory and a directory holding only ignored output at the task path as absent, and a resolving worktree as present.
+// A resume at Worktree-Teardown over such a stray directory judges the owner on the local board instead of failing on the path.
 func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -127,9 +137,9 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 				t.Fatalf("ownerPreflight() = %v; want nil", err)
 			}
 
-			gone, err := taskWorktreeGone(h.Location, slug)
-			if err != nil || gone {
-				t.Errorf("taskWorktreeGone() = %v, %v after the re-adoption; want false, nil", gone, err)
+			present, err := taskWorktreePresent(h.Location, slug)
+			if err != nil || !present {
+				t.Errorf("taskWorktreePresent() = %v, %v after the re-adoption; want true, nil", present, err)
 			}
 			for _, entry := range second.Entries {
 				if entry.Slug == slug && entry.State == fabricengine.EntryStopped {
@@ -258,7 +268,7 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		}
 	})
 
-	t.Run("TaskWorktreeGoneReadsStrayPathsAsGone", func(t *testing.T) {
+	t.Run("TaskWorktreePresentReadsStrayPathsAsAbsent", func(t *testing.T) {
 		t.Parallel()
 
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -266,18 +276,37 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		for name, setup := range map[string]func(path string) error{
 			"plain-file":      func(path string) error { return os.WriteFile(path, []byte("stray"), 0o644) },
 			"empty-directory": func(path string) error { return os.MkdirAll(path, 0o755) },
+			"ignored-output":  plantIgnoredOutput,
 		} {
 			if err := setup(fabricengine.WorktreePath(h.Location, name)); err != nil {
 				t.Fatalf("plant %s: %v", name, err)
 			}
-			gone, err := taskWorktreeGone(h.Location, name)
-			if err != nil || !gone {
-				t.Errorf("taskWorktreeGone(%q) = %v, %v; want true, nil", name, gone, err)
+			present, err := taskWorktreePresent(h.Location, name)
+			if err != nil || present {
+				t.Errorf("taskWorktreePresent(%q) = %v, %v; want false, nil", name, present, err)
 			}
 		}
-		gone, err := taskWorktreeGone(h.Location, "present-pair")
-		if err != nil || gone {
-			t.Errorf("taskWorktreeGone(\"present-pair\") = %v, %v; want false, nil", gone, err)
+		present, err := taskWorktreePresent(h.Location, "present-pair")
+		if err != nil || !present {
+			t.Errorf("taskWorktreePresent(\"present-pair\") = %v, %v; want true, nil", present, err)
+		}
+	})
+
+	t.Run("TeardownResumeOverAStrayDirectoryJudgesTheLocalBoard", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		const slug = "stray-pair"
+		hubforge.AddPair(t, h, slug)
+		removePairDirectories(t, h, slug)
+		if err := plantIgnoredOutput(fabricengine.WorktreePath(h.Location, slug)); err != nil {
+			t.Fatalf("plant the stray directory: %v", err)
+		}
+		c, _ := readoptReceiver(h, slug)
+
+		teardown := shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown, State: shedengine.StateFailed}
+		if err := c.ownerPreflight(true, teardown); err != nil {
+			t.Errorf("ownerPreflight() at Worktree-Teardown over a stray directory = %v; want nil", err)
 		}
 	})
 }

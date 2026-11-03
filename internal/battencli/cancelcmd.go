@@ -189,7 +189,6 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 	driverLock, runLock := shedrun.DriverLock(location, slug), shedrun.RunLock(location, slug)
 	runProcDir := fabricengine.RunProcDir(location.HubPath)
 	board := func() (*boardengine.Board, error) { return boardengine.OpenHub(location.HubPath) }
-	reader := &battenCLI{location: location, slug: slug}
 
 	return cancelDeps{
 		HubPaused: func() (bool, error) {
@@ -243,19 +242,8 @@ func hubCancelDeps(location *lymcwd.Location, slug string) (cancelDeps, error) {
 				return fabricengine.CommittedAnchoredFile(location, rel)
 			})
 		},
-		ChildReachedParent: func(batten shedengine.Status, battenFound bool) (bool, error) {
-			child, childFound := reader.readChildStatus()
-			pastMerge := false
-			if childFound {
-				var err error
-				pastMerge, err = battenshed.FinalizePastMerge(child, childRestepped(location, slug), childParentHolds(location, slug))
-				if err != nil {
-					return false, err
-				}
-			}
-			return childReachedParent(batten, battenFound, child, childFound, pastMerge), nil
-		},
-		ReadMarker: func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
+		ChildReachedParent: hubChildReachedParent(location, slug),
+		ReadMarker:         func() (cancelMarkerReading, error) { return readCancelMarker(location, slug) },
 		TakeMarker: func() (func(bool) error, bool, error) {
 			held, err := takeCancelMarker(location, slug, pairteardown.CancelLockWait)
 			if err != nil {
@@ -382,6 +370,24 @@ func readBattenStatus(location *lymcwd.Location, slug string) (shedengine.Status
 		return shedengine.Status{}, false, nil
 	}
 	return status, found, err
+}
+
+// hubChildReachedParent returns the reader of whether the work of slug's run reached its parent, given batten's status, from the child's status in the task worktree.
+// A run that reached it is one only `lym batten run` finishes, so a cancel refuses it.
+func hubChildReachedParent(location *lymcwd.Location, slug string) func(batten shedengine.Status, battenFound bool) (bool, error) {
+	reader := &battenCLI{location: location, slug: slug}
+	return func(batten shedengine.Status, battenFound bool) (bool, error) {
+		child, childFound := reader.readChildStatus()
+		pastMerge := false
+		if childFound {
+			var err error
+			pastMerge, err = battenshed.FinalizePastMerge(child, childRestepped(location, slug), childParentHolds(location, slug))
+			if err != nil {
+				return false, err
+			}
+		}
+		return childReachedParent(batten, battenFound, child, childFound, pastMerge), nil
+	}
 }
 
 // childRestepped returns the reader of the task worktree's settle records for a re-step of the stop a status names.

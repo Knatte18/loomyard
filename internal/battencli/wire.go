@@ -197,9 +197,8 @@ func runLockHeld(lockPath string) (bool, error) {
 // cwd gate: the caller here holds a worktree root, not an acting cwd, so the gate would spuriously
 // fire.
 //
-// An absent pair is refused by name rather than left to the resolver's generic "not a git
-// repository": batten's status is durable, so a run resumed on another machine reaches every row
-// past Worktree-Create with no pair here.
+// An absent pair, or a directory that does not resolve as a worktree, is refused by name rather than left to the resolver's generic "not a git repository".
+// Batten's status is durable, so a run resumed on another machine reaches every row past Worktree-Create with no pair here.
 // This function re-makes nothing.
 // The refusal names the resume, "lym batten run", whose pre-run re-adopts a pair that is still live and otherwise stops naming the restore of each branch.
 // It names no fabric command as a substitute.
@@ -216,21 +215,27 @@ func taskWorktreeLocation(prime *lymcwd.Location, slug string) (*lymcwd.Location
 // The refusal reaches a worktree that disappears mid-run, and the cancel and goto verbs, which resolve the task worktree without a resume.
 func presentTaskWorktreePath(prime *lymcwd.Location, slug string) (string, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
-	if _, err := os.Stat(worktreePath); err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf(
-				"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand; way forward: run \"lym batten run %s\" from the prime, whose resume re-adopts the pair when its branches are still live and otherwise stops naming the restore of each branch, and then repeating the refused command",
-				slug, worktreePath, slug,
-			)
-		}
+	present, err := taskWorktreePresent(prime, slug)
+	if err != nil {
 		return "", err
+	}
+	if !present {
+		return "", absentTaskWorktreeRefusal(slug, worktreePath)
 	}
 	return worktreePath, nil
 }
 
+// absentTaskWorktreeRefusal is the by-name refusal of an absent task worktree for slug, whose root would be worktreePath.
+func absentTaskWorktreeRefusal(slug, worktreePath string) error {
+	return fmt.Errorf(
+		"battencli: the task worktree for %q is not present at %s; this run's durable status says it was already created, so it is either on another machine or was removed by hand; way forward: run \"lym batten run %s\" from the prime, whose resume re-adopts the pair when its branches are still live and otherwise stops naming the restore of each branch, and then repeating the refused command",
+		slug, worktreePath, slug,
+	)
+}
+
 // taskWorktreeLocator returns a taskWorktreeLocation for slug that spawns git only until a resolution succeeds.
 // Run-Shed's wait reads the task worktree's files every poll check, and resolving the location runs git;
-// a present pair's location never changes, so the first success is kept, while every call still stats the pair and refuses an absent one by name.
+// a present pair's location never changes, so the first success is kept, while every later call still stats the pair, without spawning git, and refuses an absent one by name.
 func taskWorktreeLocator(prime *lymcwd.Location, slug string) func() (*lymcwd.Location, error) {
 	var resolved *lymcwd.Location
 	return func() (*lymcwd.Location, error) {
@@ -242,27 +247,22 @@ func taskWorktreeLocator(prime *lymcwd.Location, slug string) func() (*lymcwd.Lo
 			resolved = taskLocation
 			return resolved, nil
 		}
-		if _, err := presentTaskWorktreePath(prime, slug); err != nil {
+		worktreePath := fabricengine.WorktreePath(prime, slug)
+		if _, err := os.Stat(worktreePath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, absentTaskWorktreeRefusal(slug, worktreePath)
+			}
 			return nil, err
 		}
 		return resolved, nil
 	}
 }
 
-// taskWorktreePresent reports whether the task worktree for slug is already on disk under prime's
-// hub and resolvable as a worktree of its own.
-//
-// DriverAlive and taskWorktreeComplete use it;
-// Worktree-Teardown does not, since the pair-teardown composite decides for itself whether the task worktree is gone.
-//
-// Worktree-Create uses the stronger taskWorktreeComplete instead, not this function: a bare
-// directory check cannot tell a pair Add finished from one a SIGKILL interrupted partway through
-// (see taskWorktreeComplete's own doc comment).
-//
-// It answers false rather than an error when the worktree is absent, so a genuinely absent one
-// still reaches Topology.Add or Topology.Remove and every real failure keeps its Stuck disposition.
-// A stat error that is not "absent", and a path that is there but does not resolve as a worktree,
-// are both returned: neither is an answer to the question asked.
+// taskWorktreePresent reports whether the task worktree for slug stands on disk under prime's hub and resolves as a worktree of its own.
+// It is the answer the verbs that gate on or resolve the task worktree read, the re-adoption's gone check included.
+// A path that stands there but does not resolve as a worktree, such as a directory a removal left holding ignored build output, reads as absent, as a missing path does,
+// so those verbs meet it as a gone pair instead of failing on it, and fabric's own add refuses the stray path by name.
+// A stat error other than not-exist is returned.
 func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 	worktreePath := fabricengine.WorktreePath(prime, slug)
 	if _, err := os.Stat(worktreePath); err != nil {
@@ -272,7 +272,7 @@ func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 		return false, err
 	}
 	if _, err := lymcwd.ResolveWorktree(worktreePath); err != nil {
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
@@ -288,10 +288,8 @@ func taskWorktreePresent(prime *lymcwd.Location, slug string) (bool, error) {
 // itself observes an error, never when the process running it is killed instead -- a bare "the
 // worktree directory resolves" check is satisfied by that transaction's very first step alone.
 //
-// present is false only when the worktree does not exist at all -- the genuinely-absent case, which
-// still reaches Topology.Add. incompleteReason is non-empty only when the worktree exists but is not
-// yet a complete pair, worded for this package's own refusal text rather than repeating
-// PairComplete's fabric-vocabulary reason verbatim.
+// present is false only when the worktree does not exist or does not resolve as one, the absent case, which still reaches Topology.Add.
+// incompleteReason is non-empty only when the worktree exists but is not yet a complete pair, worded for this package's own refusal text rather than repeating PairComplete's fabric-vocabulary reason verbatim.
 func taskWorktreeComplete(prime *lymcwd.Location, slug string) (present, complete bool, incompleteReason string, err error) {
 	present, err = taskWorktreePresent(prime, slug)
 	if err != nil || !present {

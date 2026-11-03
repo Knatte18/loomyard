@@ -50,6 +50,9 @@
 // A beam project runs as a task does, with the pawl recipe's own rows past Worktree-Create.
 // The start guard lets a beam project start or resume: a fresh start with no marked pair here gets a task's dirty-source and left-parts checks, the dirty-source check only when it forks from the prime;
 // a marked beam pair, a legacy beam's or a resumed run's, passes them, and a beam project skips the draft check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again.
+// The guard reads a marked pair as the leftover of a stopped promote only while the board holds the slug as a task and the run's work has not reached its parent.
+// A beam's own landing run, whose entry its Land pruned, so resumes its Worktree-Teardown over the mark its Beam-Up wrote.
+// The promote refusal never names a cancel that refuses back.
 //
 // The Worktree-Create row opens by claiming the slug's board entry with "running · Worktree-Create", before the pair exists, so the board's run lock starts at the claim.
 // The claim is one Bolt commit that also records this machine as the entry's owner, and an absent or done entry is skipped.
@@ -63,6 +66,7 @@
 // A start (no status file, or one still at Worktree-Create whose pair this machine does not hold) pulls the board, which needs origin, claims the hub's prime when none is recorded, and refuses a task another machine owns.
 // A resume refuses a task the origin reconcile or, with origin unreachable, the local board shows owned elsewhere; with origin answering it records this machine as the owner of a run-held entry with none.
 // A resume at Worktree-Teardown whose task worktree is gone runs no origin reconcile, since nothing of the pair is left to judge, and judges the owner on the local board alone, so the teardown retries what is left of the pair, such as its remote branch deletion, on any machine that owns the run.
+// A task worktree is gone when nothing stands at its path or the path does not resolve as a worktree, such as a directory a removal left holding ignored files; the verbs that gate on the task worktree or resolve it read it so, while the overview and the beam-land member listing only look for the directory.
 // Every such refusal names the owner and "lym adopt <slug>" as the way forward.
 // "lym batten status" reports the slug's effective owner as owner_machine and whether this machine holds it as owned_here.
 //

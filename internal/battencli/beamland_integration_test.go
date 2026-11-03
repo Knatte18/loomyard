@@ -1,4 +1,4 @@
-// beamland_integration_test.go drives a beam's landing prerequisites over a hubforge hub: the start guard and Worktree-Create's skip for beams made the two ways, the unreadable-pair refusal, a sub-beam under an open beam, and the landing refusal over a beam with members.
+// beamland_integration_test.go drives a beam's landing prerequisites over a hubforge hub: the start guard and Worktree-Create's skip for beams made the two ways, the unreadable-pair refusal, the promote refusal judged from the board, a sub-beam under an open beam, and the landing refusal over a beam with members.
 
 package battencli
 
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -33,7 +34,8 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 	// made stands for a beam made by create's steps.
 	// gone stands for a beam whose origin record is lost.
 	// c stands for a sub-beam of the beam outer, which holds the grouping project g and its task t.
-	for _, slug := range []string{"made", "outer", "gone"} {
+	// landed stands for a beam whose own Land pruned its entry, and promoted for a task a stopped promote marked.
+	for _, slug := range []string{"made", "outer", "gone", "landed", "promoted"} {
 		hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{SkipPush: true, Beam: true})
 	}
 	hubforge.AddPairWith(t, h, "c", fabricengine.AddOptions{SkipPush: true, Beam: true, Parent: "outer"})
@@ -54,6 +56,7 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		{"slug": "c", "kind": "project", "project": "outer"},
 		{"slug": "g", "kind": "project", "project": "outer"},
 		{"slug": "t", "kind": "task", "project": "g"},
+		{"slug": "promoted", "kind": "task"},
 	}
 	for _, entry := range entries {
 		entry["title"] = entry["slug"]
@@ -98,6 +101,27 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		err := hubStartGuard(h.Location, "gone").refuse("gone", "run", shedengine.Status{}, false, false)
 		if err == nil || !strings.Contains(err.Error(), "lym fabric reconcile") || strings.Contains(err.Error(), "cancel") {
 			t.Fatalf("start guard for gone = %v; want a refusal naming `lym fabric reconcile` and no cancel", err)
+		}
+	})
+
+	runShed := shedengine.Status{CurrentProducer: battenrecipe.NameRunShed}
+	t.Run("MarkedPairTheBoardNoLongerHoldsResumes", func(t *testing.T) {
+		if err := hubStartGuard(h.Location, "landed").refuse("landed", "run", runShed, true, true); err != nil {
+			t.Errorf("start guard for landed = %v; want it passed", err)
+		}
+	})
+
+	t.Run("MarkedPairOfATaskIsRefusedNamingTheCancel", func(t *testing.T) {
+		err := hubStartGuard(h.Location, "promoted").refuse("promoted", "run", runShed, true, true)
+		if err == nil || !strings.Contains(err.Error(), "carries the beam mark") || !strings.Contains(err.Error(), "lym batten cancel promoted --remove") {
+			t.Errorf("start guard for promoted = %v; want the promote refusal naming the cancel", err)
+		}
+	})
+
+	t.Run("MarkedPairOfATaskWhoseWorkReachedItsParentPasses", func(t *testing.T) {
+		atTeardown := shedengine.Status{CurrentProducer: battenrecipe.NameWorktreeTeardown}
+		if err := hubStartGuard(h.Location, "promoted").refuse("promoted", "run", atTeardown, true, true); err != nil {
+			t.Errorf("start guard for promoted at Worktree-Teardown = %v; want it passed", err)
 		}
 	})
 

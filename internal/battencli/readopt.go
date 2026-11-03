@@ -4,7 +4,6 @@ package battencli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitrepo"
@@ -59,7 +58,10 @@ func hubTaskBranch(location *lymcwd.Location, slug string) (string, fabricengine
 // hubReadoptSeams builds the re-adoption seams over the prime location of a hub.
 func hubReadoptSeams(location *lymcwd.Location) readoptSeams {
 	return readoptSeams{
-		Gone: func(slug string) (bool, error) { return taskWorktreeGone(location, slug) },
+		Gone: func(slug string) (bool, error) {
+			present, err := taskWorktreePresent(location, slug)
+			return !present, err
+		},
 		Reconcile: func(slug string) (fabricengine.OriginReport, error) {
 			return reconcileGoneRun(location, slug)
 		},
@@ -135,23 +137,6 @@ func reconcileGoneRun(location *lymcwd.Location, slug string) (fabricengine.Orig
 		logger.Info("battencli: origin reconcile mutation", "slug", slug, "kind", string(mutation.Kind), "target", mutation.Target, "detail", mutation.Detail)
 	}
 	return report, err
-}
-
-// taskWorktreeGone reports whether the task worktree for slug is gone from this machine.
-// It is gone when nothing stands at its path or the path does not resolve as a worktree, so a stray path reaches the re-adoption's own refusal instead of failing every pass.
-// A stat error other than not-exist is returned.
-func taskWorktreeGone(prime *lymcwd.Location, slug string) (bool, error) {
-	worktreePath := fabricengine.WorktreePath(prime, slug)
-	if _, err := os.Stat(worktreePath); err != nil {
-		if os.IsNotExist(err) {
-			return true, nil
-		}
-		return false, err
-	}
-	if _, err := lymcwd.ResolveWorktree(worktreePath); err != nil {
-		return true, nil
-	}
-	return false, nil
 }
 
 // readoptGonePair resumes a run whose task worktree is gone: it judges origin, prunes the stale registrations, re-makes the pair over its live branches, spawns the pair's push, and then runs the resume reconcile over the re-made pair.
