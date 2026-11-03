@@ -1,0 +1,5 @@
+# Environment variables lym exports to every process it starts for the hub: gate tiers and the shared build, Drift capture and compare, and agent sessions.
+# Variable name to value, such as a path to a sibling checkout; a name is letters, digits and underscores, starts with no digit, is not PATH and never starts with LYM_, in any letter case.
+# A tier's or build's own env beats a name here, and a name here beats the environment lym inherits.
+# Set a hub-wide value from the prime with lym config env --set vars.NAME=value, and this machine's own with lym config env --layer machine --set vars.NAME=value; the machine value wins name by name.
+vars: {}

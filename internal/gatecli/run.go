@@ -19,6 +19,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -57,6 +58,10 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	location, inHub, cfg, refusal := loadGate(dir)
 	if refusal != "" {
 		return output.Err(out, refusal)
+	}
+	hubEnv, err := envconfig.LoadConfig(configDirs(location, inHub))
+	if err != nil {
+		return output.Err(out, fmt.Sprintf("gate test: cannot read the env config: %v; way forward: take the step it names, then re-run the same command", err))
 	}
 	if refusal := preTierExpiry(preCtx, runCtx, request, "loading the gate config"); refusal != "" {
 		return output.Err(out, refusal)
@@ -128,6 +133,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 		return strings.HasPrefix(entry, agentname.StrandNameEnv+"=") || strings.HasPrefix(entry, logger.TraceIDEnv+"=")
 	})
 	env = gateslot.StripPrebuilt(env)
+	// The env module's variables replace inherited ones of the same name, and a tier's or the build's own env, appended later, replaces them.
+	env = append(env, hubEnv.Entries()...)
+	// The build-server switches come after the module's entries, so a variable of the module never undoes them.
 	env = withBuildServerOff(env)
 	watching, reason := watchdogApplies(request.busyQuit, request.args, os.Getenv(enclosingGateEnv), proc.IsAncestor)
 	logger.Info("gate test: CPU watchdog decision", "applies", watching, "reason", reason)
@@ -307,6 +315,14 @@ func gateKeyRefusal(cfg gateslot.Config, request testRequest) string {
 	return ""
 }
 
+// configDirs returns the directories a hub-wide module loads under for location: the hub's, with this machine's override, inside a hub, and the worktree's own outside every hub.
+func configDirs(location *lymcwd.Location, inHub bool) configengine.Dirs {
+	if inHub {
+		return fabricengine.ConfigDirs(location)
+	}
+	return configengine.Dirs{Anchor: location.AnchorPath()}
+}
+
 // loadGate resolves the worktree that contains dir and loads its gate config:
 // the hub's, with this machine's override, inside a hub, and the worktree's own outside every hub.
 // A refusal is returned as its message, with the other results unset.
@@ -323,13 +339,13 @@ func loadGate(dir string) (location *lymcwd.Location, inHub bool, cfg gateslot.C
 		if err != nil {
 			return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: resolve the worktree of %s: %v; way forward: re-run the same command", dir, err)
 		}
-		cfg, err = gateslot.LoadConfig(configengine.Dirs{Anchor: location.AnchorPath()})
+		cfg, err = gateslot.LoadConfig(configDirs(location, false))
 		if err != nil {
 			return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: cannot read the worktree's gate config: %v; way forward: take the step it names, then re-run the same command", err)
 		}
 		return location, false, cfg, ""
 	}
-	cfg, err = gateslot.LoadConfig(fabricengine.ConfigDirs(location))
+	cfg, err = gateslot.LoadConfig(configDirs(location, true))
 	if errors.Is(err, gateslot.ErrConfigAbsent) {
 		return nil, false, gateslot.Config{}, fmt.Sprintf("gate test: the hub has no gate config: %v; way forward: run \"lym fabric reconcile\", then re-run the same command; a session lym refuses the verb from reports status: FAILED and the orch runs it", err)
 	}

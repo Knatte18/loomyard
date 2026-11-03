@@ -438,6 +438,7 @@ func breakSaveState(t *testing.T, e *Engine) {
 // each launch sends the dialect's discard-line key, when it has one, then types the source statement for the script (a single line) and then Enter, each a separate send-keys call,
 // and the script holds the composed pane-binary prelude joined onto the strand's command, not the bare command.
 // A relaunch regenerates the script, an unresolvable executable path leaves the command alone in it, and an empty command writes the prelude alone.
+// The variables the geometry's PaneEnv tells are exported ahead of the strand's command, on the host's dialect, the one a launch types into.
 //
 //testtiming:keep pins what a launch types and writes: any discard-line key, the source statement then a separate Enter, and a launch script holding the prelude joined onto the command, regenerated on relaunch, the bare command when the executable is unresolvable and the prelude alone for an empty command; its covering tests run this code without asserting it
 func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
@@ -448,13 +449,24 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 		name       string
 		executable error
 		cmds       []string
-		want       func(sh shell.Shell, s Strand, e *Engine) string
+		// paneEnv is the geometry's PaneEnv; nil tells none.
+		paneEnv func() (map[string]string, error)
+		want    func(sh shell.Shell, s Strand, e *Engine) string
 	}{
 		{
 			name: "PreludeAheadOfTheStrandCommand",
 			cmds: []string{"claude --continue"},
 			want: func(sh shell.Shell, s Strand, e *Engine) string {
 				line, _ := composePaneLaunchLine(sh, e.executablePath, "claude --continue", s.GUID, s.Name, e.geom.ParentName)
+				return line + "\n"
+			},
+		},
+		{
+			name:    "PaneEnvExportsPrecedeTheStrandCommand",
+			cmds:    []string{"claude --continue"},
+			paneEnv: func() (map[string]string, error) { return map[string]string{"MODE": "ci"}, nil },
+			want: func(sh shell.Shell, s Strand, e *Engine) string {
+				line, _ := composePaneLaunchLine(sh, e.executablePath, sh.Chain(sh.ExportEnv("MODE", "ci"), "claude --continue"), s.GUID, s.Name, e.geom.ParentName)
 				return line + "\n"
 			},
 		},
@@ -486,6 +498,7 @@ func TestLaunchStrandLocked_LaunchScript(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			e := newTestEngine(t)
+			e.geom.PaneEnv = tt.paneEnv
 			e.executablePath = func() (string, error) {
 				if tt.executable != nil {
 					return "", tt.executable

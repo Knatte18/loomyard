@@ -67,6 +67,9 @@ type Geometry struct {
 	// Buttons tells the session's status-bar button context.
 	// It is nil in standalone mode, where the row shows follow alone, and is called by the status pins only, at boot and attach.
 	Buttons func() (ButtonContext, error)
+	// PaneEnv tells the environment variables every strand pane exports before its launch command, name to value: the hub's env config module with this machine's override.
+	// It is nil in standalone mode, where a pane exports none, and is called at every strand launch, so a changed value reaches the next launch or relaunch.
+	PaneEnv func() (map[string]string, error)
 }
 
 // ReviveEntry is one worktree of a Geometry.SpawnOrder list.

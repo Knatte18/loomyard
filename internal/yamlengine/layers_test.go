@@ -68,6 +68,7 @@ func TestStrip(t *testing.T) {
 		{name: "equal list removed and shorter list kept", lower: "a: [x, y]\nb: [x, y]\n", upper: "a: [x, y]\nb: [x]\n", want: "b: [x]\n", wantRemoved: []string{"a"}},
 		{name: "open map equal except one entry is kept whole", lower: "labels:\n    a: x\n    b: y\n", upper: "labels:\n    a: x\n    b: z\n", openMaps: []string{"labels"}, want: "labels:\n    a: x\n    b: z\n", wantRemoved: []string{}},
 		{name: "equal open map removed", lower: "labels:\n    a: x\n", upper: "labels:\n    a: x\n", openMaps: []string{"labels"}, want: "", wantRemoved: []string{"labels"}},
+		{name: "empty mapping equal to an empty lower removed", lower: "vars: {}\nk: 2\n", upper: "vars: {}\n", want: "", wantRemoved: []string{"vars"}},
 		{name: "emptied nested mapping removed", lower: "a:\n    b:\n        c: 1\nk: 2\n", upper: "a:\n    b:\n        c: 1\nk: 3\n", want: "k: 3\n", wantRemoved: []string{"a.b.c"}},
 		{name: "partly equal mapping keeps the rest", lower: "a:\n    x: 1\n    y: 2\n", upper: "a:\n    x: 1\n    y: 9\n", want: "a:\n    y: 9\n", wantRemoved: []string{"a.x"}},
 		{name: "all stripped yields empty", lower: "a: 1\nb:\n    c: 2\n", upper: "b:\n    c: 2\na: 1\n", want: "", wantRemoved: []string{"a", "b.c"}},

@@ -2,15 +2,18 @@
 // The composition lives in this one file, reached from two chokepoints, launchStrandLocked in spawn.go for strand panes and OpenWindow in window.go for detached windows,
 // so the property "every pane reed creates for a `lym` command resolves lym to its spawning binary" holds by construction rather than by every pane-creating call site remembering to apply it.
 // It also composes the session-switch command the Alt-key bindings run, from the same executable-path lookup, which the engine passes in.
-// The same composition exports LYM_STRAND_NAME (the strand's full name), LYM_PARENT (the worktree's parent, when told) and the .NET build-server switches beside LYM_BIN.
+// The same composition exports LYM_STRAND_NAME (the strand's full name), LYM_PARENT (the worktree's parent, when told) and the .NET build-server switches beside LYM_BIN,
+// and the file composes the exports of the variables the geometry's PaneEnv tells, which the launch puts ahead of the strand's command.
 // The file also owns the per-strand launch script the composed line is written to,
 // so the pane types a short source statement instead of the full line.
 
 package reedengine
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
@@ -40,6 +43,34 @@ func nameExports(sh shell.Shell, name, parent string) string {
 		parts = append(parts, sh.ExportEnv(agentname.ParentEnv, parent))
 	}
 	return sh.Chain(parts...)
+}
+
+// envExports returns the statements exporting vars in name order on sh's dialect, empty when vars holds none.
+func envExports(sh shell.Shell, vars map[string]string) string {
+	parts := make([]string, 0, len(vars))
+	for _, name := range slices.Sorted(maps.Keys(vars)) {
+		parts = append(parts, sh.ExportEnv(name, vars[name]))
+	}
+	return sh.Chain(parts...)
+}
+
+// paneEnvExports returns the statements exporting the variables the geometry's PaneEnv tells, on sh's dialect, empty when the geometry tells none.
+// A failed read logs a named logger.Warn and exports nothing, so the strand still launches.
+// A variable named by proc.BuildServerOffEnv is left out, since the launch line exports those switches itself and a hub value must not undo them.
+func (e *Engine) paneEnvExports(sh shell.Shell, strandGUID string) string {
+	if e.geom.PaneEnv == nil {
+		return ""
+	}
+	vars, err := e.geom.PaneEnv()
+	if err != nil {
+		logger.Warn("reed: could not read the hub's env variables, launching strand pane without them", "strand", strandGUID, "err", err)
+		return ""
+	}
+	vars = maps.Clone(vars)
+	for _, v := range proc.BuildServerOffEnv {
+		delete(vars, v.Name)
+	}
+	return envExports(sh, vars)
 }
 
 // buildServerExports returns the statements exporting proc.BuildServerOffEnv on sh's dialect, so no .NET build the strand's process runs leaves MSBuild servers behind.

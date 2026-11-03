@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/agentname"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -195,6 +196,70 @@ func TestComposePaneLaunchLine(t *testing.T) {
 					if !strings.Contains(buf.String(), guid) {
 						t.Errorf("captured log output = %q, want it to name the strand %q", buf.String(), guid)
 					}
+				}
+			}
+		})
+	}
+}
+
+// TestPaneEnvExports pins per dialect that a strand pane exports the variables the geometry's PaneEnv tells in name order.
+// It also pins that no PaneEnv, an empty answer and a failed read each export nothing, the failure logged naming the strand.
+// It is not parallel, since it captures the process-global logger.
+func TestPaneEnvExports(t *testing.T) {
+	tiergate.Require(t, 0)
+	const guid = "strand-guid-env"
+	readFailed := errors.New("env.yaml unreadable")
+	tests := []struct {
+		name    string
+		paneEnv func() (map[string]string, error)
+		want    func(sh shell.Shell) string
+		wantLog bool
+	}{
+		{
+			name: "NoPaneEnvExportsNothing",
+			want: func(shell.Shell) string { return "" },
+		},
+		{
+			name:    "EmptyAnswerExportsNothing",
+			paneEnv: func() (map[string]string, error) { return map[string]string{}, nil },
+			want:    func(shell.Shell) string { return "" },
+		},
+		{
+			name: "VariablesExportInNameOrder",
+			paneEnv: func() (map[string]string, error) {
+				return map[string]string{"MODE": "ci", "COMMONLIB_REPO": "/home/me/common lib"}, nil
+			},
+			want: func(sh shell.Shell) string {
+				return sh.Chain(sh.ExportEnv("COMMONLIB_REPO", "/home/me/common lib"), sh.ExportEnv("MODE", "ci"))
+			},
+		},
+		{
+			name: "BuildServerSwitchesAreLeftOut",
+			paneEnv: func() (map[string]string, error) {
+				return map[string]string{"MODE": "ci", proc.BuildServerOffEnv[0].Name: "not-lyms-value"}, nil
+			},
+			want: func(sh shell.Shell) string { return sh.ExportEnv("MODE", "ci") },
+		},
+		{
+			name:    "FailedReadExportsNothing",
+			paneEnv: func() (map[string]string, error) { return nil, readFailed },
+			want:    func(shell.Shell) string { return "" },
+			wantLog: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &Engine{geom: Geometry{PaneEnv: tt.paneEnv}}
+			for _, sh := range launchScriptDialects() {
+				buf := logcapture.CaptureVerbose(t)
+
+				got := e.paneEnvExports(sh, guid)
+
+				if want := tt.want(sh); got != want {
+					t.Errorf("paneEnvExports(...) = %q, want %q", got, want)
+				}
+				if logged := strings.Contains(buf.String(), guid); logged != tt.wantLog {
+					t.Errorf("captured log output = %q; want it to name the strand %q: %v", buf.String(), guid, tt.wantLog)
 				}
 			}
 		})

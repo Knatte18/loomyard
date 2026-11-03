@@ -13,6 +13,7 @@
 // a step left with keys but no command fails the load check, so a first declaration sets `command` and `timeout_min` together.
 // LoadConfig loads the file strictly and refuses a declared step without `{baseline_dir}` or with a `timeout_min` below 1, a `verify_max_runs` below 1 and a model-spec that fails its grammar, each naming the key.
 // Config.Step returns a declared step and refuses an undeclared one, so every row and verb that runs a command goes through it.
+// Config.StepWithHubEnv, which every row and verb that runs a command calls, adds the env config module's variables beneath the step's own `env`, so a command runs with the inherited environment, then the hub's and this machine's variables, then the step's, each replacing the one before.
 //
 // Paths is the one declarer of every drift path.
 // The durable directory `_lym/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lym/drift/` holds the capture record, the capture lock, the compare marker, the baseline, side-capture and accepted-profile directories, the skip file and the run counter.

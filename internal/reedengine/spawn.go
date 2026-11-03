@@ -72,6 +72,7 @@ func sendKeysLiteralArg(text string) string {
 //
 // The prelude that resolves this strand pane's `lym` to the binary that spawned it is owned by panebin.go and composed here, at the one launch every strand-realizing path funnels through — see composePaneLaunchLine.
 // The same composition exports LYM_STRAND_NAME and LYM_PARENT beside LYM_BIN: the name is the strand's stored birth attribute and the parent is re-told from the geometry, so every launch and resume path sees the same values.
+// The variables the geometry's PaneEnv tells are exported ahead of launchCmd, read afresh at each launch.
 // The window created below still carries no trailing shell-command argument,
 // so the pane remains tmux's own default-shell started as a login shell (pane-start-mode-is-untouched Shared Decision).
 // The prelude and launchCmd reach that shell afterward through the strand's launch script, which the send-keys line typed into the pane sources in the shell's own scope, rather than by changing how the pane's shell itself starts;
@@ -115,6 +116,7 @@ func (e *Engine) launchStrandLocked(st *ReedState, s *Strand, launchCmd string) 
 	// A separate Enter then submits it.
 	// The dialect's discard-line key goes first: input routed to the booting pane before the payload, a viewer's keystrokes or a terminal reply while a window switch lands on it, would otherwise prefix the launch line and break it.
 	sh := shell.ForGOOS()
+	launchCmd = sh.Chain(e.paneEnvExports(sh, s.GUID), launchCmd)
 	composedLine, exe := composePaneLaunchLine(sh, e.executablePath, launchCmd, s.GUID, s.Name, e.geom.ParentName)
 	s.LymBin = exe
 	payload := stageLaunchScript(sh, e.stateDir(), s.GUID, composedLine)

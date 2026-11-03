@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabriccli"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
@@ -255,6 +257,35 @@ func TestGeometryOverRealHub(t *testing.T) {
 			t.Errorf("reconcile pair detail = %q; want it to name the restored lock directory %s", pair.Detail, lockDir)
 		}
 		requireLockDirAndOrchParent(t, h, slug)
+	}) {
+		return
+	}
+
+	if !t.Run("reed geometry tells the hub's env variables with this machine's value winning by name", func(t *testing.T) {
+		for path, content := range map[string]string{
+			configengine.ConfigFile(h.BoardDir(), "env"):  "vars:\n  COMMONLIB_REPO: /hub/commonlib\n  MODE: ci\n",
+			configengine.MachineFile(h.BoardDir(), "env"): "vars:\n  COMMONLIB_REPO: /home/me/commonlib\n",
+		} {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Remove(path) })
+		}
+
+		geom, err := hubgeom.ReedGeometry(h.Location)
+		if err != nil {
+			t.Fatalf("ReedGeometry(prime): %v", err)
+		}
+		if geom.PaneEnv == nil {
+			t.Fatal("PaneEnv = nil; want the hub's env teller")
+		}
+		got, err := geom.PaneEnv()
+		if want := map[string]string{"COMMONLIB_REPO": "/home/me/commonlib", "MODE": "ci"}; err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("PaneEnv() = %v, %v; want %v", got, err, want)
+		}
 	}) {
 		return
 	}

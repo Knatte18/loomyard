@@ -61,7 +61,7 @@ const (
 	CategoryCrossPair Category = "cross-pair"
 	// CategoryGuard is a key that switches off or hollows a guard, a review or an approval gate.
 	CategoryGuard Category = "guard"
-	// CategoryMachine is a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine's desktop.
+	// CategoryMachine is a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine, such as its desktop or a path on its disk.
 	// The machine layer holds it and the local layer refuses it.
 	CategoryMachine Category = "machine"
 )
@@ -267,7 +267,7 @@ func removeKey(node *yaml.Node, path []string) bool {
 // ValidateLocal checks a local override document against the spec.
 // A unit a retired key covers is judged by that key's category alone: CategoryNone admits it with no shape check, any other category refuses it.
 // Every other unit path must exist in the template, or be a top-level key when the spec holds whole entries;
-// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry;
+// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry, a name under a map holding no template entry being judged as a scalar;
 // its shape, mapping or not, must match the template's where the template holds the path;
 // and the longest category entry covering it must be CategoryNone, a hub-wide module also refusing a path no entry covers.
 // A failure is marked [ErrInvalid] and names the key; an empty or comment-only document passes.
@@ -325,7 +325,7 @@ const machineRemoval = "; way forward: remove it from the machine override"
 // ValidateMachine checks a machine override document against the spec.
 // A unit a retired key covers is admitted only when that key's category is CategoryMachine, and its value shape is never checked.
 // Every other unit path must exist in the template and match its shape, and the longest category entry covering it must be CategoryMachine;
-// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry.
+// a path under a per-name map exists when the template holds it or, whatever the name, some template entry of that map holds the rest of it, and is judged against that entry, a name under a map holding no template entry being judged as a scalar.
 // A failure is marked [ErrInvalid], names the key and a way forward; an empty or comment-only document passes.
 func ValidateMachine(spec Spec, doc []byte) error {
 	paths, err := yamlengine.LeafPaths(doc, spec.OpenMaps, spec.WholeEntries)
@@ -371,8 +371,12 @@ func ValidateMachine(spec Spec, doc []byte) error {
 	return nil
 }
 
+// scalarEntry is the node a name under a per-name map with no template entry is judged against: such a map holds scalars, as a set writes them.
+var scalarEntry = &yaml.Node{Kind: yaml.ScalarNode}
+
 // templateValueAt returns the template node a unit path is judged against, which is the node at path when the template holds it.
-// For a path the template lacks under a per-name map P, P.<name> or P.<name>.<rest>, it is the first template entry at P, or the node at rest in the first entry holding it.
+// For a path the template lacks under a per-name map P, P.<name> or P.<name>.<rest>, it is the first template entry at P, or the node at rest in the first entry holding it;
+// P.<name> under a P holding no template entry is judged as a scalar.
 // It returns nil when neither holds the path.
 func templateValueAt(spec Spec, template *yaml.Node, path string) *yaml.Node {
 	if node := nodeAt(template, path); node != nil {
@@ -388,6 +392,9 @@ func templateValueAt(spec Spec, template *yaml.Node, path string) *yaml.Node {
 			continue
 		}
 		_, rest, _ := strings.Cut(under, ".")
+		if rest == "" && len(entries.Content) == 0 {
+			return scalarEntry
+		}
 		for i := 1; i < len(entries.Content); i += 2 {
 			if rest == "" {
 				return entries.Content[i]

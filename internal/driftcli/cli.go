@@ -201,7 +201,7 @@ func takeRun(w *worktree, verb, stepName string) (driftengine.CommandStep, error
 	if err != nil {
 		return driftengine.CommandStep{}, err
 	}
-	step, err := cfg.Step(stepName)
+	step, err := cfg.StepWithHubEnv(stepName, w.configDirs())
 	if err != nil {
 		return driftengine.CommandStep{}, err
 	}
@@ -388,7 +388,7 @@ func runCaptureChild(cmd *cobra.Command) {
 		fail(err)
 		return
 	}
-	step, err := cfg.Step("capture")
+	step, err := cfg.StepWithHubEnv("capture", w.configDirs())
 	if err != nil {
 		fail(err)
 		return

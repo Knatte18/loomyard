@@ -103,7 +103,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		if err != nil {
 			return driftengine.CommandStep{}, err
 		}
-		return cfg.Step(name)
+		return cfg.StepWithHubEnv(name, fabricengine.ConfigDirs(location))
 	}
 
 	return driftengine.Deps{

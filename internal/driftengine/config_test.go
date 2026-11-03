@@ -392,6 +392,47 @@ func TestLoadConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("StepWithHubEnv lays the env module's variables beneath the step's own env", func(t *testing.T) {
+		t.Parallel()
+		board := t.TempDir()
+		envFile := configengine.ConfigFile(board, "env")
+		if err := os.MkdirAll(filepath.Dir(envFile), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(envFile, []byte("vars:\n  COMMONLIB_REPO: /hub/commonlib\n  MODE: hub\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := templateConfig(func(c *Config) {
+			c.Capture = CommandStep{Command: "p {baseline_dir}", Env: map[string]string{"MODE": "step"}, TimeoutMin: 3}
+		})
+
+		got, err := cfg.StepWithHubEnv("capture", configengine.Dirs{Board: board})
+		if err != nil {
+			t.Fatalf("StepWithHubEnv(capture) error = %v; want nil", err)
+		}
+		if want := map[string]string{"COMMONLIB_REPO": "/hub/commonlib", "MODE": "step"}; !reflect.DeepEqual(got.Env, want) {
+			t.Errorf("StepWithHubEnv(capture).Env = %v; want %v", got.Env, want)
+		}
+		if cfg.Capture.Env["COMMONLIB_REPO"] != "" {
+			t.Errorf("StepWithHubEnv changed the config's own step env to %v", cfg.Capture.Env)
+		}
+		if _, err := cfg.StepWithHubEnv("compare", configengine.Dirs{Board: board}); err == nil {
+			t.Error("StepWithHubEnv(compare) error = nil; want the undeclared step refused")
+		}
+
+		brokenBoard := t.TempDir()
+		brokenFile := configengine.ConfigFile(brokenBoard, "env")
+		if err := os.MkdirAll(filepath.Dir(brokenFile), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(brokenFile, []byte("vars:\n  BAD-NAME: x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if step, err := cfg.StepWithHubEnv("capture", configengine.Dirs{Board: brokenBoard}); err == nil || !strings.Contains(err.Error(), "vars.BAD-NAME") || !reflect.DeepEqual(step, CommandStep{}) {
+			t.Errorf("StepWithHubEnv(capture) over a broken env config = %+v, %v; want an error naming vars.BAD-NAME and no step", step, err)
+		}
+	})
+
 	t.Run("the durable paths lie under DirRel", func(t *testing.T) {
 		t.Parallel()
 		root := t.TempDir()

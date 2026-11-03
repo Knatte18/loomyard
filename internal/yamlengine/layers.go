@@ -91,7 +91,8 @@ func (rule unitRule) mergeMapping(lower, upper *yaml.Node, path string, topLevel
 // Units follow the same rule as in Merge: a key at a declared openMaps path and, when wholeEntries is true, every top-level key is compared whole.
 // Equality is over the unexpanded nodes: same kind, same scalar tag and value, same children, comments ignored;
 // so a ${env:...} marker equals only the same marker text, in either direction.
-// A mapping left empty by the strip is removed with its key, and an upper left with nothing returns empty bytes.
+// A mapping left empty by the strip is removed with its key, and an empty mapping where lower holds an empty mapping is a removed unit;
+// an upper left with nothing returns empty bytes.
 // When nothing is removed, upper is returned byte for byte.
 func Strip(lower, upper []byte, openMaps []string, wholeEntries bool) ([]byte, []string, error) {
 	_, lowerRoot, err := parseMappingRoot(lower, "lower")
@@ -132,6 +133,10 @@ func (rule unitRule) stripMapping(lower, upper *yaml.Node, path string, topLevel
 		if at := mappingIndex(lower, key.Value); at >= 0 {
 			lowerValue := lower.Content[at+1]
 			if rule.descends(value, keyPath, topLevel) && lowerValue.Kind == yaml.MappingNode {
+				if len(value.Content) == 0 && len(lowerValue.Content) == 0 {
+					*removed = append(*removed, keyPath)
+					continue
+				}
 				rule.stripMapping(lowerValue, value, keyPath, false, removed)
 				if len(value.Content) == 0 {
 					continue

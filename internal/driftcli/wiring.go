@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
@@ -49,9 +50,14 @@ func (w *worktree) anchor() string {
 	return w.location.AnchorPath()
 }
 
+// configDirs returns the directories the hub's config modules load under, with this machine's override.
+func (w *worktree) configDirs() configengine.Dirs {
+	return fabricengine.ConfigDirs(w.location)
+}
+
 // config loads the hub's drift config strictly.
 func (w *worktree) config() (driftengine.Config, error) {
-	return driftengine.LoadConfig(fabricengine.ConfigDirs(w.location))
+	return driftengine.LoadConfig(w.configDirs())
 }
 
 // verbStatus reads the run status under its lock, the capture lock, the agent-session mark and whether the session is the operator's.

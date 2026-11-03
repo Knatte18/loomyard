@@ -83,7 +83,7 @@
 //
 // # The machine rule
 //
-// The machine layer holds only keys classified [CategoryMachine], a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine's desktop.
+// The machine layer holds only keys classified [CategoryMachine], a key whose value is a property of the machine: a bound on a resource every worktree of the hub on that machine shares, or a fact of the machine, such as its desktop or a path on its disk.
 // [MachineKeys] lists them, and the local layer keeps refusing them, since [CategoryMachine] is not [CategoryNone].
 // [ValidateMachine] checks a machine document with the units, template-existence and shape checks of [ValidateLocal], and admits a unit only when the longest covering `Categories` entry, or the covering retired key, is [CategoryMachine].
 // Every refusal is an [ErrInvalid] error naming the key and a way forward, and [Layers] wraps it with the machine file's path.
@@ -127,5 +127,6 @@
 // It also knows `P.<name>.<key>` where the map's entries are mappings and some template entry holds the key.
 // The layer merge and the template fill need no declaration: a layer's names add to or override the template's by name, and a mapping entry merges key by key.
 // The load's log of filled keys leaves out a name under a per-name map, since a base file holds only the names it tuned.
-// The local and machine layers judge a path under a per-name map against the template entry holding the rest of it, whatever the name.
+// The local and machine layers judge a path under a per-name map against the template entry holding the rest of it, whatever the name,
+// and a name under a per-name map holding no template entry as a scalar, the shape a set writes there.
 package configengine

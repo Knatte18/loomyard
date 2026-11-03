@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -35,6 +36,7 @@ func ReconcileGeometry(l *lymcwd.Location) (hubreconcile.Geometry, bool) {
 // a task worktree sets NameSlug to its raw worktree name and ParentName to what ResolveParent returns, the orch name of the worktree the pair was created from.
 // An unresolvable parent logs a warning and leaves ParentName empty, since the parent is an optional escalation channel.
 // SpawnOrder is told as a lazy closure over l (spawnorder.go), so building the geometry reads and spawns nothing.
+// PaneEnv is likewise a lazy closure: it loads the hub's env config module, with this machine's override, at each strand launch.
 // Failing to tell the prime from a task worktree is the one error:
 // telling a task worktree a prime's geometry would give its strands the prime's names for life.
 func ReedGeometry(l *lymcwd.Location) (reedengine.Geometry, error) {
@@ -85,6 +87,7 @@ func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 	return reedengine.Geometry{
 		SpawnOrder:         spawnOrder(l),
 		Buttons:            buttonContext(l, prime),
+		PaneEnv:            paneEnv(l),
 		SocketKey:          reedengine.ServerName(l.HubPath),
 		SessionName:        reedengine.SessionName(l.WorktreePath()),
 		AnchorPath:         l.AnchorPath(),
@@ -98,6 +101,14 @@ func reedGeometry(l *lymcwd.Location, prime bool) reedengine.Geometry {
 		ParentName:         parent,
 		PauseRecordPath:    pauseGeometry(l, prime).RecordPath,
 		DiscoverSignalPath: filepath.Join(fabricengine.HubScratchDir(l.HubPath), reedengine.DiscoverSignalFileName),
+	}
+}
+
+// paneEnv returns the closure that loads the variables of the hub's env config module, with this machine's override, for a strand pane in l's worktree.
+func paneEnv(l *lymcwd.Location) func() (map[string]string, error) {
+	return func() (map[string]string, error) {
+		cfg, err := envconfig.LoadConfig(fabricengine.ConfigDirs(l))
+		return cfg.Vars, err
 	}
 }
 

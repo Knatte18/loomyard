@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/envconfig"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
@@ -260,5 +261,21 @@ func (c Config) Step(name string) (CommandStep, error) {
 	if step.Command == "" {
 		return CommandStep{}, fmt.Errorf("drift: %s is not declared; way forward: declare it with lym config drift --set '%s={command: ..., timeout_min: N}'", name, name)
 	}
+	return step, nil
+}
+
+// StepWithHubEnv returns the declared step as Step does, with the env config module's variables loaded under dirs laid beneath the step's own env,
+// so the command runs with both and the step's value wins a name both hold.
+// A refused step and an env config that fails to load are errors.
+func (c Config) StepWithHubEnv(name string, dirs configengine.Dirs) (CommandStep, error) {
+	step, err := c.Step(name)
+	if err != nil {
+		return CommandStep{}, err
+	}
+	hubEnv, err := envconfig.LoadConfig(dirs)
+	if err != nil {
+		return CommandStep{}, err
+	}
+	step.Env = hubEnv.Beneath(step.Env)
 	return step, nil
 }

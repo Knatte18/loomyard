@@ -797,6 +797,59 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	// writeEnvFile writes the env module's file at path and removes it when the row ends, so no later row over the shared hub loads it.
+	writeEnvFile := func(t *testing.T, path, content string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Remove(path) })
+	}
+
+	t.Run("the shared build runs with the env module's variables over the inherited ones and under its own env, and its build-server switches stay lym's", func(t *testing.T) {
+		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
+		defer writeConfig(t, gateConfig)
+		writeEnvFile(t, configengine.ConfigFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-env-module\n  GOFLAGS: -from-env-module\n  MSBUILDDISABLENODEREUSE: \"0\"\n")
+
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: []string{"GOFLAGS=-inherited"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		builds, tiers := buildRecords(t, g), g.tierRecords(t)
+		if len(builds) != 1 || len(tiers) != 1 {
+			t.Fatalf("build records %+v, tier records %+v; want one each", builds, tiers)
+		}
+		if build := builds[0]; build.BuildMark != "1" || build.GoFlags != "-from-env-module" || build.NodeReuse != "1" {
+			t.Errorf("build BUILD_MARK %q, GOFLAGS %q, MSBUILDDISABLENODEREUSE %q; want its own BUILD_MARK 1 over the env module's, the env module's GOFLAGS over the inherited one and the build-server switch 1 over the env module's", build.BuildMark, build.GoFlags, build.NodeReuse)
+		}
+		if tier := tiers[0]; tier.BuildMark != "from-env-module" {
+			t.Errorf("tier BUILD_MARK %q; want the env module's, not the build's own", tier.BuildMark)
+		}
+	})
+
+	t.Run("inside a hub the env module loads the hub file with this machine's file winning name by name", func(t *testing.T) {
+		writeEnvFile(t, configengine.ConfigFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-hub-file\n")
+		hubOnly := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}})
+		if code := hubOnly.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, hubOnly.stdout.String())
+		}
+		if got := hubOnly.standIn(t).BuildMark; got != "from-hub-file" {
+			t.Errorf("tier BUILD_MARK with only the hub file = %q; want from-hub-file", got)
+		}
+
+		writeEnvFile(t, configengine.MachineFile(h.BoardDir(), "env"), "vars:\n  BUILD_MARK: from-machine-file\n")
+		withMachine := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "0", "./pkg"}})
+		if code := withMachine.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, withMachine.stdout.String())
+		}
+		if got := withMachine.standIn(t).BuildMark; got != "from-machine-file" {
+			t.Errorf("tier BUILD_MARK with the machine file = %q; want from-machine-file", got)
+		}
+	})
+
 	t.Run("a failing build blocks every opted-in tier, names the build first in the closing line and still runs a tier that did not opt in", func(t *testing.T) {
 		writeConfig(t, scenarioConfig(t, withSharedBuild("sub")))
 		defer writeConfig(t, gateConfig)
@@ -1709,6 +1762,35 @@ func TestGateTest_Scenario(t *testing.T) {
 	})
 
 	standalone := standaloneWorktree
+	t.Run("a tier runs with the env module's variables beneath its own env", func(t *testing.T) {
+		worktree := standalone(t, true)
+		envFile := configengine.ConfigFile(worktree, "env")
+		if err := os.WriteFile(envFile, []byte("vars:\n  BUILD_MARK: from-env-module\n  GOFLAGS: -from-env-module\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry, helperCapEnv + "=0", "BUILD_MARK=inherited"}})
+		if code := g.wait(t); code != 0 {
+			t.Fatalf("exit code = %d, stdout %q; want 0", code, g.stdout.String())
+		}
+		record := g.standIn(t)
+		if record.BuildMark != "from-env-module" || record.GoFlags != "-trimpath -p=3" {
+			t.Errorf("tier BUILD_MARK %q, GOFLAGS %q; want the env module's BUILD_MARK over the inherited one and the tier's own GOFLAGS over the env module's", record.BuildMark, record.GoFlags)
+		}
+	})
+	t.Run("a broken env config refuses the call before any tier, naming the config and its way forward", func(t *testing.T) {
+		worktree := standalone(t, true)
+		if err := os.WriteFile(configengine.ConfigFile(worktree, "env"), []byte("vars:\n  BAD-NAME: x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry, helperCapEnv + "=0"}})
+		code, output := g.wait(t), g.stdout.String()
+		if code != 1 || !strings.Contains(output, "cannot read the env config") || !strings.Contains(output, "vars.BAD-NAME") || !strings.Contains(output, "way forward") {
+			t.Errorf("exit code = %d, stdout %q; want 1 and a refusal naming the env config, vars.BAD-NAME and a way forward", code, output)
+		}
+		if invocations := g.tierArgs(t); len(invocations) != 0 {
+			t.Errorf("tier invocations = %q; want none after the refusal", invocations)
+		}
+	})
 	t.Run("a worktree outside every hub runs unslotted under its own gate.yaml and records under its own .lym", func(t *testing.T) {
 		worktree := standalone(t, true)
 		g := startGate(t, gateRun{cwd: worktree, args: []string{"test", "./pkg"}, env: []string{strandEnvEntry, helperCapEnv + "=0"}})

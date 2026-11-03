@@ -42,21 +42,30 @@ func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
 	}
 
 	cwds := filepath.Join(t.TempDir(), "cwds")
+	envs := filepath.Join(filepath.Dir(cwds), "envs")
 	driftYAML := fmt.Sprintf(`capture:
   command: |
     pwd >> %q
+    echo "$DRIFT_MODULE $DRIFT_OWN" >> %q
     mkdir -p {baseline_dir} && echo ok > {baseline_dir}/profile.txt
+  env:
+    DRIFT_OWN: from-step
   timeout_min: 1
 compare:
-  command: 'pwd >> %q; : {baseline_dir}'
+  command: 'pwd >> %q; echo "$DRIFT_MODULE $DRIFT_OWN" >> %q; : {baseline_dir}'
+  env:
+    DRIFT_OWN: from-step
   timeout_min: 1
 verify_max_runs: 3
-`, cwds, cwds)
+`, cwds, envs, cwds, envs)
 	driftFile := configengine.ConfigFile(h.BoardDir(), "drift")
 	if err := os.MkdirAll(filepath.Dir(driftFile), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(driftFile, []byte(driftYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configengine.ConfigFile(h.BoardDir(), "env"), []byte("vars:\n  DRIFT_MODULE: from-env-module\n  DRIFT_OWN: from-env-module\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
@@ -104,6 +113,20 @@ verify_max_runs: 3
 	for i, dir := range got {
 		if dir != want {
 			t.Errorf("command %d ran in %q; want the anchored directory %q", i, dir, want)
+		}
+	}
+
+	envData, err := os.ReadFile(envs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEnvs := strings.Split(strings.TrimSpace(string(envData)), "\n")
+	if len(gotEnvs) != 3 {
+		t.Fatalf("recorded environments = %q; want one each from the main capture, the compare and the side capture", gotEnvs)
+	}
+	for i, line := range gotEnvs {
+		if line != "from-env-module from-step" {
+			t.Errorf("command %d ran with DRIFT_MODULE and DRIFT_OWN %q; want the env module's DRIFT_MODULE and the step's own DRIFT_OWN", i, line)
 		}
 	}
 }
