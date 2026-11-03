@@ -29,12 +29,13 @@ func NewDriftBaseline(name string, row Row, deps Deps) *DriftBaseline {
 	return &DriftBaseline{name: name, row: row, deps: deps}
 }
 
-// Call runs one Drift-Baseline pass and commits the drift records on every way out.
+// Call runs one Drift-Baseline pass and commits the drift records on every way out but one: with drift switched off it is Done at once, spawning, starting and committing nothing.
 // It has the baseline agent record the scope and write baseline.md when either is missing, then, by the recorded scope, takes the baseline capture:
 // scope off, a set awaited_at and a passed capture take none, and a capture that holds the lock is left running.
 // Otherwise the capture is a detached child and the pass returns once the child's record exists;
 // when a detached start is refused breakaway, the capture runs in this process.
-// A failed or refused capture is a Stuck whose reason opens with CaptureHaltPrefix and names its ways forward.
+// A failed or refused capture, or a capture child that ended or stalled before it recorded its start, is a Stuck whose reason opens with CaptureHaltPrefix and names its ways forward, `lym drift defer` among them.
+// A start that fails for another reason, such as an unresolvable binary, an unwritable child log or a held capture lock, is an error.
 // Only the scope record and baseline.md are committed while a detached capture may still write its logs; all of the durable drift directory is committed once a capture has ended in this process.
 func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -52,6 +53,9 @@ func (p *DriftBaseline) Call(ctx context.Context) (shedengine.Outcome, shedengin
 	)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
+	}
+	if outcome, pointer, stop := passWhenSwitchedOff(d.Config); stop {
+		return outcome, pointer, nil
 	}
 
 	var commitAll bool
@@ -137,9 +141,13 @@ func (p *DriftBaseline) captureAgain(ctx context.Context, commitAll *bool) (shed
 	}
 
 	startErr := d.StartCapture()
+	var noRecord childNoRecordError
 	switch {
 	case startErr == nil:
 		return shedengine.Done, done, nil
+	case errors.As(startErr, &noRecord):
+		reason := fmt.Sprintf("%sthe baseline capture did not start: %v; way forward: lym loom resume to capture again, or lym drift defer followed by lym loom resume to go on with regression deferred", CaptureHaltPrefix, startErr)
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
 	case !errors.Is(startErr, ErrBreakawayRefused):
 		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: start the baseline capture: %w", p.name, startErr)
 	}

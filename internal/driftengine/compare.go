@@ -21,8 +21,8 @@ import (
 type CompareRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
-	// WorktreeRoot is the task worktree the command's relative dir is joined onto.
-	WorktreeRoot string
+	// AnchorDir is the absolute anchored directory the command's relative dir is joined onto.
+	AnchorDir string
 	// Step is the declared compare command.
 	Step CommandStep
 	// Pool is the gate-slot pool the compare takes one slot of.
@@ -75,18 +75,18 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 	}
 	result := CompareResult{Log: logPathFor(p.LogsDir, "compare", req.Now())}
 	outcome, err := runStep(ctx, stepRun{
-		WorktreeRoot: req.WorktreeRoot,
-		Step:         req.Step,
-		Pool:         req.Pool,
-		WaitDir:      req.WaitDir,
-		Site:         "drift compare",
-		BaselineDir:  p.BaselineDir,
-		SkipFile:     p.SkipFile,
-		LogPath:      result.Log,
-		Timeout:      req.Timeout,
-		Now:          req.Now,
-		OnSlot:       func(time.Time) {},
-		OnStart:      func(int, time.Time) {},
+		AnchorDir:   req.AnchorDir,
+		Step:        req.Step,
+		Pool:        req.Pool,
+		WaitDir:     req.WaitDir,
+		Site:        "drift compare",
+		BaselineDir: p.BaselineDir,
+		SkipFile:    p.SkipFile,
+		LogPath:     result.Log,
+		Timeout:     req.Timeout,
+		Now:         req.Now,
+		OnSlot:      func(time.Time) {},
+		OnStart:     func(int, time.Time) {},
 	})
 	if err != nil {
 		return result, err

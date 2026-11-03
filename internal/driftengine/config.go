@@ -41,7 +41,7 @@ const (
 type CommandStep struct {
 	// Command is the shell command the step runs, holding the {baseline_dir} placeholder.
 	Command string `yaml:"command"`
-	// Dir is the run directory, absolute or relative to the worktree root.
+	// Dir is the run directory, absolute or relative to the anchored directory.
 	Dir string `yaml:"dir"`
 	// Env is the environment the command runs with, over the process environment.
 	Env map[string]string `yaml:"env"`

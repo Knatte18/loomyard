@@ -79,8 +79,12 @@ func scopeCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `scope records how much of the regression suite covers the task: off checks
 nothing, full checks everything, and partial checks all but the tests --skip
-names, which it requires. It runs once, at Drift-Baseline; a second call is
-refused, and the agent then writes baseline.md alone and ends its turn.
+names, which it requires. The baseline agent runs it once, at a running
+Drift-Baseline; its second call is refused, and it then writes baseline.md
+alone and ends its turn. The run's parent records or replaces the scope at a
+blocked Drift-Baseline or Drift-Await, while no capture runs and before the
+baseline wait is settled; a replacement that compares a test the capture
+skipped drops that capture. Run lym loom resume after it.
 
 Example:
   lym drift scope --scope partial --skip slow_test --skip flaky_test`,
@@ -234,15 +238,15 @@ Example:
 				}
 				pool, waitDir := w.slots()
 				result, err := driftengine.RunCompare(cmd.Context(), driftengine.CompareRequest{
-					Paths:        w.paths,
-					WorktreeRoot: w.root(),
-					Step:         step,
-					Pool:         pool,
-					WaitDir:      waitDir,
-					Skip:         driftengine.SkipList(scope),
-					Timeout:      stepTimeout(step),
-					Now:          time.Now,
-					LockRetry:    compareLockRetry,
+					Paths:     w.paths,
+					AnchorDir: w.anchor(),
+					Step:      step,
+					Pool:      pool,
+					WaitDir:   waitDir,
+					Skip:      driftengine.SkipList(scope),
+					Timeout:   stepTimeout(step),
+					Now:       time.Now,
+					LockRetry: compareLockRetry,
 				})
 				if err != nil {
 					return nil, err
@@ -296,14 +300,14 @@ func runSideCapture(cmd *cobra.Command, w *worktree) (any, error) {
 	}
 	pool, waitDir := w.slots()
 	result, err := driftengine.RunSideCapture(cmd.Context(), driftengine.CaptureRequest{
-		Paths:        w.paths,
-		WorktreeRoot: w.root(),
-		Step:         step,
-		Pool:         pool,
-		WaitDir:      waitDir,
-		Skip:         driftengine.SkipList(scope),
-		Timeout:      stepTimeout(step),
-		Now:          time.Now,
+		Paths:     w.paths,
+		AnchorDir: w.anchor(),
+		Step:      step,
+		Pool:      pool,
+		WaitDir:   waitDir,
+		Skip:      driftengine.SkipList(scope),
+		Timeout:   stepTimeout(step),
+		Now:       time.Now,
 	})
 	if err != nil {
 		return nil, err
@@ -340,7 +344,7 @@ func startMainCapture(w *worktree) (any, error) {
 	}
 	pid, err := driftengine.StartCapture(driftengine.SpawnRequest{
 		Executable:     executable,
-		WorktreeRoot:   w.root(),
+		AnchorDir:      w.anchor(),
 		Paths:          w.paths,
 		RunProcDir:     fabricengine.RunProcDir(w.location.HubPath),
 		Owner:          w.location.WorktreeName,
@@ -410,12 +414,12 @@ func runCaptureChild(cmd *cobra.Command) {
 
 	pool, waitDir := w.slots()
 	_, runErr := driftengine.RunCapture(ctx, driftengine.CaptureRequest{
-		Paths:        w.paths,
-		WorktreeRoot: w.root(),
-		Step:         step,
-		Pool:         pool,
-		WaitDir:      waitDir,
-		Skip:         scope.Skip,
+		Paths:     w.paths,
+		AnchorDir: w.anchor(),
+		Step:      step,
+		Pool:      pool,
+		WaitDir:   waitDir,
+		Skip:      scope.Skip,
 		Check: func() (string, error) {
 			head, err := checkMainCapture(w)
 			if err != nil {

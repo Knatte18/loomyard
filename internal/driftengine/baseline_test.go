@@ -35,6 +35,9 @@ type baselineFixture struct {
 	dirty             []string
 	// declared is whether drift.yaml declares a capture command.
 	declared bool
+	// disabled switches drift off, and configErr fails the config load.
+	disabled  bool
+	configErr error
 	// startErr is what StartCapture answers, and runRecord what RunCapture answers.
 	startErr  error
 	runRecord CaptureRecord
@@ -75,10 +78,14 @@ func newBaselineFixture(t *testing.T) *baselineFixture {
 		Paths:        f.paths,
 		WorktreeRoot: t.TempDir(),
 		Config: func() (Config, error) {
-			if !f.declared {
-				return Config{}, nil
+			if f.configErr != nil {
+				return Config{}, f.configErr
 			}
-			return Config{Capture: CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}}, nil
+			cfg := Config{Enabled: !f.disabled}
+			if f.declared {
+				cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
+			}
+			return cfg, nil
 		},
 		Status: func() (shedengine.Status, error) {
 			return shedengine.Status{CurrentProducer: "Drift-Baseline", State: shedengine.StateRunning}, nil
@@ -156,7 +163,7 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// TestDriftBaseline covers the producer's way through each scope, capture start and refusal, and the paths it commits on every way out.
+// TestDriftBaseline covers the producer's way through each scope, capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
 func TestDriftBaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -174,8 +181,11 @@ func TestDriftBaseline(t *testing.T) {
 		wantAgents int
 		wantStarts int
 		wantRuns   int
+		// wantCommit nil wants no commit at all.
 		wantCommit []string
-		check      func(t *testing.T, f *baselineFixture)
+		// wantDeferrable is true for a Stuck that lym drift defer settles.
+		wantDeferrable bool
+		check          func(t *testing.T, f *baselineFixture)
 	}{
 		{
 			name:       "scope off starts no capture",
@@ -312,12 +322,48 @@ func TestDriftBaseline(t *testing.T) {
 			wantCommit: whole,
 		},
 		{
-			name:       "another start error is returned naming the child's log",
-			setup:      func(f *baselineFixture) { f.startErr = errors.New("the child ended before its record; read child.log") },
-			wantErr:    "child.log",
+			name: "a child that did not record its start is a capture halt naming the child's log, which lym drift defer settles",
+			setup: func(f *baselineFixture) {
+				f.startErr = startFailure(SpawnRequest{}, "child.log", "ended before it recorded its start")
+			},
+			want:           shedengine.Stuck,
+			wantReason:     []string{CaptureHaltPrefix, "child.log", "lym loom resume", "lym drift defer"},
+			wantAgents:     1,
+			wantStarts:     1,
+			wantCommit:     scopeAndReport,
+			wantDeferrable: true,
+		},
+		{
+			name:       "an environment fault starting the capture is an error that offers no defer",
+			setup:      func(f *baselineFixture) { f.startErr = errors.New("drift: resolve this binary: no such file") },
+			wantErr:    "resolve this binary",
 			wantAgents: 1,
 			wantStarts: 1,
 			wantCommit: scopeAndReport,
+		},
+		{
+			name:       "a held capture lock at the start keeps its own refusal",
+			setup:      func(f *baselineFixture) { f.startErr = lockHeldRefusal("capture.lock") },
+			wantErr:    "a capture already holds capture.lock",
+			wantAgents: 1,
+			wantStarts: 1,
+			wantCommit: scopeAndReport,
+		},
+		{
+			name: "drift switched off passes a run halted on a failed capture, with no agent, capture or commit",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.writeCapture(CaptureRecord{State: CaptureFailed})
+				f.disabled = true
+			},
+			want:       shedengine.Done,
+			wantReason: []string{"drift.enabled = false"},
+		},
+		{
+			name:       "a drift config that fails to load is Stuck naming lym loom resume",
+			setup:      func(f *baselineFixture) { f.configErr = errors.New(`drift config key "capture.timeout_min": missing`) },
+			want:       shedengine.Stuck,
+			wantReason: []string{"capture.timeout_min", "lym loom resume"},
 		},
 		{
 			name:       "an undeclared capture names lym config drift",
@@ -368,8 +414,17 @@ func TestDriftBaseline(t *testing.T) {
 			if f.seats.Calls != tt.wantAgents || f.starts != tt.wantStarts || f.runs != tt.wantRuns {
 				t.Errorf("agents/starts/runs = %d/%d/%d; want %d/%d/%d", f.seats.Calls, f.starts, f.runs, tt.wantAgents, tt.wantStarts, tt.wantRuns)
 			}
-			if len(f.commits) != 1 || !slices.Equal(f.commits[0], tt.wantCommit) {
+			if tt.wantCommit == nil {
+				if len(f.commits) != 0 {
+					t.Errorf("commits = %v; want none", f.commits)
+				}
+			} else if len(f.commits) != 1 || !slices.Equal(f.commits[0], tt.wantCommit) {
 				t.Errorf("commits = %v; want one commit of %v", f.commits, tt.wantCommit)
+			}
+			if tt.wantDeferrable {
+				if err := Defer(f.paths, statusAt("Drift-Baseline", shedengine.StateBlocked, pointer.Reason, false)); err != nil {
+					t.Errorf("Defer() at the halt = %v; want it admitted", err)
+				}
 			}
 			if tt.check != nil {
 				tt.check(t, f)

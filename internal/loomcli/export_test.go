@@ -2,6 +2,19 @@
 
 package loomcli
 
+import (
+	"github.com/Knatte18/loomyard/internal/driftengine"
+	"github.com/Knatte18/loomyard/internal/lymcwd"
+)
+
+// DriftDepsAt builds the Drift seams over location with no agent tables.
+func DriftDepsAt(location *lymcwd.Location, statusPath, statusLockPath string) driftengine.Deps {
+	return driftDeps(location, statusPath, statusLockPath, driftTables{})
+}
+
+// CaptureSpawnRequest re-exports the request that starts the detached capture child.
+var CaptureSpawnRequest = captureSpawnRequest
+
 // OwnerVerdict is the verdict RunOwnerVerdict returns.
 type OwnerVerdict = ownerVerdict
 

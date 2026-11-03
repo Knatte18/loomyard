@@ -3,6 +3,8 @@
 package driftengine
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -68,26 +70,45 @@ func requireRefusal(t *testing.T, err error, want []string, p Paths, before *Sco
 	}
 }
 
-// TestRecordScope covers the admitted scopes and every refusal, each refusal naming its way forward and leaving the record as it was.
+// TestRecordScope covers the agent's one record, the parent's record and replacement at a halt with the capture it drops or keeps, and every refusal, each refusal naming its way forward and leaving the record as it was.
 func TestRecordScope(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	recorded := &ScopeRecord{Scope: ScopeFull, RecordedAt: "2026-01-01T00:00:00Z"}
+	partialA := &ScopeRecord{Scope: ScopePartial, Skip: []string{"a"}, RecordedAt: "2026-01-01T00:00:00Z"}
+	settled := &ScopeRecord{Scope: ScopeFull, RecordedAt: "2026-01-01T00:00:00Z", AwaitedAt: "2026-01-01T00:00:00Z", Deferred: true}
+	passed := &CaptureRecord{State: CapturePassed, Head: "aaa"}
+	passedSkippingA := &CaptureRecord{State: CapturePassed, Head: "aaa", Skip: []string{"a"}}
+	blocked := shedengine.StateBlocked
 	tests := []struct {
-		name     string
-		row      string
-		before   *ScopeRecord
-		scope    string
-		skip     []string
-		wantErr  []string
-		wantSkip []string
+		name   string
+		row    string
+		state  shedengine.State
+		held   bool
+		before *ScopeRecord
+		// capture is the capture record seeded before the call; wantCaptureGone wants it removed.
+		capture         *CaptureRecord
+		scope           string
+		skip            []string
+		wantErr         []string
+		wantSkip        []string
+		wantCaptureGone bool
 	}{
 		{name: "off", row: "Drift-Baseline", scope: ScopeOff},
 		{name: "full", row: "Drift-Baseline", scope: ScopeFull},
 		{name: "partial with skips", row: "Drift-Baseline", scope: ScopePartial, skip: []string{"a", "b"}, wantSkip: []string{"a", "b"}},
+		{name: "the parent replaces full with off at a Drift-Baseline halt", row: "Drift-Baseline", state: blocked, before: recorded, scope: ScopeOff},
+		{name: "the parent records a scope at a Drift-Await halt", row: "Drift-Await", state: blocked, scope: ScopeFull},
+		{name: "a replacement comparing a test the capture skipped drops the capture", row: "Drift-Await", state: blocked, before: partialA, capture: passedSkippingA, scope: ScopeFull, wantCaptureGone: true},
+		{name: "a replacement skipping the same test keeps the capture", row: "Drift-Await", state: blocked, before: partialA, capture: passedSkippingA, scope: ScopePartial, skip: []string{"a"}, wantSkip: []string{"a"}},
+		{name: "a replacement skipping more keeps the capture", row: "Drift-Await", state: blocked, before: recorded, capture: passed, scope: ScopePartial, skip: []string{"a"}, wantSkip: []string{"a"}},
+		{name: "a replacement to off keeps the capture", row: "Drift-Baseline", state: blocked, before: partialA, capture: passedSkippingA, scope: ScopeOff},
 		{name: "wrong row", row: "Drift-Await", scope: ScopeFull, wantErr: []string{"Drift-Baseline", "lym loom status"}},
+		{name: "a halt at another row", row: "Drift-Verify", state: blocked, before: recorded, scope: ScopeOff, wantErr: []string{"Drift-Await", "lym loom status"}},
 		{name: "already recorded", row: "Drift-Baseline", before: recorded, scope: ScopeOff, wantErr: []string{"already recorded as full", "write baseline.md alone and end your turn"}},
+		{name: "a replacement while a capture runs", row: "Drift-Await", state: blocked, held: true, before: recorded, scope: ScopeOff, wantErr: []string{"a capture is running", "lym drift status"}},
+		{name: "a replacement after the baseline wait settled", row: "Drift-Await", state: blocked, before: settled, scope: ScopeOff, wantErr: []string{"already settled", "lym loom status"}},
 		{name: "skip with full", row: "Drift-Baseline", scope: ScopeFull, skip: []string{"a"}, wantErr: []string{"--skip", "partial"}},
 		{name: "partial without skip", row: "Drift-Baseline", scope: ScopePartial, wantErr: []string{"partial", "--skip <test>"}},
 		{name: "unknown scope", row: "Drift-Baseline", scope: "some", wantErr: []string{`"some" is not a scope`, "--scope off, partial or full"}},
@@ -96,7 +117,18 @@ func TestRecordScope(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			p := seedScope(t, tt.before)
-			err := RecordScope(p, statusAt(tt.row, shedengine.StateRunning, "", false), tt.scope, tt.skip)
+			if tt.capture != nil {
+				if err := WriteCapture(p, *tt.capture); err != nil {
+					t.Fatalf("seed the capture record: %v", err)
+				}
+			}
+			state := tt.state
+			if state == "" {
+				state = shedengine.StateRunning
+			}
+			st := statusAt(tt.row, state, "", false)
+			st.CaptureHeld = tt.held
+			err := RecordScope(p, st, tt.scope, tt.skip)
 			if tt.wantErr != nil {
 				requireRefusal(t, err, tt.wantErr, p, tt.before)
 				return
@@ -108,8 +140,46 @@ func TestRecordScope(t *testing.T) {
 			if !found || got.Scope != tt.scope || !slices.Equal(got.Skip, tt.wantSkip) || got.RecordedAt == "" {
 				t.Errorf("record = %+v, %v; want scope %s, skip %v and recorded_at set", got, found, tt.scope, tt.wantSkip)
 			}
+			if tt.capture != nil {
+				if _, captureFound, err := ReadCapture(p); err != nil || captureFound == tt.wantCaptureGone {
+					t.Errorf("ReadCapture() found = %v, %v; want the capture removed = %v", captureFound, err, tt.wantCaptureGone)
+				}
+			}
 		})
 	}
+
+	t.Run("a chain of replacements compares against the skip list the capture was taken under", func(t *testing.T) {
+		t.Parallel()
+		p := seedScope(t, partialA)
+		if err := WriteCapture(p, *passedSkippingA); err != nil {
+			t.Fatalf("seed the capture record: %v", err)
+		}
+		st := statusAt("Drift-Await", blocked, "", false)
+		for _, scope := range []string{ScopeOff, ScopeFull} {
+			if err := RecordScope(p, st, scope, nil); err != nil {
+				t.Fatalf("RecordScope(%s) = %v; want nil", scope, err)
+			}
+		}
+		if _, found, err := ReadCapture(p); err != nil || found {
+			t.Errorf("ReadCapture() found = %v, %v after off then full; want the capture removed", found, err)
+		}
+	})
+
+	t.Run("a capture record that cannot be dropped leaves the scope as it was", func(t *testing.T) {
+		t.Parallel()
+		p := seedScope(t, partialA)
+		if err := os.MkdirAll(filepath.Join(p.Capture, "held"), 0o755); err != nil {
+			t.Fatalf("make the capture path a non-empty directory: %v", err)
+		}
+		err := RecordScope(p, statusAt("Drift-Await", blocked, "", false), ScopeFull, nil)
+		if err == nil {
+			t.Fatalf("RecordScope() = nil; want an error")
+		}
+		got, found := mustReadScope(t, p)
+		if !found || !reflect.DeepEqual(got, *partialA) {
+			t.Errorf("scope record = %+v, %v after the failed replacement; want %+v", got, found, *partialA)
+		}
+	})
 }
 
 // TestAcceptWithdraw covers Accept's callers and rulings, Withdraw, and CheckVerifyRow's admissions.

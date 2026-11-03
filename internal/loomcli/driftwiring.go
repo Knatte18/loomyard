@@ -138,15 +138,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			if err != nil {
 				return fmt.Errorf("drift: resolve this binary: %w", err)
 			}
-			_, err = driftengine.StartCapture(driftengine.SpawnRequest{
-				Executable:   executable,
-				WorktreeRoot: location.WorktreePath(),
-				Paths:        paths,
-				RunProcDir:   fabricengine.RunProcDir(location.HubPath),
-				Owner:        location.WorktreeName,
-				RecordWait:   driftCaptureRecordWait,
-				Poll:         driftCaptureRecordPoll,
-			})
+			_, err = driftengine.StartCapture(captureSpawnRequest(location, paths, executable))
 			return err
 		},
 		RunCapture: func(ctx context.Context) (driftengine.CaptureRecord, error) {
@@ -159,16 +151,16 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				return driftengine.CaptureRecord{}, err
 			}
 			return driftengine.RunCapture(ctx, driftengine.CaptureRequest{
-				Paths:        paths,
-				WorktreeRoot: location.WorktreePath(),
-				Step:         step,
-				Pool:         pool,
-				WaitDir:      waitDir,
-				Skip:         scope.Skip,
-				Check:        checkMain,
-				Timeout:      time.Duration(step.TimeoutMin) * time.Minute,
-				Now:          time.Now,
-				LockRetry:    driftCaptureLockRetry,
+				Paths:     paths,
+				AnchorDir: location.AnchorPath(),
+				Step:      step,
+				Pool:      pool,
+				WaitDir:   waitDir,
+				Skip:      scope.Skip,
+				Check:     checkMain,
+				Timeout:   time.Duration(step.TimeoutMin) * time.Minute,
+				Now:       time.Now,
+				LockRetry: driftCaptureLockRetry,
 			})
 		},
 		Sleep: sleepContext,
@@ -201,17 +193,31 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 				return driftengine.CompareResult{}, err
 			}
 			return driftengine.RunCompare(ctx, driftengine.CompareRequest{
-				Paths:        paths,
-				WorktreeRoot: location.WorktreePath(),
-				Step:         step,
-				Pool:         pool,
-				WaitDir:      waitDir,
-				Skip:         driftengine.SkipList(scope),
-				Timeout:      time.Duration(step.TimeoutMin) * time.Minute,
-				Now:          time.Now,
-				LockRetry:    driftCompareLockRetry,
+				Paths:     paths,
+				AnchorDir: location.AnchorPath(),
+				Step:      step,
+				Pool:      pool,
+				WaitDir:   waitDir,
+				Skip:      driftengine.SkipList(scope),
+				Timeout:   time.Duration(step.TimeoutMin) * time.Minute,
+				Now:       time.Now,
+				LockRetry: driftCompareLockRetry,
 			})
 		},
+	}
+}
+
+// captureSpawnRequest describes the start of the detached capture child of executable over location.
+// The child runs in the anchored directory, since every lym verb resolves its worktree from a cwd equal to it.
+func captureSpawnRequest(location *lymcwd.Location, paths driftengine.Paths, executable string) driftengine.SpawnRequest {
+	return driftengine.SpawnRequest{
+		Executable: executable,
+		AnchorDir:  location.AnchorPath(),
+		Paths:      paths,
+		RunProcDir: fabricengine.RunProcDir(location.HubPath),
+		Owner:      location.WorktreeName,
+		RecordWait: driftCaptureRecordWait,
+		Poll:       driftCaptureRecordPoll,
 	}
 }
 

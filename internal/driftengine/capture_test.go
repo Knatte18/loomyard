@@ -9,6 +9,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -38,15 +40,15 @@ func newCaptureFixture(t *testing.T, command string) *captureFixture {
 	return &captureFixture{
 		pool: pool,
 		req: CaptureRequest{
-			Paths:        NewPaths(root),
-			WorktreeRoot: root,
-			Step:         CommandStep{Command: command, Dir: ".", TimeoutMin: 1},
-			Pool:         pool,
-			WaitDir:      t.TempDir(),
-			Check:        func() (string, error) { return "head1", nil },
-			Timeout:      time.Minute,
-			Now:          time.Now,
-			LockRetry:    time.Second,
+			Paths:     NewPaths(root),
+			AnchorDir: root,
+			Step:      CommandStep{Command: command, Dir: ".", TimeoutMin: 1},
+			Pool:      pool,
+			WaitDir:   t.TempDir(),
+			Check:     func() (string, error) { return "head1", nil },
+			Timeout:   time.Minute,
+			Now:       time.Now,
+			LockRetry: time.Second,
 		},
 	}
 }
@@ -122,11 +124,14 @@ func TestRunCapture(t *testing.T) {
 				}
 			}
 			stored, found, err := ReadCapture(f.req.Paths)
-			if err != nil || !found || stored != rec {
+			if err != nil || !found || !reflect.DeepEqual(stored, rec) {
 				t.Errorf("ReadCapture() = %+v, %v, %v; want the returned record", stored, found, err)
 			}
 			if rec.Pid != os.Getpid() || rec.Head != "head1" || rec.SlotAcquiredAt == "" || rec.CommandStartedAt == "" || rec.EndedAt == "" {
 				t.Errorf("record = %+v; want the pid, head and the slot, start and end times", rec)
+			}
+			if !slices.Equal(rec.Skip, tt.skip) {
+				t.Errorf("record skip = %v; want the skipped tests %v the capture ran under", rec.Skip, tt.skip)
 			}
 			if _, err := os.Stat(rec.Log); err != nil {
 				t.Errorf("record log %q: %v; want the log file", rec.Log, err)
@@ -208,7 +213,7 @@ func TestRunCapture(t *testing.T) {
 	t.Run("with the only slot held the record stays running without a slot time", func(t *testing.T) {
 		t.Parallel()
 		f := newCaptureFixture(t, "echo x > {baseline_dir}/p.json")
-		lease, err := f.pool.Acquire(context.Background(), gateslot.Holder{Worktree: f.req.WorktreeRoot, Site: "test"})
+		lease, err := f.pool.Acquire(context.Background(), gateslot.Holder{Worktree: f.req.AnchorDir, Site: "test"})
 		if err != nil {
 			t.Fatalf("Acquire() = %v; want nil", err)
 		}

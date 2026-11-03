@@ -12,7 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDriftAwait covers each Done and Stuck way out of the row, the wait on a held capture lock, awaited_at written on a passed capture, a deferral and the commit of the durable directory on every pass.
+// TestDriftAwait covers each Done and Stuck way out of the row, the pass with drift switched off, the wait on a held capture lock, awaited_at written on a passed capture, a deferral and the commit of the durable directory on every pass.
 func TestDriftAwait(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -29,9 +29,22 @@ func TestDriftAwait(t *testing.T) {
 		wantReason  []string
 		wantNoWays  []string
 		wantAwaited bool
-		check       func(t *testing.T, f *baselineFixture)
+		// wantNoCommit is true for a pass that commits nothing.
+		wantNoCommit bool
+		check        func(t *testing.T, f *baselineFixture)
 	}{
 		{name: "no scope record is Done", want: shedengine.Done},
+		{
+			name: "drift switched off is Done with no commit, whatever the capture",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.writeCapture(CaptureRecord{State: CaptureFailed, Reason: "exit 1"})
+				f.disabled = true
+			},
+			want:         shedengine.Done,
+			wantReason:   []string{"drift.enabled = false"},
+			wantNoCommit: true,
+		},
 		{
 			name:  "scope off is Done",
 			setup: func(f *baselineFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeOff}, false) },
@@ -187,7 +200,11 @@ func TestDriftAwait(t *testing.T) {
 			if after, _, _ := ReadScope(f.paths); (after.AwaitedAt != "" && after.AwaitedAt != before.AwaitedAt) != tt.wantAwaited {
 				t.Errorf("awaited_at %q after %q; want written = %v", after.AwaitedAt, before.AwaitedAt, tt.wantAwaited)
 			}
-			if len(f.commits) == 0 || !slices.Equal(f.commits[0], []string{DirRel()}) {
+			if tt.wantNoCommit {
+				if len(f.commits) != 0 {
+					t.Errorf("commits = %v; want none", f.commits)
+				}
+			} else if len(f.commits) == 0 || !slices.Equal(f.commits[0], []string{DirRel()}) {
 				t.Errorf("commits = %v; want the whole durable directory", f.commits)
 			}
 			if tt.check != nil {

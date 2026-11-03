@@ -23,13 +23,14 @@ func NewDriftAwait(name string, deps Deps) *DriftAwait {
 	return &DriftAwait{name: name, deps: deps}
 }
 
-// Call runs one Drift-Await pass and commits the durable drift directory, the capture log included, on every way out.
+// Call runs one Drift-Await pass and commits the durable drift directory, the capture log included, on every way out but one: with drift switched off it is Done at once, committing nothing.
 // It is Done with no scope record, with scope off, with awaited_at set whatever HEAD is, and when a passed capture was taken at HEAD, which it records as awaited_at.
 // A capture holding the lock is waited on without a bound of its own, and the capture record is read only after the lock reads free.
 // A missing, failed or unfinished capture, and a passed one taken at another commit than HEAD, are a Stuck naming its ways forward.
 func (p *DriftAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
+		seam{"Config", d.Config != nil},
 		seam{"Head", d.Head != nil},
 		seam{"BranchPoint", d.BranchPoint != nil},
 		seam{"Commit", d.Commit != nil},
@@ -37,6 +38,9 @@ func (p *DriftAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 	)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
+	}
+	if outcome, pointer, stop := passWhenSwitchedOff(d.Config); stop {
+		return outcome, pointer, nil
 	}
 	outcome, pointer, err := p.await(ctx)
 	return commitOnExit(p.name, d.Commit, []string{DirRel()}, outcome, pointer, err)

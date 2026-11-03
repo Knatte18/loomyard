@@ -22,14 +22,14 @@ func newCompareFixture(t *testing.T, command string) (CompareRequest, *gateslot.
 	t.Helper()
 	f := newCaptureFixture(t, command)
 	return CompareRequest{
-		Paths:        f.req.Paths,
-		WorktreeRoot: f.req.WorktreeRoot,
-		Step:         f.req.Step,
-		Pool:         f.pool,
-		WaitDir:      f.req.WaitDir,
-		Timeout:      time.Minute,
-		Now:          time.Now,
-		LockRetry:    time.Second,
+		Paths:     f.req.Paths,
+		AnchorDir: f.req.AnchorDir,
+		Step:      f.req.Step,
+		Pool:      f.pool,
+		WaitDir:   f.req.WaitDir,
+		Timeout:   time.Minute,
+		Now:       time.Now,
+		LockRetry: time.Second,
 	}, f.pool
 }
 
@@ -70,7 +70,7 @@ func TestRunCompare(t *testing.T) {
 			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
 		}
 		want := "TestA\nTestB\n" + req.Paths.BaselineDir + "\n"
-		if text := readFile(t, filepath.Join(req.WorktreeRoot, "seen.txt")); text != want {
+		if text := readFile(t, filepath.Join(req.AnchorDir, "seen.txt")); text != want {
 			t.Errorf("seen.txt = %q; want %q", text, want)
 		}
 	})
@@ -78,7 +78,7 @@ func TestRunCompare(t *testing.T) {
 	t.Run("the marker reads held while the run waits for a slot and free once it ends", func(t *testing.T) {
 		t.Parallel()
 		req, pool := newCompareFixture(t, "true")
-		lease, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: req.WorktreeRoot, Site: "test"})
+		lease, err := pool.Acquire(context.Background(), gateslot.Holder{Worktree: req.AnchorDir, Site: "test"})
 		if err != nil {
 			t.Fatalf("Acquire() = %v; want nil", err)
 		}

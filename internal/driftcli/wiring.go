@@ -39,9 +39,14 @@ func openWorktree(cmd *cobra.Command) (*worktree, error) {
 	return &worktree{location: location, paths: driftengine.NewPaths(location.AnchorPath())}, nil
 }
 
-// root returns the worktree root a drift command's relative dir is joined onto.
+// root returns the worktree root, which names the capture's job.
 func (w *worktree) root() string {
 	return w.location.WorktreePath()
+}
+
+// anchor returns the anchored directory the capture child starts in and a drift command's relative dir is joined onto.
+func (w *worktree) anchor() string {
+	return w.location.AnchorPath()
 }
 
 // config loads the hub's drift config strictly.

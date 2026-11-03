@@ -93,6 +93,7 @@ func driftAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 	}
 	d := env.Drift
 	err := requireDriftSeams(entry, driftSeams{
+		{"Drift.Config", d.Config},
 		{"Drift.Head", d.Head},
 		{"Drift.BranchPoint", d.BranchPoint},
 		{"Drift.Commit", d.Commit},

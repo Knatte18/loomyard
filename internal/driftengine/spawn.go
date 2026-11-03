@@ -41,8 +41,8 @@ type spawnedChild struct {
 type SpawnRequest struct {
 	// Executable is the lym binary the child runs.
 	Executable string
-	// WorktreeRoot is the directory the child runs in.
-	WorktreeRoot string
+	// AnchorDir is the absolute anchored directory the child runs in, since every lym verb resolves its worktree from a cwd equal to it.
+	AnchorDir string
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
 	// RunProcDir and Owner locate the run's process records, where the child is registered.
@@ -62,7 +62,7 @@ type SpawnRequest struct {
 	breakawayRefused func(error) bool
 }
 
-// StartCapture starts `<executable> drift capture-child` detached in the worktree root and returns its pid once the capture record carries that pid, in any state.
+// StartCapture starts `<executable> drift capture-child` detached in the anchored directory and returns its pid once the capture record carries that pid, in any state.
 // The child writes that record after its precondition held under the capture lock, so the caller moves the run on only after the precondition held.
 // It refuses while the capture lock reads held, and returns an error naming the child's log when the child ends, or the bound runs out, before the record.
 func StartCapture(req SpawnRequest) (int, error) {
@@ -85,13 +85,13 @@ func StartCapture(req SpawnRequest) (int, error) {
 	defer logFile.Close()
 
 	argv := []string{req.Executable, "drift", "capture-child"}
-	child, err := req.startChild(childSpawn{argv: argv, dir: req.WorktreeRoot, log: logFile, breakaway: true})
+	child, err := req.startChild(childSpawn{argv: argv, dir: req.AnchorDir, log: logFile, breakaway: true})
 	if err != nil && req.refusedBreakaway(err) {
 		if !req.FallbackDetach {
 			return 0, fmt.Errorf("%w: %v", ErrBreakawayRefused, err)
 		}
 		logger.Warn("drift: the capture child was refused breakaway, so it lives only as long as the shell's job", "error", err.Error())
-		child, err = req.startChild(childSpawn{argv: argv, dir: req.WorktreeRoot, log: logFile})
+		child, err = req.startChild(childSpawn{argv: argv, dir: req.AnchorDir, log: logFile})
 	}
 	if err != nil {
 		return 0, fmt.Errorf("drift: start the capture child: %w", err)
@@ -106,7 +106,7 @@ func StartCapture(req SpawnRequest) (int, error) {
 
 // awaitRunningRecord polls the capture record until it carries the child's pid.
 // A capture that failed between two polls still carries it, so any state counts as the start.
-// It fails when the child ends first or RecordWait runs out, naming the child's log and the caller's way forward.
+// It fails when the child ends first or RecordWait runs out, naming the child's log.
 func awaitRunningRecord(req SpawnRequest, child spawnedChild, childLog string) error {
 	reads := func() bool {
 		rec, found, err := ReadCapture(req.Paths)
@@ -135,14 +135,20 @@ func awaitRunningRecord(req SpawnRequest, child spawnedChild, childLog string) e
 	}
 }
 
-// startFailure builds the error of a capture child that did not record its start, with its caller's way forward.
+// startFailure builds the error of a capture child that did not record its start.
+// Under FallbackDetach, the CLI's form, it names the way forward; otherwise the calling row words its own halt around it, so it names the child's log alone.
 func startFailure(req SpawnRequest, childLog, what string) error {
-	wayForward := "read " + childLog + ", then lym loom resume, whose entry captures again"
 	if req.FallbackDetach {
-		wayForward = "read " + childLog + ", then, once lym drift status shows the capture lock free, run lym drift capture again, or lym drift defer followed by lym loom resume"
+		return childNoRecordError{fmt.Sprintf("drift: the capture child %s; way forward: read %s, then, once lym drift status shows the capture lock free, run lym drift capture again, or lym drift defer followed by lym loom resume", what, childLog)}
 	}
-	return fmt.Errorf("drift: the capture child %s; way forward: %s", what, wayForward)
+	return childNoRecordError{fmt.Sprintf("drift: the capture child %s; its log is %s", what, childLog)}
 }
+
+// childNoRecordError is a started capture child that did not record its start.
+// A calling row tells it from an environment fault that kept the child from starting, since only a child that ran and failed is a capture halt.
+type childNoRecordError struct{ text string }
+
+func (e childNoRecordError) Error() string { return e.text }
 
 // startChild starts the child through the spawn seam, or as the real command when none is set.
 func (r SpawnRequest) startChild(spec childSpawn) (spawnedChild, error) {

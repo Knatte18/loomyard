@@ -66,7 +66,7 @@ type Limits struct {
 
 // Holder is the record written beside a held slot's lock.
 type Holder struct {
-	// Worktree is the worktree the holding run works in.
+	// Worktree is the directory the holding run works in: its worktree root, or the anchored directory inside it.
 	Worktree string `yaml:"worktree"`
 	// Site is the command or Go-side site label that holds the slot.
 	Site string `yaml:"site"`

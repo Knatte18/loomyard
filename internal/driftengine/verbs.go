@@ -8,6 +8,7 @@ package driftengine
 import (
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 	"time"
@@ -55,11 +56,17 @@ func wrongRow(verb, row string, st VerbStatus) error {
 // errNoScope is the refusal of a verb that needs a recorded scope.
 var errNoScope = errors.New("drift: no scope is recorded yet; way forward: lym loom status shows the row the run is at")
 
-// RecordScope records the task's regression scope, the baseline agent's one write of it.
-// It is admitted only at Drift-Baseline, once, for scope off, partial or full, with skip given only under partial and required there.
+// RecordScope records the task's regression scope off, partial or full, with skip given only under partial and required there.
+// The baseline agent records it once, at a running Drift-Baseline.
+// The run's parent records or replaces it at a blocked Drift-Baseline or Drift-Await, while no capture runs and before the baseline wait is settled.
+// A replacement keeps the record's other fields, and drops the capture record when the new scope compares a test the capture skipped, since that capture holds no profile of it.
+// The capture record is dropped before the scope is written, so a failed drop leaves the old scope and the call can be repeated.
 func RecordScope(p Paths, st VerbStatus, scope string, skip []string) error {
-	if st.Status.CurrentProducer != captureRowBaseline {
-		return wrongRow("scope", captureRowBaseline, st)
+	row := st.Status.CurrentProducer
+	agent := row == captureRowBaseline && st.Status.State == shedengine.StateRunning
+	parent := (row == captureRowBaseline || row == captureRowAwait) && st.Status.State == shedengine.StateBlocked
+	if !agent && !parent {
+		return fmt.Errorf("drift scope refused: the run is at %s (%s); the baseline agent records the scope at a running %s, and the run's parent records or replaces it at a blocked %s or %s; way forward: lym loom status shows where the run is", orNone(row), st.Status.State, captureRowBaseline, captureRowBaseline, captureRowAwait)
 	}
 	switch {
 	case scope != ScopeOff && scope != ScopePartial && scope != ScopeFull:
@@ -68,13 +75,43 @@ func RecordScope(p Paths, st VerbStatus, scope string, skip []string) error {
 		return fmt.Errorf("drift scope refused: --skip is given with scope %s; way forward: pass --skip only with --scope %s", scope, ScopePartial)
 	case len(skip) == 0 && scope == ScopePartial:
 		return fmt.Errorf("drift scope refused: scope %s names no test to skip; way forward: pass --skip <test> for each skipped test, or --scope %s", ScopePartial, ScopeFull)
+	case parent && st.CaptureHeld:
+		return errors.New("drift scope refused: a capture is running; way forward: wait for it to end (lym drift status shows it), then record the scope again")
 	}
+
 	return UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
-		if found {
+		switch {
+		case !found:
+			return ScopeRecord{Scope: scope, Skip: skip, RecordedAt: stamp(time.Now())}, nil
+		case agent:
 			return cur, fmt.Errorf("drift: the scope is already recorded as %s; way forward: write baseline.md alone and end your turn", cur.Scope)
+		case cur.AwaitedAt != "":
+			return cur, fmt.Errorf("drift scope refused: the baseline wait is already settled, so the scope no longer changes; way forward: settle the drift at the %s halt, whose ways forward lym loom status shows", verifyRow)
 		}
-		return ScopeRecord{Scope: scope, Skip: skip, RecordedAt: stamp(time.Now())}, nil
+		if scope != ScopeOff {
+			if err := dropCaptureSkipping(p, skip); err != nil {
+				return cur, err
+			}
+		}
+		cur.Scope, cur.Skip, cur.RecordedAt = scope, skip, stamp(time.Now())
+		return cur, nil
 	})
+}
+
+// dropCaptureSkipping removes the capture record when the capture left out a test that skip does not, since that capture holds no profile of the test.
+// An absent record is no error.
+func dropCaptureSkipping(p Paths, skip []string) error {
+	capture, found, err := ReadCapture(p)
+	if err != nil || !found {
+		return err
+	}
+	if !slices.ContainsFunc(capture.Skip, func(test string) bool { return !slices.Contains(skip, test) }) {
+		return nil
+	}
+	if err := os.Remove(p.Capture); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("drift: drop the capture taken under the old scope: %w", err)
+	}
+	return nil
 }
 
 // Accept records one drifted test as intended, on behalf of the Drift-Verify agent session or of a caller at a halt.

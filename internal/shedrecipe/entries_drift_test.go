@@ -69,6 +69,7 @@ func TestDriftEntries(t *testing.T) {
 		{"AwaitBuilds", driftAwaitEntry, Config{}, nil, reflect.TypeOf(&driftengine.DriftAwait{}), ""},
 		{"AwaitUnknownKey", driftAwaitEntry, Config{"subject": "decision-record"}, nil, nil, "entry_gate"},
 		{"AwaitNilSleep", driftAwaitEntry, Config{}, func(e *Env) { e.Drift.Sleep = nil }, nil, "Drift.Sleep"},
+		{"AwaitNilConfig", driftAwaitEntry, Config{}, func(e *Env) { e.Drift.Config = nil }, nil, "Drift.Config"},
 		{"VerifyBuilds", driftVerifyEntry, verifyCfg(verifyGate), nil, reflect.TypeOf(&driftengine.DriftVerify{}), ""},
 		{"VerifyUnknownKey", driftVerifyEntry, Config{"subject": "decision-record", "gates": []any{verifyGate}, "enabled": true}, nil, nil, "entry_gate"},
 		{"VerifyMissingSubject", driftVerifyEntry, Config{"gates": []any{verifyGate}}, nil, nil, "way forward: set subject"},

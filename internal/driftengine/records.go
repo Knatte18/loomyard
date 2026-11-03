@@ -113,6 +113,8 @@ type CaptureRecord struct {
 	Pid int `json:"pid"`
 	// Head is the commit the capture ran on.
 	Head string `json:"head"`
+	// Skip is the tests the capture left out, which a scope replacement checks to tell whether the capture holds a profile of each test.
+	Skip []string `json:"skip"`
 	// SlotAcquiredAt is the RFC 3339 time the capture got its gate slot.
 	SlotAcquiredAt string `json:"slot_acquired_at"`
 	// CommandStartedAt is the RFC 3339 time the capture command started.

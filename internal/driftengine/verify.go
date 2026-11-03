@@ -61,7 +61,7 @@ func NewDriftVerify(name string, row Row, verify shuttleengine.GateEntry, deps D
 	return &DriftVerify{name: name, row: row, verify: verify, deps: deps}
 }
 
-// Call runs one Drift-Verify pass and commits the durable drift directory on every way out.
+// Call runs one Drift-Verify pass and commits the durable drift directory on every way out but one: with drift switched off it is Done at once, committing nothing.
 // A pass with no scope record, scope off or a waiver is Done with no compare.
 // Otherwise it settles the agent session an interrupted entry left and rules the acceptances the parent stood by.
 // It halts for the parent on an unruled acceptance under scope full and on a missing baseline.
@@ -85,6 +85,9 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	}
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
+	}
+	if outcome, pointer, stop := passWhenSwitchedOff(d.Config); stop {
+		return outcome, pointer, nil
 	}
 	outcome, pointer, err := p.pass(ctx)
 	return commitOnExit(p.name, d.Commit, []string{DirRel()}, outcome, pointer, err)

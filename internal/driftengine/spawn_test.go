@@ -29,7 +29,7 @@ func newSpawnFixture(t *testing.T, onSpawn func(f *spawnFixture, spec childSpawn
 	root := t.TempDir()
 	f.req = SpawnRequest{
 		Executable:       "lym",
-		WorktreeRoot:     root,
+		AnchorDir:        root,
 		Paths:            NewPaths(root),
 		RunProcDir:       t.TempDir(),
 		Owner:            "slug",
@@ -93,8 +93,8 @@ func TestStartCapture(t *testing.T) {
 		if got.err != nil || got.pid != os.Getpid() {
 			t.Fatalf("StartCapture() = %d, %v; want %d, nil", got.pid, got.err, os.Getpid())
 		}
-		if want := []string{"lym", "drift", "capture-child"}; len(f.spawns) != 1 || strings.Join(f.spawns[0].argv, " ") != strings.Join(want, " ") || !f.spawns[0].breakaway {
-			t.Errorf("spawns = %+v; want one breakaway start of %v", f.spawns, want)
+		if want := []string{"lym", "drift", "capture-child"}; len(f.spawns) != 1 || strings.Join(f.spawns[0].argv, " ") != strings.Join(want, " ") || !f.spawns[0].breakaway || f.spawns[0].dir != f.req.AnchorDir {
+			t.Errorf("spawns = %+v; want one breakaway start of %v in the anchored directory %s", f.spawns, want, f.req.AnchorDir)
 		}
 		records, err := runproc.List(f.req.RunProcDir, f.req.Owner)
 		if err != nil || len(records) != 1 || records[0].Role != runproc.RoleCapture || records[0].PID != os.Getpid() {
@@ -108,9 +108,9 @@ func TestStartCapture(t *testing.T) {
 		exits    bool
 		want     []string
 	}{
-		{"a child that exits without its record, no fallback", false, true, []string{"ended before it recorded its start", "capture-child-", "lym loom resume, whose entry captures again"}},
+		{"a child that exits without its record, no fallback", false, true, []string{"ended before it recorded its start", "its log is", "capture-child-"}},
 		{"a child that exits without its record, with fallback", true, true, []string{"ended before it recorded its start", "capture-child-", "lym drift capture again", "lym drift defer followed by lym loom resume"}},
-		{"a child that stalls past the record bound, no fallback", false, false, []string{"did not record its start within", "lym loom resume, whose entry captures again"}},
+		{"a child that stalls past the record bound, no fallback", false, false, []string{"did not record its start within", "its log is"}},
 		{"a child that stalls past the record bound, with fallback", true, false, []string{"did not record its start within", "lym drift capture again"}},
 	}
 	for _, tt := range failures {

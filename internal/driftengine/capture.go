@@ -25,8 +25,8 @@ const CaptureHaltPrefix = "drift capture halt: "
 type CaptureRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
-	// WorktreeRoot is the task worktree the command's relative dir is joined onto.
-	WorktreeRoot string
+	// AnchorDir is the absolute anchored directory the command's relative dir is joined onto.
+	AnchorDir string
 	// Step is the declared capture command.
 	Step CommandStep
 	// Pool is the gate-slot pool the capture takes one slot of.
@@ -74,7 +74,7 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		return CaptureRecord{}, err
 	}
 
-	rec := CaptureRecord{State: CaptureRunning, Pid: os.Getpid(), Head: head}
+	rec := CaptureRecord{State: CaptureRunning, Pid: os.Getpid(), Head: head, Skip: req.Skip}
 	if err := WriteCapture(p, rec); err != nil {
 		return CaptureRecord{}, err
 	}
@@ -87,16 +87,16 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 
 	rec.Log = logPathFor(p.LogsDir, "capture", req.Now())
 	outcome, err := runStep(ctx, stepRun{
-		WorktreeRoot: req.WorktreeRoot,
-		Step:         req.Step,
-		Pool:         req.Pool,
-		WaitDir:      req.WaitDir,
-		Site:         "drift capture",
-		BaselineDir:  p.BaselineDir,
-		SkipFile:     p.SkipFile,
-		LogPath:      rec.Log,
-		Timeout:      req.Timeout,
-		Now:          req.Now,
+		AnchorDir:   req.AnchorDir,
+		Step:        req.Step,
+		Pool:        req.Pool,
+		WaitDir:     req.WaitDir,
+		Site:        "drift capture",
+		BaselineDir: p.BaselineDir,
+		SkipFile:    p.SkipFile,
+		LogPath:     rec.Log,
+		Timeout:     req.Timeout,
+		Now:         req.Now,
 		OnSlot: func(at time.Time) {
 			rec.SlotAcquiredAt = stamp(at)
 			_ = WriteCapture(p, rec)
@@ -224,18 +224,18 @@ func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error)
 
 	result := SideResult{Dir: dir, Log: logPathFor(p.LogsDir, "side-capture", req.Now())}
 	outcome, err := runStep(ctx, stepRun{
-		WorktreeRoot: req.WorktreeRoot,
-		Step:         req.Step,
-		Pool:         req.Pool,
-		WaitDir:      req.WaitDir,
-		Site:         "drift side capture",
-		BaselineDir:  dir,
-		SkipFile:     p.SkipFile,
-		LogPath:      result.Log,
-		Timeout:      req.Timeout,
-		Now:          req.Now,
-		OnSlot:       func(time.Time) {},
-		OnStart:      func(int, time.Time) {},
+		AnchorDir:   req.AnchorDir,
+		Step:        req.Step,
+		Pool:        req.Pool,
+		WaitDir:     req.WaitDir,
+		Site:        "drift side capture",
+		BaselineDir: dir,
+		SkipFile:    p.SkipFile,
+		LogPath:     result.Log,
+		Timeout:     req.Timeout,
+		Now:         req.Now,
+		OnSlot:      func(time.Time) {},
+		OnStart:     func(int, time.Time) {},
 	})
 	if err != nil {
 		return result, err

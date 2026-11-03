@@ -150,7 +150,9 @@ func TestSeatTables(t *testing.T) {
 		t.Parallel()
 		in := baseline(t)
 		in.ScopeNote = "A scope is already recorded; write baseline.md alone against it."
-		table, err := BaselineTable(in, cfg, seatRegistry(t))
+		captured := cfg
+		captured.Capture = CommandStep{Command: "dotnet test Suite {baseline_dir}", Dir: "."}
+		table, err := BaselineTable(in, captured, seatRegistry(t))
 		if err != nil {
 			t.Fatalf("BaselineTable() = _, %v; want nil error", err)
 		}
@@ -169,7 +171,7 @@ func TestSeatTables(t *testing.T) {
 		}
 
 		prompt := seatPrompt(t, in.StencilsDir, in.WorktreeRoot, in.Slug, table)
-		for _, want := range []string{in.BaselineReportPath, in.DecisionRecordPath, in.ScopeNote, "the-parent"} {
+		for _, want := range []string{in.BaselineReportPath, in.DecisionRecordPath, in.ScopeNote, "the-parent", "`dotnet test Suite {baseline_dir}`, run in `.`", "project references"} {
 			if !strings.Contains(prompt, want) {
 				t.Errorf("baseline prompt lacks %q", want)
 			}
@@ -184,6 +186,9 @@ func TestSeatTables(t *testing.T) {
 		entryPrompt := seatPrompt(t, entry.StencilsDir, entry.WorktreeRoot, entry.Slug, entryTable)
 		if !strings.Contains(entryPrompt, `lym board get '{"slug":"fix-the-thing"}'`) {
 			t.Errorf("board-entry prompt lacks the board reading")
+		}
+		if !strings.Contains(entryPrompt, "The capture command is not declared yet") {
+			t.Errorf("a prompt with no capture declared does not say so")
 		}
 		if strings.Contains(entryPrompt, "the decision record at `"+entry.DecisionRecordPath+"`, in which") || strings.Contains(prompt, "lym board get") {
 			t.Errorf("the two subjects render alike; want the decision-record and board-entry readings distinct")

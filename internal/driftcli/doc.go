@@ -11,10 +11,11 @@
 // The run status is read under its lock from the self run, and the agent-session mark from the run counter; together they tell the Drift-Verify agent session from a caller at a halt.
 // HEAD, the branch point and the tracked dirty paths come from the worktree's fabric: the branch point is the merge base of HEAD with the parent branch the origin record names.
 // The gate slots come from hubgeom.GateSlots, and the capture child is registered under the run-process directory with the worktree name as owner.
+// The engine is told the anchored directory lymcwd resolves, where the capture child starts and a command step's relative dir is joined on.
 //
 // # Capture
 //
-// `capture` checks the main capture's precondition, then starts `<this binary> drift capture-child` detached with breakaway, falling back to a plain detached start where Windows refuses breakaway, and returns once the child's capture record reads running.
+// `capture` checks the main capture's precondition, then starts `<this binary> drift capture-child` detached in the worktree's anchored directory with breakaway, falling back to a plain detached start where Windows refuses breakaway, and returns once the child's capture record reads running.
 // The child holds the capture's named job, runs the capture under the capture lock, re-checks the precondition under that lock and releases the job as its last act.
 // It writes nothing to its log once the capture has returned, because the Drift-Await row may commit the log once the lock is free.
 // Under go test the start returns an error and spawns nothing.

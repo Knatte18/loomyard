@@ -65,6 +65,20 @@ func commitOnExit(name string, commit func([]string) error, relPaths []string, o
 	return outcome, pointer, err
 }
 
+// passWhenSwitchedOff returns a Done naming the switch, and stop true, when the hub's drift config has enabled off.
+// The entry gate reads drift.enabled only when the run first enters a row, so this check lets a resume pass a row the run already entered once the switch went off, in any layer.
+// A config that fails to load is a Stuck naming its error and lym loom resume.
+func passWhenSwitchedOff(config func() (Config, error)) (outcome shedengine.Outcome, pointer shedengine.OutputPointer, stop bool) {
+	cfg, err := config()
+	if err != nil {
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("%v; then lym loom resume", err)}, true
+	}
+	if !cfg.Enabled {
+		return shedengine.Done, shedengine.OutputPointer{Reason: "drift is switched off (drift.enabled = false), so the row passes"}, true
+	}
+	return "", shedengine.OutputPointer{}, false
+}
+
 // seam names one Deps field and whether the producer was told it.
 type seam struct {
 	name string

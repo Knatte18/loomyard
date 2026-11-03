@@ -128,8 +128,17 @@ type BaselineInputs struct {
 	ScopeNote string
 }
 
+// captureReading returns the sentence part naming the declared capture command and its run directory, which the baseline agent judges the suite's reach from.
+func captureReading(step CommandStep) string {
+	if step.Command == "" {
+		return "not declared yet, so judge the suite's reach from the repository's test setup alone"
+	}
+	return fmt.Sprintf("`%s`, run in `%s` under the anchored directory", step.Command, step.Dir)
+}
+
 // BaselineTable builds the seatengine.Table of one Drift-Baseline spawn: one lead whose only output is baseline.md.
 // An empty required field of in is refused by name, and cfg.BaselineModel is resolved against reg.
+// The prompt names cfg.Capture's command, so the agent can check whether the suite reaches the task's change.
 // The table carries no gate and no scope record output, since Go writes the record and a fresh spawn archives its outputs.
 func BaselineTable(in BaselineInputs, cfg Config, reg modelspec.Registry) (seatengine.Table, error) {
 	err := requireTold("BaselineTable", []struct{ field, value string }{
@@ -156,6 +165,7 @@ func BaselineTable(in BaselineInputs, cfg Config, reg modelspec.Registry) (seate
 		Timeout:    baselineTimeout,
 		Values: map[string]string{
 			"subject_reading": reading,
+			"capture_command": captureReading(cfg.Capture),
 			"baseline_path":   in.BaselineReportPath,
 			"scope_note":      in.ScopeNote,
 		},

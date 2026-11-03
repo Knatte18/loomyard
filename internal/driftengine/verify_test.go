@@ -145,7 +145,7 @@ func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verify
 
 	d := &f.deps
 	d.Config = func() (Config, error) {
-		return Config{Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}}, nil
+		return Config{Enabled: true, Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}}, nil
 	}
 	d.Seats = f.seats
 	d.Now = func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 700_000_000, time.UTC) }
@@ -285,6 +285,20 @@ func TestDriftVerify(t *testing.T) {
 		}
 	})
 
+	t.Run("drift switched off passes a run with no counted capture, with no compare and no commit", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t, full, nil)
+		f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+		f.deps.Config = func() (Config, error) { return Config{}, nil }
+		outcome, pointer, err := f.call()
+		if err != nil || outcome != shedengine.Done || !strings.Contains(pointer.Reason, "drift.enabled = false") {
+			t.Fatalf("Call() = %q, %v (%s); want Done naming the switch", outcome, err, pointer.Reason)
+		}
+		if len(f.events) != 0 || len(f.commits) != 0 {
+			t.Errorf("events %v, commits %v; want no compare, agent or commit", f.events, f.commits)
+		}
+	})
+
 	t.Run("no counted capture is a decision halt naming the waiver under every scope", func(t *testing.T) {
 		t.Parallel()
 		rows := []struct {
@@ -322,7 +336,7 @@ func TestDriftVerify(t *testing.T) {
 		t.Parallel()
 		for _, scope := range []ScopeRecord{partial, full} {
 			f := newVerifyFixture(t, scope, nil)
-			f.deps.Config = func() (Config, error) { return Config{}, nil }
+			f.deps.Config = func() (Config, error) { return Config{Enabled: true}, nil }
 			outcome, pointer, err := f.call()
 			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, "lym config drift", "lym loom resume")
 		}
@@ -805,7 +819,7 @@ func TestDriftVerify(t *testing.T) {
 			f := newVerifyFixture(t, full, nil)
 			f.compares = []CompareResult{failingCompare, passingCompare}
 			f.deps.Config = func() (Config, error) {
-				return Config{Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}, VerifyInteractive: true}, nil
+				return Config{Enabled: true, Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}, VerifyInteractive: true}, nil
 			}
 			f.seats = gateLoopSeats(t, []func(){f.sessionAccept()})
 			f.deps.Seats = f.seats

@@ -24,9 +24,15 @@ Also read the repository's README and its test setup, which name how the reposit
 ## Step 2 — Decide the scope
 
 The regression suite records a profile of the code's behavior on the task's branch point, and a later compare checks the task's code against it.
-Choose the scope that fits what the task changes:
 
-- `off` for a task that changes the model's behavior on purpose, so a comparison against the old behavior would only report the intended change.
+First check whether the suite can see the change at all.
+The capture command is {{.capture_command}}.
+Find the projects or packages that command builds and runs, follow their project references, imports or build dependencies, and check whether any of them reaches a file the task changes.
+When none does, or the task touches no code the suite runs, such as documentation, rule files or test code outside the suite, the scope is `off`: a capture would spend its time on a suite the change cannot move.
+
+Otherwise choose the scope that fits what the task changes:
+
+- `off` for a task the suite cannot reach, as above, or one that changes the model's behavior on purpose, so a comparison against the old behavior would only report the intended change.
 - `partial` for a task that changes some behavior on purpose; name each test that will drift totally with `--skip <test>`, and leave the rest in the compare.
 - `full` for a pure refactoring, where nothing may drift.
 

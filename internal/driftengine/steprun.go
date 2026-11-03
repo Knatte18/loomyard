@@ -28,8 +28,8 @@ const stampLayout = "20060102T150405.000Z"
 
 // stepRun is one drift command to run.
 type stepRun struct {
-	// WorktreeRoot is the task worktree a relative step dir is joined onto.
-	WorktreeRoot string
+	// AnchorDir is the absolute anchored directory a relative step dir is joined onto.
+	AnchorDir string
 	// Step is the declared command.
 	Step CommandStep
 	// Pool is the gate-slot pool the run takes one slot of.
@@ -96,7 +96,7 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	cmd := exec.Command(shellName, shellFlag, command)
 	cmd.Dir = run.Step.Dir
 	if !filepath.IsAbs(cmd.Dir) {
-		cmd.Dir = filepath.Join(run.WorktreeRoot, cmd.Dir)
+		cmd.Dir = filepath.Join(run.AnchorDir, cmd.Dir)
 	}
 	cmd.Env = gateslot.HolderEnv(slices.Concat(os.Environ(), renderEnv(run.Step.Env)), lease, limits.Tier0Parallel)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
@@ -146,7 +146,7 @@ func acquireSlot(ctx context.Context, run stepRun) (*gateslot.Lease, gateslot.Li
 	if err != nil {
 		return nil, gateslot.Limits{}, err
 	}
-	lease, err := run.Pool.Acquire(ctx, gateslot.Holder{Worktree: run.WorktreeRoot, Site: run.Site})
+	lease, err := run.Pool.Acquire(ctx, gateslot.Holder{Worktree: run.AnchorDir, Site: run.Site})
 	if removeErr := os.Remove(waitPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		logger.Warn("drift: removing the gate wait record failed", "path", waitPath, "error", removeErr.Error())
 	}
