@@ -7,6 +7,7 @@ package loomcli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -519,6 +520,46 @@ func TestReportOfRunKeepsOnlyTheRunsOwnEntry(t *testing.T) {
 	}
 	if !got.Unreachable || len(got.Branches) != 1 {
 		t.Errorf("reportOfRun(report, %q) = %+v; want the other fields unchanged", "child", got)
+	}
+}
+
+// TestPushRidingOutBusyLock covers the landing push's retry: a busy push lock is retried after each pause in turn, and any other outcome ends the retry at once.
+func TestPushRidingOutBusyLock(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	busy := fmt.Errorf("push: %w", fabricengine.ErrPushLockBusy)
+	other := errors.New("boom")
+	pauses := []time.Duration{time.Second, 2 * time.Second}
+	tests := []struct {
+		name string
+		// results are the errors the push returns, one per call.
+		results    []error
+		wantErr    error
+		wantSleeps []time.Duration
+	}{
+		{"LandsAtOnce", []error{nil}, nil, nil},
+		{"LandsAfterABusyLock", []error{busy, nil}, nil, pauses[:1]},
+		{"OtherFailureEndsAtOnce", []error{other}, other, nil},
+		{"OtherFailureAfterABusyLock", []error{busy, other}, other, pauses[:1]},
+		{"BusyThroughEveryPause", []error{busy, busy, busy}, busy, pauses},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			push := func() error { calls++; return tt.results[calls-1] }
+			var slept []time.Duration
+			err := pushRidingOutBusyLock(push, pauses, func(d time.Duration) { slept = append(slept, d) })
+			if !errors.Is(err, tt.wantErr) || (tt.wantErr == nil && err != nil) {
+				t.Errorf("pushRidingOutBusyLock() = %v; want %v", err, tt.wantErr)
+			}
+			if calls != len(tt.results) {
+				t.Errorf("push ran %d times; want %d", calls, len(tt.results))
+			}
+			if !slices.Equal(slept, tt.wantSleeps) {
+				t.Errorf("slept %v; want %v", slept, tt.wantSleeps)
+			}
+		})
 	}
 }
 

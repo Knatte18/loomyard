@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // StatusPushLockWait is the bounded push-lock wait `commit-records` passes, and the default of the wait Remove gives a push of the pair for the pair's teardown lock.
@@ -23,7 +24,7 @@ const StatusPushLockWait = 30 * time.Second
 const LockWaitUnbounded time.Duration = 0
 
 // ErrPushLockBusy is wrapped by the error a bounded push returns when the push lock is still held once its wait ran out.
-// Nothing was pushed.
+// Nothing was pushed, and the error names the lock's holder, its pid and how long it has held the lock, when the holder recorded them.
 var ErrPushLockBusy = errors.New("fabricengine: push lock busy")
 
 // IsPushRejected reports whether err carries a remote's non-fast-forward rejection of a push.
@@ -54,8 +55,10 @@ func acquirePushLock(lockWait time.Duration) func(lockPath string) (*lock.FileLo
 }
 
 // pushLockBusyError is the error of a synchronous push whose first acquire of the push lock under lockDir missed its wait.
+// It names the lock's holder as its holder record gives it.
 func pushLockBusyError(lockDir string, lockWait time.Duration) error {
-	return fmt.Errorf("%w: %s still held after %s; neither side was pushed", ErrPushLockBusy, filepath.Join(lockDir, weftPushLockFile), lockWait)
+	holder := describePushLockHolder(lockDir, time.Now(), proc.IsAlive)
+	return fmt.Errorf("%w: %s still held after %s, %s; neither side was pushed", ErrPushLockBusy, filepath.Join(lockDir, weftPushLockFile), lockWait, holder)
 }
 
 // PushAnchored pushes unpushed commits in l's weft sibling worktree rebase-free.

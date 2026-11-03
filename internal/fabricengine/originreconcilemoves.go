@@ -58,6 +58,8 @@ func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, p
 	pushPath := ""
 	writeName := busyWeftWriteLock
 	pushName := busyWeftPushLock
+	// weftLockDir is the weft's lock directory, whose push lock gets a holder record; it stays empty on Bolt.
+	weftLockDir := ""
 	if bolt {
 		writePath = filepath.Join(worktree, BoardWriteLockFile)
 		pushPath = filepath.Join(worktree, gitrepo.PushLockFileName)
@@ -68,6 +70,7 @@ func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, p
 		if err != nil {
 			return nil, "", false, err
 		}
+		weftLockDir = lockDir
 		writePath = filepath.Join(lockDir, weftWriteLockFile)
 		pushPath = filepath.Join(lockDir, weftPushLockFile)
 	}
@@ -88,8 +91,12 @@ func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, p
 		_ = writeLock.Release()
 		return nil, pushName, true, nil
 	}
+	releasePush := pushLock.Release
+	if weftLockDir != "" {
+		releasePush = holdPushLock(pushLock, weftLockDir, time.Now())
+	}
 	return func() {
-		_ = pushLock.Release()
+		_ = releasePush()
 		_ = writeLock.Release()
 	}, "", false, nil
 }

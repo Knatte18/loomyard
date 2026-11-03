@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -114,7 +115,7 @@ func takePending(lockDir, side string) (req PushSpawn, found bool, err error) {
 }
 
 // coalesceFlagged is the holder loop of fabric.push.lock under lockDir.
-// It marks the owed sides pending, acquires the lock and runs step with the owed flags taken before each run, looping while step reports progress.
+// It marks the owed sides pending, acquires the lock, writes its holder record and runs step with the owed flags taken before each run, looping while step reports progress.
 // After the last run it releases the lock and re-reads the flags:
 // a flag of an owed side set again sends it back to acquiring, and a flag of a side it does not push is respawned as a detached push of that side.
 // acquired is false only when the first acquire missed, which leaves the commits and the flags to the current holder;
@@ -135,7 +136,7 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 			return acquired, nil
 		}
 		acquired = true
-		if err := runHeld(held, lockDir, owed, step); err != nil {
+		if err := runHeld(holdPushLock(held, lockDir, time.Now()), lockDir, owed, step); err != nil {
 			return true, err
 		}
 
@@ -147,10 +148,10 @@ func coalesceFlagged(lockDir string, owed map[string]PushSpawn, acquire func(loc
 	}
 }
 
-// runHeld runs step under held, taking the owed flags before each run, and releases held before returning.
-func runHeld(held *lock.FileLock, lockDir string, owed map[string]PushSpawn, step func() (bool, error)) (err error) {
+// runHeld runs step under the held push lock, taking the owed flags before each run, and calls release, the lock's release, before returning.
+func runHeld(release func() error, lockDir string, owed map[string]PushSpawn, step func() (bool, error)) (err error) {
 	defer func() {
-		if releaseErr := held.Release(); err == nil {
+		if releaseErr := release(); err == nil {
 			err = releaseErr
 		}
 	}()

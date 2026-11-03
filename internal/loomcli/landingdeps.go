@@ -344,8 +344,10 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 		},
 		// PushTask passes the run's pre-push check first, whose stop is returned as the push's error.
 		PushTask: check.guardedPush(func() error {
-			_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
-			return err
+			return pushRidingOutBusyLock(func() error {
+				_, err := fabricengine.PushPairAnchored(l, fabricengine.EnvSyncOptions(), fabricengine.StatusPushLockWait)
+				return err
+			}, landingPushRetryPauses, time.Sleep)
 		}),
 		// CommitsMissing reads over the task pair, whose repository holds the merged head once the pair has fetched it.
 		CommitsMissing: func(merged, task string) ([]string, error) {
@@ -380,6 +382,25 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
 	}
+}
+
+// landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.
+// Another session's push holds the lock only while git runs, so the attempts ride out such contention for minutes before the row halts.
+var landingPushRetryPauses = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute}
+
+// pushRidingOutBusyLock runs push, and while its error wraps fabricengine.ErrPushLockBusy, logs it, sleeps the next of pauses and runs push again.
+// It returns nil once a push lands, the first error that is no busy lock, and the last busy error once pauses run out.
+func pushRidingOutBusyLock(push func() error, pauses []time.Duration, sleep func(time.Duration)) error {
+	err := push()
+	for _, pause := range pauses {
+		if !errors.Is(err, fabricengine.ErrPushLockBusy) {
+			return err
+		}
+		logger.Info("loomcli: the task branch push found the push lock held; retrying after a pause", "pause", pause, "cause", err)
+		sleep(pause)
+		err = push()
+	}
+	return err
 }
 
 // watchFileChanges returns a channel that delivers a value whenever the file at path is created, written, renamed or removed, with the function that ends the watch.

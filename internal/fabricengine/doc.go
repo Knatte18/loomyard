@@ -773,6 +773,10 @@
 // The last holder to release therefore always sees a flag set after its last push, and no committed transition is left unpushed.
 // A synchronous pusher returns `ErrPushLockBusy` only when its first acquire misses its wait; a missed re-acquire after its own push landed returns nil.
 // A holder that hangs delays every later push of that records worktree until it exits.
+// Every holder of `fabric.push.lock` writes a holder record, `fabric.push.holder` beside the lock, with its pid and the time it took the lock, and removes it before it releases the lock.
+// The error wrapping `ErrPushLockBusy` names that holder, how long it has held the lock and whether it still runs, so an operator can tell a slow push from a hung one.
+// The lock is an OS lock its holder's exit frees, so a dead holder never keeps it and nothing clears it by hand;
+// a record naming a pid with no running process may be stale, left by a holder that died, and the next holder overwrites it.
 //
 // The hub-wide scratch tree also holds `AdoptScratchDir(hub)`, the adopt check's files, and `FrontTaskScratchDir(hub)`, the front-task record and its action output, as sibling directories.
 //

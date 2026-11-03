@@ -497,8 +497,9 @@ func (f *Fabric) lockWeftForReplay() (release func(), err error) {
 		_ = writeLock.Release()
 		return nil, fmt.Errorf("fabricengine: acquire push lock: %w", err)
 	}
+	releasePush := holdPushLock(pushLock, lockDir, time.Now())
 	return func() {
-		_ = pushLock.Release()
+		_ = releasePush()
 		_ = writeLock.Release()
 	}, nil
 }
