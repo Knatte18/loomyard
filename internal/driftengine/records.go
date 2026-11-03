@@ -92,6 +92,14 @@ type ScopeRecord struct {
 	HaltNamedAt string `json:"halt_named_at"`
 	// GateHaltAt is the time of the dirty-tree or test-gate Stuck Drift-Verify last returned, formatted as time.RFC3339 in UTC.
 	GateHaltAt string `json:"gate_halt_at"`
+	// BaselineHead is the commit of the baseline the last compare read, the task's branch point.
+	BaselineHead string `json:"baseline_head"`
+	// ComparedHead is the commit the last compare ran on.
+	ComparedHead string `json:"compared_head"`
+	// ComparedAt is the time of the last compare, formatted as time.RFC3339 in UTC, and empty before the first.
+	ComparedAt string `json:"compared_at"`
+	// ComparePassed reports whether the last compare showed no drift.
+	ComparePassed bool `json:"compare_passed"`
 }
 
 // Unruled returns the accepted entries whose ruling is RulingUnruled.

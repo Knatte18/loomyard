@@ -36,6 +36,9 @@ The artifact has two consumers today, both in `internal/landingshed`:
 - **`Finalize`** uses `LandingMessage` — the title, a blank line, the body with its leading whitespace trimmed, then, after a blank line, the credit block Go composes from `landing.yaml`'s `credit_*` keys and the engines that ran a session in the task — as the landing merge commit's message.
   The pull request's body carries the same body and credit block.
 
+Both consumers append the task's regression check after the body and before the credit block, a `## Regression check` section `internal/driftengine` renders from the task's Drift records, when the task has one.
+The artifact never holds that section itself, so it reaches the pull request and the landing commit whichever producer wrote the artifact last.
+
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
 `Publish`'s read is reached only when the parent branch requires a pull request: it opens one from the artifact, or refreshes an open one's title and body, so a re-run Publish carries a rewritten description onto the pull request.
 

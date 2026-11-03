@@ -32,6 +32,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 	const recordedURL = "https://github.com/acme/widgets/pull/7"
 	const wantCredit = "Created using\n - LoomYard\n - Test Author <test@example.com>"
 	const wantGitHubMerge = "Merge 7|task-head|true|A landing title|A landing body.\n\n" + wantCredit
+	const wantGitHubMergeWithVerdict = "Merge 7|task-head|true|A landing title|A landing body.\n\n" + testVerdict + "\n\n" + wantCredit
 	statusScript := func(calls ...scriptedCall) map[string][]scriptedCall {
 		return map[string][]scriptedCall{"Status": calls}
 	}
@@ -62,9 +63,11 @@ func TestFinalize_PullRequest(t *testing.T) {
 		record     *pullrequest.Record
 		scripts    map[string][]scriptedCall
 		squashOff  bool
-		pushErr    error
-		merges     []mergeCallResult
-		ffErr      error
+		// verdict is what Deps.DriftVerdict answers; empty leaves the seam nil.
+		verdict string
+		pushErr error
+		merges  []mergeCallResult
+		ffErr   error
 		// taskEmpty makes the task branch hold no commit beyond its parent.
 		taskEmpty bool
 		// taskErr makes the TaskHasCommits seam fail.
@@ -158,6 +161,10 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantCalls: []string{"Status 7", strings.Replace(wantGitHubMerge, "|true|", "|false|", 1)},
 		},
 		{
+			name: "TheGitHubMergeMessageCarriesTheBodyThenTheRegressionCheckThenTheCredit", parentMode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}), verdict: testVerdict,
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push", wantCalls: []string{"Status 7", wantGitHubMergeWithVerdict},
+		},
+		{
 			name: "AMergeInRequiredErrorAfterTheGitHubMergeRetriesTheLocalMergeWithNoSecondGitHubMerge", parentMode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}),
 			merges:      []mergeCallResult{{err: &fabricengine.ErrMergeInRequired{}}, {result: fabricengine.MergeResult{Committed: true}}},
 			wantOutcome: shedengine.Done, wantMerges: 2, wantOrder: "task-push,fast-forward,merge,merge,mark,push", wantCalls: []string{"Status 7", wantGitHubMerge},
@@ -236,6 +243,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 			deps := newTestDeps(t)
 			deps.Slug = "me"
 			deps.Config.Squash = !tt.squashOff
+			if tt.verdict != "" {
+				deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }
+			}
 			deps.MarkTaskDone = func() error {
 				order = append(order, "mark")
 				return nil
@@ -325,6 +335,31 @@ func TestFinalize_PullRequest(t *testing.T) {
 			}
 			if _, found, rerr := pullrequest.ReadRecord(deps.PullRequest.RecordPath, deps.PullRequest.RecordLockPath); rerr != nil || (tt.wantNoRecord && found) || (tt.wantRecordKept && !found) {
 				t.Errorf("ReadRecord() found = %v, error = %v; want no record left: %v, record kept: %v", found, rerr, tt.wantNoRecord, tt.wantRecordKept)
+			}
+		})
+	}
+}
+
+// TestWithSection asserts a section follows the trimmed body after a blank line, stands alone after a body of whitespace, and leaves the body as it is when empty.
+func TestWithSection(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    string
+		section string
+		want    string
+	}{
+		{"EmptySectionLeavesTheBodyUnchanged", "Body\n", "", "Body\n"},
+		{"SectionFollowsTheTrimmedBodyAfterABlankLine", "Body\n\n", testVerdict, "Body\n\n" + testVerdict},
+		{"WhitespaceOnlyBodyIsTheSectionAlone", " \n\t\n", testVerdict, testVerdict},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := withSection(tt.body, tt.section); got != tt.want {
+				t.Errorf("withSection(%q, %q) = %q; want %q", tt.body, tt.section, got, tt.want)
 			}
 		})
 	}

@@ -4,7 +4,7 @@
 // It reads the receiving branch's beam.yaml `pull_request`, the landing entry's field, the origin and whether the task branch has commits beyond its parent through Deps.PullRequest, and takes no parent lock.
 // A beam.yaml it cannot read is Stuck with Halt naming the worktree and `lym config beam`, and a resolver Halt is Stuck with Halt.
 // A no logs the reason, closes a recorded pull request GitHub reports open with the comment `lym closed this pull request: <reason>`, drops the record and ends Done.
-// A yes pushes the task branch, then finds the pull request the record names or the open one on the task branch, else opens one, sets its title from the change description and its body from the description's body and the credit block, and records its number, URL, base and head, and then waits on it in process.
+// A yes pushes the task branch, then finds the pull request the record names or the open one on the task branch, else opens one, sets its title from the change description and its body from the description's body, the regression check and the credit block, and records its number, URL, base and head, and then waits on it in process.
 // The record's gated head is set to the task head on the first entry only, so a re-entry keeps it, and a record carrying the operator's ending keeps the run's ending when the task head is still the gated one and starts a new review when it is not.
 //
 // The wait has no timeout and wakes at least a second apart, doubling to a minute while nothing changes and back to a second when the task head moves.
@@ -22,7 +22,7 @@
 // The row keeps one interactive agent session per run, in a window of its own in the task worktree, for the operator to discuss the pull request in; the row never waits on its output.
 // After it records the pull request, and before it waits, it reuses the recorded strand when that is live, resumes the recorded session id when the strand is not, and otherwise starts a new session.
 // A review whose record carries the operator's ending gets no session.
-// The session starts from the `landing-template-pr-review` stencil filled with paths only, under the `pr_reviewer` model, with the publish shell guard installed and the pane process registered under the run.
+// The session starts from the `landing-template-pr-review` stencil filled with paths and the regression check, under the `pr_reviewer` model, with the publish shell guard installed and the pane process registered under the run.
 // A start that fails transiently is an error the driver re-steps, and any other start failure is Stuck with Halt naming `lym loom resume`.
 // The row stops the session before each read that may end the review, which is a merged pull request, an approval of the gated head and the continue flag, and resumes it when that read keeps waiting.
 // It stops it at the first wake a pause covers and resumes it at the first uncovered wake, and on every verdict, Stuck and error, and it leaves it running when the context is cancelled.
@@ -218,11 +218,13 @@
 // and a dirty tree is Stuck with the parent branch untouched, while a failing gate runs the merge fixer.
 // After each merge of the parent and before the parent-side merge, Finalize commits the parent pair's own run records through the told Deps.CommitParentRecords, so a sibling run's uncommitted status record does not trip the merge guard;
 // a clean subtree is a no-op, an absent seam skips the step, and a commit failure is Stuck naming the parent pair and its run records, with nothing merged.
-// The landing commit carries the change description, then a blank line and the credit block, written as plain lines, never as git trailers.
+// The landing commit carries the change description, then a blank line and the regression check, then a blank line and the credit block, written as plain lines, never as git trailers.
+// The regression check is the section the told Deps.DriftVerdict renders from the task's Drift records, so a check the Drift rows ran reaches the pull request and the landing commit whether or not Describe rewrote the description after it; an empty section, and a nil seam, add nothing.
+// Finalize reads it before any parent-side mutation, and PR-Review each time it sets the pull request's body; a read failure is an error.
 // With landing.yaml's credit on, the block is credit_heading, then one ` - <item>` line for credit_loomyard and for the credit_engines text of each engine the task's sessions ran under, in engine-name order.
 // Finalize reads those engines through the told Deps.EnginesRun before any parent-side mutation, and a read failure is an error with nothing merged.
 // An empty text adds no line, and a block left with no item line, or with credit off, is empty, so the message ends at the body.
-// PR-Review sets the pull request's body to the same body and block, so the commit and its pull request carry one credit.
+// PR-Review sets the pull request's body to the same body, regression check and block, so the commit and its pull request carry one credit.
 // The retired co_authored_by, trailer_text and engine_trailers keys load and lym config reconcile prunes them, carrying no value over.
 // Before the merge of the parent, Finalize reads the per-worktree config files the task changed away from both its fork point and the parent's current tip, so a parent-side change never reads as a task edit, and, at Done, queues one notice about them naming the base, task tip and parent tip for the hub's orchestrator;
 // it never carries those files to the parent,
@@ -268,6 +270,7 @@
 // Its stencil, like the conflict session's, carries the parent directive that internal/parentdirective renders from the told name:
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
 // DescribeTable builds every loom recipe's session from one stencil, which reads the decision record, the board entry, the diff and the run records that exist, rendering an absent record as `(none)`.
+// The stencil also shows the regression check the landing appends, so the session writes no section of its own for it and lists no check it settled as one to run by hand.
 // NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry, the subjects of the commits the beam adds and the entries `lym loom decision add` added to the beam's project record, validates it with the check the Describe gate runs, and commits it.
 // A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.
 //

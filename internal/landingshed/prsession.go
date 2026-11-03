@@ -101,7 +101,7 @@ func (p *PRReview) ensureSession(ctx context.Context, rec pullrequest.Record) (p
 }
 
 // sessionSpec builds the spec the PR-Review session starts under for the pull request rec records.
-// The prompt carries paths only, never file content.
+// The prompt carries paths only, never file content, bar the regression check's section, which no file holds.
 func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, error) {
 	parsed, err := modelspec.Parse(p.deps.Config.PRReviewer)
 	if err != nil {
@@ -124,7 +124,15 @@ func (p *PRReview) sessionSpec(rec pullrequest.Record) (shuttleengine.Spec, erro
 	if err != nil {
 		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
+	verdict, err := p.deps.driftVerdict()
+	if err != nil {
+		return shuttleengine.Spec{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+	}
+	if verdict == "" {
+		verdict = noDriftVerdict
+	}
 	prompt, err := stencil.Fill(template, map[string]string{
+		"drift_verdict":            verdict,
 		"slug":                     p.deps.Slug,
 		"pr_url":                   rec.URL,
 		"task_worktree":            p.deps.WorktreeRoot,

@@ -137,6 +137,8 @@ func TestPRReview_Call(t *testing.T) {
 		taskEmpty bool
 		// taskErr makes the TaskHasCommits seam fail.
 		taskErr error
+		// verdict is what Deps.DriftVerdict answers; empty leaves the seam nil.
+		verdict string
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
@@ -239,6 +241,15 @@ func TestPRReview_Call(t *testing.T) {
 			wantReason: []string{"uncommitted changes: wip.go"},
 			wantCalls:  []string{"Status 7", wantEditSeven, "Status 7"},
 			wantRecord: &pullrequest.Record{Number: 7, URL: recordedURLSeen, Base: "main", Head: "task", GatedHead: recordedGated, Continue: true},
+		},
+		{
+			name: "ReentryRefreshesTheBodyWithTheRegressionCheckOnce", parentMode: "on", origin: githubOrigin, verdict: testVerdict,
+			record:      &pullrequest.Record{Number: 7, URL: recordedURLSeen, GatedHead: recordedGated},
+			dirty:       []string{"wip.go"},
+			scripts:     map[string][]scriptedCall{"Status": {open, {status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: recordedGated}}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantPushes: 1,
+			wantReason: []string{"uncommitted changes: wip.go"},
+			wantCalls:  []string{"Status 7", "Edit 7|Change title|" + wantPRBodyWithVerdict, "Status 7"},
 		},
 		{
 			name: "YesWithNoneRecordedButOneOpenReusesIt", parentMode: "on", origin: githubOrigin,
@@ -347,6 +358,9 @@ func TestPRReview_Call(t *testing.T) {
 			fx := newPRReviewFixture(t, tt.parentMode, tt.parentErr, tt.field, tt.origin, tt.record, tt.scripts, tt.pushErr)
 			fx.dirty = tt.dirty
 			fx.deps.PullRequest.TaskHasCommits = func() (bool, error) { return !tt.taskEmpty, tt.taskErr }
+			if tt.verdict != "" {
+				fx.deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }
+			}
 
 			outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
 
@@ -447,19 +461,40 @@ func TestPRReview_Call(t *testing.T) {
 		}
 	})
 
-	t.Run("FailingEnginesRunReadIsAnErrorWithNoPullRequestCall", func(t *testing.T) {
+	t.Run("RegressionCheckFollowsTheDescriptionBodyBeforeTheCredit", func(t *testing.T) {
 		t.Parallel()
-		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
-		readErr := errors.New("engines run unreadable")
-		fx.deps.EnginesRun = func() ([]string, error) { return nil, readErr }
+		fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}}, nil)
+		fx.deps.DriftVerdict = func() (string, error) { return testVerdict, nil }
 
-		_, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
-
-		if !errors.Is(err, readErr) {
-			t.Errorf("Call() error = %v; want one wrapping %v", err, readErr)
+		if _, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background()); err != nil {
+			t.Fatalf("Call() error = %v", err)
 		}
-		if len(fx.api.calls) != 0 {
-			t.Errorf("Call() made GitHub calls %v; want none", fx.api.calls)
+
+		want := []string{"FindOpen task main", "Create task main|Change title|Change body\n\n" + testVerdict + "\n\nCreated using\n - LoomYard\n - Claude <c@x>", "Status 7"}
+		if diff := cmp.Diff(want, fx.api.calls); diff != "" {
+			t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("FailingCreditOrRegressionReadIsAnErrorWithNoPullRequestCall", func(t *testing.T) {
+		t.Parallel()
+		readErr := errors.New("unreadable")
+		breaks := map[string]func(d *Deps){
+			"EnginesRun":   func(d *Deps) { d.EnginesRun = func() ([]string, error) { return nil, readErr } },
+			"DriftVerdict": func(d *Deps) { d.DriftVerdict = func() (string, error) { return "", readErr } },
+		}
+		for seam, breakSeam := range breaks {
+			fx := newPRReviewFixture(t, "on", nil, "", githubOrigin, nil, nil, nil)
+			breakSeam(&fx.deps)
+
+			_, _, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
+
+			if !errors.Is(err, readErr) {
+				t.Errorf("Call() with %s failing: error = %v; want one wrapping %v", seam, err, readErr)
+			}
+			if len(fx.api.calls) != 0 {
+				t.Errorf("Call() with %s failing made GitHub calls %v; want none", seam, fx.api.calls)
+			}
 		}
 	})
 
@@ -518,6 +553,12 @@ var prReviewFixtureNow = time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 
 // wantPRBody is the pull request body prReviewTestDeps yields: the description's trimmed body, a blank line and the credit block of the one engine that ran.
 const wantPRBody = "Change body\n\nCreated using\n - LoomYard\n - Claude <c@x>"
+
+// wantPRBodyWithVerdict is wantPRBody with testVerdict between the description's body and the credit block.
+const wantPRBodyWithVerdict = "Change body\n\n" + testVerdict + "\n\nCreated using\n - LoomYard\n - Claude <c@x>"
+
+// testVerdict is a regression check section a test tells through Deps.DriftVerdict or DescribeInputs.DriftVerdict.
+const testVerdict = "## Regression check\n\n- Scope: full.\n- Compare: passed at `abc`.\n- Accepted drift: none."
 
 // prReviewTestDeps builds a Deps over a temp record path and a change description titled "Change title" whose body, as summaryparser reads it, is "\nChange body\n", with the credit on and claude the one engine that ran.
 // Every PullRequest seam is filled: the origin is a GitHub one, the parent's mode is on, the task head is "head-new", the worktree is clean, no pause covers the run, and the clock moves only when the wait sleeps.

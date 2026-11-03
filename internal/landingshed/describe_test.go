@@ -21,7 +21,7 @@ import (
 )
 
 const describeStencilFixture = "{{.parent_directive}}\n{{.edit_directive}}\nslug={{.slug}}\ndecision={{.decision_record_path}}\nrun={{.run_record_paths}}\n" +
-	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\n"
+	"out={{.description_path}}\ntask={{.task_branch}}\nparent={{.parent_branch}}\nbase={{.merge_base}}\ndrift={{.drift_verdict}}\n"
 
 // writeRunRecord writes a run record file at <dir>/<name>/webster/summary.md and returns its path.
 func writeRunRecord(t *testing.T, dir, name string) string {
@@ -232,6 +232,34 @@ func TestDescribeSpec_RunRecordsOldestFirstLiveLast(t *testing.T) {
 			t.Errorf("DescribeTable with an unstatable run record = _, %v; want a stat error", err)
 		}
 	})
+}
+
+// TestDescribeSpec_DriftVerdict asserts the prompt shows the told regression check, and a line saying none ran when none is told.
+func TestDescribeSpec_DriftVerdict(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		verdict string
+		want    string
+	}{
+		{"TheToldCheck", testVerdict, testVerdict},
+		{"NoneRan", "", noDriftVerdict},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			in := newDescribeInputs(t)
+			in.DriftVerdict = tt.verdict
+			table, err := DescribeTable(in, Config{Describe: "claude:sonnet"}, modelspec.Registry{})
+			if err != nil {
+				t.Fatalf("DescribeTable = _, %v; want nil error", err)
+			}
+			if prompt := describeLeadPrompt(t, in.StencilsDir, "", table); !strings.Contains(prompt, "drift="+tt.want+"\n") {
+				t.Errorf("prompt %q does not show %q as the regression check", prompt, tt.want)
+			}
+		})
+	}
 }
 
 func TestDescribeSpec_EmptyFieldIsError(t *testing.T) {

@@ -184,6 +184,9 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
+	if err := p.recordCompare(capture.Head, result.Passed); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	if result.Passed {
 		return doneBecause("the compare passed")
 	}
@@ -270,6 +273,18 @@ func (p *DriftVerify) now() time.Time {
 		return time.Now()
 	}
 	return p.deps.Now()
+}
+
+// recordCompare records in the scope record a compare of the current HEAD against the baseline captured at baselineHead, and whether it passed.
+func (p *DriftVerify) recordCompare(baselineHead string, passed bool) error {
+	head, err := p.deps.Head()
+	if err != nil {
+		return err
+	}
+	_, err = p.updateScope(func(cur *ScopeRecord) {
+		cur.BaselineHead, cur.ComparedHead, cur.ComparedAt, cur.ComparePassed = baselineHead, head, stamp(p.now()), passed
+	})
+	return err
 }
 
 // markGateHalt records gate_halt_at when it is unset, so a resume's halt keeps the time it read.
@@ -526,6 +541,10 @@ func (p *DriftVerify) runAgent(ctx context.Context, told VerifyTold) (shedengine
 	}
 	switch outcome {
 	case shedengine.Done:
+		// The agent ends Done only once its table's final compare passed.
+		if err := p.recordCompare(told.BaselineHead, true); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
 		if scope.Scope == ScopeFull && len(scope.Unruled()) > 0 {
 			return p.haltFrom(pointer, false, generalHaltOpening, "the Drift-Verify agent accepted drift that only the run's parent may rule on")
 		}

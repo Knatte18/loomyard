@@ -4,6 +4,7 @@
      which landingshed's PR-Review row fills and hands to shuttle as the session's first prompt, for the tapestry, darn, pawl and sampler recipes alike.
      Every marker below is a top-level {{.X}} substitution and stencil.FillWith requires every marker non-empty:
      slug, pr_url, task_worktree, task_branch, parent_branch, description_path, run_material (the paths the run has among the decision record and the plan directory, one per line),
+     drift_verdict (the regression check's section, or a line saying none ran),
      parent_directive (rendered by internal/parentdirective) and edit_directive (rendered unconditionally by internal/editdirective).
      There are no {{if}}/{{range}} conditionals anywhere in this file. -->
 
@@ -23,6 +24,13 @@ The operator discusses pull request {{.pr_url}} with you in this pane.
 - The run's material, which you read yourself:
 
 {{.run_material}}
+
+## The regression check
+
+The regression check below has already run, and the pull request's body carries it after the change description.
+Answer from it, and never ask the operator to run a regression compare it settled, even where the change description asks for one.
+
+{{.drift_verdict}}
 
 ## What you may do
 

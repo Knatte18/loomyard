@@ -9,11 +9,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/darnengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -93,5 +95,38 @@ func TestWireLanding_FillsSamplerSessionSeams(t *testing.T) {
 				t.Errorf("after wireLanding of a %s seed: Sessions nil = %v, SessionLive nil = %v, RegisterSession nil = %v, Watch nil = %v; want them set = %v", tt.recipe, sampler.Sessions == nil, sampler.SessionLive == nil, sampler.RegisterSession == nil, sampler.Watch == nil, tt.wantSet)
 			}
 		})
+	}
+}
+
+// TestWire_DescribeTableCarriesTheDriftVerdict asserts the Describe table wire builds holds the regression check rendered from the run's scope record as its drift_verdict value, over a real hub and pair.
+func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
+	tiergate.Require(t, 1)
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	const slug = "describeverdict"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	}
+	stencilkit.SeedInto(t, fabricengine.StencilsDir(location.HubPath))
+	err = driftengine.UpdateScope(driftengine.NewPaths(location.AnchorPath()), func(driftengine.ScopeRecord, bool) (driftengine.ScopeRecord, error) {
+		return driftengine.ScopeRecord{Scope: driftengine.ScopeFull}, nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateScope() error = %v; want nil", err)
+	}
+
+	c := &loomCLI{runID: shedrun.SelfRunID}
+	if err := c.wire(location, location.AnchorPath()); err != nil {
+		t.Fatalf("wire() = %v; want nil", err)
+	}
+	table, err := c.env.DescribeTable()
+	if err != nil {
+		t.Fatalf("DescribeTable() error = %v; want nil", err)
+	}
+
+	const want = "## Regression check\n\n- Scope: full.\n- Compare: not run.\n- Accepted drift: none."
+	if got := table.Values["drift_verdict"]; got != want {
+		t.Errorf("DescribeTable() drift_verdict = %q; want %q", got, want)
 	}
 }

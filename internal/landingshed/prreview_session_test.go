@@ -155,7 +155,7 @@ func TestPRReview_Session(t *testing.T) {
 				if want := []string{"scribe:prose", "scribe:conversation"}; !slices.Equal(spec.Skills, want) {
 					t.Errorf("spec skills = %q; want %q", spec.Skills, want)
 				}
-				for _, want := range []string{"the-slug", recordedURL, "/wt/task", "`task`", "`main`", fx.deps.DescriptionPath, "parent-session"} {
+				for _, want := range []string{"the-slug", recordedURL, "/wt/task", "`task`", "`main`", fx.deps.DescriptionPath, "parent-session", noDriftVerdict} {
 					if !strings.Contains(spec.Prompt, want) {
 						t.Errorf("prompt lacks %q:\n%s", want, spec.Prompt)
 					}
@@ -174,6 +174,34 @@ func TestPRReview_Session(t *testing.T) {
 					t.Errorf("record session = %q, %q, %q, %q; want the started session's identity", got.StrandGUID, got.StrandName, got.SessionID, got.Engine)
 				}
 			},
+		},
+		{
+			name: "PromptCarriesTheRegressionCheck", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				fx.deps.DriftVerdict = func() (string, error) { return testVerdict, nil }
+			},
+			wantOutcome: shedengine.Done, wantStarts: 1, wantStops: 1,
+			check: func(t *testing.T, _ *prReviewFixture, s *fakePRSessions) {
+				prompt := s.starts[0].Prompt
+				if !strings.Contains(prompt, testVerdict) || strings.Contains(prompt, noDriftVerdict) {
+					t.Errorf("prompt lacks the regression check %q, or says none ran:\n%s", testVerdict, prompt)
+				}
+			},
+		},
+		{
+			name: "AFailingRegressionCheckReadWhileBuildingTheSpecIsAnErrorWithNoSessionStart", record: recordedAtHead(), scripts: map[string][]scriptedCall{"Status": {open}},
+			setup: func(_ *testing.T, fx *prReviewFixture, _ *fakePRSessions) {
+				// The first read is the pull request body's, which passes, and the second is the session spec's.
+				reads := 0
+				fx.deps.DriftVerdict = func() (string, error) {
+					reads++
+					if reads > 1 {
+						return "", errors.New("scope record unreadable")
+					}
+					return "", nil
+				}
+			},
+			wantErr: true,
 		},
 		{
 			name: "RunMaterialListsTheDecisionRecordThatExistsAndLeavesOutAMissingPlanDirectory", scripts: map[string][]scriptedCall{"Create": {created}, "Status": {mergedAtHead}},

@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/creelcli"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/failuretrace"
 	"github.com/Knatte18/loomyard/internal/fswatch"
@@ -232,9 +233,11 @@ func landingDeps(
 		VerifyHold:     verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
 		Shuttle:        runner,
 		EnginesRun:     runner.EnginesRun,
-		Registry:       registry,
-		Config:         cfg,
-		Lock:           lock,
+		// DriftVerdict reads the scope record at call time, so it renders the compare a Drift-Verify after bootstrap recorded.
+		DriftVerdict: func() (string, error) { return driftengine.Verdict(driftengine.NewPaths(l.AnchorPath())) },
+		Registry:     registry,
+		Config:       cfg,
+		Lock:         lock,
 		// The parent reads run over the task pair, opened at call time like the other fabric seams.
 		ReadParentTips: parentTipsReader(l, parentBranch),
 		HoldsWork: func(base, source string) (bool, error) {

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
@@ -156,6 +157,31 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		if pullRequest.Field(i).IsZero() {
 			t.Errorf("landingDeps(...).PullRequest.%s is the zero value; want it populated", pullRequestType.Field(i).Name)
 		}
+	}
+}
+
+// TestLandingDeps_DriftVerdict_RendersTheScopeRecord asserts the DriftVerdict seam answers no section while the run has recorded no scope, and renders the scope record under the run's anchor once one exists, read at call time.
+func TestLandingDeps_DriftVerdict_RendersTheScopeRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	loc := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "pair", AnchorRel: "."}
+	deps := landingDeps(loc, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(loc), parentLockDeps(loc, shedrun.SelfRunID, "", ""))
+
+	if got, err := deps.DriftVerdict(); err != nil || got != "" {
+		t.Fatalf("DriftVerdict() with no scope record = %q, %v; want an empty section and nil", got, err)
+	}
+
+	err := driftengine.UpdateScope(driftengine.NewPaths(loc.AnchorPath()), func(driftengine.ScopeRecord, bool) (driftengine.ScopeRecord, error) {
+		return driftengine.ScopeRecord{Scope: driftengine.ScopeFull}, nil
+	})
+	if err != nil {
+		t.Fatalf("UpdateScope() error = %v; want nil", err)
+	}
+	const want = "## Regression check\n\n- Scope: full.\n- Compare: not run.\n- Accepted drift: none."
+	if got, err := deps.DriftVerdict(); err != nil || got != want {
+		t.Errorf("DriftVerdict() with a scope record = %q, %v; want %q, nil", got, err, want)
 	}
 }
 

@@ -244,6 +244,22 @@ func requireStuck(t *testing.T, outcome shedengine.Outcome, pointer shedengine.O
 	}
 }
 
+// earlierCaptureHead is the commit a row's capture is taken at when the row tells the baseline's commit from the fixture's HEAD, which is aaa.
+const earlierCaptureHead = "base"
+
+// captureAt rewrites the fixture's counted capture to be taken at head.
+func (f *verifyFixture) captureAt(head string) {
+	f.writeCapture(CaptureRecord{State: CapturePassed, Head: head})
+}
+
+// requireCompareRecorded checks scope records a compare of comparedHead against the capture taken at baselineHead, at the fixture's clock, passed or not.
+func requireCompareRecorded(t *testing.T, scope ScopeRecord, baselineHead, comparedHead string, passed bool) {
+	t.Helper()
+	if scope.BaselineHead != baselineHead || scope.ComparedHead != comparedHead || scope.ComparedAt != "2026-01-02T03:04:05Z" || scope.ComparePassed != passed {
+		t.Errorf("scope compare fields = %q, %q, %q, %v; want %s, %s, 2026-01-02T03:04:05Z, %v", scope.BaselineHead, scope.ComparedHead, scope.ComparedAt, scope.ComparePassed, baselineHead, comparedHead, passed)
+	}
+}
+
 // requireDone runs one pass of f and checks it is Done.
 func requireDone(f *verifyFixture) {
 	f.t.Helper()
@@ -345,15 +361,18 @@ func TestDriftVerify(t *testing.T) {
 	t.Run("a passing compare is Done with no agent", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t, partial, nil)
+		f.captureAt(earlierCaptureHead)
 		requireDone(f)
 		if f.seats.Calls != 0 || f.compareCalls != 1 {
 			t.Errorf("agents %d, compares %d; want no agent and one compare", f.seats.Calls, f.compareCalls)
 		}
+		requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", true)
 	})
 
 	t.Run("a failing compare spawns one agent and resets the run count", func(t *testing.T) {
 		t.Parallel()
 		f := newVerifyFixture(t, partial, nil)
+		f.captureAt(earlierCaptureHead)
 		f.compares = []CompareResult{failingCompare, passingCompare}
 		if err := ResetRuns(f.paths, "old", false); err != nil {
 			t.Fatal(err)
@@ -375,12 +394,13 @@ func TestDriftVerify(t *testing.T) {
 		if count, err := RunCount(f.paths); err != nil || count != 0 {
 			t.Errorf("RunCount() = %d, %v; want the count reset", count, err)
 		}
-		if want := (VerifyTold{CompareLog: "compare-1.log", BaselineHead: "aaa"}); len(f.told) == 0 || f.told[0] != want {
+		if want := (VerifyTold{CompareLog: "compare-1.log", BaselineHead: earlierCaptureHead}); len(f.told) == 0 || f.told[0] != want {
 			t.Errorf("told = %v; want %v", f.told, want)
 		}
 		if open, _ := AgentSessionOpen(f.paths); open {
 			t.Errorf("the agent-session mark reads open after the agent's end")
 		}
+		requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", true)
 	})
 
 	t.Run("a final compare still failing is Stuck naming accept, with the prefix by scope", func(t *testing.T) {
@@ -396,9 +416,11 @@ func TestDriftVerify(t *testing.T) {
 		}
 		for _, row := range rows {
 			f := newVerifyFixture(t, row.scope, nil)
+			f.captureAt(earlierCaptureHead)
 			f.compares = []CompareResult{failingCompare, failingCompare}
 			outcome, pointer, err := f.call()
 			requireStuck(t, outcome, pointer, err, row.prefixed, "lym drift accept", "verify-report.md", "lym loom resume")
+			requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", false)
 		}
 	})
 

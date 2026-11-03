@@ -817,7 +817,12 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			for i, dir := range priorDirs {
 				priorRecords[i] = summaryparser.Path(dir)
 			}
+			verdict, err := driftengine.Verdict(driftengine.NewPaths(location.AnchorPath()))
+			if err != nil {
+				return seatengine.Table{}, err
+			}
 			return landingshed.DescribeTable(landingshed.DescribeInputs{
+				DriftVerdict:        verdict,
 				StencilsDir:         websterGeom.StencilsDir,
 				DecisionRecordPath:  loomengine.DiscussionDecisionRecord(location),
 				RunRecordPath:       summaryparser.Path(websterGeom.WebsterDir),

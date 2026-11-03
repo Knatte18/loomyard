@@ -25,7 +25,7 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
-// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
 // The wait gates and pushes the agent's commits, and ends when the pull request is merged or approved, or closed or continued by the operator.
 // It takes no parent lock.
 type PRReview struct {
@@ -237,7 +237,11 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
-	body := bodyWithCredit(summary.Body, credit)
+	verdict, err := p.deps.driftVerdict()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
+	}
+	body := bodyWithCredit(withSection(summary.Body, verdict), credit)
 
 	// A recorded pull request GitHub no longer reports open is left as it is, for the wait to judge.
 	var ref pullrequest.Ref

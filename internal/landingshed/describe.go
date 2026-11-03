@@ -78,6 +78,9 @@ type DescribeInputs struct {
 	MergeBase string
 	// Slug is the task's slug, the key for `lym board get`.
 	Slug string
+	// DriftVerdict is the task's regression check as a markdown section, which the landing appends to the description.
+	// Optional: empty when no regression check ran.
+	DriftVerdict string
 }
 
 // runRecordBullets renders one bullet per run record that exists on disk: every prior generation oldest first, then the live record.
@@ -104,8 +107,9 @@ func runRecordBullets(in DescribeInputs) (string, error) {
 }
 
 // DescribeTable builds the seatengine.Table of the Describe session: one lead that writes the change description.
-// An empty input field other than RunRecordPath and PriorRunRecordPaths is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
+// An empty input field other than RunRecordPath, PriorRunRecordPaths and DriftVerdict is an error naming the field, and so is a stencil missing from in.StencilsDir, so a mis-wired closure fails before the row runs rather than rendering a blank path into the prompt.
 // A run record that does not exist is left out of the prompt, and a stat error on one is returned.
+// An empty DriftVerdict renders as a line saying no regression check ran.
 // The table's values are the stencil's markers; the seat engine renders the parent and edit directives from its geometry.
 // The table carries no gate; the producer entry sets it.
 // Segment is the describe segment, because the session writes the pull request description.
@@ -133,7 +137,12 @@ func DescribeTable(in DescribeInputs, cfg Config, reg modelspec.Registry) (seate
 		return seatengine.Table{}, fmt.Errorf("landingshed: DescribeTable: %w", err)
 	}
 
+	verdict := in.DriftVerdict
+	if verdict == "" {
+		verdict = noDriftVerdict
+	}
 	table, err := describeSessionTable(describeStencilName, in.DescriptionPath, map[string]string{
+		"drift_verdict":        verdict,
 		"slug":                 in.Slug,
 		"decision_record_path": in.DecisionRecordPath,
 		"run_record_paths":     runRecords,

@@ -181,6 +181,7 @@ func LandingDeps(dir string) landingshed.Deps {
 		OpenParentFabric: nilFabricOpener,
 		Shuttle:          &shedfake.MergeShuttle{},
 		EnginesRun:       func() ([]string, error) { return nil, nil },
+		DriftVerdict:     func() (string, error) { return "", nil },
 		TaskHead:         func() (string, error) { return "head", nil },
 		BaseCommand:      func() (string, error) { return "lym gate test --wait --tier 0 --all", nil },
 		GateTiers:        fixedGateTiers,

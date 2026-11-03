@@ -32,6 +32,14 @@ Read only these sources, and use read-only git for the diff:
   When a record carries an `## Integration suite triage` section, carry it into your description as an item for the reviewer to check too, naming the flaky and pre-existing identities it lists.
   When a record carries an `## Integration suite fix` section, carry it into your description as an item for the reviewer to check, naming the fix commits and the identities they cleared.
 
+## The regression check
+
+The regression check below has already run.
+lym appends it after your description in the pull request and the landing commit, so write no regression section of your own.
+Never list as an item to check or run by hand a regression compare this check settled: drop such an item that an earlier description or a run record names, or rewrite it from the check when it asks for more than the check did.
+
+{{.drift_verdict}}
+
 ## What to write
 
 Write exactly one file, `{{.description_path}}`, in the format of the final-summary spec (`loom-final-summary-spec.md`):

@@ -18,7 +18,8 @@
 // The durable directory `_lym/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lym/drift/` holds the capture record, the capture lock, the compare marker, the baseline and side-capture directories, the skip file and the run counter.
 //
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
-// The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named and the time of the last gate halt.
+// The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named, the time of the last gate halt, and the last compare Drift-Verify ran: the baseline's commit, the commit compared, its time and whether it passed.
+// Verdict renders that record as the `## Regression check` section a landing carries: the scope and its skipped tests, the baseline's commit, the last compare's result or the waiver, and each accepted test with who accepted it and why; with no scope record it renders nothing and creates no directory.
 // The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, the tests it skipped, times, exit code, reason, whether it exited 0 with no file written, and log.
 // CountedCapture decides whether a capture counts as the baseline: a passed record with an `awaited_at` in the scope record.
 // The run counter (`runs.json`) holds how many compare or side-capture runs the current Drift-Verify agent session took, the commit its attempt started at, whether the agent-session mark is open and whether the session has the operator in its pane.
@@ -115,9 +116,9 @@
 // under scope full the acceptances the parent stood by are ruled, an unruled acceptance is a decision halt, and a missing counted capture is a decision halt under every scope that names `lym drift waive`;
 // an undeclared compare is a Stuck naming `lym config drift`;
 // a dirty tracked tree is a Stuck, and a resume from a gate halt runs the told verify entry once over the agent's commits;
-// then the compare runs, and a pass is Done.
+// then the compare runs, its result goes into the scope record, and a pass is Done.
 // A failing compare resets the run counter at the current HEAD, recording whether `verify_interactive` puts the operator in the session, and spawns one agent whose table gates, in order, on a clean tree, on the verify entry, which runs only once the session committed code, and on a final compare that ends the session when drift remains.
-// The agent's end closes the mark; a Done under scope full is checked again for unruled acceptances.
+// The agent's end closes the mark; a Done records a passed compare at the agent's HEAD and, under scope full, is checked again for unruled acceptances.
 //
 // A Stuck opens with shedadapters.DecisionHaltPrefix, so the stop chain hands it to the parent, under scope full, for the missing counted capture, and under scope partial for a failing final compare while a test is withdrawn.
 // Under scope full a decision halt names the unruled acceptances and the parent's ways forward for them, `lym loom resume` to stand by them or `lym drift withdraw <test>` to reject one, and records the names and the time in the scope record; the parent's resume then rules them.

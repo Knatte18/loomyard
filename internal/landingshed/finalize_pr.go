@@ -75,6 +75,33 @@ func (d Deps) creditBlock() (string, error) {
 	return d.Config.CreditBlock(enginesRun), nil
 }
 
+// noDriftVerdict stands in a prompt for the regression check when none ran for the task.
+const noDriftVerdict = "No regression check ran for this task."
+
+// driftVerdict reads the task's regression check section, "" when none ran or no seam is told.
+func (d Deps) driftVerdict() (string, error) {
+	if d.DriftVerdict == nil {
+		return "", nil
+	}
+	verdict, err := d.DriftVerdict()
+	if err != nil {
+		return "", fmt.Errorf("read the regression check: %w", err)
+	}
+	return verdict, nil
+}
+
+// withSection returns body with section after a blank line, and body unchanged when section is empty.
+func withSection(body, section string) string {
+	if section == "" {
+		return body
+	}
+	body = strings.TrimRight(body, " \t\r\n")
+	if strings.TrimSpace(body) == "" {
+		return section
+	}
+	return body + "\n\n" + section
+}
+
 // bodyWithCredit composes a pull request's body and its merge's commit message alike: the change description's trimmed body, then a blank line and the credit block when the block is not empty.
 // The title travels separately.
 func bodyWithCredit(body, credit string) string {

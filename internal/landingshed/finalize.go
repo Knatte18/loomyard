@@ -197,6 +197,12 @@ func (fz *Finalize) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err)
 	}
+	// The regression check is read here for the same reason, and follows the body in both messages.
+	verdict, err := fz.deps.driftVerdict()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", finalizeName, err)
+	}
+	summary.Body = withSection(summary.Body, verdict)
 	landingMessage := summary.LandingMessage(credit)
 
 	// Step 1b: commit the product's own status file, so the pair carries no tracked modification

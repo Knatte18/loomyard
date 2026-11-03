@@ -288,6 +288,13 @@ type Deps struct {
 	// Nil means "no engine ran", so the credit block carries no engine line.
 	EnginesRun func() ([]string, error)
 
+	// DriftVerdict returns the task's regression check as a markdown section, which PR-Review and Finalize append to the change description's body in the pull request and the landing commit, and which the PR-Review session's prompt shows.
+	// An empty answer carries no section, and a returned error is returned from Call.
+	//
+	// Nil means "no regression check", following CommitStatus's nil-is-absent convention.
+	// internal/loomcli's landingDeps fills it, and its drift guard keeps it filled.
+	DriftVerdict func() (string, error)
+
 	// Registry is the resolved model-spec registry both producers' resolver constructions read the
 	// conflict spec's alias against.
 	Registry modelspec.Registry

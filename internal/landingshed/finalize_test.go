@@ -272,10 +272,13 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 		squash bool
 		// nilEnginesRun leaves the Deps.EnginesRun seam nil, so no engine ran and the message carries no engine line.
 		nilEnginesRun bool
+		// verdict is what Deps.DriftVerdict answers, which follows the body; empty leaves the seam nil.
+		verdict string
 	}{
-		{"Squash", true, false},
-		{"NoSquash", false, false},
-		{"NilEnginesRun", true, true},
+		{"Squash", true, false, ""},
+		{"NoSquash", false, false, ""},
+		{"NilEnginesRun", true, true, ""},
+		{"RegressionCheckFollowsTheBody", true, false, testVerdict},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -286,6 +289,9 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 			if tt.nilEnginesRun {
 				deps.EnginesRun = nil
 				enginesRun = nil
+			}
+			if tt.verdict != "" {
+				deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }
 			}
 			summary, err := summaryparser.Parse(deps.DescriptionPath)
 			if err != nil {
@@ -307,6 +313,9 @@ func TestFinalize_MergeOptionsCarriesComposedMessage(t *testing.T) {
 			}
 			got := merger.calls[0].opts
 			want := summary.LandingMessage(deps.Config.CreditBlock(enginesRun))
+			if tt.verdict != "" {
+				want = strings.TrimRight(summary.CommitMessage(), "\n") + "\n\n" + tt.verdict + "\n\n" + deps.Config.CreditBlock(enginesRun)
+			}
 			if got.Message != want {
 				t.Errorf("MergeOptions.Message = %q; want %q", got.Message, want)
 			}
@@ -344,6 +353,9 @@ func TestFinalize_UnusableMessageInput_ErrorBeforeMergeOrCommit(t *testing.T) {
 		}},
 		{"engines_unreadable", func(t *testing.T, deps *Deps) {
 			deps.EnginesRun = func() ([]string, error) { return nil, errors.New("engine ledger unreadable") }
+		}},
+		{"regression_check_unreadable", func(t *testing.T, deps *Deps) {
+			deps.DriftVerdict = func() (string, error) { return "", errors.New("scope record unreadable") }
 		}},
 	}
 	for _, tt := range tests {
