@@ -72,7 +72,7 @@
 //
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
-// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout or a mechanism failure.
+// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout, api-error (a spec with APIErrorRetries only) or a mechanism failure.
 // A died run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand;
 // a timed-out run keeps its strand, since its agent may still be live.
 // A run's strand lands in a window of its own unless its spec names an anchor.
@@ -117,6 +117,9 @@
 // no pause covers the run, the session state names the newest turn end an API error, and the sleep lies after the latest turn start Wait read.
 // RunState.APIContinued is persisted before typing and cleared by the next held turn end that is not an API error, so a turn gets at most one continue.
 // A send that fails, the guard's ErrSessionBusy included, types nothing more and the stall is held and notified as any other.
+// A turn end on an API error that is not also an event, such as Claude's StopFailure, holds nothing and sends no notice.
+// A run whose Spec.APIErrorRetries is set re-sends such a turn with one line after a back-off that doubles with each API-error turn end of the run, and the one past the last re-send ends the run OutcomeAPIError, Result.APIError naming the error, unless every output file exists, which ends it done.
+// A run with no retries waits such a turn end out to its deadline.
 // RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
 // and a held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
@@ -479,7 +482,7 @@
 // A run's operator instructions are the SessionSignal.Instruction texts of its turn starts past its prompt offset, without the turn start of the run's prompt, and without any text the sent-texts file holds.
 // RunState records a role key, the spec's NameOverride else its Role, and the instructions the run carried over.
 // Before its orphan sweep, a start finds the newest run under the root with the same role key;
-// when that run is unfinished, its record reading stopped, died or timeout or reading running with its waiter gone, its carried and operator instructions, without repeats, are appended to the new prompt as one block, recorded as the new run's carried instructions and named in one Warn log line and one notifier line.
+// when that run is unfinished, its record reading stopped, died, timeout or api-error or reading running with its waiter gone, its carried and operator instructions, without repeats, are appended to the new prompt as one block, recorded as the new run's carried instructions and named in one Warn log line and one notifier line.
 // A done or live predecessor, an empty role key and a predecessor directory already swept carry nothing.
 //
 // Session state has two consumers: Runner.SessionIdle and the verified send's idle wait, which gate on the readiness reading built from it.

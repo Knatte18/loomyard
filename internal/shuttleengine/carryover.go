@@ -114,10 +114,10 @@ func roleKey(spec Spec) string {
 	return spec.Role
 }
 
-// unfinished reports whether rs is a run that ended without finishing: stopped, died or timed out, or reading running with its waiter gone.
+// unfinished reports whether rs is a run that ended without finishing: stopped, died, timed out or ended on API errors, or reading running with its waiter gone.
 func unfinished(rs RunState) bool {
 	switch rs.Outcome {
-	case runOutcomeStopped, string(OutcomeDied), string(OutcomeTimeout):
+	case runOutcomeStopped, string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError):
 		return true
 	case runOutcomeRunning:
 		return !runIsLive(rs)

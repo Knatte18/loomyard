@@ -106,17 +106,19 @@ func pathOrNone(path string) string {
 // Segment is the coordinator, the driver's, because the tackler acts for the driver.
 // Interactive is false, shuttle's autonomous posture, which adds the operator-prompt deny an unattended session needs.
 // ForkSubagents is false and Parent is empty: the tackler spawns nothing and has no session to message.
+// APIErrorRetries is SettlerAPIErrorRetries, so a turn the provider's API ended is re-sent and, past the re-sends, the run ends and the stop is handed back.
 func tacklerSpec(prompt, verdictPath, caseBriefPath string, settings TacklerSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
-		Prompt:        prompt,
-		Skills:        tacklerSkills,
-		OutputFiles:   []string{verdictPath},
-		ModelChoice:   settings.ModelChoice,
-		Timeout:       settings.Timeout,
-		Role:          TacklerRole,
-		Segment:       segmentcolor.Coordinator,
-		Interactive:   false,
-		ForkSubagents: false,
-		Parent:        "",
+		Prompt:          prompt,
+		Skills:          tacklerSkills,
+		OutputFiles:     []string{verdictPath},
+		ModelChoice:     settings.ModelChoice,
+		Timeout:         settings.Timeout,
+		Role:            TacklerRole,
+		Segment:         segmentcolor.Coordinator,
+		Interactive:     false,
+		ForkSubagents:   false,
+		Parent:          "",
+		APIErrorRetries: SettlerAPIErrorRetries,
 	}
 }

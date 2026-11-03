@@ -265,6 +265,8 @@ func (c *Call) concludeWait(attempt loomengine.ArbiterAttempt, result shuttleeng
 		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseDied, fmt.Sprintf("waiting on the arbiter failed: %v", waitErr))
 	case result.Outcome == shuttleengine.OutcomeTimeout:
 		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseTimeout, "the arbiter ran past its deadline")
+	case result.Outcome == shuttleengine.OutcomeAPIError:
+		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseAPIError, fmt.Sprintf("the arbiter's session failed on an API error its %d re-sends did not clear: %s", sheddriver.SettlerAPIErrorRetries, result.APIError))
 	case result.Outcome != shuttleengine.OutcomeDone:
 		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseDied, fmt.Sprintf("the arbiter ended %s without a verdict", result.Outcome))
 	}
@@ -349,12 +351,12 @@ func (c *Call) resumePrecondition(verdict loomengine.ArbiterVerdict) string {
 	return ""
 }
 
-// handOn finishes the call with a hand-on the call made itself, naming cause.
+// handOn finishes the call with a hand-on the call made itself, naming cause, and for an API error the error itself, in the question.
 func (c *Call) handOn(attempt loomengine.ArbiterAttempt, cause, detail string) (loomengine.ArbiterEnvelope, error) {
 	return c.finish(loomengine.ArbiterEnvelope{
 		Verdict:     loomengine.ArbiterVerdictHandOn,
 		Reason:      detail,
-		Question:    fmt.Sprintf("The arbiter could not settle this stop (%s); decide it yourself and report the choice in the stop report.", cause),
+		Question:    fmt.Sprintf("The arbiter could not settle this stop (%s); decide it yourself and report the choice in the stop report.", sheddriver.HandBackQuestionCause(cause, detail)),
 		Cause:       cause,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,

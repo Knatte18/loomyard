@@ -51,9 +51,10 @@ Removing the strand any other way leaves the record saying the run is live, and 
 
 Every code path in `internal/shuttleengine` that finalizes a NEGATIVE answer to "did this run finish" consults `allOutputFilesExist` over the run's `OutputFiles` first.
 
-- The negative answers are `OutcomeDied`, `OutcomeTimeout`, `runOutcomeStopped`, a mechanism-failure `error`, and `verdictRespawnEligible`.
+- The negative answers are `OutcomeDied`, `OutcomeTimeout`, `OutcomeAPIError`, `runOutcomeStopped`, a mechanism-failure `error`, and `verdictRespawnEligible`.
   `stopOutcome` in `stop.go` is the one site that chooses `runOutcomeStopped`, and it consults `allOutputFilesExist` first.
 - The check is reached directly or through the three helpers that own it: `classifyDeadlineExpiry` and `finishedDespiteMechanismFailure` (`wait.go`), and `soleFinishedCandidate` (`attach.go`).
+  `retryAPIError` (`apierrorretry.go`) reaches it through `classifyDeadlineExpiry`.
 - A clock expiring, `reed` losing a strand, `reed.Status` erroring, the events file staying unreadable, `reed.json` being absent or undecodable each answer "has something gone wrong", never "did this run finish".
   The run's output files are its return value.
 - Stated at length in `wait.go`'s own file doc comment, under the same heading.

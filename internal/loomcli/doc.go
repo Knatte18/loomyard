@@ -305,7 +305,7 @@
 // The tackler's verdict is `resume`, `hand-back` or `escalate`.
 // A `resume` names a goto only to the run's current row or to the row the halting entry was routed from, and a blocked stop needs one;
 // a `hand-back` needs a question for the run's parent, and an `escalate` needs a non-empty case brief.
-// A verdict that is missing, unparseable, unsound or late reads as a hand-back whose cause is `missing`, `unparseable`, `precondition`, `timeout`, `died`, `question` or `case-brief`.
+// A verdict that is missing, unparseable, unsound or late reads as a hand-back whose cause is `missing`, `unparseable`, `precondition`, `timeout`, `died`, `api-error`, `question` or `case-brief`.
 // A deadline that ran out while the hub's pause covered the run moves out by the paused time instead.
 //
 // A re-run for a stop key an attempt already judged spawns nothing: it returns that attempt's verdict or waits on its live tackler, unless a hand-back record for the key closed it.

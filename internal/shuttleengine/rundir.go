@@ -92,7 +92,7 @@ type RunState struct {
 	CreatedAt    string   `json:"createdAt"`
 	// Outcome has three writable states. Start writes the sentinel
 	// runOutcomeRunning ("running") when it first persists this record.
-	// Run.finalize overwrites it with the classification string (done/died/timeout) for EVERY terminal outcome, not only OutcomeDone.
+	// Run.finalize overwrites it with the classification string (done/died/timeout/api-error) for EVERY terminal outcome, not only OutcomeDone.
 	// The legacy value "asking" is one only an older binary wrote.
 	// Any other value, INCLUDING THE EMPTY STRING, means the
 	// record was written by a binary that did not know about this field and

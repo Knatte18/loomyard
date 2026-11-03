@@ -719,8 +719,9 @@ func TestCall_VerdictOutcomes(t *testing.T) {
 		wantGoto     string
 		wantRelaunch string
 		wantRunStops int
-		// wantReason is a substring of the settled reason, asserted when non-empty.
-		wantReason string
+		// wantReason is a substring of the settled reason, and wantQuestion of its question, each asserted when non-empty.
+		wantReason   string
+		wantQuestion string
 		// wantError is set for a run the call refuses after the arbiter started.
 		wantError bool
 	}{
@@ -800,6 +801,12 @@ func TestCall_VerdictOutcomes(t *testing.T) {
 			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeDied},
 			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseDied, wantRunStops: 1,
 		},
+		{
+			name: "a run ended on an API error stops and reads hand-on naming the error", producer: "Plan-Write", state: shedengine.StateBlocked,
+			waitResult:  shuttleengine.Result{Outcome: shuttleengine.OutcomeAPIError, APIError: "server_error"},
+			wantVerdict: loomengine.ArbiterVerdictHandOn, wantCause: sheddriver.CauseAPIError, wantRunStops: 1,
+			wantReason: "server_error", wantQuestion: "server_error",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -834,6 +841,9 @@ func TestCall_VerdictOutcomes(t *testing.T) {
 			}
 			if !strings.Contains(envelope.Reason, tt.wantReason) {
 				t.Errorf("reason = %q; want it to contain %q", envelope.Reason, tt.wantReason)
+			}
+			if !strings.Contains(envelope.Question, tt.wantQuestion) {
+				t.Errorf("question = %q; want it to contain %q", envelope.Question, tt.wantQuestion)
 			}
 			if envelope.Relaunch != tt.wantRelaunch {
 				t.Errorf("relaunch = %q; want %q", envelope.Relaunch, tt.wantRelaunch)

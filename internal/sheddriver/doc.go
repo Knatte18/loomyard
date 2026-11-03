@@ -88,6 +88,7 @@
 // A call first reuses the newest attempt for the stop key that was not yet handed to the parent: it waits on a live agent up to the attempt's deadline, and concludes from a verdict already written.
 // The verdict is `resume`, `hand-back` or `escalate`.
 // A resume is checked against the status and the goto rules before it is applied, and an agent that timed out, died, left no verdict or an unreadable one, or named a precondition the run does not meet, is a hand-back with that cause.
+// A turn the provider's API ends on an error is re-sent `SettlerAPIErrorRetries` times by shuttle, and the error past them is a hand-back with cause `api-error` whose question names the error, so the parent hears of the stop at once rather than at the deadline.
 // A tackler switched off, or a spawn budget spent, hands the stop back without a spawn.
 // `TacklerDeps.Snapshot` is optional: a recipe that sets it has the driver compare the worktree with the snapshot taken at spawn and refuse a verdict over a tampered tree.
 //

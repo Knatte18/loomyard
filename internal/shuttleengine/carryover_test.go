@@ -89,6 +89,12 @@ func TestStart_CarriesOverOperatorInstructions(t *testing.T) {
 			want:         []string{"also fix the README"},
 		},
 		{
+			name:         "a run ended on API errors counts as unfinished",
+			predecessors: []RunState{{RunID: "run-old", CreatedAt: earlier, Outcome: string(OutcomeAPIError), RoleKey: "darn"}},
+			role:         "darn",
+			want:         []string{"also fix the README"},
+		},
+		{
 			name:         "a running run whose waiter is gone counts as unfinished",
 			predecessors: []RunState{{RunID: "run-old", CreatedAt: earlier, Outcome: runOutcomeRunning, PID: -1, RoleKey: "darn"}},
 			role:         "darn",

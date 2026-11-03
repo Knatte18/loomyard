@@ -132,7 +132,7 @@ Only a design question goes to the operator: what to build, a change of a task's
   A joint design question goes to the operator as one question, and a peer's hand-on escalation that arrives while it is with the operator joins it.
 
 A review escalation without the arbiter agent's own hand-on is a fault, handled under Investigating a stop and never decided by you as a design call.
-The cases are: cause `budget`; an arbiter refusal, which leaves no envelope; a `hand-on` carrying a `cause` (`timeout`, `died`, `missing`, `unparseable`, `precondition`); a job exit without an envelope; a failed re-launch after a `resume` verdict; and the arbiter switched off or out of spawns.
+The cases are: cause `budget`; an arbiter refusal, which leaves no envelope; a `hand-on` carrying a `cause` (`timeout`, `died`, `missing`, `unparseable`, `precondition`, `api-error`); a job exit without an envelope; a failed re-launch after a `resume` verdict; and the arbiter switched off or out of spawns.
 When the fault is diagnosed and acted on and a question still stands, you settle it as a run-level call, or bring it to the operator when it is a design question.
 
 ## Investigating a stop

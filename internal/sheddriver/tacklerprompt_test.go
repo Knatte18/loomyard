@@ -165,6 +165,9 @@ func TestTacklerSpec(t *testing.T) {
 	if len(got.Requires) != 0 {
 		t.Errorf("tacklerSpec().Requires = %v; want none", got.Requires)
 	}
+	if got.APIErrorRetries != SettlerAPIErrorRetries {
+		t.Errorf("tacklerSpec().APIErrorRetries = %d; want %d", got.APIErrorRetries, SettlerAPIErrorRetries)
+	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("tacklerSpec() interactive, fork subagents, parent = %v, %v, %q; want false, false, empty", got.Interactive, got.ForkSubagents, got.Parent)
 	}

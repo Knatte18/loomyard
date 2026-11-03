@@ -283,6 +283,8 @@ type Result struct {
 	// StartError is the text of the error start returned on RunGated's not-started branch, which names the cause and ends with the pane's last lines;
 	// it is empty on every other return.
 	StartError string
+	// APIError is the provider's error text of the turn end that ended an OutcomeAPIError run; empty on every other outcome.
+	APIError string
 	// EndedShells holds each background shell outstanding when the run ended, whatever ended it, in the order its turn end listed them.
 	EndedShells []EndedShell
 	// StartedAt is the run's creation time from its state, zero when the record's time does not parse.
@@ -405,6 +407,8 @@ type Run struct {
 	promptTurnStarted bool
 	// shadow is the session-state logging Wait keeps beside its classification, display only.
 	shadow sessionShadow
+	// apiErrors is the API-error re-send watch of one Wait, in memory.
+	apiErrors apiErrorWatch
 	// dialog is the pending-dialog latch of one Wait, in memory.
 	dialog dialogLatch
 

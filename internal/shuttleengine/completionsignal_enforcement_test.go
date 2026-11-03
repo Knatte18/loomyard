@@ -44,7 +44,7 @@ import (
 // wait.go finalizes a live run's outcome, attach.go decides whether a persisted one is reconstructed
 // or respawned over, and stop.go records a stop over a run that has not finished. A future file that grows a third kind of verdict belongs in this list, and the
 // failure message says so.
-var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go"}
+var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go", "apierrorretry.go"}
 
 // negativeVerdictMarkers are the identifiers whose appearance anywhere in a return statement's
 // results makes that return a NEGATIVE answer to "did this run finish".
@@ -60,6 +60,7 @@ var completionSignalScannedFiles = []string{"wait.go", "attach.go", "stop.go"}
 var negativeVerdictMarkers = map[string]bool{
 	"OutcomeDied":                 true,
 	"OutcomeTimeout":              true,
+	"OutcomeAPIError":             true,
 	"verdictRespawnEligible":      true,
 	"verdictError":                true,
 	"runOutcomeStopped":           true,

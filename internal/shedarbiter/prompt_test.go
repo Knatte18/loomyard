@@ -157,6 +157,9 @@ func TestSpec(t *testing.T) {
 	if len(got.Requires) != 0 {
 		t.Errorf("Spec().Requires = %v; want none", got.Requires)
 	}
+	if got.APIErrorRetries != sheddriver.SettlerAPIErrorRetries {
+		t.Errorf("Spec().APIErrorRetries = %d; want %d", got.APIErrorRetries, sheddriver.SettlerAPIErrorRetries)
+	}
 	if got.Interactive || got.ForkSubagents || got.Parent != "" {
 		t.Errorf("Spec() interactive, fork subagents, parent = %v, %v, %q; want false, false, empty", got.Interactive, got.ForkSubagents, got.Parent)
 	}

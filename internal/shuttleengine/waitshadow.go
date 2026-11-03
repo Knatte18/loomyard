@@ -22,6 +22,8 @@ const (
 	loopDone = "done"
 	// loopDied: the run finalizes died.
 	loopDied = "died"
+	// loopAPIError: the run finalizes api-error.
+	loopAPIError = "api-error"
 )
 
 // shadowPair is one pairing of the loop's classification with a session state, the unit a disagreement is logged once for.
@@ -66,6 +68,8 @@ func (run *Run) loopClassification(outcome Outcome) string {
 		return loopDone
 	case outcome == OutcomeDied:
 		return loopDied
+	case outcome == OutcomeAPIError:
+		return loopAPIError
 	case !run.wait.heldStart.IsZero():
 		return loopHeld
 	case len(run.waitingTasks) > 0 || run.gatePending:
@@ -75,7 +79,7 @@ func (run *Run) loopClassification(outcome Outcome) string {
 }
 
 // loopAgreesWithState reports whether the loop classification and the session state are a pairing the fixed mapping allows:
-// waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead.
+// waiting and running read busy, held reads idle-stalled, idle-fresh or asking, done reads idle-done, died reads dead, api-error reads idle-stalled.
 // Two further pairings are expected: a pending gate entry waiting beside idle-done once every output exists,
 // and a done run beside busy on background work, since a turn end counted at once leaves the session running tasks the loop no longer waits on.
 func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool {
@@ -91,6 +95,8 @@ func loopAgreesWithState(loop string, state SessionState, gatePending bool) bool
 		return state.Name == SessionIdleDone || busyOnBackground
 	case loopDied:
 		return state.Name == SessionDead
+	case loopAPIError:
+		return state.Name == SessionIdleStalled
 	}
 	return false
 }

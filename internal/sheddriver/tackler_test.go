@@ -236,9 +236,11 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 		wantErrText string
 		wantCause   string
 		wantVerdict string
-		wantStarts  int
-		wantStops   int
-		wantAttach  int
+		// wantQuestion is a text the envelope's question holds.
+		wantQuestion string
+		wantStarts   int
+		wantStops    int
+		wantAttach   int
 		// keepsTacklerDir is set for the row that seeds the attempt records it is refused over.
 		keepsTacklerDir bool
 	}{
@@ -279,6 +281,13 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}
 			},
 			wantCause: CauseTimeout, wantVerdict: TacklerVerdictHandBack, wantStarts: 1, wantStops: 1,
+		},
+		{
+			name: "a run ended on an API error stops the strand and reads hand-back",
+			setup: func(f *tacklerFixture) {
+				f.fake.waitResult = shuttleengine.Result{Outcome: shuttleengine.OutcomeAPIError, APIError: "server_error"}
+			},
+			wantCause: CauseAPIError, wantVerdict: TacklerVerdictHandBack, wantQuestion: "server_error", wantStarts: 1, wantStops: 1,
 		},
 		{
 			name: "timeout over a paused window re-attaches with the deadline moved out",
@@ -339,6 +348,9 @@ func TestTacklerCall_SpawnPath(t *testing.T) {
 			}
 			if envelope.Verdict != tt.wantVerdict || envelope.Cause != tt.wantCause {
 				t.Errorf("envelope verdict, cause = %q, %q; want %q, %q", envelope.Verdict, envelope.Cause, tt.wantVerdict, tt.wantCause)
+			}
+			if !strings.Contains(envelope.Question, tt.wantQuestion) {
+				t.Errorf("envelope question = %q; want it to hold %q", envelope.Question, tt.wantQuestion)
 			}
 			if len(f.fake.starts) != tt.wantStarts || f.fake.runStops != tt.wantStops || len(f.fake.attaches) != tt.wantAttach {
 				t.Errorf("starts, run stops, attaches = %d, %d, %d; want %d, %d, %d", len(f.fake.starts), f.fake.runStops, len(f.fake.attaches), tt.wantStarts, tt.wantStops, tt.wantAttach)

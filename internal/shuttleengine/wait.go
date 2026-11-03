@@ -1,11 +1,11 @@
-// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its terminal outcome (done/died/timeout), probes the startup window for a trust-dialog dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run dir deletion).
+// wait.go implements Run.Wait: the poll loop that reads a run's events.jsonl, classifies its terminal outcome (done/died/timeout/api-error), probes the startup window for a trust-dialog dismissal or a fast-failing dead pane, and runs the done-outcome cleanup (strand removal + run dir deletion).
 // It also hosts awaitStartup, the startup probe run.go's own start method calls before issuing a run handle at all, and abandonStartup, start's teardown for a provider that never became ready or never took its first input.
 // Wait and awaitStartup are the only two places in the run loop that sleep — both through the clock seam defined here, which lets tests replay a whole poll sequence instantly.
 // A pane that goes not-live (crashed, killed, or exited) is classified done rather than died when every output file already exists — the file contract can be satisfied an instant before the process disappears, racing ahead of its own Stop hook.
 // died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not alive;
 // the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) — are mechanism failures, not classifications.
 // The exception is a handle whose own Stop removed the strand: its Wait ends OutcomeDied, which finalize records as stopped unless the files show the run done.
-// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout) is the only way out.
+// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout, and OutcomeAPIError for a spec with APIErrorRetries) is the only way out.
 // That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink (.lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached driver's own log, which captures stderr and therefore only Warn and above.
 // An operator asking "is this interview waiting for me, or is it wedged?"
 // reads the trace sink.
@@ -44,7 +44,7 @@
 // # Completion Signal Invariant
 //
 // Any code path in this package that finalizes a NEGATIVE answer to "did this run finish" -- an
-// OutcomeDied, an OutcomeTimeout, a runOutcomeStopped record, a mechanism-failure error, or a verdictRespawnEligible -- must
+// OutcomeDied, an OutcomeTimeout, an OutcomeAPIError, a runOutcomeStopped record, a mechanism-failure error, or a verdictRespawnEligible -- must
 // first consult allOutputFilesExist over the run's OutputFiles, directly or through one of the three
 // helpers that own the check: classifyDeadlineExpiry, finishedDespiteMechanismFailure (both here),
 // or soleFinishedCandidate (attach.go). The startup step (awaitStartup, abandonStartup) honours the
@@ -217,7 +217,8 @@ var ErrAgentDied = errors.New("shuttle: the agent died before it wrote its outpu
 // Wait blocks until run reaches a terminal outcome.
 // Error is reserved for mechanism failures that leave no classifiable outcome.
 // A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling,
-// so it terminates only on OutcomeDone, OutcomeDied, a liveness mechanism failure, or OutcomeTimeout.
+// so it terminates only on OutcomeDone, OutcomeDied, a liveness mechanism failure or OutcomeTimeout.
+// It also terminates on OutcomeAPIError, once a spec's APIErrorRetries re-sends of API-error turn ends are spent.
 //
 // An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
 // empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
@@ -289,6 +290,7 @@ func (run *Run) Wait() (Result, error) {
 
 	// The dialog latch reads asks from the larger of the prompt offset and the last dialog-notified offset, so a reattach never re-notifies a dialog it already did.
 	run.dialog = dialogLatch{cursor: max(run.state.PromptOffset, run.state.DialogNotifiedOffset)}
+	run.apiErrors = apiErrorWatch{cursor: run.state.PromptOffset}
 
 	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
@@ -391,6 +393,9 @@ func (run *Run) Wait() (Result, error) {
 			}
 		}
 
+		if result, finished, ferr := run.retryAPIError(); finished {
+			return result, ferr
+		}
 		run.sendShellNudge()
 		run.settleDeferredHold()
 		run.watchDialog()

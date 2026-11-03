@@ -73,6 +73,12 @@ type Spec struct {
 	// QuietHold skips the held-turn parent notice alone.
 	// The hold itself, the wait mark, the deadline and attach behaviour are unchanged.
 	QuietHold bool
+	// APIErrorRetries is how many times the run re-sends a turn the provider's API ended on an error while an output file is missing.
+	// Each re-send waits a back-off that doubles with each API-error turn end of the run,
+	// and the API-error turn end past the last re-send ends the run OutcomeAPIError, whose Result names the error.
+	// Zero re-sends nothing, and such a turn end then waits out the run's deadline.
+	// validate does not inspect it.
+	APIErrorRetries int
 	// HoldDeferral, when set, reports whether outstanding work elsewhere defers this run's held-turn parent notice.
 	// A held turn end is then noticed only after holdNoticeSettle has passed and the predicate reports false, or after holdNoticeMaxDeferral whatever it reports.
 	// A new event or turn start drops the pending notice.

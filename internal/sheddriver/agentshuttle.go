@@ -14,7 +14,22 @@ const (
 	CauseMissing      = "missing"
 	CauseUnparseable  = "unparseable"
 	CausePrecondition = "precondition"
+	CauseAPIError     = "api-error"
 )
+
+// SettlerAPIErrorRetries is how many times a judge agent's turn the provider's API ended on an error is re-sent before the judge hands its stop on.
+// A judge holds its stop alone, so a session left idle by an API error would hold the stop silently until its deadline.
+// Only judges opt in, since each hands its stop on to a parent that can act on the api-error cause.
+// Any other role's caller reads every outcome but done as one more failure, so a re-send there would only delay it.
+const SettlerAPIErrorRetries = 3
+
+// HandBackQuestionCause returns the cause a judge call's own hand-back question names: cause itself, and for CauseAPIError the error detail after it.
+func HandBackQuestionCause(cause, detail string) string {
+	if cause != CauseAPIError {
+		return cause
+	}
+	return cause + ": " + detail
+}
 
 // HandBackWayForward is the way-forward clause every refusal of a judge call ends with: the hand-back to the run's parent.
 const HandBackWayForward = "way forward: report the stop to the run's parent in the stop report"

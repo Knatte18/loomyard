@@ -35,6 +35,30 @@ func stateChanges(log string) []string {
 	return changes
 }
 
+// TestLoopAgreesWithState_APIError pins the pairing the fixed mapping allows for the api-error loop classification.
+// The drive of TestWait_LogsSessionStateBesideItsClassification cannot hold it, since an engine without the parser never ends a run api-error.
+func TestLoopAgreesWithState_APIError(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name  string
+		state SessionStateName
+		want  bool
+	}{
+		{"IdleStalled", SessionIdleStalled, true},
+		{"Busy", SessionBusy, false},
+		{"IdleDone", SessionIdleDone, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := loopAgreesWithState(loopAPIError, SessionState{Name: tt.state}, false); got != tt.want {
+				t.Errorf("loopAgreesWithState(api-error, %s) = %v; want %v", tt.state, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestWait_LogsSessionStateBesideItsClassification drives Wait over scripted events with an engine that parses session signals,
 // and again over the same events with an engine that cannot:
 // the state changes and disagreements are logged by the first run only, and both runs return the same Result and notify the same lines.

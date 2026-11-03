@@ -270,6 +270,7 @@ func (c *TacklerCall) recordStartedTackler(attempt TacklerAttempt) error {
 // concludeWait concludes attempt after a wait ended with result and waitErr.
 // A verdict on disk wins whatever the wait reported.
 // A timeout that ended while the hub's pause record covered part of the run moves the deadline out by the paused time and attaches again for the remainder.
+// A run that ended on an API error its re-sends did not clear is stopped and reads as a hand-back naming the error.
 // Any other run that did not finish is stopped through stop and reads as a hand-back.
 func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (TacklerEnvelope, error) {
 	for {
@@ -296,6 +297,8 @@ func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.
 				guid = result.StrandGUID
 			}
 			stop = func() error { return c.deps.Shuttle.StopStrand(guid) }
+		case result.Outcome == shuttleengine.OutcomeAPIError:
+			return c.stopRunAndHandBack(attempt, stop, guid, CauseAPIError, fmt.Sprintf("the tackler's session failed on an API error its %d re-sends did not clear: %s", SettlerAPIErrorRetries, result.APIError))
 		case result.Outcome != shuttleengine.OutcomeDone:
 			return c.stopRunAndHandBack(attempt, stop, guid, CauseDied, fmt.Sprintf("the tackler ended %s without a verdict", result.Outcome))
 		default:
@@ -429,12 +432,12 @@ func formatGotoRows(rows []string) string {
 	return strings.Join(quoted, " or ")
 }
 
-// handBack finishes the call with a hand-back the call made itself, naming cause.
+// handBack finishes the call with a hand-back the call made itself, naming cause, and for an API error the error itself, in the question.
 func (c *TacklerCall) handBack(attempt TacklerAttempt, cause, detail string) (TacklerEnvelope, error) {
 	return c.finish(TacklerEnvelope{
 		Verdict:     TacklerVerdictHandBack,
 		Reason:      detail,
-		Question:    fmt.Sprintf("The tackler could not settle this stop (%s); decide it yourself and report the choice in the stop report.", cause),
+		Question:    fmt.Sprintf("The tackler could not settle this stop (%s); decide it yourself and report the choice in the stop report.", HandBackQuestionCause(cause, detail)),
 		Cause:       cause,
 		Attempt:     attempt.Number,
 		AttemptDir:  attempt.Dir,

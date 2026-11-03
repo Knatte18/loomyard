@@ -106,18 +106,20 @@ func pathOrNone(path string) string {
 // Interactive is false, shuttle's autonomous posture, which adds the operator-prompt deny an unattended session needs.
 // ForkSubagents is false and Parent is empty: the arbiter spawns nothing and has no session to message.
 // Display is left at its zero value.
+// APIErrorRetries is sheddriver.SettlerAPIErrorRetries, so a turn the provider's API ended is re-sent and, past the re-sends, the run ends and the stop is handed on.
 func Spec(prompt, verdictPath string, settings sheddriver.ArbiterSettings) shuttleengine.Spec {
 	return shuttleengine.Spec{
-		Prompt:        prompt,
-		Skills:        skills,
-		OutputFiles:   []string{verdictPath},
-		ModelChoice:   settings.ModelChoice,
-		Timeout:       settings.Timeout,
-		Role:          loomengine.ArbiterRole,
-		Segment:       segmentcolor.Coordinator,
-		Interactive:   false,
-		ForkSubagents: false,
-		Parent:        "",
+		Prompt:          prompt,
+		Skills:          skills,
+		OutputFiles:     []string{verdictPath},
+		ModelChoice:     settings.ModelChoice,
+		Timeout:         settings.Timeout,
+		Role:            loomengine.ArbiterRole,
+		Segment:         segmentcolor.Coordinator,
+		Interactive:     false,
+		ForkSubagents:   false,
+		Parent:          "",
+		APIErrorRetries: sheddriver.SettlerAPIErrorRetries,
 	}
 }
 

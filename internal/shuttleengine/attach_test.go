@@ -456,7 +456,7 @@ func TestAttach_OutputFilesMismatch(t *testing.T) {
 func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("Untracked", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{{Strands: nil}}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())
@@ -481,7 +481,7 @@ func TestAttach_UntrackedTerminalRecord_RespawnEligibleRegardlessOfAge(t *testin
 	})
 
 	t.Run("BindingCleared", func(t *testing.T) {
-		for _, outcome := range []string{"done", "asking", "died", "timeout", runOutcomeStopped} {
+		for _, outcome := range []string{"done", "asking", "died", "timeout", "api-error", runOutcomeStopped} {
 			t.Run(outcome, func(t *testing.T) {
 				reed := &fakeReed{StatusQueue: []reedengine.StatusResult{deadStatus("strand-1", "")}}
 				fx := newFixture(t, reed, &fakeEngine{}, withSeparateRunDir())

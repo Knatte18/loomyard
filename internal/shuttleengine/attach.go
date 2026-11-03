@@ -608,11 +608,11 @@ func leftoverThenAgeVerdict(c attachCandidate, spec Spec, minAge time.Duration, 
 // Nothing writes it now, and Attach reads it only to attach a record whose strand is live.
 const legacyAskingOutcome = "asking"
 
-// isTerminalOutcome reports whether outcome is a terminal value a run record holds: done, died, timeout, stopped, or the legacy asking.
+// isTerminalOutcome reports whether outcome is a terminal value a run record holds: done, died, timeout, api-error, stopped, or the legacy asking.
 // It is false for the empty string (a legacy pre-Outcome-field record, or a run.json Start has not yet finalized), for runOutcomeRunning, and for any value this package does not recognize.
 func isTerminalOutcome(outcome string) bool {
 	switch outcome {
-	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout), runOutcomeStopped:
+	case string(OutcomeDone), legacyAskingOutcome, string(OutcomeDied), string(OutcomeTimeout), string(OutcomeAPIError), runOutcomeStopped:
 		return true
 	default:
 		return false
