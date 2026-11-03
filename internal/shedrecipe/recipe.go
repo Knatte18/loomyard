@@ -69,6 +69,8 @@ type SegmentSettings struct {
 	ConfigFile string
 	// AmendMaxBounces is the resolved review_amend_max_bounces, the bounces an amendment generation of the segment may spend; 0 settles an amendment without a review.
 	AmendMaxBounces int
+	// Assist is the segment's assistant reviewer settings; the zero value runs no assistant.
+	Assist shedadapters.AssistSettings
 }
 
 // Env carries roots, run-wide values and the per-segment settings of Segments -- never a value that differs between two rows.
@@ -128,6 +130,8 @@ type Env struct {
 	StatusLockPath string
 	// StencilsDir is the told stencils directory, read by Bouncer.
 	StencilsDir string
+	// DefaultEngine is the name of shuttle's default engine, which a MultiLLM seat whose model spec names no engine runs on and reads its engine blocks for.
+	DefaultEngine string
 	// SpecsDir is the told deployed-specs directory, read by the Bouncer and BurlerReview entries.
 	// It is a run-wide root, which is exactly the class Env carries, so it belongs here rather
 	// than as a per-row Config key.

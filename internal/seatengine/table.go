@@ -3,6 +3,7 @@
 package seatengine
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -28,11 +29,18 @@ const writerChairDirectiveBlock = "seat-directive-writer-chair"
 // writerDirectiveBlock is the shipped block that tells a writer how to work with the chair, which every writer seat's stencil includes.
 const writerDirectiveBlock = "seat-directive-writer"
 
+// assistantChairDirectiveBlock is the shipped block that tells the lead how to wait for its assistants, which the lead's stencil of an assistant table includes in place of chairDirectiveBlock.
+const assistantChairDirectiveBlock = "seat-directive-assistant-chair"
+
+// assistantDirectiveBlock is the shipped block that tells an assistant it writes its outputs and nothing else, which every assistant seat's stencil includes.
+const assistantDirectiveBlock = "seat-directive-assistant"
+
 // reservedMarkers are the marker names the seat engine fills itself, sorted.
 // A table or seat value may not use one of them.
 var reservedMarkers = []string{
 	"advisor_names",
 	"anchor_path",
+	"assistants",
 	"chair_name",
 	"edit_directive",
 	"inputs",
@@ -96,6 +104,14 @@ type Seat struct {
 	// A writer is required by kind, so every end of its run that its gate and Accept do not pass ends the step, but its held turn end does not notify the parent.
 	// The lead is never a writer, and a table holds advisors only or writers only.
 	Writer bool
+	// Assistant marks an assistant: a seat that writes its outputs and nothing else, gets no up line and no mail, and never ends the step.
+	// The engine writes its EndMarker once its run ends, whatever the ending, or when it does not start.
+	// The lead is never an assistant, and a table holds assistants only after the lead when it holds one.
+	Assistant bool
+	// EndMarker is an assistant's end-marker path, whose text names how its run ended; only an assistant carries one.
+	EndMarker string
+	// SkipReason, when set on an assistant, keeps it from starting: its end marker then reads not started with this reason.
+	SkipReason string
 	// Timeout bounds this seat's run; zero takes the table's Timeout.
 	Timeout time.Duration
 	// GateFindingsPath is where the producer keeps the findings of a writer's failed gate; the engine only carries it onto the seat's result.
@@ -103,6 +119,14 @@ type Seat struct {
 	// Accept judges the terminal result of a seat that ends the step, a Required advisor or a writer, once it ended done with its gate passed; an error ends the step.
 	// Only such a seat carries one.
 	Accept func(shuttleengine.Result) error
+}
+
+// stencilEngine returns the engine the seat's engine blocks are read for: the engine its model choice names, else defaultEngine.
+func (s Seat) stencilEngine(defaultEngine string) string {
+	if s.Engine != "" {
+		return s.Engine
+	}
+	return defaultEngine
 }
 
 // endsStep reports whether an end of this seat's run that its gate and Accept do not pass ends the step: a required advisor or a writer.
@@ -143,6 +167,25 @@ func (t Table) hasWriters() bool {
 	return slices.ContainsFunc(t.Seats[1:], func(seat Seat) bool { return seat.Writer })
 }
 
+// hasAssistants reports whether any seat after the lead is an assistant.
+func (t Table) hasAssistants() bool {
+	if len(t.Seats) == 0 {
+		return false
+	}
+	return slices.ContainsFunc(t.Seats[1:], func(seat Seat) bool { return seat.Assistant })
+}
+
+// chairDirective returns the directive block the lead's stencil of a table of more than one seat includes: the assistant chair's, the writer chair's or the advisor chair's.
+func (t Table) chairDirective() string {
+	switch {
+	case t.hasAssistants():
+		return assistantChairDirectiveBlock
+	case t.hasWriters():
+		return writerChairDirectiveBlock
+	}
+	return chairDirectiveBlock
+}
+
 // Chair returns the lead, the table's first seat, or the zero Seat when the table has none.
 func (t Table) Chair() Seat {
 	if len(t.Seats) == 0 {
@@ -165,12 +208,15 @@ func (t Table) Outputs() []string {
 // Every seat has an output, no two seats share an output path, and every advisor output is one of the lead's inputs.
 // The role prefix and every seat's formed role are valid agent-name roles.
 // The lead carries no gate, since the lead's gate is the table's, and is neither Required, a Writer nor given an Accept hook; Accept belongs to a seat that ends the step, a Required advisor or a Writer.
-// A table holds advisors only or writers only after the lead.
-// Every seat's stencil is readable from stencilsDir, as is every block it includes, and an included block includes nothing.
-// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, and the lead's stencil of a writer table includes seat-directive-writer-chair in its place.
-// A writer seat's stencil includes seat-directive-writer.
+// A table holds advisors only, writers only or assistants only after the lead.
+// An assistant carries an end marker no other seat's marker or output shares, and is neither Required, a Writer nor given an Accept hook.
+// Every seat's stencil is readable from stencilsDir, as is every block it includes, an engine block read for the seat's engine, and an included block includes nothing.
+// defaultEngine is the engine a seat whose model choice names none runs on; an engine block its seat's engine has no copy of is refused naming the block, the engine and the file.
+// An assistant is the exception: the missing block keeps it from starting instead, so the step goes on without it.
+// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, the lead's stencil of a writer table includes seat-directive-writer-chair in its place, and the lead's stencil of an assistant table seat-directive-assistant-chair.
+// A writer seat's stencil includes seat-directive-writer, and an assistant seat's seat-directive-assistant.
 // A table or seat value neither collides with a reserved marker nor is blank, except a table value named in Optional, which may be blank; an Optional name may not be a reserved marker.
-func (t Table) Validate(stencilsDir string) error {
+func (t Table) Validate(stencilsDir, defaultEngine string) error {
 	if err := agentname.ValidateRole(t.RolePrefix); err != nil {
 		return fmt.Errorf("seatengine: role prefix: %w", err)
 	}
@@ -182,7 +228,7 @@ func (t Table) Validate(stencilsDir string) error {
 	if err := validateValues("table", t.requiredValues()); err != nil {
 		return err
 	}
-	for _, check := range []func() error{t.validateNames, t.validateOutputs, t.validateRoles, t.validateWriterKinds} {
+	for _, check := range []func() error{t.validateNames, t.validateOutputs, t.validateRoles, t.validateKinds, t.validateEndMarkers} {
 		if err := check(); err != nil {
 			return err
 		}
@@ -195,21 +241,25 @@ func (t Table) Validate(stencilsDir string) error {
 		if err := validateValues(fmt.Sprintf("seat %q", label), seat.Values); err != nil {
 			return err
 		}
-		blocks, err := validateStencil(stencilsDir, label, seat.Stencil)
+		blocks, err := validateStencil(stencilsDir, seat.stencilEngine(defaultEngine), label, seat.Stencil)
+		var missing *stencilstore.MissingEngineBlockError
+		if seat.Assistant && errors.As(err, &missing) {
+			continue
+		}
 		if err != nil {
 			return err
 		}
 		if index == 0 && len(t.Seats) > 1 {
-			directive := chairDirectiveBlock
-			if t.hasWriters() {
-				directive = writerChairDirectiveBlock
-			}
+			directive := t.chairDirective()
 			if !slices.Contains(blocks, directive) {
 				return fmt.Errorf("seatengine: the lead's stencil %q does not include %s, which a table of more than one seat needs; include %s in the lead's stencil", seat.Stencil, directive, directive)
 			}
 		}
 		if seat.Writer && !slices.Contains(blocks, writerDirectiveBlock) {
 			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which a writer needs; include %s in the writer's stencil", label, seat.Stencil, writerDirectiveBlock, writerDirectiveBlock)
+		}
+		if seat.Assistant && !slices.Contains(blocks, assistantDirectiveBlock) {
+			return fmt.Errorf("seatengine: seat %q: the stencil %q does not include %s, which an assistant needs; include %s in the assistant's stencil", label, seat.Stencil, assistantDirectiveBlock, assistantDirectiveBlock)
 		}
 	}
 	return nil
@@ -231,10 +281,15 @@ func validateSeatRoles(label string, seat Seat) error {
 			return fmt.Errorf("seatengine: the lead is marked required, but only an advisor can be")
 		case seat.Writer:
 			return fmt.Errorf("seatengine: the lead is marked a writer, but only a seat after the lead can be")
+		case seat.Assistant:
+			return fmt.Errorf("seatengine: the lead is marked an assistant, but only a seat after the lead can be")
 		case seat.Accept != nil:
 			return fmt.Errorf("seatengine: the lead carries an accept hook, but only a required advisor or a writer can")
 		}
 		return nil
+	}
+	if seat.Assistant && (seat.Required || seat.Writer) {
+		return fmt.Errorf("seatengine: seat %q: an assistant is never required and never a writer; drop the other mark", label)
 	}
 	if seat.Accept != nil && !seat.endsStep() {
 		return fmt.Errorf("seatengine: seat %q: carries an accept hook but is neither required nor a writer", label)
@@ -242,15 +297,49 @@ func validateSeatRoles(label string, seat Seat) error {
 	return nil
 }
 
-// validateWriterKinds checks a table that holds a writer holds writers only after the lead.
-func (t Table) validateWriterKinds() error {
-	if !t.hasWriters() {
-		return nil
+// validateKinds checks a table that holds a writer holds writers only after the lead, and one that holds an assistant assistants only.
+func (t Table) validateKinds() error {
+	kinds := []struct {
+		name   string
+		holds  bool
+		member func(Seat) bool
+	}{
+		{"writers", t.hasWriters(), func(seat Seat) bool { return seat.Writer }},
+		{"assistants", t.hasAssistants(), func(seat Seat) bool { return seat.Assistant }},
 	}
-	for _, seat := range t.Seats[1:] {
-		if !seat.Writer {
-			return fmt.Errorf("seatengine: seat %q: the table holds writers, but this seat is not one; a table holds advisors only or writers only, so mark the seat a writer or drop it", t.seatLabel(seat))
+	for _, kind := range kinds {
+		if !kind.holds {
+			continue
 		}
+		for _, seat := range t.Seats[1:] {
+			if !kind.member(seat) {
+				return fmt.Errorf("seatengine: seat %q: the table holds %s, but this seat is not one; a table holds advisors only, writers only or assistants only, so give the seat the table's kind or drop it", t.seatLabel(seat), kind.name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateEndMarkers checks every assistant carries an end marker and every other seat none, and that no end marker is another seat's marker or any seat's output.
+func (t Table) validateEndMarkers() error {
+	owners := make(map[string]string)
+	for _, path := range t.Outputs() {
+		owners[path] = "an output"
+	}
+	for _, seat := range t.Seats {
+		label := t.seatLabel(seat)
+		switch {
+		case seat.Assistant && seat.EndMarker == "":
+			return fmt.Errorf("seatengine: seat %q: an assistant needs an end marker; set the seat's EndMarker", label)
+		case !seat.Assistant && seat.EndMarker != "":
+			return fmt.Errorf("seatengine: seat %q: carries an end marker, but only an assistant can", label)
+		case seat.EndMarker == "":
+			continue
+		}
+		if owner, taken := owners[seat.EndMarker]; taken {
+			return fmt.Errorf("seatengine: seat %q: end marker %q is already %s", label, seat.EndMarker, owner)
+		}
+		owners[seat.EndMarker] = fmt.Sprintf("seat %q's end marker", label)
 	}
 	return nil
 }
@@ -334,10 +423,10 @@ func validateValues(owner string, values map[string]string) error {
 	return nil
 }
 
-// validateStencil checks the stencil named stencilName and every block it includes are readable from stencilsDir, and that no block includes another.
+// validateStencil checks the stencil named stencilName and every block it includes, an engine block read for engine, are readable from stencilsDir, and that no block includes another.
 // It returns the sorted names of the blocks the stencil includes; label is the name an error gives the seat the stencil opens.
-func validateStencil(stencilsDir, label, stencilName string) ([]string, error) {
-	_, blocks, err := readStencilSet(stencilsDir, label, stencilName)
+func validateStencil(stencilsDir, engine, label, stencilName string) ([]string, error) {
+	_, blocks, err := readStencilSet(stencilsDir, engine, label, stencilName)
 	if err != nil {
 		return nil, err
 	}
@@ -354,24 +443,12 @@ func validateStencil(stencilsDir, label, stencilName string) ([]string, error) {
 	return names, nil
 }
 
-// readStencilSet reads the stencil named stencilName from stencilsDir, with every block it includes keyed by block name.
+// readStencilSet reads the stencil named stencilName from stencilsDir, with every block it includes keyed by block name and an engine block read for engine.
 // label is the name an error gives the seat the stencil opens.
-func readStencilSet(stencilsDir, label, stencilName string) ([]byte, map[string][]byte, error) {
-	body, err := stencilstore.Read(stencilsDir, stencilName)
+func readStencilSet(stencilsDir, engine, label, stencilName string) ([]byte, map[string][]byte, error) {
+	body, blocks, err := stencilstore.ReadSet(stencilsDir, engine, stencilName)
 	if err != nil {
 		return nil, nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
-	}
-	names, err := stencil.IncludeNames(body)
-	if err != nil {
-		return nil, nil, fmt.Errorf("seatengine: seat %q: stencil %q: %w", label, stencilName, err)
-	}
-	blocks := make(map[string][]byte, len(names))
-	for _, name := range names {
-		block, err := stencilstore.Read(stencilsDir, name)
-		if err != nil {
-			return nil, nil, fmt.Errorf("seatengine: seat %q: %w", label, err)
-		}
-		blocks[name] = block
 	}
 	return body, blocks, nil
 }

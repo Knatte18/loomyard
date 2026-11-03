@@ -97,6 +97,11 @@ func CreateDirLink(link, target string) error {
 	return nil
 }
 
+// CreateFileLink refuses on Windows before touching the filesystem: a file symlink there needs elevated privileges, and a junction links only a directory.
+func CreateFileLink(link, target string) error {
+	return fmt.Errorf("create file link %s -> %s: Windows makes a file link only with elevated privileges; way forward: run a session that needs one on a Linux or macOS machine", link, target)
+}
+
 // readReparseData opens path with reparse-point semantics and returns the
 // reparse data buffer truncated to the bytes Windows wrote.
 func readReparseData(path string) ([]byte, error) {

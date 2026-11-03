@@ -32,4 +32,6 @@ type Geometry struct {
 	PatternRecordPath string
 	// SpecsDir is the deployed-specs directory a fanned half's prompt points at for the lens report format.
 	SpecsDir string
+	// DefaultEngine is the name of the engine a half whose model choice names none runs on, shuttle's default; that half's stencils and instruction files are rendered for it.
+	DefaultEngine string
 }

@@ -199,6 +199,7 @@ func TestRelPath(t *testing.T) {
 		{"loom-template-plan", "loom/loom-template-plan.md"},
 		{"loom-plan-spec", "loom/loom-plan-spec.md"},
 		{"solo", "solo.md"},
+		{"engine/codex/fan-spawn", "engine/codex/fan-spawn.md"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

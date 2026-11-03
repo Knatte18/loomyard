@@ -16,6 +16,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/batcher"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -576,6 +577,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		patternRecordPath = record.path
 	}
 	burlerGeom.PatternRecordPath = patternRecordPath
+	burlerGeom.DefaultEngine = shuttleCfg.Engine
+	assistBounds := segmentAssistBounds(location, burlerGeom, loomCfg, time.Duration(shuttleCfg.RunTimeoutMin)*time.Minute, shuttleCfg.StartAllowance())
 	burlerEngine := burlerengine.New(seatengine.RunnerShuttle(runner), burlerGeom, lensesCfg, websterGeom.StencilsDir, frictionDir, languageSkills)
 
 	runDeps := websterengine.RunDeps{
@@ -748,12 +751,13 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		Shuttle: runner,
 		// Seats runs the MultiLLM rows' seats over the same runner.
 		Seats: seatengine.New(seatengine.RunnerShuttle(runner), seatengine.Geometry{
-			WorktreeRoot: location.WorktreePath(),
-			AnchorPath:   anchorPath,
-			StencilsDir:  websterGeom.StencilsDir,
-			ParentName:   c.parentName,
-			Shortname:    reedGeom.NameShortname,
-			Slug:         reedGeom.NameSlug,
+			WorktreeRoot:  location.WorktreePath(),
+			AnchorPath:    anchorPath,
+			StencilsDir:   websterGeom.StencilsDir,
+			DefaultEngine: shuttleCfg.Engine,
+			ParentName:    c.parentName,
+			Shortname:     reedGeom.NameShortname,
+			Slug:          reedGeom.NameSlug,
 		}),
 		Models: registry,
 		// DiscussionTable is evaluated per Call, not resolved here, so the stencils are read at call time -- what the Stencil Ownership Invariant requires.
@@ -917,8 +921,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		// So each is one value read from one place, not a second copy that could drift from theirs.
 		// Now is filled explicitly with time.Now rather than left nil, even though nil defaults to time.Now inside the underlying constructors.
 		// The Bouncer's archive-filename collision suffix is the one place a test wants to inject a clock.
-		StencilsDir: websterGeom.StencilsDir,
-		SpecsDir:    websterGeom.SpecsDir,
+		StencilsDir:   websterGeom.StencilsDir,
+		SpecsDir:      websterGeom.SpecsDir,
+		DefaultEngine: shuttleCfg.Engine,
 		// RunRoot is durable: the status seam commits it with every transition.
 		RunRoot: loomengine.LoomReviewsDir(location),
 		Burler:  burlerEngine,
@@ -930,7 +935,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			return loomrecipe.Routing(c.recipe, loomSegmentBudgets(loomCfg))
 		}),
 
-		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings),
+		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds),
 		// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
 		Setting: configreg.SettingLookup(fabricengine.ConfigDirs(location)),
 		// SettingKnown and Resume serve a recipe row's entry gate: its operands are checked at build and its evaluation errors name the resume command.
@@ -1123,9 +1128,38 @@ func loomSegmentBudgets(cfg loomengine.Config) map[string]int {
 	return budgets
 }
 
+// assistBound is the capped run bound of one review segment's assistant reviewer, with the reason it must not start; the reason is empty when it may.
+type assistBound struct {
+	timeout    time.Duration
+	skipReason string
+}
+
+// segmentAssistBounds returns each review segment's assistant bound, capped so the assistant ends before that segment's chair does.
+// A segment's recipe rows set role_prefix to the name of its perch, so its chair runs as the role burlerengine.ReviewChairRole forms from that name.
+// The await cap is the one the keep-warm resolver gives that role, since the chair's `lym shuttle await` runs under it.
+// A chair name that cannot be formed leaves the default await cap.
+func segmentAssistBounds(location *lymcwd.Location, geom burlerengine.Geometry, cfg loomengine.Config, runTimeout, startAllowance time.Duration) map[loomengine.Perch]assistBound {
+	bounds := make(map[loomengine.Perch]assistBound, len(loomSegmentPerches))
+	for _, perch := range loomSegmentPerches {
+		awaitCap := shuttleengine.DefaultAwaitCap
+		if chair, err := agentname.Format(geom.Shortname, geom.Slug, burlerengine.ReviewChairRole(string(perch))); err == nil {
+			awaitCap = shuttleengines.KeepWarm(fabricengine.ConfigDirs(location), chair).Cap
+		}
+		timeout, skipReason := loomengine.CapAssistTimeout(cfg, runTimeout, startAllowance, awaitCap)
+		bounds[perch] = assistBound{timeout: timeout, skipReason: skipReason}
+	}
+	return bounds
+}
+
 // loomSegmentSettings builds one shedrecipe.SegmentSettings per loom review segment.
 // Models and their keys come from review, the Bouncer pair from judge, and the budget and hard cap with their keys from cfg.Caps, which resolves them through reviewbudget.
-func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings) map[string]shedrecipe.SegmentSettings {
+// The assistant's lists come from review too, and each segment's assistant takes its perch's entry of assistBounds.
+func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings, judge loomengine.JudgeSettings, assistBounds map[loomengine.Perch]assistBound) map[string]shedrecipe.SegmentSettings {
+	assists := map[loomengine.Perch]loomengine.AssistModels{
+		loomengine.PerchDiscussion: review.DiscussionAssist,
+		loomengine.PerchPlan:       review.PlanAssist,
+		loomengine.PerchCode:       review.CodeAssist,
+	}
 	models := map[loomengine.Perch]burlerengine.RoundModels{
 		loomengine.PerchDiscussion: review.Discussion,
 		loomengine.PerchPlan:       review.Plan,
@@ -1155,6 +1189,14 @@ func loomSegmentSettings(cfg loomengine.Config, review loomengine.ReviewSettings
 			HardMaxBouncesKey: caps.HardKey,
 			AmendMaxBounces:   cfg.ReviewAmendMaxBounces,
 			ConfigFile:        segmentConfigFile(perch),
+			Assist: shedadapters.AssistSettings{
+				Models:     assists[perch].Models,
+				Fans:       []string(assists[perch].Fans),
+				ModelKey:   assists[perch].ModelKey,
+				FanKey:     assists[perch].FanKey,
+				Timeout:    assistBounds[perch].timeout,
+				SkipReason: assistBounds[perch].skipReason,
+			},
 		}
 	}
 	return settings

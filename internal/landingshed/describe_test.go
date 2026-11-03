@@ -107,7 +107,7 @@ func TestDescribeSpec_ComposesSpec(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DescribeTable = _, %v; want nil error", err)
 	}
-	if err := table.Validate(in.StencilsDir); err != nil {
+	if err := table.Validate(in.StencilsDir, ""); err != nil {
 		t.Fatalf("table.Validate() = %v; want nil", err)
 	}
 

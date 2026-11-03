@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
@@ -52,6 +53,56 @@ type roundUsage struct {
 	Fix          *halfUsage  `yaml:"fix,omitempty"`
 	Seed         []halfUsage `yaml:"seed,omitempty"`
 	Judge        []halfUsage `yaml:"judge,omitempty"`
+	// Attempt is the attempt token the round's review table last spawned under, the round number or the round number and b on the retry;
+	// Assist and AssistFan are the assistant model choice and fan it spawned with, Assist nil for a round with no assistant.
+	// A record without Attempt, as a binary that predates it writes, reads as a round with no assistant whose chair runs under the bare round.
+	Attempt   string        `yaml:"attempt,omitempty"`
+	Assist    *assistRecord `yaml:"assist,omitempty"`
+	AssistFan string        `yaml:"assist_fan,omitempty"`
+}
+
+// assistRecord is the assistant model choice a round's review table spawned with.
+type assistRecord struct {
+	Engine  string `yaml:"engine,omitempty"`
+	Model   string `yaml:"model"`
+	Effort  string `yaml:"effort,omitempty"`
+	Version string `yaml:"version,omitempty"`
+}
+
+// roundAttempt is what a round's review table spawns under: the attempt token and the assistant choice and fan.
+// The zero choice runs no assistant.
+type roundAttempt struct {
+	token     string
+	assist    shuttleengine.ModelChoice
+	assistFan string
+}
+
+// recordRoundAttempt writes the attempt a round's review table is about to spawn under, so a probe or resume after an interruption builds the same table whatever the config says by then.
+// It is the only writer of the three keys.
+func recordRoundAttempt(runDir string, round int, now func() time.Time, attempt roundAttempt) error {
+	return mergeRoundUsage(runDir, round, now, func(u *roundUsage) {
+		u.Attempt, u.Assist, u.AssistFan = attempt.token, nil, ""
+		if attempt.assist.Model != "" {
+			u.Assist = &assistRecord{Engine: attempt.assist.Engine, Model: attempt.assist.Model, Effort: attempt.assist.Effort, Version: attempt.assist.Version}
+			u.AssistFan = attempt.assistFan
+		}
+	})
+}
+
+// readRoundAttempt returns the attempt round's review table last spawned under.
+// A missing or undecodable record, and one without an attempt token, read as the bare round with no assistant.
+func readRoundAttempt(runDir string, round int) roundAttempt {
+	bare := roundAttempt{token: strconv.Itoa(round)}
+	u, err := readRoundUsage(runDir, round)
+	if err != nil || u.Attempt == "" {
+		return bare
+	}
+	attempt := roundAttempt{token: u.Attempt}
+	if u.Assist != nil {
+		attempt.assist = shuttleengine.ModelChoice{Engine: u.Assist.Engine, Model: u.Assist.Model, Effort: u.Assist.Effort, Version: u.Assist.Version}
+		attempt.assistFan = u.AssistFan
+	}
+	return attempt
 }
 
 // halfUsage is one half's engine, model, run times and token reading.

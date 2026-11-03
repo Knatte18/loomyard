@@ -121,20 +121,28 @@ func BoardDir(hub string) string {
 }
 
 // ConfigDirs returns the told geometry of a layered config load for the location:
-// its anchor, and the hub's Bolt checkout when that exists as a directory.
-// A git checkout that is not a hub has no Bolt checkout, so it gets Board empty and loads the standalone stack.
-// A stat failure other than absence is treated as absence and logged, since a loader then degrades or refuses on its own base-layer rule.
+// its anchor, the hub's Bolt checkout when that exists as a directory, and the paired weft checkout when that exists as a directory.
+// A git checkout that is not a hub has no Bolt checkout, so it gets Board empty and loads the standalone stack, and it has no weft checkout either.
+// A stat failure other than absence is treated as absence and logged for either checkout, since a loader then degrades or refuses on its own base-layer rule.
 func ConfigDirs(l *lymcwd.Location) configengine.Dirs {
-	dirs := configengine.Dirs{Anchor: l.AnchorPath()}
-	board := BoltDir(l.HubPath)
-	info, err := os.Stat(board)
+	return configengine.Dirs{
+		Anchor:  l.AnchorPath(),
+		Board:   existingDirOrLog(BoltDir(l.HubPath), "fabricengine: Bolt checkout not statable, loading the standalone config stack"),
+		Records: existingDirOrLog(RecordsWorktree(l), "fabricengine: weft checkout not statable, telling no records checkout"),
+	}
+}
+
+// existingDirOrLog returns path when it exists as a directory and the empty string otherwise.
+// A stat failure other than absence is logged with warning, the path and the error.
+func existingDirOrLog(path, warning string) string {
+	info, err := os.Stat(path)
 	switch {
 	case err == nil && info.IsDir():
-		dirs.Board = board
+		return path
 	case err != nil && !os.IsNotExist(err):
-		logger.Warn("fabricengine: Bolt checkout not statable, loading the standalone config stack", "path", board, "error", err)
+		logger.Warn(warning, "path", path, "error", err)
 	}
-	return dirs
+	return ""
 }
 
 // stencilsDirName is the name of the stencils directory nested under the Bolt checkout's `_lym` component.

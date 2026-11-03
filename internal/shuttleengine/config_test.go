@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -501,6 +502,33 @@ func TestLoadConfig_ModuleArgIsThreadedThrough(t *testing.T) {
 	}
 	if defaultCfg.PollIntervalMS != 1000 {
 		t.Errorf("PollIntervalMS = %d, want 1000 (template default)", defaultCfg.PollIntervalMS)
+	}
+}
+
+// TestConfig_StartAllowance verifies the start allowance is every launch's startup_timeout_s, the first and each retry, plus the retry delay once per retry.
+func TestConfig_StartAllowance(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	// retryDelay is the wait the engine takes between two launch attempts.
+	const retryDelay = 5 * time.Second
+	tests := []struct {
+		name     string
+		retries  int
+		startupS int
+		want     time.Duration
+	}{
+		{name: "no retries is one launch", retries: 0, startupS: 90, want: 90 * time.Second},
+		{name: "one retry adds a launch and a delay", retries: 1, startupS: 90, want: 2*90*time.Second + retryDelay},
+		{name: "three retries add three launches and three delays", retries: 3, startupS: 60, want: 4*60*time.Second + 3*retryDelay},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := shuttleengine.Config{StartRetries: tt.retries, StartupTimeoutS: tt.startupS}
+			if got := cfg.StartAllowance(); got != tt.want {
+				t.Errorf("Config{StartRetries: %d, StartupTimeoutS: %d}.StartAllowance() = %s; want %s", tt.retries, tt.startupS, got, tt.want)
+			}
+		})
 	}
 }
 

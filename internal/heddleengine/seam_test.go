@@ -95,9 +95,11 @@ func TestSeam(t *testing.T) {
 		}{
 			{"AgentsMd", ".", []string{"AGENTS.md"}, true, true},
 			{"UnrelatedPath", ".", []string{"src/x.go"}, false, false},
-			{"ClaudeDirClaudeMd", ".", []string{".claude/CLAUDE.md"}, true, false},
+			{"ClaudeDirClaudeMd", ".", []string{".claude/CLAUDE.md"}, true, true},
 			{"AnchoredAgentsMd", "src/app", []string{"src/app/AGENTS.md"}, true, true},
-			{"AnchoredClaudeMd", "src/app", []string{"src/app/CLAUDE.md"}, true, false},
+			{"ClaudeMd", ".", []string{"CLAUDE.md"}, true, true},
+			{"AnchoredClaudeMd", "src/app", []string{"src/app/CLAUDE.md"}, true, true},
+			{"ClaudeMdAboveTheAnchor", "src/app", []string{"CLAUDE.md"}, false, false},
 			{"AgentsMdAboveTheAnchor", "src/app", []string{"AGENTS.md"}, false, false},
 		}
 		for _, tt := range tests {

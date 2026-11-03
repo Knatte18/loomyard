@@ -9,14 +9,19 @@ import (
 	"sort"
 )
 
-// builtins returns the pinned, default-free fallback registry: sonnet, opus,
-// haiku, and fable (operator effort defaults live only in models.yaml, not here).
+// builtins returns the pinned fallback registry.
+// It holds the Claude aliases sonnet, opus, haiku and fable with no defaults, since the operator's Claude effort defaults live only in models.yaml.
+// It also holds the Codex aliases sol, astra and luna at effort medium, so a Codex spec naming no effort never launches at the provider's own default.
 func builtins() Registry {
+	codexDefaults := func() map[string]string { return map[string]string{"effort": "medium"} }
 	return Registry{
 		"sonnet": {Engine: "claude", Model: "sonnet"},
 		"opus":   {Engine: "claude", Model: "opus"},
 		"haiku":  {Engine: "claude", Model: "haiku"},
 		"fable":  {Engine: "claude", Model: "fable"},
+		"sol":    {Engine: "codex", Model: "gpt-6.1-sol", Defaults: codexDefaults()},
+		"astra":  {Engine: "codex", Model: "gpt-6-astra", Defaults: codexDefaults()},
+		"luna":   {Engine: "codex", Model: "gpt-6-luna", Defaults: codexDefaults()},
 	}
 }
 

@@ -114,7 +114,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		t.Errorf("advisor parent_directive = %q, want the chair as parent and the operator ban", advisorValues["parent_directive"])
 	}
 
-	chairPrompt, err := composeSeatPrompt(geom.StencilsDir, table, table.Seats[0], chairValues)
+	chairPrompt, err := composeSeatPrompt(geom, table, table.Seats[0], chairValues)
 	if err != nil {
 		t.Fatalf("composeSeatPrompt(chair) = %v", err)
 	}
@@ -123,7 +123,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 			t.Errorf("chair prompt lacks %q:\n%s", want, chairPrompt)
 		}
 	}
-	advisorPrompt, err := composeSeatPrompt(geom.StencilsDir, table, table.Seats[1], advisorValues)
+	advisorPrompt, err := composeSeatPrompt(geom, table, table.Seats[1], advisorValues)
 	if err != nil {
 		t.Fatalf("composeSeatPrompt(advisor) = %v", err)
 	}
@@ -265,7 +265,7 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("seatValues(advisor) = %v", err)
 		}
-		wantAdvisor, err := composeSeatPrompt(geom.StencilsDir, table, table.Seats[1], advisorNone)
+		wantAdvisor, err := composeSeatPrompt(geom, table, table.Seats[1], advisorNone)
 		if err != nil {
 			t.Fatalf("composeSeatPrompt(advisor) = %v", err)
 		}
@@ -278,6 +278,104 @@ func TestSeatPrompts_ValuesPromptsAndSpecs(t *testing.T) {
 			t.Errorf("Prompts() with an unlisted blank value = %v, want the blank-value refusal", err)
 		}
 	})
+}
+
+func TestPrompts_AssistantTable(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	geom := promptGeometry(t)
+	// Relative paths join onto the worktree root in the chair's list.
+	table := assistantTable("", 2)
+	table.Seats[2].Engine = "claude"
+
+	prompts, err := Prompts(geom, table)
+	if err != nil {
+		t.Fatalf("Prompts() = %v; want nil error", err)
+	}
+	for _, want := range []string{
+		"You have assistants in this step",
+		"- ly:task:multi-advisor-1: report `/w/advisor-1.md`, end marker `/w/advisor-1.end`",
+		"- ly:task:multi-advisor-2: report `/w/advisor-2.md`, end marker `/w/advisor-2.end`",
+	} {
+		if !strings.Contains(prompts[""], want) {
+			t.Errorf("chair prompt lacks %q:\n%s", want, prompts[""])
+		}
+	}
+
+	tests := []struct {
+		name   string
+		seat   string
+		want   string
+		absent string
+	}{
+		{"CodexAssistantEditDirective", advisorName(1), "Change a file only with `apply_patch`", "Change files with Edit or Write"},
+		{"ClaudeAssistantEditDirective", advisorName(2), "Change files with Edit or Write", "apply_patch"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			prompt := prompts[tt.seat]
+			for _, want := range []string{tt.want, "No parent is recorded for this run.", "You are an assistant in this step"} {
+				if !strings.Contains(prompt, want) {
+					t.Errorf("Prompts()[%q] lacks %q:\n%s", tt.seat, want, prompt)
+				}
+			}
+			if strings.Contains(prompt, tt.absent) || strings.Contains(prompt, "never the way forward") || strings.Contains(prompt, "`ly:task:multi`") {
+				t.Errorf("Prompts()[%q] holds %q, an operator ban or the chair as parent, want the no-parent variant and its engine's directive only:\n%s", tt.seat, tt.absent, prompt)
+			}
+		})
+	}
+
+	t.Run("AnAdvisorTableListsNoAssistant", func(t *testing.T) {
+		t.Parallel()
+		advisors := promptTable()
+		names, err := strandNames(geom, advisors)
+		if err != nil {
+			t.Fatalf("strandNames() = %v", err)
+		}
+		values, err := seatValues(geom, advisors, advisors.Seats[0], names)
+		if err != nil {
+			t.Fatalf("seatValues() = %v", err)
+		}
+		if got := values["assistants"]; got != noneValue {
+			t.Errorf("assistants = %q, want %q", got, noneValue)
+		}
+	})
+}
+
+func TestPrompts_RenderEachSeatsEngineBlocksForItsEngine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	geom := promptGeometry(t)
+	geom.DefaultEngine = "claude"
+	table := promptTable()
+	table.Seats[0].Stencil = "seat-test-engined-chair"
+	table.Seats[0].Engine = "codex"
+	table.Seats[1].Stencil = "seat-test-engined-advisor"
+	table.Seats[1].Engine = ""
+
+	prompts, err := Prompts(geom, table)
+	if err != nil {
+		t.Fatalf("Prompts() = %v; want nil error", err)
+	}
+	tests := []struct {
+		name   string
+		seat   string
+		want   string
+		absent string
+	}{
+		{"ChairOnItsOwnEngine", "", "Codex words.", "Claude words."},
+		{"AdvisorOnTheDefaultEngine", advisorName(1), "Claude words.", "Codex words."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			prompt := prompts[tt.seat]
+			if !strings.Contains(prompt, tt.want) || strings.Contains(prompt, tt.absent) {
+				t.Errorf("Prompts()[%q] = %q; want it to hold %q and not %q", tt.seat, prompt, tt.want, tt.absent)
+			}
+		})
+	}
 }
 
 func TestComposeSeatPrompt_RefusesAMarkerAbsentFromTheValueMapNamingTheSeatRole(t *testing.T) {
@@ -311,7 +409,7 @@ func TestComposeSeatPrompt_RefusesAMarkerAbsentFromTheValueMapNamingTheSeatRole(
 				t.Fatalf("seatValues() = %v", err)
 			}
 
-			_, err = composeSeatPrompt(geom.StencilsDir, table, seat, values)
+			_, err = composeSeatPrompt(geom, table, seat, values)
 			if err == nil || err.Error() != tt.want {
 				t.Fatalf("composeSeatPrompt() = %v, want %q", err, tt.want)
 			}

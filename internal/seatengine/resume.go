@@ -27,7 +27,7 @@ type LiveTable struct {
 // a stop that fails is an error wrapping ErrSeatNotStopped.
 // Probe archives nothing and starts nothing.
 func (e *Engine) Probe(table Table) (LiveTable, error) {
-	if err := table.Validate(e.geom.StencilsDir); err != nil {
+	if err := table.Validate(e.geom.StencilsDir, e.geom.DefaultEngine); err != nil {
 		return LiveTable{}, err
 	}
 
@@ -79,7 +79,8 @@ func (e *Engine) probeSeat(table Table, seat Seat, holdDeferral func() bool) (Ha
 // The chair is told again that each found advisor is up, since the line may not have landed before the interruption.
 // An advisor the probe did not find is never restarted, and the chair is told of it once:
 // an advisor whose outputs all exist is finished, any other has ended.
-// A found writer is attached and watched as in a fresh run, and the chair is told no up line for it.
+// A found writer or assistant is attached and watched as in a fresh run, and the chair is told no up line for it.
+// An assistant the probe did not find gets the end marker reading its outcome, which keeps a marker its run already wrote and reads not found when it has none; the chair is told nothing.
 // A writer the probe did not find, a done writer whose kept pane the probe removed included, counts as finished when all its outputs exist and its Accept hook passes on a zero result, and the chair is told once that it was stopped, that any fix asked of it is lost and that it no longer answers;
 // a writer whose outputs are not all there, or whose Accept hook fails, ends the step at once, its Accept error kept on its result.
 // The chair's hold deferral reads the work Probe wired into it, which Resume binds to its sender and adds every found advisor to, so an attached chair defers as a fresh one does;
@@ -91,7 +92,7 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	if live.Chair == nil {
 		return Result{}, fmt.Errorf("seatengine: resume needs a live chair; way forward: run the row again so it starts the table fresh")
 	}
-	if err := table.Validate(e.geom.StencilsDir); err != nil {
+	if err := table.Validate(e.geom.StencilsDir, e.geom.DefaultEngine); err != nil {
 		return Result{}, err
 	}
 	names, err := strandNames(e.geom, table)
@@ -114,17 +115,19 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 		}
 		outputs := e.absolute(seat.Outputs)
 		if handle, found := live.Advisors[seat.Name]; found {
-			if !seat.Writer {
+			if !seat.Writer && !seat.Assistant {
 				sender.queue(advisorUpNotice(names[seat.Name]))
 			}
-			attached := newSeatRun(seat, names[seat.Name], handle, outputs, sender, ender)
+			attached := newSeatRun(seat, names[seat.Name], handle, outputs, e.endMarkerOf(seat), sender, ender)
 			work.add(attached)
 			advisors = append(advisors, attached)
 			continue
 		}
-		lost := &seatRun{seat: seat, name: names[seat.Name], outputs: outputs}
+		lost := &seatRun{seat: seat, name: names[seat.Name], outputs: outputs, endMarker: e.endMarkerOf(seat)}
 		advisors = append(advisors, lost)
 		switch {
+		case seat.Assistant:
+			markLostAssistant(lost.endMarker)
 		case seat.Writer:
 			if allExist(outputs) && lost.accept(shuttleengine.Result{}) {
 				lost.notice = writerResumeNotice(names[seat.Name], outputs)
@@ -141,6 +144,19 @@ func (e *Engine) Resume(table Table, live LiveTable) (Result, error) {
 	}
 	sender.start(live.Chair)
 	return e.join(table, live.Chair, advisors, sender, ender)
+}
+
+// markLostAssistant gives an assistant the probe did not find the end marker reading its outcome: a marker its run already wrote stays, and one it never wrote reads not found.
+// A marker that cannot be read is logged and left, so the chair waits until its own timeout or a stop.
+func markLostAssistant(marker string) {
+	_, exists, err := ReadEnding(marker)
+	if err != nil {
+		logger.Warn("seatengine: lost assistant's end marker unreadable", "marker", marker, "error", err)
+		return
+	}
+	if !exists {
+		_ = writeEnding(marker, EndingNotFound)
+	}
 }
 
 // resumeNotice returns the one-line notice that tells the chair advisor name is not running any more at resume.

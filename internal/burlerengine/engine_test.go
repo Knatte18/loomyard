@@ -1,4 +1,5 @@
 // engine_test.go holds the same-package fakeShuttle, a seatengine.Shuttle whose handles block until the test releases them or stops them, a stop ending the handle's Wait as died, and the profile and engine builders review_test.go and fix_test.go drive the real seats engine over it with.
+// It also holds the engine-block seeding helper and the test that pins each half's choice of engine, which drives Review and Fix together.
 // Every Geometry built here points WorktreeRoot at a test temp dir, so materialization lands there
 // rather than in the real package source tree.
 
@@ -13,16 +14,101 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Knatte18/loomyard/contracts/stencils"
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
+	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 // newTestStencilsDir seeds a hermetic stencils directory through stencilkit and returns its path.
 func newTestStencilsDir(t *testing.T) string {
 	t.Helper()
 	return stencilkit.Seed(t)
+}
+
+// seedEngineWords appends an include of the engine block test-words to each stencil of shipped, keyed by stencil name, under stencilsDir, and writes the block's claude and codex copies.
+func seedEngineWords(t *testing.T, stencilsDir string, shipped map[string][]byte) {
+	t.Helper()
+	for name, body := range shipped {
+		edited := append(append([]byte{}, body...), []byte("\n{{template \"engine-test-words\"}}\n")...)
+		if err := os.WriteFile(stencilstore.Path(stencilsDir, name), edited, 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) = %v; want nil", name, err)
+		}
+	}
+	for engine, text := range map[string]string{"claude": "Claude words.\n", "codex": "Codex words.\n"} {
+		path := stencilstore.Path(stencilsDir, stencilstore.EngineBlockName(engine, "test-words"))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s) = %v; want nil", path, err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s) = %v; want nil", path, err)
+		}
+	}
+}
+
+// TestEngine_HalvesRenderEngineBlocksForTheirOwnEngine proves each half renders its instruction files and seat prompt for the half's own engine:
+// the review half for the engine its model choice names, the fix half, whose choice names none, for the geometry's DefaultEngine.
+func TestEngine_HalvesRenderEngineBlocksForTheirOwnEngine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	opts := RunOpts{Review: shuttleengine.ModelChoice{Engine: "claude"}}
+	newEngine := func(t *testing.T, root string, shuttle *fakeShuttle) *Engine {
+		t.Helper()
+		stencilsDir := newTestStencilsDir(t)
+		seedEngineWords(t, stencilsDir, map[string][]byte{
+			"burler-template-reviewer": stencils.BurlerTemplateReviewer,
+			"burler-template-fixer":    stencils.BurlerTemplateFixer,
+			"burler-step-review":       stencils.BurlerStepReview,
+			"burler-step-fix":          stencils.BurlerStepFix,
+		})
+		geom := Geometry{WorktreeRoot: root, AnchorPath: root, Shortname: "tst", Slug: "slug", DefaultEngine: "codex"}
+		return New(shuttle, geom, lenses.Config{}, stencilsDir, "", nil)
+	}
+	requireWords := func(t *testing.T, texts map[string]string, want, absent string) {
+		t.Helper()
+		for what, text := range texts {
+			if !strings.Contains(text, want) || strings.Contains(text, absent) {
+				t.Errorf("%s = %q; want it to hold %q and not %q", what, text, want, absent)
+			}
+		}
+	}
+
+	t.Run("Review", func(t *testing.T) {
+		t.Parallel()
+		root, p := newEngineTestProfile(t)
+		shuttle := doneReview(approvedReview)
+		if _, err := newEngine(t, root, shuttle).Review(p, opts); err != nil {
+			t.Fatalf("Review() = %v; want nil error", err)
+		}
+		step, err := os.ReadFile(firstGlob(t, filepath.Join(root, ".lym", "burler", "review-*", "instruction-2-review.md")))
+		if err != nil {
+			t.Fatalf("ReadFile(review step) = %v; want nil", err)
+		}
+		requireWords(t, map[string]string{"review step": string(step), "reviewer seat prompt": shuttle.specs[reviewHalfRole].Prompt}, "Claude words.", "Codex words.")
+	})
+	t.Run("Fix", func(t *testing.T) {
+		t.Parallel()
+		root, p, digest := newFixCase(t, nitReview)
+		shuttle := &fakeShuttle{fix: halfScript{result: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, writes: "nothing fixed"}}
+		if _, err := newEngine(t, root, shuttle).Fix(p, opts, digest); err != nil {
+			t.Fatalf("Fix() = %v; want nil error", err)
+		}
+		requireWords(t, map[string]string{"fix step": fixInstructionFiles(t, root)["instruction-fix.md"], "fixer seat prompt": shuttle.specs[fixHalfRole].Prompt}, "Codex words.", "Claude words.")
+	})
+}
+
+// firstGlob returns the one path pattern matches, failing the test when it matches none or several.
+func firstGlob(t *testing.T, pattern string) string {
+	t.Helper()
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("Glob(%s) = %v, %v; want exactly one match", pattern, matches, err)
+	}
+	return matches[0]
 }
 
 // halfScript scripts one seat of a fake half.
@@ -55,6 +141,8 @@ const fakeStrandPrefix = "tst:slug:"
 // review scripts the review half's chair and fix the fix half's chair.
 type fakeShuttle struct {
 	review, fix halfScript
+	// assist scripts the review half's assistant seat, the one whose role ends in the assistant seat's name.
+	assist halfScript
 
 	mu sync.Mutex
 	// started holds the roles of the seats that were started, in start order.
@@ -189,6 +277,9 @@ func (h *fakeHandle) Wait() (shuttleengine.Result, error) {
 	}
 
 	if h.script.writes != "" {
+		if err := os.MkdirAll(filepath.Dir(h.spec.OutputFiles[0]), 0o755); err != nil {
+			return shuttleengine.Result{}, err
+		}
 		if err := os.WriteFile(h.spec.OutputFiles[0], []byte(h.script.writes), 0o644); err != nil {
 			return shuttleengine.Result{}, err
 		}
@@ -249,8 +340,11 @@ func (h *fakeHandle) evaluateGate() (*shuttleengine.GateOutcome, error) {
 	return outcome, nil
 }
 
-// scriptFor is the halfScript of the seat spec's role names: the review script for the review half's chair under any role prefix, the fix script for every other seat.
+// scriptFor is the halfScript of the seat spec's role names: the assist script for the review half's assistant, the review script for its chair under any role prefix, the fix script for every other seat.
 func (f *fakeShuttle) scriptFor(spec shuttleengine.Spec) halfScript {
+	if strings.HasSuffix(spec.Role, reviewHalfRole+"-"+AssistSeatName) {
+		return f.assist
+	}
 	if strings.HasSuffix(spec.Role, reviewHalfRole) {
 		return f.review
 	}
@@ -393,7 +487,7 @@ const (
 		"---\n### [BLOCKING] colors do not match\n**Location:** target.txt:1\n**Issue:** found a mismatch\n"
 	malformedReview = "not frontmatter at all\n"
 
-	reviewHalfRole = reviewRolePrefix
+	reviewHalfRole = ReviewRolePrefix
 	fixHalfRole    = fixRolePrefix
 )
 

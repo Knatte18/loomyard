@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -134,6 +135,42 @@ func TestBouncerRowsCarryOverTheirOwnSegment(t *testing.T) {
 		}
 		if bouncers == 0 {
 			t.Errorf("%s has no Bouncer row; want at least one", name)
+		}
+	}
+}
+
+// TestReviewSegmentRolePrefixesNameTheirPerch pins that every Bouncer, BurlerReview and BurlerFix row of a loom review segment sets role_prefix to the name of the segment's perch.
+// The assistant's bound is resolved for the chair role formed from that name.
+func TestReviewSegmentRolePrefixesNameTheirPerch(t *testing.T) {
+	tiergate.Require(t, 0)
+	perchOf := map[string]loomengine.Perch{
+		"Discussion-Review": loomengine.PerchDiscussion,
+		"Plan-Review":       loomengine.PerchPlan,
+		"Code-Review":       loomengine.PerchCode,
+	}
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn} {
+		recipe, err := parseEmbeddedRecipe(name)
+		if err != nil {
+			t.Fatalf("parseEmbeddedRecipe(%s) = %v; want nil", name, err)
+		}
+		checked := 0
+		for _, row := range recipe.Producers {
+			perch, ok := perchOf[row.Segment]
+			if !ok {
+				continue
+			}
+			switch row.Engine {
+			case bouncerEngine, "BurlerReview", "BurlerFix":
+			default:
+				continue
+			}
+			checked++
+			if got, _ := row.Config["role_prefix"].(string); got != string(perch) {
+				t.Errorf("%s row %s: role_prefix = %q; want %q, the name of segment %s's perch", name, row.Name, got, perch, row.Segment)
+			}
+		}
+		if checked == 0 {
+			t.Errorf("%s has no review row in a segment of perchOf; want at least one", name)
 		}
 	}
 }

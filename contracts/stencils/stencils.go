@@ -536,6 +536,66 @@ var SeatDirectiveWriter []byte
 //go:embed seat/seat-directive-writer-chair.md
 var SeatDirectiveWriterChair []byte
 
+// SeatDirectiveAssistant is the assistant seat block's shipped default: the rules an assistant works under, writing its outputs and nothing else, pulled into an assistant seat's stencil as an include.
+//
+//go:embed seat/seat-directive-assistant.md
+var SeatDirectiveAssistant []byte
+
+// SeatDirectiveAssistantChair is the assistant chair seat block's shipped default: how the lead of a table of assistant seats waits for each assistant's end marker, pulled into its stencil as an include in place of the advisor chair's block.
+//
+//go:embed seat/seat-directive-assistant-chair.md
+var SeatDirectiveAssistantChair []byte
+
+// BurlerTemplateReviewerAssisted is the burler reviewer seat stencil of a round that runs an assistant reviewer beside the chair: the reviewer stencil with the assistant chair's block.
+//
+//go:embed burler/burler-template-reviewer-assisted.md
+var BurlerTemplateReviewerAssisted []byte
+
+// BurlerTemplateAssistReviewer is the burler assistant reviewer seat stencil: the assistant seat of an assisted review round, on the engine its model-spec names.
+//
+//go:embed burler/burler-template-assist-reviewer.md
+var BurlerTemplateAssistReviewer []byte
+
+// BurlerAssistConsolidation is the review step's part of an assisted round: the chair waits for the assistant and judges its findings as one more report.
+//
+//go:embed burler/burler-assist-consolidation.md
+var BurlerAssistConsolidation []byte
+
+// BurlerAssistClusterFan is an assistant reviewer's fanned cluster-rules part, whose spawn and in-turn wait come from its engine's assist-fan engine block.
+//
+//go:embed burler/burler-assist-cluster-fan.md
+var BurlerAssistClusterFan []byte
+
+// EngineClaudeAssistFan is the Claude engine's assist-fan block: how an assistant reviewer on Claude runs its lens subagents inside its one turn.
+//
+//go:embed engine/claude/assist-fan.md
+var EngineClaudeAssistFan []byte
+
+// EngineCodexAssistFan is the Codex engine's assist-fan block: how an assistant reviewer on Codex runs its lens subagents inside its one turn.
+//
+//go:embed engine/codex/assist-fan.md
+var EngineCodexAssistFan []byte
+
+// EngineClaudeAssistReading is the Claude engine's assist-reading block: the reading directions an assistant reviewer on Claude follows.
+//
+//go:embed engine/claude/assist-reading.md
+var EngineClaudeAssistReading []byte
+
+// EngineCodexAssistReading is the Codex engine's assist-reading block: the reading directions an assistant reviewer on Codex follows.
+//
+//go:embed engine/codex/assist-reading.md
+var EngineCodexAssistReading []byte
+
+// EngineClaudeEditDirective is the Claude engine's copy of the edit directive, rendered for an assistant seat on Claude.
+//
+//go:embed engine/claude/edit-directive.md
+var EngineClaudeEditDirective []byte
+
+// EngineCodexEditDirective is the Codex engine's copy of the edit directive, in Codex's tool wording, rendered for an assistant seat on Codex.
+//
+//go:embed engine/codex/edit-directive.md
+var EngineCodexEditDirective []byte
+
 // GatefixFrameCold is the shared cold frame every gate fixer's prompt opens with, joined ahead of one caller body stencil.
 //
 //go:embed gatefix/gatefix-frame-cold.md
@@ -605,6 +665,10 @@ var entries = []registryEntry{
 	{"loom-template-prior-plan", &LoomTemplatePriorPlan},
 	{"burler-step-1-explore", &BurlerStep1Explore},
 	{"burler-template-reviewer", &BurlerTemplateReviewer},
+	{"burler-template-reviewer-assisted", &BurlerTemplateReviewerAssisted},
+	{"burler-template-assist-reviewer", &BurlerTemplateAssistReviewer},
+	{"burler-assist-consolidation", &BurlerAssistConsolidation},
+	{"burler-assist-cluster-fan", &BurlerAssistClusterFan},
 	{"burler-template-fixer", &BurlerTemplateFixer},
 	{"burler-step-review", &BurlerStepReview},
 	{"burler-review-format", &BurlerReviewFormat},
@@ -671,6 +735,14 @@ var entries = []registryEntry{
 	{"seat-directive-advisor", &SeatDirectiveAdvisor},
 	{"seat-directive-writer", &SeatDirectiveWriter},
 	{"seat-directive-writer-chair", &SeatDirectiveWriterChair},
+	{"seat-directive-assistant", &SeatDirectiveAssistant},
+	{"seat-directive-assistant-chair", &SeatDirectiveAssistantChair},
+	{"engine/claude/assist-fan", &EngineClaudeAssistFan},
+	{"engine/codex/assist-fan", &EngineCodexAssistFan},
+	{"engine/claude/assist-reading", &EngineClaudeAssistReading},
+	{"engine/codex/assist-reading", &EngineCodexAssistReading},
+	{"engine/claude/edit-directive", &EngineClaudeEditDirective},
+	{"engine/codex/edit-directive", &EngineCodexEditDirective},
 	{"beam-template-board-tidy", &BeamTemplateBoardTidy},
 	{"gatefix-frame-cold", &GatefixFrameCold},
 	{"gatefix-body-darn", &GatefixBodyDarn},
@@ -683,34 +755,35 @@ var entries = []registryEntry{
 // A key names a role with any segment prefix left off: a review segment's session carries `<prefix>-<key>` for the keys `bouncer-judge`, `bouncer-seed`, `burler-review` and `burler-fix`.
 // Each carries both the parent directive marker and the edit directive marker, which parentdirective_test.go enforces.
 var roleOpeningStencils = map[string][]string{
-	"driver":             {"shed-template-driver"},
-	"arbiter":            {"loom-template-arbiter"},
-	"tackler":            {"shed-template-tackler"},
-	"discussion":         {"loom-template-discussion-chair"},
-	"discussion-advisor": {"loom-template-discussion-advisor"},
-	"plan":               {"loom-template-plan"},
-	"webster-master":     {"webster-template-master"},
-	"webster-recovery":   {"webster-prefix-recovery"},
-	"verify-fixer":       {"gatefix-frame-cold"},
-	"plan-fixer":         {"webster-template-plan-fix"},
-	"gate-fixer":         {"gatefix-frame-cold"},
-	"burler-review":      {"burler-template-reviewer"},
-	"burler-fix":         {"burler-template-fixer"},
-	"conflict":           {"landing-template-conflict"},
-	"fixer":              {"landing-template-fixer"},
-	"fix-reviewer":       {"landing-template-fix-review"},
-	"pr-reviewer":        {"landing-template-pr-review"},
-	"bouncer-judge":      {"bouncer-template-judge"},
-	"bouncer-seed":       {"bouncer-template-seed"},
-	"treadle-targeting":  {"treadle-template-targeting"},
-	"treadle-judge":      {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
-	"friction":           {"friction-template-reflection"},
-	"describe":           {"landing-template-describe"},
-	"darn":               {"darn-template-write"},
-	"sampler":            {"sampler-template-agent"},
-	"drift-baseline":     {"drift-template-baseline"},
-	"drift-verify":       {"drift-template-verify"},
-	"board-tidy":         {"beam-template-board-tidy"},
+	"driver":               {"shed-template-driver"},
+	"arbiter":              {"loom-template-arbiter"},
+	"tackler":              {"shed-template-tackler"},
+	"discussion":           {"loom-template-discussion-chair"},
+	"discussion-advisor":   {"loom-template-discussion-advisor"},
+	"plan":                 {"loom-template-plan"},
+	"webster-master":       {"webster-template-master"},
+	"webster-recovery":     {"webster-prefix-recovery"},
+	"verify-fixer":         {"gatefix-frame-cold"},
+	"plan-fixer":           {"webster-template-plan-fix"},
+	"gate-fixer":           {"gatefix-frame-cold"},
+	"burler-review":        {"burler-template-reviewer", "burler-template-reviewer-assisted"},
+	"burler-review-assist": {"burler-template-assist-reviewer"},
+	"burler-fix":           {"burler-template-fixer"},
+	"conflict":             {"landing-template-conflict"},
+	"fixer":                {"landing-template-fixer"},
+	"fix-reviewer":         {"landing-template-fix-review"},
+	"pr-reviewer":          {"landing-template-pr-review"},
+	"bouncer-judge":        {"bouncer-template-judge"},
+	"bouncer-seed":         {"bouncer-template-seed"},
+	"treadle-targeting":    {"treadle-template-targeting"},
+	"treadle-judge":        {"treadle-template-judge-circling", "treadle-template-judge-milestone"},
+	"friction":             {"friction-template-reflection"},
+	"describe":             {"landing-template-describe"},
+	"darn":                 {"darn-template-write"},
+	"sampler":              {"sampler-template-agent"},
+	"drift-baseline":       {"drift-template-baseline"},
+	"drift-verify":         {"drift-template-verify"},
+	"board-tidy":           {"beam-template-board-tidy"},
 }
 
 // askOperatorPhrases is the closed list of phrases that tell an agent to put a question to the operator in its pane.

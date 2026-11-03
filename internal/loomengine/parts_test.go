@@ -54,7 +54,7 @@ func TestPartsTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PartsTable(...) = _, %v; want nil error", err)
 		}
-		if err := table.Validate(stencilsDir); err != nil {
+		if err := table.Validate(stencilsDir, ""); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
 		if table.RolePrefix != "parts" || table.Segment != segmentcolor.Plan || table.Timeout != 120*time.Minute || table.Interactive {

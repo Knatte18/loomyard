@@ -40,6 +40,7 @@
 // New builds that seat engine itself from the told Geometry and the stencils directory, over the seatengine.Shuttle it is given.
 // Each seat's stencil markers ride the seat's values: the absolute instruction-file paths and the review path, and for the fix half the review format path.
 // composeReviewPrompt and composeFixPrompt fill the instruction files and return those values; the seat stencils are filled by the seats engine.
+// Both read each instruction stencil through stencilstore.ReadSet for the half's engine, the one its model choice names, else Geometry.DefaultEngine, so an engine block an instruction stencil includes renders that engine's text.
 // RunOpts.Review and RunOpts.Fix pick each half's engine, model, effort and version.
 // RoundModels' per-round lists carry each entry's engine, so a later round can run on another engine than the first.
 //
@@ -56,6 +57,19 @@
 // The accepted review is the part of a done reviewer's end acceptReview takes: the cluster audit for a fanned round, then ParseCurrentReview on the review file.
 // Its ReviewResult carries the verdict, the findings and the Digest, the hex SHA-256 of the accepted bytes.
 // An unparseable review after the review gate's budget is the strict-parse error, never a gate-failed outcome.
+//
+// # The assistant reviewer
+//
+// RunOpts.Assist names an assistant reviewer for the round: a model choice with a model adds a seat named AssistSeatName to the review table, so its strand role is the review role followed by -assist, on any engine its model choice names.
+// The chair then runs burler-template-reviewer-assisted, which includes seat-directive-assistant-chair, and its review step renders the burler-assist-consolidation part after the cluster rules:
+// wait for the assistant's end marker, judge a done assistant's findings with a fork's skepticism, keep each with `origin: assist:<seat name>`, reject false ones; the verdict stays the chair's.
+// A round with no assistant keeps burler-template-reviewer and the review step's bytes.
+// The assistant runs burler-template-assist-reviewer, which carries the engine-assist-reading block of its engine, and reads its own explore and review steps, composed a second time for its engine and its report path, with the same fasit, rubric, PATTERN directive, focus and prior rounds the chair reads.
+// RunOpts.AssistFan fans it out through its engine's own subagents inside its one turn, by burler-assist-cluster-fan and the engine-assist-fan block; the seat authorizes no fork, so no lym fork audit covers them.
+// Its report and end marker sit under the anchor's .lym at the review path's subpath, named from the review's stem, the attempt token RunOpts.Round and the seat, so a retry never shares the first attempt's files.
+// Its gate is the review-parse entry on its report, and its run is bounded by RunOpts.AssistTimeout; RunOpts.AssistSkip, or an assistant whose files cannot be composed, keeps it from starting with the reason in its marker.
+// Once the chair has ended, fresh or resumed, the report of an assistant whose marker reads done is copied beside the review as AssistCopyPath names it, and ReviewResult.Assists says what became of each; no verdict or finding reads it.
+// ProbeReview and ResumeReview build the same table from the same RunOpts, so the caller passes the recorded token and assistant.
 //
 // # The fix half
 //

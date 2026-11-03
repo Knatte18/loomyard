@@ -79,7 +79,7 @@ func newComposableProfile(t *testing.T) Profile {
 // composeReview composes p's review half prompt over the placeholder paths, failing the test on error.
 func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, p, patternDirective, testReviewFiles)
+	prompt, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", p, patternDirective, "", testReviewFiles)
 	if err != nil {
 		t.Fatalf("composeReviewPrompt() = %v; want nil error", err)
 	}
@@ -89,7 +89,7 @@ func composeReview(t *testing.T, stencilsDir string, p *Profile, patternDirectiv
 // composeFix composes p's fix half prompt over the placeholder paths and a review's findings as the work, failing the test on error.
 func composeFix(t *testing.T, stencilsDir string, p *Profile, frictionDirective string) halfPrompt {
 	t.Helper()
-	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
+	prompt, err := composeFixPrompt(stencilsDir, testSpecsDir, "claude", p, frictionDirective, fixWork(p.ReviewPath, "", false), testFixFiles)
 	if err != nil {
 		t.Fatalf("composeFixPrompt() = %v; want nil error", err)
 	}
@@ -426,14 +426,14 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 		if got := review.Files[reviewExploreFile].Content; got != string(wantExplore) {
 			t.Errorf("solo explore step = %q; want %q", got, wantExplore)
 		}
-		wantReview, err := stencil.Fill(stencils.BurlerStepReview, map[string]string{
+		wantReview, err := stencil.FillOptional(stencils.BurlerStepReview, map[string]string{
 			"cluster_rules":      "This is a single-reviewer round — no cluster forks. Do the full review yourself.",
 			"review_path":        p.ReviewPath,
 			"review_format_path": testReviewFiles.Format,
 			"prior_rounds":       priorRoundsBlock(&p),
-		})
+		}, []string{assistRulesMarker})
 		if err != nil {
-			t.Fatalf("stencil.Fill(review) = %v; want nil", err)
+			t.Fatalf("stencil.FillOptional(review) = %v; want nil", err)
 		}
 		if got := review.Files[reviewStepFile].Content; got != string(wantReview) {
 			t.Errorf("solo review step = %q; want %q", got, wantReview)
@@ -449,7 +449,7 @@ func TestComposePrompt_ClusterRules(t *testing.T) {
 			t.Fatalf("Remove(burler-cluster-fan) = %v; want nil", err)
 		}
 
-		if _, err := composeReviewPrompt(stencilsDir, testSpecsDir, &p, "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
+		if _, err := composeReviewPrompt(stencilsDir, testSpecsDir, "claude", &p, "", "", testReviewFiles); err == nil || !strings.Contains(err.Error(), "burler-cluster-fan") {
 			t.Errorf("composeReviewPrompt() error = %v; want the read error naming burler-cluster-fan", err)
 		}
 	})

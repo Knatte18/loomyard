@@ -1,0 +1,137 @@
+// rollout.go reads the rollout file a Codex session records its turns in, which every hook payload names in transcript_path.
+// It answers whether a turn was interrupted, which ends a turn with no Stop hook, and how many tokens the session's context holds.
+
+package codexengine
+
+import (
+	"encoding/json"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
+)
+
+var _ shuttleengine.SessionProber = (*Codex)(nil)
+
+// Rollout event types this file reads.
+const (
+	rolloutEventMessage   = "event_msg"
+	eventTaskComplete     = "task_complete"
+	eventTurnAborted      = "turn_aborted"
+	eventTokenCount       = "token_count"
+	payloadTranscriptPath = "transcript_path"
+)
+
+// rolloutEvent is one event_msg line of a rollout.
+type rolloutEvent struct {
+	at      time.Time
+	kind    string
+	turnID  string
+	context int
+	// hasContext is true for a token_count event that carries the latest model call's usage.
+	hasContext bool
+}
+
+// readRolloutEvents reads the event_msg lines of the rollout at path, in file order, skipping lines it cannot parse.
+func readRolloutEvents(path string) ([]rolloutEvent, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var events []rolloutEvent
+	for _, line := range strings.Split(string(data), "\n") {
+		var parsed struct {
+			Timestamp string `json:"timestamp"`
+			Type      string `json:"type"`
+			Payload   struct {
+				Type   string `json:"type"`
+				TurnID string `json:"turn_id"`
+				Info   *struct {
+					LastTokenUsage struct {
+						TotalTokens int `json:"total_tokens"`
+					} `json:"last_token_usage"`
+				} `json:"info"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal([]byte(strings.TrimSpace(line)), &parsed) != nil || parsed.Type != rolloutEventMessage {
+			continue
+		}
+		event := rolloutEvent{kind: parsed.Payload.Type, turnID: parsed.Payload.TurnID}
+		if at, err := time.Parse(time.RFC3339Nano, parsed.Timestamp); err == nil {
+			event.at = at.UTC()
+		}
+		if parsed.Payload.Info != nil {
+			event.context = parsed.Payload.Info.LastTokenUsage.TotalTokens
+			event.hasContext = true
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+// payloadField returns the string field key of the hook payload raw, or "" when raw does not parse or holds none.
+func payloadField(raw []byte, key string) string {
+	var fields map[string]any
+	if json.Unmarshal(raw, &fields) != nil {
+		return ""
+	}
+	value, _ := fields[key].(string)
+	return value
+}
+
+// ProcessLiveness reads every session unproven: Codex keeps no registry of its live sessions, so a Codex exit is caught as the dead pane the launch line leaves.
+func (c *Codex) ProcessLiveness(string) shuttleengine.Liveness {
+	return shuttleengine.LivenessUnproven
+}
+
+// TurnStartInterrupt reports whether the turn that turnStart began was interrupted, with the interrupt's own time.
+// It reads the rollout turnStart's payload names: the turn is interrupted when the newest of its turn-ending events is turn_aborted.
+// An event belongs to the turn when both carry a turn id and the ids are equal, or, when either has none, when the event is not older than turnStart.
+// Any failure to read reads as not interrupted.
+func (c *Codex) TurnStartInterrupt(turnStart shuttleengine.SessionSignal) (time.Time, bool) {
+	events, err := readRolloutEvents(payloadField(turnStart.Raw, payloadTranscriptPath))
+	if err != nil {
+		return time.Time{}, false
+	}
+	turnID := payloadField(turnStart.Raw, "turn_id")
+	var last *rolloutEvent
+	for i := range events {
+		event := &events[i]
+		if event.kind != eventTaskComplete && event.kind != eventTurnAborted {
+			continue
+		}
+		if turnID != "" && event.turnID != "" {
+			if event.turnID != turnID {
+				continue
+			}
+		} else if !turnStart.At.IsZero() && !event.at.IsZero() && event.at.Before(turnStart.At) {
+			continue
+		}
+		last = event
+	}
+	if last == nil || last.kind != eventTurnAborted {
+		return time.Time{}, false
+	}
+	return last.at, true
+}
+
+// ContextTokens returns the context size the newest token_count event of the rollout turnEnd's payload names records: the latest model call's total tokens.
+// A rollout that cannot be read or holds no such event reads unknown.
+func (c *Codex) ContextTokens(turnEnd shuttleengine.Event) shuttleengine.ContextReading {
+	events, err := readRolloutEvents(payloadField(turnEnd.Raw, payloadTranscriptPath))
+	if err != nil {
+		return shuttleengine.ContextReading{}
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].kind == eventTokenCount && events[i].hasContext {
+			return shuttleengine.ContextReading{Tokens: events[i].context, Known: true}
+		}
+	}
+	return shuttleengine.ContextReading{}
+}
+
+// CompactedSince finds no compaction boundary: no Codex compaction has been read from a rollout yet.
+func (c *Codex) CompactedSince(shuttleengine.Event, time.Time) (shuttleengine.CompactionBoundary, bool) {
+	return shuttleengine.CompactionBoundary{}, false
+}

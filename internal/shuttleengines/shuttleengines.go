@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/codexengine"
 )
 
 // constructor builds one engine from the shuttle config and the Dirs of the location the engine serves.
@@ -45,6 +46,12 @@ func claudeScrub() reedengine.EnvScrub {
 	return reedengine.EnvScrub{Names: names, Prefixes: prefixes}
 }
 
+// codexScrub is the codex engine's declared scrub.
+func codexScrub() reedengine.EnvScrub {
+	names, prefixes := codexengine.ScrubbedEnv()
+	return reedengine.EnvScrub{Names: names, Prefixes: prefixes}
+}
+
 // registry maps each registered engine name to its entry.
 var registry = map[string]entry{
 	"claude": {
@@ -66,6 +73,21 @@ var registry = map[string]entry{
 					return err
 				}
 				return claudeengine.ValidateBatchingNudge(claude)
+			},
+		},
+	},
+	"codex": {
+		scrub: codexScrub(),
+		constructor: func(cfg shuttleengine.Config, dirs configengine.Dirs) shuttleengine.Engine {
+			return codexengine.NewFromConfig(cfg, dirs)
+		},
+		config: ConfigModule{
+			Name:     "codex",
+			Template: codexengine.ConfigTemplate,
+			Spec:     codexengine.ConfigSpec,
+			CheckLoad: func(dirs configengine.Dirs) error {
+				_, err := codexengine.LoadConfig(dirs)
+				return err
 			},
 		},
 	},

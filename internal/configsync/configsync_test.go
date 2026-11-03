@@ -1724,7 +1724,7 @@ func TestReconcileAll_MigratesToSparse(t *testing.T) {
 		{
 			name: "a seed-only key the default holds and the file lacks is reported inherited", module: "models", opts: migrate,
 			defaultFile: modelsTemplate + defaultAlias, worktreeFile: modelsTemplate,
-			wantStripped: []string{"fable", "haiku", "opus", "sonnet"}, wantInherited: []string{"zephyr"}, wantDeleted: true, wantMarker: true,
+			wantStripped: []string{"astra", "fable", "haiku", "luna", "opus", "sol", "sonnet"}, wantInherited: []string{"zephyr"}, wantDeleted: true, wantMarker: true,
 		},
 		{
 			name: "a marked worktree is left alone", module: "loom", opts: migrate, marked: true,

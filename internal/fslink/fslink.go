@@ -7,9 +7,10 @@
 // Public API:
 //   - CreateDirLink(link, target string) error: Create a directory link pointing to
 //     target (a junction on Windows, a symlink elsewhere). Refuses to clobber existing
-//     paths and creates missing parent directories. File links are not yet supported;
-//     a future CreateFileLink is reserved for that (Windows file symlinks need elevated
-//     privileges, which junctions do not).
+//     paths and creates missing parent directories.
+//   - CreateFileLink(link, target string) error: Create a symlink to the file target, with
+//     the same guards. On Windows it refuses before touching the filesystem, since a file
+//     symlink there needs elevated privileges and a junction links only a directory.
 //   - Remove(link string) error: Idempotent removal of a link; returns nil if the link
 //     does not exist, otherwise returns wrapped errors.
 //   - IsLink(path string) (bool, error): Reports whether path is a link. Returns

@@ -26,7 +26,23 @@ func writeModelsYAML(t *testing.T, baseDir, contents string) {
 	}
 }
 
-// TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the four built-in aliases, each with its own name as model and no defaults.
+// builtinWant is one built-in alias as LoadRegistry yields it with no models.yaml entry over it.
+type builtinWant struct {
+	engine, model, effort string
+}
+
+// wantBuiltins are the built-in aliases: the Claude ones with their own name as model and no defaults, the Codex ones with their model slug and effort medium.
+var wantBuiltins = map[string]builtinWant{
+	"sonnet": {"claude", "sonnet", ""},
+	"opus":   {"claude", "opus", ""},
+	"haiku":  {"claude", "haiku", ""},
+	"fable":  {"claude", "fable", ""},
+	"sol":    {"codex", "gpt-6.1-sol", "medium"},
+	"astra":  {"codex", "gpt-6-astra", "medium"},
+	"luna":   {"codex", "gpt-6-luna", "medium"},
+}
+
+// TestLoadRegistry_YieldsBuiltins asserts a missing models.yaml and a comments-only one both yield exactly the built-in aliases.
 func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -50,18 +66,21 @@ func TestLoadRegistry_YieldsBuiltins(t *testing.T) {
 				t.Fatalf("LoadRegistry(%s) returned unexpected error: %v", tt.name, err)
 			}
 
-			aliases := []string{"sonnet", "opus", "haiku", "fable"}
-			if len(got) != len(aliases) {
-				t.Fatalf("LoadRegistry(%s) has %d entries; want %d", tt.name, len(got), len(aliases))
+			if len(got) != len(wantBuiltins) {
+				t.Fatalf("LoadRegistry(%s) has %d entries; want %d", tt.name, len(got), len(wantBuiltins))
 			}
-			for _, alias := range aliases {
+			for alias, want := range wantBuiltins {
 				gotEntry, ok := got[alias]
 				if !ok {
 					t.Errorf("LoadRegistry(%s) missing alias %q", tt.name, alias)
 					continue
 				}
-				if gotEntry.Engine != "claude" || gotEntry.Model != alias || len(gotEntry.Defaults) != 0 {
-					t.Errorf("LoadRegistry(%s)[%q] = %+v; want engine claude, model %q, no defaults", tt.name, alias, gotEntry, alias)
+				wantDefaults := 0
+				if want.effort != "" {
+					wantDefaults = 1
+				}
+				if gotEntry.Engine != want.engine || gotEntry.Model != want.model || gotEntry.Defaults["effort"] != want.effort || len(gotEntry.Defaults) != wantDefaults {
+					t.Errorf("LoadRegistry(%s)[%q] = %+v; want engine %s, model %q, effort default %q", tt.name, alias, gotEntry, want.engine, want.model, want.effort)
 				}
 			}
 		})
@@ -85,8 +104,8 @@ zephyr:
 		t.Fatalf("LoadRegistry(extends) returned unexpected error: %v", err)
 	}
 
-	// The four built-ins are still present alongside the new alias.
-	for _, alias := range []string{"sonnet", "opus", "haiku", "fable"} {
+	// The built-ins are still present alongside the new alias.
+	for alias := range wantBuiltins {
 		if _, ok := got[alias]; !ok {
 			t.Errorf("LoadRegistry(extends) missing built-in alias %q", alias)
 		}

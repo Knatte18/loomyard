@@ -352,6 +352,10 @@
 // It is the only writer of the three keys, and a failed write is a failure exit that spawns nothing.
 // The fix half, a resumed reviewer and the Bouncer read the names through `readRecordedFans`, and `fans_recorded`, never the `fan` key, says they are there.
 // A live reviewer is probed and resumed under the fan already recorded for its round, so a list edited since changes only rounds spawned after the edit.
+// A row told BurlerHalfDeps.Assist picks the round's assistant reviewer and its fan from the per-round lists, an entry with no model running none, and passes its key, capped timeout and skip reason on.
+// Before each attempt spawns, `recordRoundAttempt` writes the attempt token, the round number or the round number and b on the retry, and the assistant choice and fan to the round's usage record; a failed write is a failure exit that spawns nothing.
+// The probe builds its whole table, chair included, from that record through `readRoundAttempt`, so a probe after lym dies mid-retry finds the retry's chair and assistant, and a record without the token reads as the bare round with no assistant, whatever the config now says.
+// The copy of a done assistant's report beside the review joins the files archived before a retry or a new round.
 // An accepted review writes its record, merges the lenses and the half's usage into the round's usage record, leaving the recorded names as they are, and hands on with the review as the pointer's path.
 // Every other end, a gate or strict-parse failure included, is a hard error that archives the round's review, fixer report and acceptance record;
 // a reviewer that could not be stopped returns bare, with nothing archived.

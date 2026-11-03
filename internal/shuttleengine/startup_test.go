@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -816,6 +817,35 @@ func TestStartup_HandleReturned(t *testing.T) {
 				t.Errorf("RemoveStrandCalls = %+v; want none", reed.RemoveStrandCalls)
 			}
 		})
+	}
+}
+
+// startupCheckEngine is a fakeEngine that counts its checks after startup.
+type startupCheckEngine struct {
+	*fakeEngine
+	checks atomic.Int32
+}
+
+// CheckAfterStartup counts one check.
+func (e *startupCheckEngine) CheckAfterStartup() {
+	e.checks.Add(1)
+}
+
+// TestStartup_ChecksAfterStartup pins that a start whose provider came up runs the engine's check after startup once, before the handle is returned.
+func TestStartup_ChecksAfterStartup(t *testing.T) {
+	tiergate.Require(t, 0)
+	reed := &fakeReed{
+		StatusQueue:     []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%1", Live: true}}}},
+		AddStrandResult: reedengine.Strand{GUID: "strand-1"},
+	}
+	engine := &startupCheckEngine{fakeEngine: &fakeEngine{StartupScript: []StartupState{StartupReady}, PrepareLaunch: Launch{Cmd: "cmd", SessionID: "session-1"}}}
+	runner := newFixture(t, reed, engine, withConfig(fastConfig), withClock(newFakeClock(time.Now()))).Runner
+
+	if _, err := runner.StartGated(Spec{Prompt: "x", OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}}, GateSpec{}); err != nil {
+		t.Fatalf("StartGated() error = %v; want nil", err)
+	}
+	if got := engine.checks.Load(); got != 1 {
+		t.Errorf("CheckAfterStartup calls = %d; want 1", got)
 	}
 }
 

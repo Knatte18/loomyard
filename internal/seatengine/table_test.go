@@ -22,6 +22,10 @@ const (
 
 	writerChairStencilBody = "Writer chair of {{.seat_name}}.\n{{template \"seat-directive-writer-chair\"}}\n"
 	writerStencilBody      = "Writer {{.seat_name}}.\n{{template \"seat-directive-writer\"}}\n"
+
+	assistantChairStencilBody = "Assistant chair of {{.seat_name}}.\n{{template \"seat-directive-assistant-chair\"}}\n"
+	assistantStencilBody      = "Assistant {{.seat_name}}.\n{{.parent_directive}}\n{{.edit_directive}}\n{{template \"seat-directive-assistant\"}}\n"
+	enginedAssistantBody      = "Assistant {{.seat_name}}.\n{{template \"seat-directive-assistant\"}}\n{{template \"engine-test-words\"}}\n"
 )
 
 // writeStencil writes body as the stencil name under dir, in the family folder stencilstore reads it from.
@@ -44,6 +48,13 @@ func seatedStencils(t *testing.T) string {
 	writeStencil(t, dir, "seat-test-advisor", advisorStencilBody)
 	writeStencil(t, dir, "seat-test-writer-chair", writerChairStencilBody)
 	writeStencil(t, dir, "seat-test-writer", writerStencilBody)
+	writeStencil(t, dir, "seat-test-assistant-chair", assistantChairStencilBody)
+	writeStencil(t, dir, "seat-test-assistant", assistantStencilBody)
+	writeStencil(t, dir, "seat-test-engined-assistant", enginedAssistantBody)
+	writeStencil(t, dir, "seat-test-engined-chair", "Chair of {{.seat_name}}.\n{{template \"seat-directive-chair\"}}\n{{template \"engine-test-words\"}}\n")
+	writeStencil(t, dir, "seat-test-engined-advisor", "Advisor {{.seat_name}}.\n{{template \"seat-directive-advisor\"}}\n{{template \"engine-test-words\"}}\n")
+	writeStencil(t, dir, stencilstore.EngineBlockName("claude", "test-words"), "Claude words.\n")
+	writeStencil(t, dir, stencilstore.EngineBlockName("codex", "test-words"), "Codex words.\n")
 	return dir
 }
 
@@ -53,6 +64,18 @@ func asWriters(table *Table) {
 	for i := 1; i < len(table.Seats); i++ {
 		table.Seats[i].Stencil = "seat-test-writer"
 		table.Seats[i].Writer = true
+	}
+}
+
+// asAssistants makes every seat of table after the lead an assistant on Codex with an end marker of its own, and gives the lead and the assistants the stencils that include the assistant directives.
+func asAssistants(table *Table) {
+	table.Seats[0].Stencil = "seat-test-assistant-chair"
+	for i := 1; i < len(table.Seats); i++ {
+		seat := &table.Seats[i]
+		seat.Stencil = "seat-test-assistant"
+		seat.Assistant = true
+		seat.Engine = "codex"
+		seat.EndMarker = "/w/" + seat.Name + ".end"
 	}
 }
 
@@ -79,11 +102,22 @@ func TestTable_Validate(t *testing.T) {
 	writeStencil(t, dir, "seat-test-bare", "Lead {{.seat_name}}.\n")
 
 	tests := []struct {
-		name    string
-		mutate  func(*Table)
-		wantErr string
+		name   string
+		mutate func(*Table)
+		// defaultEngine is the engine a seat whose model choice names none runs on.
+		defaultEngine string
+		wantErr       string
 	}{
 		{name: "an accepted table"},
+		{name: "an engine block read for the seat's own engine", mutate: func(tb *Table) {
+			tb.Seats[0].Stencil, tb.Seats[0].Engine = "seat-test-engined-chair", "codex"
+		}},
+		{name: "an engine block read for the default engine", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-engined-chair" }, defaultEngine: "claude"},
+		{name: "an engine block the chair's engine has no copy of", mutate: func(tb *Table) {
+			tb.Seats[0].Stencil, tb.Seats[0].Engine = "seat-test-engined-chair", "gemini"
+		}, wantErr: `seat "multi": stencilstore: engine "gemini" has no engine block "test-words": ` + filepath.Join(dir, "engine", "gemini", "test-words.md") + ` does not exist`},
+		{name: "an engine block an advisor's default engine has no copy of", mutate: func(tb *Table) { tb.Seats[1].Stencil = "seat-test-engined-advisor" }, defaultEngine: "gemini", wantErr: `seat "multi-advisor-1": stencilstore: engine "gemini" has no engine block "test-words"`},
+		{name: "an engine block with no engine named", mutate: func(tb *Table) { tb.Seats[0].Stencil = "seat-test-engined-chair" }, wantErr: `seat "multi": stencilstore: stencil "seat-test-engined-chair" includes engine block "test-words", but no engine was named`},
 		{name: "a gate on the lead", mutate: func(tb *Table) { tb.Seats[0].Gate = shuttleengine.GateSpec{{Name: "g", Attempts: 1}} }, wantErr: `the lead carries a gate`},
 		{name: "a required lead", mutate: func(tb *Table) { tb.Seats[0].Required = true }, wantErr: `the lead is marked required`},
 		{name: "an accept hook on the lead", mutate: func(tb *Table) { tb.Seats[0].Accept = func(shuttleengine.Result) error { return nil } }, wantErr: `the lead carries an accept hook`},
@@ -105,7 +139,65 @@ func TestTable_Validate(t *testing.T) {
 		{name: "a table of writers and an advisor", mutate: func(tb *Table) {
 			asWriters(tb)
 			tb.Seats[2].Writer, tb.Seats[2].Stencil = false, "seat-test-advisor"
-		}, wantErr: `seat "multi-advisor-2": the table holds writers, but this seat is not one; a table holds advisors only or writers only`},
+		}, wantErr: `seat "multi-advisor-2": the table holds writers, but this seat is not one; a table holds advisors only, writers only or assistants only`},
+		{name: "an assistant table whose lead includes the assistant chair directive", mutate: asAssistants},
+		{name: "a table of assistants and an advisor", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].Assistant, tb.Seats[2].EndMarker, tb.Seats[2].Stencil = false, "", "seat-test-advisor"
+		}, wantErr: `seat "multi-advisor-2": the table holds assistants, but this seat is not one; a table holds advisors only, writers only or assistants only`},
+		{name: "a table of assistants and a writer", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].Assistant, tb.Seats[2].EndMarker, tb.Seats[2].Writer = false, "", true
+		}, wantErr: `the table holds writers, but this seat is not one`},
+		{name: "an assistant that is also a writer", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].Writer, tb.Seats[2].Writer = true, true
+		}, wantErr: `seat "multi-advisor-1": an assistant is never required and never a writer`},
+		{name: "a required assistant", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].Required = true
+		}, wantErr: `seat "multi-advisor-1": an assistant is never required and never a writer`},
+		{name: "an accept hook on an assistant", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].Accept = func(shuttleengine.Result) error { return nil }
+		}, wantErr: `seat "multi-advisor-1": carries an accept hook but is neither required nor a writer`},
+		{name: "an assistant with no end marker", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].EndMarker = ""
+		}, wantErr: `seat "multi-advisor-1": an assistant needs an end marker`},
+		{name: "an end marker on an advisor", mutate: func(tb *Table) { tb.Seats[1].EndMarker = "/w/a1.end" }, wantErr: `seat "multi-advisor-1": carries an end marker, but only an assistant can`},
+		{name: "an end marker on a writer", mutate: func(tb *Table) {
+			asWriters(tb)
+			tb.Seats[1].EndMarker = "/w/a1.end"
+		}, wantErr: `seat "multi-advisor-1": carries an end marker, but only an assistant can`},
+		{name: "two assistants sharing an end marker", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].EndMarker = tb.Seats[1].EndMarker
+		}, wantErr: `seat "multi-advisor-2": end marker "/w/advisor-1.end" is already seat "multi-advisor-1"'s end marker`},
+		{name: "an end marker that is another assistant's output", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].EndMarker = "/w/a2.md"
+		}, wantErr: `seat "multi-advisor-1": end marker "/w/a2.md" is already an output`},
+		{name: "an end marker that is the lead's output", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].EndMarker = "/w/out.md"
+		}, wantErr: `seat "multi-advisor-2": end marker "/w/out.md" is already an output`},
+		{name: "an assistant lead", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[0].Assistant, tb.Seats[0].EndMarker = true, "/w/lead.end"
+		}, wantErr: `the lead is marked an assistant, but only a seat after the lead can be`},
+		{name: "an assistant table whose lead includes only the advisor chair directive", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[0].Stencil = "seat-test-chair"
+		}, wantErr: `include seat-directive-assistant-chair in the lead's stencil`},
+		{name: "an assistant whose stencil lacks the assistant directive", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[2].Stencil = "seat-test-advisor"
+		}, wantErr: `seat "multi-advisor-2": the stencil "seat-test-advisor" does not include seat-directive-assistant`},
+		{name: "an assistant whose engine lacks an engine block its stencil includes", mutate: func(tb *Table) {
+			asAssistants(tb)
+			tb.Seats[1].Stencil, tb.Seats[1].Engine = "seat-test-engined-assistant", "gemini"
+		}},
 		{name: "a writer table whose lead includes only the advisor chair directive", mutate: func(tb *Table) {
 			asWriters(tb)
 			tb.Seats[0].Stencil = "seat-test-chair"
@@ -164,7 +256,7 @@ func TestTable_Validate(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(&table)
 			}
-			err := table.Validate(dir)
+			err := table.Validate(dir, tt.defaultEngine)
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("Validate() = %v, want nil", err)
@@ -189,6 +281,9 @@ func TestTable_CheckMarkers(t *testing.T) {
 	writeStencil(t, dir, "seat-test-malformed", "Lead.\n{{template \"seat-test-malformed-block\"}}\n")
 	writeStencil(t, dir, "seat-test-twice-block", "Block [{{.topic}}].\n")
 	writeStencil(t, dir, "seat-test-twice", "Lead [{{.topic}}].\n{{template \"seat-test-twice-block\"}}\n{{template \"seat-directive-chair\"}}\n")
+	writeStencil(t, dir, "seat-test-marked-engined", "Lead [{{.topic}}] [{{.focus}}].\n{{template \"seat-directive-chair\"}}\n{{template \"engine-test-marked\"}}\n")
+	writeStencil(t, dir, stencilstore.EngineBlockName("claude", "test-marked"), "Claude.\n")
+	writeStencil(t, dir, stencilstore.EngineBlockName("codex", "test-marked"), "Codex [{{.depth}}].\n")
 
 	tests := []struct {
 		name   string
@@ -238,6 +333,19 @@ func TestTable_CheckMarkers(t *testing.T) {
 		{name: "two unfilled seats name only the lead", mutate: func(tb *Table) {
 			tb.Seats[2].Stencil = "seat-test-marked-advisor"
 		}, wantErrs: []string{`seat "multi": stencil "seat-test-marked"`}, wantAbsent: []string{"multi-advisor-2", "angle"}},
+		{name: "an engine block of the default engine with no marker", mutate: func(tb *Table) {
+			tb.Values = map[string]string{"topic": "x", "focus": "y"}
+			tb.Seats[0].Stencil = "seat-test-marked-engined"
+		}},
+		{name: "a marker in the engine block of the seat's own engine", mutate: func(tb *Table) {
+			tb.Values = map[string]string{"topic": "x", "focus": "y"}
+			tb.Seats[0].Stencil, tb.Seats[0].Engine = "seat-test-marked-engined", "codex"
+		}, wantErrs: []string{`seat "multi": stencil "seat-test-marked-engined" has marker(s) depth that no value fills`}},
+		{name: "an assistant whose engine lacks an engine block its stencil includes is passed over", mutate: func(tb *Table) {
+			tb.Values = map[string]string{"topic": "x", "focus": "y"}
+			asAssistants(tb)
+			tb.Seats[1].Stencil, tb.Seats[1].Engine = "seat-test-engined-assistant", "gemini"
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -247,7 +355,7 @@ func TestTable_CheckMarkers(t *testing.T) {
 			if tt.mutate != nil {
 				tt.mutate(&table)
 			}
-			err := table.CheckMarkers(dir)
+			err := table.CheckMarkers(dir, "claude")
 			if len(tt.wantErrs) == 0 {
 				if err != nil {
 					t.Fatalf("CheckMarkers() = %v, want nil", err)
@@ -297,7 +405,7 @@ func TestTable_NamesAccessorsAndReservedMarkers(t *testing.T) {
 	if !slices.IsSorted(reserved) {
 		t.Errorf("ReservedMarkers() = %v, want a sorted list", reserved)
 	}
-	for _, name := range []string{"parent_directive", "edit_directive", "seat_name", "chair_name", "advisor_names", "inputs", "outputs", "output_files", "worktree_root", "anchor_path", "stencils_dir"} {
+	for _, name := range []string{"parent_directive", "edit_directive", "seat_name", "chair_name", "advisor_names", "assistants", "inputs", "outputs", "output_files", "worktree_root", "anchor_path", "stencils_dir"} {
 		if !slices.Contains(reserved, name) {
 			t.Errorf("ReservedMarkers() = %v, want it to hold %q", reserved, name)
 		}

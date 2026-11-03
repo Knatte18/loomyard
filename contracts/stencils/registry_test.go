@@ -40,6 +40,7 @@ func shippedStencils(t *testing.T) map[string][]byte {
 
 // stencilNamesOnDisk walks this package's own directory and returns the stencil name derived from
 // each *.md file found in a family subfolder: the filename without its ".md" extension.
+// An engine block's file, under the engine blocks directory's per-engine subfolder, gives the name stencilstore.EngineBlockName forms.
 func stencilNamesOnDisk(t *testing.T) []string {
 	t.Helper()
 
@@ -64,11 +65,33 @@ func stencilNamesOnDisk(t *testing.T) []string {
 			t.Fatalf("os.ReadDir(%q) = _, %v; want nil error", familyDir, err)
 		}
 		for _, fileEntry := range familyFiles {
+			if fileEntry.IsDir() && familyEntry.Name() == stencilstore.EngineBlocksDir {
+				names = append(names, engineBlockNamesOnDisk(t, filepath.Join(familyDir, fileEntry.Name()), fileEntry.Name())...)
+				continue
+			}
 			if fileEntry.IsDir() || !strings.HasSuffix(fileEntry.Name(), ".md") {
 				continue
 			}
 			names = append(names, strings.TrimSuffix(fileEntry.Name(), ".md"))
 		}
+	}
+	return names
+}
+
+// engineBlockNamesOnDisk returns the stencil name of each *.md file in engineDir, the engine blocks directory's subfolder for engine.
+func engineBlockNamesOnDisk(t *testing.T, engineDir, engine string) []string {
+	t.Helper()
+
+	blockFiles, err := os.ReadDir(engineDir)
+	if err != nil {
+		t.Fatalf("os.ReadDir(%q) = _, %v; want nil error", engineDir, err)
+	}
+	var names []string
+	for _, blockEntry := range blockFiles {
+		if blockEntry.IsDir() || !strings.HasSuffix(blockEntry.Name(), ".md") {
+			continue
+		}
+		names = append(names, stencilstore.EngineBlockName(engine, strings.TrimSuffix(blockEntry.Name(), ".md")))
 	}
 	return names
 }

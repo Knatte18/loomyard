@@ -1,4 +1,4 @@
-// Package shuttleengines is the registry of named shuttle engines.
+// Package shuttleengines is the registry of named shuttle engines: claude, for Claude Code, and codex, for the Codex CLI.
 // It is the only production package that imports a concrete engine package.
 // shuttleengine and its callers therefore stay blind to which providers exist.
 //

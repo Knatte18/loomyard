@@ -50,14 +50,23 @@ func (e *Engine) seatSkills(p *Profile) []string {
 // languageSkills are the hub's language skills a code round's seats load after burlerSkills, empty for none.
 func New(shuttle seatengine.Shuttle, geom Geometry, cfg lenses.Config, stencilsDir, frictionDir string, languageSkills []string) *Engine {
 	seats := seatengine.New(shuttle, seatengine.Geometry{
-		WorktreeRoot: geom.WorktreeRoot,
-		AnchorPath:   geom.AnchorPath,
-		StencilsDir:  stencilsDir,
-		ParentName:   geom.ParentName,
-		Shortname:    geom.Shortname,
-		Slug:         geom.Slug,
+		WorktreeRoot:  geom.WorktreeRoot,
+		AnchorPath:    geom.AnchorPath,
+		StencilsDir:   stencilsDir,
+		DefaultEngine: geom.DefaultEngine,
+		ParentName:    geom.ParentName,
+		Shortname:     geom.Shortname,
+		Slug:          geom.Slug,
 	})
 	return &Engine{seats: seats, geom: geom, cfg: cfg, stencilsDir: stencilsDir, frictionDir: frictionDir, languageSkills: languageSkills}
+}
+
+// seatEngine returns the engine a half whose model choice is choice runs on, which its instruction files are rendered for: the engine choice names, else the geometry's DefaultEngine.
+func (e *Engine) seatEngine(choice shuttleengine.ModelChoice) string {
+	if choice.Engine != "" {
+		return choice.Engine
+	}
+	return e.geom.DefaultEngine
 }
 
 // Half is one half of a round: the identities, last message and kept run directory a caller needs to act on a non-done outcome further.

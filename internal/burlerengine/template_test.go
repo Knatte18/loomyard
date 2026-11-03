@@ -110,6 +110,7 @@ func TestTemplate_FillsWithAllMarkers(t *testing.T) {
 			name:            "review step",
 			template:        stencils.BurlerStepReview,
 			values:          reviewStepMarkerValues(),
+			optional:        []string{assistRulesMarker},
 			requiredMarkers: []string{"cluster_rules", "review_path", "review_format_path", "prior_rounds"},
 		},
 		{
@@ -262,4 +263,44 @@ func TestComposePrompt_ReadsEditedStencilFromDisk(t *testing.T) {
 	prompt := composeReview(t, stencilsDir, &p, "")
 
 	requireContains(t, prompt.Files[reviewStepFile].Content, modifiedMarker)
+}
+
+// TestComposePrompt_RendersEngineBlocksForTheHalfsEngine pins that an engine block an instruction stencil includes renders the copy of the engine the half runs on, in both halves.
+func TestComposePrompt_RendersEngineBlocksForTheHalfsEngine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	stencilsDir := newTestStencilsDir(t)
+	seedEngineWords(t, stencilsDir, map[string][]byte{
+		"burler-step-1-explore": stencils.BurlerStep1Explore,
+		"burler-step-review":    stencils.BurlerStepReview,
+		"burler-step-fix":       stencils.BurlerStepFix,
+	})
+
+	tests := []struct {
+		engine string
+		want   string
+		absent string
+	}{
+		{"claude", "Claude words.", "Codex words."},
+		{"codex", "Codex words.", "Claude words."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.engine, func(t *testing.T) {
+			t.Parallel()
+			p := newComposableProfile(t)
+			review, err := composeReviewPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", "", testReviewFiles)
+			if err != nil {
+				t.Fatalf("composeReviewPrompt(%s) = %v; want nil error", tt.engine, err)
+			}
+			fix, err := composeFixPrompt(stencilsDir, testSpecsDir, tt.engine, &p, "", fixWork(p.ReviewPath, "", false), testFixFiles)
+			if err != nil {
+				t.Fatalf("composeFixPrompt(%s) = %v; want nil error", tt.engine, err)
+			}
+			for file, content := range map[string]string{"explore step": review.Files[reviewExploreFile].Content, "review step": review.Files[reviewStepFile].Content, "fix step": fix.Files[fixStepFile].Content} {
+				if !strings.Contains(content, tt.want) || strings.Contains(content, tt.absent) {
+					t.Errorf("%s for engine %s = %q; want it to hold %q and not %q", file, tt.engine, content, tt.want, tt.absent)
+				}
+			}
+		})
+	}
 }

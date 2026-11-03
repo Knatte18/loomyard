@@ -15,4 +15,11 @@
 // The drift line lists each differing stencil with its class and logs at Info only when every differing stencil is in the behind class.
 // Reconcile runs once per process, so each of those lines appears once per process.
 // The drift warning's build-ancestry input arrives the same way, told by the caller through Source, because stencilstore runs no git.
+//
+// # Engine blocks
+//
+// An engine block is an include whose text differs by the engine a stencil is rendered for.
+// A stencil includes it as the bare {{template "engine-<block>"}}, and each engine keeps its own copy at `engine/<engine>/<block>.md` under the stencils directory, registered under the name EngineBlockName returns.
+// ReadSet is the one resolver: it reads a stencil with every block it includes, an engine block from the copy of the engine it is told, so every caller that renders a stencil for a seat reads its blocks for that seat's engine.
+// An engine with no copy of an included block is a MissingEngineBlockError naming the block, the engine and the file, so a caller can tell that refusal apart from any other read error.
 package stencilstore

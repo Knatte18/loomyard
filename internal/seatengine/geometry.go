@@ -12,6 +12,8 @@ type Geometry struct {
 	AnchorPath string
 	// StencilsDir is the directory the seats' stencils and their include blocks are read from.
 	StencilsDir string
+	// DefaultEngine is the name of the engine a seat whose model choice names none runs on, shuttle's default; a seat's engine blocks are read for it.
+	DefaultEngine string
 	// ParentName is the told parent agent name the seat prompts render their parent directive from.
 	// An empty name renders the directive's no-parent variant.
 	ParentName string

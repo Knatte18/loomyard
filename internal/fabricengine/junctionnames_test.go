@@ -302,7 +302,7 @@ func TestIsReservedHubName(t *testing.T) {
 	})
 }
 
-// TestConfigDirs pins the geometry a location tells a layered load: the anchor always, and the board dir only when it exists as a directory.
+// TestConfigDirs pins the geometry a location tells a layered load: the anchor always, and the board dir and the weft checkout only when each exists as a directory.
 func TestConfigDirs(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -311,7 +311,19 @@ func TestConfigDirs(t *testing.T) {
 		name      string
 		makeBoard func(t *testing.T, board string)
 		wantBoard bool
+		// makeWeft creates the weft checkout the location pairs with.
+		makeWeft bool
 	}{
+		{
+			name: "hub holding a board dir and a weft checkout",
+			makeBoard: func(t *testing.T, board string) {
+				if err := os.Mkdir(board, 0o755); err != nil {
+					t.Fatalf("mkdir board: %v", err)
+				}
+			},
+			wantBoard: true,
+			makeWeft:  true,
+		},
 		{
 			name: "hub holding a board dir",
 			makeBoard: func(t *testing.T, board string) {
@@ -341,6 +353,13 @@ func TestConfigDirs(t *testing.T) {
 			hub := t.TempDir()
 			tt.makeBoard(t, BoardDir(hub))
 			loc := &lymcwd.Location{RepoName: "repo", HubPath: hub, WorktreeName: "main", AnchorRel: "."}
+			wantWeft := ""
+			if tt.makeWeft {
+				wantWeft = RecordsWorktree(loc)
+				if err := os.MkdirAll(wantWeft, 0o755); err != nil {
+					t.Fatalf("mkdir weft: %v", err)
+				}
+			}
 
 			got := ConfigDirs(loc)
 
@@ -348,8 +367,8 @@ func TestConfigDirs(t *testing.T) {
 			if tt.wantBoard {
 				wantBoard = BoardDir(hub)
 			}
-			if got.Anchor != loc.AnchorPath() || got.Board != wantBoard {
-				t.Errorf("ConfigDirs = %+v; want Anchor %q, Board %q", got, loc.AnchorPath(), wantBoard)
+			if got.Anchor != loc.AnchorPath() || got.Board != wantBoard || got.Records != wantWeft {
+				t.Errorf("ConfigDirs = %+v; want Anchor %q, Board %q, Records %q", got, loc.AnchorPath(), wantBoard, wantWeft)
 			}
 		})
 	}

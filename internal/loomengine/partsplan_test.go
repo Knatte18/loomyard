@@ -116,7 +116,7 @@ func TestPartsPlanTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("PartsPlanTable(...) = _, %v; want nil error", err)
 		}
-		if err := table.Validate(stencilsDir); err != nil {
+		if err := table.Validate(stencilsDir, ""); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
 		anchor := layout.AnchorPath()

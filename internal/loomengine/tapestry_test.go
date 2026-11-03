@@ -95,6 +95,7 @@ func TestLoadTapestryConfig(t *testing.T) {
 			Plan: "opus[effort=high]", PlanTimeoutMin: 7, PlanLenses: "", PlanGateFixer: "sonnet[medium]",
 			PlanReviewerModel: burlerengine.ModelSpecList{"sonnet[low]"}, PlanFixerModel: burlerengine.ModelSpecList{"sonnet[high]"},
 			PlanReviewerFan: lenses.FanList{"full"}, PlanFixerFan: lenses.FanList{"fix-plan"},
+			PlanAssistReviewerModel: burlerengine.ModelSpecList{""}, PlanAssistReviewerFan: lenses.FanList{""},
 			PlanJudge: "opus[low]", PlanSeed: "haiku[low]",
 			PlanMaxBounces: intPtr(2), PlanHardMaxBounces: 3, PlanAutoAccept: true,
 			PlanSplit: false, PartsDepth: "light", PartsMax: 6,
@@ -133,6 +134,63 @@ func TestLoadTapestryConfig(t *testing.T) {
 		}
 		if loaded.PlanGateFixer != "" {
 			t.Errorf("LoadTapestryConfig().PlanGateFixer = %q; want empty, the fixer off", loaded.PlanGateFixer)
+		}
+	})
+
+	t.Run("the plan assistant lists load per round and WithTapestry copies them", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		seedLoomAndTapestry(t, dir, nil, map[string]string{
+			"plan_assist_reviewer_model": `["luna[low]", ""]`, "plan_assist_reviewer_fan": `["full", ""]`,
+		})
+		dirs := configengine.Dirs{Anchor: dir}
+
+		loaded, err := LoadTapestryConfig(dirs, "tapestry")
+		if err != nil {
+			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
+		}
+		wantModels, wantFans := burlerengine.ModelSpecList{"luna[low]", ""}, lenses.FanList{"full", ""}
+		if !reflect.DeepEqual(loaded.PlanAssistReviewerModel, wantModels) || !reflect.DeepEqual(loaded.PlanAssistReviewerFan, wantFans) {
+			t.Errorf("LoadTapestryConfig() assist lists = %v, %v; want %v, %v", loaded.PlanAssistReviewerModel, loaded.PlanAssistReviewerFan, wantModels, wantFans)
+		}
+		loom, err := LoadConfig(dirs, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		applied := loom.WithTapestry(loaded)
+		if !reflect.DeepEqual(applied.PlanAssistReviewerModel, wantModels) || !reflect.DeepEqual(applied.PlanAssistReviewerFan, wantFans) {
+			t.Errorf("WithTapestry() assist lists = %v, %v; want %v, %v", applied.PlanAssistReviewerModel, applied.PlanAssistReviewerFan, wantModels, wantFans)
+		}
+	})
+
+	t.Run("the default assistant keys give every round no assistant model", func(t *testing.T) {
+		t.Parallel()
+		dir := t.TempDir()
+		seedLoomAndTapestry(t, dir, nil, nil)
+		dirs := configengine.Dirs{Anchor: dir}
+
+		tapestry, err := LoadTapestryConfig(dirs, "tapestry")
+		if err != nil {
+			t.Fatalf("LoadTapestryConfig() = _, %v; want nil error", err)
+		}
+		loom, err := LoadConfig(dirs, "loom")
+		if err != nil {
+			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
+		}
+		reg, err := modelspec.LoadRegistry(configengine.Dirs{Anchor: t.TempDir()})
+		if err != nil {
+			t.Fatalf("modelspec.LoadRegistry() = _, %v; want nil error", err)
+		}
+		review, err := ResolveReview(loom.WithTapestry(tapestry), reg)
+		if err != nil {
+			t.Fatalf("ResolveReview() = _, %v; want nil error", err)
+		}
+		for name, got := range map[string]AssistModels{"Discussion": review.DiscussionAssist, "Plan": review.PlanAssist, "Code": review.CodeAssist} {
+			for round, choice := range got.Models {
+				if choice != (shuttleengine.ModelChoice{}) {
+					t.Errorf("ResolveReview().%sAssist.Models[%d] = %+v; want the zero choice", name, round, choice)
+				}
+			}
 		}
 	})
 
@@ -198,6 +256,9 @@ func TestLoadTapestryConfig(t *testing.T) {
 		{name: "malformed plan spec", key: "plan", value: `"opus[effort"`},
 		{name: "malformed plan_reviewer_model spec", key: "plan_reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
 		{name: "malformed plan_fixer_model spec", key: "plan_fixer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "a non-empty list of model-specs"}},
+		{name: "malformed plan_assist_reviewer_model spec", key: "plan_assist_reviewer_model", value: `"opus[effort"`, wantIn: []string{"entry 1", "no assistant that round"}},
+		{name: "malformed later plan_assist_reviewer_model entry", key: "plan_assist_reviewer_model", value: `["luna[low]", "opus[effort"]`, wantIn: []string{"entry 2", "no assistant that round"}},
+		{name: "unknown plan_assist_reviewer_fan", key: "plan_assist_reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "entry 1"}},
 		{name: "unknown plan_reviewer_fan", key: "plan_reviewer_fan", value: "nosuchfan", wantIn: []string{`"nosuchfan"`, "known fans: ", "full", "entry 1", `set the entry to ""`}},
 		{name: "empty plan_reviewer_fan list", key: "plan_reviewer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},
 		{name: "empty plan_fixer_fan list", key: "plan_fixer_fan", value: "[]", wantIn: []string{"the list is empty", `write ""`}},

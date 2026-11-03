@@ -95,7 +95,7 @@ func multiLLMEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProduce
 		Values:      tokens,
 		Seats:       seats,
 	}
-	if err := table.Validate(env.StencilsDir); err != nil {
+	if err := table.Validate(env.StencilsDir, env.DefaultEngine); err != nil {
 		return nil, fmt.Errorf("shedrecipe: MultiLLM: %w", err)
 	}
 

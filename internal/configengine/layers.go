@@ -19,10 +19,13 @@ import (
 
 // Dirs is the told geometry of a layered load.
 // Anchor is the reading worktree's anchor and Board the hub's board dir, empty standalone.
-// Neither is derived: the caller hands both in.
+// Records is the absolute path of the records checkout paired with the anchor's worktree, empty outside a hub or when that checkout does not exist;
+// no layer reads it, and an engine whose session writes into the checkout takes it from here.
+// None is derived: the caller hands each in.
 type Dirs struct {
-	Anchor string
-	Board  string
+	Anchor  string
+	Board   string
+	Records string
 }
 
 // Layer names one layer of the stack, for provenance and for choosing a layer to write.

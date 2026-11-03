@@ -56,6 +56,12 @@ type Config struct {
 	RefuseRaw []string `yaml:"-"`
 }
 
+// StartAllowance returns the longest a start may take: every launch's startup_timeout_s, the first and each of start_retries retries, with the wait between attempts.
+func (c Config) StartAllowance() time.Duration {
+	launches := time.Duration(1+c.StartRetries) * time.Duration(c.StartupTimeoutS) * time.Second
+	return launches + time.Duration(c.StartRetries)*startRetryDelay
+}
+
 // ConfigSpec returns shuttle's layered-load spec.
 // It carries the template, the per-key classification that decides which keys a local override may hold,
 // and the retired keys an unreconciled layer may still hold.

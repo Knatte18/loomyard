@@ -52,6 +52,23 @@ func (l ModelSpecList) Unset() bool {
 	return len(l) == 0 || (len(l) == 1 && l[0] == "")
 }
 
+// assistModelListWayForward is the way forward every assistant model list refusal ends with.
+const assistModelListWayForward = "set the entry to a model-spec, or to an empty string for no assistant that round"
+
+// ValidateAssistModelList refuses an entry that is not a model-spec, naming module, key and the 1-based entry index.
+// An empty list and an empty entry are accepted, since an empty entry runs no assistant that round.
+func ValidateAssistModelList(module, key string, specs ModelSpecList) error {
+	for i, spec := range specs {
+		if spec == "" {
+			continue
+		}
+		if _, err := modelspec.Parse(spec); err != nil {
+			return fmt.Errorf("%s config key %q entry %d: %w; %s", module, key, i+1, err, assistModelListWayForward)
+		}
+	}
+	return nil
+}
+
 // ValidateModelSpecList refuses an empty list and an entry that is not a model-spec, naming module, key and the 1-based entry index.
 func ValidateModelSpecList(module, key string, specs ModelSpecList) error {
 	if len(specs) == 0 {

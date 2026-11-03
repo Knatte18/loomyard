@@ -54,7 +54,7 @@ func TestFixerTable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("FixerTable(%s) = _, %v; want nil error", mode, err)
 			}
-			if err := table.Validate(in.StencilsDir); err != nil {
+			if err := table.Validate(in.StencilsDir, ""); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
 
@@ -98,7 +98,7 @@ func TestFixerTable(t *testing.T) {
 		if err != nil {
 			t.Fatalf("FixerTable(finalize, empty optionals) = _, %v; want nil error", err)
 		}
-		if err := table.Validate(in.StencilsDir); err != nil {
+		if err := table.Validate(in.StencilsDir, ""); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
 		for _, name := range []string{"plan_dir", "failure_record_path", "fix_review_path", "aligned_tip"} {
@@ -166,7 +166,7 @@ func TestFixerTable(t *testing.T) {
 			table, err := FixerTable(in, cfg, modelspec.Registry{})
 			if err == nil && in.StencilsDir != "" {
 				// An empty optional the seat engine judges is refused when the table is validated, not when it is built.
-				err = table.Validate(in.StencilsDir)
+				err = table.Validate(in.StencilsDir, "")
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("FixerTable(%s) error = %v; want one containing %q", tt.name, err, tt.wantErr)

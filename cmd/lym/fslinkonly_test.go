@@ -20,7 +20,7 @@ import (
 // allowedLinkCalls is the `PATTERN-fs-links` allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.Symlink`.
 // An entry admits one link call in one file, and its reason names the obstacle to creating the link through fslink.
 var allowedLinkCalls = []scankit.Entry{
-	{Key: "tools/deploy/main.go:os.Symlink", Why: "copies a plugin-tree symlink verbatim, and it may point at a file, which fslink has no primitive for"},
+	{Key: "tools/deploy/main.go:os.Symlink", Why: "copies a plugin-tree symlink verbatim, keeping its raw target without reading whether it names a file or a directory, which fslink's primitives each need to know"},
 }
 
 // fslinkDir is the link package's own directory, whose files make the raw link calls.

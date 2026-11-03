@@ -22,13 +22,15 @@
 //
 // Table.Validate applies every rule as a loud error naming the seat.
 // An error names a seat by its strand role, so the lead, which carries no name, reads as the role prefix.
-// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor or a writer, never both in one table, with a unique valid name.
+// The table has at least one seat, its first seat is the unnamed lead, and every later seat is an advisor, a writer or an assistant, one kind per table, with a unique valid name.
 // A table may hold no advisors: the lead then runs alone, and seat-directive-chair tells it to decide each question itself.
-// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, and a writer table's lead includes seat-directive-writer-chair in its place; a lone lead needs no such include.
+// The lead's stencil of an advisor table of more than one seat includes seat-directive-chair, a writer table's lead includes seat-directive-writer-chair in its place and an assistant table's lead seat-directive-assistant-chair; a lone lead needs no such include.
 // The lead carries no gate, since the lead's gate is the table's.
 // Every seat has at least one output and no two seats share an output path, and every advisor output is among the lead's inputs.
 // The role prefix and every seat's formed role pass the agent-name role grammar.
 // Every seat's stencil is readable from the told stencils directory, as is every block it includes (stencil.IncludeNames over the bytes read), and an included block declares no include of its own.
+// An engine block, an include named `engine-<block>`, is read through stencilstore.ReadSet for the seat's engine: the engine its model choice names, else the geometry's DefaultEngine.
+// Validation, the marker check and composition all read a seat's blocks that way, so an engine block its seat's engine has no copy of refuses the table, naming the block, the engine and the file.
 // A table or seat value neither collides with a name in ReservedMarkers nor is empty or whitespace-only.
 // A table value named in Table.Optional may be empty and then renders as nothing in the stencil and in every block it includes; an Optional name may not be a reserved marker, and a seat value is never exempt.
 // Prompts composes every seat's prompt from a table without starting anything, so a table builder can test what its seats will read.
@@ -104,6 +106,19 @@
 // A Seat's own Timeout, when non-zero, bounds its run in place of the table's, so a chair can outlast its writers.
 // A SeatResult carries Writer, the seat's absolute Outputs and its GateFindingsPath, a path the engine only carries for the producer that keeps a writer's failed gate findings there.
 //
+// # Assistants
+//
+// A Seat marked Assistant writes its outputs and nothing else: it gets no up line and no mail, sends none, and so never needs creel.
+// A table holds assistants only after the lead, the lead's stencil includes seat-directive-assistant-chair and every assistant's seat-directive-assistant, which tells it to ignore `[creel]` text in its pane.
+// Each assistant carries an EndMarker, a path no other seat's marker or output shares, which the engine writes once the assistant's run ends, whatever the ending, or when it does not start.
+// The marker's text names the ending: done, only once the seat gate has passed; gate failed for a done run whose gate failed; died, timeout or stopped; the wait error; not started with its reason; not found.
+// A fresh Run removes every assistant's stale marker and outputs before the chair starts.
+// An assistant whose SkipReason is set, whose start fails, or whose engine lacks an engine block its stencil includes does not start: its marker reads not started with the reason, a Warn names it, and the step goes on; Validate and CheckMarkers pass such a missing block over for an assistant alone.
+// Its parent directive is the no-parent variant and its edit directive its engine's own copy, read through editdirective.EngineDirective.
+// An assistant is never required and never ends the step: its held turn end stays quiet, the chair's hold deferral counts an unended one that reads mid-turn, and the engine stops every assistant when the chair ends, marking a stopped one stopped.
+// The chair's prompt lists each assistant's report and marker through the reserved assistants marker, and seat-directive-assistant-chair tells it to wait on a marker with `lym shuttle await` and read the report only when the marker reads done.
+// Probe finds a live assistant by its outputs and Resume attaches it as a fresh run does; one the probe did not find keeps the marker its run wrote, or gets not found.
+//
 // # Probe before archive
 //
 // Engine.Probe reports which seats have a live run, the chair probed with the table's gate and each advisor with its seat's gate, and archives and starts nothing.
@@ -127,5 +142,5 @@
 //
 // # Imports
 //
-// The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor, logger, the directive renderers and the standard library.
+// The package imports shuttleengine, stencil, stencilstore, agentname, segmentcolor, logger, fsx, the directive renderers and the standard library.
 package seatengine

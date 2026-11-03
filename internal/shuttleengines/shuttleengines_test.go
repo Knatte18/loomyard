@@ -182,7 +182,7 @@ func TestNew(t *testing.T) {
 			if _, ok := engine.(*claudeengine.Claude); !ok {
 				t.Errorf("default engine = %T; want *claudeengine.Claude", engine)
 			}
-			if got, want := set.Names(), []string{"claude"}; !reflect.DeepEqual(got, want) {
+			if got, want := set.Names(), []string{"claude", "codex"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("Names() = %v; want %v", got, want)
 			}
 			if tt.after != nil {
@@ -214,7 +214,7 @@ func TestEnvScrub_MatchesTmuxkitServerEnviron(t *testing.T) {
 	t.Parallel()
 
 	environ := []string{
-		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep",
+		"HOME=/home/x", "CLAUDECODE=1", "CLAUDE_CODE_ENTRYPOINT=cli", "CLAUDE_CODEX=keep", "CODEX_HOME=/home/x/.lym/codex",
 		logger.TraceIDEnv + "=abc", "LYM_STRAND_NAME=ab:orch", "LYM_PARENT=ab:driver", "LYM_OTHER=keep", "PATH=/bin",
 	}
 

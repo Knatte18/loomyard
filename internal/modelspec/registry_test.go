@@ -69,6 +69,14 @@ func TestRegistry_Resolve(t *testing.T) {
 			wantModel:  "haiku",
 			wantParams: map[string]string{},
 		},
+		{
+			name:       "built-in Codex alias resolves to engine codex at effort medium",
+			registry:   builtins(),
+			spec:       Spec{Alias: "astra"},
+			wantEngine: "codex",
+			wantModel:  "gpt-6-astra",
+			wantParams: map[string]string{"effort": "medium"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

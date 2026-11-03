@@ -19,6 +19,13 @@ const (
 // OrchPromptTarget is the prompt target whose passages reach an orch session alone, the home of a repository's orch rules.
 const OrchPromptTarget = "orch-prompt"
 
+const (
+	// claudeFileTarget is the file target rendered into CLAUDE.local.md, the instructions a Claude session reads.
+	claudeFileTarget = "claude-file"
+	// codexFileTarget is the file target rendered into AGENTS.override.md, the instructions a Codex session reads.
+	codexFileTarget = "codex-file"
+)
+
 // Target is one place an entry's text is delivered to.
 // File is the anchor-relative path of a file target and empty for a prompt target.
 // ReRender lists the anchor-relative paths whose change re-renders a file target.
@@ -34,8 +41,8 @@ type Target struct {
 
 // targetTable holds one row per target; a further target is one new row.
 var targetTable = []Target{
-	{Name: "claude-file", Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
-	{Name: "codex-file", Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "AGENTS.override.md"}},
+	{Name: claudeFileTarget, Delivery: DeliveryFile, File: "CLAUDE.local.md", ReRender: []string{"CLAUDE.local.md", "AGENTS.md", "CLAUDE.md", ".claude/AGENTS.md", ".claude/CLAUDE.md"}},
+	{Name: codexFileTarget, Delivery: DeliveryFile, File: "AGENTS.override.md", ReRender: []string{"AGENTS.md", "CLAUDE.md", "AGENTS.override.md"}},
 	{Name: "claude-prompt", Delivery: DeliveryPrompt, Engine: "claude"},
 	{Name: "codex-prompt", Delivery: DeliveryPrompt, Engine: "codex"},
 	{Name: OrchPromptTarget, Delivery: DeliveryPrompt, Role: agentname.RoleOrch},

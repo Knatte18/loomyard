@@ -61,6 +61,36 @@ type BurlerHalfDeps struct {
 	// DecisionsEscalated marks a fix row whose segment's Bouncer escalates the round's decision-class findings to the run's parent itself, read by the fix producer.
 	// Such a row keeps the findings out of the fixer's work and posts no notice of its own.
 	DecisionsEscalated bool
+	// Assist is the segment's assistant reviewer settings, read by the review producer; the zero value runs no assistant.
+	Assist AssistSettings
+}
+
+// AssistSettings is one review segment's assistant reviewer seat: the per-round model and fan lists, the keys they came from and the assistant's run bound.
+type AssistSettings struct {
+	// Models holds one model choice per round, the last entry serving every later round; an entry with no model runs no assistant that round.
+	Models []shuttleengine.ModelChoice
+	// Fans holds one fan name per round in the fan-list grammar, the last entry serving every later round; an empty entry runs the assistant solo.
+	Fans []string
+	// ModelKey and FanKey name the config keys the two lists came from.
+	ModelKey shuttleengine.ModelKey
+	FanKey   string
+	// Timeout bounds the assistant's run, already capped to end before the chair's own timeout.
+	Timeout time.Duration
+	// SkipReason, when set, is why the cap left the assistant no time: an assistant the round names then does not start, and its end marker carries the reason.
+	SkipReason string
+}
+
+// pick returns round's assistant model choice and fan, counting rounds from 1.
+// A round past a list takes its last entry, and an empty list gives the zero choice or an empty fan; a round with no assistant gets no fan either.
+func (a AssistSettings) pick(round int) (shuttleengine.ModelChoice, string) {
+	var choice shuttleengine.ModelChoice
+	if len(a.Models) > 0 {
+		choice = a.Models[min(max(round, 1), len(a.Models))-1]
+	}
+	if choice.Model == "" {
+		return choice, ""
+	}
+	return choice, roundFan(a.Fans, round)
 }
 
 // checkHalfProducerArgs returns the constructor error of a half producer named name under label, or nil.
@@ -91,6 +121,7 @@ type BurlerReviewProducer struct {
 	runner BurlerHalfRunner
 	models burlerengine.RoundModels
 	fans   *RoundFans
+	assist AssistSettings
 	// gateFindingsPath, when non-empty, is the file cleared once the review's gate has passed.
 	gateFindingsPath string
 	profile          burlerengine.Profile
@@ -115,7 +146,17 @@ func NewBurlerReviewProducer(name string, deps BurlerHalfDeps, profile burlereng
 	if now == nil {
 		now = time.Now
 	}
-	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+	return &BurlerReviewProducer{name: name, runner: deps.Runner, models: deps.Models, fans: deps.Fans, assist: deps.Assist, gateFindingsPath: deps.GateFindingsPath, profile: profile, opts: opts, runDir: runDir, now: now}, nil
+}
+
+// attemptOpts returns the run options one review attempt of round runs under: the stored template with attempt's token, the round's models and attempt's assistant.
+func (p *BurlerReviewProducer) attemptOpts(round int, attempt roundAttempt) burlerengine.RunOpts {
+	opts := p.opts
+	opts.Round = attempt.token
+	opts.Review, opts.Fix = p.models.Pick(round)
+	opts.Assist, opts.AssistFan = attempt.assist, attempt.assistFan
+	opts.AssistKey, opts.AssistTimeout, opts.AssistSkip = p.assist.ModelKey, p.assist.Timeout, p.assist.SkipReason
+	return opts
 }
 
 // roundProfile returns a fresh per-round copy of the stored template profile for round running under fan:
@@ -207,7 +248,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 	if probeFan != fan {
 		probeProfile = p.roundProfile(round, probeFan)
 	}
-	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round)}
+	paths := []string{profile.ReviewPath, profile.FixerReportPath, roundAcceptancePath(p.runDir, round), burlerengine.AssistCopyPath(profile.ReviewPath, burlerengine.AssistSeatName)}
 	archiveRound := func() {
 		if archErr := archiveStaleOutputs(paths, p.now); archErr != nil {
 			logger.Warn("shedadapters: archive round outputs on exit failed", "producer", p.name, "engine", burlerReviewEngineLabel, "round", round, "error", archErr)
@@ -232,6 +273,7 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		}
 	}
 
+	assist, assistFan := p.assist.pick(round)
 	var priorResult burlerengine.ReviewResult
 	var priorToken string
 	var priorErr error
@@ -255,11 +297,13 @@ func (p *BurlerReviewProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		if attempt == 2 {
 			attemptToken += "b"
 		}
-		attemptOpts := p.opts
-		attemptOpts.Round = attemptToken
-		attemptOpts.Review, attemptOpts.Fix = p.models.Pick(round)
+		spawned := roundAttempt{token: attemptToken, assist: assist, assistFan: assistFan}
+		// The token and assistant are recorded before each attempt spawns, so a probe after lym dies mid-attempt builds this attempt's table.
+		if err := recordRoundAttempt(p.runDir, round, p.now, spawned); err != nil {
+			return failureExit(fmt.Errorf("shedadapters: %s (%s): round %d: record attempt %s: %w", p.name, burlerReviewEngineLabel, round, attemptToken, err))
+		}
 
-		result, runErr := p.runner.Review(profile, attemptOpts)
+		result, runErr := p.runner.Review(profile, p.attemptOpts(round, spawned))
 		if errors.Is(runErr, burlerengine.ErrHalfNotStopped) {
 			return p.unstoppedExit(ctx, fmt.Errorf("shedadapters: %s (%s): round %d attempt %s: review: %w", p.name, burlerReviewEngineLabel, round, attemptToken, runErr))
 		}
@@ -402,6 +446,8 @@ func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) ha
 }
 
 // probeLiveReview asks the runner what became of a previous session's reviewer for this round and resumes it when it is still live.
+// It probes the table the round's record says the last attempt spawned, its attempt token and assistant, never one built from config edited since;
+// a round with no recorded attempt is probed as the bare round with no assistant.
 //
 // It reports handled=false whenever the caller should proceed to its ordinary archive-then-spawn path:
 // the reviewer is not live, or the resumed reviewer had already died or timed out or failed on the fork count, which falls through to a fresh attempt 1.
@@ -411,9 +457,7 @@ func reviewHalfUsage(model shuttleengine.ModelChoice, half burlerengine.Half) ha
 // A probe error and a resume error wrapping burlerengine.ErrHalfNotStopped are returned bare rather than through the archiving failure exit:
 // a reviewer that may still be live may be mid-write on the round's files, so archiving them is most dangerous there.
 func (p *BurlerReviewProducer) probeLiveReview(ctx context.Context, round int, profile burlerengine.Profile, archiveRound func()) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	opts := p.opts
-	opts.Round = strconv.Itoa(round)
-	opts.Review, opts.Fix = p.models.Pick(round)
+	opts := p.attemptOpts(round, readRoundAttempt(p.runDir, round))
 
 	live, err := p.runner.ProbeReview(profile, opts)
 	if err != nil {

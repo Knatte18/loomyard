@@ -44,7 +44,7 @@ func burlerRowTimeout(timeoutS int, env Env) time.Duration {
 	return time.Duration(timeoutS) * time.Second
 }
 
-// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, GateFindingsPath: the row's gate findings file}, profile, opts, runDir, env.Now).
+// burlerReviewEntry is the Constructor for the "BurlerReview" registry row: it validates cfg and env, maps cfg's profile map onto a burlerengine.Profile, joins and creates the run directory this row's segment shares with its Bouncer and fix rows, and returns shedadapters.NewBurlerReviewProducer(name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: the segment's Models, Assist: the segment's Assist, GateFindingsPath: the row's gate findings file}, profile, opts, runDir, env.Now).
 //
 // The row takes no "gates" key: its only gate is the engine's review-parse entry.
 // The row's models and review key come from its segment's SegmentSettings.
@@ -126,7 +126,7 @@ func burlerReviewEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPro
 	}
 
 	opts := burlerengine.RunOpts{Timeout: burlerRowTimeout(timeoutS, env), ReviewKey: segment.ReviewKey}
-	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
+	producer, err := shedadapters.NewBurlerReviewProducer(row.Name, shedadapters.BurlerHalfDeps{Runner: env.Burler, Models: segment.Models, Fans: fans, Assist: segment.Assist, GateFindingsPath: env.gateFindingsPath(row.Name)}, profile, opts, runDir, env.Now)
 	if err != nil {
 		return nil, fmt.Errorf("shedrecipe: BurlerReview: %w", err)
 	}

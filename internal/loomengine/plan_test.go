@@ -88,7 +88,7 @@ func TestPlanTable(t *testing.T) {
 			if err != nil {
 				t.Fatalf("PlanTable(...) = _, %v; want nil error", err)
 			}
-			if err := table.Validate(stencilsDir); err != nil {
+			if err := table.Validate(stencilsDir, ""); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
 			if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
@@ -501,7 +501,7 @@ func TestPlanTable(t *testing.T) {
 				// A missing stencil is the seat engine's refusal: the table builder reads none, and Validate reads every seat's.
 				table, err := PlanTable(layout, configengine.Dirs{Anchor: layout.AnchorPath()}, stencilsDir, newTestSpecsDir(t), cfg, reg, "none", false)
 				if err == nil {
-					err = table.Validate(stencilsDir)
+					err = table.Validate(stencilsDir, "")
 				}
 				if err == nil {
 					t.Fatalf("PlanTable(Plan=%q) and its Validate = nil; want a refusal", tt.plan)

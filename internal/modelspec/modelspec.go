@@ -140,6 +140,7 @@ var bracketKeys = map[string]string{
 // already-known engine (e.g. a new Claude model) needs no change here.
 var knownEngines = map[string]bool{
 	"claude": true,
+	"codex":  true,
 }
 
 // EngineNames returns the closed set of provider engine names, sorted.

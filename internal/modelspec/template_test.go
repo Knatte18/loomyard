@@ -1,6 +1,5 @@
-// template_test.go proves the embedded seed template always passes the loader's own validation:
-// writing ConfigTemplate() verbatim to a fresh models.yaml must load with exactly the four
-// documented live entries.
+// template_test.go proves the embedded seed template always passes the loader's own validation.
+// Writing ConfigTemplate() verbatim to a fresh models.yaml must load with exactly the documented live entries.
 
 package modelspec
 
@@ -31,12 +30,17 @@ func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 
 	tests := []struct {
 		alias      string
+		wantEngine string
+		wantModel  string
 		wantEffort string
 	}{
-		{alias: "sonnet", wantEffort: "medium"},
-		{alias: "opus", wantEffort: "medium"},
-		{alias: "haiku", wantEffort: "medium"},
-		{alias: "fable", wantEffort: "high"},
+		{alias: "sonnet", wantEngine: "claude", wantModel: "sonnet", wantEffort: "medium"},
+		{alias: "opus", wantEngine: "claude", wantModel: "opus", wantEffort: "medium"},
+		{alias: "haiku", wantEngine: "claude", wantModel: "haiku", wantEffort: "medium"},
+		{alias: "fable", wantEngine: "claude", wantModel: "fable", wantEffort: "high"},
+		{alias: "sol", wantEngine: "codex", wantModel: "gpt-6.1-sol", wantEffort: "medium"},
+		{alias: "astra", wantEngine: "codex", wantModel: "gpt-6-astra", wantEffort: "medium"},
+		{alias: "luna", wantEngine: "codex", wantModel: "gpt-6-luna", wantEffort: "medium"},
 	}
 	if len(got) != len(tests) {
 		t.Fatalf("LoadRegistry(seeded template) has %d entries; want %d", len(got), len(tests))
@@ -47,8 +51,8 @@ func TestConfigTemplate_LoadsWithLiveEntries(t *testing.T) {
 			t.Errorf("LoadRegistry(seeded template) missing alias %q", tt.alias)
 			continue
 		}
-		if entry.Engine != "claude" || entry.Model != tt.alias {
-			t.Errorf("LoadRegistry(seeded template)[%q] = %+v; want engine claude, model %q", tt.alias, entry, tt.alias)
+		if entry.Engine != tt.wantEngine || entry.Model != tt.wantModel {
+			t.Errorf("LoadRegistry(seeded template)[%q] = %+v; want engine %s, model %q", tt.alias, entry, tt.wantEngine, tt.wantModel)
 		}
 		if entry.Defaults["effort"] != tt.wantEffort {
 			t.Errorf("LoadRegistry(seeded template)[%q].Defaults[\"effort\"] = %q; want %q", tt.alias, entry.Defaults["effort"], tt.wantEffort)

@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/burlerengine"
+	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -30,6 +32,45 @@ type ReviewSettings struct {
 	CodeKeys       SegmentKeys
 	// Timeout is one review round's shuttle-run deadline, derived from cfg.ReviewTimeoutMin.
 	Timeout time.Duration
+	// DiscussionAssist, PlanAssist and CodeAssist hold each loom review segment's resolved assistant reviewer lists.
+	DiscussionAssist AssistModels
+	PlanAssist       AssistModels
+	CodeAssist       AssistModels
+}
+
+// AssistModels is one review segment's resolved assistant reviewer lists: a model choice per round, the zero choice for an empty entry, and the fan list, with the keys they came from.
+type AssistModels struct {
+	Models   []shuttleengine.ModelChoice
+	Fans     lenses.FanList
+	ModelKey shuttleengine.ModelKey
+	FanKey   string
+}
+
+// CapAssistTimeout returns the assistant reviewer's run bound: assist_reviewer_timeout_min, capped so the assistant's start with its start retries, its run and one await cap end before the chair's own timeout.
+// chairTimeout is review_timeout_min, or shuttle's run_timeout_min when that key is 0; startAllowance is what shuttle grants a launch and its start retries, and awaitCap is the chair's keep-warm cap.
+// A bound of 0 takes the whole room, so a zero never reaches a seat, where it would read as the chair's own timeout.
+// A capped bound logs one Warn naming assist_reviewer_timeout_min and review_timeout_min.
+// A cap that leaves no time returns a zero bound and a non-empty reason naming both keys, and logs a Warn.
+func CapAssistTimeout(cfg Config, runTimeout, startAllowance, awaitCap time.Duration) (time.Duration, string) {
+	chair := time.Duration(cfg.ReviewTimeoutMin) * time.Minute
+	if cfg.ReviewTimeoutMin == 0 {
+		chair = runTimeout
+	}
+	room := chair - startAllowance - awaitCap
+	want := time.Duration(cfg.AssistReviewerTimeoutMin) * time.Minute
+	if room <= 0 {
+		reason := fmt.Sprintf("assist_reviewer_timeout_min leaves the assistant no time: the reviewer's timeout of %s (review_timeout_min) is spent by the assistant's start allowance of %s and one await cap of %s; raise review_timeout_min", chair, startAllowance, awaitCap)
+		logger.Warn("loom: the assistant reviewer gets no time and does not run", "key", "assist_reviewer_timeout_min", "chairKey", "review_timeout_min", "chair", chair, "startAllowance", startAllowance, "awaitCap", awaitCap)
+		return 0, reason
+	}
+	if want == 0 {
+		return room, ""
+	}
+	if want > room {
+		logger.Warn("loom: assist_reviewer_timeout_min is capped to end before the reviewer's own timeout", "key", "assist_reviewer_timeout_min", "chairKey", "review_timeout_min", "value", want, "capped", room)
+		return room, ""
+	}
+	return want, ""
 }
 
 // SegmentKeys names the config keys one review segment's reviewer and fixer model lists came from:
@@ -170,7 +211,45 @@ func ResolveReview(cfg Config, reg modelspec.Registry) (ReviewSettings, error) {
 			return ReviewSettings{}, err
 		}
 	}
+	for _, assist := range []struct {
+		segment string
+		models  burlerengine.ModelSpecList
+		fans    lenses.FanList
+		into    *AssistModels
+	}{
+		{"discussion", cfg.DiscussionAssistReviewerModel, cfg.DiscussionAssistReviewerFan, &settings.DiscussionAssist},
+		{"plan", cfg.PlanAssistReviewerModel, cfg.PlanAssistReviewerFan, &settings.PlanAssist},
+		{"code", cfg.CodeAssistReviewerModel, cfg.CodeAssistReviewerFan, &settings.CodeAssist},
+	} {
+		*assist.into, err = resolveAssistModels(assist.segment, assist.models, assist.fans, reg)
+		if err != nil {
+			return ReviewSettings{}, err
+		}
+	}
 	return settings, nil
+}
+
+// resolveAssistModels resolves one segment's assistant model list through reg and pairs it with the segment's assistant fan list and the keys both came from.
+// An empty entry resolves to the zero choice, which runs no assistant that round.
+func resolveAssistModels(segment string, models burlerengine.ModelSpecList, fans lenses.FanList, reg modelspec.Registry) (AssistModels, error) {
+	module := loomModule
+	if Perch(segment) == PerchPlan {
+		module = tapestryModule
+	}
+	key := shuttleengine.ModelKey{Module: module, Key: segment + "_assist_reviewer_model"}
+	choices := make([]shuttleengine.ModelChoice, 0, len(models))
+	for i, raw := range models {
+		if raw == "" {
+			choices = append(choices, shuttleengine.ModelChoice{})
+			continue
+		}
+		choice, err := resolveModelEntry(key, i, raw, reg)
+		if err != nil {
+			return AssistModels{}, err
+		}
+		choices = append(choices, choice)
+	}
+	return AssistModels{Models: choices, Fans: fans, ModelKey: key, FanKey: segment + "_assist_reviewer_fan"}, nil
 }
 
 // resolveSegmentModels resolves one review segment's reviewer and fixer lists and returns them with the keys they came from.
@@ -198,15 +277,24 @@ func resolveSegmentModels(source segmentModelSource, shared burlerengine.RoundMo
 func resolveModelChoices(key shuttleengine.ModelKey, specs burlerengine.ModelSpecList, reg modelspec.Registry) ([]shuttleengine.ModelChoice, error) {
 	choices := make([]shuttleengine.ModelChoice, 0, len(specs))
 	for i, raw := range specs {
-		spec, err := modelspec.Parse(raw)
+		choice, err := resolveModelEntry(key, i, raw, reg)
 		if err != nil {
-			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, i+1, err, key.Module)
+			return nil, err
 		}
-		resolved, err := reg.Resolve(spec)
-		if err != nil {
-			return nil, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, i+1, err, key.Module)
-		}
-		choices = append(choices, shuttleengine.NewModelChoice(resolved))
+		choices = append(choices, choice)
 	}
 	return choices, nil
+}
+
+// resolveModelEntry parses and resolves the entry raw at the 0-based index of key's list, naming key, its file and the 1-based entry index in an error.
+func resolveModelEntry(key shuttleengine.ModelKey, index int, raw string, reg modelspec.Registry) (shuttleengine.ModelChoice, error) {
+	spec, err := modelspec.Parse(raw)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, index+1, err, key.Module)
+	}
+	resolved, err := reg.Resolve(spec)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, fmt.Errorf("loom: ResolveReview: %s entry %d: %w; set that entry in %s.yaml to a model-spec the registry defines", key.Key, index+1, err, key.Module)
+	}
+	return shuttleengine.NewModelChoice(resolved), nil
 }

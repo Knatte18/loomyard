@@ -16,7 +16,7 @@ import (
 )
 
 // ConfigSpec returns models's layered-load spec.
-// Each top-level key is one alias, carried whole through the stack, and the four template aliases are classified as meeting no category, so the local layer may hold them and any alias of its own.
+// Each top-level key is one alias, carried whole through the stack, and the template's aliases are classified as meeting no category, so the local layer may hold them and any alias of its own.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:         "models",
@@ -28,6 +28,9 @@ func ConfigSpec() configengine.Spec {
 			"opus":   configengine.CategoryNone,
 			"haiku":  configengine.CategoryNone,
 			"fable":  configengine.CategoryNone,
+			"sol":    configengine.CategoryNone,
+			"astra":  configengine.CategoryNone,
+			"luna":   configengine.CategoryNone,
 		},
 	}
 }

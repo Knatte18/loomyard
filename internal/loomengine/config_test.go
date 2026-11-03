@@ -93,36 +93,41 @@ func intPtr(v int) *int { return &v }
 // templateConfig is the Config the shipped template's own values load to.
 func templateConfig() Config {
 	return Config{
-		Discussion:               "opus[medium]",
-		DiscussionTimeoutMin:     480,
-		DiscussionInteractive:    false,
-		ReviewerModel:            burlerengine.ModelSpecList{"opus[medium]"},
-		FixerModel:               burlerengine.ModelSpecList{"opus[medium]"},
-		DiscussionLenses:         "twill-discussion",
-		DiscussionGateFixer:      "sonnet[medium]",
-		SubagentModel:            "sonnet",
-		DiscussionReviewerModel:  burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
-		DiscussionFixerModel:     burlerengine.ModelSpecList{""},
-		CodeReviewerModel:        burlerengine.ModelSpecList{"sonnet[medium]"},
-		CodeFixerModel:           burlerengine.ModelSpecList{"sonnet[medium]"},
-		DiscussionReviewerFan:    lenses.FanList{"review-discussion", ""},
-		CodeReviewerFan:          lenses.FanList{"review-code", ""},
-		DiscussionFixerFan:       lenses.FanList{"fix-discussion"},
-		CodeFixerFan:             lenses.FanList{"fix-code"},
-		Judge:                    "sonnet[medium]",
-		ReviewTimeoutMin:         240,
-		Friction:                 "sonnet[medium]",
-		FrictionTimeoutMin:       30,
-		Driver:                   "haiku[medium]",
-		StepIdleTimeoutMin:       60,
-		ReviewCirclingCheckpoint: 3,
-		ReviewMaxBounces:         3,
-		ReviewHardMaxBounces:     4,
-		ReviewAmendMaxBounces:    1,
-		DiscussionMaxBounces:     intPtr(2),
-		CodeMaxBounces:           intPtr(1),
-		DiscussionAutoAccept:     false,
-		CodeAutoAccept:           true,
+		Discussion:                    "opus[medium]",
+		DiscussionTimeoutMin:          480,
+		DiscussionInteractive:         false,
+		ReviewerModel:                 burlerengine.ModelSpecList{"opus[medium]"},
+		FixerModel:                    burlerengine.ModelSpecList{"opus[medium]"},
+		DiscussionLenses:              "twill-discussion",
+		DiscussionGateFixer:           "sonnet[medium]",
+		SubagentModel:                 "sonnet",
+		DiscussionReviewerModel:       burlerengine.ModelSpecList{"opus[medium]", "opus[medium]", "sonnet[high]"},
+		DiscussionFixerModel:          burlerengine.ModelSpecList{""},
+		CodeReviewerModel:             burlerengine.ModelSpecList{"sonnet[medium]"},
+		CodeFixerModel:                burlerengine.ModelSpecList{"sonnet[medium]"},
+		DiscussionReviewerFan:         lenses.FanList{"review-discussion", ""},
+		CodeReviewerFan:               lenses.FanList{"review-code", ""},
+		DiscussionFixerFan:            lenses.FanList{"fix-discussion"},
+		CodeFixerFan:                  lenses.FanList{"fix-code"},
+		DiscussionAssistReviewerModel: burlerengine.ModelSpecList{""},
+		CodeAssistReviewerModel:       burlerengine.ModelSpecList{""},
+		DiscussionAssistReviewerFan:   lenses.FanList{""},
+		CodeAssistReviewerFan:         lenses.FanList{""},
+		AssistReviewerTimeoutMin:      60,
+		Judge:                         "sonnet[medium]",
+		ReviewTimeoutMin:              240,
+		Friction:                      "sonnet[medium]",
+		FrictionTimeoutMin:            30,
+		Driver:                        "haiku[medium]",
+		StepIdleTimeoutMin:            60,
+		ReviewCirclingCheckpoint:      3,
+		ReviewMaxBounces:              3,
+		ReviewHardMaxBounces:          4,
+		ReviewAmendMaxBounces:         1,
+		DiscussionMaxBounces:          intPtr(2),
+		CodeMaxBounces:                intPtr(1),
+		DiscussionAutoAccept:          false,
+		CodeAutoAccept:                true,
 	}
 }
 
@@ -208,6 +213,38 @@ review_timeout_min: 240
 				c.DiscussionFixerFan = lenses.FanList{"", "fix-discussion"}
 				c.CodeFixerFan = lenses.FanList{"fix-code", ""}
 			},
+		},
+		{
+			name: "assistant model keys as a per-round list, an empty entry running no assistant that round",
+			values: map[string]string{
+				"discussion_assist_reviewer_model": `["luna[low]", ""]`,
+				"code_assist_reviewer_model":       "\n  - \"\"\n  - luna[high]",
+			},
+			mutate: func(c *Config) {
+				c.DiscussionAssistReviewerModel = burlerengine.ModelSpecList{"luna[low]", ""}
+				c.CodeAssistReviewerModel = burlerengine.ModelSpecList{"", "luna[high]"}
+			},
+		},
+		{
+			name: "assistant fan keys as one fan name and as a per-round list",
+			values: map[string]string{
+				"discussion_assist_reviewer_fan": "standard",
+				"code_assist_reviewer_fan":       `["review-code", ""]`,
+			},
+			mutate: func(c *Config) {
+				c.DiscussionAssistReviewerFan = lenses.FanList{"standard"}
+				c.CodeAssistReviewerFan = lenses.FanList{"review-code", ""}
+			},
+		},
+		{
+			name:   "explicit assist_reviewer_timeout_min",
+			values: map[string]string{"assist_reviewer_timeout_min": "15"},
+			mutate: func(c *Config) { c.AssistReviewerTimeoutMin = 15 },
+		},
+		{
+			name:   "a zero review_timeout_min loads beside the assistant's timeout",
+			values: map[string]string{"review_timeout_min": "0", "assist_reviewer_timeout_min": "60"},
+			mutate: func(c *Config) { c.ReviewTimeoutMin, c.AssistReviewerTimeoutMin = 0, 60 },
 		},
 		{
 			name:     "retired fix_start key ignored",
@@ -431,6 +468,11 @@ review_timeout_min: 240
 				local:  "code_reviewer_fan: \"\"\n",
 				mutate: func(c *Config) { c.CodeReviewerFan = lenses.FanList{""} },
 			},
+			{
+				name:   "a local code_assist_reviewer_model is open to the local layer",
+				local:  "code_assist_reviewer_model: \"luna[low]\"\n",
+				mutate: func(c *Config) { c.CodeAssistReviewerModel = burlerengine.ModelSpecList{"luna[low]"} },
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
@@ -564,6 +606,11 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		{"malformed discussion_fixer_model spec", "discussion_fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed code_reviewer_model spec", "code_reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed later code_fixer_model entry", "code_fixer_model", "\n  - sonnet[low]\n  - \"opus[effort\"", []string{"entry 2", "a non-empty list of model-specs"}, ""},
+		{"malformed discussion_assist_reviewer_model entry", "discussion_assist_reviewer_model", `"opus[effort"`, []string{`loom config key "discussion_assist_reviewer_model" entry 1`, "no assistant that round"}, ""},
+		{"malformed later code_assist_reviewer_model entry", "code_assist_reviewer_model", `["luna[low]", "opus[effort"]`, []string{`loom config key "code_assist_reviewer_model" entry 2`, "no assistant that round"}, ""},
+		{"malformed entry after an empty one", "discussion_assist_reviewer_model", `["", "opus[effort"]`, []string{"entry 2"}, ""},
+		{"unknown discussion_assist_reviewer_fan", "discussion_assist_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "entry 1"}, ""},
+		{"negative assist_reviewer_timeout_min", "assist_reviewer_timeout_min", "-1", []string{"must not be negative"}, ""},
 		{"unknown discussion_reviewer_fan", "discussion_reviewer_fan", "nosuchfan", []string{`"nosuchfan"`, "known fans: ", "standard", "entry 1", `set the entry to ""`}, ""},
 		{"unknown second discussion_fixer_fan entry", "discussion_fixer_fan", "\n  - \"\"\n  - nosuchfan", []string{"entry 2", `"nosuchfan"`, "known fans: ", "define the fan in lenses.yaml", `set the entry to ""`}, ""},
 		{"empty discussion_reviewer_fan list", "discussion_reviewer_fan", "[]", []string{"the list is empty", `write ""`}, ""},

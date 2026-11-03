@@ -32,6 +32,7 @@ func (w *advisorWork) bindSender(sender *noticeSender) {
 
 // outstanding reports whether any started seat is still working.
 // An advisor whose run has not ended counts when it has an up line the sender has not landed or reads mid-turn.
+// An unended assistant, which gets no up line either, counts when its session reads mid-turn.
 // A writer, which gets no up line, counts when its session reads mid-turn, whether its run has ended done or not, so a chair waiting on a fix it asked of a done writer is deferred.
 // Any other ended run never counts, a timed-out one included.
 // Each seat's session state is read before its up line: one reading asking, idle-stalled, idle-done or dead is held or gone, so it never counts, whether or not an advisor's up line has landed.
@@ -53,7 +54,7 @@ func (w *advisorWork) outstanding() bool {
 				continue
 			}
 		}
-		if !run.seat.Writer && sender != nil && !sender.wasSent(advisorUpNotice(run.name)) {
+		if !run.seat.Writer && !run.seat.Assistant && sender != nil && !sender.wasSent(advisorUpNotice(run.name)) {
 			return true
 		}
 		if err == nil && state.State.Name == shuttleengine.SessionBusy && state.State.Cause == shuttleengine.SessionCauseTurn {

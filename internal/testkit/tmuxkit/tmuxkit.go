@@ -391,14 +391,14 @@ func startServer(tmux, key string) error {
 	return nil
 }
 
-// ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server: Claude's own, and the trace id and agent names of the enclosing strand.
-// The Claude filter is a copy of the engines' declared scrub, which this package cannot import because reedengine's own tests import the kit; a test outside the kit pins the two together.
+// ServerEnviron returns environ without the variables no pane may inherit from the process that starts the server: the engines' own, and the trace id and agent names of the enclosing strand.
+// The engine filter is a copy of the engines' declared scrub, which this package cannot import because reedengine's own tests import the kit; a test outside the kit pins the two together.
 func ServerEnviron(environ []string) []string {
 	clean := make([]string, 0, len(environ))
 	for _, entry := range environ {
 		key, _, _ := strings.Cut(entry, "=")
 		switch {
-		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"):
+		case key == "CLAUDECODE", strings.HasPrefix(key, "CLAUDE_CODE_"), strings.HasPrefix(key, "CODEX_"):
 		case key == "LYM_TRACE_ID", key == agentname.StrandNameEnv, key == agentname.ParentEnv:
 		default:
 			clean = append(clean, entry)

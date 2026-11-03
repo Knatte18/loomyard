@@ -1,4 +1,5 @@
 // engine_test.go covers Engine.Run: the start order, how the chair's result and failures end the step, advisor failures, the notices sent to the chair and the stop rule.
+// It also covers the engine Run, Probe and Resume resolve a seat's engine blocks for when the seat names none.
 
 package seatengine
 
@@ -371,6 +372,145 @@ func TestEngine_Run_AdvisorDeathSendsOneNoticeOnceTheChairTakesIt(t *testing.T) 
 	}
 }
 
+// assistantTable returns engineTable's table with every seat after the lead an assistant whose end marker sits beside its output under dir.
+func assistantTable(dir string, assistants int) Table {
+	table := engineTable(dir, assistants)
+	asAssistants(&table)
+	for i := 1; i < len(table.Seats); i++ {
+		table.Seats[i].EndMarker = filepath.Join(dir, table.Seats[i].Name+".end")
+	}
+	return table
+}
+
+func TestEngine_Run_AssistantEndMarkerNamesTheEnding(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	result := func(r shuttleengine.Result) *shuttleengine.Result { return &r }
+	tests := []struct {
+		name   string
+		mutate func(*Table, *fakeShuttle)
+		// release ends the assistant's run with this result before the chair ends; nil leaves it running.
+		release *shuttleengine.Result
+		// releaseErr is the error the wait ends with when release ends it.
+		releaseErr error
+		// skipsStart is true for an assistant no start call is made for.
+		skipsStart bool
+		// want is the marker's exact text, and wantContains a part of it, each checked when set.
+		want         string
+		wantContains string
+	}{
+		{name: "done with no gate outcome", release: result(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}), want: EndingDone},
+		{name: "done with its gate passed", release: result(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: true}}), want: EndingDone},
+		{name: "done with its gate failed", release: result(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}}), want: EndingGateFailed},
+		{name: "died", release: result(shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}), want: "died"},
+		{name: "timeout", release: result(shuttleengine.Result{Outcome: shuttleengine.OutcomeTimeout}), want: "timeout"},
+		{name: "a wait error", release: result(shuttleengine.Result{}), releaseErr: errors.New("wait failed"), want: "wait error: wait failed"},
+		{name: "still running when the chair ends", want: EndingStopped},
+		{name: "a wait error caused by the stop", mutate: func(_ *Table, f *fakeShuttle) {
+			f.stopWaitErrs = map[string]error{role(advisorName(1)): errors.New("killed")}
+		}, want: EndingStopped},
+		{name: "a skip reason", mutate: func(tb *Table, _ *fakeShuttle) { tb.Seats[1].SkipReason = "codex is not installed" }, skipsStart: true, want: "not started: codex is not installed"},
+		{name: "a start error", mutate: func(_ *Table, f *fakeShuttle) {
+			f.startErrs = map[string]error{role(advisorName(1)): errors.New("no pane")}
+		}, wantContains: "not started: "},
+		{name: "an engine without the block its stencil includes", mutate: func(tb *Table, _ *fakeShuttle) {
+			tb.Seats[1].Stencil, tb.Seats[1].Engine = "seat-test-engined-assistant", "gemini"
+		}, skipsStart: true, wantContains: "not started: "},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := newFakeShuttle(t)
+			engine, geom := engineFixture(t, shuttle)
+			table := assistantTable(geom.WorktreeRoot, 1)
+			if tt.mutate != nil {
+				tt.mutate(&table, shuttle)
+			}
+			marker := table.Seats[1].EndMarker
+
+			ended := runAsync(engine, table)
+			starts := 2
+			if tt.skipsStart {
+				starts = 1
+			}
+			shuttle.awaitStarts(starts)
+			chair := shuttle.handle(role(""))
+			if tt.release != nil {
+				shuttle.handle(role(advisorName(1))).release(*tt.release, tt.releaseErr)
+				awaitCondition(t, "the end marker", func() bool {
+					_, exists, _ := ReadEnding(marker)
+					return exists
+				})
+			}
+			chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+			end := await(t, ended)
+
+			if end.err != nil {
+				t.Fatalf("Run() error = %v, want nil", end.err)
+			}
+			got, exists, err := ReadEnding(marker)
+			if err != nil || !exists {
+				t.Fatalf("ReadEnding(%q) = %q, %v, %v; want the marker written", marker, got, exists, err)
+			}
+			if tt.want != "" && got != tt.want {
+				t.Errorf("end marker = %q, want %q", got, tt.want)
+			}
+			if !strings.Contains(got, tt.wantContains) {
+				t.Errorf("end marker = %q, want it to contain %q", got, tt.wantContains)
+			}
+			if tt.skipsStart && shuttle.spec(role(advisorName(1))).Role != "" {
+				t.Error("a start call was made for the assistant, want none")
+			}
+			if tt.want == EndingStopped {
+				if stops := shuttle.handle(role(advisorName(1))).stopCount(); stops != 1 {
+					t.Errorf("assistant stopped %d times, want once", stops)
+				}
+			}
+			if got := end.result.Advisors[0]; !got.Assistant || got.EndMarker != marker || got.Notified {
+				t.Errorf("assistant result = %+v, want an assistant with its end marker and no notice", got)
+			}
+			if attempts := chair.attemptCount(); attempts != 0 {
+				t.Errorf("chair took %d send attempts, want no up line and no ending notice for an assistant", attempts)
+			}
+		})
+	}
+}
+
+func TestEngine_Run_AssistantRemovesStaleFilesBeforeTheChairStarts(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	shuttle := newFakeShuttle(t)
+	engine, geom := engineFixture(t, shuttle)
+	table := assistantTable(geom.WorktreeRoot, 1)
+	marker, output := table.Seats[1].EndMarker, table.Seats[1].Outputs[0]
+	for path, content := range map[string]string{marker: "done\n", output: "an old report"} {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write the stale file: %v", err)
+		}
+	}
+
+	ended := runAsync(engine, table)
+	// Nothing else removes a file, so a file gone once the chair has started was removed before it started.
+	shuttle.awaitStarts(1)
+	for _, path := range []string{marker, output} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("stat %s after the chair started = %v, want the stale file removed", path, err)
+		}
+	}
+	shuttle.awaitStarts(1)
+	shuttle.handle(role(advisorName(1))).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil)
+	awaitCondition(t, "the end marker", func() bool {
+		_, exists, _ := ReadEnding(marker)
+		return exists
+	})
+	shuttle.handle(role("")).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+	await(t, ended)
+
+	if got, _, err := ReadEnding(marker); err != nil || got != "died" {
+		t.Errorf("end marker = %q, %v; want only the new run's ending, died", got, err)
+	}
+}
+
 // pausedRefusal returns the refusal of a send into a session a pause covers.
 func pausedRefusal() error {
 	return &shuttleengine.PausedError{Slug: "task", Err: shuttleengine.ErrPaused}
@@ -675,7 +815,7 @@ func TestEngine_Run_WriterEndDecidesTheJoin(t *testing.T) {
 	chair, writer := shuttle.newHandle(role("")), shuttle.newHandle(role(advisorName(1)))
 	sender := newNoticeSender(engine.absolute(table.Chair().Outputs), engine.noticeRetry, engine.noticeAfter)
 	ender := newStepEnder()
-	run := newSeatRun(table.Seats[1], "ly:task:"+role(advisorName(1)), writer, engine.absolute(table.Seats[1].Outputs), sender, ender)
+	run := newSeatRun(table.Seats[1], "ly:task:"+role(advisorName(1)), writer, engine.absolute(table.Seats[1].Outputs), "", sender, ender)
 
 	// The writer's end fires the step ender, then the chair ends, and only then does join run: both ends are ready whichever case its select takes.
 	writer.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone, Gate: &shuttleengine.GateOutcome{Passed: false}}, nil)
@@ -709,6 +849,8 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 		resume     bool
 		// writer makes the seat a writer, which gets no up line.
 		writer bool
+		// assistant makes the seat an assistant, which gets no up line either.
+		assistant bool
 	}{
 		{name: "an advisor mid-turn defers", act: func(a *fakeHandle) { a.setSession(midTurn, nil) }, wantDefers: true},
 		{name: "an advisor whose up line has not landed defers", upLineStuck: true, act: func(a *fakeHandle) { a.setSession(shuttleengine.RunSessionState{}, nil) }, wantDefers: true},
@@ -735,6 +877,12 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			a.setSession(shuttleengine.RunSessionState{}, nil)
 			a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
 		}},
+		{name: "an unended assistant mid-turn defers", assistant: true, act: func(a *fakeHandle) {}, wantDefers: true},
+		{name: "an assistant reading idle does not defer", assistant: true, act: func(a *fakeHandle) { a.setSession(shuttleengine.RunSessionState{}, nil) }},
+		{name: "an assistant that ended done never defers", assistant: true, act: func(a *fakeHandle) {
+			a.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+		}},
+		{name: "an attached chair defers on an assistant the probe found", assistant: true, resume: true, act: func(a *fakeHandle) {}, wantDefers: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -747,6 +895,9 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			table := engineTable(geom.WorktreeRoot, 1)
 			if tt.writer {
 				asWriters(&table)
+			}
+			if tt.assistant {
+				table = assistantTable(geom.WorktreeRoot, 1)
 			}
 
 			var chair, advisor *fakeHandle
@@ -784,7 +935,7 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			// With no advisor counted the predicate is false, so it holding with the advisor mid-turn proves the advisor is counted.
 			advisor.setSession(midTurn, nil)
 			awaitCondition(t, "the advisor to be counted", predicate)
-			if !tt.upLineStuck && !tt.writer {
+			if !tt.upLineStuck && !tt.writer && !tt.assistant {
 				receive(t, chair)
 				advisor.setSession(shuttleengine.RunSessionState{}, nil)
 				awaitCondition(t, "the up line to land", func() bool { return !predicate() })
@@ -832,6 +983,81 @@ func TestEngine_Run_ChairHoldDeferral(t *testing.T) {
 			t.Errorf("lead took %d send attempts, want none", attempts)
 		}
 	})
+}
+
+// TestEngine_EntryPoints_ReadEngineBlocksForTheGeometrysDefaultEngine proves Run, Probe and Resume resolve a seat's engine blocks for the geometry's DefaultEngine when the seat's model choice names no engine,
+// and that Run starts the seat with that engine's block text; with no default engine at all, each refuses.
+func TestEngine_EntryPoints_ReadEngineBlocksForTheGeometrysDefaultEngine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const refusal = "no engine was named"
+	tests := []struct {
+		name          string
+		defaultEngine string
+		want          string
+		absent        string
+	}{
+		{"Codex", "codex", "Codex words.", "Claude words."},
+		{"Claude", "claude", "Claude words.", "Codex words."},
+		{"NoEngine", "", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := func(t *testing.T) (*fakeShuttle, *Engine, Table) {
+				t.Helper()
+				shuttle := newFakeShuttle(t)
+				engine, geom := engineFixture(t, shuttle)
+				engine.geom.DefaultEngine = tt.defaultEngine
+				table := engineTable(geom.WorktreeRoot, 0)
+				table.Seats[0].Stencil = "seat-test-engined-chair"
+				return shuttle, engine, table
+			}
+			requireOutcome := func(t *testing.T, err error) {
+				t.Helper()
+				if tt.want == "" {
+					if err == nil || !strings.Contains(err.Error(), refusal) {
+						t.Errorf("error = %v; want a refusal containing %q", err, refusal)
+					}
+					return
+				}
+				if err != nil {
+					t.Errorf("error = %v; want nil", err)
+				}
+			}
+
+			t.Run("Run", func(t *testing.T) {
+				t.Parallel()
+				shuttle, engine, table := fixture(t)
+				ended := runAsync(engine, table)
+				if tt.want == "" {
+					requireOutcome(t, await(t, ended).err)
+					return
+				}
+				shuttle.awaitStarts(1)
+				prompt := shuttle.spec(role("")).Prompt
+				if !strings.Contains(prompt, tt.want) || strings.Contains(prompt, tt.absent) {
+					t.Errorf("chair prompt = %q; want it to hold %q and not %q", prompt, tt.want, tt.absent)
+				}
+				shuttle.handle(role("")).release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+				requireOutcome(t, await(t, ended).err)
+			})
+			t.Run("Probe", func(t *testing.T) {
+				t.Parallel()
+				_, engine, table := fixture(t)
+				_, err := engine.Probe(table)
+				requireOutcome(t, err)
+			})
+			t.Run("Resume", func(t *testing.T) {
+				t.Parallel()
+				shuttle, engine, table := fixture(t)
+				chair := shuttle.newHandle(role(""))
+				chair.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, nil)
+				_, err := engine.Resume(table, LiveTable{Chair: chair})
+				requireOutcome(t, err)
+			})
+		})
+	}
 }
 
 // heldAdvisor scripts an advisor's session to read as name.

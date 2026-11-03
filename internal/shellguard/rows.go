@@ -4,6 +4,7 @@ package shellguard
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -37,25 +38,68 @@ type Row struct {
 	Switch Switch
 	// Forms are the literal command forms the row denies, each a whole token sequence, for the no-denied-recovery scan; empty for a pattern-shaped row.
 	Forms [][]string
+	// EngineTexts are the row's own steer and notice for an engine whose tools the plain text names wrongly, keyed by the engine's registry name.
+	EngineTexts map[string]EngineText
 }
+
+// EngineText is one engine's steer and notice for a row; an empty field takes the row's plain text.
+type EngineText struct {
+	Steer  string
+	Notice string
+}
+
+// SteerFor returns the deny reason shown to an agent on the named engine: the engine's own steer when the row carries one, otherwise the plain steer.
+func (row Row) SteerFor(engine string) string {
+	if text := row.EngineTexts[engine].Steer; text != "" {
+		return text
+	}
+	return row.Steer
+}
+
+// NoticeFor returns the system-prompt sentence announcing the row to an agent on the named engine: the engine's own notice when the row carries one, otherwise the plain notice.
+func (row Row) NoticeFor(engine string) string {
+	if text := row.EngineTexts[engine].Notice; text != "" {
+		return text
+	}
+	return row.Notice
+}
+
+// engineCodex is the registry name of the Codex engine, which the rows' Codex texts are keyed by.
+const engineCodex = "codex"
 
 // editToolsRule is the way an agent changes and reads files, which the steers of the python and shell-edit rows carry and only the shell-edit row's notice states, so the system prompt states it once.
 const editToolsRule = "change a file by reading it with Read, whole or a span through offset and limit, and then editing it with Edit, all edits of one file in one message, or write a whole file with Write; search files with grep"
 
+// codexEditToolsRule is the way an agent on Codex changes and reads files: Codex has no Read, Edit or Write tool and changes a file through its apply_patch tool.
+// The Codex steers and notice carry it where the plain ones carry editToolsRule.
+const codexEditToolsRule = "change a file with the apply_patch tool, and read or search files with cat, sed -n, rg or grep"
+
 // pythonRefusal states the python deny and names the version check, which agents otherwise run as a probe before choosing how to edit or parse.
 const pythonRefusal = "python and python3 are refused in every lym session, a version check included, so never probe for Python"
 
+// pythonRoutes opens every python steer: the refusal and the parse routes in Python's place.
+const pythonRoutes = pythonRefusal + "; parse JSON with jq and text with grep or awk; "
+
 // steerPythonDeny refuses a Bash python invocation and names the parse and edit routes in its place; it must contain no single/double quote or backslash (checked at init).
-const steerPythonDeny = pythonRefusal + "; parse JSON with jq and text with grep or awk; " + editToolsRule
+const steerPythonDeny = pythonRoutes + editToolsRule
+
+// codexSteerPythonDeny is steerPythonDeny with the Codex edit route.
+const codexSteerPythonDeny = pythonRoutes + codexEditToolsRule
 
 // noticePythonDeny announces the python deny; the edit rule its steer carries is announced by the shell-edit row's notice.
 const noticePythonDeny = pythonRefusal + "."
 
+// shellEditRefusal opens every shell-edit steer: the commands the row refuses.
+const shellEditRefusal = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; "
+
 // steerShellEditDeny refuses a Bash edit of a file; it must contain no single/double quote or backslash (checked at init).
-const steerShellEditDeny = "sed -i, perl -i, and a heredoc, redirect or tee into a source file are refused here; " + editToolsRule
+const steerShellEditDeny = shellEditRefusal + editToolsRule
 
 // noticeShellEditDeny announces the shell-edit deny in the same wording as its steer.
 const noticeShellEditDeny = steerShellEditDeny + "."
+
+// codexSteerShellEditDeny is steerShellEditDeny with the Codex edit route.
+const codexSteerShellEditDeny = shellEditRefusal + codexEditToolsRule
 
 // commandFieldPattern is the grep -E pattern matching the opening of the "command" key's string value in the raw PreToolUse payload JSON.
 const commandFieldPattern = `"command"[[:space:]]*:[[:space:]]*"`
@@ -133,11 +177,17 @@ const noticeSleepDeny = steerSleepDeny + "."
 // A word that is not a flag ends the match, so systemctl status and every other verb pass.
 const sleepCommandPattern = commandPositionPattern + `systemctl([[:space:]]+-` + goWordPattern + `)*[[:space:]]+(sleep|hibernate|suspend|hybrid-sleep|suspend-then-hibernate)([^A-Za-z0-9_.-]|$)`
 
+// headlessClaudeRefusal opens every headless claude steer: the refusal and its reason.
+const headlessClaudeRefusal = "a headless claude launch, in print mode, is refused here because its work shows in no pane; "
+
 // steerHeadlessClaudeDeny refuses a Bash launch of a headless claude and names the subagent route in its place; it must contain no single/double quote or backslash (checked at init).
-const steerHeadlessClaudeDeny = "a headless claude launch, in print mode, is refused here because its work shows in no pane; hand the work to a subagent through the Agent tool instead, which runs inside this session and shows in its pane"
+const steerHeadlessClaudeDeny = headlessClaudeRefusal + "hand the work to a subagent through the Agent tool instead, which runs inside this session and shows in its pane"
 
 // noticeHeadlessClaudeDeny announces the headless claude deny in the same wording as its steer.
 const noticeHeadlessClaudeDeny = steerHeadlessClaudeDeny + "."
+
+// codexSteerHeadlessClaudeDeny names Codex's own subagents as the route, since Codex has no Agent tool.
+const codexSteerHeadlessClaudeDeny = headlessClaudeRefusal + "hand the work to a subagent of your own instead, which runs inside this session"
 
 // headlessClaudeCommandPattern is the grep -E pattern the headless claude deny matches against the raw PreToolUse payload JSON.
 // It matches claude or claude.exe in command position, optionally path-prefixed, followed by any argument words and then the long print flag, or a single-dash flag word holding p such as -p or -pc, as a whole word, the long flag with an = value included.
@@ -273,12 +323,13 @@ func rowsBeforeRefuseRaw(rawGoSteer string) []Row {
 			// A guardrail, not a barrier.
 			// The pattern lets through python as an argument, behind bash -c, sh -c or eval, after a prefix it does not list (env FOO=1, nohup, command, timeout), and through a launcher such as py or uv run.
 			// It falsely denies python after a separator inside a quote commandPositionPattern misreads.
-			Name:     "python",
-			Patterns: []string{pythonCommandPattern},
-			Steer:    steerPythonDeny,
-			Notice:   noticePythonDeny,
-			Switch:   SwitchDenyPython,
-			Forms:    [][]string{{"python"}, {"python3"}},
+			Name:        "python",
+			Patterns:    []string{pythonCommandPattern},
+			Steer:       steerPythonDeny,
+			Notice:      noticePythonDeny,
+			Switch:      SwitchDenyPython,
+			Forms:       [][]string{{"python"}, {"python3"}},
+			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerPythonDeny}},
 		},
 		{
 			// Installed for every run, the orch included, so no session reaches the gate slots around lym gate test.
@@ -299,12 +350,13 @@ func rowsAfterRawGo() []Row {
 			// Installed for every run, the orch included, with no config key, so every session edits through the Edit tool, which takes only a file read with Read.
 			// A guardrail, not a barrier: an edit behind bash -c, a script, awk, cp or mv, a sed -i after do or then, behind find -exec or behind xargs with a flag, a redirect into a quoted target or into a file whose extension sourceFilePattern does not name, and anything after a heredoc operator's line pass.
 			// It falsely denies a matching spelling after a separator inside a quote commandPositionPattern misreads.
-			Name:     "shell-edit",
-			Patterns: []string{shellEditPattern},
-			Steer:    steerShellEditDeny,
-			Notice:   noticeShellEditDeny,
-			Switch:   SwitchNone,
-			Forms:    [][]string{{"sed", "-i"}, {"perl", "-i"}, {"perl", "-pi"}},
+			Name:        "shell-edit",
+			Patterns:    []string{shellEditPattern},
+			Steer:       steerShellEditDeny,
+			Notice:      noticeShellEditDeny,
+			Switch:      SwitchNone,
+			Forms:       [][]string{{"sed", "-i"}, {"perl", "-i"}, {"perl", "-pi"}},
+			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerShellEditDeny, Notice: codexSteerShellEditDeny + "."}},
 		},
 		{
 			// Refuses before Claude Code raises its statically-unresolvable-target dialog, which shows even in bypass mode and stalls an unwatched run.
@@ -339,12 +391,13 @@ func rowsAfterRawGo() []Row {
 			// A guardrail, not a barrier: a launch behind bash -c, a script, an assignment prefix such as X=1 claude or env with an assignment passes.
 			// A claude subcommand, or a command launched through one, taking a single-dash flag word holding p of its own is falsely denied.
 			// So is a matching spelling after a separator inside a quote commandPositionPattern misreads.
-			Name:     "headless-claude",
-			Patterns: []string{headlessClaudeCommandPattern},
-			Steer:    steerHeadlessClaudeDeny,
-			Notice:   noticeHeadlessClaudeDeny,
-			Switch:   SwitchNone,
-			Forms:    [][]string{{"claude", "-p"}, {"claude", "--print"}},
+			Name:        "headless-claude",
+			Patterns:    []string{headlessClaudeCommandPattern},
+			Steer:       steerHeadlessClaudeDeny,
+			Notice:      noticeHeadlessClaudeDeny,
+			Switch:      SwitchNone,
+			Forms:       [][]string{{"claude", "-p"}, {"claude", "--print"}},
+			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerHeadlessClaudeDeny, Notice: codexSteerHeadlessClaudeDeny + "."}},
 		},
 		{
 			// Installed only for a launch spec that sets DenyPublish, the PR-Review session.
@@ -359,14 +412,20 @@ func rowsAfterRawGo() []Row {
 	}
 }
 
-// checkTexts returns an error naming the first row whose steer holds a character the JSON payload or the quoted hook command cannot carry, or whose notice holds one the one-line launch argument cannot.
+// checkTexts returns an error naming the first row whose steer, plain or an engine's, holds a character the JSON payload or the quoted hook command cannot carry, or whose notice holds one the one-line launch argument cannot.
 func checkTexts(rows []Row) error {
 	for _, row := range rows {
-		if strings.ContainsAny(row.Steer, forbiddenSteerChars) {
-			return fmt.Errorf("shellguard: row %q: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", row.Name, forbiddenSteerChars, row.Steer)
+		texts := []EngineText{{Steer: row.Steer, Notice: row.Notice}}
+		for _, engine := range slices.Sorted(maps.Keys(row.EngineTexts)) {
+			texts = append(texts, row.EngineTexts[engine])
 		}
-		if strings.ContainsAny(row.Notice, forbiddenNoticeChars) {
-			return fmt.Errorf("shellguard: row %q: notice text contains a forbidden character (one of %q), which would break the one-line launch argument: %q", row.Name, forbiddenNoticeChars, row.Notice)
+		for _, text := range texts {
+			if strings.ContainsAny(text.Steer, forbiddenSteerChars) {
+				return fmt.Errorf("shellguard: row %q: steer text contains a forbidden character (one of %q), which would break the JSON payload or the echo hook command: %q", row.Name, forbiddenSteerChars, text.Steer)
+			}
+			if strings.ContainsAny(text.Notice, forbiddenNoticeChars) {
+				return fmt.Errorf("shellguard: row %q: notice text contains a forbidden character (one of %q), which would break the one-line launch argument: %q", row.Name, forbiddenNoticeChars, text.Notice)
+			}
 		}
 	}
 	return nil

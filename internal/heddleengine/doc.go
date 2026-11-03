@@ -4,6 +4,8 @@
 // The repository layer is heddle.json at the Bolt checkout's root, which the `lym heddle` verbs write.
 // A file target is rendered into a git-excluded file at a worktree's anchor, beside the repository's own CLAUDE and AGENTS files, the shipped entries first under a level-one heading of their own and the repository's after under theirs;
 // each shipped entry opens with a level-two heading, so the file skips no heading level;
+// the codex-file target opens with the anchor's AGENTS.md, else its CLAUDE.md, and carries every repository entry aimed at claude-file, so a Codex session gets the repository's agent instructions a Claude session gets;
+// shipped entries stay on claude-file alone, and a render that names claude-file renders codex-file too;
 // a prompt target is read as passages appended to a session's system prompt, the shipped ones first.
 // A prompt target reaches the sessions its row names by engine, by strand role, or both: `claude-prompt` reaches every Claude session and `orch-prompt` every orch session, and an engine whose launch appends no passages delivers neither.
 // A hub whose heddle.yaml sets lym_override renders a shipped entry with the text of its override in heddle-lym-override.json beside heddle.json, so lym's own text is tuned there with no build;

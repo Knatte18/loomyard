@@ -281,6 +281,14 @@ type InstructionFileLister interface {
 	InstructionFiles() []string
 }
 
+// StartupChecker is an optional capability beside Engine: a check the provider runs once a launch is past its startup gates, for a provider whose own start may rewrite what Prepare wrote.
+// It reports through the log and never fails the launch.
+// An engine without it is checked by nothing after startup.
+type StartupChecker interface {
+	// CheckAfterStartup checks what the provider's start may have changed of what Prepare wrote.
+	CheckAfterStartup()
+}
+
 // SessionResumer is an optional capability beside Engine: the provider's check that an existing session may be resumed by a new run.
 // Runner.start requires it of an Engine whenever a spec carries a ResumeSessionID, so no run resumes a session unchecked.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never resume a session.

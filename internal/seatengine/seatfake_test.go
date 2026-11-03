@@ -29,8 +29,10 @@ type fakeHandle struct {
 	attempts   int
 	stops      int
 	stopErr    error
-	session    shuttleengine.RunSessionState
-	sessionErr error
+	// stopWaitErr is the error the wait ends with when a stop ends it.
+	stopWaitErr error
+	session     shuttleengine.RunSessionState
+	sessionErr  error
 
 	sent   chan string
 	ended  chan struct{}
@@ -89,16 +91,16 @@ func (h *fakeHandle) Send(text string) error {
 	return nil
 }
 
-// Stop records the stop and, unless it is scripted to fail, ends the seat's wait as died.
+// Stop records the stop and, unless it is scripted to fail, ends the seat's wait as died, with the scripted wait error when there is one.
 func (h *fakeHandle) Stop() error {
 	h.mu.Lock()
 	h.stops++
-	err := h.stopErr
+	err, waitErr := h.stopErr, h.stopWaitErr
 	h.mu.Unlock()
 	if err != nil {
 		return err
 	}
-	h.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil)
+	h.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, waitErr)
 	return nil
 }
 
@@ -129,6 +131,8 @@ type fakeShuttle struct {
 	sendErrs   map[string][]error
 	alwaysBusy map[string]bool
 	stopErrs   map[string]error
+	// stopWaitErrs ends the wait of the handle for that role with the error when a stop ends it.
+	stopWaitErrs map[string]error
 	// live holds the handles ProbeGated finds, and removedOnProbe the handles it stops and answers not found for.
 	live           map[string]*fakeHandle
 	removedOnProbe map[string]*fakeHandle
@@ -179,8 +183,10 @@ func (f *fakeShuttle) newHandle(role string) *fakeHandle {
 		sendErrs:   append([]error(nil), f.sendErrs[role]...),
 		alwaysBusy: f.alwaysBusy[role],
 		stopErr:    f.stopErrs[role],
-		sent:       make(chan string, 16),
-		ended:      make(chan struct{}),
+
+		stopWaitErr: f.stopWaitErrs[role],
+		sent:        make(chan string, 16),
+		ended:       make(chan struct{}),
 	}
 	// A seat left running when its test ends must not leak its goroutine.
 	f.t.Cleanup(func() { handle.release(shuttleengine.Result{Outcome: shuttleengine.OutcomeDied}, nil) })

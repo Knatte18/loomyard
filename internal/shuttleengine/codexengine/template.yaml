@@ -1,0 +1,5 @@
+binary: ""  # path to the codex executable; empty falls back to "codex" on PATH; the binary must be Codex or exec it, since a wrapper that does not exec leaves its shell in the foreground and reed reads the strand dead
+home: ~/.lym/codex  # the shared lym Codex home every Codex launch runs under as CODEX_HOME: lym renders its config.toml whole on each launch and links its auth.json and sessions to operator_home's; a leading ~/ is the user's home directory
+operator_home: ~/.codex  # the operator's own Codex home, which lym never writes; the lym home links its auth.json and sessions here, so one login and its token refresh serve both
+efforts: [low, medium, high]  # the reasoning efforts a Codex launch may take; a run whose model-spec names another effort is refused when it starts
+skill_roots: [~/.claude/plugins/cache]  # the directories a skill <plugin>:<name> is looked up under, newest version first, when a Codex session loads skills; a leading ~/ is the user's home directory

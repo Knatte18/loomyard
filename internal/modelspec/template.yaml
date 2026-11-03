@@ -31,3 +31,18 @@ fable:
   model: fable
   defaults:
     effort: high
+sol:
+  engine: codex
+  model: gpt-6.1-sol
+  defaults:
+    effort: medium
+astra:
+  engine: codex
+  model: gpt-6-astra
+  defaults:
+    effort: medium
+luna:
+  engine: codex
+  model: gpt-6-luna
+  defaults:
+    effort: medium

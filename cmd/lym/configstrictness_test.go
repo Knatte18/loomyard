@@ -46,6 +46,7 @@ import (
 var configStrictnessDegradingSet = map[string]bool{
 	"internal/shuttleengine":              true,
 	"internal/shuttleengine/claudeengine": true,
+	"internal/shuttleengine/codexengine":  true,
 	"internal/reedengine":                 true,
 	"internal/websterengine":              true,
 	"internal/batcher":                    true,

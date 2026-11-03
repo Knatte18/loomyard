@@ -143,12 +143,12 @@ func TestDarnSpec(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DarnTable() = _, %v; want nil error", err)
 			}
-			if err := table.Validate(in.StencilsDir); err != nil {
+			if err := table.Validate(in.StencilsDir, ""); err != nil {
 				t.Fatalf("table.Validate() = %v; want nil", err)
 			}
 			// The loom wiring fills this marker blank for a pair under no beam, which only an Optional marker accepts.
 			table.Values["project_directive"] = ""
-			if err := table.Validate(in.StencilsDir); err != nil {
+			if err := table.Validate(in.StencilsDir, ""); err != nil {
 				t.Errorf("table.Validate() with a blank project_directive = %v; want nil, the marker is optional", err)
 			}
 			if len(table.Seats) != 1 {
@@ -244,7 +244,7 @@ func TestDarnSpec_Refusals(t *testing.T) {
 				t.Errorf("DarnTable() seats = %d alongside the error; want none", len(table.Seats))
 			}
 			if err == nil {
-				err = table.Validate(in.StencilsDir)
+				err = table.Validate(in.StencilsDir, "")
 			}
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("DarnTable() and its Validate = %v; want an error containing %q", err, tt.want)

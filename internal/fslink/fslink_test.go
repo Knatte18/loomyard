@@ -3,6 +3,8 @@ package fslink
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -125,6 +127,42 @@ func TestCreate(t *testing.T) {
 				tt.verify(t, link, target)
 			}
 		})
+	}
+}
+
+// TestCreateFileLink pins the file link.
+// On Windows it refuses, names its way forward, and leaves the link's parent uncreated.
+// Elsewhere it makes a link whose in-place write reaches the target, and it refuses to clobber an existing path.
+func TestCreateFileLink(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "auth.json")
+	writeFile(t, target, "old")
+	link := filepath.Join(dir, "home", "auth.json")
+
+	err := CreateFileLink(link, target)
+	if runtime.GOOS == "windows" {
+		if err == nil || !strings.Contains(err.Error(), "way forward") {
+			t.Fatalf("CreateFileLink() error = %v; want a refusal naming the way forward", err)
+		}
+		if _, statErr := os.Lstat(filepath.Dir(link)); !os.IsNotExist(statErr) {
+			t.Errorf("Lstat(%s) error = %v; want the parent left uncreated", filepath.Dir(link), statErr)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("CreateFileLink() error = %v; want nil", err)
+	}
+	if err := os.WriteFile(link, []byte("new"), 0o644); err != nil {
+		t.Fatalf("write through the link: %v", err)
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
+		t.Errorf("target content = %q, %v; want %q written through the link", got, err, "new")
+	}
+	if err := CreateFileLink(link, target); err == nil {
+		t.Error("CreateFileLink() over an existing link error = nil; want a clobber refusal")
 	}
 }
 

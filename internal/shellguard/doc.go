@@ -3,7 +3,7 @@
 // A row carries what the guard matches, the deny reason shown to the agent, the sentence announcing it in the session's system prompt, and the config switch it hangs on.
 //
 // The payload contract is part of the table's interface:
-// every pattern is a grep -E pattern matched against a JSON payload whose shell command is a JSON string value under a "command" key, as Claude's PreToolUse payload is.
+// every pattern is a grep -E pattern matched against a JSON payload whose shell command is a JSON string value under a "command" key, as the PreToolUse payloads of Claude and Codex are.
 // An engine renders the rows against a payload of that shape, or the task that adds the engine changes the table and this contract.
 // A pattern may hold a single quote, so an engine quotes each pattern for its shell rather than wrapping it in bare single quotes.
 //
@@ -20,6 +20,10 @@
 // The edit rule, reading a file with Read and changing it with Edit or Write, is stated likewise: once in the system prompt, in the shell-edit row's notice, and in full in the steers of the shell-edit and python rows.
 // The python row's notice names a version check as refused, since agents otherwise probe for Python before choosing how to edit or parse.
 // The headless claude row's steer and notice name a subagent through the Agent tool as the way to hand work off, since a subagent's work shows in the session's own pane and a headless session's shows in none.
+//
+// The plain steer and notice name Claude's tools.
+// A row whose text names a tool another engine lacks carries that engine's own text in EngineTexts, keyed by the engine's registry name, and SteerFor and NoticeFor return it, or the plain text for an engine without one.
+// The Codex texts name Codex's apply_patch tool for the edit rule and Codex's own subagents for the headless claude row.
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.

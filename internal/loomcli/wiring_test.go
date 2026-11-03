@@ -36,6 +36,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedrecipe"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
@@ -911,22 +912,35 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	// plan_max_bounces, code_max_bounces and plan_hard_max_bounces name their own keys, the rest fall back to the run-wide ones.
 	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
 	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
+	// With the template's empty assistant keys every segment's assistant holds one zero choice and one solo fan entry, and the default 60-minute bound, which fits inside review_timeout_min.
+	defaultAssist := func(module, segment string) shedadapters.AssistSettings {
+		return shedadapters.AssistSettings{
+			Models:   []shuttleengine.ModelChoice{{}},
+			Fans:     []string{""},
+			ModelKey: shuttleengine.ModelKey{Module: module, Key: segment + "_assist_reviewer_model"},
+			FanKey:   segment + "_assist_reviewer_fan",
+			Timeout:  60 * time.Minute,
+		}
+	}
 	wantSegments := map[string]shedrecipe.SegmentSettings{
 		"Discussion-Review": {
 			Models: c.env.Segments["Discussion-Review"].Models, ReviewKey: loomKey("discussion_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Discussion-Review"],
+			Assist:     defaultAssist("loom", "discussion"),
 			MaxBounces: 2, MaxBouncesKey: "discussion_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
 		"Plan-Review": {
 			Models: plan, ReviewKey: tapestryKey("plan_reviewer_model"), FixKey: loomKey("fixer_model"),
 			Bouncer:    wantBouncerModels["Plan-Review"],
+			Assist:     defaultAssist("tapestry", "plan"),
 			MaxBounces: 2, MaxBouncesKey: "plan_max_bounces",
 			HardMaxBounces: 5, HardMaxBouncesKey: "plan_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "tapestry.yaml",
 		},
 		"Code-Review": {
 			Models: c.env.Segments["Code-Review"].Models, ReviewKey: loomKey("code_reviewer_model"), FixKey: loomKey("code_fixer_model"),
 			Bouncer:    wantBouncerModels["Code-Review"],
+			Assist:     defaultAssist("loom", "code"),
 			MaxBounces: 1, MaxBouncesKey: "code_max_bounces",
 			HardMaxBounces: 4, HardMaxBouncesKey: "review_hard_max_bounces", AmendMaxBounces: 1, ConfigFile: "loom.yaml",
 		},
@@ -951,6 +965,11 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 		"code_fixer_fan":            "fix-code",
 		"discussion_reviewer_model": "opus[effort=low]",
 		"code_fixer_model":          "sonnet[low]",
+
+		"discussion_assist_reviewer_model": `["sonnet[low]", ""]`,
+		"plan_assist_reviewer_model":       "sonnet[low]",
+		"plan_assist_reviewer_fan":         "full",
+		"assist_reviewer_timeout_min":      "30",
 	})
 	fanned := &loomCLI{runID: shedrun.SelfRunID}
 	if err := fanned.wire(fannedLoc, fannedLoc.AnchorPath()); err != nil {
@@ -973,6 +992,90 @@ func TestWire_ReviewKeysReachTheEnv(t *testing.T) {
 	}
 	if got := discussion.Models.Review; len(got) != 1 || got[0].Model != "opus" || got[0].Effort != "low" {
 		t.Errorf("Segments[Discussion-Review].Models.Review = %+v; want the discussion_reviewer_model entry, opus of effort low", got)
+	}
+
+	// The assistant lists and the capped bound reach each segment's entry.
+	sonnetLow := shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet", Effort: "low"}
+	wantDiscussionAssist := shedadapters.AssistSettings{
+		Models:   []shuttleengine.ModelChoice{sonnetLow, {}},
+		Fans:     []string{""},
+		ModelKey: loomKey("discussion_assist_reviewer_model"),
+		FanKey:   "discussion_assist_reviewer_fan",
+		Timeout:  30 * time.Minute,
+	}
+	if !reflect.DeepEqual(discussion.Assist, wantDiscussionAssist) {
+		t.Errorf("Segments[Discussion-Review].Assist = %+v; want %+v", discussion.Assist, wantDiscussionAssist)
+	}
+	wantPlanAssist := shedadapters.AssistSettings{
+		Models:   []shuttleengine.ModelChoice{sonnetLow},
+		Fans:     []string{"full"},
+		ModelKey: tapestryKey("plan_assist_reviewer_model"),
+		FanKey:   "plan_assist_reviewer_fan",
+		Timeout:  30 * time.Minute,
+	}
+	if got := fanned.env.Segments["Plan-Review"].Assist; !reflect.DeepEqual(got, wantPlanAssist) {
+		t.Errorf("Segments[Plan-Review].Assist = %+v; want %+v", got, wantPlanAssist)
+	}
+
+	// A keep-warm cap below the default await cap changes the room the assistant's bound is capped to, so the bound proves the resolver's cap reaches it:
+	// review_timeout_min less shuttle's start allowance less that cap.
+	// The cap is looked up under the chair's strand name, which needs the hub's shortname record.
+	cappedLoc := hubLocation(t, "pair", ".")
+	if err := fabricengine.WriteShortname(fabricengine.BoardDir(cappedLoc.HubPath), "tst"); err != nil {
+		t.Fatalf("WriteShortname() = %v; want nil", err)
+	}
+	seedLoomConfigWithKeys(t, cappedLoc.AnchorPath(), map[string]string{"review_timeout_min": "10", "assist_reviewer_timeout_min": "60"})
+	keepWarmCap := 2 * time.Minute
+	claudeConfig := strings.Replace(claudeengine.ConfigTemplate(), "keep_warm_cap: 250s", "keep_warm_cap: "+keepWarmCap.String(), 1)
+	if !strings.Contains(claudeConfig, "keep_warm_cap: "+keepWarmCap.String()) {
+		t.Fatalf("claude config template no longer holds the keep_warm_cap: 250s line the fixture rewrites")
+	}
+	claudePath := configengine.ConfigFile(fabricengine.BoardDir(cappedLoc.HubPath), "claude")
+	if err := os.WriteFile(claudePath, []byte(claudeConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", claudePath, err)
+	}
+	capped := &loomCLI{runID: shedrun.SelfRunID}
+	if err := capped.wire(cappedLoc, cappedLoc.AnchorPath()); err != nil {
+		t.Fatalf("wire() with a keep-warm cap = %v; want nil", err)
+	}
+	shuttleCfg, err := shuttleengine.LoadConfig(fabricengine.ConfigDirs(cappedLoc), "shuttle")
+	if err != nil {
+		t.Fatalf("shuttleengine.LoadConfig() = _, %v; want nil", err)
+	}
+	wantCappedTimeout := 10*time.Minute - shuttleCfg.StartAllowance() - keepWarmCap
+	if got := capped.env.Segments["Code-Review"].Assist; got.Timeout != wantCappedTimeout || got.SkipReason != "" {
+		t.Errorf("Segments[Code-Review].Assist timeout %v skip reason %q; want %v and none", got.Timeout, got.SkipReason, wantCappedTimeout)
+	}
+
+	// A chair runs as its segment's prefixed role, so a keep_warm_cap_roles entry for code-burler-review caps Code-Review's assistant alone, and the bare burler-review entry caps none.
+	roleLoc := hubLocation(t, "pair", ".")
+	if err := fabricengine.WriteShortname(fabricengine.BoardDir(roleLoc.HubPath), "tst"); err != nil {
+		t.Fatalf("WriteShortname() = %v; want nil", err)
+	}
+	seedLoomConfigWithKeys(t, roleLoc.AnchorPath(), map[string]string{"review_timeout_min": "10", "assist_reviewer_timeout_min": "60"})
+	codeRoleCap := 3 * time.Minute
+	roleClaudeConfig := strings.Replace(claudeengine.ConfigTemplate(), "keep_warm_cap_roles: {}", "keep_warm_cap_roles: {code-burler-review: "+codeRoleCap.String()+", burler-review: "+keepWarmCap.String()+"}", 1)
+	if !strings.Contains(roleClaudeConfig, "code-burler-review") {
+		t.Fatalf("claude config template no longer holds the keep_warm_cap_roles: {} text the fixture rewrites")
+	}
+	roleClaudePath := configengine.ConfigFile(fabricengine.BoardDir(roleLoc.HubPath), "claude")
+	if err := os.WriteFile(roleClaudePath, []byte(roleClaudeConfig), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) = %v; want nil", roleClaudePath, err)
+	}
+	roled := &loomCLI{runID: shedrun.SelfRunID}
+	if err := roled.wire(roleLoc, roleLoc.AnchorPath()); err != nil {
+		t.Fatalf("wire() with a per-role keep-warm cap = %v; want nil", err)
+	}
+	defaultKeepWarmCap := 250 * time.Second
+	wantRoleTimeouts := map[string]time.Duration{
+		"Discussion-Review": 10*time.Minute - shuttleCfg.StartAllowance() - defaultKeepWarmCap,
+		"Plan-Review":       10*time.Minute - shuttleCfg.StartAllowance() - defaultKeepWarmCap,
+		"Code-Review":       10*time.Minute - shuttleCfg.StartAllowance() - codeRoleCap,
+	}
+	for segment, want := range wantRoleTimeouts {
+		if got := roled.env.Segments[segment].Assist; got.Timeout != want || got.SkipReason != "" {
+			t.Errorf("Segments[%s].Assist timeout %v skip reason %q; want %v and none", segment, got.Timeout, got.SkipReason, want)
+		}
 	}
 }
 

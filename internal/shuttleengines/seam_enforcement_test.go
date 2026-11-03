@@ -15,6 +15,7 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/configengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine",
+	"github.com/Knatte18/loomyard/internal/shuttleengine/codexengine",
 	"github.com/Knatte18/loomyard/internal/reedengine",
 }
 

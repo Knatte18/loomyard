@@ -67,14 +67,21 @@ type Profile struct {
 	LanguageSkills bool
 	// RolePrefix leads both halves' session roles, as `<RolePrefix>-burler-review` and `<RolePrefix>-burler-fix`; the zero value keeps the roles unprefixed.
 	RolePrefix string
+	// assistant marks the copy of a profile the review half's assistant seat reviews under, whose fanned cluster rules spawn through its own engine's subagents.
+	assistant bool
 }
 
 // rolePrefix returns base led by the profile's RolePrefix, or base alone when there is none.
 func (p *Profile) rolePrefix(base string) string {
-	if p.RolePrefix == "" {
+	return ledRole(p.RolePrefix, base)
+}
+
+// ledRole returns base led by lead, or base alone when lead is empty.
+func ledRole(lead, base string) string {
+	if lead == "" {
 		return base
 	}
-	return p.RolePrefix + "-" + base
+	return lead + "-" + base
 }
 
 // segment returns the segment the round's sessions are colored by.
@@ -117,6 +124,15 @@ type RunOpts struct {
 	// DecisionsRouted marks a fix whose caller sends the review's decision-class findings to the run's parent, so they are no fixer work.
 	// False keeps every finding as fixer work.
 	DecisionsRouted bool
+	// Assist is the review half's assistant reviewer's model choice; a choice with no model runs no assistant.
+	// AssistFan names the assistant's fan, empty for a solo assistant, and AssistKey the config key its model came from.
+	Assist    shuttleengine.ModelChoice
+	AssistFan string
+	AssistKey shuttleengine.ModelKey
+	// AssistTimeout bounds the assistant's run, already capped to end before the chair's own timeout.
+	// AssistSkip, when set, keeps a named assistant from starting, its end marker naming this reason.
+	AssistTimeout time.Duration
+	AssistSkip    string
 }
 
 // validateReview normalizes p in place and reports a fail-loud error if the review half is not runnable.

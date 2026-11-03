@@ -8,6 +8,7 @@
 package stencils
 
 import (
+	"path"
 	"sort"
 	"strings"
 	"testing"
@@ -141,7 +142,8 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 	t.Parallel()
 
 	for name, body := range registeredBodies(t) {
-		if name == "edit-directive" {
+		// An engine's own copy of the edit directive states the rule in that engine's tool wording.
+		if path.Base(name) == "edit-directive" {
 			continue
 		}
 		for _, sentence := range editRuleSentences(body) {

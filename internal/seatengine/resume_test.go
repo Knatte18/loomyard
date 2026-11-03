@@ -196,6 +196,73 @@ func TestEngine_Resume_Writers(t *testing.T) {
 	})
 }
 
+func TestEngine_Resume_Assistants(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	done := shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}
+	tests := []struct {
+		name string
+		// found makes the probe find the assistant, and release ends its run before the chair ends; nil leaves it running.
+		found   bool
+		release *shuttleengine.Result
+		// existing is the marker the assistant's run wrote before the interruption, empty for none.
+		existing string
+		want     string
+	}{
+		{name: "a found assistant that ends done", found: true, release: &done, want: EndingDone},
+		{name: "a found assistant still running when the chair ends", found: true, want: EndingStopped},
+		{name: "an assistant not found with no marker", want: EndingNotFound},
+		{name: "an assistant not found keeps the marker its run wrote", existing: "gate failed", want: EndingGateFailed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			shuttle := newFakeShuttle(t)
+			engine, geom := engineFixture(t, shuttle)
+			table := assistantTable(geom.WorktreeRoot, 1)
+			marker := table.Seats[1].EndMarker
+			if tt.existing != "" {
+				if err := os.WriteFile(marker, []byte(tt.existing+"\n"), 0o644); err != nil {
+					t.Fatalf("write the existing marker: %v", err)
+				}
+			}
+			chair, assistant := shuttle.newHandle(role("")), shuttle.newHandle(role(advisorName(1)))
+			live := LiveTable{Chair: chair}
+			if tt.found {
+				live.Advisors = map[string]Handle{advisorName(1): assistant}
+			}
+
+			ended := make(chan engineEnd, 1)
+			go func() {
+				result, err := engine.Resume(table, live)
+				ended <- engineEnd{result, err}
+			}()
+			if tt.release != nil {
+				assistant.release(*tt.release, nil)
+				awaitCondition(t, "the end marker", func() bool {
+					_, exists, _ := ReadEnding(marker)
+					return exists
+				})
+			}
+			chair.release(done, nil)
+			end := await(t, ended)
+
+			if end.err != nil {
+				t.Fatalf("Resume() error = %v, want nil", end.err)
+			}
+			if got, exists, err := ReadEnding(marker); err != nil || !exists || got != tt.want {
+				t.Errorf("ReadEnding(%q) = %q, %v, %v; want %q", marker, got, exists, err, tt.want)
+			}
+			if tt.found && assistant.stopCount() != 1 {
+				t.Errorf("found assistant stopped %d times, want once when the chair ended", assistant.stopCount())
+			}
+			if attempts := chair.attemptCount(); attempts != 0 {
+				t.Errorf("chair took %d send attempts, want no up line and no notice for an assistant", attempts)
+			}
+		})
+	}
+}
+
 func TestEngine_Probe_ChairNotLiveStopsTheLiveAdvisorsAndLeavesAFreshStart(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

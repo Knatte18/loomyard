@@ -435,8 +435,9 @@ func TestBurlerReviewEntry_ClusterFan(t *testing.T) {
 			}
 			content, err := os.ReadFile(filepath.Join(env.RunRoot, "review-segment", "round-1-usage.yaml"))
 			if !tt.wantRecorded {
-				if err == nil {
-					t.Errorf("round-1-usage.yaml exists with %q; want none from a row that records no fans", content)
+				// The round records its attempt token whether or not it records fans, so only the fan flag is absent.
+				if err == nil && strings.Contains(string(content), "fans_recorded") {
+					t.Errorf("round-1-usage.yaml = %q; want no fans_recorded from a row that records no fans", content)
 				}
 				return
 			}

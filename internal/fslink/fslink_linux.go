@@ -20,6 +20,20 @@ func CreateDirLink(link, target string) error {
 	return nil
 }
 
+// CreateFileLink establishes a symlink from link to the file target, refusing to clobber and creating parent directories.
+// A program that writes the file in place through the link writes target, and one that removes the file by name removes the link alone.
+func CreateFileLink(link, target string) error {
+	if err := prepareLink(link); err != nil {
+		return err
+	}
+
+	if err := os.Symlink(target, link); err != nil {
+		return fmt.Errorf("symlink %s -> %s: %w", link, target, err)
+	}
+
+	return nil
+}
+
 // IsLink reports whether path is a symlink, returning (false, nil) if absent.
 func IsLink(path string) (bool, error) {
 	info, err := os.Lstat(path)

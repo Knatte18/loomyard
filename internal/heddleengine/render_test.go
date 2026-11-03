@@ -234,8 +234,11 @@ func TestRender(t *testing.T) {
 		if want := claudeFileWant("", "one", "two"); f.readAnchor(t, "CLAUDE.local.md") != want {
 			t.Errorf("CLAUDE.local.md = %q; want %q", f.readAnchor(t, "CLAUDE.local.md"), want)
 		}
-		if !slices.Equal(report.Written, []string{"CLAUDE.local.md"}) || len(report.Warnings) != 0 {
-			t.Errorf("report = %+v; want only CLAUDE.local.md written", report)
+		if want := Marker + "\n\none\n\ntwo\n"; f.readAnchor(t, "AGENTS.override.md") != want {
+			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
+		}
+		if want := []string{"CLAUDE.local.md", "AGENTS.override.md"}; !slices.Equal(report.Written, want) || len(report.Warnings) != 0 {
+			t.Errorf("report = %+v; want %v written", report, want)
 		}
 		if f.anchorHas(".heddle") {
 			t.Error(".heddle left behind")
@@ -272,11 +275,28 @@ func TestRender(t *testing.T) {
 
 	t.Run("CodexFileOpensWithRootAgents", func(t *testing.T) {
 		t.Parallel()
-		f := newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex text", 1, "codex-file")}})
-		f.writeAnchor(t, "AGENTS.md", "repository rules\n")
-		mustRender(t, f)
-		if want := Marker + "\n\nrepository rules\n\ncodex text\n"; f.readAnchor(t, "AGENTS.override.md") != want {
-			t.Errorf("AGENTS.override.md = %q; want %q", f.readAnchor(t, "AGENTS.override.md"), want)
+		tests := []struct {
+			name  string
+			files map[string]string
+			want  string
+		}{
+			{"RootAgents", map[string]string{"AGENTS.md": "repository rules\n"}, Marker + "\n\nrepository rules\n\ncodex text\n"},
+			{"ClaudeMdWhenNoAgents", map[string]string{"CLAUDE.md": "claude rules\n"}, Marker + "\n\nclaude rules\n\ncodex text\n"},
+			{"AgentsWinsOverClaudeMd", map[string]string{"AGENTS.md": "repository rules\n", "CLAUDE.md": "claude rules\n"}, Marker + "\n\nrepository rules\n\ncodex text\n"},
+			{"NeitherFile", nil, Marker + "\n\ncodex text\n"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRenderFixture(t, Store{Entries: []Entry{entryFor("c", "codex text", 1, "codex-file")}})
+				for rel, content := range tt.files {
+					f.writeAnchor(t, rel, content)
+				}
+				mustRender(t, f)
+				if got := f.readAnchor(t, "AGENTS.override.md"); got != tt.want {
+					t.Errorf("AGENTS.override.md = %q; want %q", got, tt.want)
+				}
+			})
 		}
 	})
 
@@ -495,10 +515,24 @@ func TestRender(t *testing.T) {
 
 	t.Run("OnlyLimitsTheTargets", func(t *testing.T) {
 		t.Parallel()
-		f := newRenderFixture(t, Store{Entries: []Entry{entryFor("both", "t", 1, "claude-file", "codex-file")}})
-		mustRender(t, f, "codex-file")
-		if f.anchorHas("CLAUDE.local.md") || !f.anchorHas("AGENTS.override.md") {
-			t.Error("Only codex-file did not leave CLAUDE.local.md unwritten and AGENTS.override.md written")
+		tests := []struct {
+			name       string
+			only       []string
+			wantClaude bool
+		}{
+			{"CodexFileAlone", []string{"codex-file"}, false},
+			{"ClaudeFileRendersCodexFileToo", []string{"claude-file"}, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newRenderFixture(t, Store{Entries: []Entry{entryFor("mine", "t", 1, "claude-file")}})
+				mustRender(t, f, tt.only...)
+				if f.anchorHas("CLAUDE.local.md") != tt.wantClaude || !f.anchorHas("AGENTS.override.md") {
+					t.Errorf("Only %v: CLAUDE.local.md present = %v, AGENTS.override.md present = %v; want %v and true",
+						tt.only, f.anchorHas("CLAUDE.local.md"), f.anchorHas("AGENTS.override.md"), tt.wantClaude)
+				}
+			})
 		}
 	})
 

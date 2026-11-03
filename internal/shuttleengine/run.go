@@ -747,6 +747,9 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 	if err != nil {
 		return run, result, err
 	}
+	if checker, ok := engine.(StartupChecker); ok {
+		checker.CheckAfterStartup()
+	}
 	var color segmentcolor.Color
 	if !spec.ColorByCaller {
 		color = strand.Color

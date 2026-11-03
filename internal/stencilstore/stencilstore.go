@@ -264,7 +264,11 @@ type Registry interface {
 // RelPath returns name's path relative to a stencils baseDir: `<family>/<name>.md`, where <family>
 // is the substring of name up to its first "-".
 // Returns `name + ".md"` with no family directory when name contains no "-".
+// A name holding a "/" is a path of its own, such as an engine block's (EngineBlockName), and returns as `name + ".md"`.
 func RelPath(name string) string {
+	if strings.Contains(name, "/") {
+		return name + ".md"
+	}
 	if idx := strings.Index(name, "-"); idx != -1 {
 		return name[:idx] + "/" + name + ".md"
 	}

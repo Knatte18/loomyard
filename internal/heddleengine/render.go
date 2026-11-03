@@ -61,6 +61,7 @@ type Renderer struct {
 // Render writes the file targets of req into its anchor from the entries of the shipped layer and the store.
 // It holds the worktree's render lock for the whole read and write, so two renders of one worktree serialize and the last one's text stands whole.
 // A target with no entry loses its marked file; a target the exclude list does not cover, or whose file lacks the marker, is left alone with a warning.
+// A render whose Only names claude-file renders codex-file too, so a worktree that already exists takes a changed repository entry at its next render.
 // The lock wait running out fails the render before it writes anything.
 func (r Renderer) Render(req RenderRequest) (Report, error) {
 	var report Report
@@ -92,8 +93,9 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		report.warn(fmt.Sprintf("%s holds something heddle did not write, so no file is written; way forward: move or remove it, then run `%s`", tempDir, renderVerb))
 	}
 
+	only := withCodexFile(req.Only)
 	for _, target := range targetTable {
-		if target.Delivery != DeliveryFile || (len(req.Only) > 0 && !slices.Contains(req.Only, target.Name)) {
+		if target.Delivery != DeliveryFile || (len(only) > 0 && !slices.Contains(only, target.Name)) {
 			continue
 		}
 		text, held, err := fileText(target, req.Anchor, entries)
@@ -136,6 +138,14 @@ func (r Renderer) Render(req RenderRequest) (Report, error) {
 		}
 	}
 	return report, nil
+}
+
+// withCodexFile returns only with codexFileTarget added when it names claudeFileTarget and not codexFileTarget, and only itself otherwise.
+func withCodexFile(only []string) []string {
+	if slices.Contains(only, claudeFileTarget) && !slices.Contains(only, codexFileTarget) {
+		return append(slices.Clone(only), codexFileTarget)
+	}
+	return only
 }
 
 // warn adds a warning once.
@@ -225,11 +235,15 @@ func removeTempDir(dir string) error {
 // fileText builds the text a file target renders to at anchor from the layered entries that name it, and reports false when none does.
 // It opens with Marker.
 // The shipped layer's texts follow under their own heading, then the repository's, under a heading of their own only when shipped texts precede them.
-// The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md, and the codex-file target opens with the anchor's AGENTS.md.
+// The claude-file target imports the AGENTS.md files the anchor holds when the anchor holds no CLAUDE.md.
+// The codex-file target opens with the anchor's AGENTS.md, or with its CLAUDE.md when the anchor holds no AGENTS.md, or with neither when it holds neither.
+// An entry reaches the codex-file target when it names it, or when it is a repository entry that names claude-file, so a Codex session gets the repository instructions a Claude session gets.
+// A shipped entry reaches the codex-file target only by naming it.
 func fileText(target Target, anchor string, entries []LayeredEntry) (string, bool, error) {
 	var shipped, repository []string
 	for _, entry := range entries {
-		if !slices.Contains(entry.Targets, target.Name) {
+		if !slices.Contains(entry.Targets, target.Name) &&
+			!(target.Name == codexFileTarget && entry.Layer != LayerShipped && slices.Contains(entry.Targets, claudeFileTarget)) {
 			continue
 		}
 		text := strings.Trim(entry.Text, "\n")
@@ -252,7 +266,7 @@ func fileText(target Target, anchor string, entries []LayeredEntry) (string, boo
 	}
 	parts := []string{Marker}
 	switch target.Name {
-	case "claude-file":
+	case claudeFileTarget:
 		if !fileExists(filepath.Join(anchor, "CLAUDE.md")) && !fileExists(filepath.Join(anchor, ".claude", "CLAUDE.md")) {
 			var imports []string
 			for _, agents := range []string{"AGENTS.md", ".claude/AGENTS.md"} {
@@ -264,13 +278,17 @@ func fileText(target Target, anchor string, entries []LayeredEntry) (string, boo
 				parts = append(parts, strings.Join(imports, "\n"))
 			}
 		}
-	case "codex-file":
-		content, err := os.ReadFile(filepath.Join(anchor, "AGENTS.md"))
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return "", false, fmt.Errorf("read AGENTS.md: %w", err)
-		}
-		if err == nil {
+	case codexFileTarget:
+		for _, name := range []string{"AGENTS.md", "CLAUDE.md"} {
+			content, err := os.ReadFile(filepath.Join(anchor, name))
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return "", false, fmt.Errorf("read %s: %w", name, err)
+			}
 			parts = append(parts, strings.Trim(string(content), "\n"))
+			break
 		}
 	}
 	return strings.Join(append(parts, texts...), "\n\n") + "\n", true, nil

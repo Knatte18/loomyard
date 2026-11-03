@@ -77,26 +77,62 @@ func TestCheckTexts(t *testing.T) {
 		}
 	})
 	tests := []struct {
-		name   string
-		steer  string
-		notice string
+		name string
+		row  Row
 	}{
-		{"SteerSingleQuote", "it's", ""},
-		{"SteerDoubleQuote", `say "x"`, ""},
-		{"SteerBackslash", `a\b`, ""},
-		{"NoticeSingleQuote", "", "it's"},
-		{"NoticeDoubleQuote", "", `say "x"`},
-		{"NoticeBackslash", "", `a\b`},
-		{"NoticeLineBreak", "", "one\ntwo"},
+		{"SteerSingleQuote", Row{Steer: "it's"}},
+		{"SteerDoubleQuote", Row{Steer: `say "x"`}},
+		{"SteerBackslash", Row{Steer: `a\b`}},
+		{"NoticeSingleQuote", Row{Notice: "it's"}},
+		{"NoticeDoubleQuote", Row{Notice: `say "x"`}},
+		{"NoticeBackslash", Row{Notice: `a\b`}},
+		{"NoticeLineBreak", Row{Notice: "one\ntwo"}},
+		{"EngineSteerSingleQuote", Row{EngineTexts: map[string]EngineText{engineCodex: {Steer: "it's"}}}},
+		{"EngineNoticeLineBreak", Row{EngineTexts: map[string]EngineText{engineCodex: {Notice: "one\ntwo"}}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := checkTexts([]Row{{Name: "planted", Steer: tt.steer, Notice: tt.notice}})
+			row := tt.row
+			row.Name = "planted"
+			err := checkTexts([]Row{row})
 			if err == nil || !strings.Contains(err.Error(), `"planted"`) {
 				t.Errorf("checkTexts() = %v; want an error naming the row", err)
 			}
 		})
+	}
+}
+
+// TestRows_EngineTexts pins the per-engine texts.
+// On Codex no row's steer or notice names a Claude tool, the python and shell-edit steers carry the Codex edit rule, and one notice states it.
+// An engine without its own text, Claude's included, gets the plain steer and notice.
+func TestRows_EngineTexts(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	codexEditRuleNotices := 0
+	for _, row := range Rows("with a long timeout", []string{"go test"}) {
+		steer, notice := row.SteerFor(engineCodex), row.NoticeFor(engineCodex)
+		for _, claudeTool := range []string{"Read", "Edit", "Write", "Agent tool"} {
+			if strings.Contains(steer, claudeTool) || strings.Contains(notice, claudeTool) {
+				t.Errorf("%s Codex steer %q or notice %q names the Claude tool %q", row.Name, steer, notice, claudeTool)
+			}
+		}
+		if (row.Name == "python" || row.Name == "shell-edit") && !strings.Contains(steer, codexEditToolsRule) {
+			t.Errorf("%s Codex steer %q: want it to carry the Codex edit rule %q", row.Name, steer, codexEditToolsRule)
+		}
+		if strings.Contains(notice, codexEditToolsRule) {
+			codexEditRuleNotices++
+		}
+		if got := row.SteerFor("claude"); got != row.Steer {
+			t.Errorf("%s SteerFor(claude) = %q; want the plain steer %q", row.Name, got, row.Steer)
+		}
+		if got := row.NoticeFor("claude"); got != row.Notice {
+			t.Errorf("%s NoticeFor(claude) = %q; want the plain notice %q", row.Name, got, row.Notice)
+		}
+	}
+	if codexEditRuleNotices != 1 {
+		t.Errorf("Codex notices state the Codex edit rule %d times; want once", codexEditRuleNotices)
 	}
 }
 

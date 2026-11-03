@@ -17,8 +17,17 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// reviewRolePrefix is the role prefix of the review half's one seat; the seats engine forms its strand role from it.
-const reviewRolePrefix = "burler-review"
+// ReviewRolePrefix is the role prefix of the review half's one seat; the seats engine forms its strand role from it.
+const ReviewRolePrefix = "burler-review"
+
+// ReviewChairRole returns the strand role the review half's chair runs under for a profile whose RolePrefix is rolePrefix.
+// It is ReviewRolePrefix alone for an empty rolePrefix, and rolePrefix and ReviewRolePrefix joined by a hyphen otherwise.
+func ReviewChairRole(rolePrefix string) string {
+	return ledRole(rolePrefix, ReviewRolePrefix)
+}
+
+// burlerDirName is the directory under the anchor's ephemeral .lym that holds burler's instruction files and an assistant's paths.
+const burlerDirName = "burler"
 
 // ReviewResult is the review half's outcome.
 // Verdict, Findings and Digest are set only when the reviewer's review was accepted.
@@ -42,6 +51,9 @@ type ReviewResult struct {
 	Gate *shuttleengine.GateOutcome
 	// SessionStates is a 1:1 passthrough of the reviewer's shuttleengine.Result.SessionStates, set on every ending, the audit error included, so a failure can say how the chair ended.
 	SessionStates []shuttleengine.SessionState
+	// Assists holds what became of each assistant seat of an assisted round; nil for a round with no assistant.
+	// No verdict or finding reads it: the verdict and findings are the chair's review alone.
+	Assists []AssistOutcome
 }
 
 // ErrReviewChanged reports that the review file no longer holds the bytes the review half accepted, so the fix half refuses to act on it.
@@ -52,7 +64,7 @@ var ErrReviewChanged = errors.New("burler: the review file changed after it was 
 // values carries the marker values the seat's stencil is filled from, and skills the skills the seat loads.
 func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []string) seatengine.Table {
 	return seatengine.Table{
-		RolePrefix: p.rolePrefix(reviewRolePrefix),
+		RolePrefix: ReviewChairRole(p.RolePrefix),
 		Segment:    p.segment(),
 		Gate:       shuttleengine.GateSpec{ReviewGateEntry(p.ReviewPath)},
 		Round:      opts.Round,
@@ -73,6 +85,7 @@ func (p *Profile) reviewTable(opts RunOpts, values map[string]string, skills []s
 
 // Review runs the review half for p, tuned by opts: one fresh reviewer session that writes the review file.
 // It validates p, resolves the PATTERN directive, composes the reviewer's instruction files into a fresh directory under the anchor's ephemeral burler directory and runs the review table.
+// When opts names an assistant, the table also holds the assistant seat, whose own instruction files are composed for its engine into a directory of their own; an assistant whose files cannot be composed does not start, and the round goes on without it.
 // A reviewer that never starts because its provider never came up is OutcomeDied with NotStarted set and a nil error.
 // A reviewer that died or timed out is its outcome with a nil error.
 // A reviewer that is done is accepted through the cluster audit and the strict parse, and any failure of either is returned with the outcome and fork audit set.
@@ -96,7 +109,12 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 	if err != nil {
 		return ReviewResult{}, err
 	}
-	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, &p, directive, reviewFilesIn(dir))
+	chairEngine := e.seatEngine(opts.Review)
+	assistRules, err := assistRulesBlock(e.stencilsDir, chairEngine, opts)
+	if err != nil {
+		return ReviewResult{}, err
+	}
+	prompt, err := composeReviewPrompt(e.stencilsDir, e.geom.SpecsDir, chairEngine, &p, directive, assistRules, reviewFilesIn(dir))
 	if err != nil {
 		return ReviewResult{}, err
 	}
@@ -104,13 +122,25 @@ func (e *Engine) Review(p Profile, opts RunOpts) (ReviewResult, error) {
 		return ReviewResult{}, err
 	}
 
-	seats, err := e.seats.Run(p.reviewTable(opts, prompt.Values, e.seatSkills(&p)))
+	var assist *seatengine.Seat
+	if opts.assisted() {
+		files, skipReason := e.composeAssist(&p, opts, directive)
+		assist = e.assistSeat(&p, opts, files, e.seatSkills(&p), skipReason)
+	}
+	seats, err := e.seats.Run(withAssistant(p.reviewTable(opts, prompt.Values, e.seatSkills(&p)), assist))
 	return e.concludeReview(&p, opts, seats, err)
+}
+
+// probeTable returns the review table a probe or resume of p's review under opts builds, the assistant seat included when opts names one; it composes no prompt.
+func (e *Engine) probeTable(p *Profile, opts RunOpts) seatengine.Table {
+	files := reviewFilesIn(e.probeDirOf())
+	assist := e.assistSeat(p, opts, files, e.seatSkills(p), "")
+	return withAssistant(p.reviewTable(opts, reviewSeatValues(p, files), e.seatSkills(p)), assist)
 }
 
 // instructionDir creates and returns a fresh instruction directory named from prefix under the anchor's ephemeral burler directory.
 func (e *Engine) instructionDir(prefix string) (string, error) {
-	burlerDir := filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, "burler")
+	burlerDir := filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, burlerDirName)
 	if err := os.MkdirAll(burlerDir, 0o755); err != nil {
 		logger.Warn("burler: create instruction dir failed", "burlerDir", burlerDir, "error", err)
 		return "", fmt.Errorf("burler: materialize instruction files: %w", err)
@@ -135,19 +165,19 @@ func writeInstructionFiles(files []instructionFile) error {
 
 // probeDirOf returns the directory a probe of a half names its instruction files under; a probe composes no prompt, so the directory is never created.
 func (e *Engine) probeDirOf() string {
-	return filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, "burler", "round-probe")
+	return filepath.Join(e.geom.AnchorPath, lymdirs.DotLymDirName, burlerDirName, "round-probe")
 }
 
 // ProbeReview reports the state of the review half p describes under opts, without waiting on it:
 // live when the seats engine finds a live reviewer run, even one whose review file is already on disk, as a reviewer repairing its review in the parse gate is;
 // done when it has no live run and the review file is present; and gone otherwise.
+// The probed table holds the assistant seat opts names, so a live assistant is found by its outputs and stopped with the chair when the chair is not live.
 // A probe error, and an invalid p, are returned as is, a reviewer that could not be stopped wrapped in ErrHalfNotStopped.
 func (e *Engine) ProbeReview(p Profile, opts RunOpts) (LiveHalf, error) {
 	if err := p.validateReview(e.geom.WorktreeRoot, e.cfg); err != nil {
 		return LiveHalf{}, err
 	}
-	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())), e.seatSkills(&p))
-	return e.probeHalf(table, p.ReviewPath)
+	return e.probeHalf(e.probeTable(&p, opts), p.ReviewPath)
 }
 
 // ResumeReview completes the review half whose reviewer is live, attaching to it instead of starting one, and concludes it as a fresh review is.
@@ -165,8 +195,7 @@ func (e *Engine) ResumeReview(p Profile, opts RunOpts, live LiveHalf) (ReviewRes
 
 	logger.Info("burler: resuming a live review", "round", opts.Round, "reviewStrand", live.Handle.StrandGUID())
 
-	table := p.reviewTable(opts, reviewSeatValues(&p, reviewFilesIn(e.probeDirOf())), e.seatSkills(&p))
-	seats, err := e.seats.Resume(table, *live.table)
+	seats, err := e.seats.Resume(e.probeTable(&p, opts), *live.table)
 	return e.concludeReview(&p, opts, seats, err)
 }
 
@@ -191,6 +220,7 @@ func reviewResultOf(p *Profile, reviewer shuttleengine.Result) ReviewResult {
 // A reviewer whose wait errored is that error wrapped.
 // A reviewer that died or timed out is its outcome with a nil error.
 // A done reviewer whose gate failed is an error naming the gate, and one that passed is accepted through acceptReview, whose error is returned with the outcome and fork audit set.
+// Once the chair has ended and every seat stopped, the report of each assistant whose end marker reads done is copied beside the review file, and Assists says what became of each.
 func (e *Engine) concludeReview(p *Profile, opts RunOpts, seats seatengine.Result, runErr error) (ReviewResult, error) {
 	reviewer := seats.Chair
 	switch {
@@ -209,6 +239,7 @@ func (e *Engine) concludeReview(p *Profile, opts RunOpts, seats seatengine.Resul
 	logger.Info("burler: review joined", "round", opts.Round, "reviewOutcome", reviewer.Outcome)
 
 	result := reviewResultOf(p, reviewer)
+	result.Assists = keepAssistReports(p.ReviewPath, seats.Advisors)
 	if reviewer.Outcome != shuttleengine.OutcomeDone {
 		return result, nil
 	}

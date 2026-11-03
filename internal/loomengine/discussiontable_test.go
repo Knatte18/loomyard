@@ -178,7 +178,7 @@ func TestDiscussionTable(t *testing.T) {
 				if got, want := table.Values["relevant_path"], DiscussionRelevant(layout); got != want {
 					t.Errorf("table.Values[\"relevant_path\"] = %q; want %q", got, want)
 				}
-				if err := table.Validate(stencilsDir); err != nil {
+				if err := table.Validate(stencilsDir, ""); err != nil {
 					t.Fatalf("table.Validate() = %v; want nil", err)
 				}
 				prompts, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table)
@@ -247,7 +247,7 @@ func TestDiscussionTable(t *testing.T) {
 				if err != nil {
 					t.Fatalf("DiscussionTable(...) = _, %v; want nil error", err)
 				}
-				if err := table.Validate(stencilsDir); err != nil {
+				if err := table.Validate(stencilsDir, ""); err != nil {
 					t.Fatalf("table.Validate() = %v; want nil", err)
 				}
 				if _, err := seatengine.Prompts(discussionTableGeometry(layout, stencilsDir), table); err != nil {

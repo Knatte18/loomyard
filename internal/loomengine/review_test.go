@@ -121,6 +121,139 @@ func TestResolveReview(t *testing.T) {
 	}
 }
 
+// TestResolveReview_Assist verifies the assistant lists resolve per round: an empty entry, the default, is the zero choice, a model-spec resolves through the registry, and each segment names the keys its lists came from, the plan segment's in tapestry.yaml.
+func TestResolveReview_Assist(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	reg := modelspec.Registry{"luna": {Engine: "codex", Model: "luna-model"}}
+	luna := shuttleengine.ModelChoice{Engine: "codex", Model: "luna-model"}
+	zero := shuttleengine.ModelChoice{}
+	loomKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "loom", Key: key} }
+	tapestryKey := func(key string) shuttleengine.ModelKey { return shuttleengine.ModelKey{Module: "tapestry", Key: key} }
+
+	t.Run("the default empty entry gives no assistant model in any segment", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{
+			DiscussionAssistReviewerModel: burlerengine.ModelSpecList{""},
+			PlanAssistReviewerModel:       burlerengine.ModelSpecList{""},
+			CodeAssistReviewerModel:       burlerengine.ModelSpecList{""},
+		}
+		settings, err := ResolveReview(cfg, reg)
+		if err != nil {
+			t.Fatalf("ResolveReview(...) = _, %v; want nil error", err)
+		}
+		for name, got := range map[string]AssistModels{"Discussion": settings.DiscussionAssist, "Plan": settings.PlanAssist, "Code": settings.CodeAssist} {
+			if !reflect.DeepEqual(got.Models, []shuttleengine.ModelChoice{zero}) {
+				t.Errorf("ResolveReview(...).%sAssist.Models = %+v; want one zero choice", name, got.Models)
+			}
+		}
+	})
+
+	t.Run("unset lists give no choices", func(t *testing.T) {
+		t.Parallel()
+		settings, err := ResolveReview(Config{}, reg)
+		if err != nil {
+			t.Fatalf("ResolveReview(Config{}) = _, %v; want nil error", err)
+		}
+		if got := settings.CodeAssist.Models; len(got) != 0 {
+			t.Errorf("ResolveReview(Config{}).CodeAssist.Models = %+v; want none", got)
+		}
+	})
+
+	t.Run("a per-round list resolves round by round with its keys and fans", func(t *testing.T) {
+		t.Parallel()
+		cfg := Config{
+			DiscussionAssistReviewerModel: burlerengine.ModelSpecList{"luna", ""},
+			DiscussionAssistReviewerFan:   lenses.FanList{"review-discussion", ""},
+			PlanAssistReviewerModel:       burlerengine.ModelSpecList{"", "luna"},
+			CodeAssistReviewerModel:       burlerengine.ModelSpecList{"luna"},
+		}
+		settings, err := ResolveReview(cfg, reg)
+		if err != nil {
+			t.Fatalf("ResolveReview(...) = _, %v; want nil error", err)
+		}
+		want := map[string]AssistModels{
+			"Discussion": {Models: []shuttleengine.ModelChoice{luna, zero}, Fans: lenses.FanList{"review-discussion", ""}, ModelKey: loomKey("discussion_assist_reviewer_model"), FanKey: "discussion_assist_reviewer_fan"},
+			"Plan":       {Models: []shuttleengine.ModelChoice{zero, luna}, ModelKey: tapestryKey("plan_assist_reviewer_model"), FanKey: "plan_assist_reviewer_fan"},
+			"Code":       {Models: []shuttleengine.ModelChoice{luna}, ModelKey: loomKey("code_assist_reviewer_model"), FanKey: "code_assist_reviewer_fan"},
+		}
+		got := map[string]AssistModels{"Discussion": settings.DiscussionAssist, "Plan": settings.PlanAssist, "Code": settings.CodeAssist}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ResolveReview(...) assists = %+v; want %+v", got, want)
+		}
+	})
+
+	t.Run("a bad entry is refused naming its key, entry and file", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name   string
+			cfg    Config
+			wantIn []string
+		}{
+			{"malformed second discussion entry", Config{DiscussionAssistReviewerModel: burlerengine.ModelSpecList{"luna", "opus[effort"}}, []string{"discussion_assist_reviewer_model entry 2", "in loom.yaml"}},
+			{"unknown plan alias", Config{PlanAssistReviewerModel: burlerengine.ModelSpecList{"ghost"}}, []string{"plan_assist_reviewer_model entry 1", "in tapestry.yaml"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				_, err := ResolveReview(tt.cfg, reg)
+				if err == nil {
+					t.Fatal("ResolveReview(...) error = nil; want a refusal")
+				}
+				for _, want := range tt.wantIn {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("ResolveReview(...) error = %q; want it to contain %q", err.Error(), want)
+					}
+				}
+			})
+		}
+	})
+}
+
+// TestCapAssistTimeout verifies the assistant's bound is the configured one when it fits before the chair's timeout less the start allowance and one await cap, is capped to that room when it does not, and is zero with a reason naming both keys when no room is left.
+// The chair is review_timeout_min, or the run timeout when that is 0.
+func TestCapAssistTimeout(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name           string
+		cfg            Config
+		runTimeout     time.Duration
+		startAllowance time.Duration
+		awaitCap       time.Duration
+		want           time.Duration
+		wantSkip       bool
+	}{
+		{name: "a bound that fits is kept", cfg: Config{ReviewTimeoutMin: 240, AssistReviewerTimeoutMin: 60}, runTimeout: 30 * time.Minute, startAllowance: 3 * time.Minute, awaitCap: 5 * time.Minute, want: 60 * time.Minute},
+		{name: "a bound equal to the room is kept", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 50}, startAllowance: 5 * time.Minute, awaitCap: 5 * time.Minute, want: 50 * time.Minute},
+		{name: "a bound past the room is capped to chair less start allowance less await cap", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 60}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
+		{name: "a zero bound takes the whole room", cfg: Config{ReviewTimeoutMin: 60, AssistReviewerTimeoutMin: 0}, startAllowance: 3 * time.Minute, awaitCap: 7 * time.Minute, want: 50 * time.Minute},
+		{name: "a zero review timeout takes the run timeout as the chair", cfg: Config{ReviewTimeoutMin: 0, AssistReviewerTimeoutMin: 120}, runTimeout: 100 * time.Minute, startAllowance: 10 * time.Minute, awaitCap: 5 * time.Minute, want: 85 * time.Minute},
+		{name: "an allowance and await cap that spend the chair leave no time", cfg: Config{ReviewTimeoutMin: 10, AssistReviewerTimeoutMin: 60}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
+		{name: "an allowance past the chair leaves no time", cfg: Config{ReviewTimeoutMin: 5, AssistReviewerTimeoutMin: 60}, startAllowance: 6 * time.Minute, awaitCap: 4 * time.Minute, want: 0, wantSkip: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, reason := CapAssistTimeout(tt.cfg, tt.runTimeout, tt.startAllowance, tt.awaitCap)
+			if got != tt.want {
+				t.Errorf("CapAssistTimeout(...) bound = %s; want %s", got, tt.want)
+			}
+			if !tt.wantSkip {
+				if reason != "" {
+					t.Errorf("CapAssistTimeout(...) reason = %q; want none", reason)
+				}
+				return
+			}
+			for _, key := range []string{"assist_reviewer_timeout_min", "review_timeout_min"} {
+				if !strings.Contains(reason, key) {
+					t.Errorf("CapAssistTimeout(...) reason = %q; want it to name %q", reason, key)
+				}
+			}
+		})
+	}
+}
+
 // TestResolveJudge verifies ResolveJudge resolves each segment's judge and seed through the fallback order: a segment's judge key, else judge; a segment's seed key, else seed, else the segment's resolved judge.
 func TestResolveJudge(t *testing.T) {
 	tiergate.Require(t, 0)

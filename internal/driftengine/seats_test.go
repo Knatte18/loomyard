@@ -158,7 +158,7 @@ func TestSeatTables(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BaselineTable() = _, %v; want nil error", err)
 		}
-		if err := table.Validate(in.StencilsDir); err != nil {
+		if err := table.Validate(in.StencilsDir, ""); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
 		lead := table.Chair()
@@ -240,7 +240,7 @@ func TestSeatTables(t *testing.T) {
 		if err != nil {
 			t.Fatalf("VerifyTable() = _, %v; want nil error", err)
 		}
-		if err := table.Validate(in.StencilsDir); err != nil {
+		if err := table.Validate(in.StencilsDir, ""); err != nil {
 			t.Fatalf("table.Validate() = %v; want nil", err)
 		}
 		lead := table.Chair()

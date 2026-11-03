@@ -3,6 +3,8 @@
 // tapestry.yaml holds the plan perch's keys, which only the tapestry recipe reads: the Plan-Write agent and its lens fan, the implementer engine, and the Plan-Review segment's models, fans, judge, seed and budget.
 // loom.yaml keeps what every loom recipe shares, and LoadTapestryConfig reads its run-wide review keys to resolve the plan perch's budget.
 // Config.WithTapestry copies the loaded values into a Config, for the callers that serve the Plan-Review segment.
+// plan_assist_reviewer_model names the model-spec, or lists one per round, of the Plan-Review assistant reviewer that runs beside the segment's reviewer and never gates the round; an empty entry, the default, runs no assistant that round, and every non-empty entry is parsed at load.
+// plan_assist_reviewer_fan names the assistant's fan per round as plan_reviewer_fan does for the reviewer.
 
 package loomengine
 
@@ -47,6 +49,10 @@ type TapestryConfig struct {
 	PlanReviewerFan lenses.FanList `yaml:"plan_reviewer_fan"`
 	PlanFixerFan    lenses.FanList `yaml:"plan_fixer_fan"`
 
+	// PlanAssistReviewerModel and PlanAssistReviewerFan are the Plan-Review assistant reviewer's model list and fan list, one entry per round; an empty model entry runs no assistant that round.
+	PlanAssistReviewerModel burlerengine.ModelSpecList `yaml:"plan_assist_reviewer_model"`
+	PlanAssistReviewerFan   lenses.FanList             `yaml:"plan_assist_reviewer_fan"`
+
 	// PlanJudge and PlanSeed override loom.yaml's judge and seed for the plan segment when non-empty.
 	PlanJudge string `yaml:"plan_judge"`
 	PlanSeed  string `yaml:"plan_seed"`
@@ -84,6 +90,8 @@ func (c Config) WithTapestry(t TapestryConfig) Config {
 	c.PlanFixerModel = t.PlanFixerModel
 	c.PlanReviewerFan = t.PlanReviewerFan
 	c.PlanFixerFan = t.PlanFixerFan
+	c.PlanAssistReviewerModel = t.PlanAssistReviewerModel
+	c.PlanAssistReviewerFan = t.PlanAssistReviewerFan
 	c.PlanJudge = t.PlanJudge
 	c.PlanSeed = t.PlanSeed
 	c.PlanMaxBounces = t.PlanMaxBounces
@@ -129,7 +137,7 @@ func TapestryConfigTemplate() string {
 
 // TapestryConfigOpenMaps returns the tapestry.yaml keys whose value is a per-round list, which configengine carries whole through reconcile and --set.
 func TapestryConfigOpenMaps() []string {
-	return []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan"}
+	return []string{"plan_reviewer_model", "plan_fixer_model", "plan_reviewer_fan", "plan_fixer_fan", "plan_assist_reviewer_model", "plan_assist_reviewer_fan"}
 }
 
 // TapestryConfigSpec returns tapestry's layered-load spec.
@@ -155,6 +163,9 @@ func TapestryConfigSpec() configengine.Spec {
 			"plan_fixer_fan":      guard,
 			"plan_judge":          none,
 			"plan_seed":           none,
+
+			"plan_assist_reviewer_model": none,
+			"plan_assist_reviewer_fan":   none,
 		},
 	}
 	for _, key := range []string{"plan_split", "parts_depth", "parts_max", "parts", "part_writer", "parts_chair", "parts_chair_timeout_min"} {
@@ -232,9 +243,14 @@ func LoadTapestryConfig(dirs configengine.Dirs, module string) (TapestryConfig, 
 		}
 	}
 
+	if err := burlerengine.ValidateAssistModelList(tapestryModule, "plan_assist_reviewer_model", cfg.PlanAssistReviewerModel); err != nil {
+		return TapestryConfig{}, err
+	}
+
 	if err := lenses.ValidateFanKeys(dirs, tapestryModule, []lenses.FanKey{
 		{Key: "plan_reviewer_fan", Fans: cfg.PlanReviewerFan},
 		{Key: "plan_fixer_fan", Fans: cfg.PlanFixerFan},
+		{Key: "plan_assist_reviewer_fan", Fans: cfg.PlanAssistReviewerFan},
 	}); err != nil {
 		return TapestryConfig{}, err
 	}

@@ -7,6 +7,8 @@
 // step_idle_timeout_min is the minutes a --until-stop step may show no activity before the loop kills it; a step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active and is never killed; a value below 1 is raised to 1 with one Warn and never refused.
 // discussion_reviewer_fan and code_reviewer_fan each name a fan from lenses.yaml, or list one per round, and turn the lens fan on for Discussion-Review and Code-Review; an empty entry, the default, runs that round solo.
 // discussion_fixer_fan and code_fixer_fan do the same for the fixer: an empty entry runs the single fixer, and a fan name runs the twill fixer with that fan's lenses.
+// discussion_assist_reviewer_model and code_assist_reviewer_model each name the model-spec, or list one per round, of an assistant reviewer that runs beside the segment's reviewer, whose report the reviewer consolidates and which never gates the round; an empty entry, the default, runs no assistant that round, and every non-empty entry is parsed at load.
+// discussion_assist_reviewer_fan and code_assist_reviewer_fan name the assistant's fan per round as the reviewer fan keys do, and assist_reviewer_timeout_min bounds the assistant's run and is refused below 0.
 // A list's last entry serves every later round, and a reviewer fanned or not runs on its segment's own reviewer list, whose model the forks inherit.
 // fan_review is retired: MigrateConfig removes it.
 // The retired review, fix, <segment>_review, <segment>_fix, <segment>_fan and <segment>_fix_fan keys are renamed by MigrateConfig.
@@ -429,6 +431,17 @@ type Config struct {
 	PlanFixerFan          lenses.FanList `yaml:"-"`
 	CodeFixerFan          lenses.FanList `yaml:"code_fixer_fan"`
 
+	// Each review segment's assistant reviewer model list and fan list, one entry per round; an empty model entry runs no assistant that round.
+	DiscussionAssistReviewerModel burlerengine.ModelSpecList `yaml:"discussion_assist_reviewer_model"`
+	PlanAssistReviewerModel       burlerengine.ModelSpecList `yaml:"-"`
+	CodeAssistReviewerModel       burlerengine.ModelSpecList `yaml:"code_assist_reviewer_model"`
+	DiscussionAssistReviewerFan   lenses.FanList             `yaml:"discussion_assist_reviewer_fan"`
+	PlanAssistReviewerFan         lenses.FanList             `yaml:"-"`
+	CodeAssistReviewerFan         lenses.FanList             `yaml:"code_assist_reviewer_fan"`
+
+	// AssistReviewerTimeoutMin is the minutes the assistant reviewer's run may take, before the cap that keeps it inside the reviewer's own timeout.
+	AssistReviewerTimeoutMin int `yaml:"assist_reviewer_timeout_min"`
+
 	Judge              string `yaml:"judge"`
 	Seed               string `yaml:"seed"`
 	DiscussionJudge    string `yaml:"discussion_judge"`
@@ -538,6 +551,8 @@ func ConfigOpenMaps() []string {
 		"code_reviewer_model", "code_fixer_model",
 		"discussion_reviewer_fan", "code_reviewer_fan",
 		"discussion_fixer_fan", "code_fixer_fan",
+		"discussion_assist_reviewer_model", "code_assist_reviewer_model",
+		"discussion_assist_reviewer_fan", "code_assist_reviewer_fan",
 		"discussion_advisors",
 	}
 }
@@ -555,35 +570,41 @@ func ConfigSpec() configengine.Spec {
 		Template: []byte(ConfigTemplate()),
 		OpenMaps: ConfigOpenMaps(),
 		Categories: map[string]configengine.Category{
-			"discussion":                 none,
-			"discussion_timeout_min":     none,
-			"discussion_interactive":     none,
-			"discussion_advisors":        guard,
-			"discussion_lenses":          guard,
-			"discussion_gate_fixer":      none,
-			subagentModelKey:             none,
-			"reviewer_model":             none,
-			"fixer_model":                none,
-			"discussion_reviewer_model":  none,
-			"discussion_fixer_model":     none,
-			"code_reviewer_model":        none,
-			"code_fixer_model":           none,
-			"discussion_reviewer_fan":    guard,
-			"code_reviewer_fan":          none,
-			"discussion_fixer_fan":       guard,
-			"code_fixer_fan":             guard,
-			"judge":                      none,
-			"seed":                       none,
-			"discussion_judge":           none,
-			"code_judge":                 none,
-			"discussion_seed":            none,
-			"code_seed":                  none,
-			"review_timeout_min":         none,
-			"friction":                   none,
-			"friction_timeout_min":       none,
-			"driver":                     none,
-			"step_idle_timeout_min":      none,
-			"review_circling_checkpoint": none,
+			"discussion":                none,
+			"discussion_timeout_min":    none,
+			"discussion_interactive":    none,
+			"discussion_advisors":       guard,
+			"discussion_lenses":         guard,
+			"discussion_gate_fixer":     none,
+			subagentModelKey:            none,
+			"reviewer_model":            none,
+			"fixer_model":               none,
+			"discussion_reviewer_model": none,
+			"discussion_fixer_model":    none,
+			"code_reviewer_model":       none,
+			"code_fixer_model":          none,
+			"discussion_reviewer_fan":   guard,
+			"code_reviewer_fan":         none,
+			"discussion_fixer_fan":      guard,
+			"code_fixer_fan":            guard,
+
+			"discussion_assist_reviewer_model": none,
+			"code_assist_reviewer_model":       none,
+			"discussion_assist_reviewer_fan":   none,
+			"code_assist_reviewer_fan":         none,
+			"assist_reviewer_timeout_min":      none,
+			"judge":                            none,
+			"seed":                             none,
+			"discussion_judge":                 none,
+			"code_judge":                       none,
+			"discussion_seed":                  none,
+			"code_seed":                        none,
+			"review_timeout_min":               none,
+			"friction":                         none,
+			"friction_timeout_min":             none,
+			"driver":                           none,
+			"step_idle_timeout_min":            none,
+			"review_circling_checkpoint":       none,
 		},
 		RetiredKeys: map[string]configengine.Category{
 			"fan_review": none,
@@ -678,6 +699,8 @@ func fanKeys(cfg Config) []lenses.FanKey {
 		{Key: "code_reviewer_fan", Fans: cfg.CodeReviewerFan},
 		{Key: "discussion_fixer_fan", Fans: cfg.DiscussionFixerFan},
 		{Key: "code_fixer_fan", Fans: cfg.CodeFixerFan},
+		{Key: "discussion_assist_reviewer_fan", Fans: cfg.DiscussionAssistReviewerFan},
+		{Key: "code_assist_reviewer_fan", Fans: cfg.CodeAssistReviewerFan},
 	}
 }
 
@@ -1154,6 +1177,15 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 		}
 	}
 
+	for _, assist := range []segmentModelList{
+		{"discussion_assist_reviewer_model", cfg.DiscussionAssistReviewerModel},
+		{"code_assist_reviewer_model", cfg.CodeAssistReviewerModel},
+	} {
+		if err := burlerengine.ValidateAssistModelList(loomModule, assist.key, assist.specs); err != nil {
+			return Config{}, err
+		}
+	}
+
 	if err := lenses.ValidateFanKeys(dirs, "loom", fanKeys(cfg)); err != nil {
 		return Config{}, err
 	}
@@ -1224,18 +1256,22 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	// time.Duration(n) * time.Minute on a shuttleengine.Spec, where it is caught only at spawn or
 	// resume time -- exactly the deferred failure this function's own header says it exists to
 	// prevent, for the keys sitting immediately beside the ones it already guards.
-	// Zero is deliberately accepted rather than rejected: Spec.Timeout treats 0 as "defer to
-	// shuttle's own run_timeout_min", which is a legitimate configuration.
+	// Zero is deliberately accepted rather than rejected, and means something per key.
+	// For three of them Spec.Timeout treats 0 as "defer to shuttle's own run_timeout_min".
+	// For assist_reviewer_timeout_min, 0 takes the whole room left before review_timeout_min.
+	const deferToShuttle = "defer to shuttle's run_timeout_min"
 	for _, knob := range []struct {
-		key     string
-		minutes int
+		key       string
+		minutes   int
+		zeroMeans string
 	}{
-		{"discussion_timeout_min", cfg.DiscussionTimeoutMin},
-		{"review_timeout_min", cfg.ReviewTimeoutMin},
-		{"friction_timeout_min", cfg.FrictionTimeoutMin},
+		{"discussion_timeout_min", cfg.DiscussionTimeoutMin, deferToShuttle},
+		{"review_timeout_min", cfg.ReviewTimeoutMin, deferToShuttle},
+		{"assist_reviewer_timeout_min", cfg.AssistReviewerTimeoutMin, "take the whole room left before review_timeout_min"},
+		{"friction_timeout_min", cfg.FrictionTimeoutMin, deferToShuttle},
 	} {
 		if knob.minutes < 0 {
-			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; use 0 to defer to shuttle's run_timeout_min", knob.key, knob.minutes)
+			return Config{}, fmt.Errorf("loom config key %q: must not be negative, got %d; use 0 to %s", knob.key, knob.minutes, knob.zeroMeans)
 		}
 	}
 

@@ -269,7 +269,7 @@ func (c *loomCLI) wireDarn(location *lymcwd.Location, stencilsDir, specsDir, fri
 		if err != nil {
 			return fmt.Errorf("build the darn writer table: %w; way forward: fix the config or model spec it names, then re-step", err)
 		}
-		return table.CheckMarkers(stencilsDir)
+		return table.CheckMarkers(stencilsDir, c.shuttleCfg.Engine)
 	}
 
 	return nil

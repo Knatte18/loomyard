@@ -53,8 +53,9 @@ opus:
     effort: high
 ```
 
-**Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` / `haiku` / `fable` → claude engine) so everything works with **no file present**;
-built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only in the seeded `models.yaml`, never in Go. `models.yaml` overrides and extends the built-in set when it exists.
+**Built-in fallback:** Go ships a small built-in default set (`sonnet` / `opus` / `haiku` / `fable` → claude engine, `sol` / `astra` / `luna` → codex engine) so everything works with **no file present**, and a hub whose operator-owned `models.yaml` predates an alias still resolves it.
+The Claude built-ins carry **no parameter defaults** — operator defaults (e.g. `effort`) live only in the seeded `models.yaml`.
+The Codex built-ins carry `effort: medium`, so a Codex spec that names no effort never launches at the provider's own default. `models.yaml` overrides and extends the built-in set when it exists.
 
 ## Newest by default; pinning is deliberate
 
