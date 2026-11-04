@@ -16,7 +16,7 @@
 //     OwnedWorktrees lists the prime and every local beam this machine may start, the set a caller that narrows nothing names.
 //     A worktree with an anchor change standing on its own records worktree or the prime's is refused with the change's way forward and starts nothing, through StartDeps.MoveInProgress, and a nil one reads as no change standing.
 //   - Config is beam.yaml, loaded strictly because dobby only ever runs inside a hub.
-//     Its `pull_request` key is the receiving branch's pull-request mode, on, off or required, read with the receiving branch's worktree as the anchor.
+//     Its `pull_request` key is the receiving branch's pull-request mode, on, off, required or merge, read with the receiving branch's worktree as the anchor; set at the default layer it marks every branch of the hub.
 //     Its `land_notice` key, all, per-task or off, decides which runs get a landing notice.
 //     Its `adopt_fix_tries` key is the adopt check's try limit, the most fix tasks a failed adopt check files for the worktree's subject between two hand adopts, which dobby itself never reads.
 //   - Run is the daemon loop, with every seam it reads in Deps.

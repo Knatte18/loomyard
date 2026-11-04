@@ -25,7 +25,8 @@ const (
 )
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
-// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
+// A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing.
+// A yes the resolver marks MergeAtOnce passes at once, since Finalize opens and merges that pull request with no review; any other yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
 // The wait gates and pushes the agent's commits, sets the title and body again when the text yielded from the change description, the regression check and the credit block changes, and ends when the pull request is merged or approved, or closed or continued by the operator.
 // A reopen request, read on entry and at every wake, ends the row first: it sends the run back through the row's reroute edge, the pull request kept open as a draft or closed.
 // It takes no parent lock.
@@ -103,6 +104,10 @@ func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.O
 	}
 	if !decision.Open {
 		return p.closeRecordedPullRequest(ctx, origin, decision.Reason)
+	}
+	if decision.MergeAtOnce {
+		logger.Info("landingshed: the parent merges its pull request at once, so Finalize opens and merges it with no review", "row", p.name, "reason", decision.Reason)
+		return shedengine.Done, shedengine.OutputPointer{}, nil
 	}
 	return p.openPullRequest(ctx, origin)
 }

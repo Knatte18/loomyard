@@ -39,7 +39,7 @@ type Config struct {
 	BoardTidyTimeoutMin int `yaml:"board_tidy_timeout_min"`
 	// TaskHeadroom is the fewest free tasks under the cgroup task limit for dobby to start a run; 0 never holds a start.
 	TaskHeadroom int `yaml:"task_headroom"`
-	// PullRequest is the receiving branch's pull-request mode: "on", "off" or "required".
+	// PullRequest is the receiving branch's pull-request mode: "on", "off", "required" or "merge", which is required with the pull request squash-merged on GitHub at once and no review.
 	PullRequest string `yaml:"pull_request"`
 	// LandNotice decides which runs the dobby sends a landing notice for: LandNoticeAll, LandNoticePerTask or LandNoticeOff.
 	LandNotice string `yaml:"land_notice"`
@@ -66,7 +66,7 @@ func ConfigSpec() configengine.Spec {
 }
 
 // LoadConfig resolves beam.yaml strictly from the layer stack under dirs, since dobby only ever runs inside a hub.
-// A negative value is refused naming its key, and so is a pull_request other than on, off or required and a land_notice other than all, per-task or off.
+// A negative value is refused naming its key, and so is a pull_request other than on, off, required or merge and a land_notice other than all, per-task or off.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
 	if err != nil {
@@ -91,9 +91,9 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 		}
 	}
 	switch cfg.PullRequest {
-	case "on", "off", "required":
+	case "on", "off", "required", "merge":
 	default:
-		return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %q: must be on, off or required; way forward: fix it with lym config beam --set pull_request=<on|off|required>", "pull_request", cfg.PullRequest))
+		return Config{}, configengine.MarkInvalid(fmt.Errorf("beam config key %q is %q: must be on, off, required or merge; way forward: fix it with lym config beam --set pull_request=<on|off|required|merge>", "pull_request", cfg.PullRequest))
 	}
 	switch cfg.LandNotice {
 	case LandNoticeAll, LandNoticePerTask, LandNoticeOff:

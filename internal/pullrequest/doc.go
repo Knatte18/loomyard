@@ -1,7 +1,7 @@
 // Package pullrequest holds a run's pull request: its record on disk and the GitHub calls on it, for PR-Review, Finalize and pair teardown.
 //
 // Record is the run's one JSON file about its pull request, in the run's scratch directory so it is never tracked and goes with the pair.
-// It holds the pull request's number, URL, base and head branches, the head the PR-Review row last gated and pushed, the head whose gate failure was mailed, the interactive session's strand and session identity and engine, the operator's continue flag, and whether the row ended the review on that flag.
+// It holds the pull request's number, URL, base and head branches, the head the PR-Review row last gated and pushed, the head whose gate failure was mailed, the interactive session's strand and session identity and engine, the operator's continue flag, and whether the review ended, by the row on that flag or by Finalize on the record it opens itself for a parent that takes its pull request with no review.
 // ReadRecord, WriteRecord, UpdateRecord and RemoveRecord go through internal/state, so a key a newer binary wrote survives a rewrite;
 // an absent file reads as not found, UpdateRecord on an absent record returns ErrNoRecord and writes nothing, and RemoveRecord of an absent file is no error.
 //

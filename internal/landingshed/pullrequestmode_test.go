@@ -1,4 +1,4 @@
-// pullrequestmode_test.go covers ResolvePullRequest: the nine mode and field combinations, the warning for an off field under a required parent, a parent branch GitHub's rules guard, each origin fact that blocks a pull request, and an empty task branch.
+// pullrequestmode_test.go covers ResolvePullRequest: the mode and field combinations, the warning for an off field under a required or merge parent, a parent branch GitHub's rules guard, each origin fact that blocks a pull request, and an empty task branch.
 
 package landingshed
 
@@ -13,7 +13,7 @@ import (
 // TestResolvePullRequest stays serial: logcapture redirects the process-global logger.
 func TestResolvePullRequest(t *testing.T) {
 	tiergate.Require(t, 0)
-	const warnLine = "the entry's pull_request is off but the parent's beam.yaml pull_request is required or GitHub's rules for the parent branch require a pull request"
+	const warnLine = "the entry's pull_request is off but the parent's beam.yaml pull_request is required or merge, or GitHub's rules for the parent branch require a pull request"
 	githubOrigin := Origin{URL: "https://github.com/o/r.git", Upstream: true}
 
 	t.Run("ModeAndFieldCombinations", func(t *testing.T) {
@@ -25,6 +25,7 @@ func TestResolvePullRequest(t *testing.T) {
 			{"on", "", true}, {"on", "on", true}, {"on", "off", false},
 			{"off", "", false}, {"off", "on", true}, {"off", "off", false},
 			{"required", "", true}, {"required", "on", true}, {"required", "off", true},
+			{"merge", "", true}, {"merge", "on", true}, {"merge", "off", true},
 		}
 		for _, tt := range tests {
 			t.Run(tt.parent+"_"+tt.field, func(t *testing.T) {
@@ -33,7 +34,10 @@ func TestResolvePullRequest(t *testing.T) {
 				if got.Open != tt.wantOpen || got.Halt != "" || got.Reason == "" {
 					t.Errorf("ResolvePullRequest(%q, %q) = %+v; want Open %v, no halt and a reason", tt.parent, tt.field, got, tt.wantOpen)
 				}
-				wantWarn := tt.parent == "required" && tt.field == "off"
+				if wantAtOnce := tt.parent == "merge"; got.MergeAtOnce != wantAtOnce {
+					t.Errorf("ResolvePullRequest(%q, %q).MergeAtOnce = %v; want %v", tt.parent, tt.field, got.MergeAtOnce, wantAtOnce)
+				}
+				wantWarn := (tt.parent == "required" || tt.parent == "merge") && tt.field == "off"
 				if gotWarn := strings.Contains(logs.String(), warnLine); gotWarn != wantWarn {
 					t.Errorf("ResolvePullRequest(%q, %q) warned = %v; want %v\n%s", tt.parent, tt.field, gotWarn, wantWarn, logs.String())
 				}
@@ -118,6 +122,7 @@ func TestResolvePullRequest(t *testing.T) {
 			{"NoOriginUnderOnIsNo", "on", "", Origin{Upstream: true}, false, "no origin remote", false},
 			{"NoUpstreamUnderOnIsNo", "on", "", Origin{URL: githubOrigin.URL}, false, "no upstream", false},
 			{"NoUpstreamUnderRequiredHalts", "required", "", Origin{URL: githubOrigin.URL}, true, "no upstream", false},
+			{"NoUpstreamUnderMergeHalts", "merge", "", Origin{URL: githubOrigin.URL}, true, "the parent's beam.yaml pull_request is merge", false},
 			{"PushSkipUnderOnIsNo", "on", "", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, false, "push skip", false},
 			{"PushSkipUnderRequiredHalts", "required", "", Origin{URL: githubOrigin.URL, Upstream: true, PushSkipped: true}, true, "push skip", false},
 		}

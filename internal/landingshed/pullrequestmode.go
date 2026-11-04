@@ -14,11 +14,12 @@ import (
 // githubHost is the one host a landing opens a pull request on.
 const githubHost = "github.com"
 
-// Pull-request modes of the receiving branch's beam.yaml and the landing entry's field.
+// Pull-request modes of the receiving branch's beam.yaml and the landing entry's field; merge is beam.yaml's alone.
 const (
 	pullRequestOn       = "on"
 	pullRequestOff      = "off"
 	pullRequestRequired = "required"
+	pullRequestMerge    = "merge"
 )
 
 // Origin holds the facts about the origin a pull request needs.
@@ -35,6 +36,8 @@ type Origin struct {
 type PullRequestDecision struct {
 	// Open reports whether the landing goes through a pull request.
 	Open bool
+	// MergeAtOnce reports whether Finalize opens the pull request itself and squash-merges it on GitHub at once, with no review, as a parent whose beam.yaml pull_request is merge asks.
+	MergeAtOnce bool
 	// Reason names the values the decision read.
 	Reason string
 	// Halt is a Stuck reason with its way forward, non-empty only when the landing must stop.
@@ -42,18 +45,20 @@ type PullRequestDecision struct {
 }
 
 // ResolvePullRequest decides whether a landing goes through a pull request.
-// parentMode is the receiving branch's beam.yaml pull_request (on, off or required) and entryField the landing entry's pull_request (empty, on or off); slug is the landing run's slug.
+// parentMode is the receiving branch's beam.yaml pull_request (on, off, required or merge) and entryField the landing entry's pull_request (empty, on or off); slug is the landing run's slug.
 // parentRuleRequired reports whether GitHub's rules for the parent branch require a pull request, and counts as a required parent whatever beam.yaml says, since GitHub refuses the direct push a landing with no pull request ends in.
-// A required parent wants one whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
-// A field off under a required parent logs one Warn and still wants one.
+// A required or merge parent wants one whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
+// A merge parent's yes is marked MergeAtOnce.
+// A field off under a required or merge parent logs one Warn and still wants one.
 // A wanted pull request needs, in this order, an origin on github.com, an origin ParseOwnerRepo accepts, an upstream for the parent and no push skip.
 // A missing fact is a Halt when the parent is required or the field is on, and an origin on github.com that ParseOwnerRepo refuses is always a Halt; any other missing fact under an on parent alone is no pull request, naming the fact.
 // A wanted pull request on a task branch with no commit beyond its parent, taskHasCommits false, is no pull request before any origin fact is judged, since GitHub opens none on an empty branch.
 // It reads no file: the caller reads the parent's beam.yaml, the entry, the parent branch's rules and the task branch and tells the values.
 func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
-	required := parentMode == pullRequestRequired || parentRuleRequired
+	mergeAtOnce := parentMode == pullRequestMerge
+	required := parentMode == pullRequestRequired || mergeAtOnce || parentRuleRequired
 	if required && entryField == pullRequestOff {
-		logger.Warn("landingshed: the entry's pull_request is off but the parent's beam.yaml pull_request is required or GitHub's rules for the parent branch require a pull request, so a pull request is still required", "slug", slug)
+		logger.Warn("landingshed: the entry's pull_request is off but the parent's beam.yaml pull_request is required or merge, or GitHub's rules for the parent branch require a pull request, so a pull request is still required", "slug", slug)
 	}
 
 	field := entryField
@@ -63,8 +68,8 @@ func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired 
 	wanted := false
 	demand := ""
 	switch {
-	case parentMode == pullRequestRequired:
-		wanted, demand = true, "the parent's beam.yaml pull_request is required"
+	case parentMode == pullRequestRequired, mergeAtOnce:
+		wanted, demand = true, fmt.Sprintf("the parent's beam.yaml pull_request is %s", parentMode)
 	case parentRuleRequired:
 		wanted, demand = true, "GitHub's rules for the parent branch require a pull request"
 	case entryField == pullRequestOn:
@@ -85,7 +90,7 @@ func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired 
 		if parentRuleRequired {
 			rule = ", GitHub's rules for the parent branch require one"
 		}
-		return PullRequestDecision{Open: true, Reason: fmt.Sprintf("pull request on: the parent's beam.yaml pull_request is %s%s, the entry's pull_request is %s and the origin is %s/%s", parentMode, rule, field, owner, repo)}
+		return PullRequestDecision{Open: true, MergeAtOnce: mergeAtOnce, Reason: fmt.Sprintf("pull request on: the parent's beam.yaml pull_request is %s%s, the entry's pull_request is %s and the origin is %s/%s", parentMode, rule, field, owner, repo)}
 	}
 
 	demanded := required || entryField == pullRequestOn

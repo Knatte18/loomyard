@@ -196,6 +196,18 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 			&repairSeams{holds: true, lacks: []string{squash, "other222"}},
 			[]string{"git rebase --onto " + squash + "~1 " + squash + " main", "git rebase --abort", `lym fabric remove me`},
 		},
+		{
+			"a protected branch refusal names the merge mode and the hand landing", false,
+			errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"), nil, shedengine.Stuck,
+			protectedParentWayForward("task-branch", "main", false), nil,
+			[]string{"protected branch hook declined", `"lym config beam --set pull_request=merge"`, "--layer default", `"git reset --keep origin/main"`, `"lym loom resume"`},
+		},
+		{
+			"a classified repository-rules refusal names the merge mode in place of its class's way forward", false,
+			&fabricengine.PushFailedError{Record: fabricengine.FailedPush{Class: fabricengine.PushFailureOther}, Err: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (push declined due to repository rule violations)")},
+			nil, shedengine.Stuck, protectedParentWayForward("task-branch", "main", false), &repairSeams{holds: true, lacks: []string{squash}},
+			[]string{"repository rule violations", "pull_request=merge"},
+		},
 		{"origin's parent lacking the work names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{lacks: []string{squash}}, nil},
 		{"a failed read of origin's parent names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holdsErr: errors.New("fetch failed")}, nil},
 		{"a failed commit listing names no repair", false, errors.New("remote rejected"), nil, shedengine.Stuck, "", &repairSeams{holds: true, lacksErr: errors.New("no branch")}, nil},
@@ -252,8 +264,10 @@ func TestFinalize_MergeMarkPushOrderAndVerdict(t *testing.T) {
 					t.Errorf("reason = %q; want the repair note to carry %q", reason, want)
 				}
 			}
-			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != (len(tt.wantRepair) > 0) {
-				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, len(tt.wantRepair) > 0)
+			// A case with an exact way forward carries no adopter-first repair note; its wantRepair strings belong to that way forward.
+			wantNote := len(tt.wantRepair) > 0 && tt.wantWayForward == ""
+			if hasNote := strings.Contains(reason, "duplicates it"); hasNote != wantNote {
+				t.Errorf("reason = %q; repair note present = %v; want %v", reason, hasNote, wantNote)
 			}
 			if strings.Contains(reason, "lym batten cancel") {
 				t.Errorf("reason = %q; want it free of `lym batten cancel`, since a cancel lifts the owner pause of a landed run", reason)

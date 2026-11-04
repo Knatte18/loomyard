@@ -169,9 +169,11 @@ func NewFinalize(deps Deps) (*Finalize, error) {
 //
 // Right after the lock it follows the pull-request resolver, asked with GitHub's rules for the parent branch: a no closes a recorded open pull request, drops the record and lands locally;
 // a rules read that fails for a reason other than a transient or token one halts when a pull request is recorded, and closes nothing;
-// a yes needs the recorded pull request and halts without one, and halts on one closed without the operator's ending;
+// a yes needs the recorded pull request and halts without one, and halts on one closed without the operator's ending, except under a parent that takes its pull request at once, which reopens a closed one only after the owner checks, just before the merge;
 // a closed pull request whose record carries the operator's ending is reopened and merged on GitHub like an open one, and a merged one lands through the already-landed path.
 // An open pull request is merged on GitHub just before the parent-side merge, with the pushed task head as its expected head, and the parent pair is fast-forwarded to the merge, so the parent-side merge then finds the parent holding the task's work.
+// A parent whose beam.yaml pull_request is merge needs no record: Finalize opens the pull request itself at that point and squash-merges it with no review.
+// A parent push the remote refuses as a protected branch is Stuck naming that setting, unless the landing already went through it.
 //
 // Finalize is idempotent over an already-landed parent: when the parent already contains the task's
 // changes -- an operator squash-merged the task on the remote, or an earlier Finalize landed and
@@ -331,12 +333,13 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	// Step 6: the parent-side merge, this producer's own merge critical section. Message is set
 	// whether or not Config.Squash is true -- it is the conclude-commit message for both merge
 	// shapes, so gating it on Squash would leave the non-squash landing commit with an unset message.
-	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash, Message: landingMessage}
+	// A parent that takes its pull request at once always squashes on GitHub, so the parent-side merge squashes too, whatever landing.yaml says.
+	mergeOpts := fabricengine.MergeOptions{Squash: fz.deps.Config.Squash || landing.atOnce, Message: landingMessage}
 	_, mergeErr := parentHandle.Merge(fz.deps.TaskBranch, mergeOpts)
 	if mergeErr == nil {
 		fz.markTaskDone()
 		fz.recordLanding(parentHandle)
-		return end(fz.pushParent(ctx, parentHandle, notice))
+		return end(fz.pushParent(ctx, parentHandle, notice, landing.atOnce))
 	}
 
 	// Retry: on the merge-in-required error, re-run steps 2 to 5 under the same lock and retry the parent-side merge exactly once.
@@ -359,7 +362,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 		if retryErr == nil {
 			fz.markTaskDone()
 			fz.recordLanding(parentHandle)
-			return end(fz.pushParent(ctx, parentHandle, notice))
+			return end(fz.pushParent(ctx, parentHandle, notice, landing.atOnce))
 		}
 		mergeErr = retryErr
 	}
@@ -620,12 +623,24 @@ func (fz *Finalize) recordLanding(parentHandle parentMerger) {
 // When origin's parent already holds the task's work, the reason also carries the repair of an adopter-first landing.
 // Deps.PushSkipped suppresses the push.
 //
+// A push the remote refuses as a protected branch carries protectedParentWayForward alone, in place of any class's way forward and the repair note.
+// parentMerges is true when the landing went through a parent that takes its pull request at once, so that way forward leaves out the advice to set that mode.
 // On its Done return only, a non-empty notice is queued through Deps.Notify, and a failure there is a logged warning that never changes the verdict.
 // The push is the parent branch's own, whether the landing went through a pull request merged on GitHub or not.
-func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, notice string, parentMerges bool) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if _, err := parentHandle.PushBranch(fabricengine.SyncOptions{SkipPush: fz.deps.PushSkipped}); err != nil {
 		if terr := transientFailure(ctx, finalizeName, "push parent branch", err); terr != nil {
 			return "", shedengine.OutputPointer{}, terr
+		}
+		if protectedBranchRefusal(err) {
+			cause := err
+			var failed *fabricengine.PushFailedError
+			if errors.As(err, &failed) {
+				cause = failed.Err
+			}
+			reason := fmt.Sprintf("parent branch %q was merged locally but the remote refused its push as a protected branch: %v; %s",
+				fz.deps.ParentBranch, cause, protectedParentWayForward(fz.deps.TaskBranch, fz.deps.ParentBranch, parentMerges))
+			return fz.stuckOrCancelled(ctx, reason, "error", err)
 		}
 		reason := fmt.Sprintf("parent branch %q was merged locally but its push failed: %v", fz.deps.ParentBranch, err)
 		// A classified failure's text already ends in the way forward of its class, and a plain push is what a hold-back refuses.
@@ -646,6 +661,30 @@ func (fz *Finalize) pushParent(ctx context.Context, parentHandle parentMerger, n
 		}
 	}
 	return shedengine.Done, shedengine.OutputPointer{}, nil
+}
+
+// protectedBranchMarkers are the lower-case texts of GitHub's push rejection for a branch that takes changes only through a pull request: classic branch protection and repository rules.
+var protectedBranchMarkers = []string{"protected branch", "repository rule violations"}
+
+// protectedBranchRefusal reports whether err is a push the remote refused because the branch is protected.
+func protectedBranchRefusal(err error) bool {
+	text := strings.ToLower(err.Error())
+	for _, marker := range protectedBranchMarkers {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// protectedParentWayForward is the way forward of a parent push refused as a protected branch, for task landing on parent.
+// It names beam.yaml's pull_request=merge, at the parent's worktree or the hub's default layer, unless parentMerges says the parent already has it, and the hand landing of the work the local parent alone holds.
+func protectedParentWayForward(task, parent string, parentMerges bool) string {
+	handLanding := fmt.Sprintf(`this run's work is on the local parent only, so merge task branch %q into %q through a pull request on GitHub by hand, then run "git fetch origin" and "git reset --keep origin/%s" in the parent's worktree, then "lym loom resume" in the task worktree, which finds the work on the parent and ends the landing`, task, parent, parent)
+	if parentMerges {
+		return "way forward: " + handLanding
+	}
+	return `way forward: mark the parent to land through a pull request lym squash-merges on GitHub at once, with "lym config beam --set pull_request=merge" in the parent's worktree, or for every branch of the hub with "lym config beam --layer default --set pull_request=merge" from the prime; ` + handLanding
 }
 
 // recheckLock re-reads the parent lock record immediately before a landing attempt.

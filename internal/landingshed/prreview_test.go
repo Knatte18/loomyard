@@ -43,6 +43,8 @@ type fakePullRequestAPI struct {
 	used    map[string]int
 	// statusCalls counts the Status calls, which the once-a-minute poll bound is read from.
 	statusCalls int
+	// onCall, when set, is told each method's name as it is called.
+	onCall func(method string)
 }
 
 var _ pullrequest.API = (*fakePullRequestAPI)(nil)
@@ -51,6 +53,9 @@ func (f *fakePullRequestAPI) next(method, record string) scriptedCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, method+" "+record)
+	if f.onCall != nil {
+		f.onCall(method)
+	}
 	if method == "Status" {
 		f.statusCalls++
 	}
@@ -232,6 +237,10 @@ func TestPRReview_Call(t *testing.T) {
 			name: "FieldOnWithALocalOriginHaltsWithBothWaysForward", parentMode: "off", field: "on", origin: localOrigin,
 			wantOutcome: shedengine.Stuck, wantHalt: true,
 			wantReason: []string{"lym loom resume", "lym batten cancel the-slug"},
+		},
+		{
+			name: "AMergeParentLeavesThePullRequestToFinalizeWithNoPushOrGitHubCall", parentMode: "merge", origin: githubOrigin,
+			wantOutcome: shedengine.Done, wantNoRecord: true,
 		},
 		{
 			name: "FirstYesPushesCreatesAndRecordsThePullRequest", parentMode: "on", origin: githubOrigin,

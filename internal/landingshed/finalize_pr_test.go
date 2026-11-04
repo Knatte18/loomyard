@@ -32,6 +32,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 	const recordedURL = "https://github.com/acme/widgets/pull/7"
 	const wantCredit = "Created using\n - LoomYard\n - Test Author <test@example.com>"
 	const wantGitHubMerge = "Merge 7|task-head|true|A landing title (#7)|A landing body.\n\n" + wantCredit
+	const wantCreate = "Create task-branch main|A landing title|A landing body.\n\n" + wantCredit
 	const wantGitHubMergeWithVerdict = "Merge 7|task-head|true|A landing title (#7)|A landing body.\n\n" + testVerdict + "\n\n" + wantCredit
 	statusScript := func(calls ...scriptedCall) map[string][]scriptedCall {
 		return map[string][]scriptedCall{"Status": calls}
@@ -47,6 +48,8 @@ func TestFinalize_PullRequest(t *testing.T) {
 		return rec
 	}
 	reviewEnded := func(r *pullrequest.Record) { r.ReviewEnded = true }
+	// openedRecord is the record Finalize writes for a pull request it opens itself under a merge parent.
+	openedRecord := &pullrequest.Record{Number: 7, URL: recordedURL, Base: "main", Head: "task-branch", GatedHead: "task-head", ReviewEnded: true}
 	withContinue := func(r *pullrequest.Record) { r.Continue = true }
 	refusal := func(kind pullrequest.RefusalKind, message string) scriptedCall {
 		return scriptedCall{err: &pullrequest.MergeRefusal{Kind: kind, Message: message}}
@@ -72,6 +75,16 @@ func TestFinalize_PullRequest(t *testing.T) {
 		taskEmpty bool
 		// taskErr makes the TaskHasCommits seam fail.
 		taskErr error
+		// parentPushErr makes the parent branch's push fail.
+		parentPushErr error
+		// wantSquashedMerges asserts every parent-side merge was asked to squash.
+		wantSquashedMerges bool
+		// parentOwnedElsewhere makes the owner checks find the parent owned by another machine.
+		parentOwnedElsewhere bool
+		// wantRecord is the pull request record the landing must leave behind.
+		wantRecord *pullrequest.Record
+		// wantOwnerHalt makes the halt reason open with OwnerHaltPrefix instead of LandingStopPrefix.
+		wantOwnerHalt bool
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
@@ -128,6 +141,31 @@ func TestFinalize_PullRequest(t *testing.T) {
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"has no pull request recorded", "lym loom goto PR-Review"},
 		},
 		{
+			name: "AMergeParentWithNoRecordOpensThePullRequestAndSquashMergesItWhateverTheSquashSetting", parentMode: "merge", squashOff: true,
+			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push", wantRecordKept: true,
+			wantSquashedMerges: true, wantRecord: openedRecord,
+			wantCalls: []string{"FindOpen task-branch main", wantCreate, wantGitHubMerge},
+		},
+		{
+			name: "AMergeParentFindsTheOpenPullRequestOnTheTaskBranchSetsItsTextAndMergesIt", parentMode: "merge",
+			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}, found: true}}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push", wantRecordKept: true, wantRecord: openedRecord,
+			wantCalls: []string{"FindOpen task-branch main", "Edit 7|A landing title|A landing body.\n\n" + wantCredit, wantGitHubMerge},
+		},
+		{
+			name: "AFailedOpenUnderAMergeParentHaltsNamingGitHubsMessageAndMergesNothing", parentMode: "merge",
+			scripts:     map[string][]scriptedCall{"Create": {{err: githubErrorResponse(http.StatusUnprocessableEntity, "No commits between main and task-branch")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"open the pull request", "No commits between", "lym loom resume"},
+			wantOrder: "task-push", wantCalls: []string{"FindOpen task-branch main", wantCreate},
+		},
+		{
+			name: "AMethodRefusalUnderAMergeParentNamesTheRepositorySettingsAndNotTheSquashSetting", parentMode: "merge", record: recorded(), squashOff: true,
+			scripts:     mergeScript(open, refusal(pullrequest.RefusalMethod, "Squash merges are not allowed")),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Squash merges are not allowed", "allow squash merging", "lym loom resume"},
+			wantNotInReason: []string{"lym config landing"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
 			name: "YesWithAClosedRecordWithoutTheOperatorsEndingHaltsNamingReopenAndCancel", parentMode: "on", record: recorded(), scripts: statusScript(closed),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen it on GitHub", "lym loom goto PR-Review", "lym batten cancel me"}, wantCalls: []string{"Status 7"},
 		},
@@ -138,14 +176,47 @@ func TestFinalize_PullRequest(t *testing.T) {
 		{
 			name: "TheOperatorsEndingOnAClosedPullRequestReopensItAndMergesOnGitHub", parentMode: "on", record: recorded(reviewEnded),
 			scripts:     map[string][]scriptedCall{"Status": {closed}, "Merge": {{}}},
-			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "reopen,task-push,fast-forward,merge,mark,push",
 			wantCalls: []string{"Status 7", "Reopen 7", wantGitHubMerge},
+		},
+		{
+			name: "AReopenedPullRequestUnderAMergeParentSquashMergesWhateverTheSquashSetting", parentMode: "merge", record: recorded(reviewEnded), squashOff: true,
+			scripts:     map[string][]scriptedCall{"Status": {closed}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "task-push,reopen,fast-forward,merge,mark,push",
+			wantCalls: []string{"Status 7", "Reopen 7", wantGitHubMerge},
+		},
+		{
+			name: "AMergeParentReopensAClosedRecordedPullRequestWithNoOperatorEndingAfterTheTaskPush", parentMode: "merge", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {closed}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,reopen,fast-forward,merge,mark,push",
+			wantCalls: []string{"Status 7", "Reopen 7", wantGitHubMerge},
+		},
+		{
+			name: "AnOwnerHaltUnderAMergeParentReopensNothingOnGitHub", parentMode: "merge", record: recorded(), scripts: statusScript(closed), parentOwnedElsewhere: true,
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantOwnerHalt: true, wantReason: []string{"owned by machine"},
+			wantOrder: "", wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AFailedReopenUnderAMergeParentHaltsNamingGitHubsMessageAndMergesNothing", parentMode: "merge", record: recorded(),
+			scripts:     map[string][]scriptedCall{"Status": {closed}, "Reopen": {{err: errors.New("state cannot be changed")}}},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen the pull request", "state cannot be changed", "lym loom resume"},
+			wantOrder: "task-push,reopen", wantCalls: []string{"Status 7", "Reopen 7"},
+		},
+		{
+			name: "AProtectedParentPushRefusalUnderAMergeParentOmitsTheSettingAdvice", parentMode: "merge", record: recorded(), scripts: mergeScript(open, scriptedCall{}),
+			parentPushErr: errors.New("gitrepo: push rejected: ! [remote rejected] main -> main (protected branch hook declined)"),
+			wantOutcome:   shedengine.Stuck, wantMerges: 1, wantReason: []string{"protected branch hook declined", `"git reset --keep origin/main"`},
+			wantNotInReason: []string{"lym config beam"}, wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
 		{
 			name: "AFailedReopenHaltsNamingGitHubsMessageAndMergesNothing", parentMode: "on", record: recorded(reviewEnded),
 			scripts:     map[string][]scriptedCall{"Status": {closed}, "Reopen": {{err: errors.New("state cannot be changed")}}},
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen the pull request", "state cannot be changed", "lym loom resume"},
-			wantCalls: []string{"Status 7", "Reopen 7"},
+			wantOrder: "reopen", wantCalls: []string{"Status 7", "Reopen 7"},
+		},
+		{
+			name: "AMergedPullRequestUnderAMergeParentLandsThroughASquashingParentSideMerge", parentMode: "merge", record: recorded(), squashOff: true, scripts: statusScript(merged),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "merge,mark,push", wantCalls: []string{"Status 7"},
 		},
 		{
 			name: "AMergedPullRequestMakesNoGitHubMergeAndLandsThroughTheParentSideMerge", parentMode: "on", record: recorded(), scripts: statusScript(merged),
@@ -240,9 +311,17 @@ func TestFinalize_PullRequest(t *testing.T) {
 			t.Parallel()
 			var order []string
 			api := &fakePullRequestAPI{scripts: tt.scripts}
+			api.onCall = func(method string) {
+				if method == "Reopen" {
+					order = append(order, "reopen")
+				}
+			}
 			deps := newTestDeps(t)
 			deps.Slug = "me"
 			deps.Config.Squash = !tt.squashOff
+			if tt.parentOwnedElsewhere {
+				deps.ParentOwner = func() (ParentOwnership, error) { return ParentOwnership{Owner: "other-machine"}, nil }
+			}
 			if tt.verdict != "" {
 				deps.DriftVerdict = func() (string, error) { return tt.verdict, nil }
 			}
@@ -289,7 +368,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 			if merges == nil {
 				merges = []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}
 			}
-			merger := &recordingParentMerger{results: merges, order: &order, ffErr: tt.ffErr}
+			merger := &recordingParentMerger{results: merges, order: &order, ffErr: tt.ffErr, pushErr: tt.parentPushErr}
 			res := &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}
 			fz := &Finalize{deps: deps, resolver: res, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
@@ -305,8 +384,12 @@ func TestFinalize_PullRequest(t *testing.T) {
 				if outcome != tt.wantOutcome || pointer.Halt != tt.wantHalt {
 					t.Fatalf("Call() = %q, halt %v; want %q, halt %v (reason %q)", outcome, pointer.Halt, tt.wantOutcome, tt.wantHalt, pointer.Reason)
 				}
-				if tt.wantHalt && !strings.HasPrefix(pointer.Reason, LandingStopPrefix) {
-					t.Errorf("Call() reason %q does not open with %q", pointer.Reason, LandingStopPrefix)
+				wantPrefix := LandingStopPrefix
+				if tt.wantOwnerHalt {
+					wantPrefix = OwnerHaltPrefix
+				}
+				if tt.wantHalt && !strings.HasPrefix(pointer.Reason, wantPrefix) {
+					t.Errorf("Call() reason %q does not open with %q", pointer.Reason, wantPrefix)
 				}
 				for _, want := range tt.wantReason {
 					if !strings.Contains(pointer.Reason, want) {
@@ -329,6 +412,20 @@ func TestFinalize_PullRequest(t *testing.T) {
 			}
 			if len(merger.calls) != tt.wantMerges {
 				t.Errorf("parent-side merges = %d; want %d", len(merger.calls), tt.wantMerges)
+			}
+			for i, call := range merger.calls {
+				if tt.wantSquashedMerges && !call.opts.Squash {
+					t.Errorf("parent-side merge %d Squash = false; want true", i)
+				}
+			}
+			if tt.wantRecord != nil {
+				got, found, rerr := pullrequest.ReadRecord(deps.PullRequest.RecordPath, deps.PullRequest.RecordLockPath)
+				key := func(r pullrequest.Record) string {
+					return fmt.Sprintf("%d|%s|%s|%s|%s|%t", r.Number, r.URL, r.Base, r.Head, r.GatedHead, r.ReviewEnded)
+				}
+				if rerr != nil || !found || key(got) != key(*tt.wantRecord) {
+					t.Errorf("ReadRecord() = %q, found %v, error %v; want %q", key(got), found, rerr, key(*tt.wantRecord))
+				}
 			}
 			if !lockHeldAtMode {
 				t.Error("the parent lock was not held when the pull-request mode was read; want the decision made under the lock")
