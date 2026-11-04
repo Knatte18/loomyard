@@ -26,7 +26,7 @@ const (
 
 // PRReview is the ShedProducer that lands a run through a GitHub pull request when ResolvePullRequest says so.
 // A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing; a yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
-// The wait gates and pushes the agent's commits, and ends when the pull request is merged or approved, or closed or continued by the operator.
+// The wait gates and pushes the agent's commits, sets the title and body again when the text yielded from the change description, the regression check and the credit block changes, and ends when the pull request is merged or approved, or closed or continued by the operator.
 // A reopen request, read on entry and at every wake, ends the row first: it sends the run back through the row's reroute edge, the pull request kept open as a draft or closed.
 // It takes no parent lock.
 type PRReview struct {
@@ -225,7 +225,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		// The operator already ended this review.
 		// A head past the one gated then means commits were added since that need review, so the review starts afresh.
 		if head == rec.GatedHead {
-			return p.wait(ctx, api, rec, nil, time.Time{})
+			return p.wait(ctx, api, rec, nil, time.Time{}, prText{})
 		}
 		if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
 			return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
@@ -233,19 +233,10 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		found = false
 	}
 
-	summary, err := summaryparser.Parse(p.deps.DescriptionPath)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the change description: %w", p.name, err)
-	}
-	credit, err := p.deps.creditBlock()
+	text, err := p.pullRequestText()
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
 	}
-	verdict, err := p.deps.driftVerdict()
-	if err != nil {
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err)
-	}
-	body := bodyWithCredit(withSection(summary.Body, verdict), credit)
 
 	// A recorded pull request GitHub no longer reports open is left as it is, for the wait to judge.
 	var ref pullrequest.Ref
@@ -272,7 +263,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 					return "", shedengine.OutputPointer{}, err
 				}
 			}
-			return p.wait(ctx, api, rec, entryStatus, entryReadAt)
+			return p.wait(ctx, api, rec, entryStatus, entryReadAt, prText{})
 		}
 		ref = pullrequest.Ref{Number: rec.Number, URL: rec.URL}
 	} else {
@@ -282,7 +273,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 		ref = existing
 		if !open {
-			ref, err = api.Create(ctx, p.deps.TaskBranch, p.deps.ParentBranch, summary.Title, body)
+			ref, err = api.Create(ctx, p.deps.TaskBranch, p.deps.ParentBranch, text.title, text.body)
 			if err != nil {
 				return p.githubFailure(ctx, "open the pull request", err)
 			}
@@ -290,7 +281,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 		}
 	}
 	if editTitleAndBody {
-		if err := api.Edit(ctx, ref.Number, summary.Title, body); err != nil {
+		if err := api.Edit(ctx, ref.Number, text.title, text.body); err != nil {
 			return p.githubFailure(ctx, "set the pull request's title and body", err)
 		}
 	}
@@ -304,7 +295,61 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 	if rec, err = p.ensureSession(ctx, rec); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	return p.wait(ctx, api, rec, entryStatus, entryReadAt)
+	return p.wait(ctx, api, rec, entryStatus, entryReadAt, text)
+}
+
+// prText is a pull request's title and body.
+// A title is never empty, so the zero prText stands for a text not known.
+type prText struct {
+	title string
+	body  string
+}
+
+// pullRequestText returns the title and body the pull request carries for the change description as it reads now: the description's title, and its body followed by the regression check and the credit block.
+func (p *PRReview) pullRequestText() (prText, error) {
+	summary, err := summaryparser.Parse(p.deps.DescriptionPath)
+	if err != nil {
+		return prText{}, fmt.Errorf("read the change description: %w", err)
+	}
+	credit, err := p.deps.creditBlock()
+	if err != nil {
+		return prText{}, err
+	}
+	verdict, err := p.deps.driftVerdict()
+	if err != nil {
+		return prText{}, err
+	}
+	return prText{title: summary.Title, body: bodyWithCredit(withSection(summary.Body, verdict), credit)}, nil
+}
+
+// syncText sets the pull request's title and body again when the change description no longer yields the text they were last set to, so an edit of the description reaches the pull request at the next poll.
+// A wait that knows no last-set text takes the description's present text as it, and edits nothing.
+// A text that cannot be built is logged once per episode and left for a later poll, since the agent may be mid-edit; a failed edit is judged as pollFailure judges one, with a transient failure's Warn logged once per episode of failed edits.
+// It reports whether it ended the call.
+func (p *PRReview) syncText(ctx context.Context, api pullrequest.API, state *prWaitState, number int) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+	text, err := p.pullRequestText()
+	if err != nil {
+		if !state.textWarned {
+			logger.Warn("landingshed: no pull request text could be built, so the pull request keeps its title and body", "row", p.name, "cause", err)
+			state.textWarned = true
+		}
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	state.textWarned = false
+	switch {
+	case state.synced == prText{}:
+		state.synced = text
+		return "", shedengine.OutputPointer{}, false, nil
+	case text == state.synced:
+		state.editWarned = false
+		return "", shedengine.OutputPointer{}, false, nil
+	}
+	if err := api.Edit(ctx, number, text.title, text.body); err != nil {
+		return p.pollFailure(ctx, &state.editWarned, "set the pull request's title and body", err)
+	}
+	state.synced = text
+	state.editWarned = false
+	return "", shedengine.OutputPointer{}, false, nil
 }
 
 // pushHalt is the Stuck verdict of a push that failed for a reason other than a transient one.
@@ -400,22 +445,29 @@ type prWaitState struct {
 	lastPoll time.Time
 	// transientWarned is set after a transient poll failure logged its Warn and cleared by the next good poll.
 	transientWarned bool
+	// synced is the title and body the pull request was last set to, zero until the wait knows them.
+	synced prText
+	// textWarned is set after a failure to build the pull request text logged its Warn and cleared by the next build that succeeds.
+	textWarned bool
+	// editWarned is set after a transient failure of the title and body edit logged its Warn and cleared by the next edit that succeeds.
+	editWarned bool
 }
 
 // wait holds the call on the pull request until the review ends.
 // Each wake reads the pull request's status at most once a minute, gates and pushes the agent's new commits unless the pull request is merged, and judges the status: merged, closed, approved or continued by the operator is Done or Stuck, anything else keeps waiting.
 // A wake with a head to gate reads the status whatever the minute says.
 // A change to the record ends the sleep between two wakes early, so a continue flag the agent writes is read within a second.
-// rec is the record the wait starts from, and entryStatus and entryReadAt are the status Call read and its time, nil and zero when Call read none.
+// A poll that finds the pull request open and the review going sets its title and body again when the text yielded from the change description, the regression check and the credit block changed since they were last set.
+// rec is the record the wait starts from, entryStatus and entryReadAt are the status Call read and its time, nil and zero when Call read none, and synced is the title and body Call set, zero when it set none.
 // A cancelled context is an error.
-func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time) (shedengine.Outcome, shedengine.OutputPointer, error) {
+func (p *PRReview) wait(ctx context.Context, api pullrequest.API, rec pullrequest.Record, entryStatus *pullrequest.Status, entryReadAt time.Time, synced prText) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	label := fmt.Sprintf("PR #%d", rec.Number)
 	p.gate.markWait(label)
 	defer p.gate.markWait("")
 	changes, stopWatch := p.deps.PullRequest.RecordChanges()
 	defer stopWatch()
 
-	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt}
+	state := prWaitState{continueSeen: rec.Continue, pending: entryStatus, lastPoll: entryReadAt, synced: synced}
 	for {
 		outcome, pointer, ended, err := p.wake(ctx, api, &state, label)
 		if err != nil || ended {
@@ -500,6 +552,11 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	state.interval = nextPRWait(state.interval, moved)
 	if !polled {
 		return "", shedengine.OutputPointer{}, false, nil
+	}
+	if status.State == pullrequest.StateOpen && !rec.ReviewEnded && !rec.Continue {
+		if outcome, pointer, ended, err := p.syncText(ctx, api, state, rec.Number); err != nil || ended {
+			return outcome, pointer, ended, err
+		}
 	}
 
 	// The session is stopped before the read that may end the review, so the agent cannot change the tree between the read and the verdict.
@@ -639,7 +696,7 @@ func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *p
 	state.lastPoll = now
 	status, err := api.Status(ctx, rec.Number)
 	if err != nil {
-		outcome, pointer, ended, ferr := p.pollFailure(ctx, state, "read the pull request's status", err)
+		outcome, pointer, ended, ferr := p.pollFailure(ctx, &state.transientWarned, "read the pull request's status", err)
 		return pullrequest.Status{}, false, outcome, pointer, ended, ferr
 	}
 	state.transientWarned = false
@@ -647,16 +704,16 @@ func (p *PRReview) pollStatus(ctx context.Context, api pullrequest.API, state *p
 }
 
 // pollFailure judges a failed GitHub call of the wait named by action.
-// A token failure and any other failure but a transient one end the call as githubFailure judges them; a transient failure logs one Warn per episode and lets the wait go on.
+// A token failure and any other failure but a transient one end the call as githubFailure judges them; a transient failure logs one Warn per episode, tracked in warned, and lets the wait go on.
 // It reports whether it ended the call.
-func (p *PRReview) pollFailure(ctx context.Context, state *prWaitState, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
+func (p *PRReview) pollFailure(ctx context.Context, warned *bool, action string, err error) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	if cerr := cancelErr(ctx, p.name); cerr != nil {
 		return "", shedengine.OutputPointer{}, true, cerr
 	}
 	if !tokenFailure(err) && shedtransient.Class(err) != "" {
-		if !state.transientWarned {
+		if !*warned {
 			logger.Warn("landingshed: a GitHub call failed transiently, the wait goes on", "row", p.name, "action", action, "cause", err)
-			state.transientWarned = true
+			*warned = true
 		}
 		return "", shedengine.OutputPointer{}, false, nil
 	}

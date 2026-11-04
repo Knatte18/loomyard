@@ -20,7 +20,7 @@ const (
 	SwitchNone Switch = ""
 	// SwitchDenyPython marks the row the python switch of the shuttle config turns off.
 	SwitchDenyPython Switch = "deny_python"
-	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and gh.
+	// SwitchDenyPublish marks the row a launch spec turns on to keep a session from publishing: git push and the gh calls beyond reads, comments and title and body edits.
 	SwitchDenyPublish Switch = "deny_publish"
 )
 
@@ -194,15 +194,128 @@ const codexSteerHeadlessClaudeDeny = headlessClaudeRefusal + "hand the work to a
 // A word that crosses a separator ends the match, so a print flag of a later command passes.
 const headlessClaudeCommandPattern = commandPositionPattern + `claude(\.exe)?([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+(-[a-z]*p[a-z]*|--print)([^A-Za-z0-9_./-]|$)`
 
-// steerPublishDeny refuses a Bash git push or gh; it must contain no single/double quote or backslash (checked at init).
-const steerPublishDeny = "git push and gh are refused in this session: lym pushes the task branch after it gates your commits, and only lym opens, merges or closes the pull request; commit your change and tell the operator"
+// githubAllowed maps each gh command the publish row lets through to the subcommands of it the row lets through, nil for every subcommand.
+// They read GitHub, comment on a pull request or edit its title and body; every other gh command and subcommand is refused.
+// Each word is lowercase letters only, which notWordPattern relies on.
+var githubAllowed = map[string][]string{
+	"api": nil,
+	"pr":  {"checks", "comment", "diff", "edit", "list", "review", "view"},
+	"run": {"view"},
+}
 
-// noticePublishDeny announces the publish deny in the same wording as its steer.
-const noticePublishDeny = steerPublishDeny + "."
+// steerPublishDeny returns the publish row's steer, naming the gh calls githubAllowed lets through; it must contain no single/double quote or backslash (checked at init).
+func steerPublishDeny() string {
+	commands := slices.Sorted(maps.Keys(githubAllowed))
+	calls := make([]string, len(commands))
+	for i, command := range commands {
+		calls[i] = "gh " + command
+		if subcommands := githubAllowed[command]; subcommands != nil {
+			calls[i] += " " + joinWords(subcommands, "or")
+		}
+	}
+	return "git push is refused in this session, and gh runs only its reads and comments: " + joinWords(calls, "and") +
+		"; gh api takes no writing method, no --input and no GraphQL mutation, gh pr review no approval or change request, and gh pr edit no new base." +
+		" lym pushes the task branch after it gates your commits, and only lym opens, merges or closes the pull request; commit your change and tell the operator"
+}
 
-// publishCommandPattern is the grep -E pattern the publish deny matches against the raw PreToolUse payload JSON.
-// It matches, in command position and optionally path-prefixed, either git followed by any flag words, with -C taking its directory word, and then push as a whole word, or gh as a whole word.
-const publishCommandPattern = commandPositionPattern + `(git([[:space:]]+(-C[[:space:]=]+` + goWordPattern + `|-` + goWordPattern + `))*[[:space:]]+push|gh)([^A-Za-z0-9_./-]|$)`
+// joinWords joins words with commas and conjunction before the last, as in a, b or c.
+func joinWords(words []string, conjunction string) string {
+	if len(words) == 1 {
+		return words[0]
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " " + conjunction + " " + words[len(words)-1]
+}
+
+// wordEndPattern matches what ends a command-line word: a character no word, path or flag holds, or the end of the payload.
+const wordEndPattern = `([^A-Za-z0-9_./-]|$)`
+
+// ghWordClass is the grep -E bracket body of the characters one gh argument word holds: neither whitespace, a separator, a quote, a redirect nor a backtick.
+const ghWordClass = `[:space:]"\\;&|()<>` + "`"
+
+// ghRepoFlagsPattern matches any run of -R or --repo flags with their repository word, the one flag gh takes between a command and its subcommand.
+const ghRepoFlagsPattern = `([[:space:]]+(-R|--repo)([[:space:]]+|=)[^` + ghWordClass + `]+)*`
+
+// ghArgumentsPattern matches any argument words after a gh subcommand and the whitespace before the next word, on one command.
+const ghArgumentsPattern = `([[:space:]]+` + shellArgumentPattern + `)*[[:space:]]+`
+
+// ghWriteMethodPattern matches an HTTP method that writes, in upper or lower case.
+const ghWriteMethodPattern = `([Pp][Oo][Ss][Tt]|[Pp][Uu][Tt]|[Pp][Aa][Tt][Cc][Hh]|[Dd][Ee][Ll][Ee][Tt][Ee])`
+
+// optionalQuotePattern matches one JSON-escaped double quote or nothing, the quote a shell double-quoted word opens or closes with.
+const optionalQuotePattern = `(\\")?`
+
+// ghMutationScanPattern matches the rest of a gh api command up to a GraphQL mutation word.
+// The scan stays on one command: it stops at an unquoted separator or newline, and crosses a newline only inside a single-quoted or double-quoted string, so a mutation on a later line of a multi-line query is found.
+const ghMutationScanPattern = `([^;&|\\'"]|\\[^"n]|'[^']*'|` + doubleQuotedOpenPattern + `\\")*(mutation|'[^']*mutation|` + doubleQuotedOpenPattern + `mutation)`
+
+// quotableWord returns a grep -E pattern matching word bare or inside a pair of JSON-escaped double quotes.
+func quotableWord(word string) string {
+	return optionalQuotePattern + word + optionalQuotePattern
+}
+
+// notWordPattern returns a grep -E pattern matching one whole gh argument word, up to a word end, that is none of words and opens with no dash, so a flag word never matches.
+// A word in double quotes is read by what is inside them, so a listed word in quotes is no match and an unlisted one is.
+// Each word must be lowercase letters only.
+func notWordPattern(words []string) string {
+	return optionalQuotePattern + notWordFrom(words, true) + wordEndPattern
+}
+
+// notWordFrom returns a grep -E group matching the rest of a word, after a prefix already read, that is no suffix in suffixes.
+// It matches the empty rest only when suffixes holds no empty suffix and first is false, since a word is never empty.
+func notWordFrom(suffixes []string, first bool) string {
+	children := map[byte][]string{}
+	terminal := false
+	for _, suffix := range suffixes {
+		if suffix == "" {
+			terminal = true
+			continue
+		}
+		children[suffix[0]] = append(children[suffix[0]], suffix[1:])
+	}
+	letters := slices.Sorted(maps.Keys(children))
+	excluded := ghWordClass + string(letters)
+	if first {
+		excluded += "-"
+	}
+	alternatives := []string{`[^` + excluded + `][^` + ghWordClass + `]*`}
+	for _, letter := range letters {
+		alternatives = append(alternatives, string(letter)+notWordFrom(children[letter], false))
+	}
+	group := `(` + strings.Join(alternatives, "|") + `)`
+	if !terminal && !first {
+		group += "?"
+	}
+	return group
+}
+
+// publishCommandPattern returns the grep -E pattern the publish deny matches against the raw PreToolUse payload JSON.
+// In command position and optionally path-prefixed, it matches git followed by any flag words, with -C taking its directory word, and then push as a whole word;
+// a gh command, or a subcommand of a command githubAllowed limits, that githubAllowed does not list;
+// gh pr review with an approve or request-changes flag, alone or in a cluster of short flags, gh pr edit with a base flag and any value attached to the short one;
+// and gh api with a writing -X or --method, with --input, or with mutation anywhere in the rest of its command, a quoted multi-line query included.
+// A command, subcommand or method word may sit in double quotes.
+// A gh word opening with a dash is no command, so gh --version passes.
+func publishCommandPattern() string {
+	gh := `gh` + ghRepoFlagsPattern + `[[:space:]]+`
+	subcommand := func(command, sub string) string {
+		return quotableWord(command) + ghRepoFlagsPattern + `[[:space:]]+` + sub
+	}
+	alternatives := []string{
+		`git([[:space:]]+(-C[[:space:]=]+` + goWordPattern + `|-` + goWordPattern + `))*[[:space:]]+push` + wordEndPattern,
+		gh + notWordPattern(slices.Sorted(maps.Keys(githubAllowed))),
+		gh + subcommand("pr", quotableWord("review")) + ghArgumentsPattern + `(-[A-Za-z]*[ar][A-Za-z]*|--approve|--request-changes)` + wordEndPattern,
+		gh + subcommand("pr", quotableWord("edit")) + ghArgumentsPattern + `(-B|--base` + wordEndPattern + `)`,
+		gh + quotableWord(`api`) + ghArgumentsPattern + `(-X[[:space:]=]*|--method([[:space:]]+|=))` + optionalQuotePattern + ghWriteMethodPattern + wordEndPattern,
+		gh + quotableWord(`api`) + ghArgumentsPattern + `--input` + wordEndPattern,
+		gh + quotableWord(`api`) + wordEndPattern + ghMutationScanPattern,
+	}
+	for _, command := range slices.Sorted(maps.Keys(githubAllowed)) {
+		if subcommands := githubAllowed[command]; subcommands != nil {
+			alternatives = append(alternatives, gh+subcommand(command, notWordPattern(subcommands)))
+		}
+	}
+	return commandPositionPattern + `(` + strings.Join(alternatives, "|") + `)`
+}
 
 // goSubcommandPattern is the grep -E prefix of a go test, build or vet command: go in command position directly before the subcommand, with an optional -C <dir> between them, then whitespace.
 const goSubcommandPattern = commandPositionPattern + `go[[:space:]]+(-C[[:space:]=]+[^[:space:]]+[[:space:]]+)?`
@@ -400,13 +513,15 @@ func rowsAfterRawGo() []Row {
 			EngineTexts: map[string]EngineText{engineCodex: {Steer: codexSteerHeadlessClaudeDeny, Notice: codexSteerHeadlessClaudeDeny + "."}},
 		},
 		{
-			// Installed only for a launch spec that sets DenyPublish, the PR-Review session.
-			// A guardrail, not a barrier: bash -c, a script, env forms the pattern does not list, a git alias or hub pass, and a gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied.
+			// Installed only for a launch spec that sets DenyPublish, such as the PR-Review session's, which reads the pull request, comments on it and edits its title and body through gh.
+			// A guardrail, not a barrier: bash -c, a script, env forms the pattern does not list, a git alias or hub pass, as do a flag word between gh and its command, a gh api call that writes by an implied POST with field flags, and a GraphQL mutation read from a file;
+			// a gh spelling after a separator inside a quote commandPositionPattern misreads is falsely denied, and so is a gh pr review short-flag cluster whose attached body holds an a or an r.
+			// A gh api call with an unbalanced apostrophe before its mutation word passes, since the scan reads a quoted string whole.
 			// A lym verb that pushes the task branch, such as lym fabric push or the detached both-sides push a run-record commit fires, reaches origin from the session too, so the row gates what lands, not what reaches the pull request.
 			Name:     "publish",
-			Patterns: []string{publishCommandPattern},
-			Steer:    steerPublishDeny,
-			Notice:   noticePublishDeny,
+			Patterns: []string{publishCommandPattern()},
+			Steer:    steerPublishDeny(),
+			Notice:   steerPublishDeny() + ".",
 			Switch:   SwitchDenyPublish,
 		},
 	}

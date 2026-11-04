@@ -263,7 +263,7 @@
 // The python row denies a Bash command that runs `python`, `python3` or `python3.<minor>` in command position, in every run mode;
 // `shuttle.yaml`'s `deny_python` switches it off for a Python target repo.
 // Its notice names a version check as refused, so a session does not probe for Python, and its steer names jq, grep and awk for parsing and the edit rule.
-// The publish row denies a Bash `git push`, with any flag words before `push`, and `gh`, in command position;
+// The publish row denies a Bash `git push`, with any flag words before `push`, and every `gh` call in command position but the reads, comments and title and body edits the shell guard table lists;
 // it is installed only for a run whose spec sets `DenyPublish`, which the `deny_publish` switch of the shell guard table names, and announced like every other row.
 // The command-shaped rows read the command as the shell would, so a command word in quoted text, a heredoc body or another payload field such as the description does not trip a row.
 // For every such row, a command substitution inside a double-quoted string, a command after a `<` before a quote or a backslash, and any line after a heredoc operator's line are not read and pass.

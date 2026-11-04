@@ -13,6 +13,8 @@
 // A clean tree whose head the record has not gated runs the `pr-review` gate key; a pass pushes the head and records it as gated, and a failure pushes nothing and mails the reason, naming the failing tier and log, to the PR-Review session once per head, except that a failure whose every failed run crashed its test runner halts the row with LandingStopPrefix, naming the crashed runs, and mails nothing.
 // A head moved or a tree dirtied during the gate discards its verdict, and a dirty tree is the agent at work and is not gated.
 // The pull request's status is read at most once a minute, the entry's own read counting as the first, and at once on the first wake that sees the continue flag.
+// A read that finds the pull request open, with no continue flag or ending recorded, sets its title and body again when the change description yields other text than they were last set to, so the agent changes them by editing the description;
+// a description that yields no text, as one mid-edit may, is logged once and left for a later read.
 // Merged at the gated head on a clean tree is Done, and merged without task commits or at another head is Stuck with Halt naming the way forward.
 // Closed after the operator's ending is Done on a clean tree, and closed otherwise is Stuck with Halt.
 // The continue flag on an open or closed pull request at a clean gated head records the operator's ending and is Done, and leaves the pull request as it is for Finalize to merge on GitHub, so ending the review never lands the run by a direct push; an open one approved at the gated and task head is Done.
@@ -28,7 +30,7 @@
 // The row keeps one interactive agent session per run, in a window of its own in the task worktree, for the operator to discuss the pull request in; the row never waits on its output.
 // After it records the pull request, and before it waits, it reuses the recorded strand when that is live, resumes the recorded session id when the strand is not, and otherwise starts a new session.
 // A review whose record carries the operator's ending gets no session.
-// The session starts from the `landing-template-pr-review` stencil filled with paths and the regression check, under the `pr_reviewer` model, with the publish shell guard installed and the pane process registered under the run.
+// The session starts from the `landing-template-pr-review` stencil filled with paths and the regression check, under the `pr_reviewer` model, with the publish shell guard installed, which leaves it gh's reads, comments and title and body edits and refuses git push and every gh call that merges, closes or opens a pull request, and the pane process registered under the run.
 // A start that fails transiently is an error the driver re-steps, and any other start failure is Stuck with Halt naming `lym loom resume`.
 // The row stops the session before each read that may end the review, which is a merged pull request, an approval of the gated head and the continue flag, and resumes it when that read keeps waiting.
 // It stops it at the first wake a pause covers and resumes it at the first uncovered wake, and on every verdict, Stuck and error, and it leaves it running when the context is cancelled.

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -128,6 +129,8 @@ func TestPRReview_Wait(t *testing.T) {
 	tiergate.Require(t, 0)
 	// The wait captures the process-global logger, so this test and its subtests stay serial.
 	const editSeven = "Edit 7|Change title|" + wantPRBody
+	const editNew = "Edit 7|New title|New body\n\nCreated using\n - LoomYard\n - Claude <c@x>"
+	const newDescription = "# New title\n\nNew body\n"
 	open := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen}}
 	closed := scriptedCall{status: pullrequest.Status{State: pullrequest.StateClosed}}
 	mergedAt := func(head string) scriptedCall {
@@ -189,6 +192,28 @@ func TestPRReview_Wait(t *testing.T) {
 				}
 			}
 		}
+	}
+	// rewriteDescriptionsThenCancel returns a setup that writes each content of writes to the change description at the sleep whose count is its key and cancels the wait at the n-th.
+	rewriteDescriptionsThenCancel := func(writes map[int]string, n int) func(w *waitWorld) {
+		return func(w *waitWorld) {
+			w.onSleep = func(w *waitWorld, count int) {
+				if content, ok := writes[count]; ok {
+					if err := os.WriteFile(w.deps.DescriptionPath, []byte(content), 0o644); err != nil {
+						t.Errorf("rewrite the change description: %v", err)
+					}
+				}
+				if count >= n {
+					w.cancel()
+				}
+			}
+		}
+	}
+	// rewriteDescriptionThenCancel returns a setup that writes content to the change description at the first sleep and cancels the wait at the n-th.
+	rewriteDescriptionThenCancel := func(content string, n int) func(w *waitWorld) {
+		return rewriteDescriptionsThenCancel(map[int]string{1: content}, n)
+	}
+	editFailing := func(failures ...scriptedCall) map[string][]scriptedCall {
+		return map[string][]scriptedCall{"Status": {open}, "Edit": append([]scriptedCall{{}}, failures...)}
 	}
 	failingGate := func(w *waitWorld) {
 		w.withGateCommand()
@@ -615,6 +640,86 @@ func TestPRReview_Wait(t *testing.T) {
 			wantErr: context.Canceled, wantCalls: []string{"Status 7", editSeven, "Status 7"},
 		},
 		{
+			// The sleeps run 1, 2, 4, 8, 16, 32 and 60 seconds, so the 7th and 8th wakes are the polls after the entry's.
+			name: "AnEditedDescriptionSetsTheTitleAndBodyAgainAtTheNextPollAndOnlyThen", record: seed("h1"), scripts: statusScript(open),
+			setup:   rewriteDescriptionThenCancel(newDescription, 8),
+			wantErr: context.Canceled,
+			wantCalls: []string{
+				"Status 7", editSeven, "Status 7",
+				editNew,
+				"Status 7",
+			},
+		},
+		{
+			name: "ADescriptionThatYieldsNoTextIsLoggedOnceAndEditsNothing", record: seed("h1"), scripts: statusScript(open),
+			setup:     rewriteDescriptionThenCancel("", 8),
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", "Status 7"},
+			check: func(t *testing.T, _ *waitWorld, logs string) {
+				if got := strings.Count(logs, "no pull request text could be built"); got != 1 {
+					t.Errorf("warnings for the unreadable description = %d; want one over two polls", got)
+				}
+			},
+		},
+		{
+			// The polls after the entry's are the 7th, 8th and 9th wakes: a bad description, a good one, a bad one again.
+			name: "ADescriptionThatYieldsNoTextAgainAfterAGoodOneIsLoggedAgain", record: seed("h1"), scripts: statusScript(open),
+			setup:     rewriteDescriptionsThenCancel(map[int]string{1: "", 7: newDescription, 8: ""}, 9),
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", "Status 7", editNew, "Status 7"},
+			check: func(t *testing.T, _ *waitWorld, logs string) {
+				if got := strings.Count(logs, "no pull request text could be built"); got != 2 {
+					t.Errorf("warnings for the unreadable description = %d; want one per episode, two", got)
+				}
+			},
+		},
+		{
+			name: "AnEditedDescriptionIsNotSetAfterTheOperatorsEnding", record: seed("h1", withContinue), scripts: statusScript(open), dirty: []string{"wip.go"},
+			setup:     rewriteDescriptionThenCancel(newDescription, 8),
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", "Status 7"},
+		},
+		{
+			name: "AnEditedDescriptionIsNotSetOnAPullRequestThatIsClosedAtThePoll", record: seed("h1"), scripts: statusScript(open, closed),
+			setup:       rewriteDescriptionThenCancel(newDescription, 8),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopen it on GitHub"},
+			wantCalls: []string{"Status 7", editSeven, "Status 7"},
+		},
+		{
+			name: "AnEditedDescriptionIsNotSetOnAPullRequestThatIsMergedAtThePoll", record: seed("h1"), scripts: statusScript(open, mergedAt("h1")),
+			setup:       rewriteDescriptionThenCancel(newDescription, 8),
+			wantOutcome: shedengine.Done,
+			wantCalls:   []string{"Status 7", editSeven, "Status 7"},
+		},
+		{
+			name: "ATransientEditFailureKeepsWaitingAndSetsTheSameTextAtTheNextPoll", record: seed("h1"), scripts: editFailing(scriptedCall{err: context.DeadlineExceeded}, scriptedCall{}),
+			setup:     rewriteDescriptionThenCancel(newDescription, 9),
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", editNew, "Status 7", editNew, "Status 7"},
+			check: func(t *testing.T, _ *waitWorld, logs string) {
+				if got := strings.Count(logs, "a GitHub call failed transiently"); got != 1 {
+					t.Errorf("transient warnings = %d; want one", got)
+				}
+			},
+		},
+		{
+			name: "AnEditThatKeepsFailingTransientlyIsRetriedAtEveryPollAndLoggedOnce", record: seed("h1"), scripts: editFailing(scriptedCall{err: context.DeadlineExceeded}),
+			setup:     rewriteDescriptionThenCancel(newDescription, 9),
+			wantErr:   context.Canceled,
+			wantCalls: []string{"Status 7", editSeven, "Status 7", editNew, "Status 7", editNew, "Status 7", editNew},
+			check: func(t *testing.T, _ *waitWorld, logs string) {
+				if got := strings.Count(logs, "a GitHub call failed transiently"); got != 1 {
+					t.Errorf("transient warnings = %d; want one for the whole episode of failed edits", got)
+				}
+			},
+		},
+		{
+			name: "AnEditThatFailsForGoodHaltsNamingTheEdit", record: seed("h1"), scripts: editFailing(scriptedCall{err: githubErrorResponse(http.StatusUnprocessableEntity, "Unprocessable")}),
+			setup:       rewriteDescriptionThenCancel(newDescription, 8),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"set the pull request's title and body", "422"},
+			wantCalls: []string{"Status 7", editSeven, "Status 7", editNew},
+		},
+		{
 			name: "TheMarkIsSetAtTheStartAndAfterAGateAndClearedOnDone", record: seed("h1"), scripts: statusScript(approvedAt("h2", false)), head: "h2",
 			setup:       func(w *waitWorld) { w.withGateCommand() },
 			wantOutcome: shedengine.Done, gatePushes: 1,
@@ -698,5 +803,28 @@ func TestPRReview_Wait(t *testing.T) {
 				t.Errorf("the parent lock store holds %v (%v); want no record, since the wait takes no parent lock", held, lerr)
 			}
 		})
+	}
+}
+
+func TestPRReview_WaitWithNoLastSetTextTakesTheDescriptionAsTheBaselineAndEditsNothing(t *testing.T) {
+	tiergate.Require(t, 0)
+	// The wait captures the process-global logger, so this test stays serial.
+	logcapture.CaptureVerbose(t)
+	w, ctx := newWaitWorld(t, map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen}}}})
+	rec := pullrequest.Record{Number: 7, URL: "u7", GatedHead: "h1"}
+	if err := pullrequest.WriteRecord(w.deps.PullRequest.RecordPath, w.deps.PullRequest.RecordLockPath, rec); err != nil {
+		t.Fatalf("write record: %v", err)
+	}
+	w.cancelAfter(1)
+	row := NewPRReview("PR-Review", w.deps)
+	row.gate.verify = w.tree.verify
+
+	_, _, err := row.wait(ctx, w.api, rec, nil, time.Time{}, prText{})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("wait() error = %v; want one wrapping %v", err, context.Canceled)
+	}
+	if diff := cmp.Diff([]string{"Status 7"}, w.api.calls); diff != "" {
+		t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
 	}
 }

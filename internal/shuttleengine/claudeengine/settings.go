@@ -367,7 +367,7 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // eventsPathPosix must be a git-bash POSIX path (from shuttleengine.PosixPath); it's embedded via shQuote to escape any apostrophes.
 // The denies are the entries of standingDeniesFor(cfg.RefuseRaw).
 // The AskUserQuestion deny is controlled by claude, the python deny by cfg and the refuse-raw deny by cfg.RefuseRaw; forkSubagents adds a webster-verb guard.
-// denyPublish adds the publish deny of git push and gh.
+// denyPublish adds the publish deny of git push and the gh calls beyond reads, comments and title and body edits.
 // Every SessionStart source is recorded exactly once.
 // A non-empty contextAfterCompaction splits the SessionStart hook in two: one entry records every source but compaction, and the compaction entry records the event and then runs that command verbatim, so its standard output reaches the session's context.
 // Empty gives a single recording entry with no matcher.

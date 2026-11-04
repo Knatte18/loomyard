@@ -37,7 +37,11 @@ Answer from it, and never ask the operator to run a regression compare it settle
 - Answer the operator's questions about the change, and change it when the operator asks.
 - Commit to the task branch `{{.task_branch}}`.
   lym gates and pushes each commit you make, and mails this session when a commit fails the gate.
-- Never push, never approve, merge or close the pull request, and never call GitHub; your settings deny them too.
+- Read the pull request and the repository on GitHub with `gh`: `gh pr view`, `gh pr list`, `gh pr diff` and `gh pr checks`, `gh run view` for a check's log, and `gh api` reads such as a pull request's review comments.
+- Comment on the pull request with `gh pr comment`, or leave a review comment with `gh pr review --comment`.
+- Change the pull request's title or body by editing the change description, `{{.description_path}}`: its heading is the title and the rest the body.
+  lym sets them on the pull request within a minute of your edit, with the regression check and the credit block after the body, so never set the body with `gh pr edit`.
+- Never push, and never approve, merge, close or reopen the pull request; your settings deny them too.
 
 The run ends on the pull request's state, not on this session, so after each answer you wait for the operator's next message.
 

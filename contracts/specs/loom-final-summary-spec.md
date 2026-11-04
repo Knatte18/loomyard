@@ -41,6 +41,7 @@ The artifact never holds that section itself, so it reaches the pull request and
 
 `Finalize`'s read is unconditional: a missing or malformed artifact there is a hard error.
 `Publish`'s read is reached only when the parent branch requires a pull request: it opens one from the artifact, or refreshes an open one's title and body, so a re-run Publish carries a rewritten description onto the pull request.
+While its review runs, PR-Review reads the artifact again at each status poll of an open pull request, and sets the title and body again when the artifact yields other text, so the pr-reviewer changes them by rewriting the artifact; a read that fails there is logged and retried at the next poll, never an error.
 
 ## Producer-appended sections
 

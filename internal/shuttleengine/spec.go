@@ -46,7 +46,7 @@ type Spec struct {
 	// validate does not inspect this field at all.
 	// The run records it at spawn, and the record, not a later Call's Spec, decides the fork audit and a gate entry's Forked closure.
 	ForkSubagents bool
-	// DenyPublish, when true, makes the engine install a shell guard refusing git push and gh for this one run and announce it.
+	// DenyPublish, when true, makes the engine install a shell guard refusing git push and the gh calls beyond reads, comments and title and body edits for this one run and announce it.
 	// It is engine vocabulary exactly like ForkSubagents — validate does not inspect this field at all.
 	DenyPublish bool
 	// PermissionMode, when non-empty, selects the run's permission mode;

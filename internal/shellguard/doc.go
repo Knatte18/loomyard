@@ -27,7 +27,8 @@
 //
 // A row hangs on a Switch.
 // A SwitchNone row is installed for every run, and SwitchDenyPython follows the shuttle config's python key.
-// SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec, so only the session that sets it cannot run git push or gh.
+// SwitchDenyPublish, which the publish row hangs on, is turned on only by a launch spec, so only the session that sets it cannot run git push or a gh call outside the reads, comments and title and body edits the row's table lets through.
+// The row's pattern refuses every gh command and subcommand the table does not list, through a generated pattern that matches any word but the listed ones, so a new gh subcommand is refused until the table lists it.
 //
 // Its imports are the standard library and the two packages that own the environment-variable names the raw go row's pattern names.
 package shellguard
