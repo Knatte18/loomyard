@@ -15,13 +15,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// openCmd builds the `open` subcommand, which opens a named session that takes no turn and returns at once.
+// openCmd builds the `open` subcommand, which opens a named session that takes no turn but the load of its --skill list, and returns at once.
 func (c *shuttleCLI) openCmd() *cobra.Command {
 	var (
 		role           string
 		model          string
 		segment        string
 		permissionMode string
+		skills         []string
 		listModels     bool
 	)
 
@@ -33,7 +34,8 @@ func (c *shuttleCLI) openCmd() *cobra.Command {
 returns at once. --role is required and names the strand; a second open of the
 same role is numbered by reed.
 The session takes no turn and writes no run record, so lym shuttle state never
-lists it. Its window closes when the session exits. It is refused under a pause.
+lists it. Each --skill, repeatable, is loaded in the order given in the
+session's one first turn; an engine that cannot load skills refuses the open. Its window closes when the session exits. It is refused under a pause.
 
 --model chooses the engine, model and effort as a model spec, in one of two forms:
   <alias>[<effort>]               an alias from the model registry, e.g. opus or opus[high]
@@ -75,7 +77,7 @@ Example:
 				return nil
 			}
 
-			spec := shuttleengine.OpenSpec{Role: role, Segment: segmentcolor.Segment(segment), PermissionMode: permissionMode}
+			spec := shuttleengine.OpenSpec{Role: role, Segment: segmentcolor.Segment(segment), PermissionMode: permissionMode, Skills: skills}
 			if model != "" {
 				choice, err := c.resolveModelSpec(model)
 				if err != nil {
@@ -107,6 +109,7 @@ Example:
 	cmd.Flags().StringVar(&model, "model", "", "model spec, <alias>[<effort>] or <engine>:<model-id>[<effort>]; empty defers to the provider default")
 	cmd.Flags().StringVar(&segment, "segment", "", "loom segment the session's window is colored by")
 	cmd.Flags().StringVar(&permissionMode, "permission-mode", "", "permission mode of the session: bypass or prompt; empty is the engine's bypass mode")
+	cmd.Flags().StringArrayVar(&skills, "skill", nil, "skill the session loads in its first turn; repeatable, loaded in the order given")
 	cmd.Flags().BoolVar(&listModels, "list-models", false, "print the model registry's aliases with their engine, model and default effort, and open nothing")
 
 	return cmd

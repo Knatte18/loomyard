@@ -106,8 +106,18 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
 	}
-	if got := decodeButtons(t, cfg.Buttons); !reflect.DeepEqual(got, shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: []buttonWant{}}) {
-		t.Errorf("Buttons = %+v; want task %+v, beam %+v and an empty prime", got, wantTaskButtons, wantBeamButtons)
+	// The prime alone carries the board button: a board agent opened in a beam carries the beam's slug, and the board refuses a task write from a slug-carrying session.
+	wantPrimeButtons := []buttonWant{
+		{Label: "code", Run: "lym ide spawn {slug}"},
+		{Label: "terminal", Run: "lym reed window {worktree} --title {slug}"},
+		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
+		{Label: "board", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill ly:board-policy --skill ly:board", Ask: "Board agent name:", AskDefault: "board"},
+		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
+		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
+	}
+	wantShipped := shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: wantPrimeButtons}
+	if got := decodeButtons(t, cfg.Buttons); !reflect.DeepEqual(got, wantShipped) {
+		t.Errorf("Buttons = %+v; want %+v", got, wantShipped)
 	}
 
 	t.Run("BothTemplatesShipTheSameButtons", func(t *testing.T) {
@@ -122,7 +132,7 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 			if err := yaml.Unmarshal(raw, &doc); err != nil {
 				t.Fatalf("unmarshal %s: %v", file, err)
 			}
-			if got := decodeButtons(t, doc.Buttons); !reflect.DeepEqual(got, shippedButtons{Task: wantTaskButtons, Beam: wantBeamButtons, Prime: []buttonWant{}}) {
+			if got := decodeButtons(t, doc.Buttons); !reflect.DeepEqual(got, wantShipped) {
 				t.Errorf("%s buttons = %+v; want the shipped default set", file, got)
 			}
 		}

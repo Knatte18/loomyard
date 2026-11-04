@@ -28,7 +28,6 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
   Board, config and orch rules writes through `lym` are no prime edits.
 - To the operator, a fabric checkout is one worktree: say "worktree", never "pair".
 - A question is never a go-ahead: release a task, or take any other step that starts work, only on the operator's explicit go-ahead naming that step, never inferred from a rejected alternative or from an answer to another question.
-- Never set a priority on a board entry unless the operator names one.
 - An agent reads the source itself: never hand it inlined file contents, digests or summaries of code in its prompt in place of its own reads.
   Cost is cut by fewer turns, never by reading for it.
 - A Codex run gets `high` effort at most, in a bench or anywhere else.
@@ -42,7 +41,6 @@ This list holds every `lym` command you may use, and `lym <command> --help` give
    The operator's terminal window on the task's worktree is opened by the run, so never open one yourself.
    The batten run creates the task pair, drives the task's run inside it, tapestry, motif, darn or sampler as the board entry's `recipe` says, and tears the pair down after the run ends.
    A darn run has no Discussion review: its Code-Review perch, the one tapestry runs, reviews the writer's diff before Describe unless the run's `code_max_bounces` is 0, in `loom.yaml` or the task's `run_settings`, and its Finalize lands it as tapestry's does.
-   Every task runs through loom, bug fixes included: never set `recipe: darn` on a board entry yourself; a task runs darn only when the operator names darn for that task.
 2. A halted or paused batten run waits for you: dobby does not resume it.
    The one exception is a paused run whose work already reached its parent: dobby finishes it through Land and Worktree-Teardown once no `lym tender pause` entry covers it.
    Once its cause is known (see Investigating a stop), resume it with a hand pass, `lym batten run <slug>`, which you run only on the operator's word or after judging the stop under Investigating a stop.
@@ -205,12 +203,7 @@ Never read the run's friction notes: its Friction-Reflect files them as LoomYard
 
 ## The board
 
-The mechanics of reading and writing the board are in the `ly:board` skill; this section is policy only.
-- A proposal goes on the board as a note at once, never held in your head.
-- One finding per note, written as what was seen plus the idea; never append a finding to a note about something else.
-- A board body holds the current design only: when a newer design, decision or answer replaces part of an entry's body, rewrite the body so it holds only what stands now, removing the replaced drafts, recommendations and open questions in the same write, never keeping them under a "this replaces everything above" line.
-  Bolt's git history keeps the old text.
-- A task whose run has started is frozen: a new finding becomes its own note, even when it fits the task.
+The mechanics of reading and writing the board are in the `ly:board` skill, and the policy for keeping it is in the `ly:board-policy` skill, which you follow; this section holds only the board rules that are the orch's own.
 - An operator decision made in chat is recorded in the same turn, split by who holds the entry:
   - A decision on an entry no run holds is written into that entry's body through `lym board`.
   - A decision on a task a run holds is recorded with `lym loom decision add <slug> --by parent`.
@@ -224,27 +217,7 @@ The mechanics of reading and writing the board are in the `ly:board` skill; this
   - Only when the verb refuses because Discussion-Write is running and owns the record does the decision go by message to the Discussion-Write session.
     A Record-Write run's verb refuses until Record-Write has committed the record, and each refusal names its own way forward, which you take in place of a board note; the verb alone then records the decision, with no message of your own, since it tells each live agent of the run and a producer that starts later reads the record.
   - The board's run lock is unchanged, so a held task's entry is never edited.
-- Fewer and larger tasks: bundle notes whose fixes touch the same packages into one run.
-  A shared theme is not enough; notes about different packages stay in different tasks.
-- Never propose one note alone as a loom task: a loom run has a fixed cost of about half its spend whatever its size.
-  Fold related notes into one loom task, or propose darn for a small change and let the operator name darn.
-  A part of a darn task that looks large raises the darn's profile; it never becomes a loom run of its own.
-- A rename is a task of its own: mechanical, done by script, with nothing else in it.
-  It runs alone, with no other run in flight: it depends on every task released before it, and every task made before it lands depends on it.
-- A bench, spike or other exploration the operator approves runs as a darn task with profile `docs`, in its own worktree, so its report lands as a commit; the operator naming an exploration for a run counts as naming darn for it.
-  Never run such work as a background agent of your own: an agent of yours only reads and answers within your turn's scope, such as a quick study for a chat question.
-  Its body states an exact cap on runs: inputs, models, efforts and repeats by number, one or two inputs unless the operator names more, and never an open word such as "many".
-- A full board body is no reason to lower a task's Discussion rounds: Discussion explores the code, bounds the scope and weighs the impact, which a body does not do.
-- Which notes become a task, and when a task is released for its run, is the operator's call: propose the bundle and its release, and merge, promote or release only after the operator approves that bundle.
-- A finding essentially the same as an existing note, or a correction to its subject, goes into that note; any other finding stays its own note, even when its work overlaps another entry.
-  Notes are bundled only when the operator promotes them into a task.
-- Every entry carries the labels of the modules it touches beside its type label, an imported issue included.
-- Triage drafts stay off the board: show a proposal for curating the board in chat, keep its draft in `.scratch/`, and change the board only after the operator decides.
-- A task that needs other review rounds than its recipe's default profile names a profile of the ladder, `speed`, `light`, `solid` or `wide`, in its board entry's `profile` field through `lym board upsert`, before its batten run starts;
-  it gets hand-written `run_settings` for its review bounds only when no profile fits.
-  `lym board profiles` lists the hub's profiles and each recipe's default.
-- A task's regression scope that the operator decides while discussing it goes in its board entry's `run_settings`, as `{"drift": {"scope": "full"}}`, `{"drift": {"scope": "off"}}` or `{"drift": {"scope": "partial", "skip": ["<test>", ...]}}`, before its batten run starts;
-  Drift-Baseline then records it and spawns no agent, which otherwise decides the scope.
+- Never run a bench, spike or other exploration as a background agent of your own: an agent of yours only reads and answers within your turn's scope, such as a quick study for a chat question.
 
 ## Where a finding goes
 

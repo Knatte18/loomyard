@@ -301,6 +301,7 @@
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
 // Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
+// An open naming skills puts their load message after the binary on the fresh line as the session's first turn; the resume line carries none.
 // An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.
 // An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
 // The settings' PostToolUse mail hook and idle waiter are a run's; its Stop delivery is the merged command without the recording, since an opened session has no events file: it exits 0 whatever the delivery printed, so an echo reaches the operator.

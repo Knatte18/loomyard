@@ -188,6 +188,7 @@
 //
 // Runner.Open opens a named interactive session with no prompt in a window of its own, for an extra session the orch or the operator wants beside the runs.
 // It needs an engine with the optional SessionOpener capability, and a covered pause refuses it before anything is created.
+// A non-empty OpenSpec.Skills needs the SkillLoader capability too: the engine's fresh launch line carries their load message as the session's only turn, after which the session waits for the operator.
 // The strand's command chains, after the provider line, an exit marker under the anchor's ephemeral `shuttle-open` directory, reed's detached self-removal and the shell's exit, so ending the session closes its window.
 // The marker is the strand's done-when path, so a resume drops a finished session instead of relaunching it.
 // OpenLaunch is told a directory of the session's own beside the marker, named by the same token, for the files its launch reads, and the engine creates it only when it writes one.

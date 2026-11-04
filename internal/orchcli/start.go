@@ -33,7 +33,7 @@ import (
 const orchStrandName = agentname.RoleOrch
 
 // orchSkills are the skills shuttle loads into the orch session before its prompt pointer on every launch path.
-var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board"}
+var orchSkills = []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"}
 
 // Report "action" values.
 const (

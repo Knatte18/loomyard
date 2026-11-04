@@ -363,19 +363,24 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 	return sh.WithEnv(envFileKey, envFilePath, cmd)
 }
 
-// buildOpenCmd composes the pane-shell line of a named interactive session that takes no prompt.
+// buildOpenCmd composes the pane-shell line of a named interactive session that takes no task prompt.
+// A non-empty firstTurn goes after the binary as the session's first turn.
 // A fresh session is named with --session-id; when resume is true the line takes over the session sessionID names with --resume instead.
 // It names the session with --name as a reference to LYM_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
 // It appends --dangerously-skip-permissions when skipPermissions is true, on the fresh and the resume form alike.
 // Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
 // A non-empty settingsPath adds --settings naming it, which Claude Code stacks over the worktree's own settings, and a non-empty appendPromptPath adds --append-system-prompt-file naming it.
-// It passes no prompt and no environment assignment, so the line is one pipeline that OrElse may join.
-func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort, settingsPath, appendPromptPath string, skipPermissions, resume bool) string {
+// It passes no environment assignment, so the line is one pipeline that OrElse may join.
+func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, settingsPath, appendPromptPath string, skipPermissions, resume bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
 	}
-	cmd := sh.Invoke(bin) + sessionFlag + sh.Quote(sessionID) + " --name " + sh.EnvRef(agentname.StrandNameEnv)
+	cmd := sh.Invoke(bin)
+	if firstTurn != "" {
+		cmd += " " + sh.Quote(firstTurn)
+	}
+	cmd += sessionFlag + sh.Quote(sessionID) + " --name " + sh.EnvRef(agentname.StrandNameEnv)
 	if model != "" {
 		cmd += " --model " + sh.Quote(model)
 	}
@@ -403,7 +408,8 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort, settingsPath, a
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
 // the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle guard.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
-// The session takes no turn until text reaches its pane through the operator or creel, each bounded by its own rules.
+// A non-empty spec.Skills puts their load message on the fresh line as the session's first turn, and a message past the launch limit refuses the open before anything is written; the resume line carries none.
+// The session takes no other turn until text reaches its pane through the operator or creel, each bounded by its own rules.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
@@ -423,6 +429,16 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	skillLoadMessage := ""
+	if len(spec.Skills) > 0 {
+		skillLoadMessage = c.SkillLoadMessage(spec.Skills)
+		if len(skillLoadMessage) > maxLaunchPromptBytes {
+			return shuttleengine.Launch{}, fmt.Errorf(
+				"skill-load message is %d bytes, over the %d-byte launch limit: the pane launch carries it as one command-line argument and Windows caps a process command line at 32,767 characters — name fewer or shorter skills than %v",
+				len(skillLoadMessage), maxLaunchPromptBytes, spec.Skills,
+			)
+		}
+	}
 	creelFlagDirForHook, err := c.creelFlagDirForHook()
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -440,8 +456,8 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	}
 	sh := shell.ForGOOS()
 	bin := claudeBinary(claude)
-	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
-	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
+	fresh := buildOpenCmd(sh, bin, skillLoadMessage, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
+	resumeLine := buildOpenCmd(sh, bin, "", sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
 	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID, CreelHooks: creelFlagDirForHook != ""}, nil
 }
 

@@ -442,6 +442,21 @@ func TestOpenLaunch(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "skills ride the fresh line as the first turn and no resume line",
+			spec: shuttleengine.OpenSpec{Role: "board", Skills: []string{"ly:board-policy", "ly:board"}},
+			check: func(t *testing.T, launch shuttleengine.Launch) {
+				message := " " + sh.Quote(new(Claude).SkillLoadMessage([]string{"ly:board-policy", "ly:board"}))
+				if want := sh.Invoke("claude") + message + " --session-id "; !strings.HasPrefix(launch.Cmd, want) {
+					t.Errorf("Cmd = %q; want it to start with %q", launch.Cmd, want)
+				}
+				resumeLine := strings.Replace(strings.Replace(launch.Cmd, message, "", 1), "--session-id", "--resume", 1)
+				if want := sh.OrElse(resumeLine, launch.Cmd); launch.ResumeCmd != want {
+					t.Errorf("ResumeCmd = %q; want %q", launch.ResumeCmd, want)
+				}
+			},
+		},
+		{name: "a skill-load message past the launch limit is refused", spec: shuttleengine.OpenSpec{Role: "board", Skills: []string{strings.Repeat("x", maxLaunchPromptBytes)}}, board: true, wantErr: "skill-load message is"},
 		{name: "an invalid effort is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Effort: "turbo"}}, wantErr: "invalid effort"},
 		{name: "a version without a model is refused", spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Version: "4.5"}}, wantErr: "no model"},
 		{name: "an unknown mode is refused", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "auto"}, wantErr: "invalid permission mode"},

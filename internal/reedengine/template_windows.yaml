@@ -49,4 +49,22 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: refresh
       run: lym orch refresh
       confirm: Refresh the orch?
-  prime: []
+  prime:
+    - label: code
+      run: lym ide spawn {slug}
+    - label: terminal
+      run: lym reed window {worktree} --title {slug}
+    - label: agent
+      ask: "Agent name:"
+      ask_default: agent
+      run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'"
+    - label: board
+      ask: "Board agent name:"
+      ask_default: board
+      run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill ly:board-policy --skill ly:board"
+    - label: distill
+      run: lym orch distill
+      confirm: Distill the orch?
+    - label: refresh
+      run: lym orch refresh
+      confirm: Refresh the orch?

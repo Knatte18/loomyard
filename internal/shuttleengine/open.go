@@ -46,8 +46,8 @@ func openSessionDir(anchorPath, token string) string {
 // when the self-removal fails the strand stays as a dead pane until `lym reed remove`, and a resume drops it through the marker instead of relaunching it.
 // It writes no run directory, no run record and no output file; the engine may write its launch files into the session's own directory beside the marker.
 // spec.Engine names the engine, empty for the set's default;
-// an unregistered name, a covered pause geometry and an engine without SessionOpener each refuse the open before anything is created.
-// Bound: one interactive session per call, in the caller's own worktree under its settings, never a turn; nothing caps the count.
+// an unregistered name, a covered pause geometry, an engine without SessionOpener and a non-empty spec.Skills for an engine without SkillLoader each refuse the open before anything is created.
+// Bound: one interactive session per call, in the caller's own worktree under its settings, with no turn but the load of spec.Skills; nothing caps the count.
 func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	if r.toldErr != nil {
 		return OpenResult{}, r.toldErr
@@ -70,6 +70,11 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 	opener, ok := engine.(SessionOpener)
 	if !ok {
 		return OpenResult{}, fmt.Errorf("shuttle: open: the engine %q cannot open a session with no prompt", engineName)
+	}
+	if len(spec.Skills) > 0 {
+		if _, err := r.skillLoader(engine); err != nil {
+			return OpenResult{}, fmt.Errorf("shuttle: open: the spec names skills %v: %w", spec.Skills, err)
+		}
 	}
 	token, err := newRunID()
 	if err != nil {
@@ -104,6 +109,6 @@ func (r *Runner) Open(spec OpenSpec) (OpenResult, error) {
 		return OpenResult{}, fmt.Errorf("shuttle: open: add the strand: %w", err)
 	}
 
-	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker, "engine", engineName, "permissionMode", spec.PermissionMode, "creelHooks", launch.CreelHooks)
+	logger.Info("shuttle: opened session", "strandGUID", strand.GUID, "strandName", strand.Name, "role", spec.Role, "sessionID", launch.SessionID, "marker", marker, "engine", engineName, "permissionMode", spec.PermissionMode, "skills", spec.Skills, "creelHooks", launch.CreelHooks)
 	return OpenResult{StrandGUID: strand.GUID, StrandName: strand.Name, SessionID: launch.SessionID, Engine: engineName}, nil
 }

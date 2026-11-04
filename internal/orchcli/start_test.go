@@ -483,8 +483,8 @@ func TestStart_NoStrandLaunchesAndSpawnsWatcher(t *testing.T) {
 	if spec.Segment != segmentcolor.Coordinator || !spec.ColorByCaller {
 		t.Errorf("Segment/ColorByCaller = %q/%v; want %q/true", spec.Segment, spec.ColorByCaller, segmentcolor.Coordinator)
 	}
-	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board"}) {
-		t.Errorf("Skills = %v; want the three orch skills", spec.Skills)
+	if !slices.Equal(spec.Skills, []string{"scribe:prose", "scribe:conversation", "ly:board", "ly:board-policy"}) {
+		t.Errorf("Skills = %v; want the orch skills", spec.Skills)
 	}
 	if spec.SkillLoadTimeout != h.cli.cfg.HandoffTimeout() {
 		t.Errorf("SkillLoadTimeout = %v; want the handoff timeout %v", spec.SkillLoadTimeout, h.cli.cfg.HandoffTimeout())

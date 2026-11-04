@@ -51,6 +51,7 @@ func TestRunner_Open(t *testing.T) {
 			engine: func() Engine { return &openerFakeEngine{openErr: errors.New("provider down")} },
 		},
 		{name: "an engine without the capability is refused", spec: spec, engine: func() Engine { return &fakeEngine{} }, wantErr: "cannot open a session"},
+		{name: "skills for an engine that cannot load them are refused", spec: OpenSpec{Role: "board", Skills: []string{"ly:board"}}, wantErr: "SkillLoader"},
 		{
 			name: "a failed open launch is returned", spec: spec, wantErr: "provider down",
 			engine: func() Engine { return &openerFakeEngine{openErr: errors.New("provider down")} },

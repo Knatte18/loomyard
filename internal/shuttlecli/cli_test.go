@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -900,9 +901,14 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 		wantModel  string
 		wantEffort string
 		wantMode   string
+		wantSkills []string
 		// openErr scripts the wanted engine's refusal.
 		openErr error
 	}{
+		{
+			name: "skills are passed in the order given", args: []string{"--role", "board", "--skill", "ly:board-policy", "--skill", "ly:board"},
+			wantEngine: shuttlefake.EngineName, wantSkills: []string{"ly:board-policy", "ly:board"},
+		},
 		{name: "an alias of the claude engine", args: []string{"--role", "explore", "--model", "opus"}, wantEngine: "claude", wantModel: "opus"},
 		{name: "an alias with an effort", args: []string{"--role", "explore", "--model", "opus[high]"}, wantEngine: "claude", wantModel: "opus", wantEffort: "high"},
 		{name: "no model leaves the set's default", args: []string{"--role", "explore"}, wantEngine: shuttlefake.EngineName},
@@ -959,8 +965,8 @@ func TestOpenCmd_ModelAliasEngine(t *testing.T) {
 					}
 					continue
 				}
-				if len(recorder.specs) != 1 || recorder.specs[0].PermissionMode != tt.wantMode {
-					t.Errorf("engine %s saw specs %+v; want exactly one with PermissionMode %q", name, recorder.specs, tt.wantMode)
+				if len(recorder.specs) != 1 || recorder.specs[0].PermissionMode != tt.wantMode || !slices.Equal(recorder.specs[0].Skills, tt.wantSkills) {
+					t.Errorf("engine %s saw specs %+v; want exactly one with PermissionMode %q and Skills %v", name, recorder.specs, tt.wantMode, tt.wantSkills)
 				}
 			}
 		})

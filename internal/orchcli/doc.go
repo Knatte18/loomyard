@@ -18,7 +18,7 @@
 // # The role file and the note
 //
 // The procedure lives in the orch role, one fixed text for every orch built into the binary, not in the launch prompt.
-// `BeamUp` renders it to `.lym/orch/role.md` and launches the session with a one-line pointer at it; skills (`scribe:prose`, `scribe:conversation`, `ly:board`) are loaded by shuttle before that pointer on every launch path, a resume included.
+// `BeamUp` renders it to `.lym/orch/role.md` and launches the session with a one-line pointer at it; the orch's skills, `ly:board`'s board mechanics and `ly:board-policy`'s board policy among them, are loaded by shuttle before that pointer on every launch path, a resume included.
 // `BeamUp` records the orch session's id in orch's state and resumes it after a reboot, a `stop` or a dead strand, falling back to the last note, else the start stencil, when the resume fails; see the internal/orchengine package documentation's `Continuing after a reboot` section.
 // A context cycle asks the session for an orch note at the path it names, following `.lym/orch/note-template.md`, in place of a general handoff skill.
 // `lym orch refresh` requests a clear cycle and `lym orch distill` a compact cycle, whatever `cycle_mode` says; both write the note first.

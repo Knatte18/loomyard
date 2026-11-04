@@ -299,7 +299,7 @@ type SessionResumer interface {
 	CheckResume(sessionID, workdir string) (warning string, err error)
 }
 
-// OpenSpec describes one named session that runs with no prompt: the caller's strand role, the resolved model choice, the segment its window is colored by and its permission mode.
+// OpenSpec describes one named session that runs with no prompt: the caller's strand role, the resolved model choice, the segment its window is colored by, its permission mode and the skills its first turn loads.
 type OpenSpec struct {
 	// Role is the strand role, from the caller's flag.
 	Role string
@@ -312,12 +312,16 @@ type OpenSpec struct {
 	// Empty selects the engine's bypass mode.
 	// Open and the CLI pass it uninspected; the engine is the sole validator and realizer.
 	PermissionMode string
+	// Skills names the provider-neutral skills the session loads, all in its first turn and in list order.
+	// Empty leaves the session with no turn; Open refuses a non-empty list for an engine without SkillLoader.
+	Skills []string
 }
 
 // SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.
 // OpenLaunch returns the launch and resume lines and the session id of a session that runs with no prompt, no run directory and no run record.
 // dir is a directory of the session's own that does not yet exist; the engine creates it only to write files its launch lines read, such as settings that carry creel's hook delivery, and then marks the launch CreelHooks.
-// The session runs under the caller's own worktree settings and any the engine adds, takes no turn, and is opened by Runner.Open.
+// The session runs under the caller's own worktree settings and any the engine adds, takes no turn but the load of spec.Skills, and is opened by Runner.Open.
+// For a non-empty spec.Skills the engine carries their load message on the fresh launch line as the session's first turn, and on no resume line.
 // An implementing engine honours spec.PermissionMode or refuses it from OpenLaunch before it writes anything,
 // so the refusal lands before Runner.Open creates the marker directory or adds a strand.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never open a session.
