@@ -1,0 +1,103 @@
+// dirbase.go — the rewrite that carries a hub's drift.yaml across the move of a relative command dir's base from the worktree's anchored directory to its root.
+
+package driftengine
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/Knatte18/loomyard/internal/configengine"
+)
+
+// DirBaseReinterpretation names the move of a relative capture or compare dir's base from the worktree's anchored directory to its root.
+const DirBaseReinterpretation = "drift-dir-root-base"
+
+// RebaseDirsOntoRoot rewrites the relative capture and compare dirs of a hub drift.yaml written while a relative dir was joined onto the anchored directory, so each names, joined onto the worktree root, the directory it named before.
+// worktreeRoot and anchorDir are the prime's, and a hub anchored at its root changes nothing.
+// A dir naming an existing directory under the anchored directory is rewritten, even when it names one under the root too, since the file predates the move;
+// a dir naming one under the root alone is kept, since it was already written for the root;
+// a dir naming neither is flagged with the write that fixes it, and an absolute or unset dir is kept.
+// It returns the document, rewritten only when a dir changed, one line per rewritten dir and one per flagged dir.
+// A document that does not parse returns an error marked configengine.ErrInvalid.
+func RebaseDirsOntoRoot(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error) {
+	if filepath.Clean(worktreeRoot) == filepath.Clean(anchorDir) {
+		return existing, nil, nil, nil
+	}
+	var document yaml.Node
+	if err := yaml.Unmarshal(existing, &document); err != nil {
+		return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("rebase drift dirs: unmarshal yaml: %w", err))
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 || document.Content[0].Kind != yaml.MappingNode {
+		return existing, nil, nil, nil
+	}
+	for _, step := range []string{stepCapture, stepCompare} {
+		dir := scalarAt(document.Content[0], step, "dir")
+		if dir == nil || dir.Tag == "!!null" || dir.Value == "" || filepath.IsAbs(dir.Value) {
+			continue
+		}
+		key := step + ".dir"
+		underAnchor := filepath.Join(anchorDir, dir.Value)
+		switch {
+		case isDir(underAnchor):
+			moved, err := filepath.Rel(worktreeRoot, underAnchor)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("rebase drift dirs: %s: %w", key, err)
+			}
+			moved = filepath.ToSlash(moved)
+			rewrote = append(rewrote, fmt.Sprintf("%s %q rewritten to %q, since a relative dir now joins the worktree root, not the anchored directory; lym config drift --set %s=<dir> from the prime sets another", key, dir.Value, moved, key))
+			dir.Value = moved
+		case isDir(filepath.Join(worktreeRoot, dir.Value)):
+		default:
+			flagged = append(flagged, fmt.Sprintf("%s %q names no directory under the worktree root %s or the anchored directory %s; way forward: lym config drift --set %s=<dir> from the prime, with <dir> relative to the worktree root", key, dir.Value, worktreeRoot, anchorDir, key))
+		}
+	}
+	if len(rewrote) == 0 {
+		return existing, nil, flagged, nil
+	}
+
+	var out bytes.Buffer
+	encoder := yaml.NewEncoder(&out)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&document); err != nil {
+		return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("rebase drift dirs: encode yaml: %w", err))
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, nil, nil, configengine.MarkInvalid(fmt.Errorf("rebase drift dirs: encode yaml: %w", err))
+	}
+	return out.Bytes(), rewrote, flagged, nil
+}
+
+// scalarAt returns the scalar node at the key path under mapping, or nil when a key is absent, a node on the way is no mapping or the leaf is no scalar.
+func scalarAt(mapping *yaml.Node, keys ...string) *yaml.Node {
+	node := mapping
+	for _, key := range keys {
+		if node.Kind != yaml.MappingNode {
+			return nil
+		}
+		var next *yaml.Node
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			if node.Content[i].Value == key {
+				next = node.Content[i+1]
+				break
+			}
+		}
+		if next == nil {
+			return nil
+		}
+		node = next
+	}
+	if node.Kind != yaml.ScalarNode {
+		return nil
+	}
+	return node
+}
+
+// isDir reports whether path names an existing directory.
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}

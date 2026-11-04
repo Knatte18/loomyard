@@ -5,9 +5,11 @@
 package driftengine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -71,6 +73,8 @@ type stepOutcome struct {
 	ExitCode int
 	// TimedOut is true when the timeout killed the command's tree.
 	TimedOut bool
+	// Dir is the absolute directory the command ran in.
+	Dir string
 	// release gives back the slot; the caller calls it once it has recorded the outcome.
 	release func()
 }
@@ -147,7 +151,91 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 		release()
 		return stepOutcome{}, fmt.Errorf("drift: wait for the %s command: %w", run.Site, err)
 	}
-	return stepOutcome{ExitCode: exit, TimedOut: timedOut, release: release}, nil
+	return stepOutcome{ExitCode: exit, TimedOut: timedOut, Dir: dir, release: release}, nil
+}
+
+// outputTailLines is how many of a finished command's last non-empty output lines a failure's reason quotes.
+const outputTailLines = 3
+
+// outputTailMaxRunes bounds the quoted output, so a reason stays one readable line; a longer tail keeps its end.
+const outputTailMaxRunes = 400
+
+// outputTailReadBytes bounds how much of the end of a command's log commandReport reads.
+const outputTailReadBytes = 64 * 1024
+
+// readLogTail returns the last outputTailReadBytes bytes of the file at path, or all of it when it is shorter.
+// A cut file starts at a line boundary when its read window holds one, and a line the window begins inside is dropped.
+func readLogTail(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	// A cut file is read from one byte before its window, so the byte shows whether the window begins on a line start.
+	offset := max(0, info.Size()-outputTailReadBytes-1)
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+	if offset > 0 {
+		startsLine := data[0] == '\n'
+		data = data[1:]
+		if newline := bytes.IndexByte(data, '\n'); !startsLine && newline >= 0 {
+			data = data[newline+1:]
+		}
+	}
+	return data, nil
+}
+
+// commandReport returns the clause a failed command's reason ends on: the directory the command ran in, and the end of its last non-empty output lines from its log or that it printed nothing.
+// A tail over the output bound is cut from its start, so the last line, which usually states the cause, stays.
+// A log that cannot be read is named with its error, so the clause still says where the command ran.
+func commandReport(dir, logPath string) string {
+	data, err := readLogTail(logPath)
+	if err != nil {
+		return fmt.Sprintf("; it ran in %s and its log could not be read: %v", dir, err)
+	}
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+	if len(lines) == 0 {
+		return "; it ran in " + dir + " and printed nothing"
+	}
+	tail := lines[max(0, len(lines)-outputTailLines):]
+	return "; it ran in " + dir + " and its last output was: " + boundOneLineKeepingEnd(strings.Join(tail, " / "), outputTailMaxRunes)
+}
+
+// foldOneLine folds text onto one line as runes.
+func foldOneLine(text string) []rune {
+	return []rune(strings.Join(strings.Fields(text), " "))
+}
+
+// boundOneLine folds text onto one line and cuts it to maxRunes from its end, marking a cut with a trailing ellipsis.
+func boundOneLine(text string, maxRunes int) string {
+	runes := foldOneLine(text)
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return string(runes[:maxRunes-1]) + "…"
+}
+
+// boundOneLineKeepingEnd folds text onto one line and cuts it to maxRunes from its start, marking a cut with a leading ellipsis.
+func boundOneLineKeepingEnd(text string, maxRunes int) string {
+	runes := foldOneLine(text)
+	if len(runes) <= maxRunes {
+		return string(runes)
+	}
+	return "…" + string(runes[len(runes)-(maxRunes-1):])
 }
 
 // missingDirRefusal is the refusal of a step whose dir is no existing directory.

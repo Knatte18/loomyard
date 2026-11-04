@@ -51,12 +51,13 @@ func TestRunCompare(t *testing.T) {
 		}
 	})
 
-	t.Run("a non-zero exit fails and names the log", func(t *testing.T) {
+	t.Run("a non-zero exit fails and names the directory, the last output and the log", func(t *testing.T) {
 		t.Parallel()
 		req, _ := newCompareFixture(t, "echo drifted; exit 4")
 		got, err := RunCompare(context.Background(), req)
-		if err != nil || got.Passed || got.ExitCode != 4 || !strings.Contains(got.Reason, "exit 4") || !strings.Contains(got.Reason, got.Log) {
-			t.Fatalf("RunCompare() = %+v, %v; want a failure with exit 4 naming its log", got, err)
+		wantReason := "exit 4; it ran in " + req.AnchorDir + " and its last output was: drifted; log " + got.Log
+		if err != nil || got.Passed || got.ExitCode != 4 || got.Reason != wantReason {
+			t.Fatalf("RunCompare() = %+v, %v; want a failure with reason %q", got, err, wantReason)
 		}
 		if text := readFile(t, got.Log); text != "drifted\n" {
 			t.Errorf("log = %q; want the command's output", text)
@@ -169,6 +170,9 @@ func TestRunCompare(t *testing.T) {
 		got, err := RunCompare(context.Background(), req)
 		if err != nil || got.Passed || !strings.HasPrefix(got.Reason, "timed out after ") {
 			t.Errorf("RunCompare() = %+v, %v; want a failure naming the timeout", got, err)
+		}
+		if want := "; it ran in " + req.WorktreeDir + " and printed nothing; log " + got.Log; !strings.HasSuffix(got.Reason, want) {
+			t.Errorf("RunCompare() reason = %q; want it to end %q", got.Reason, want)
 		}
 		if !slotFree(t, pool) {
 			t.Errorf("the slot is still held after the timeout")

@@ -52,7 +52,7 @@ type CompareResult struct {
 	Log string
 	// Passed is true when the command exited 0 within its timeout.
 	Passed bool
-	// Reason says why a compare did not pass and names its log; empty when it passed.
+	// Reason says why a compare did not pass, where its command ran and what it printed last, and names its log; empty when it passed.
 	Reason string
 }
 
@@ -106,9 +106,9 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 	result.ExitCode = outcome.ExitCode
 	switch {
 	case outcome.TimedOut:
-		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m; log " + result.Log
+		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m" + commandReport(outcome.Dir, result.Log) + "; log " + result.Log
 	case outcome.ExitCode != 0:
-		result.Reason = "exit " + strconv.Itoa(outcome.ExitCode) + "; log " + result.Log
+		result.Reason = "exit " + strconv.Itoa(outcome.ExitCode) + commandReport(outcome.Dir, result.Log) + "; log " + result.Log
 	default:
 		result.Passed = true
 	}

@@ -86,6 +86,9 @@ type Module struct {
 	// CheckDirs, when non-nil, loads the module under dirs and refuses a command dir that is no existing directory in the worktree at worktreeRoot, whose anchored directory is anchorDir.
 	// A module whose keys declare commands sets it, so a hub-wide write refuses a dir that would fail every run in the prime.
 	CheckDirs func(dirs configengine.Dirs, worktreeRoot, anchorDir string) error
+	// Reinterpretations are the changes a binary made to what a value in the module's hub base file means, in the order they were made.
+	// A binary that changes such a meaning adds one, so the hub-wide reconcile carries every hub's file across the change before the binary runs a command from it.
+	Reinterpretations []Reinterpretation
 	// Spec returns the module's own layered-load spec: its name, template, open maps, hub-wide flag and per-key classification.
 	Spec func() configengine.Spec
 	// LocalKeys are the keys of a hub-wide module a local override may set, derived from Spec.
@@ -94,6 +97,15 @@ type Module struct {
 	// LocalDenied are the dotted key paths of a per-worktree module a local override may not set, derived from Spec.
 	// It is nil for a hub-wide module.
 	LocalDenied []string
+}
+
+// Reinterpretation is one change a binary made to what a value in a module's hub base file means, with the rewrite that keeps what the hub meant by the value.
+type Reinterpretation struct {
+	// ID names the change; the hub-wide reconcile writes a board marker carrying it once the change is applied, so it is applied once per hub.
+	ID string
+	// Rewrite is told the hub base file's bytes and the prime's worktree root and anchored directory.
+	// It returns the bytes, rewritten only when a value changed, one line per value it rewrote and one line per value it could not settle, the latter naming its way forward.
+	Rewrite func(existing []byte, worktreeRoot, anchorDir string) (rewritten []byte, rewrote, flagged []string, err error)
 }
 
 // withLocalBounds fills the module's LocalKeys or LocalDenied from its Spec, so the registry never restates a key.
@@ -136,7 +148,7 @@ func Modules() []Module {
 		{Name: "board", Template: boardengine.ConfigTemplate, OpenMaps: boardengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoadNamed(boardengine.LoadConfig, "board"), Spec: boardengine.ConfigSpec},
 		{Name: "darn", Template: darnengine.ConfigTemplate, OpenMaps: darnengine.ConfigOpenMaps(), HubWide: true, Migrate: darnengine.MigrateConfig, CheckLoad: checkLoadNamed(darnengine.LoadConfig, "darn"), Spec: darnengine.ConfigSpec},
 		{Name: "desktop", Template: desktophook.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(desktophook.LoadConfig), Spec: desktophook.ConfigSpec},
-		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Spec: driftengine.ConfigSpec},
+		{Name: "drift", Template: driftengine.ConfigTemplate, OpenMaps: driftengine.ConfigOpenMaps(), HubWide: true, CheckLoad: checkLoad(driftengine.LoadConfig), CheckDirs: driftengine.CheckDirs, Reinterpretations: []Reinterpretation{{ID: driftengine.DirBaseReinterpretation, Rewrite: driftengine.RebaseDirsOntoRoot}}, Spec: driftengine.ConfigSpec},
 		{Name: "env", Template: envconfig.ConfigTemplate, PerNameMaps: envconfig.ConfigPerNameMaps(), HubWide: true, CheckLoad: checkLoad(envconfig.LoadConfig), Spec: envconfig.ConfigSpec},
 		{Name: "fabric", Template: fabricengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoad(fabricengine.LoadConfig), Spec: fabricengine.ConfigSpec},
 		{Name: "gate", Template: gateslot.ConfigTemplate, OpenMaps: gateslot.ConfigOpenMaps(), PerNameMaps: gateslot.ConfigPerNameMaps(), HubWide: true, Migrate: gateslot.MigrateConfig, MigrateHubBase: gateslot.SeedAdoptGate, CheckLoad: checkLoad(gateslot.LoadConfig), CheckDirs: gateslot.CheckDirs, Spec: gateslot.ConfigSpec},

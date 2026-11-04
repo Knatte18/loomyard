@@ -263,7 +263,11 @@ func captureCmd() *cobra.Command {
 Drift-Baseline, or at a Drift-Await halt, with HEAD on the branch point and a
 clean tracked tree, starts the capture in a detached process that outlives this
 call, and returns once its record reads running; lym drift status shows it.
-Another capture holding the lock is refused.
+Another capture holding the lock is refused. A capture that has already ended
+failed when the call returns, such as one that exited 0 with no baseline file,
+fails the call with its reason: the directory the command ran in, its last
+output and the ways forward. One that fails later records the same reason,
+which lym drift status shows and the Drift-Await halt carries.
 
 --side is the Drift-Verify agent's form: it captures a spare profile into a
 numbered directory under the side directory, spends one run of the session's
@@ -342,7 +346,14 @@ func startMainCapture(w *worktree) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"pid": pid}, nil
+	rec, _, err := driftengine.ReadCapture(w.paths)
+	if err != nil {
+		return nil, err
+	}
+	if rec.Pid == pid && rec.State == driftengine.CaptureFailed {
+		return nil, driftengine.FailedCaptureError(rec)
+	}
+	return map[string]any{"pid": pid, "state": rec.State}, nil
 }
 
 // captureChildCmd returns the hidden `drift capture-child` verb, the detached process `drift capture` spawns.
@@ -355,7 +366,9 @@ func captureChildCmd() *cobra.Command {
 		Long: `capture-child is the body of the process "lym drift capture" spawns detached.
 It holds the capture's named job, runs the main capture under the capture lock,
 re-checking the precondition under the lock, and releases the job as its last
-act. It writes nothing to its log once the capture has returned.`,
+act. A capture that ends failed is written to its log as an error envelope
+with the capture's reason, under the lock, and the process exits non-zero.
+It writes nothing to its log once the capture has returned.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if clihelp.ShouldAbort(cmd.Context()) {
@@ -415,6 +428,11 @@ func runCaptureChild(cmd *cobra.Command) {
 		return head, nil
 	}
 	request.LockRetry = captureLockRetry
+	request.OnEnd = func(rec driftengine.CaptureRecord) {
+		if rec.State != driftengine.CapturePassed {
+			fail(driftengine.FailedCaptureError(rec))
+		}
+	}
 	_, runErr := driftengine.RunCapture(ctx, request)
 	if runErr != nil {
 		clihelp.SetExit(ctx, 1)

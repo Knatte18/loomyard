@@ -47,6 +47,8 @@ type CaptureRequest struct {
 	Now func() time.Time
 	// LockRetry bounds how long a main capture retries a held capture lock before it refuses.
 	LockRetry time.Duration
+	// OnEnd, when non-nil, is called with the final record of a main capture whose command ran, once the record is written and while the capture lock is still held.
+	OnEnd func(rec CaptureRecord)
 }
 
 // lockHeldRefusal is the refusal of a capture or a spawn that finds the capture lock held.
@@ -56,8 +58,10 @@ func lockHeldRefusal(lockPath string) error {
 
 // RunCapture runs the main capture under the capture lock and returns its final record.
 // A refusal of the lock or of Check is returned with no record written.
-// A command that fails, times out or writes no file under the baseline directory is a record in state failed with its reason and no error.
+// A command that fails, times out or writes no file under the baseline directory is a record in state failed with no error,
+// and its reason names the directory the command ran in and the command's last output lines, or that it printed nothing.
 // An existing non-empty baseline directory is first moved to the first free numbered backup beside it, so no baseline is deleted or overwritten.
+// Once the command ran, the final record is handed to OnEnd under the capture lock.
 func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) {
 	p := req.Paths
 	if err := os.MkdirAll(filepath.Dir(p.CaptureLock), 0o755); err != nil {
@@ -118,11 +122,12 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 
 	rec.ExitCode = outcome.ExitCode
 	rec.EndedAt = stamp(req.Now())
+	report := func() string { return commandReport(outcome.Dir, rec.Log) }
 	switch {
 	case outcome.TimedOut:
-		rec.State, rec.Reason = CaptureFailed, "timed out after "+timeoutMinutes(req.Timeout)+"m"
+		rec.State, rec.Reason = CaptureFailed, "timed out after "+timeoutMinutes(req.Timeout)+"m"+report()
 	case outcome.ExitCode != 0:
-		rec.State, rec.Reason = CaptureFailed, "exit "+strconv.Itoa(outcome.ExitCode)
+		rec.State, rec.Reason = CaptureFailed, "exit "+strconv.Itoa(outcome.ExitCode)+report()
 	default:
 		wrote, err := holdsFile(p.BaselineDir)
 		if err != nil {
@@ -131,10 +136,21 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		if wrote {
 			rec.State = CapturePassed
 		} else {
-			rec.State, rec.Reason, rec.WroteNoFile = CaptureFailed, noFileReason(p.BaselineDir, req.Skip), true
+			rec.State, rec.Reason, rec.WroteNoFile = CaptureFailed, noFileReason(p.BaselineDir, req.Skip)+report(), true
 		}
 	}
-	return rec, WriteCapture(p, rec)
+	if err := WriteCapture(p, rec); err != nil {
+		return rec, err
+	}
+	if req.OnEnd != nil {
+		req.OnEnd(rec)
+	}
+	return rec, nil
+}
+
+// FailedCaptureError is the error of a main capture whose record ended failed: the record's reason and log, and the ways forward a Drift-Await halt over the record names while HEAD is on the branch point, where every main capture runs.
+func FailedCaptureError(rec CaptureRecord) error {
+	return fmt.Errorf("drift: the baseline capture ended %s (%s)%s; way forward: %s", rec.State, rec.Reason, logClause(rec.Log), awaitWaysForward(true, emptyUnderSkips(rec)))
 }
 
 // noFileReason is the reason of a capture that exited 0 and wrote no file under baselineDir.
@@ -230,6 +246,8 @@ type SideResult struct {
 	ExitCode int
 	// TimedOut is true when the timeout killed the command.
 	TimedOut bool
+	// CommandDir is the absolute directory the command ran in.
+	CommandDir string
 }
 
 // RunSideCapture runs the capture command into the next free numbered directory under the side directory.
@@ -244,7 +262,7 @@ type AcceptedCapture struct {
 	Passed bool
 	// Log is the command's log file.
 	Log string
-	// Reason says why the capture did not pass and names its log; empty when it passed.
+	// Reason says why the capture did not pass, where its command ran and what it printed last, and names its log; empty when it passed.
 	Reason string
 }
 
@@ -261,18 +279,19 @@ func RunAcceptedCapture(ctx context.Context, req CaptureRequest) (AcceptedCaptur
 	if err != nil {
 		return result, err
 	}
+	report := func() string { return commandReport(side.CommandDir, side.Log) + "; log " + side.Log }
 	switch {
 	case side.TimedOut:
-		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m; log " + side.Log
+		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m" + report()
 	case side.ExitCode != 0:
-		result.Reason = "exit " + strconv.Itoa(side.ExitCode) + "; log " + side.Log
+		result.Reason = "exit " + strconv.Itoa(side.ExitCode) + report()
 	default:
 		wrote, err := holdsFile(dir)
 		if err != nil {
 			return result, err
 		}
 		if !wrote {
-			result.Reason = "exit 0 but wrote no file to " + dir + "; log " + side.Log
+			result.Reason = "exit 0 but wrote no file to " + dir + report()
 			break
 		}
 		result.Passed = true
@@ -311,6 +330,6 @@ func captureInto(ctx context.Context, req CaptureRequest, dir, site, logName str
 		return result, err
 	}
 	outcome.release()
-	result.ExitCode, result.TimedOut = outcome.ExitCode, outcome.TimedOut
+	result.ExitCode, result.TimedOut, result.CommandDir = outcome.ExitCode, outcome.TimedOut, outcome.Dir
 	return result, nil
 }

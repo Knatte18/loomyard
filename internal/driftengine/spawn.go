@@ -183,19 +183,10 @@ func readChildReport(childLog string) childReport {
 			continue
 		}
 		if text, ok := envelope["error"].(string); ok {
-			report = childReport{text: boundChildError(text), lasting: envelope[LastingFaultKey] == true}
+			report = childReport{text: boundOneLine(text, childErrorMaxRunes), lasting: envelope[LastingFaultKey] == true}
 		}
 	}
 	return report
-}
-
-// boundChildError folds text onto one line and cuts it to childErrorMaxRunes, marking a cut with an ellipsis.
-func boundChildError(text string) string {
-	runes := []rune(strings.Join(strings.Fields(text), " "))
-	if len(runes) <= childErrorMaxRunes {
-		return string(runes)
-	}
-	return string(runes[:childErrorMaxRunes-1]) + "…"
 }
 
 // childNoRecordError is a started capture child that did not record its start.

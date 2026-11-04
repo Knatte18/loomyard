@@ -153,4 +153,5 @@
 // A beam's `watch` tells its watcher the orch's own agent name, so the pause checks match an orch caller or network operation marker against that name, and the prime's watcher keeps matching an orch name with no slug.
 // `InstallPushNotifier` routes fabric's failed-push notice to the prime orch as mail signed `FABRIC`, for every lym process from the root pre-run.
 // It resolves the hub from the working directory as the network gate does, so a detached push child starting in the board worktree is covered, and installs nothing outside a hub.
+// `InstallReconcileNotifier` routes the hub config reconcile's reinterpretation notice, what a binary's change of a config value's meaning rewrote or flagged in the hub's files, to the prime orch as mail signed `RECONCILE`, resolving the hub the same way.
 package orchcli

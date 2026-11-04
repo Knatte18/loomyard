@@ -106,6 +106,17 @@ func touch(t *testing.T, path string) {
 	}
 }
 
+// lastLogEnvelope decodes the last non-empty line of the log at path as an envelope, and reports false while the log holds none.
+func lastLogEnvelope(path string) (envelope.Envelope, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return envelope.Envelope{}, false
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	env, err := envelope.Parse(lines[len(lines)-1])
+	return env, err == nil
+}
+
 // TestCapture_OutlivesCaller covers a capture that fails, one that passes after its caller exited, one ended by the owned-process end of a teardown, and the compare's refusals.
 func TestCapture_OutlivesCaller(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -149,12 +160,37 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 	writeDrift("")
 	writeStatus("Drift-Await", shedengine.StateBlocked)
 
-	t.Run("a capture with the marker absent records failed", func(t *testing.T) {
+	t.Run("a capture with the marker absent records failed and its child logs the reason", func(t *testing.T) {
+		// The command exits non-zero at once, so whether the record already reads failed when the verb reads it is a race:
+		// the verb either starts the child and succeeds, or refuses with the capture's reason.
 		env := lymRun(t, bin, pair, "capture")
 		if !env.OK {
-			t.Fatalf("lym drift capture: %s", env.Error)
+			for _, want := range []string{"drift: the baseline capture ended failed (exit 1; it ran in ", "printed nothing", "log ", "lym drift capture followed by lym loom resume"} {
+				if !strings.Contains(env.Error, want) {
+					t.Errorf("lym drift capture refused with %q; want it to name %q", env.Error, want)
+				}
+			}
 		}
 		waitFor(t, "the capture record to read failed", func() bool { return captureState(statusBody(t, bin, pair)) == driftengine.CaptureFailed })
+
+		rec, found, err := driftengine.ReadCapture(paths)
+		if err != nil || !found || !strings.HasPrefix(rec.Reason, "exit 1; it ran in ") || !strings.Contains(rec.Reason, "printed nothing") {
+			t.Fatalf("ReadCapture() = %+v, %v, %v; want a failed record whose reason names exit 1, the directory and that nothing was printed", rec, found, err)
+		}
+		logs, err := filepath.Glob(filepath.Join(paths.LogsDir, "capture-child-*.log"))
+		if err != nil || len(logs) != 1 {
+			t.Fatalf("capture child logs = %v, %v; want exactly one", logs, err)
+		}
+		var childEnv envelope.Envelope
+		waitFor(t, "the capture child to log its error envelope", func() bool {
+			var ok bool
+			childEnv, ok = lastLogEnvelope(logs[0])
+			return ok && !childEnv.OK
+		})
+		wantError := "drift: the baseline capture ended failed (" + rec.Reason + ")"
+		if !strings.HasPrefix(childEnv.Error, wantError) {
+			t.Errorf("capture child envelope error = %q; want it to open %q", childEnv.Error, wantError)
+		}
 	})
 
 	t.Run("a capture returns while it holds the lock and passes after the caller exited", func(t *testing.T) {

@@ -218,8 +218,21 @@ func commitPreMigrationBase(t *testing.T, boardDir string) {
 		}
 	}
 	gitkit.Git(t, boardDir, "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.BaseSparseMarkerRel()))
+	removeReinterpretationMarkers(t, boardDir)
 	gitkit.Git(t, boardDir, "add", "-A")
 	gitkit.Git(t, boardDir, "commit", "-q", "-m", "fixture: pre-migration board base files")
+}
+
+// removeReinterpretationMarkers stages the deletion of every reinterpretation marker the board at boardDir tracks, so the board is one no registered reinterpretation has been applied to.
+// The forged hub arrives with them, written by the walk that cloned it.
+func removeReinterpretationMarkers(t *testing.T, boardDir string) {
+	t.Helper()
+
+	for _, module := range configreg.Modules() {
+		for _, change := range module.Reinterpretations {
+			gitkit.Git(t, boardDir, "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.ReinterpretedMarkerRel(change.ID)))
+		}
+	}
 }
 
 // commitRetiredKeys appends to the board's darn, gate and landing base files the key each module retired, and commits them.
@@ -1014,6 +1027,13 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				if _, statErr := os.Stat(configengine.BaseSparseMarker(h.BoardDir())); !os.IsNotExist(statErr) {
 					t.Errorf("the failed walk left the board marker behind (stat err = %v)", statErr)
 				}
+				for _, module := range configreg.Modules() {
+					for _, change := range module.Reinterpretations {
+						if _, statErr := os.Stat(configengine.ReinterpretedMarker(h.BoardDir(), change.ID)); !os.IsNotExist(statErr) {
+							t.Errorf("the failed walk left the reinterpretation marker %s behind (stat err = %v)", change.ID, statErr)
+						}
+					}
+				}
 			}
 			if _, statErr := os.Stat(file); statErr != nil {
 				t.Errorf("the failed file is gone after the walk: %v", statErr)
@@ -1355,9 +1375,15 @@ func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
 	if key, found := stampKey(t, geom); !found || key != runningKey() {
 		t.Fatalf("stamp = %q (found %v); want the running key although the hub-wide commit was not pushed", key, found)
 	}
-	changed := strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD"))
+	// The first walk of a hub also commits each reinterpretation marker, which is no config file.
+	var changed []string
+	for _, path := range strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD")) {
+		if !strings.Contains(path, "reinterpreted-") {
+			changed = append(changed, path)
+		}
+	}
 	if len(changed) != 1 {
-		t.Fatalf("the hub-wide commit changed %v; want one config file", changed)
+		t.Fatalf("the hub-wide commit changed %v besides the reinterpretation markers; want one config file", changed)
 	}
 	if err := os.Remove(geom.StampPath()); err != nil {
 		t.Fatalf("remove the stamp: %v", err)

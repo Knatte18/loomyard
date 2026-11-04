@@ -23,15 +23,8 @@ const fabricProgram = "FABRIC"
 // Outside a hub nothing is installed.
 // The notifier posts only for that hub, and reports a failure of another hub not posted.
 func InstallPushNotifier(ctx context.Context) {
-	cwd, err := lymcwd.CwdFrom(ctx)
-	if err != nil {
-		return
-	}
-	location, err := lymcwd.Resolve(cwd)
-	if err != nil {
-		location, err = lymcwd.ResolveWorktree(cwd)
-	}
-	if err != nil || !preflight.BoardLymPresent(location) {
+	location, inHub := hubLocation(ctx)
+	if !inHub {
 		return
 	}
 	hubPath := filepath.Clean(location.HubPath)
@@ -45,6 +38,22 @@ func InstallPushNotifier(ctx context.Context) {
 		}
 		return NotifyPrime(sender, fabricProgram, line)
 	})
+}
+
+// hubLocation resolves the hub the context's working directory lies in, as the network gate resolves it, and reports false outside a hub.
+func hubLocation(ctx context.Context) (*lymcwd.Location, bool) {
+	cwd, err := lymcwd.CwdFrom(ctx)
+	if err != nil {
+		return nil, false
+	}
+	location, err := lymcwd.Resolve(cwd)
+	if err != nil {
+		location, err = lymcwd.ResolveWorktree(cwd)
+	}
+	if err != nil || !preflight.BoardLymPresent(location) {
+		return nil, false
+	}
+	return location, true
 }
 
 // drivableLocation returns location when a lym verb can run from it, and otherwise the first worktree of its hub one can run from.

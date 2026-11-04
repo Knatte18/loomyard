@@ -133,6 +133,19 @@ func BaseSparseMarkerRel() string {
 	return filepath.Join(lymdirs.LymDirName, configDirName, baseSparseMarkerName)
 }
 
+// reinterpretedMarkerPrefix opens the name of a board marker recording one applied reinterpretation; the name has no .yaml suffix, so no module reader takes it for a module file.
+const reinterpretedMarkerPrefix = "reinterpreted-"
+
+// ReinterpretedMarker returns the tracked marker file under boardDir that records the reinterpretation named id was applied to the hub's base files.
+func ReinterpretedMarker(boardDir, id string) string {
+	return filepath.Join(ConfigDir(boardDir), reinterpretedMarkerPrefix+id)
+}
+
+// ReinterpretedMarkerRel returns the marker of the reinterpretation named id relative to the board dir, the form a board commit lists.
+func ReinterpretedMarkerRel(id string) string {
+	return filepath.Join(lymdirs.LymDirName, configDirName, reinterpretedMarkerPrefix+id)
+}
+
 // sparseBase reports whether the base layer under dirs is sparse over the template:
 // a board dir is told and the spec is not seed-only.
 func sparseBase(dirs Dirs, spec Spec) bool {

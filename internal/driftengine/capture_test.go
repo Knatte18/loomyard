@@ -86,6 +86,60 @@ func slotFree(t *testing.T, pool *gateslot.Pool) bool {
 	return len(holders) == 0
 }
 
+// TestFailedCaptureError covers the reason and log the error carries and the ways forward by whether the capture wrote no file under skipped tests.
+func TestFailedCaptureError(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		rec     CaptureRecord
+		want    []string
+		wantNot []string
+	}{
+		{
+			name:    "a plain failure names capture followed by resume",
+			rec:     CaptureRecord{State: CaptureFailed, Reason: "exit 3; it ran in /w and printed nothing", Log: "/logs/capture.log"},
+			want:    []string{"lym drift capture followed by lym loom resume"},
+			wantNot: []string{"lym drift scope"},
+		},
+		{
+			name:    "no file under an empty skip list is a plain failure",
+			rec:     CaptureRecord{State: CaptureFailed, Reason: "exit 3; it ran in /w and printed nothing", Log: "/logs/capture.log", WroteNoFile: true},
+			want:    []string{"lym drift capture followed by lym loom resume"},
+			wantNot: []string{"lym drift scope"},
+		},
+		{
+			name: "no file under skipped tests names the scope changes",
+			rec:  CaptureRecord{State: CaptureFailed, Reason: "exit 3; it ran in /w and printed nothing", Log: "/logs/capture.log", WroteNoFile: true, Skip: []string{"TestA"}},
+			want: []string{"lym drift scope --scope full", "lym drift scope --scope off"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := FailedCaptureError(tt.rec)
+			if err == nil {
+				t.Fatalf("FailedCaptureError() = nil; want an error")
+			}
+			wantOpen := "drift: the baseline capture ended failed (" + tt.rec.Reason + "), log /logs/capture.log; way forward: "
+			if !strings.HasPrefix(err.Error(), wantOpen) {
+				t.Errorf("FailedCaptureError() = %q; want it to open %q", err, wantOpen)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("FailedCaptureError() = %q; want it to name %q", err, want)
+				}
+			}
+			for _, unwanted := range tt.wantNot {
+				if strings.Contains(err.Error(), unwanted) {
+					t.Errorf("FailedCaptureError() = %q; want no %q", err, unwanted)
+				}
+			}
+		})
+	}
+}
+
 // TestRunCapture covers the command's outcome rows, the skip file, the timeout tree kill, the kept backup, the capture lock, the slot wait, Check's refusal and the side capture.
 func TestRunCapture(t *testing.T) {
 	tiergate.Require(t, 1)
@@ -99,14 +153,22 @@ func TestRunCapture(t *testing.T) {
 		wantReason string
 		wantFile   string
 		wantText   string
+		// timeout, when set, replaces the fixture's timeout.
+		timeout time.Duration
 		// wantNamed lists text the reason holds past its opening.
-		wantNamed       []string
+		wantNamed []string
+		// wantEnds is the exact end of the reason; "{dir}" stands for the directory the command ran in.
+		wantEnds        string
 		wantWroteNoFile bool
 	}{
 		{name: "a command writing a file passes", command: "echo profile > {baseline_dir}/p.json", wantState: CapturePassed, wantFile: "p.json", wantText: "profile\n"},
 		{name: "the command sees the skip file with one test per line", command: "cat {skip_file} > {baseline_dir}/seen", skip: []string{"TestA", "TestB"}, wantState: CapturePassed, wantFile: "seen", wantText: "TestA\nTestB\n"},
 		{name: "the command sees an empty skip file when nothing is skipped", command: "cat {skip_file} > {baseline_dir}/seen", wantState: CapturePassed, wantFile: "seen", wantText: ""},
-		{name: "exit 0 with no file fails", command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true},
+		{
+			name:    "exit 0 with no file and no output fails and says the command printed nothing",
+			command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
+			wantEnds: "; it ran in {dir} and printed nothing",
+		},
 		{
 			name:    "exit 0 with no file under skipped tests names the scope, the count and the skips",
 			command: "true", skip: []string{"TestA", "TestB"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
@@ -123,12 +185,40 @@ func TestRunCapture(t *testing.T) {
 			wantNamed: []string{"scope partial skipped 1 test,"},
 		},
 		{name: "a non-zero exit fails", command: "exit 3", wantState: CaptureFailed, wantReason: "exit 3"},
+		{
+			name:    "a non-zero exit after several lines quotes the directory and only the last three non-empty lines",
+			command: "echo one; echo two; echo; echo three; echo four; exit 5", wantState: CaptureFailed, wantReason: "exit 5",
+			wantEnds: "; it ran in {dir} and its last output was: two / three / four",
+		},
+		{
+			name:    "an over-long last line is cut to the output bound with an ellipsis",
+			command: "printf '%0500d\\n' 0; exit 2", wantState: CaptureFailed, wantReason: "exit 2",
+			wantEnds: "and its last output was: …" + strings.Repeat("0", outputTailMaxRunes-1),
+		},
+		{
+			name:    "a short last line after two long lines is quoted whole",
+			command: "printf '%0500d\\n' 0; printf '%0500d\\n' 0; echo cause; exit 2", wantState: CaptureFailed, wantReason: "exit 2",
+			wantEnds: "and its last output was: …" + strings.Repeat("0", outputTailMaxRunes-1-len(" / cause")) + " / cause",
+		},
+		{
+			name:    "a log past the read window quotes the lines inside it and drops the line the window begins in",
+			command: "head -c 100000 /dev/zero | tr '\\0' x; echo; echo cause; exit 2", wantState: CaptureFailed, wantReason: "exit 2",
+			wantEnds: "and its last output was: cause",
+		},
+		{
+			name:    "a timeout fails and says the directory and that the command printed nothing",
+			command: "sleep 60", timeout: 300 * time.Millisecond, wantState: CaptureFailed, wantReason: "timed out after ",
+			wantEnds: "; it ran in {dir} and printed nothing",
+		},
 	}
 	for _, tt := range outcomes {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := newCaptureFixture(t, tt.command)
 			f.req.Skip = tt.skip
+			if tt.timeout > 0 {
+				f.req.Timeout = tt.timeout
+			}
 
 			rec, err := RunCapture(context.Background(), f.req)
 			if err != nil {
@@ -141,6 +231,9 @@ func TestRunCapture(t *testing.T) {
 				if !strings.Contains(rec.Reason, want) {
 					t.Errorf("RunCapture() reason = %q; want it to name %q", rec.Reason, want)
 				}
+			}
+			if wantEnds := strings.ReplaceAll(tt.wantEnds, "{dir}", f.req.WorktreeDir); !strings.HasSuffix(rec.Reason, wantEnds) {
+				t.Errorf("RunCapture() reason = %q; want it to end %q", rec.Reason, wantEnds)
 			}
 			if len(tt.wantNamed) == 0 && strings.Contains(rec.Reason, "skipped") {
 				t.Errorf("RunCapture() reason = %q; want no skips named when none were skipped", rec.Reason)
@@ -198,6 +291,9 @@ func TestRunCapture(t *testing.T) {
 					t.Fatalf("MkdirAll() = %v; want nil", err)
 				}
 				f.req.Step.Dir = tt.dir
+				if tt.ranIn == "" {
+					f.req.OnEnd = func(CaptureRecord) { t.Errorf("OnEnd was called for a capture whose command never ran") }
+				}
 
 				rec, err := RunCapture(context.Background(), f.req)
 				if tt.ranIn == "" {
@@ -251,6 +347,18 @@ func TestRunCapture(t *testing.T) {
 		}
 		if held, _ := ProbeLock(f.req.Paths.CaptureLock); held {
 			t.Errorf("the capture lock is still held after the timeout")
+		}
+	})
+
+	t.Run("a log the command removed is reported unreadable beside the directory", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "true")
+		f.req.Step.Command = "rm -f " + f.req.Paths.LogsDir + "/capture-*.log; exit 4"
+
+		rec, err := RunCapture(context.Background(), f.req)
+		wantEnds := "exit 4; it ran in " + f.req.WorktreeDir + " and its log could not be read: "
+		if err != nil || rec.State != CaptureFailed || !strings.Contains(rec.Reason, wantEnds) {
+			t.Errorf("RunCapture() = %+v, %v; want a failed record whose reason holds %q", rec, err, wantEnds)
 		}
 	})
 
@@ -345,6 +453,35 @@ func TestRunCapture(t *testing.T) {
 		if _, found, _ := ReadCapture(f.req.Paths); found {
 			t.Errorf("a capture record was written for a refused capture")
 		}
+		f.req.OnEnd = func(CaptureRecord) { t.Errorf("OnEnd was called for a refused capture") }
+		if _, err := RunCapture(context.Background(), f.req); err != refusal {
+			t.Errorf("RunCapture() with OnEnd = %v; want Check's error untouched", err)
+		}
+	})
+
+	t.Run("OnEnd is called once with the final record while the capture lock is held", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "exit 3")
+		var calls []CaptureRecord
+		var heldInside bool
+		f.req.OnEnd = func(rec CaptureRecord) {
+			calls = append(calls, rec)
+			heldInside, _ = ProbeLock(f.req.Paths.CaptureLock)
+		}
+
+		rec, err := RunCapture(context.Background(), f.req)
+		if err != nil {
+			t.Fatalf("RunCapture() = _, %v; want nil", err)
+		}
+		if len(calls) != 1 || !reflect.DeepEqual(calls[0], rec) || calls[0].State != CaptureFailed || calls[0].Reason != rec.Reason {
+			t.Errorf("OnEnd calls = %+v; want one call with the returned failed record %+v", calls, rec)
+		}
+		if !heldInside {
+			t.Errorf("ProbeLock(CaptureLock) inside OnEnd = false; want held")
+		}
+		if held, _ := ProbeLock(f.req.Paths.CaptureLock); held {
+			t.Errorf("the capture lock is still held after the capture")
+		}
 	})
 
 	acceptedRows := []struct {
@@ -359,11 +496,17 @@ func TestRunCapture(t *testing.T) {
 		wantFile     string
 		wantReasonIn []string
 	}{
-		{name: "an accepted capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after "}},
+		{name: "an accepted capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after ", "; it ran in {dir} and printed nothing; log "}},
 		{name: "an accepted capture writing a file passes and leaves its output under the accepted directory", command: "echo profile > {baseline_dir}/p.json", wantPassed: true, wantFile: "p.json"},
 		{name: "an accepted capture empties a file left in the accepted directory first", command: "echo profile > {baseline_dir}/p.json", stale: true, wantPassed: true, wantFile: "p.json"},
-		{name: "an accepted capture exiting non-zero does not pass and names the exit and the log", command: "exit 3", wantReasonIn: []string{"exit 3; log "}},
-		{name: "an accepted capture exiting 0 with no file does not pass and names the missing file", command: "true", wantReasonIn: []string{"wrote no file", "; log "}},
+		{
+			name:    "an accepted capture exiting non-zero does not pass and names the exit, the directory, the last output and the log",
+			command: "echo boom; exit 3", wantReasonIn: []string{"exit 3; it ran in {dir} and its last output was: boom; log "},
+		},
+		{
+			name:    "an accepted capture exiting 0 with no file does not pass and names the missing file, the directory and the log",
+			command: "true", wantReasonIn: []string{"wrote no file", "; it ran in {dir} and printed nothing; log "},
+		},
 		{name: "a file left in the accepted directory does not make an empty capture pass", command: "true", stale: true, wantReasonIn: []string{"wrote no file"}},
 	}
 	for _, tt := range acceptedRows {
@@ -394,6 +537,7 @@ func TestRunCapture(t *testing.T) {
 				t.Errorf("RunAcceptedCapture() reason = %q; want none for a pass", got.Reason)
 			}
 			for _, want := range tt.wantReasonIn {
+				want = strings.ReplaceAll(want, "{dir}", f.req.WorktreeDir)
 				if !strings.Contains(got.Reason, want) {
 					t.Errorf("RunAcceptedCapture() reason = %q; want it to name %q", got.Reason, want)
 				}

@@ -154,6 +154,8 @@ Shortcuts, declared in internal/shortcutcli's embedded file, are listed under th
 				tendercli.InstallNetworkGate(cmd.Context(), pauseSlugOverride(cmd), detachedChild(cmd))
 				// A push origin refuses reaches the prime orch as creel mail from FABRIC, whichever process pushed.
 				orchcli.InstallPushNotifier(cmd.Context())
+				// A reconcile that rewrites or flags a reinterpreted hub config value reaches the prime orch as creel mail from RECONCILE.
+				orchcli.InstallReconcileNotifier(cmd.Context())
 				// lym beam start pauses a run another machine owns through tender, which imports orchcli.
 				orchcli.InstallOwnerPause(tendercli.PauseOwnedElsewhere)
 				// A records replay, in the detached push child as in Bolt's pull-first, merges the board by entry through boardengine's Bolt replayer.

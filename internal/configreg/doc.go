@@ -15,4 +15,9 @@
 // KeyMoves declares keys that moved from one module's file to another's; a reconcile relocates the value and drops the source key.
 // KeyCopies declares keys copied instead, under the same or another name, from a source module's hub file into a target module's hub file; the source keeps its key.
 // A copy places the value only when the source file sets the key and the target file does not, so a second reconcile changes nothing, and it reads no worktree layer, local override or run setting.
+//
+// # Reinterpretations
+//
+// A binary that changes what a value in a module's hub base file means declares a Reinterpretation on that module: an ID and a rewrite that keeps what the hub meant, or flags a value it cannot settle with a way forward.
+// The hub-wide reconcile applies each once per hub behind a board marker carrying its ID, and tells the hub's orch what it rewrote or flagged.
 package configreg

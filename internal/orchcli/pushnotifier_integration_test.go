@@ -64,6 +64,49 @@ func startCreelDaemon(t *testing.T, h *hubforge.Hub, receiver string) {
 	}
 }
 
+// startHubOrchDaemon records a prime orch strand for the hub, runs creel's daemon in process with that strand live, and returns the strand's name.
+func startHubOrchDaemon(t *testing.T, h *hubforge.Hub) string {
+	t.Helper()
+	root, err := lymtemp.ProcessRoot()
+	if err != nil {
+		t.Fatalf("ProcessRoot() = %v", err)
+	}
+	geometry, err := hubgeom.CreelGeometry(h.Path, root.Path())
+	if err != nil {
+		t.Fatalf("CreelGeometry() = %v", err)
+	}
+	receiver := geometry.Shortname + ":orch-held"
+	if err := orchengine.SaveState(PrimePaths(h.Location), orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1"}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+	reedState := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: "g1", Name: receiver}}}
+	if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
+		t.Fatalf("reedengine.SaveState: %v", err)
+	}
+	startCreelDaemon(t, h, receiver)
+	return receiver
+}
+
+// postedMails returns the mails the hub's creel daemon logged as posted.
+func postedMails(t *testing.T, h *hubforge.Hub) []creelengine.LogEntry {
+	t.Helper()
+	reader, err := creelcli.NewProgramClient(h.Location, "CHECK")
+	if err != nil {
+		t.Fatalf("NewProgramClient: %v", err)
+	}
+	entries, err := reader.Log(creelengine.LogFilter{})
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	var posted []creelengine.LogEntry
+	for _, entry := range entries {
+		if entry.Event == "posted" {
+			posted = append(posted, entry)
+		}
+	}
+	return posted
+}
+
 // TestInstallPushNotifier covers the install from the board worktree and from outside a hub.
 //
 // It runs without t.Parallel: the push notifier and the strand environment variable are process-global.
@@ -72,23 +115,7 @@ func TestInstallPushNotifier(t *testing.T) {
 	t.Run("InstalledFromTheBoardWorktreeAFailureMailsTheOrchAsFabric", func(t *testing.T) {
 		t.Setenv(agentname.StrandNameEnv, "")
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-		root, err := lymtemp.ProcessRoot()
-		if err != nil {
-			t.Fatalf("ProcessRoot() = %v", err)
-		}
-		geometry, err := hubgeom.CreelGeometry(h.Path, root.Path())
-		if err != nil {
-			t.Fatalf("CreelGeometry() = %v", err)
-		}
-		receiver := geometry.Shortname + ":orch-held"
-		if err := orchengine.SaveState(PrimePaths(h.Location), orchengine.State{Phase: orchengine.PhaseIdle, Strand: "g1"}); err != nil {
-			t.Fatalf("SaveState: %v", err)
-		}
-		reedState := &reedengine.ReedState{Strands: []reedengine.Strand{{GUID: "g1", Name: receiver}}}
-		if err := reedengine.SaveState(filepath.Join(h.Location.AnchorPath(), lymdirs.DotLymDirName), reedState); err != nil {
-			t.Fatalf("reedengine.SaveState: %v", err)
-		}
-		startCreelDaemon(t, h, receiver)
+		receiver := startHubOrchDaemon(t, h)
 		t.Cleanup(fabricengine.InstallPushNotifier(func(string, string) (bool, error) { return false, nil }))
 
 		InstallPushNotifier(lymcwd.WithCwd(context.Background(), fabricengine.BoardDir(h.Path)))
@@ -101,22 +128,9 @@ func TestInstallPushNotifier(t *testing.T) {
 		}
 
 		wantLine := fmt.Sprintf("a push of %s branch %s failed (%s): %s; way forward: %s", failure.Repo, failure.Branch, failure.Class, failure.Error, fabricengine.FailedPushWayForward(failure))
-		reader, err := creelcli.NewProgramClient(h.Location, "CHECK")
-		if err != nil {
-			t.Fatalf("NewProgramClient: %v", err)
-		}
-		entries, err := reader.Log(creelengine.LogFilter{})
-		if err != nil {
-			t.Fatalf("Log: %v", err)
-		}
-		var posted []creelengine.LogEntry
-		for _, entry := range entries {
-			if entry.Event == "posted" {
-				posted = append(posted, entry)
-			}
-		}
+		posted := postedMails(t, h)
 		if len(posted) != 1 {
-			t.Fatalf("posted events = %+v; want exactly one", entries)
+			t.Fatalf("posted events = %+v; want exactly one", posted)
 		}
 		if posted[0].To != receiver || !strings.HasSuffix(posted[0].From, ":FABRIC") || posted[0].Subject != wantLine {
 			t.Errorf("posted mail = from %q to %q subject %q; want from <shortname>:FABRIC to %q subject %q", posted[0].From, posted[0].To, posted[0].Subject, receiver, wantLine)

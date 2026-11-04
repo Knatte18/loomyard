@@ -76,6 +76,16 @@
 // the Warn names the conflicting paths and the two ways to settle them, and a board push that lands the commit clears it too.
 // A board with no upstream is never skipped: it is written and committed with no pull, and its detached sync fails on its own, so a board with no reachable remote is not re-walked on every start verb.
 //
+// # Reinterpretations
+//
+// A binary that changes what a value in a module's hub base file means registers a configreg.Reinterpretation on the module.
+// In the board write, after the hub-wide reconcile, the walk applies each one whose board marker `_lym/config/reinterpreted-<id>` is absent: it hands the module's base file to the rewrite with the prime's root and anchored directory, writes the file when the rewrite changed it, and writes the marker after it, so each applies once per hub and a later binary never applies it again.
+// An absent base file is only marked.
+// The file and the marker join the board commit, and a failed write restores both with the board's other config files.
+// Once the commit landed, the lines naming each rewritten and each flagged value go, as one `[reconcile notice]` line, to the hub's orch through the notifier the process installed with InstallNotifier, and to the log at Warn; with none installed, or no orch recorded, the log alone holds them.
+// A walk runs before a start verb loads any config, so a reinterpreted file is carried across before the new binary runs a command from it.
+// A machine-local override file is not rewritten, since the board marker is shared by every machine of the hub while the override is not.
+//
 // # The pair call
 //
 // Options.Pair reconciles that one pair unconditionally, whatever the stamp says, under the same lock and with the same mid-merge refusal.

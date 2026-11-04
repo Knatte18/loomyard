@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -124,7 +125,7 @@ func walkHub(geom Geometry, revision string, hooks walkHooks) (skipped bool, err
 		return false, fmt.Errorf("hubreconcile: no main code worktree among the hub's worktrees listed from %s", geom.WorktreePath)
 	}
 
-	hubWideSkipped, err := reconcileHubWide(geom.BoardDir, prime.Anchor, fabricengine.BinaryLabel(), hooks)
+	hubWideSkipped, err := reconcileHubWide(geom.BoardDir, prime, fabricengine.BinaryLabel(), hooks)
 	if err != nil {
 		return false, err
 	}
@@ -192,13 +193,16 @@ var spawnBoardSync = boardengine.SpawnSync
 
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
 // While the board's base-sparse marker is absent the pass also strips each present base file once, and the marker it writes joins the files in the board commit.
+// Each registered reinterpretation whose board marker is absent is then applied, judged against the prime, and its marker joins the commit too.
 // The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
 // A reconcile or commit failure restores the board's config files to their prior bytes and removes a marker the pass wrote.
+// Once the commit landed, what the reinterpretations rewrote or flagged is mailed to the hub's orch.
 // The board is synced by the detached board sync whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
 // The walk never waits on that push: a refusal of it reaches the orch as a failed-push record, and a spawn failure is only logged.
-func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (skipped bool, err error) {
+func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
+	var notices []string
 	write := fabricengine.BoltWrite{
 		Message: "lym: reconcile hub-wide config for build " + label,
 		Write: func() ([]string, error) {
@@ -208,7 +212,7 @@ func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (ski
 				return nil, err
 			}
 			markedBefore := fileExists(configengine.BaseSparseMarker(boardDir))
-			results, err := configsync.ReconcileHubWideAt(boardDir, primeAnchor, configsync.HubWideOptions{Apply: true, SeedDefaults: true, StripBase: true})
+			results, err := configsync.ReconcileHubWideAt(boardDir, prime.Anchor, configsync.HubWideOptions{Apply: true, SeedDefaults: true, StripBase: true})
 			if err != nil {
 				return nil, err
 			}
@@ -230,6 +234,16 @@ func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (ski
 			if !markedBefore && fileExists(configengine.BaseSparseMarker(boardDir)) {
 				written = append(written, configengine.BaseSparseMarkerRel())
 			}
+			reinterpreted, lines, err := applyReinterpretations(boardDir, prime.Path, prime.Anchor)
+			if err != nil {
+				return nil, err
+			}
+			for _, rel := range reinterpreted {
+				if !slices.Contains(written, rel) {
+					written = append(written, rel)
+				}
+			}
+			notices = lines
 			if hooks.afterHubWideWrite != nil {
 				if err := hooks.afterHubWideWrite(); err != nil {
 					return nil, err
@@ -245,6 +259,7 @@ func reconcileHubWide(boardDir, primeAnchor, label string, hooks walkHooks) (ski
 	if res.Skipped != "" {
 		return true, nil
 	}
+	notifyReinterpretations(boardDir, label, notices)
 	if err := spawnBoardSync(boardDir); err != nil {
 		logger.Warn("hubreconcile: the detached board sync did not start, so the board's commits wait for the board's next push", "board", boardDir, "committed", res.Committed, "error", err)
 	}
@@ -393,7 +408,7 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file and the sparse and base-sparse markers under anchor; an absent one maps to nil.
+// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file and the sparse, base-sparse and reinterpretation markers under anchor; an absent one maps to nil.
 // The dir's own files cover a legacy file a migration removes.
 // Any read or list failure other than absence is returned naming the path, since a snapshot missing a file could not restore it.
 func snapshotConfig(anchor string) (map[string][]byte, error) {
@@ -418,6 +433,9 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 	paths := []string{configengine.SparseMarker(anchor), configengine.BaseSparseMarker(anchor)}
 	for _, module := range configreg.Modules() {
 		paths = append(paths, configengine.ConfigFile(anchor, module.Name), configengine.LocalFile(anchor, module.Name))
+		for _, change := range module.Reinterpretations {
+			paths = append(paths, configengine.ReinterpretedMarker(anchor, change.ID))
+		}
 	}
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

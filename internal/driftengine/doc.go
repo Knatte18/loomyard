@@ -8,6 +8,8 @@
 // A step's `dir` resolves by gateslot.ResolveCommandDir, so it means the directory a gate tier's `dir` means: relative to the worktree root, absolute as written, and the worktree's anchored directory when unset; every drift run is told both directories.
 // Before a step's command starts, a `dir` that is no existing directory fails naming the resolved path, the `drift.yaml` key and, as the way forward, `lym config drift --set <step>.dir=<dir>` from the prime, then `lym drift capture` and `lym loom resume` for the capture, `lym drift capture --side` for the side capture and `lym loom resume` for the compare.
 // CheckDirs refuses the same `dir` over the loaded config against a told worktree, which a hub-wide `lym config drift` write runs against the prime.
+// A relative `dir` was once joined onto the anchored directory, so RebaseDirsOntoRoot, the module's reinterpretation DirBaseReinterpretation, carries a hub's drift.yaml across that move once per hub:
+// a dir naming a directory under the prime's anchored directory is rewritten to name it from the root, one naming a directory under the root alone is kept as already written for it, and one naming neither is flagged with `lym config drift --set <step>.dir=<dir>`.
 // `capture` and `compare` are executable keys, so only the template and the hub's board default layer set them, with `lym config drift --set 'capture={command: ..., timeout_min: N}'`.
 // Once a step is declared, `--set` also changes one of its keys alone, as in `--set capture.env.NAME=1` or `--set compare.timeout_min=10`, and refuses a key a step lacks;
 // a step left with keys but no command fails the load check, so a first declaration sets `command` and `timeout_min` together.
@@ -33,11 +35,13 @@
 // It moves a non-empty baseline directory to the first free numbered backup beside it, writes the skip file, waits for one gate slot as a non-tier holder with no deadline, and runs the declared command in its shell with `{baseline_dir}` and `{skip_file}` rendered as quoted paths and the command's stdout and stderr the open log file.
 // A timeout, counted from the command's start, kills the command's whole tree.
 // The record ends `passed` for exit 0 with at least one file under the baseline directory, else `failed` with the reason, and then the slot and the lock are released.
+// A failed record's reason ends naming the directory the command ran in and its last non-empty output lines from the log, folded onto one bounded line, or that it printed nothing, so a halt states the cause and not only the log path.
 // An exit 0 with no file marks the record `wrote_no_file`, and under skipped tests its reason names scope partial, the count of skipped tests and that every test the capture command ran may have been skipped.
+// A told OnEnd is handed the final record while the lock is still held, so the capture child records a failed capture's FailedCaptureError, the reason, the log and the ways forward, in its own log and exits non-zero before the Drift-Await row may commit that log.
 // A Stuck over such a record, at Drift-Baseline or Drift-Await, names in place of a plain capture, which would fail the same way, `lym drift scope --scope full` or a shorter `--skip` list followed by `lym drift capture` and `lym loom resume` while HEAD is the branch point, and `lym drift scope --scope off` followed by `lym loom resume`, besides `lym drift defer`.
 // RunCapture holds no job object of its own, since it also runs in a row's step process; the detached child holds the capture's named job (CaptureJobName) around it.
 // RunSideCapture takes no lock and writes no record: it runs the same command into the next free numbered directory under the side directory.
-// RunAcceptedCapture takes no lock and writes no record either: it empties the accepted-profile directory and runs the same command into it, and passes for exit 0 within the timeout with a file written.
+// RunAcceptedCapture takes no lock and writes no record either: it empties the accepted-profile directory and runs the same command into it, and passes for exit 0 within the timeout with a file written; a reason it did not pass names the directory and the last output as a failed record's does.
 // CheckMainCapture is the main capture's precondition: the run is at Drift-Baseline, or blocked at Drift-Await, HEAD equals the branch point and the tracked tree is clean; each refusal names its way forward.
 // StartCapture spawns `drift capture-child` detached in the anchored directory, where a lym verb's cwd must be, with breakaway, registers it under the run's processes with role `capture` and returns its pid only once the capture record carries that pid, in any state, since a capture can fail between two reads.
 // A child that ends or stalls before that record is an error carrying the last JSON error envelope's error from the child's log, folded onto one bounded line, and whether the child marked it with LastingFaultKey as one a fresh start in the same directory cannot change.
@@ -49,7 +53,7 @@
 // RunCompare is the mechanical compare, on the runner the capture uses.
 // It takes the compare marker, an OS lock, before it waits for its gate slot and holds it until it ends, so a compare queued for a slot reads as activity and one a dead compare left reads as none; a marker still held after a bounded retry, which rides out a reader's probe, is refused.
 // It writes the skip file, holds one slot as a non-tier holder, renders `{baseline_dir}` as the baseline directory, or the told profile directory such as the accepted profile, and `{skip_file}` as the skip file, and kills the command's tree at its timeout.
-// The result carries the exit code, the log and whether the compare passed, which is exit 0 within the timeout; the compare writes no record and counts no run, since TakeRun is the caller's.
+// The result carries the exit code, the log and whether the compare passed, which is exit 0 within the timeout, and a compare that did not pass carries a reason naming the directory and the last output as a failed capture's does; the compare writes no record and counts no run, since TakeRun is the caller's.
 // SkipList is the scope's skipped tests followed by every accepted test, without duplicates; a withdrawn test is off the accepted list and so is compared again.
 //
 // # Verbs
