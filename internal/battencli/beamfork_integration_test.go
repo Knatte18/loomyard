@@ -106,7 +106,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 
 	t.Run("MemberForksFromTheBeamWhileThePrimeIsDirty", func(t *testing.T) {
 		c := wireForHub(t, h, "m", nil)
-		if err := c.env.CreateWorktree(context.Background()); err != nil {
+		if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 			t.Fatalf("CreateWorktree(m): %v", err)
 		}
 		if got := parentOf(t, "m"); got != "b" {
@@ -123,7 +123,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 		if err := c.wire(prime, "armed"); err != nil {
 			t.Fatalf("wire(armed): %v", err)
 		}
-		if err := c.env.CreateWorktree(context.Background()); err != nil {
+		if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 			t.Fatalf("CreateWorktree(armed): %v", err)
 		}
 		if got := parentOf(t, "armed"); got != "b" {
@@ -133,7 +133,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 
 	t.Run("LocalBranchLeftFromARemovedPairIsRefused", func(t *testing.T) {
 		c := wireForHub(t, h, "left", nil)
-		err := c.env.CreateWorktree(context.Background())
+		err := c.env.CreateWorktree(context.Background(), holdNothing)
 		var exists *fabricengine.ErrBranchExists
 		if !errors.As(err, &exists) {
 			t.Fatalf("CreateWorktree(left) = %v; want ErrBranchExists", err)
@@ -142,7 +142,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 
 	t.Run("BeamProjectForksFromItsParentBeamUnmarked", func(t *testing.T) {
 		c := wireForHub(t, h, "inner", nil)
-		if err := c.env.CreateWorktree(context.Background()); err != nil {
+		if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 			t.Fatalf("CreateWorktree(inner): %v", err)
 		}
 		origin, found, err := fabricengine.ReadOriginFor(h.Location, "inner")
@@ -156,7 +156,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 
 	t.Run("BeamProjectWhoseParentBeamHasNoPairHereIsRefusedNamingItsCreate", func(t *testing.T) {
 		c := wireForHub(t, h, "orphan", nil)
-		err := c.env.CreateWorktree(context.Background())
+		err := c.env.CreateWorktree(context.Background(), holdNothing)
 		if err == nil || !strings.Contains(err.Error(), "lym beam create far") {
 			t.Fatalf("CreateWorktree(orphan) = %v; want a refusal naming `lym beam create far`", err)
 		}
@@ -181,16 +181,26 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 	t.Run("MemberWhoseBeamHoldsAfterItsPairIsMadeLosesThePair", func(t *testing.T) {
 		c := wireForHub(t, h, "late", nil)
 		c.beamHold = heldAtParentAlign
-		wantHeldRefusal(t, "late", c.env.CreateWorktree(context.Background()))
+		holds := &countingHold{}
+		wantHeldRefusal(t, "late", c.env.CreateWorktree(context.Background(), holds.hold))
+		// One hold for Add, and one for the removal of the held member's pair.
+		if holds.takes != 2 || holds.releases != 2 {
+			t.Errorf("prime lock takes/releases = %d/%d; want 2/2", holds.takes, holds.releases)
+		}
 	})
 
 	t.Run("MemberResumedOverACompletePairWhileItsBeamHoldsLosesThePair", func(t *testing.T) {
 		c := wireForHub(t, h, "crashed", nil)
-		if err := c.env.CreateWorktree(context.Background()); err != nil {
+		if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 			t.Fatalf("CreateWorktree(crashed): %v", err)
 		}
 		c.beamHold = heldAtParentAlign
-		wantHeldRefusal(t, "crashed", c.env.CreateWorktree(context.Background()))
+		holds := &countingHold{}
+		wantHeldRefusal(t, "crashed", c.env.CreateWorktree(context.Background(), holds.hold))
+		// The complete pair skips Add, so the removal takes the only hold.
+		if holds.takes != 1 || holds.releases != 1 {
+			t.Errorf("prime lock takes/releases = %d/%d; want 1/1", holds.takes, holds.releases)
+		}
 	})
 
 	t.Run("TaskOfAGroupingProjectForksFromThePrime", func(t *testing.T) {
@@ -198,7 +208,7 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 			t.Fatal(err)
 		}
 		c := wireForHub(t, h, "grouped", nil)
-		if err := c.env.CreateWorktree(context.Background()); err != nil {
+		if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 			t.Fatalf("CreateWorktree(grouped): %v", err)
 		}
 		if got := parentOf(t, "grouped"); got != primeName {

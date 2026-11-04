@@ -61,7 +61,7 @@ var ErrChildDriverBusy = errors.New("battenshed: the task worktree's driver pane
 var ErrChildRunBusy = errors.New("battenshed: the child's run lock is held")
 
 // PrimeLock carries the told absolute path to a hub-scoped advisory lock plus the injected
-// acquire closure both WorktreeCreate and WorktreeTeardown hold it behind, so the two producers
+// acquire closure WorktreeTeardown holds it behind and WorktreeCreate's create closure takes it through, so the two producers
 // that mutate the hub's worktree registry concurrently with each other never race.
 //
 // Acquire mirrors lock.TryAcquireWriteLock's own contract and stays non-blocking: a (nil, false, nil) return means the lock is already held by someone else -- contention, not an error --

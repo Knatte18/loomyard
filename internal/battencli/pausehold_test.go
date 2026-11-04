@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
@@ -85,7 +86,9 @@ func TestBattenRun_LostWorktreeCreateClaimExitsWithTheDriversCode(t *testing.T) 
 	t.Parallel()
 
 	c := newFakeReceiver(t, nil)
-	c.env.CreateWorktree = func(context.Context) error { return ownedElsewhereFor(c.slug, "there", "some-beam") }
+	c.env.CreateWorktree = func(context.Context, battenshed.HoldPrimeLock) error {
+		return ownedElsewhereFor(c.slug, "there", "some-beam")
+	}
 
 	var out bytes.Buffer
 	exitCode := clihelp.Execute(runCommand(c), &out, []string{c.slug})

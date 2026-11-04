@@ -1,5 +1,6 @@
-// create_test.go covers NewWorktreeCreate over fake seams: the happy path, the prime-lock
-// dispositions, and createWorktree's error mappings, including fabric's own verbatim refusal text.
+// create_test.go covers NewWorktreeCreate over fake seams.
+// It covers the happy path, the prime-lock dispositions of the closure's hold, and createWorktree's error mappings.
+// The error mappings include fabric's own verbatim refusal text.
 
 package battenshed
 
@@ -68,6 +69,99 @@ func waitingPrimeLock(path string, contendedPolls int, laterErr error, released 
 	}
 }
 
+// holdingCreate returns a create closure that takes the prime lock through its hold and then runs work, which never runs when the hold fails.
+func holdingCreate(work func() error) func(context.Context, HoldPrimeLock) error {
+	return func(_ context.Context, hold HoldPrimeLock) error {
+		if _, err := hold(); err != nil {
+			return err
+		}
+		return work()
+	}
+}
+
+// TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold asserts the row acquires the prime lock only when its closure takes the hold, even while the lock is held elsewhere, releases a hold once however often the closure releases it, and lets the closure take a second hold after releasing the first.
+func TestWorktreeCreate_TakesThePrimeLockOnlyThroughItsHold(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	t.Run("NoHold", func(t *testing.T) {
+		t.Parallel()
+		acquires := 0
+		lock := PrimeLock{
+			Path: "/lock/path",
+			Acquire: func() (func() error, bool, error) {
+				acquires++
+				return nil, false, nil
+			},
+			Sleep: func(context.Context, time.Duration) {},
+		}
+		producer := NewWorktreeCreate("create", "myslug", func(context.Context, HoldPrimeLock) error { return nil }, lock, t.TempDir())
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+		if acquires != 0 {
+			t.Errorf("Acquire calls = %d; want 0 for a closure that takes no hold", acquires)
+		}
+	})
+
+	t.Run("ReleasedByTheClosure", func(t *testing.T) {
+		t.Parallel()
+		releases := 0
+		lock := PrimeLock{
+			Path: "/lock/path",
+			Acquire: func() (func() error, bool, error) {
+				return func() error {
+					releases++
+					return nil
+				}, true, nil
+			},
+		}
+		producer := NewWorktreeCreate("create", "myslug", func(_ context.Context, hold HoldPrimeLock) error {
+			release, err := hold()
+			if err != nil {
+				return err
+			}
+			release()
+			release()
+			return nil
+		}, lock, t.TempDir())
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+		if releases != 1 {
+			t.Errorf("releases = %d; want 1", releases)
+		}
+	})
+
+	t.Run("HeldAgainAfterRelease", func(t *testing.T) {
+		t.Parallel()
+		acquires, releases := 0, 0
+		lock := PrimeLock{
+			Path: "/lock/path",
+			Acquire: func() (func() error, bool, error) {
+				acquires++
+				return func() error {
+					releases++
+					return nil
+				}, true, nil
+			},
+		}
+		producer := NewWorktreeCreate("create", "myslug", func(_ context.Context, hold HoldPrimeLock) error {
+			for range 2 {
+				release, err := hold()
+				if err != nil {
+					return err
+				}
+				release()
+			}
+			return nil
+		}, lock, t.TempDir())
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+		if acquires != 2 {
+			t.Errorf("Acquire calls = %d; want 2", acquires)
+		}
+		if releases != 2 {
+			t.Errorf("releases = %d; want 2", releases)
+		}
+	})
+}
+
 func readStuckFile(t *testing.T, scratchDir, producer string, ptr shedengine.OutputPointer) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(scratchDir, producer+stuckFileSuffix))
@@ -128,9 +222,9 @@ func TestWorktreeCreate_CreateErrorsStickWithTheirTextVerbatim(t *testing.T) {
 			var released bool
 			lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
 
-			producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+			producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 				return tt.err
-			}, lock, scratchDir)
+			}), lock, scratchDir)
 
 			ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 			if !released {
@@ -157,9 +251,9 @@ func TestWorktreeCreate_AcquireError(t *testing.T) {
 	acquireErr := errors.New("flock: device error")
 	lock := fakePrimeLock("/lock/path", false, acquireErr, nil, &released)
 
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	_, _, err := producer.Call(context.Background())
 	if err == nil {
@@ -179,9 +273,9 @@ func TestWorktreeCreate_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
@@ -209,9 +303,9 @@ func TestWorktreeCreate_CancelledDuringAcquireError(t *testing.T) {
 		},
 	}
 
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	_, _, err := producer.Call(ctx)
 	if err == nil {
@@ -229,10 +323,10 @@ func TestWorktreeCreate_CancelledAfterSuccessfulCreate(t *testing.T) {
 	lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
 
 	ctx, cancel := context.WithCancel(context.Background())
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		cancel()
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
@@ -261,10 +355,10 @@ func TestWorktreeCreate_CreatesOnceTheLockIsFree(t *testing.T) {
 			lock := waitingPrimeLock("/lock/path", contendedPolls, nil, &released, &sleeps, nil)
 
 			called := false
-			producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+			producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 				called = true
 				return nil
-			}, lock, scratchDir)
+			}), lock, scratchDir)
 
 			shedfake.RequireOutcome(t, producer, shedengine.Done)
 			if !called {
@@ -288,14 +382,17 @@ func TestWorktreeCreate_LockStillHeldPastBoundIsStuck(t *testing.T) {
 	lock := waitingPrimeLock("/lock/contended/path", -1, nil, &released, &sleeps, nil)
 
 	called := false
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		called = true
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	ptr := shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 	if called {
-		t.Error("createWorktree was called although the lock was never acquired")
+		t.Error("the work behind the hold ran although the lock was never acquired")
+	}
+	if ptr.Halt {
+		t.Error("OutputPointer.Halt = true; want a lock wait that ran out to stand Stuck without halting")
 	}
 	if want := int(primeLockWaitBound / primeLockPollInterval); sleeps != want {
 		t.Errorf("sleeps = %d; want %d", sleeps, want)
@@ -315,10 +412,10 @@ func TestWorktreeCreate_CancelledDuringLockWait(t *testing.T) {
 	lock := waitingPrimeLock("/lock/path", -1, nil, &released, &sleeps, cancel)
 
 	called := false
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		called = true
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	outcome, _, err := producer.Call(ctx)
 	if err == nil {
@@ -343,9 +440,9 @@ func TestWorktreeCreate_AcquireErrorOnLaterAttempt(t *testing.T) {
 	acquireErr := errors.New("flock: device error")
 	lock := waitingPrimeLock("/lock/path", -1, acquireErr, &released, &sleeps, nil)
 
-	producer := NewWorktreeCreate("create", "myslug", func(ctx context.Context) error {
+	producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error {
 		return nil
-	}, lock, scratchDir)
+	}), lock, scratchDir)
 
 	outcome, _, err := producer.Call(context.Background())
 	if err == nil || !errors.Is(err, acquireErr) {

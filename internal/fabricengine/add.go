@@ -60,6 +60,12 @@ type AddOptions struct {
 	// Empty, or equal to the fork point's anchor, keeps the fork point's own.
 	// It is set only by a command naming the flag, and a pair over an existing weft branch refuses it.
 	Anchor string
+	// Hold, when set, takes a lock the caller serializes the hub's worktree writes under and returns its release.
+	// Add takes it once its origin probes have started and before it reads the fork point, and releases it when it returns, so the hold covers only the probe time left when Add waits for the probes under it.
+	// An error from Hold is returned as is, before any mutation.
+	// Add calls Hold while it holds the pair's teardown lock, so a Hold that waits on a lock whose holder is waiting for this pair's teardown lock stalls both until the teardown wait runs out;
+	// it is safe only because a pair is never created and removed at once.
+	Hold func() (release func(), err error)
 }
 
 // syncOptions returns the options the records helpers take.
@@ -133,6 +139,8 @@ func SourceDirtyPaths(l *lymcwd.Location) ([]string, error) {
 // Right after the slug is validated and before any origin probe or mutation, Add takes the slug's teardown lock exclusive and holds it to its return, rollback included, waiting at most the topology's teardown wait;
 // when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning that names re-running the command that made the pair.
 // The caller's push of the new pair runs after Add has released the lock and takes it shared.
+// The origin probes then start in the background, and opts.Hold, when set, is taken before the fork point is read and held to Add's return;
+// every return waits for the probes, a refusal before them included.
 // A newly forked weft branch does not inherit the parent's shed run records: the fork is no-checkout, so the run-records root never reaches the new worktree's disk,
 // and the pair's first weft commit (the origin record's) also records the root's deletion.
 // An adopted, already-existing weft branch keeps its own run records.
@@ -182,6 +190,56 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		return AddResult{}, lockErr
 	}
 	defer releaseTeardown()
+
+	warpBranch := t.cfg.BranchPrefix + slug
+	weftBranch := RecordsBranchName(warpBranch)
+
+	// A missing branch is an answer; a failed read is an error.
+	warpBranchExists, existsErr := gitrepo.New(l.WorktreePath()).BranchExists(warpBranch)
+	if existsErr != nil {
+		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, existsErr)
+	}
+	warpAdopted := warpBranchExists
+	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
+
+	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
+	// Both probes run beside each other and beside the hold's wait and the pre-flight reads below, so the add waits on one round of network, and the hold covers only what is left of it when the probes are waited for.
+	// The answers are read only once the pre-flight refusals have passed, so a refusal keeps its precedence over a probe's error.
+	probeOrigins := !opts.SkipPush && !opts.SkipGit
+	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
+	// AdoptOnly is the exception: its probe only learns whether origin holds the branch, and the adopted branch is never fetched or replaced from origin.
+	probeWarp := probeOrigins && (!warpAdopted || opts.AdoptOnly)
+	var (
+		probes       sync.WaitGroup
+		weftProbe    weftLeftover
+		weftProbeErr error
+		warpTip      string
+		warpTipErr   error
+	)
+	if probeWarp {
+		probes.Add(1)
+		go func() {
+			defer probes.Done()
+			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
+		}()
+	}
+	if probeOrigins {
+		probes.Add(1)
+		go func() {
+			defer probes.Done()
+			weftProbe, weftProbeErr = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
+		}()
+	}
+	// No git call a probe started outlives Add.
+	defer probes.Wait()
+
+	if opts.Hold != nil {
+		releaseHold, err := opts.Hold()
+		if err != nil {
+			return AddResult{}, err
+		}
+		defer releaseHold()
+	}
 
 	// A named parent replaces the acting worktree as the fork point, and the fork takes its last commit only, so neither worktree's tracked dirt is checked.
 	// An adopt-only add forks nothing, so it checks no source dirt, resolves no parent and checks no fork point.
@@ -238,18 +296,9 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 	// A pair moved to a requested anchor takes it once the move has committed.
 	pairAt := fork
 
-	warpBranch := t.cfg.BranchPrefix + slug
-	weftBranch := RecordsBranchName(warpBranch)
-
-	// A missing branch is an answer; a failed read is an error.
-	warpBranchExists, existsErr := gitrepo.New(l.WorktreePath()).BranchExists(warpBranch)
-	if existsErr != nil {
-		return AddResult{}, fmt.Errorf("check whether warp branch %q exists: %w", warpBranch, existsErr)
-	}
 	if warpBranchExists && !opts.AdoptLocal {
 		return AddResult{}, &ErrBranchExists{Branch: warpBranch}
 	}
-	warpAdopted := warpBranchExists
 
 	target := WorktreePath(l, slug)
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
@@ -292,8 +341,6 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	weftBranchAlreadyExists := weftBranchExists(l, weftBranch)
-
 	// An adopt-only add also guards a records branch another records worktree holds when the task branch comes from origin, which would otherwise fail later as a plain worktree-add error.
 	if opts.AdoptLocal && (warpAdopted || (opts.AdoptOnly && weftBranchAlreadyExists)) {
 		reusedWeft := ""
@@ -335,36 +382,21 @@ func (t *Topology) Add(l *lymcwd.Location, slug string, opts AddOptions) (res Ad
 		}
 	}
 
-	// Probe both origins before the first mutation: decide whether the pair is live, and refuse an unreplaceable leftover here rather than at the caller's later push.
 	// The weft answer is carried on: its fastForwardTo advances a behind local weft branch,
 	// and an archived leftover is replaced at step 11, so the caller's push of the weft branch is not rejected.
+	// The warp branch's origin tip is judged once the weft answer says whether the pair is live.
+	probes.Wait()
 	weftOld := weftLeftover{live: weftBranchAlreadyExists}
+	if probeOrigins {
+		if weftProbeErr != nil {
+			return AddResult{}, weftProbeErr
+		}
+		weftOld = weftProbe
+	}
 	var warpAdoptTip string
 	var warpPush addWarpBranch
 	// warpAbsentOnOrigin is whether the warp probe ran and read the branch absent on origin.
 	warpAbsentOnOrigin := false
-	probeOrigins := !opts.SkipPush && !opts.SkipGit
-	// A local warp branch being adopted is the pair's own, so origin's copy of it is not consulted.
-	// AdoptOnly is the exception: its probe only learns whether origin holds the branch, and the adopted branch is never fetched or replaced from origin.
-	probeWarp := probeOrigins && (!warpAdopted || opts.AdoptOnly)
-	// The warp branch's origin tip is read beside the weft probe, so the add waits on one round of network, and judged once the weft answer says whether the pair is live.
-	var warpTip string
-	var warpTipErr error
-	var warpRead sync.WaitGroup
-	if probeWarp {
-		warpRead.Add(1)
-		go func() {
-			defer warpRead.Done()
-			warpTip, warpTipErr = remoteHeadTip(l.WorktreePath(), warpBranch)
-		}()
-	}
-	if probeOrigins {
-		weftOld, err = probeWeftLeftover(l, slug, weftBranch, weftBranchAlreadyExists)
-	}
-	warpRead.Wait()
-	if err != nil {
-		return AddResult{}, err
-	}
 	if opts.AdoptOnly && !weftOld.live {
 		return AddResult{}, &ErrNotLive{Branch: weftBranch, Records: true}
 	}

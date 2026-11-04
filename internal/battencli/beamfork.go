@@ -105,8 +105,9 @@ func readBeamHold(prime *lymcwd.Location, beam string) (status string, held bool
 // refuseHeldMember reads slug's beam again once slug's pair is made, or found complete, and removes the pair and refuses with memberHoldRefusal when the beam's run holds its entry.
 // The beam's accept may write its hold between the fork precondition's read and the pair's making, and a member that crashed after the pair was made is judged here when it is resumed; either way this read or the beam's own re-check sees the other.
 // The member keeps its claim, so the removal settles none.
+// The removal runs under holdPrime, since it writes the hub's worktree registry.
 // A slug outside a beam is never refused.
-func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lymcwd.Location, slug string) error {
+func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lymcwd.Location, slug string, holdPrime battenshed.HoldPrimeLock) error {
 	tasks, err := boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
 	if err != nil {
 		return err
@@ -126,6 +127,11 @@ func (c *battenCLI) refuseHeldMember(ctx context.Context, prime *lymcwd.Location
 	if !held {
 		return nil
 	}
+	release, err := holdPrime()
+	if err != nil {
+		return err
+	}
+	defer release()
 	td, err := pairteardown.New(prime)
 	if err != nil {
 		return err

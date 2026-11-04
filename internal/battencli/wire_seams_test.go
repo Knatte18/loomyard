@@ -658,7 +658,7 @@ func TestWire_CreateWorktreeClaimsTheBoardEntry(t *testing.T) {
 				c.beam = *tt.landing
 			}
 
-			err := c.env.CreateWorktree(context.Background())
+			err := c.env.CreateWorktree(context.Background(), holdNothing)
 
 			if err == nil {
 				t.Fatal("CreateWorktree() error = nil; want a failed row")

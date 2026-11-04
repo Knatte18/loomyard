@@ -936,9 +936,12 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 		Slug:       slug,
 		ScratchDir: BattenDir(location, slug),
 		PrimeLock:  primeLock,
-		CreateWorktree: func(ctx context.Context) error {
+		// The closure takes the prime lock through holdPrime only where Add reads the fork point and writes the hub's worktree registry, and where a held member's pair is removed.
+		// The claim, the config reconcile and the push run outside it, and the origin probes start before it, so a create waiting on the claim or the push holds up no other run's create.
+		CreateWorktree: func(ctx context.Context, holdPrime battenshed.HoldPrimeLock) error {
 			// The claim comes first, so the run lock on the board entry starts before the pair exists and survives this row failing.
 			// It records this machine as the entry's owner in the same commit, so a failed write or push refuses the row and the stopped run resumes with the same verb.
+			// Its push stays synchronous: it is what tells another machine this one owns the entry.
 			if err := c.claimBoardEntry(slug); err != nil {
 				return err
 			}
@@ -952,7 +955,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 			if complete {
 				logger.Info("battencli: create worktree skipped, the task worktree is already present", "slug", slug)
 				// A member that crashed between Add and its hold read is judged here when it is resumed.
-				if err := c.refuseHeldMember(ctx, location, slug); err != nil {
+				if err := c.refuseHeldMember(ctx, location, slug, holdPrime); err != nil {
 					return err
 				}
 				return reconcileTaskPair(location, slug)
@@ -988,13 +991,13 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 			}
-			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor})
+			_, err = top.Add(location, slug, fabricengine.AddOptions{Parent: parent, Anchor: anchor, Hold: holdPrime})
 			logger.Info("battencli: create worktree", "slug", slug)
 			if err != nil {
 				return createRefusal(err, slug, cfg.BranchPrefix+slug, func() bool { return fabricengine.PairWorktreeStands(location, slug) })
 			}
 			// The beam's accept may have written its hold while the pair was being made, so the member's beam is read again before anything more is done to the pair.
-			if err := c.refuseHeldMember(ctx, location, slug); err != nil {
+			if err := c.refuseHeldMember(ctx, location, slug, holdPrime); err != nil {
 				return err
 			}
 			if err := reconcileTaskPair(location, slug); err != nil {

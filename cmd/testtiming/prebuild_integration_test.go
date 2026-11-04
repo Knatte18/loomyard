@@ -67,7 +67,10 @@ func TestPrebuildLym(t *testing.T) {
 			t.Parallel()
 
 			root := module(t, row.mainSource)
-			goBinary, base := "go", append(os.Environ(), inherited, heldSlot)
+			// VCS stamping is off because the throwaway module is no repository:
+			// a stray .git in any directory above the temp root would make go run git there and fail the build.
+			noVCSStamping := "GOFLAGS=" + strings.TrimSpace(os.Getenv("GOFLAGS")+" -buildvcs=false")
+			goBinary, base := "go", append(os.Environ(), inherited, heldSlot, noVCSStamping)
 			record := filepath.Join(t.TempDir(), "go-args")
 			if row.standInGo {
 				testBinary, err := os.Executable()

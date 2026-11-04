@@ -239,13 +239,21 @@ func TestBattenIntegration_RunReconcilesTheHubBeforeAndThePairAfterCreating(t *t
 	if err := c.wire(h.Location, slug); err != nil {
 		t.Fatalf("wire(%s): %v", slug, err)
 	}
-	if err := c.env.CreateWorktree(context.Background()); err != nil {
+	holds := &countingHold{}
+	if err := c.env.CreateWorktree(context.Background(), holds.hold); err != nil {
 		t.Fatalf("CreateWorktree: %v", err)
+	}
+	// The hold reached Add and was released; a slug outside a beam takes none for a held member's removal.
+	if holds.takes != 1 || holds.releases != 1 {
+		t.Errorf("prime lock takes/releases after the create = %d/%d; want 1/1", holds.takes, holds.releases)
 	}
 
 	pair := h.PairCodeWorktree(slug)
-	if err := c.env.CreateWorktree(context.Background()); err != nil {
+	if err := c.env.CreateWorktree(context.Background(), holds.hold); err != nil {
 		t.Fatalf("CreateWorktree re-entered on the complete pair: %v", err)
+	}
+	if holds.takes != 1 {
+		t.Errorf("prime lock takes after the re-entry over the complete pair = %d; want no further take", holds.takes)
 	}
 	// The create row spawns the new pair's push once, and the re-entered row on the complete pair spawns none.
 	if got := pairPushCounts.count(pair); got != 1 {
@@ -975,7 +983,7 @@ func stepCreateRow_PairWithoutOriginRecordIsIncomplete(t *testing.T, h *hubforge
 		return shedengine.Status{}, false, nil
 	})
 
-	err := c.env.CreateWorktree(context.Background())
+	err := c.env.CreateWorktree(context.Background(), holdNothing)
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal for a pair with no origin record")
 	}
@@ -997,7 +1005,7 @@ func stepCreateRow_LeftoverBranchIsRewordedForPrime(t *testing.T, h *hubforge.Hu
 	})
 	c.owner = hubOwnerSeams(h.Location)
 
-	err := c.env.CreateWorktree(context.Background())
+	err := c.env.CreateWorktree(context.Background(), holdNothing)
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want the leftover-branch refusal")
 	}
@@ -1036,7 +1044,7 @@ func stepCreateRow_IncompletePairRefusesRatherThanSkippingAdd(t *testing.T, h *h
 		return shedengine.Status{}, false, nil
 	})
 
-	err := c.env.CreateWorktree(context.Background())
+	err := c.env.CreateWorktree(context.Background(), holdNothing)
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want a refusal naming the incomplete pair, not silent success")
 	}
@@ -1081,7 +1089,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 		return shedengine.Status{}, false, nil
 	})
 
-	err = c.env.CreateWorktree(context.Background())
+	err = c.env.CreateWorktree(context.Background(), holdNothing)
 	if err == nil {
 		t.Fatal("CreateWorktree() error = nil; want the incomplete-pair refusal")
 	}
@@ -1108,7 +1116,7 @@ func TestBattenIntegration_CreateRow_IncompletePairRemedyWorksVerbatimOnAPrefixe
 		t.Fatalf("%q still present after the remedy; want it gone", branch)
 	}
 
-	if err := c.env.CreateWorktree(context.Background()); err != nil {
+	if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 		t.Fatalf("CreateWorktree() after the remedy = %v; want the fresh create to succeed", err)
 	}
 	if !pathExists(h.PairRecordsSibling(slug)) {
@@ -1429,7 +1437,7 @@ func stepMidListResume_SkipsTheCompletedCreateRow(t *testing.T, h *hubforge.Hub)
 	c := wireForHub(t, h, slug, func(statusPath, statusLockPath string) (shedengine.Status, bool, error) {
 		return shedengine.Status{State: shedengine.StateDone}, true, nil
 	})
-	c.env.CreateWorktree = func(ctx context.Context) error {
+	c.env.CreateWorktree = func(context.Context, battenshed.HoldPrimeLock) error {
 		t.Fatal("CreateWorktree must not run again: the create row already completed before the crash this test simulates")
 		return nil
 	}

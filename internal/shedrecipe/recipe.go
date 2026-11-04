@@ -338,7 +338,8 @@ type Env struct {
 	// CreateWorktree is the single closure WorktreeCreate calls to create the task worktree pair,
 	// following the CommitDiscussion/CommitPlan/ApprovePlan convention: that producer's whole job is
 	// one told action with no behaviour of its own a caller must observe.
-	CreateWorktree func(context.Context) error
+	// It takes the hub's prime lock through the hold it is handed, only around the steps that need it.
+	CreateWorktree func(context.Context, battenshed.HoldPrimeLock) error
 	// InnerRun is a whole-struct passthrough to battenshed.NewInnerRun, following Env.Landing's
 	// own precedent: InnerRun has behaviour of its own -- spawning, resolving, and polling status --
 	// that per-seam fakes must be able to substitute individually.
@@ -354,8 +355,8 @@ type Env struct {
 	Teardown battenshed.TeardownDeps
 	// Land is a whole-struct passthrough to battenshed.NewLand, for the reason Teardown is.
 	Land battenshed.LandDeps
-	// PrimeLock is the told hub-scoped advisory lock WorktreeCreate and WorktreeTeardown both
-	// acquire, read by those two bookend entries only.
+	// PrimeLock is the told hub-scoped advisory lock WorktreeTeardown acquires and WorktreeCreate hands its closure a hold on.
+	// Those two bookend entries alone read it.
 	PrimeLock battenshed.PrimeLock
 
 	// Command is a whole-struct passthrough to shedadapters.NewCommandProducer, following Env.Landing's precedent, read by the Command entry.

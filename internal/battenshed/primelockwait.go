@@ -1,4 +1,4 @@
-// primelockwait.go implements acquirePrimeLock, the bounded, cancellable wait both prime-lock producers (Worktree-Create and Worktree-Teardown) call in place of a single Acquire.
+// primelockwait.go implements acquirePrimeLock, the bounded, cancellable wait every producer that holds the prime lock calls in place of a single Acquire.
 
 package battenshed
 

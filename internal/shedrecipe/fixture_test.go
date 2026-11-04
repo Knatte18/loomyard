@@ -253,7 +253,7 @@ func newTestEnv(t *testing.T) Env {
 
 		ReviewCirclingCheckpoint: 3,
 
-		CreateWorktree: func(context.Context) error {
+		CreateWorktree: func(context.Context, battenshed.HoldPrimeLock) error {
 			return nil
 		},
 		InnerRun: battenshed.InnerRunDeps{

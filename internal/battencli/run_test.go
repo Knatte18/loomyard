@@ -34,6 +34,26 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// holdNothing is a battenshed.HoldPrimeLock for a test that calls the Worktree-Create closure directly, outside the row that owns the prime lock: it takes no lock.
+func holdNothing() (func(), error) { return func() {}, nil }
+
+// countingHold is a battenshed.HoldPrimeLock for a test that asserts where the Worktree-Create closure takes the prime lock.
+// It counts takes and releases, and fails every take with err when err is set.
+type countingHold struct {
+	takes    int
+	releases int
+	err      error
+}
+
+// hold takes the lock, counting the take, and returns a release that counts itself.
+func (h *countingHold) hold() (func(), error) {
+	h.takes++
+	if h.err != nil {
+		return nil, h.err
+	}
+	return func() { h.releases++ }, nil
+}
+
 // newFakeReceiver builds a *battenCLI whose Env is filled entirely with fakes that perform no
 // real I/O, over a fresh t.TempDir(). shutdown, when non-nil, replaces the default no-op
 // Teardown.Shutdown closure.
@@ -76,7 +96,7 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 				return func() error { return nil }, true, nil
 			},
 		},
-		CreateWorktree: func(ctx context.Context) error { return nil },
+		CreateWorktree: func(context.Context, battenshed.HoldPrimeLock) error { return nil },
 		Teardown: battenshed.TeardownDeps{
 			Shutdown: shutdown,
 			Remove:   func(ctx context.Context) error { return nil },

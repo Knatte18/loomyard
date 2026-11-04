@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
+	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -143,7 +144,7 @@ func TestPreDriveCheck(t *testing.T) {
 		}
 		t.Cleanup(func() { _ = held.release(true) })
 		var producerCalled bool
-		c.env.CreateWorktree = func(context.Context) error {
+		c.env.CreateWorktree = func(context.Context, battenshed.HoldPrimeLock) error {
 			producerCalled = true
 			return nil
 		}

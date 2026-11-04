@@ -91,7 +91,7 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 				t.Fatalf("start guard for %s = %v; want it passed", slug, err)
 			}
 			c := wireForHub(t, h, slug, nil)
-			if err := c.env.CreateWorktree(context.Background()); err != nil {
+			if err := c.env.CreateWorktree(context.Background(), holdNothing); err != nil {
 				t.Fatalf("CreateWorktree(%s) = %v; want the skip over the complete pair", slug, err)
 			}
 		})

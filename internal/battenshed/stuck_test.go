@@ -40,7 +40,7 @@ func TestStuckReport_LevelFollowsCause(t *testing.T) {
 				scratchDir := t.TempDir()
 				var released bool
 				lock := fakePrimeLock("/lock/path", true, nil, nil, &released)
-				producer := NewWorktreeCreate("create", "myslug", func(context.Context) error { return errors.New("create boom") }, lock, scratchDir)
+				producer := NewWorktreeCreate("create", "myslug", holdingCreate(func() error { return errors.New("create boom") }), lock, scratchDir)
 				shedfake.RequireOutcome(t, producer, shedengine.Stuck)
 				return scratchDir, "create"
 			},

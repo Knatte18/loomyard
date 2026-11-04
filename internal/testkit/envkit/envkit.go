@@ -497,7 +497,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 		ReviewCirclingCheckpoint: 3,
 
 		ScratchDir:     mustMkdir(t, filepath.Join(dir, "scratch")),
-		CreateWorktree: func(context.Context) error { return nil },
+		CreateWorktree: func(context.Context, battenshed.HoldPrimeLock) error { return nil },
 		InnerRun: battenshed.InnerRunDeps{
 			Spawn: func(context.Context) error { return nil },
 			ResolveStatus: func() (string, string, error) {

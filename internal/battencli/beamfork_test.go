@@ -188,21 +188,26 @@ func TestAnchorFromSeed(t *testing.T) {
 }
 
 // TestRefuseHeldMember asserts a member is judged against its beam's hold read through beamHold: a slug outside a beam and a beam that is not held pass untouched, and a failed read is returned.
-// The held case removes a real pair, which the integration tests drive.
+// None of them takes the prime lock, which only a removal needs; a held beam takes it first and returns its failure as is.
+// The held case that removes a real pair is driven by the integration tests.
 func TestRefuseHeldMember(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	readFailure := errors.New("board unreadable")
+	holdFailure := errors.New("prime lock unavailable")
 	tests := []struct {
-		name    string
-		slug    string
-		hold    func(beam string) (string, bool, error)
-		wantErr error
+		name      string
+		slug      string
+		hold      func(beam string) (string, bool, error)
+		holdErr   error
+		wantTakes int
+		wantErr   error
 	}{
 		{name: "SlugOutsideABeamIsNeverRead", slug: "loose", hold: func(string) (string, bool, error) { return "", true, errors.New("read for a slug with no beam") }},
 		{name: "BeamNotHeldPasses", slug: "m", hold: func(beam string) (string, bool, error) { return "running · Beam-Await", false, nil }},
 		{name: "FailedReadIsReturned", slug: "m", hold: func(string) (string, bool, error) { return "", false, readFailure }, wantErr: readFailure},
+		{name: "HeldBeamWithFailedHoldReturnsTheHoldError", slug: "m", hold: func(string) (string, bool, error) { return "running · Parent-Align", true, nil }, holdErr: holdFailure, wantTakes: 1, wantErr: holdFailure},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -222,10 +227,15 @@ func TestRefuseHeldMember(t *testing.T) {
 			}
 			c := &battenCLI{beamHold: tt.hold}
 
-			err := c.refuseHeldMember(context.Background(), location, tt.slug)
+			holds := &countingHold{err: tt.holdErr}
+
+			err := c.refuseHeldMember(context.Background(), location, tt.slug, holds.hold)
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("refuseHeldMember(%s) = %v; want %v", tt.slug, err, tt.wantErr)
+			}
+			if holds.takes != tt.wantTakes {
+				t.Errorf("refuseHeldMember(%s) took the prime lock %d times; want %d, taken only to remove a held member's pair", tt.slug, holds.takes, tt.wantTakes)
 			}
 		})
 	}

@@ -175,8 +175,15 @@
 // Session shutdown no longer skips a gone task worktree, since the composite ends that session by name.
 // A pair of which nothing remains is the done post-condition for both halves: session shutdown has nothing left to end, and the removal reports the pair not found.
 //
-// The two producers that hold the hub's prime lock, Worktree-Create and Worktree-Teardown, wait for a contended lock instead of halting on the first try:
+// Every producer that holds the hub's prime lock waits for a contended lock instead of halting on the first try:
 // they poll it every two seconds for up to ten minutes, stop at once when the context is cancelled, and return Stuck only when the bound is spent (primelockwait.go).
+// Worktree-Teardown holds it for its whole body.
+// Worktree-Create hands its create closure a HoldPrimeLock instead.
+// The closure takes it only around the steps that read the prime's tree or write the hub's worktree registry.
+// The origin probes start before the hold and overlap its wait, but Add waits for them under it, so the hold covers the probe time left after the pre-flight reads;
+// the adopt fetch, the fast-forward fetch of a behind branch and the archived-leftover replace of the pair's making also run under it.
+// Runs creating different pairs therefore overlap on everything else: the board claim, the start of the probes and the new pair's push.
+// The row releases any hold the closure left taken when it returns.
 // Worktree-Create halts, blocked at its own row and with no bounce budget spent, when the create closure returns a PreconditionError, for a precondition no tackler can settle:
 // the halt's reason starts with the precondition-unmet prefix and names what is unmet and its way forward, and the Go driver hands such a halt back.
 // battenshed never imports fabric, so the closure alone builds the error.
