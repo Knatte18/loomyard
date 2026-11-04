@@ -5,7 +5,7 @@
 // died is reserved for a strand reed STILL TRACKS AND STILL HOLDS A PANE FOR, whose pane is not alive;
 // the two ways reed's own bookkeeping can go away instead — a strand it no longer tracks (errStrandNotTracked) and a strand whose pane binding it cleared (errStrandPaneBindingCleared) — are mechanism failures, not classifications.
 // The exception is a handle whose own Stop removed the strand: its Wait ends OutcomeDied, which finalize records as stopped unless the files show the run done.
-// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout, and OutcomeAPIError for a spec with APIErrorRetries) is the only way out.
+// A turn end without every output file never ends the run: Wait logs the hold and keeps polling the same agent, so every other exit (OutcomeDone, OutcomeDied, a liveness mechanism failure, OutcomeTimeout, and OutcomeAPIError for a spec with APIErrorRetries or a turn end the engine marks ModelRejected) is the only way out.
 // That observation is logged at Info, so it reaches internal/logger's DURABLE trace sink (.lym/logs/trace-<stamp>-<trace>-<pid>.log, unconditionally enabled at Info) and not the detached driver's own log, which captures stderr and therefore only Warn and above.
 // An operator asking "is this interview waiting for me, or is it wedged?"
 // reads the trace sink.
@@ -218,7 +218,7 @@ var ErrAgentDied = errors.New("shuttle: the agent died before it wrote its outpu
 // Error is reserved for mechanism failures that leave no classifiable outcome.
 // A turn end without every output file is held, never terminal: Wait logs the hold and keeps polling,
 // so it terminates only on OutcomeDone, OutcomeDied, a liveness mechanism failure or OutcomeTimeout.
-// It also terminates on OutcomeAPIError, once a spec's APIErrorRetries re-sends of API-error turn ends are spent.
+// It also terminates on OutcomeAPIError, once a spec's APIErrorRetries re-sends of API-error turn ends are spent, or at once on a turn end the engine marks ModelRejected.
 //
 // An error result still carries the run's IDENTITY — SessionID, StrandGUID, and RunDir — with an
 // empty Outcome, because a mechanism failure is precisely when a caller needs them: no cleanup ran,
@@ -1965,27 +1965,27 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	return result, nil
 }
 
-// diedCaptureFileName is where removeDiedOwnWindowStrand saves a died run's last pane capture in the run directory.
+// diedCaptureFileName is where removeEndedOwnWindowStrand saves an ended run's last pane capture in the run directory.
 const diedCaptureFileName = "died-capture.txt"
 
 // finalizeAndRemoveDiedWindow finalizes the run with outcome, then ends the window of a died run's own-window strand.
 func (run *Run) finalizeAndRemoveDiedWindow(outcome Outcome) (Result, error) {
 	result, err := run.finalize(outcome)
 	if result.Outcome == OutcomeDied {
-		run.removeDiedOwnWindowStrand()
+		run.removeEndedOwnWindowStrand()
 	}
 	return result, err
 }
 
-// removeDiedOwnWindowStrand saves a died run's last pane capture to died-capture.txt in the run directory and removes the run's strand, when the strand is tracked, own-window and present.
+// removeEndedOwnWindowStrand saves a died or api-error run's last pane capture to died-capture.txt in the run directory and removes the run's strand, when the strand is tracked, own-window and present.
 // A window 0 strand is left to reed's reconcile.
 // A failed capture or write is a Warn and the removal still runs; a failed removal is a Warn naming `lym reed remove` as the way forward.
-func (run *Run) removeDiedOwnWindowStrand() {
+func (run *Run) removeEndedOwnWindowStrand() {
 	guid := run.state.StrandGUID
 	reed := run.runner.reed
 	status, err := reed.Status()
 	if err != nil {
-		logger.Warn("shuttle: died run: probe reed before removing its own-window strand failed (non-fatal)", "strandGUID", guid, "error", err)
+		logger.Warn("shuttle: ended run: probe reed before removing its own-window strand failed (non-fatal)", "strandGUID", guid, "error", err)
 		return
 	}
 	strand, tracked := strandStatusByGUID(status.Strands, guid)
@@ -1993,13 +1993,13 @@ func (run *Run) removeDiedOwnWindowStrand() {
 		return
 	}
 	if capture, err := reed.CapturePane(guid); err != nil {
-		logger.Warn("shuttle: died run: capture the own-window pane failed (non-fatal)", "strandGUID", guid, "error", err)
+		logger.Warn("shuttle: ended run: capture the own-window pane failed (non-fatal)", "strandGUID", guid, "error", err)
 	} else if err := os.WriteFile(filepath.Join(run.runDir, diedCaptureFileName), []byte(capture), 0o644); err != nil {
-		logger.Warn("shuttle: died run: save the last pane capture failed (non-fatal)", "runDir", run.runDir, "strandGUID", guid, "error", err)
+		logger.Warn("shuttle: ended run: save the last pane capture failed (non-fatal)", "runDir", run.runDir, "strandGUID", guid, "error", err)
 	}
 	if _, err := reed.RemoveStrand(guid, false); err != nil {
-		logger.Warn("shuttle: died run: remove the own-window strand failed; run \"lym reed remove\" to clear it", "strandGUID", guid, "error", err)
+		logger.Warn("shuttle: ended run: remove the own-window strand failed; run \"lym reed remove\" to clear it", "strandGUID", guid, "error", err)
 		return
 	}
-	logger.Info("shuttle: removed a died run's own-window strand", "runDir", run.runDir, "strandGUID", guid)
+	logger.Info("shuttle: removed an ended run's own-window strand", "runDir", run.runDir, "strandGUID", guid)
 }

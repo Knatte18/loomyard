@@ -266,7 +266,7 @@ func (c *Call) concludeWait(attempt loomengine.ArbiterAttempt, result shuttleeng
 	case result.Outcome == shuttleengine.OutcomeTimeout:
 		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseTimeout, "the arbiter ran past its deadline")
 	case result.Outcome == shuttleengine.OutcomeAPIError:
-		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseAPIError, fmt.Sprintf("the arbiter's session failed on an API error its %d re-sends did not clear: %s", sheddriver.SettlerAPIErrorRetries, result.APIError))
+		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseAPIError, fmt.Sprintf("the arbiter's session failed on an API error: %s", result.APIError))
 	case result.Outcome != shuttleengine.OutcomeDone:
 		return c.stopRunAndHandOn(attempt, stop, guid, sheddriver.CauseDied, fmt.Sprintf("the arbiter ended %s without a verdict", result.Outcome))
 	}

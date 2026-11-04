@@ -72,8 +72,8 @@
 //
 // A turn end without every output file never ends a run: Wait holds it, logs it at Info and keeps polling the same agent,
 // whether the turn end is a Stop or a live ask.
-// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout, api-error (a spec with APIErrorRetries only) or a mechanism failure.
-// A died run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand;
+// A run ends only as done (every output file present at a turn end, or at the deadline or a pane's death), died, timeout, api-error (a spec with APIErrorRetries, or a turn end the engine marks ModelRejected) or a mechanism failure.
+// A died or api-error run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand, and an anchored strand stays;
 // a timed-out run keeps its strand, since its agent may still be live.
 // A run's strand lands in a window of its own unless its spec names an anchor.
 // A turn end that precedes the start prompt's own turn start is not a task turn end:
@@ -120,7 +120,7 @@
 // A turn end on an API error that is not also an event, such as Claude's StopFailure, holds nothing and sends no notice.
 // A run whose Spec.APIErrorRetries is set re-sends such a turn with one line after a back-off that doubles with each API-error turn end of the run, and the one past the last re-send ends the run OutcomeAPIError, Result.APIError naming the error, unless every output file exists, which ends it done.
 // A run with no retries waits such a turn end out to its deadline.
-// RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
+// A turn end the engine marks SessionSignal.ModelRejected ends the run OutcomeAPIError at once, retries or not, unless every output file exists, since no re-send changes the model.// RunState.NotifiedOffset, the events-file offset past the last notified one, is persisted before the notifier is called,
 // and a held turn end at or below it is never notified again, including when an Attach replays it.
 // A batch of several new events is classified by its last event, so only its last held turn end is notified.
 // It stays provider-invariant, per the Shuttle Provider-Seam Invariant.

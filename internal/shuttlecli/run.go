@@ -39,7 +39,6 @@ func (c *shuttleCLI) runCmd() *cobra.Command {
 		promptFile  string
 		outputFiles []string
 		model       string
-		effort      string
 		interactive bool
 		role        string
 		round       string
@@ -75,8 +74,17 @@ Example (autonomous, two output files):
 Example (interactive, agent may ask clarifying questions):
   lym shuttle run --prompt-file task.md --output-file result.md --interactive
 
---effort overrides the provider's reasoning-effort level; empty defers to
-the provider default.`,
+--model chooses the engine, model and effort as a model spec, the form
+lym shuttle open takes:
+  <alias>[<effort>]               an alias from the model registry, e.g. sonnet[medium] or luna[high]
+  <engine>:<model-id>[<effort>]   an engine and a provider model id, e.g. claude:claude-opus-5-5[max]
+The alias's engine runs the session, as the registry names it
+(lym shuttle open --list-models prints it), and the bracket overrides the
+alias's default effort. Without --model the run gets shuttle.yaml's engine
+and the provider's default model and effort.
+A model the provider reports it does not know ends the run at once with
+outcome api-error and the error in apiError, on an engine that reads that
+report.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
@@ -125,10 +133,20 @@ the provider default.`,
 				promptText = string(data)
 			}
 
+			var choice shuttleengine.ModelChoice
+			if model != "" {
+				resolved, err := c.resolveModelSpec(model)
+				if err != nil {
+					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("--model: %v", err)))
+					return nil
+				}
+				choice = resolved
+			}
+
 			spec := shuttleengine.Spec{
 				Prompt:      promptText,
 				OutputFiles: outputFiles,
-				ModelChoice: shuttleengine.ModelChoice{Model: model, Effort: effort},
+				ModelChoice: choice,
 				Interactive: interactive,
 				Role:        role,
 				Round:       round,
@@ -153,13 +171,17 @@ the provider default.`,
 				return nil
 			}
 
-			clihelp.SetExit(cmd.Context(), output.Ok(out, map[string]any{
+			fields := map[string]any{
 				"outcome":              string(result.Outcome),
 				"sessionId":            result.SessionID,
 				"guid":                 result.StrandGUID,
 				"lastAssistantMessage": result.LastAssistantMessage,
 				"runDir":               result.RunDir,
-			}))
+			}
+			if result.APIError != "" {
+				fields["apiError"] = result.APIError
+			}
+			clihelp.SetExit(cmd.Context(), output.Ok(out, fields))
 			return nil
 		},
 	}
@@ -167,8 +189,7 @@ the provider default.`,
 	cmd.Flags().StringVar(&prompt, "prompt", "", "task prompt text (mutually exclusive with --prompt-file)")
 	cmd.Flags().StringVar(&promptFile, "prompt-file", "", "path to a file whose contents become the task prompt")
 	cmd.Flags().StringArrayVar(&outputFiles, "output-file", nil, "output file the agent must write (repeatable; required at least once; must not already exist; relative paths resolve against the worktree root)")
-	cmd.Flags().StringVar(&model, "model", "", "provider model override; empty defers to the engine/provider default")
-	cmd.Flags().StringVar(&effort, "effort", "", "reasoning-effort override; empty defers to the provider default")
+	cmd.Flags().StringVar(&model, "model", "", "model spec, <alias>[<effort>] or <engine>:<model-id>[<effort>]; empty defers to shuttle.yaml's engine and the provider default")
 	cmd.Flags().BoolVar(&interactive, "interactive", false, "run interactively (the agent may ask questions); default is autonomous")
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")

@@ -77,6 +77,7 @@ type Spec struct {
 	// Each re-send waits a back-off that doubles with each API-error turn end of the run,
 	// and the API-error turn end past the last re-send ends the run OutcomeAPIError, whose Result names the error.
 	// Zero re-sends nothing, and such a turn end then waits out the run's deadline.
+	// A turn end the engine marks as rejecting the session's model ends the run OutcomeAPIError at once, whatever this count.
 	// validate does not inspect it.
 	APIErrorRetries int
 	// HoldDeferral, when set, reports whether outstanding work elsewhere defers this run's held-turn parent notice.

@@ -498,31 +498,23 @@ var errSpecCaptured = errors.New("specCapturingEngine: spec captured")
 // startupPending answers every capture as a pane that never becomes ready.
 func startupPending(string) shuttleengine.StartupState { return shuttleengine.StartupPending }
 
-// TestRunCmd_EffortAndFocusFlags proves --effort and --focus land in the shuttleengine.Spec run builds, mirroring how --model is wired: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
+// TestRunCmd_FocusFlag proves --focus lands in the shuttleengine.Spec run builds: a real *shuttleengine.Runner over a spec-capturing Engine fake and an inert reed fake lets the test drive runCmd()'s RunE directly and inspect the Spec the engine's Prepare was actually called with, without a live tmux/claude session.
 // --focus=false keeps the viewer where it is, and the default takes focus.
 // Prepare fails before Runner.Start reaches reed.AddStrand, so the reed fake is never exercised.
 // That failure happens before any strand exists, so the error envelope must carry none of the run-identity fields (guid, sessionId, runDir) rather than three empty strings.
-func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
+func TestRunCmd_FocusFlag(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
 		name           string
 		args           []string
-		wantEffort     string
 		wantFocus      bool
 		wantKeepViewer bool
 	}{
 		{
-			name:       "EffortFlagSet",
-			args:       []string{"--prompt", "do the thing", "--output-file", "out.md", "--effort", "high"},
-			wantEffort: "high",
-			wantFocus:  true,
-		},
-		{
-			name:       "EffortAndFocusFlagsOmitted",
-			args:       []string{"--prompt", "do the thing", "--output-file", "out.md"},
-			wantEffort: "",
-			wantFocus:  true,
+			name:      "FocusFlagOmitted",
+			args:      []string{"--prompt", "do the thing", "--output-file", "out.md"},
+			wantFocus: true,
 		},
 		{
 			name:           "FocusFalseKeepsTheViewer",
@@ -560,9 +552,6 @@ func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
 			if engine.LastSpec.Prompt == "" {
 				t.Fatalf("Engine.Prepare was never called; want it invoked with the built Spec; output: %s", out.String())
 			}
-			if engine.LastSpec.Effort != tt.wantEffort {
-				t.Errorf("Spec.Effort = %q; want %q", engine.LastSpec.Effort, tt.wantEffort)
-			}
 			if display := engine.LastSpec.Display; display.Focus != tt.wantFocus || display.KeepViewer != tt.wantKeepViewer {
 				t.Errorf("Spec.Display = %+v; want Focus %v and KeepViewer %v", display, tt.wantFocus, tt.wantKeepViewer)
 			}
@@ -572,6 +561,73 @@ func TestRunCmd_EffortAndFocusFlags(t *testing.T) {
 				if _, present := envelope[key]; present {
 					t.Errorf("envelope carries %q before any strand existed; output: %s", key, out.String())
 				}
+			}
+		})
+	}
+}
+
+// TestRunCmd_ModelSpec pins that run's --model takes a model spec.
+// An alias or an escape-form spec picks the engine whose Prepare sees the run's spec, with the resolved model and effort.
+// No --model leaves the set's default engine.
+// A spec the registry cannot resolve is refused before any engine prepares.
+func TestRunCmd_ModelSpec(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// model is the --model value; empty passes no flag.
+		model string
+		// wantEngine is the engine whose Prepare must see the spec; empty means none may.
+		wantEngine string
+		wantChoice shuttleengine.ModelChoice
+		// wantErr is a text the error envelope must hold when no engine prepares.
+		wantErr string
+	}{
+		{name: "CodexAliasWithEffort", model: "luna[high]", wantEngine: "codex", wantChoice: shuttleengine.ModelChoice{Engine: "codex", Model: "gpt-6-luna", Effort: "high"}},
+		{name: "ClaudeAlias", model: "sonnet", wantEngine: "claude", wantChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "sonnet"}},
+		{name: "EscapeForm", model: "claude:claude-opus-5-5[max]", wantEngine: "claude", wantChoice: shuttleengine.ModelChoice{Engine: "claude", Model: "claude-opus-5-5", Effort: "max"}},
+		{name: "NoModel", wantEngine: shuttlefake.EngineName},
+		{name: "UnknownAlias", model: "bogus[high]", wantErr: `unknown alias "bogus"`},
+		{name: "MalformedSpec", model: "sonnet[", wantErr: "--model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			engines := map[string]*shuttlefake.Engine{}
+			set := map[string]shuttleengine.Engine{}
+			for _, name := range []string{shuttlefake.EngineName, "claude", "codex"} {
+				engines[name] = &shuttlefake.Engine{PrepareErr: errSpecCaptured, StartupFn: startupPending}
+				set[name] = engines[name]
+			}
+			worktreeRoot := t.TempDir()
+			runner := shuttleengine.NewRunner(&shuttlefake.Reed{}, shuttleengine.NewEngineSet(shuttlefake.EngineName, set), worktreeRoot, worktreeRoot, shuttleengine.Config{RunTimeoutMin: 30})
+			c := &shuttleCLI{runner: runner, configDirs: configengine.Dirs{Anchor: t.TempDir()}}
+			cmd := c.runCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			args := []string{"--prompt", "do the thing", "--output-file", "out.md"}
+			if tt.model != "" {
+				args = append(args, "--model", tt.model)
+			}
+			cmd.SetArgs(args)
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			for name, engine := range engines {
+				if prepared := engine.LastSpec.Prompt != ""; prepared != (name == tt.wantEngine) {
+					t.Errorf("engine %s prepared = %v; want %v; output: %s", name, prepared, name == tt.wantEngine, out.String())
+				}
+			}
+			if tt.wantEngine != "" {
+				if got := engines[tt.wantEngine].LastSpec.ModelChoice; got != tt.wantChoice {
+					t.Errorf("Spec.ModelChoice = %+v; want %+v", got, tt.wantChoice)
+				}
+				return
+			}
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if got, _ := envelope["error"].(string); envelope["ok"] != false || !strings.Contains(got, tt.wantErr) {
+				t.Errorf("envelope = %v; want ok false with an error containing %q", envelope, tt.wantErr)
 			}
 		})
 	}
@@ -628,6 +684,97 @@ func TestRunCmd_MechanismFailure_EnvelopeCarriesRunIdentity(t *testing.T) {
 	}
 	if got, _ := envelope["runDir"].(string); got == "" {
 		t.Errorf("envelope runDir is empty; want the run dir that is still on disk; output: %s", out.String())
+	}
+}
+
+// apiErrorEngine is a shuttlefake.Engine that reads session signals: a line REJECT:<text> is an API-error turn end carrying <text> as its error.
+// Its process always reads alive.
+type apiErrorEngine struct {
+	*shuttlefake.Engine
+}
+
+func (apiErrorEngine) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
+	var signals []shuttleengine.SessionSignal
+	for _, line := range strings.Split(string(data), "\n") {
+		if text, ok := strings.CutPrefix(line, "REJECT:"); ok {
+			signals = append(signals, shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalAPIErrorTurnEnd, ErrorText: text, ModelRejected: true, SessionID: "session-1", Raw: []byte(line)})
+		}
+	}
+	return signals, len(data)
+}
+
+func (apiErrorEngine) ProcessLiveness(string) shuttleengine.Liveness {
+	return shuttleengine.LivenessAlive
+}
+
+func (apiErrorEngine) TurnStartInterrupt(shuttleengine.SessionSignal) (time.Time, bool) {
+	return time.Time{}, false
+}
+
+// TestRunCmd_APIErrorEnvelope pins that run's envelope carries apiError when the run ends api-error, and omits it on a done outcome.
+func TestRunCmd_APIErrorEnvelope(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		// events is what the engine's Prepare writes into the run's events file.
+		events string
+		// writeOutput makes Prepare write the run's output file.
+		writeOutput bool
+		wantOutcome shuttleengine.Outcome
+		wantError   string
+	}{
+		{name: "RejectedModelCarriesTheError", events: "START\nREJECT:model_not_found\n", wantOutcome: shuttleengine.OutcomeAPIError, wantError: "model_not_found"},
+		// The engine reads no turn end, so the run ends done at its deadline with the output file on disk.
+		{name: "DoneCarriesNone", events: "START\n", writeOutput: true, wantOutcome: shuttleengine.OutcomeDone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			anchorPath := t.TempDir()
+			worktreeRoot := filepath.Dir(anchorPath)
+			output := filepath.Join(anchorPath, "out.md")
+			fake := &shuttlefake.Engine{
+				StartupFn:     func(string) shuttleengine.StartupState { return shuttleengine.StartupReady },
+				ParseEventsFn: func(data []byte) ([]shuttleengine.Event, error) { return nil, nil },
+				PrepareFn: func(runDir string, _ shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+					if err := os.WriteFile(filepath.Join(runDir, "events.jsonl"), []byte(tt.events), 0o644); err != nil {
+						return shuttleengine.Launch{}, err
+					}
+					if tt.writeOutput {
+						if err := os.WriteFile(output, []byte("done"), 0o644); err != nil {
+							return shuttleengine.Launch{}, err
+						}
+					}
+					return shuttleengine.Launch{Cmd: "launch", ResumeCmd: "resume", SessionID: "session-1"}, nil
+				},
+			}
+			reed := &shuttlefake.Reed{
+				AddStrandFn: func(reedengine.AddSpec) (reedengine.Strand, error) {
+					return reedengine.Strand{GUID: "strand-1"}, nil
+				},
+				Strands: []reedengine.StrandStatus{{GUID: "strand-1", PaneID: "%0", Live: true}},
+			}
+			runner := newFakeClockRunner(reed, apiErrorEngine{fake}, anchorPath, worktreeRoot)
+
+			c := &shuttleCLI{runner: runner}
+			cmd := c.runCmd()
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetArgs([]string{"--prompt", "do the thing", "--output-file", output})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("cmd.Execute() error: %v; output: %s", err, out.String())
+			}
+
+			envelope := parseSingleEnvelope(t, out.Bytes())
+			if got, _ := envelope["outcome"].(string); got != string(tt.wantOutcome) {
+				t.Fatalf("envelope outcome = %q; want %q; output: %s", got, tt.wantOutcome, out.String())
+			}
+			got, present := envelope["apiError"].(string)
+			if got != tt.wantError || present != (tt.wantError != "") {
+				t.Errorf("envelope apiError = %q (present %v); want %q; output: %s", got, present, tt.wantError, out.String())
+			}
+		})
 	}
 }
 

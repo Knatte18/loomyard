@@ -10,7 +10,8 @@
 //
 // The launch line runs `-a never -s workspace-write`, so no approval prompt shows, and adds the records checkout it is told through its Dirs as a writable root, symlink-resolved as the trusted roots are and kept as told, with a Warn, when it cannot be resolved,
 // so the session writes under the anchor's `.lym` as a Claude seat does; outside a hub it is told none and adds none.
-// A committed `.codex/rules` folder refuses the launch, since an allow rule there lifts the sandbox; a committed `.codex/config.toml` is named in a Warn, since its hooks run unreviewed.
+// A `.codex/rules` folder in the worktree refuses the launch, since an allow rule there lifts the sandbox; a `.codex/config.toml` there is named in a Warn, since its hooks run unreviewed.
+// Both are read on disk, tracked by git or not, since Codex reads them either way.
 // The first turn is the positional prompt pointer, and the pane's shell exits after Codex, so a Codex exit reads as a dead pane;
 // the resume line starts no Codex, since Codex mints its session id at the first turn.
 //
@@ -27,6 +28,10 @@
 //
 // A skill `<plugin>:<name>` is a file the model reads: the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path,
 // and a tool call of the load turn naming that tail in the rollout reads the skill loaded; a skill under no root is reported unknown.
+//
+// OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`: it validates the model choice and readies the lym home as Prepare does,
+// and its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
+// Its resume line is empty, so a revive starts no Codex and Runner.Open's chain ends the strand.
 //
 // The engine has no fork audit, no transcript reading and no creel hooks.
 package codexengine

@@ -59,6 +59,9 @@ func TestWait_APIErrorRetry(t *testing.T) {
 		// wantGaps is the least run-clock time before each send, from the API-error turn end it re-sends.
 		wantGaps     []time.Duration
 		wantAPIError string
+		// ownWindow makes the run's strand an own-window one, and wantRemoved is how many strand removals the run makes, asserted only then.
+		ownWindow   bool
+		wantRemoved int
 	}{
 		{
 			name: "a re-send after the back-off lets the agent finish", retries: 2,
@@ -66,9 +69,9 @@ func TestWait_APIErrorRetry(t *testing.T) {
 			wantOutcome: OutcomeDone, wantGaps: []time.Duration{apiErrorRetryBackoff},
 		},
 		{
-			name: "an API error past the re-sends ends the run naming the error", retries: 2,
+			name: "an API error past the re-sends ends the run naming the error and removes its strand", retries: 2, ownWindow: true,
 			react:       []string{"START", "APIERR:server_error"},
-			wantOutcome: OutcomeAPIError, wantGaps: []time.Duration{apiErrorRetryBackoff, 2 * apiErrorRetryBackoff}, wantAPIError: "server_error",
+			wantOutcome: OutcomeAPIError, wantGaps: []time.Duration{apiErrorRetryBackoff, 2 * apiErrorRetryBackoff}, wantAPIError: "server_error", wantRemoved: 1,
 		},
 		{
 			name: "an API error with no text ends the run naming an unknown error", retries: 1, events: "START\nAPIERR\n",
@@ -105,6 +108,26 @@ func TestWait_APIErrorRetry(t *testing.T) {
 			wantOutcome: OutcomeDone, wantGaps: []time.Duration{apiErrorRetryBackoff},
 		},
 		{
+			name: "a rejected model ends a run with no retries at once and removes its strand", retries: 0, ownWindow: true,
+			events:      "START\nREJECT:model_not_found\n",
+			wantOutcome: OutcomeAPIError, wantAPIError: "model_not_found", wantRemoved: 1,
+		},
+		{
+			name: "a rejected model ends the run at once, spending no re-send", retries: 2, ownWindow: true,
+			events:      "START\nREJECT:model_not_found\n",
+			wantOutcome: OutcomeAPIError, wantAPIError: "model_not_found", wantRemoved: 1,
+		},
+		{
+			name: "a rejected model with every output file on disk ends the run done", retries: 0, outputFirst: true, ownWindow: true,
+			events:      "START\nREJECT:model_not_found\n",
+			wantOutcome: OutcomeDone, wantRemoved: 1,
+		},
+		{
+			name: "a pause covering the run holds the rejected-model end until it lifts", retries: 0, covered: true, ownWindow: true,
+			events:      "START\nREJECT:model_not_found\n",
+			wantOutcome: OutcomeAPIError, wantAPIError: "model_not_found", wantRemoved: 1,
+		},
+		{
 			name: "earlier API errors in the events file count against the re-sends", retries: 2,
 			events:      "START\nAPIERR:first\nAPIERR:second\nAPIERR:third\n",
 			wantOutcome: OutcomeAPIError, wantAPIError: "third",
@@ -117,7 +140,11 @@ func TestWait_APIErrorRetry(t *testing.T) {
 			fc := newFakeClock(time.Now())
 			start := fc.Now()
 			output := filepath.Join(t.TempDir(), "out.md")
-			pane := &reactingReed{echoReed: &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}, failSends: tt.failSends}
+			status := liveStrandStatus(true)
+			if tt.ownWindow {
+				status[0].Strands[0].OwnWindow, status[0].Strands[0].Present = true, true
+			}
+			pane := &reactingReed{echoReed: &echoReed{fakeReed: &fakeReed{StatusQueue: status}, pane: "❯ "}, failSends: tt.failSends}
 			fx := newFixture(t, pane, engine, withConfig(gateConfig))
 			var clk Clock = fc
 			lifted := false
@@ -164,6 +191,9 @@ func TestWait_APIErrorRetry(t *testing.T) {
 			}
 			if pane.failSends != 0 {
 				t.Errorf("failSends left = %d; want 0, every failing send attempted", pane.failSends)
+			}
+			if tt.ownWindow && len(pane.RemoveStrandCalls) != tt.wantRemoved {
+				t.Errorf("RemoveStrand calls = %d; want %d", len(pane.RemoveStrandCalls), tt.wantRemoved)
 			}
 			if tt.covered && !lifted {
 				t.Error("Wait() ended the run while a pause covered it; want it held until the pause lifted")

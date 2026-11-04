@@ -1,6 +1,6 @@
 // home.go prepares the shared lym Codex home a launch runs under and reads the checkout the launch starts in.
 // The home holds links to the operator home's login and sessions, lym's record of the roots it trusts, and the config.toml rendered whole from that record.
-// The checkout gives the roots Codex keys folder trust on and the committed `.codex` folders a launch warns about or refuses.
+// The checkout gives the roots Codex keys folder trust on and the `.codex` folders in it, tracked by git or not, which a launch warns about or refuses.
 
 package codexengine
 
@@ -75,7 +75,8 @@ func readCheckout(anchor string) (checkout, error) {
 	return found, nil
 }
 
-// checkCodexFolders warns about the committed Codex settings a launch in found and anchor runs, and refuses a launch under committed Codex rules.
+// checkCodexFolders warns about the Codex settings a launch in found and anchor runs, and refuses a launch under Codex rules.
+// It reads the folders on disk, whether git tracks them or not, since Codex reads them either way.
 // A `.codex/config.toml` in the worktree is named in a Warn.
 // For a linked worktree whose root holds a `.codex` folder, the main checkout's `.codex/config.toml` is named too, since Codex then takes its hooks from that file.
 // A `.codex/rules` directory in the worktree root or the anchor refuses the launch, since an allow rule there lifts the sandbox for its command, and the refusal is also logged.
@@ -86,12 +87,12 @@ func (c *Codex) checkCodexFolders(found checkout, anchor string) error {
 	}
 	for _, folder := range folders {
 		if rules := filepath.Join(folder, rulesDirName); isDir(rules) {
-			refusal := fmt.Errorf("codexengine: %s holds committed Codex rules, and an allow rule there lifts the sandbox for its command; way forward: remove the directory from the repository, or clear the round's assist model key so later rounds run no Codex seat", rules)
-			c.warn("codexengine: refused a Codex launch under committed Codex rules", "path", rules)
+			refusal := fmt.Errorf("codexengine: %s holds Codex rules, and an allow rule there lifts the sandbox for its command, whether git tracks the directory or not; way forward: remove the directory from the worktree, in a commit when git tracks it, then launch again, or launch on an engine other than codex", rules)
+			c.warn("codexengine: refused a Codex launch under Codex rules in the worktree", "path", rules)
 			return refusal
 		}
 		if config := filepath.Join(folder, configFileName); isFile(config) {
-			c.warn("codexengine: the worktree commits a Codex config, whose hooks and settings the session runs without review", "path", config)
+			c.warn("codexengine: the worktree holds a Codex config, whose hooks and settings the session runs without review", "path", config)
 		}
 	}
 	if found.mainRoot != "" && isDir(filepath.Join(found.root, codexFolderName)) {

@@ -11,6 +11,7 @@ import (
 )
 
 // TestBuildLaunchCmd pins the POSIX launch line: CODEX_HOME leading, every flag of the spike's line with the writable root, model and effort when set, each hook setting, the bypass flag, the first turn, and the shell exit.
+// It also pins an opened session's command: no hook bypass, no first turn and no exit when the line has no hooks and no first turn.
 func TestBuildLaunchCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -27,8 +28,8 @@ func TestBuildLaunchCmd(t *testing.T) {
 		},
 		{
 			name: "NoWritableRootModelOrEffort",
-			line: launchLine{bin: "codex", home: "/h", firstTurn: "it's"},
-			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'project_doc_fallback_filenames=["CLAUDE.md"]' --dangerously-bypass-hook-trust 'it'\''s'; exit`,
+			line: launchLine{bin: "codex", home: "/h", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "it's"},
+			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'it'\''s'; exit`,
 		},
 	}
 	for _, tt := range tests {
@@ -41,6 +42,10 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}
 	if got := buildResumeCmd(shell.Posix()); got != "exit" {
 		t.Errorf("buildResumeCmd() = %q; want exit", got)
+	}
+	opened := launchLine{bin: "codex", home: "/h", model: "gpt-6-luna"}
+	if got, want := codexCommand(shell.Posix(), opened), `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -m 'gpt-6-luna' -c 'project_doc_fallback_filenames=["CLAUDE.md"]'`; got != want {
+		t.Errorf("codexCommand(%+v) = %s; want %s", opened, got, want)
 	}
 }
 

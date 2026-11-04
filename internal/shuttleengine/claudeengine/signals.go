@@ -57,6 +57,9 @@ var notificationSignalKinds = map[string]shuttleengine.SessionSignalKind{
 	notificationIdlePrompt:           shuttleengine.SessionSignalIdleNotice,
 }
 
+// stopFailureModelNotFound is the StopFailure error Claude Code writes when the API does not know the session's model.
+const stopFailureModelNotFound = "model_not_found"
+
 // SessionEnd reasons that end Claude's process.
 const (
 	sessionEndReasonLogout         = "logout"
@@ -155,9 +158,11 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 			Event:       true,
 		}, true
 	case hookEventStopFailure:
+		errorType, _ := fields["error"].(string)
 		return shuttleengine.SessionSignal{
-			Kind:      shuttleengine.SessionSignalAPIErrorTurnEnd,
-			ErrorText: apiErrorText(fields),
+			Kind:          shuttleengine.SessionSignalAPIErrorTurnEnd,
+			ErrorText:     apiErrorText(fields),
+			ModelRejected: errorType == stopFailureModelNotFound,
 		}, true
 	case hookEventUserPromptSubmit:
 		prompt, _ := fields["prompt"].(string)

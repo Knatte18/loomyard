@@ -12,7 +12,7 @@
 // A call spawns at most Settings.MaxSpawns agents per run, counted from the attempt records on disk, so no restart resets the count, and it moves no run itself.
 // A call for a stop an earlier attempt already arbitrated spawns nothing: it returns that attempt's verdict, or waits on the attempt's live arbiter.
 // A verdict file that does not read, a run that timed out or died, and a resume whose precondition fails each end as a hand-on naming a cause.
-// The arbiter's spec has shuttle re-send a turn the provider's API ended on an error, and a run whose re-sends did not clear it ends as a hand-on with cause `api-error` whose question names the error, so the stop reaches the run's parent at once rather than at the deadline.
+// The arbiter's spec has shuttle re-send a turn the provider's API ended on an error, and a run that ends on an API error, its re-sends spent or its model rejected, ends as a hand-on with cause `api-error` whose question names the error, so the stop reaches the run's parent at once rather than at the deadline.
 // Every refusal ends with Deps.HandBackWayForward, which names the verb that shows the stop.
 //
 // # The prompt

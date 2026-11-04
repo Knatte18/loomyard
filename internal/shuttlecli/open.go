@@ -1,4 +1,5 @@
 // open.go implements the `open` shuttle verb: it opens a named LLM session with no prompt in a window of its own through c.runner.Open, or lists the model registry a --model spec resolves against.
+// It also holds the --model resolution `open` and `run` share.
 
 package shuttlecli
 
@@ -39,7 +40,9 @@ lists it. Its window closes when the session exits. It is refused under a pause.
   <engine>:<model-id>[<effort>]   an engine and a provider model id, e.g. claude:claude-opus-5-5[max]
 The bracket is optional and overrides the alias's default effort; the engine
 validates the effort. Without --model the session gets the default engine and
-the provider's default model and effort.
+the provider's default model and effort. An engine that cannot open a session
+with no prompt is refused before anything is created; a codex session opens
+with no shell guard and no creel hooks.
 --list-models prints the registry's aliases with their engine, model and
 default effort, and opens nothing.
 The output names the engine, model and effort the session got, an empty model
@@ -74,22 +77,12 @@ Example:
 
 			spec := shuttleengine.OpenSpec{Role: role, Segment: segmentcolor.Segment(segment), PermissionMode: permissionMode}
 			if model != "" {
-				parsed, err := modelspec.Parse(model)
+				choice, err := c.resolveModelSpec(model)
 				if err != nil {
 					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("--model: %v", err)))
 					return nil
 				}
-				registry, err := modelspec.LoadRegistry(c.configDirs)
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("--model: load the model registry: %v", err)))
-					return nil
-				}
-				resolved, err := registry.Resolve(parsed)
-				if err != nil {
-					clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("--model: %v", err)))
-					return nil
-				}
-				spec.ModelChoice = shuttleengine.NewModelChoice(resolved)
+				spec.ModelChoice = choice
 			}
 
 			result, err := c.runner.Open(spec)
@@ -117,6 +110,24 @@ Example:
 	cmd.Flags().BoolVar(&listModels, "list-models", false, "print the model registry's aliases with their engine, model and default effort, and open nothing")
 
 	return cmd
+}
+
+// resolveModelSpec resolves a --model value, `<alias>[<effort>]` or `<engine>:<model-id>[<effort>]`, against the model registry c's config dirs locate.
+// It returns the engine, model, effort and version the spec names, the alias's engine for an alias, and refuses a malformed spec or an unknown alias.
+func (c *shuttleCLI) resolveModelSpec(model string) (shuttleengine.ModelChoice, error) {
+	parsed, err := modelspec.Parse(model)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, err
+	}
+	registry, err := modelspec.LoadRegistry(c.configDirs)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, fmt.Errorf("load the model registry: %w", err)
+	}
+	resolved, err := registry.Resolve(parsed)
+	if err != nil {
+		return shuttleengine.ModelChoice{}, err
+	}
+	return shuttleengine.NewModelChoice(resolved), nil
 }
 
 // registryRows returns one row per alias of registry, sorted by alias, each naming the alias's engine, model and default effort.

@@ -1,5 +1,6 @@
-// command.go composes the pane-shell lines Prepare hands back as a Launch, and the `-c` hook settings the launch line carries.
+// command.go composes the pane-shell lines Prepare and OpenLaunch hand back as a Launch, and the `-c` hook settings the launch line carries.
 // The launch line starts the Codex TUI under the lym home with its first turn as the positional argument, then exits the pane's shell, so a Codex exit leaves a dead pane.
+// An opened session's line is the Codex command alone, with no hooks, no first turn and no exit.
 // The resume line exits the pane's shell alone and starts no Codex.
 // Every hook is a plain POSIX sh command that appends a stamp line and its payload to the run's events file, touches the run's activity stamp, or guards a shell command.
 // Argument quoting and statement chaining are pane-shell mechanics owned by internal/shell.
@@ -39,18 +40,23 @@ type launchLine struct {
 	model string
 	// effort is the reasoning effort; empty takes Codex's default.
 	effort string
-	// hooks are the `-c` hook settings, each one `hooks.<Event>=[…]` value.
+	// hooks are the `-c` hook settings, each one `hooks.<Event>=[…]` value; none for an opened session.
 	hooks []string
-	// firstTurn is the session's first turn, typed as the positional prompt.
+	// firstTurn is the session's first turn, typed as the positional prompt; empty for an opened session, which waits at its composer.
 	firstTurn string
 }
 
 // buildLaunchCmd composes the pane-shell line that starts a Codex session and exits the pane's shell when Codex exits.
-// The line runs `-a never -s workspace-write`, so no approval prompt shows and the sandbox bounds writes to the workspace, the writable roots and the temporary folders.
-// It passes every hook setting with `--dangerously-bypass-hook-trust`, since a hook given by `-c` otherwise waits on a review prompt,
+func buildLaunchCmd(sh shell.Shell, line launchLine) string {
+	return sh.Chain(codexCommand(sh, line), sh.Exit())
+}
+
+// codexCommand composes the command that starts a Codex session under the lym home.
+// It runs `-a never -s workspace-write`, so no approval prompt shows and the sandbox bounds writes to the workspace, the writable roots and the temporary folders.
+// It passes every hook setting with `--dangerously-bypass-hook-trust`, since a hook given by `-c` otherwise waits on a review prompt, and the first turn when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
 // CODEX_HOME names the lym home as a command-scoped assignment.
-func buildLaunchCmd(sh shell.Shell, line launchLine) string {
+func codexCommand(sh shell.Shell, line launchLine) string {
 	cmd := sh.Invoke(line.bin) + " --no-alt-screen -a never -s workspace-write"
 	if len(line.writableRoots) > 0 {
 		cmd += " -c " + sh.Quote("sandbox_workspace_write.writable_roots="+tomlArray(line.writableRoots))
@@ -65,8 +71,13 @@ func buildLaunchCmd(sh shell.Shell, line launchLine) string {
 	for _, hook := range line.hooks {
 		cmd += " -c " + sh.Quote(hook)
 	}
-	cmd += " --dangerously-bypass-hook-trust " + sh.Quote(line.firstTurn)
-	return sh.Chain(sh.WithEnv(codexHomeEnvKey, line.home, cmd), sh.Exit())
+	if len(line.hooks) > 0 {
+		cmd += " --dangerously-bypass-hook-trust"
+	}
+	if line.firstTurn != "" {
+		cmd += " " + sh.Quote(line.firstTurn)
+	}
+	return sh.WithEnv(codexHomeEnvKey, line.home, cmd)
 }
 
 // buildResumeCmd composes the line reed replays to revive the strand: an exit of the pane's shell and no Codex.

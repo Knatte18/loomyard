@@ -55,6 +55,9 @@ type SessionSignal struct {
 	Outstanding []BackgroundTask
 	// ErrorText is an API-error turn end's text; empty on every other kind.
 	ErrorText string
+	// ModelRejected is true when an API-error turn end says the provider does not know the session's model, which no re-send clears;
+	// the provider decides which errors say so, and it is false on every other kind.
+	ModelRejected bool
 	// Reason is a session end's reason; empty on every other kind.
 	Reason string
 	// EndsProcess is true when a session end's reason ends the provider's process; the provider decides which reasons do.

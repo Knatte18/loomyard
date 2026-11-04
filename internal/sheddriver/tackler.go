@@ -270,7 +270,7 @@ func (c *TacklerCall) recordStartedTackler(attempt TacklerAttempt) error {
 // concludeWait concludes attempt after a wait ended with result and waitErr.
 // A verdict on disk wins whatever the wait reported.
 // A timeout that ended while the hub's pause record covered part of the run moves the deadline out by the paused time and attaches again for the remainder.
-// A run that ended on an API error its re-sends did not clear is stopped and reads as a hand-back naming the error.
+// A run that ended on an API error is stopped and reads as a hand-back naming the error.
 // Any other run that did not finish is stopped through stop and reads as a hand-back.
 func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.Result, waitErr error, stop func() error, guid string) (TacklerEnvelope, error) {
 	for {
@@ -298,7 +298,7 @@ func (c *TacklerCall) concludeWait(attempt TacklerAttempt, result shuttleengine.
 			}
 			stop = func() error { return c.deps.Shuttle.StopStrand(guid) }
 		case result.Outcome == shuttleengine.OutcomeAPIError:
-			return c.stopRunAndHandBack(attempt, stop, guid, CauseAPIError, fmt.Sprintf("the tackler's session failed on an API error its %d re-sends did not clear: %s", SettlerAPIErrorRetries, result.APIError))
+			return c.stopRunAndHandBack(attempt, stop, guid, CauseAPIError, fmt.Sprintf("the tackler's session failed on an API error: %s", result.APIError))
 		case result.Outcome != shuttleengine.OutcomeDone:
 			return c.stopRunAndHandBack(attempt, stop, guid, CauseDied, fmt.Sprintf("the tackler ended %s without a verdict", result.Outcome))
 		default:

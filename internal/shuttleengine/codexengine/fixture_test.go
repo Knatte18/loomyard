@@ -73,7 +73,12 @@ func (r repoFixture) addClone(t *testing.T, name string) string {
 // writeCodexLayer writes anchor's codex.yaml local layer: the fixture's homes, then extra.
 func (r repoFixture) writeCodexLayer(t *testing.T, anchor, extra string) {
 	t.Helper()
-	path := configengine.LocalFile(anchor, "codex")
+	r.writeCodexConfig(t, configengine.LocalFile(anchor, "codex"), extra)
+}
+
+// writeCodexConfig writes the codex.yaml layer at path: the fixture's homes, then extra.
+func (r repoFixture) writeCodexConfig(t *testing.T, path, extra string) {
+	t.Helper()
 	mkdirAll(t, filepath.Dir(path))
 	writeFile(t, path, fmt.Sprintf("home: %s\noperator_home: %s\n%s", r.lymHome, r.operatorHome, extra))
 }

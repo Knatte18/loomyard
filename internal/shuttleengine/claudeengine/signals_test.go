@@ -91,6 +91,11 @@ func TestParseSessionSignals(t *testing.T) {
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAPIErrorTurnEnd, At: at, SessionID: "sess-1", ErrorText: "rate_limit"}},
 		},
 		{
+			name:   "stop_failure_on_an_unknown_model_rejects_the_model",
+			chunks: []string{signalStamp("StopFailure", stampTime) + signalPayload(t, "StopFailure", map[string]any{"error": "model_not_found", "last_assistant_message": "m"})},
+			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAPIErrorTurnEnd, At: at, SessionID: "sess-1", ErrorText: "model_not_found", ModelRejected: true}},
+		},
+		{
 			name:   "stop_failure_text_falls_back_to_error_details",
 			chunks: []string{signalStamp("StopFailure", stampTime) + signalPayload(t, "StopFailure", map[string]any{"error_details": "details", "last_assistant_message": "m"})},
 			want:   []shuttleengine.SessionSignal{{Kind: shuttleengine.SessionSignalAPIErrorTurnEnd, At: at, SessionID: "sess-1", ErrorText: "details"}},

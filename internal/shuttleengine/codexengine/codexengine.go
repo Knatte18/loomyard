@@ -1,4 +1,6 @@
-// codexengine.go defines the Codex type, its constructors and Prepare, which readies the lym Codex home and writes the run's prompt file before returning the launch.
+// codexengine.go defines the Codex type, its constructors, Prepare and OpenLaunch.
+// Prepare readies the lym Codex home and writes the run's prompt file before returning the launch.
+// OpenLaunch readies the same home for a session opened with no prompt.
 
 package codexengine
 
@@ -38,6 +40,7 @@ type Codex struct {
 var (
 	_ shuttleengine.Engine         = (*Codex)(nil)
 	_ shuttleengine.StartupChecker = (*Codex)(nil)
+	_ shuttleengine.SessionOpener  = (*Codex)(nil)
 )
 
 // New returns a Codex engine with the default redraw settle and no Dirs.
@@ -53,24 +56,30 @@ func NewFromConfig(cfg shuttleengine.Config, dirs configengine.Dirs) *Codex {
 // Legal Spec.PermissionMode values: empty and bypass, the mode every launch runs in.
 const permissionModeBypass = "bypass"
 
-// validateSpec refuses what a Codex launch cannot realize, before anything is written: a version pin, a permission mode other than bypass, a resumed session, and an effort codex.yaml does not list.
+// validateSpec refuses what a Codex run cannot realize, before anything is written: a resumed session, and whatever validateChoice refuses.
 func validateSpec(spec shuttleengine.Spec, codex Config) error {
-	if spec.Version != "" {
-		return fmt.Errorf("codexengine: version %q given, but Codex takes a model slug and no version pin; way forward: name the slug as the model-spec's model", spec.Version)
-	}
-	if spec.PermissionMode != "" && spec.PermissionMode != permissionModeBypass {
-		return fmt.Errorf("codexengine: permission mode %q is not realizable; every Codex launch runs -a never, the bypass mode; way forward: leave it empty or set %q", spec.PermissionMode, permissionModeBypass)
-	}
 	if spec.ResumeSessionID != "" {
 		return fmt.Errorf("codexengine: Codex sessions cannot be resumed by a new run; way forward: start a fresh session")
 	}
-	return validateEffort(spec.Effort, codex)
+	return validateChoice(spec.ModelChoice, spec.PermissionMode, codex)
+}
+
+// validateChoice refuses a model choice and permission mode a Codex launch cannot realize, before anything is written:
+// a version pin, a permission mode other than bypass, and an effort codex.yaml does not list.
+func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, codex Config) error {
+	if choice.Version != "" {
+		return fmt.Errorf("codexengine: version %q given, but Codex takes a model slug and no version pin; way forward: name the slug as the model-spec's model", choice.Version)
+	}
+	if permissionMode != "" && permissionMode != permissionModeBypass {
+		return fmt.Errorf("codexengine: permission mode %q is not realizable; every Codex launch runs -a never, the bypass mode; way forward: leave it empty or set %q", permissionMode, permissionModeBypass)
+	}
+	return validateEffort(choice.Effort, codex)
 }
 
 // Prepare readies a Codex launch and returns its lines.
 // It validates the spec and loads the hub's gate config, whose refuse_raw list the shell guard installs.
 // A gate config that fails to load refuses the launch.
-// It reads the checkout the anchor sits in and refuses under committed Codex rules, all before anything is written.
+// It reads the checkout the anchor sits in and refuses under Codex rules there, all before anything is written.
 // It then readies the lym home, trusting the worktree root and a linked worktree's main checkout root, and writes prompt.md into runDir.
 // The prompt file opens with the deny notice announcing each installed shell guard row and the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
 // The launch line carries a PreToolUse hook per installed row, and its writable root is the records checkout the engine is told through its Dirs, symlink-resolved and kept as told with a Warn when it cannot be resolved, so the session writes its report through the anchor's `.lym` and `_lym` links; outside a hub it is empty and the line adds none.
@@ -90,22 +99,8 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		return shuttleengine.Launch{}, fmt.Errorf("codexengine: %w", err)
 	}
 	guards := installedGuards(gate.RefuseRaw, guardInputs{denyPython: cfg.DenyPython, denyPublish: spec.DenyPublish})
-	homes, err := resolveHomes(codex)
+	home, writableRoots, err := c.readyHome(codex)
 	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
-	anchor := c.dirs.Anchor
-	if anchor == "" || !filepath.IsAbs(anchor) {
-		return shuttleengine.Launch{}, fmt.Errorf("codexengine: the engine was told no absolute anchor (%q), so it cannot locate the checkout a launch starts in", anchor)
-	}
-	found, err := readCheckout(anchor)
-	if err != nil {
-		return shuttleengine.Launch{}, err
-	}
-	if err := c.checkCodexFolders(found, anchor); err != nil {
-		return shuttleengine.Launch{}, err
-	}
-	if err := c.prepareHome(homes, found.trustRoots()); err != nil {
 		return shuttleengine.Launch{}, err
 	}
 
@@ -125,21 +120,11 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		firstTurn, promptLine = skillLoadOver(spec.Skills, c.expandSkillRoots(codex)), firstTurn
 	}
 
-	var writableRoots []string
-	if c.dirs.Records != "" {
-		// Codex keys a linked path by its resolved target, as it does the trust roots.
-		records, err := filepath.EvalSymlinks(c.dirs.Records)
-		if err != nil {
-			c.warn("codexengine: records checkout not resolvable, using the told path as the writable root", "path", c.dirs.Records, "error", err)
-			records = c.dirs.Records
-		}
-		writableRoots = []string{records}
-	}
 	sh := shell.ForGOOS()
 	return shuttleengine.Launch{
 		Cmd: buildLaunchCmd(sh, launchLine{
 			bin:           codexBinary(codex),
-			home:          homes.lym,
+			home:          home,
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
@@ -150,6 +135,68 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 		PromptLine:           promptLine,
 		RecordsSessionStarts: true,
 	}, nil
+}
+
+// OpenLaunch returns the launch of a named interactive Codex session with no prompt.
+// It validates the model choice and the permission mode and readies the lym home as Prepare does, refusing under Codex rules before anything is written.
+// Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer, and the pane's shell goes on to Runner.Open's chain when Codex exits.
+// It writes nothing into dir, carries no creel hooks and names no session id.
+// Its resume line is empty: Codex mints the session id at the first turn, so a revive starts no Codex and the chain after it ends the strand.
+func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
+	codex, err := loadConfigOrRefuse(c.dirs)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	if err := validateChoice(spec.ModelChoice, spec.PermissionMode, codex); err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	home, writableRoots, err := c.readyHome(codex)
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
+	return shuttleengine.Launch{
+		Cmd: codexCommand(shell.ForGOOS(), launchLine{
+			bin:           codexBinary(codex),
+			home:          home,
+			writableRoots: writableRoots,
+			model:         spec.Model,
+			effort:        spec.Effort,
+		}),
+	}, nil
+}
+
+// readyHome readies the lym home codex.yaml names for a launch in the checkout the engine's anchor sits in.
+// It refuses an anchor that is not absolute, a folder in no git checkout and Codex rules in the checkout before anything is written, then trusts the checkout's roots in the home.
+// It returns the home and the launch's writable roots: the records checkout the engine is told, symlink-resolved and kept as told with a Warn when it cannot be resolved, or none outside a hub.
+func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, err error) {
+	homes, err := resolveHomes(codex)
+	if err != nil {
+		return "", nil, err
+	}
+	anchor := c.dirs.Anchor
+	if anchor == "" || !filepath.IsAbs(anchor) {
+		return "", nil, fmt.Errorf("codexengine: the engine was told no absolute anchor (%q), so it cannot locate the checkout a launch starts in", anchor)
+	}
+	found, err := readCheckout(anchor)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := c.checkCodexFolders(found, anchor); err != nil {
+		return "", nil, err
+	}
+	if err := c.prepareHome(homes, found.trustRoots()); err != nil {
+		return "", nil, err
+	}
+	if c.dirs.Records != "" {
+		// Codex keys a linked path by its resolved target, as it does the trust roots.
+		records, err := filepath.EvalSymlinks(c.dirs.Records)
+		if err != nil {
+			c.warn("codexengine: records checkout not resolvable, using the told path as the writable root", "path", c.dirs.Records, "error", err)
+			records = c.dirs.Records
+		}
+		writableRoots = []string{records}
+	}
+	return homes.lym, writableRoots, nil
 }
 
 // promptText returns the prompt file's text: the deny notice, each passage, then prompt, separated by blank lines, with an empty notice left out.

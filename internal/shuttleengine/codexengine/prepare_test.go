@@ -1,6 +1,6 @@
 // prepare_test.go covers Prepare and the lym Codex home.
 // It covers the launch Prepare returns, the trust record and config.toml it renders, and the links it makes.
-// It also covers the refusals that write nothing, the warnings about a committed Codex folder or a home entry that is not lym's link, and the check after startup.
+// It also covers the refusals that write nothing, the warnings about a Codex folder in the worktree or a home entry that is not lym's link, and the check after startup.
 
 package codexengine
 
@@ -179,6 +179,8 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 }
 
 // TestPrepare_AppendsStandingPassages pins that the prompt file opens with the deny notice and the passages the reader finds for engine codex and the spec's role, each before a blank line.
+// The told board's base layer names the fixture's homes, since a told board hides the local layer of a worktree with no `_lym` folder,
+// and the test checks the launch readied the fixture's lym home, so it never reaches the operator's.
 // It installs the process-wide passage reader, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -186,7 +188,9 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	repo := newRepoFixture(t)
 	anchor, _ := repo.addWorktree(t, "wt")
 	engine, _ := newEngine(anchor)
-	engine.dirs.Board = t.TempDir()
+	board := t.TempDir()
+	repo.writeCodexConfig(t, configengine.ConfigFile(board, "codex"), "")
+	engine.dirs.Board = board
 	var asked []string
 	restore := shuttleengine.InstallPassageReader(func(boltDir, engine, role string) ([]string, error) {
 		asked = append(asked, engine, role)
@@ -204,6 +208,9 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	}
 	if want := []string{"codex", "code-review-assist"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("passage reader asked for %v; want %v", asked, want)
+	}
+	if got, want := readRecord(t, repo.lymHome).Roots, []string{repo.mainRoot, anchor}; !reflect.DeepEqual(got, want) {
+		t.Errorf("fixture lym home trust roots = %v; want %v", got, want)
 	}
 }
 
@@ -346,15 +353,15 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 		{name: "ResumedSession", spec: shuttleengine.Spec{ResumeSessionID: "abc"}, wantErr: []string{"cannot be resumed", "way forward"}},
 		{name: "EffortOutsideEfforts", spec: shuttleengine.Spec{ModelChoice: shuttleengine.ModelChoice{Effort: "xhigh"}}, wantErr: []string{`effort "xhigh"`, "codex.yaml's efforts", "way forward"}},
 		{
-			name: "CommittedRules",
+			name: "RulesInWorktree",
 			setup: func(t *testing.T, anchor string) {
 				mkdirAll(t, filepath.Join(anchor, codexFolderName, rulesDirName))
 			},
-			wantErr:  []string{filepath.Join(codexFolderName, rulesDirName), "way forward", "remove the directory"},
+			wantErr:  []string{filepath.Join(codexFolderName, rulesDirName), "way forward", "remove the directory", "launch on an engine other than codex"},
 			wantWarn: filepath.Join(codexFolderName, rulesDirName),
 		},
 		{
-			name:      "CommittedRulesUnderSubfolderAnchor",
+			name:      "RulesUnderSubfolderAnchor",
 			anchorRel: "sub",
 			setup: func(t *testing.T, anchor string) {
 				mkdirAll(t, filepath.Join(anchor, "sub", codexFolderName, rulesDirName))
@@ -401,7 +408,7 @@ func TestPrepare_RefusesBeforeWriting(t *testing.T) {
 	}
 }
 
-// TestPrepare_Warnings pins the warnings a launch goes on despite: a committed worktree config, the main checkout's config behind a worktree's `.codex` folder,
+// TestPrepare_Warnings pins the warnings a launch goes on despite: a worktree config, the main checkout's config behind a worktree's `.codex` folder,
 // and a home auth.json or sessions that is a regular file or a link elsewhere, which Prepare keeps.
 func TestPrepare_Warnings(t *testing.T) {
 	tiergate.Require(t, 0)
