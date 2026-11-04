@@ -83,6 +83,7 @@ type Deps struct {
 	Now func() time.Time
 
 	// CommitRecords commits the run's records at a done stop; nil commits nothing.
+	// A done stop that reported friction: failed calls it a second time once its hand-back report is written, so a call over records already committed must be a no-op.
 	CommitRecords func() error
 	// WriteFrictionNote writes the friction note of a paused stop that carries no reason; nil writes none.
 	WriteFrictionNote func(stop Stop) error
@@ -201,6 +202,13 @@ func (d *goDriver) run(ctx context.Context) error {
 			if err != nil {
 				return d.handBackFailure(err)
 			}
+			// A yield decides nothing: no envelope, rule row, report, repair or budget applies, and the pass ends with the run as it was.
+			// A run waiting at a row yields on every pass, so a saved envelope would be one more file per pass for the whole wait.
+			if stop.OK && stop.LoopState == string(shedengine.StateRunning) && stop.Outcome == string(shedengine.Yield) {
+				logger.Debug("sheddriver: drive: the step yielded; ending the pass", "run", d.deps.RunID, "producer", stop.CurrentProducer)
+				d.exit = ExitYield
+				return nil
+			}
 			path, err := d.deps.SaveEnvelope(raw)
 			if err != nil {
 				return d.handBackFailure(fmt.Errorf("saving the stop envelope: %w", err))
@@ -215,13 +223,6 @@ func (d *goDriver) run(ctx context.Context) error {
 			d.rules, d.attempts = nil, nil
 		}
 		resumed = false
-
-		// A yield decides nothing: no rule row, report, repair or budget applies, and the pass ends with the run as it was.
-		if stop.OK && stop.LoopState == string(shedengine.StateRunning) && stop.Outcome == string(shedengine.Yield) {
-			logger.Debug("sheddriver: drive: the step yielded; ending the pass", "run", d.deps.RunID, "producer", stop.CurrentProducer)
-			d.exit = ExitYield
-			return nil
-		}
 
 		next, exit, err := d.settleStop(ctx, stop)
 		if err != nil || exit {
@@ -829,19 +830,32 @@ func (d *goDriver) settle(stop Stop, settler, action, outcome, target string) {
 }
 
 // finishDone commits the run's records when CommitRecords is wired, and hands a run that finished with friction: failed to the parent without parking it.
+// The friction hand-back writes its report after the first commit, so the records are committed again once it is written.
 func (d *goDriver) finishDone(stop Stop) error {
 	d.exit = ExitDone
-	if d.deps.CommitRecords != nil {
-		if err := d.deps.CommitRecords(); err != nil {
-			return fmt.Errorf("sheddriver: drive: commit the run's records: %w", err)
-		}
+	if err := d.commitRecords(); err != nil {
+		return err
 	}
 	if stop.Friction != "failed" {
 		return nil
 	}
 	err := d.handBack(stop, driveHandBack{DoneFrictionFailed: true})
 	d.exit = ExitDone
-	return err
+	if err != nil {
+		return err
+	}
+	return d.commitRecords()
+}
+
+// commitRecords commits the run's records through CommitRecords, and does nothing when that seam is not wired.
+func (d *goDriver) commitRecords() error {
+	if d.deps.CommitRecords == nil {
+		return nil
+	}
+	if err := d.deps.CommitRecords(); err != nil {
+		return fmt.Errorf("sheddriver: drive: commit the run's records: %w", err)
+	}
+	return nil
 }
 
 // handBackStop hands the run back at stop on the decision's rule, after the friction note a paused stop without a reason asks for.

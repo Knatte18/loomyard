@@ -127,6 +127,8 @@ type battenCLI struct {
 	routing shedengine.Routing
 	// untilStop, when non-nil, replaces the shared --until-stop loop as what the run verb's driver steps the run through, so the run verb is testable without a detached loop.
 	untilStop func(ctx context.Context, attempt string) ([]byte, error)
+	// recordsDeps, when non-nil, replaces the fabric calls that commit the run's records, so the run verb is testable without a git pair.
+	recordsDeps func() commitStatusDeps
 	// spec is the shedverbs.Spec the pre-run fills in place (arm.go) and the shedverbs verbs read
 	// at run time. It is always non-nil after construction, so Command() can hand the same
 	// pointer to shedverbs.Verbs before the pre-run has ever run.

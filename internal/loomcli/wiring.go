@@ -85,7 +85,7 @@ type commitStatusDeps struct {
 	FinishedStatus string
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel(), loomengine.LoomDurableDirRel(), shedrun.DriveReportsRel(location, runID), shedrun.ArbiterRel(location, runID) and shedrun.TacklerRel(location, runID) when its directory holds at least one non-directory entry anywhere beneath it, plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel() and loomengine.LoomDurableDirRel() when its directory holds at least one non-directory entry anywhere beneath it, then shedrun.DriverRecordsRel(location, runID), plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
 // The tackler directory, staged under the same rule, carries each tackler attempt's record, prompt, verdict and envelope.
 // The loom durable directory is staged whole rather than its friction directory alone:
@@ -101,21 +101,13 @@ type commitStatusDeps struct {
 // and a transition whose commit was skipped mid-merge is caught up by the next one.
 func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	paths := []string{shedrun.StatusRel(location, runID)}
-	if holdsFile(loomengine.LoomReviewsDir(location)) {
+	if shedrun.HoldsFile(loomengine.LoomReviewsDir(location)) {
 		paths = append(paths, loomengine.LoomReviewsDirRel())
 	}
-	if holdsFile(loomengine.LoomDurableDir(location)) {
+	if shedrun.HoldsFile(loomengine.LoomDurableDir(location)) {
 		paths = append(paths, loomengine.LoomDurableDirRel())
 	}
-	if holdsFile(shedrun.DriveReportsDir(location, runID)) {
-		paths = append(paths, shedrun.DriveReportsRel(location, runID))
-	}
-	if holdsFile(shedrun.ArbiterDir(location, runID)) {
-		paths = append(paths, shedrun.ArbiterRel(location, runID))
-	}
-	if holdsFile(shedrun.TacklerDir(location, runID)) {
-		paths = append(paths, shedrun.TacklerRel(location, runID))
-	}
+	paths = append(paths, shedrun.DriverRecordsRel(location, runID)...)
 	if _, err := os.Stat(shedrun.SettleRecords(location, runID)); err == nil {
 		paths = append(paths, shedrun.SettleRecordsRel(location, runID))
 	}
@@ -137,7 +129,7 @@ func planCommitPathspec(location *lymcwd.Location) []string {
 // planCommitPathspecWith is planCommitPathspec with the index lookup injected as tracked.
 func planCommitPathspecWith(location *lymcwd.Location, tracked func(rel string) (bool, error)) []string {
 	paths := []string{planparser.PlanDirRel()}
-	if holdsFile(websterengine.Dir(location.AnchorPath())) {
+	if shedrun.HoldsFile(websterengine.Dir(location.AnchorPath())) {
 		paths = append(paths, websterengine.DirRel())
 	} else if isTracked, err := tracked(websterengine.DirRel()); err != nil || isTracked {
 		paths = append(paths, websterengine.DirRel())
@@ -174,27 +166,6 @@ func removeSettledAmendment(amendmentPath, planRunDir string) error {
 		return nil
 	}
 	return loomshed.RemoveAmendment(amendmentPath)
-}
-
-// holdsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
-func holdsFile(dir string) bool {
-	info, err := os.Stat(dir)
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	found := false
-	// A walk error can only end the walk before a file is found, so found alone is the answer.
-	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() {
-			found = true
-			return fs.SkipAll
-		}
-		return nil
-	})
-	return found
 }
 
 // loomCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric: MergeActive from fabricengine.MergeStateActive, Commit from fabricengine.CommitAnchoredPaths scoped to statusCommitPathspec, Spawn from spawnStatusPush, which pushes the run records and, in a task pair, the task branch, and Push from fabricengine.PushPairAnchored, the same push run synchronously.

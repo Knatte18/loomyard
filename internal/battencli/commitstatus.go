@@ -25,6 +25,7 @@
 package battencli
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -52,8 +53,10 @@ type commitStatusDeps struct {
 // spawnStatusPush starts the detached push of the status records at a location, held under a gate slug; a test swaps it for a recorder.
 var spawnStatusPush = fabricengine.SpawnStatusPush
 
-// battenRunCommitPaths returns the anchor-relative paths a status transition commits: the run's
-// status file, and its seed, dobby's run notice marker, the settle records and the child-recipe record whenever each is on disk.
+// battenRunCommitPaths returns the anchor-relative paths a commit of the run's records stages.
+// It always stages the run's status file.
+// It stages the seed, dobby's run notice marker, the settle records and the child-recipe record whenever each is on disk.
+// It stages the driver's drive-reports, tackler and arbiter directories whenever each holds a file.
 //
 // Both belong on the pair because a run directory is durable, fabric-synced state -- a status
 // committed without its seed leaves a resumed machine able to read how far the run came but not
@@ -79,7 +82,30 @@ func battenRunCommitPaths(location *lymcwd.Location, runID string) []string {
 	if _, err := os.Stat(shedrun.ChildRecipeFile(location, runID)); err == nil {
 		paths = append(paths, shedrun.ChildRecipeRel(location, runID))
 	}
-	return paths
+	return append(paths, shedrun.DriverRecordsRel(location, runID)...)
+}
+
+// commitRunRecords commits the run's records outside a status transition and starts their push when it made a commit.
+// The driver writes a hand-back's stop report, and saves a done step's envelope, after the transition's own commit, so these two stops commit them here.
+// A merge in progress on the pair commits nothing, and the next commit of the run's records carries them.
+// A push that fails to start is logged, never returned, since the next push carries the commit.
+func commitRunRecords(deps commitStatusDeps, slug string) error {
+	active, err := deps.MergeActive()
+	if err != nil {
+		return fmt.Errorf("battencli: read the pair's merge state: %w", err)
+	}
+	if active {
+		logger.Info("battencli: a merge is in progress on the pair; the run records stay uncommitted", "slug", slug)
+		return nil
+	}
+	committed, err := deps.Commit("batten: run records for " + slug)
+	if err != nil || !committed {
+		return err
+	}
+	if err := deps.Spawn(); err != nil {
+		logger.Warn("battencli: the push of the run records did not start; the next push carries them", "slug", slug, "error", err)
+	}
+	return nil
 }
 
 // battenCommitStatusDeps builds a commitStatusDeps over location and runID, filling each field from fabric:

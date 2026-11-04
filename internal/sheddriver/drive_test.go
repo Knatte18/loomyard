@@ -212,10 +212,12 @@ func TestGoDriver_Settle(t *testing.T) {
 		// wantReportHas maps a stop report's number, from 1, to substrings it holds.
 		wantReportHas map[int][]string
 		wantReports   int
-		wantParked    bool
-		wantNotifies  int
-		wantHandBack  bool
-		wantExit      Exit
+		// wantNoEnvelope asserts the driver saved no stop envelope.
+		wantNoEnvelope bool
+		wantParked     bool
+		wantNotifies   int
+		wantHandBack   bool
+		wantExit       Exit
 		// wantOrder, when set, is the order of the parent notice, the lock release and the successor spawn.
 		wantOrder []string
 		// wantBuild, when set, is the build the last settle record names.
@@ -223,12 +225,12 @@ func TestGoDriver_Settle(t *testing.T) {
 	}{
 		{name: "done commits and exits with no park", steps: []func(*testing.T) []byte{done}, wantCalls: []string{"step", "commit-records"}, wantExit: ExitDone},
 		{
-			name: "a yielded step ends the pass with nothing decided: no settle record, report, park or hand-back", steps: []func(*testing.T) []byte{yielded}, escalation: true, buildChanged: true,
-			wantCalls: []string{"step"}, wantExit: ExitYield,
+			name: "a yielded step ends the pass with nothing decided: no saved envelope, settle record, report, park or hand-back", steps: []func(*testing.T) []byte{yielded}, escalation: true, buildChanged: true,
+			wantCalls: []string{"step"}, wantExit: ExitYield, wantNoEnvelope: true,
 		},
 		{
-			name: "done with friction failed writes its report, notifies and parks nothing", steps: []func(*testing.T) []byte{doneFrictionFailed},
-			orchRecorded: true, wantCalls: []string{"step", "commit-records"}, wantReports: 1, wantNotifies: 1, wantExit: ExitDone,
+			name: "done with friction failed writes its report, notifies, commits the report and parks nothing", steps: []func(*testing.T) []byte{doneFrictionFailed},
+			orchRecorded: true, wantCalls: []string{"step", "commit-records", "commit-records"}, wantReports: 1, wantNotifies: 1, wantExit: ExitDone,
 		},
 		{
 			name: "busy exits with a busy-exit record and parks nothing", steps: []func(*testing.T) []byte{busy}, runLockHeld: true,
@@ -597,6 +599,7 @@ func TestGoDriver_Settle(t *testing.T) {
 			statusReads := 0
 			pauseAnswers := slices.Clone(tt.pauseCovered)
 			reports := 0
+			envelopes := 0
 
 			openTackler := tt.openTackler
 			if tt.restartAttempt {
@@ -655,6 +658,7 @@ func TestGoDriver_Settle(t *testing.T) {
 				},
 				RunLockHeld: func() (bool, error) { return tt.runLockHeld, nil },
 				SaveEnvelope: func(raw []byte) (string, error) {
+					envelopes++
 					path := filepath.Join(root, "drive-reports", fmt.Sprintf("envelope-%d.json", len(raw)))
 					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 						return "", err
@@ -850,6 +854,9 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if reports != tt.wantReports {
 				t.Errorf("stop reports taken = %d; want %d", reports, tt.wantReports)
+			}
+			if tt.wantNoEnvelope && envelopes != 0 {
+				t.Errorf("stop envelopes saved = %d; want none", envelopes)
 			}
 			for i := 1; i <= tt.wantReports; i++ {
 				if _, err := os.Stat(filepath.Join(root, "drive-reports", fmt.Sprintf("report-%d.md", i))); err != nil {

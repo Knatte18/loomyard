@@ -669,7 +669,7 @@ func parentRecordsCommitter(l *lymcwd.Location, slug string) func() error {
 			return fmt.Errorf("locate the parent pair %q: %w", parent.Worktree, err)
 		}
 		runsRoot := shedrun.RunsRootRel()
-		if !holdsFile(filepath.Join(parentLocation.AnchorPath(), runsRoot)) {
+		if !shedrun.HoldsFile(filepath.Join(parentLocation.AnchorPath(), runsRoot)) {
 			return nil
 		}
 		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), parentLocation, []string{runsRoot}, loomengine.LandingCheckpointSubject(slug), fabricengine.EnvSyncOptions())

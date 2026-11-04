@@ -254,7 +254,7 @@
 //
 // A step at a row waiting on the operator (Beam-Await, PR-Review, Sampler-Session) reads as active to the step watchdog and as a live wait to dobby, so neither kills it nor sends a quiet notice.
 //
-// The loop steps the run through the shared `--until-stop` body, saves each stop envelope under the run's drive-reports directory and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
+// The loop steps the run through the shared `--until-stop` body, saves the envelope of each stop it decides under the run's drive-reports directory, a yielded step saving none, and decides the stop by a closed rule table over the envelope's fields and the facts it reads from disk, never over a row name or the reason text.
 // The table settles a done run, a busy exit, a re-step of an interrupted step under the `reinvoke` policy up to a cap of two per stop key, and the one verify goto to the Publish failure record's target;
 // it asks the tackler at a stop no rule settles, the arbiter at an awaiting stop with a pending hard-cap or circling escalation only, after a tackler `escalate` and when an applied tackler `resume` returns to the same stop, and hands over at a binary-eligible stop whose last step ran another build than the `lym` on disk.
 // Everything else hands back.

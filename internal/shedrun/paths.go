@@ -1,4 +1,4 @@
-// paths.go declares the shed run-directory path constructors: the durable paths under _lym (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lym (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root), the tree-relative seed and status paths a git tree read takes, and the hub-scoped ephemeral files that sit one level above any single run-id: its locks and the notice log.
+// paths.go declares the shed run-directory path constructors: the durable paths under _lym (the run directory, its seed and status files, and the drive-reports directory), the ephemeral paths under .lym (including the driver park marker), the anchor-relative paths for fabric commit pathspecs (including the run-records root and the driver records that hold a file), the tree-relative seed and status paths a git tree read takes, and the hub-scoped ephemeral files that sit one level above any single run-id: its locks and the notice log.
 // Every constructor that returns an absolute path joins onto the given *lymcwd.Location's AnchorPath(), per the Cwd Resolution Invariant; the *Rel constructors and TreeRunFileRels return relative paths; none of them calls os.Getwd or any git command.
 
 package shedrun
@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -316,6 +318,46 @@ func TacklerDir(l *lymcwd.Location, runID string) string {
 // It exists so a caller building a fabric commit pathspec never has to name a segment shedrun owns.
 func TacklerRel(l *lymcwd.Location, runID string) string {
 	return filepath.Join(lymdirs.LymDirName, shedDirName, runSegment(l, runID), tacklerDirName)
+}
+
+// DriverRecordsRel returns the anchor-relative paths of a run's driver records for a commit pathspec: DriveReportsRel, ArbiterRel and TacklerRel, in that order, each only when its directory holds a file anywhere beneath it.
+// A directory with no file is left out, since a pathspec that matches nothing fails the commit.
+func DriverRecordsRel(l *lymcwd.Location, runID string) []string {
+	dirs := []struct{ abs, rel string }{
+		{DriveReportsDir(l, runID), DriveReportsRel(l, runID)},
+		{ArbiterDir(l, runID), ArbiterRel(l, runID)},
+		{TacklerDir(l, runID), TacklerRel(l, runID)},
+	}
+	var rels []string
+	for _, dir := range dirs {
+		if HoldsFile(dir.abs) {
+			rels = append(rels, dir.rel)
+		}
+	}
+	return rels
+}
+
+// HoldsFile reports whether dir is a directory holding at least one non-directory entry anywhere beneath it, stopping the walk at the first such entry.
+// An absent, unreadable or non-directory dir holds none.
+// A commit pathspec names a directory only when this holds, since a pathspec that matches nothing fails the commit.
+func HoldsFile(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	found := false
+	// A walk error can only end the walk before a file is found, so found alone is the answer.
+	_ = filepath.WalkDir(dir, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			found = true
+			return fs.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // TacklerAttemptDir returns the path to one tackler attempt's durable directory, attempt-<N> under TacklerDir(l, runID), where attempt is the attempt's 1-based number.

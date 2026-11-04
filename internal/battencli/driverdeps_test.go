@@ -5,6 +5,7 @@ package battencli
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -40,7 +41,6 @@ func TestBattenDriverDeps(t *testing.T) {
 		"Watched":           deps.Watched == nil,
 		"HandOver":          deps.HandOver == nil,
 		"Tamper":            deps.Tamper == nil,
-		"CommitRecords":     deps.CommitRecords == nil,
 		"WriteFrictionNote": deps.WriteFrictionNote == nil,
 	}
 	for seam, isNil := range unwired {
@@ -61,6 +61,7 @@ func TestBattenDriverDeps(t *testing.T) {
 		"Tackler":               deps.Tackler != nil,
 		"ConsumeTackler":        deps.ConsumeTackler != nil,
 		"OpenAttempts":          deps.OpenAttempts != nil,
+		"CommitRecords":         deps.CommitRecords != nil,
 		"Arbiter":               deps.Arbiter != nil,
 		"Now":                   deps.Now != nil,
 		"HandBack.Notify":       deps.HandBack.Notify != nil,
@@ -189,6 +190,63 @@ func TestBattenDriverDeps(t *testing.T) {
 	}
 	if st := readStatus(); st.PendingBy != shedengine.CallerShed {
 		t.Errorf("PendingBy = %q; want %q", st.PendingBy, shedengine.CallerShed)
+	}
+}
+
+// TestBattenRecordsCommitSeams asserts the hand-back's park and the done stop's CommitRecords both commit the run's records under the run's message, and that a failed commit never keeps the run from parking.
+func TestBattenRecordsCommitSeams(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		commitErr error
+	}{
+		{"ParksAfterACommit", nil},
+		{"ParksAfterAFailedCommit", errors.New("commit failed")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newFakeReceiver(t, nil)
+			var messages []string
+			c.recordsDeps = func() commitStatusDeps {
+				return commitStatusDeps{
+					MergeActive: func() (bool, error) { return false, nil },
+					Commit: func(msg string) (bool, error) {
+						messages = append(messages, msg)
+						return false, tt.commitErr
+					},
+					Spawn: func() error { return nil },
+				}
+			}
+			deps, err := c.driverDepsFor()
+			if err != nil {
+				t.Fatalf("driverDepsFor() error = %v", err)
+			}
+			wantMessage := "batten: run records for " + c.slug
+
+			if err := deps.HandBack.Park("/reports/stop.md"); err != nil {
+				t.Fatalf("Park() = %v; want nil, since a failed commit never blocks the park", err)
+			}
+			if !slices.Equal(messages, []string{wantMessage}) {
+				t.Errorf("Park() commit messages = %q; want %q", messages, []string{wantMessage})
+			}
+			marker, err := os.ReadFile(shedrun.ParkMarker(c.location, c.slug))
+			if err != nil || string(marker) != "/reports/stop.md" {
+				t.Errorf("park marker = %q, %v; want the stop report path", marker, err)
+			}
+
+			messages = nil
+			err = deps.CommitRecords()
+			if (err != nil) != (tt.commitErr != nil) {
+				t.Errorf("CommitRecords() = %v; want an error exactly when the commit fails (%v)", err, tt.commitErr)
+			}
+			if !slices.Equal(messages, []string{wantMessage}) {
+				t.Errorf("CommitRecords() commit messages = %q; want %q", messages, []string{wantMessage})
+			}
+		})
 	}
 }
 

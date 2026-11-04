@@ -133,7 +133,7 @@ func TestStatusPushSpawns_TellTheirLocationAndGateSlug(t *testing.T) {
 	}
 }
 
-// TestBattenRunCommitPaths asserts a status transition commits the run's seed, dobby's run notice marker, the settle records and the child-recipe record alongside its status once each exists, and commits the status alone while none does.
+// TestBattenRunCommitPaths asserts a commit of the run's records stages the run's seed, dobby's run notice marker, the settle records, the child-recipe record and each driver directory holding a file alongside its status once each exists, and commits the status alone while none does.
 // A run directory is durable, fabric-synced state: a status committed without its seed leaves a resumed machine able to read how far the run came but not what it is running.
 //
 //testtiming:keep pins the seed-alongside-status commit paths, which the end-to-end rows never assert
@@ -183,5 +183,86 @@ func TestBattenRunCommitPaths(t *testing.T) {
 	got = battenRunCommitPaths(loc, runID)
 	if want = append(want, shedrun.ChildRecipeRel(loc, runID)); !reflect.DeepEqual(got, want) {
 		t.Errorf("battenRunCommitPaths with a child-recipe record on disk = %v; want %v", got, want)
+	}
+
+	// A driver directory holding only an empty attempt directory is nothing to commit.
+	if err := os.MkdirAll(shedrun.TacklerAttemptDir(loc, runID, 1), 0o755); err != nil {
+		t.Fatalf("mkdir empty tackler attempt: %v", err)
+	}
+	got = battenRunCommitPaths(loc, runID)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with an empty tackler attempt directory = %v; want %v", got, want)
+	}
+
+	driverFiles := []string{
+		filepath.Join(shedrun.DriveReportsDir(loc, runID), "drive-envelope.json"),
+		filepath.Join(shedrun.ArbiterAttemptDir(loc, runID, 1), "verdict.yaml"),
+		filepath.Join(shedrun.TacklerAttemptDir(loc, runID, 1), "verdict.yaml"),
+	}
+	for _, path := range driverFiles {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", filepath.Dir(path), err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	got = battenRunCommitPaths(loc, runID)
+	want = append(want, shedrun.DriveReportsRel(loc, runID), shedrun.ArbiterRel(loc, runID), shedrun.TacklerRel(loc, runID))
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("battenRunCommitPaths with driver records on disk = %v; want %v", got, want)
+	}
+}
+
+// TestCommitRunRecords asserts the hand-back and done commit of the run's records:
+// it commits and starts the push, starts no push when nothing was committed, commits nothing while the pair is mid-merge, returns a failed commit or merge-state read, and never returns a push that failed to start.
+func TestCommitRunRecords(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	boom := errors.New("boom")
+	tests := []struct {
+		name        string
+		mergeActive bool
+		mergeErr    error
+		committed   bool
+		commitErr   error
+		spawnErr    error
+		wantCommits int
+		wantSpawns  int
+		wantErr     error
+	}{
+		{name: "CommitsAndStartsThePush", committed: true, wantCommits: 1, wantSpawns: 1},
+		{name: "NothingCommittedStartsNoPush", wantCommits: 1},
+		{name: "MidMergeCommitsNothing", mergeActive: true},
+		{name: "FailedMergeStateReadIsReturned", mergeErr: boom, wantErr: boom},
+		{name: "FailedCommitIsReturned", commitErr: boom, wantCommits: 1, wantErr: boom},
+		{name: "FailedPushStartIsNotReturned", committed: true, spawnErr: boom, wantCommits: 1, wantSpawns: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var commits, spawns int
+			var msg string
+			err := commitRunRecords(commitStatusDeps{
+				MergeActive: func() (bool, error) { return tt.mergeActive, tt.mergeErr },
+				Commit:      func(m string) (bool, error) { commits++; msg = m; return tt.committed, tt.commitErr },
+				Spawn:       func() error { spawns++; return tt.spawnErr },
+			}, "a-slug")
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("commitRunRecords() = %v; want %v", err, tt.wantErr)
+			}
+			if commits != tt.wantCommits {
+				t.Errorf("commits = %d; want %d", commits, tt.wantCommits)
+			}
+			if spawns != tt.wantSpawns {
+				t.Errorf("spawns = %d; want %d", spawns, tt.wantSpawns)
+			}
+			if want := "batten: run records for a-slug"; commits > 0 && msg != want {
+				t.Errorf("Commit msg = %q; want %q", msg, want)
+			}
+		})
 	}
 }

@@ -226,7 +226,8 @@ func battenHandBackNotice(deps battenshed.RowNoticeDeps, slug, scratchDir string
 
 // driverDepsFor fills the shed driver's seams for batten's run in the prime.
 // Every path comes from shedrun over the prime's location and the slug, and nothing is read or built here: the configs, the model registry and the shuttle runner load inside the Tackler and Arbiter seams on their first call.
-// The seams it leaves nil, the verify, watched, hand-over, tamper, record-commit and friction-note ones, remove their rows from the driver's rule table.
+// The seams it leaves nil, the verify, watched, hand-over, tamper and friction-note ones, remove their rows from the driver's rule table.
+// A hand-back's park and a done stop commit the run's records on the prime's pair, since the stop report and the done step's envelope are written after the transition's own commit.
 func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 	location, slug := c.location, c.slug
 	runID := shedrun.ResolveRunID(location, slug)
@@ -272,6 +273,10 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 			},
 			OrchRecorded: func() (bool, error) { return runParentRecorded(location, slug) },
 			Park: func(reportPath string) error {
+				// A failed commit leaves the records for the next one and still parks the run.
+				if err := commitRunRecords(c.runRecordsDeps(), slug); err != nil {
+					logger.Warn("battencli: committing the run records at the hand-back failed; the run is still parked", "slug", slug, "error", err)
+				}
 				marker := shedrun.ParkMarker(location, slug)
 				if err := os.MkdirAll(filepath.Dir(marker), 0o755); err != nil {
 					return err
@@ -319,9 +324,20 @@ func (c *battenCLI) driverDepsFor() (sheddriver.Deps, error) {
 			}
 			return tackler, arbiter, applied, nil
 		},
+		CommitRecords: func() error {
+			return commitRunRecords(c.runRecordsDeps(), slug)
+		},
 		Arbiter: c.arbiterSeam(runID),
 		Now:     time.Now,
 	}, nil
+}
+
+// runRecordsDeps returns the fabric calls that commit the run's records: the recordsDeps override when set, else the real ones over the prime's pair.
+func (c *battenCLI) runRecordsDeps() commitStatusDeps {
+	if c.recordsDeps != nil {
+		return c.recordsDeps()
+	}
+	return battenCommitStatusDeps(c.location, c.slug)
 }
 
 // arbiterSeam builds batten's arbiter seam, whose deps load on its first Judge call.

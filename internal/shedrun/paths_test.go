@@ -1,6 +1,7 @@
 package shedrun
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -287,6 +288,53 @@ func TestDriveReportsRel(t *testing.T) {
 				if pair[0] != want {
 					t.Errorf("%s = %q; want %q", relName, pair[0], want)
 				}
+			}
+		})
+	}
+}
+
+// TestHoldsFile pins that only a directory with a file beneath it holds one: an absent path, a plain file, an empty directory and a directory of empty directories hold none.
+func TestHoldsFile(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		build func(t *testing.T, root string) string
+		want  bool
+	}{
+		{"AbsentPath", func(_ *testing.T, root string) string { return filepath.Join(root, "absent") }, false},
+		{"PlainFile", func(t *testing.T, root string) string {
+			path := filepath.Join(root, "plain")
+			if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return path
+		}, false},
+		{"EmptyDirectory", func(_ *testing.T, root string) string { return root }, false},
+		{"NestedEmptyDirectories", func(t *testing.T, root string) string {
+			if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, false},
+		{"FileBeneathNestedDirectory", func(t *testing.T, root string) string {
+			if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "a", "b", "f"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return root
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := tt.build(t, t.TempDir())
+			if got := HoldsFile(dir); got != tt.want {
+				t.Errorf("HoldsFile(%s) = %v; want %v", tt.name, got, tt.want)
 			}
 		})
 	}

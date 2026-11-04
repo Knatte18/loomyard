@@ -45,6 +45,14 @@ func newFakeReceiver(t *testing.T, shutdown func(ctx context.Context) (string, e
 		location: &lymcwd.Location{RepoName: "example", HubPath: dir, WorktreeName: "hub-repo", AnchorRel: "."},
 		slug:     "some-slug",
 	}
+	// The fake receiver has no git pair, so the run's records commit through stubs that find nothing to commit.
+	c.recordsDeps = func() commitStatusDeps {
+		return commitStatusDeps{
+			MergeActive: func() (bool, error) { return false, nil },
+			Commit:      func(string) (bool, error) { return false, nil },
+			Spawn:       func() error { return nil },
+		}
+	}
 	c.shedPaths = shedbuild.ShedPaths{
 		StatusPath:     filepath.Join(dir, "status.json"),
 		LockPath:       filepath.Join(dir, "run.lock"),
