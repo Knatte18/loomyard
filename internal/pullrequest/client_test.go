@@ -77,6 +77,16 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		reply(200, `{}`)
 	case "POST /repos/owner/repo/issues/5/comments":
 		reply(201, `{}`)
+	case "GET " + pullsPath + "/6":
+		reply(200, `{"state": "open", "draft": true, "node_id": "PR_node6", "head": {"sha": "h6"}}`)
+	case "GET " + pullsPath + "/6/reviews":
+		reply(200, `[]`)
+	case "POST /graphql":
+		if strings.Contains(fmt.Sprint(body["query"]), "markPullRequestReadyForReview") {
+			reply(200, `{"errors": [{"message": "Pull request is not a draft"}]}`)
+			return
+		}
+		reply(200, `{"data": {}}`)
 	case "GET " + pullsPath + "/1":
 		reply(200, `{"state": "open", "head": {"sha": "h1"}}`)
 	case "GET " + pullsPath + "/2":
@@ -212,6 +222,33 @@ func TestClient_Calls(t *testing.T) {
 		}
 	})
 
+	t.Run("CommentPostsOneComment", func(t *testing.T) {
+		if err := client.Comment(ctx, 5, "reopened"); err != nil {
+			t.Fatalf("Comment() error: %v", err)
+		}
+		sent := server.last(t)
+		if sent.method != "POST" || sent.path != "/repos/owner/repo/issues/5/comments" || sent.body["body"] != "reopened" {
+			t.Errorf("Comment sent %s %s %v; want the comment POST", sent.method, sent.path, sent.body)
+		}
+	})
+
+	t.Run("SetDraftRunsTheMutationOnTheNodeID", func(t *testing.T) {
+		if err := client.SetDraft(ctx, 6, true); err != nil {
+			t.Fatalf("SetDraft(6, true) error: %v", err)
+		}
+		sent := server.last(t)
+		variables, _ := sent.body["variables"].(map[string]any)
+		if sent.method != "POST" || sent.path != "/graphql" || !strings.Contains(fmt.Sprint(sent.body["query"]), "convertPullRequestToDraft") || variables["id"] != "PR_node6" {
+			t.Errorf("SetDraft sent %s %s %v; want the convertPullRequestToDraft mutation on PR_node6", sent.method, sent.path, sent.body)
+		}
+		if err := client.SetDraft(ctx, 6, false); err == nil || !strings.Contains(err.Error(), "Pull request is not a draft") {
+			t.Errorf("SetDraft(6, false) error = %v; want the error GitHub listed", err)
+		}
+		if err := client.SetDraft(ctx, 99, true); err == nil {
+			t.Error("SetDraft(99) error = nil; want the failure of the pull request read")
+		}
+	})
+
 	t.Run("RequiresPullRequest", func(t *testing.T) {
 		tests := []struct {
 			branch  string
@@ -239,6 +276,7 @@ func TestClient_Calls(t *testing.T) {
 			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true}},
 			{2, pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "h2"}},
 			{3, pullrequest.Status{State: pullrequest.StateClosed, HeadSHA: "h3"}},
+			{6, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h6", Draft: true}},
 		}
 		for _, tt := range tests {
 			got, err := client.Status(ctx, tt.number)

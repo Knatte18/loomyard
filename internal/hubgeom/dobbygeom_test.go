@@ -58,7 +58,7 @@ func standMove(t *testing.T, prime *lymcwd.Location, worktree string) string {
 }
 
 // TestDobbyGeometry asserts the lock, state, log and output paths and the tidy directory lie under the named worktree's `.lym/beam/` directory at its own anchor, the slug is empty for the prime, the batten runs directory lies under the prime, and a worktree with no directory is an error naming it.
-// It also asserts PawlPaths puts the pawl run's three files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
+// It also asserts PawlPaths puts the pawl run's files in that same `.lym/beam/` directory at the beam's own anchor, a beam anchored under a sub-directory included.
 // It also asserts the move records that stop a dobby: the prime's alone for the prime and the beam's own and then the prime's for a beam, and that DobbyStart reads a standing record the same way.
 func TestDobbyGeometry(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -109,7 +109,7 @@ func TestDobbyGeometry(t *testing.T) {
 					t.Fatalf("NamedWorktree(%q) = %v; want nil", tt.worktree, err)
 				}
 				paths := PawlPaths(beam)
-				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker} {
+				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "ReopenRequest": paths.ReopenRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker} {
 					if filepath.Dir(path) != beamDir {
 						t.Errorf("PawlPaths(%q).%s = %q; want it directly under the dobby's directory %q", tt.worktree, name, path, beamDir)
 					}

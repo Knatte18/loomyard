@@ -1,4 +1,4 @@
-// land_test.go drives the land and ready sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, and the ready record written once.
+// land_test.go drives the land, ready and reopen sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, the ready record written once, and the reopen request written for a landing past Beam-Await with its ready record removed.
 
 package beamcli
 
@@ -38,6 +38,10 @@ type landWorld struct {
 	refusal    error
 	refusedFor []string
 	requests   []pawlengine.LandRequest
+	// reopens holds the reopen requests written, unreadyCalls the Unready calls and unreadyErr what that seam fails with.
+	reopens      []pawlengine.ReopenRequest
+	unreadyCalls int
+	unreadyErr   error
 }
 
 // newLandWorld returns a hub owned by here with a beam "b" whose pair is here and marked and whose pawl run waits at Beam-Await, a task, a grouping project and a done beam.
@@ -93,7 +97,136 @@ func (w *landWorld) deps() landDeps {
 			w.requests = append(w.requests, req)
 			return "/hub/" + slug + "/.lym/beam/land-request.json", nil
 		},
+		WriteReopen: func(slug string, req pawlengine.ReopenRequest) (string, error) {
+			w.reopens = append(w.reopens, req)
+			return "/hub/" + slug + "/.lym/beam/reopen-request.json", nil
+		},
+		Unready: func(slug string) (bool, error) {
+			w.unreadyCalls++
+			if w.unreadyErr != nil {
+				return false, w.unreadyErr
+			}
+			removed := w.ready[slug]
+			delete(w.ready, slug)
+			return removed, nil
+		},
 		Now: func() time.Time { return landNow },
+	}
+}
+
+func TestReopen(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	at := func(state shedengine.State, row string) func(w *landWorld) {
+		return func(w *landWorld) { w.children["b"] = shedengine.Status{State: state, CurrentProducer: row} }
+	}
+	tests := []struct {
+		name    string
+		slug    string
+		closePR bool
+		setup   func(w *landWorld)
+		// wantErr is empty for a reopen that writes its request, else every substring the refusal names.
+		wantErr []string
+		// wantWayForward is a substring of a written request's way forward.
+		wantWayForward string
+		// wantReopens is how many reopen requests were written, wantUnready how many times the ready record's removal ran.
+		wantReopens int
+		wantUnready int
+	}{
+		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym beam reopen:", "lym batten run task1"}},
+		{name: "DoneBeamRefused", slug: "landed", wantErr: []string{"lym beam reopen:", "already landed"}},
+		{
+			name: "BeamOwnedElsewhereRefusedNamingAdopt", slug: "b",
+			setup: func(w *landWorld) {
+				w.owners.Entries["b"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
+				at(shedengine.StateRunning, "PR-Review")(w)
+			},
+			wantErr: []string{"owned by machine there", "lym adopt b"},
+		},
+		{
+			name: "BeamWithNoPawlRunRefusedNamingCreate", slug: "b",
+			setup:   func(w *landWorld) { delete(w.children, "b") },
+			wantErr: []string{"no pawl run", "lym beam create b"},
+		},
+		{
+			name: "RunWaitingAtBeamAwaitRefusedAsTakingMembersAlready", slug: "b",
+			wantErr: []string{"Beam-Await", "takes new members already", "lym batten status b"},
+		},
+		{
+			name: "RunAtFinalizeRefused", slug: "b", setup: at(shedengine.StateRunning, "Finalize"),
+			wantErr: []string{"running at Finalize", "lym batten status b"},
+		},
+		{
+			name: "DoneRunRefused", slug: "b", setup: at(shedengine.StateDone, "PR-Review"),
+			wantErr: []string{"done at PR-Review"},
+		},
+		{
+			name: "RunAtPRReviewWritesTheRequestAndRemovesTheFlag", slug: "b", setup: at(shedengine.StateRunning, "PR-Review"),
+			wantWayForward: "lym batten status b", wantReopens: 1, wantUnready: 1,
+		},
+		{
+			name: "CloseRidesTheRequest", slug: "b", closePR: true, setup: at(shedengine.StateRunning, "PR-Review"),
+			wantWayForward: "lym beam ready b", wantReopens: 1, wantUnready: 1,
+		},
+		{
+			name: "RunAtParentAlignIsSentBack", slug: "b", setup: at(shedengine.StateRunning, "Parent-Align"),
+			wantWayForward: "Beam-Await", wantReopens: 1, wantUnready: 1,
+		},
+		{
+			name: "RunAtBeamDescribeIsSentBack", slug: "b", setup: at(shedengine.StateRunning, "Beam-Describe"),
+			wantWayForward: "Beam-Await", wantReopens: 1, wantUnready: 1,
+		},
+		{
+			name: "HaltedRunNamesLoomResume", slug: "b", setup: at(shedengine.StateBlocked, "PR-Review"),
+			wantWayForward: "lym loom resume", wantReopens: 1, wantUnready: 1,
+		},
+		{
+			name: "FailedReadyRemovalNamesReopenAgain", slug: "b",
+			setup: func(w *landWorld) {
+				at(shedengine.StateRunning, "PR-Review")(w)
+				w.unreadyErr = errors.New("the commit failed")
+			},
+			wantErr:     []string{"the commit failed", "lym beam reopen b"},
+			wantReopens: 1, wantUnready: 1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			w := newLandWorld()
+			if tt.setup != nil {
+				tt.setup(w)
+			}
+			flagged := w.ready[tt.slug]
+
+			got, err := reopen(w.deps(), tt.slug, tt.closePR)
+
+			if len(w.reopens) != tt.wantReopens || w.unreadyCalls != tt.wantUnready {
+				t.Errorf("reopen(%q) wrote %d requests and ran Unready %d times; want %d and %d", tt.slug, len(w.reopens), w.unreadyCalls, tt.wantReopens, tt.wantUnready)
+			}
+			if len(tt.wantErr) > 0 {
+				if err == nil {
+					t.Fatalf("reopen(%q) = %v, nil; want a refusal naming %v", tt.slug, got, tt.wantErr)
+				}
+				for _, want := range tt.wantErr {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("reopen(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
+					}
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("reopen(%q) = %v; want the request written", tt.slug, err)
+			}
+			want := pawlengine.ReopenRequest{RunID: w.runID, Close: tt.closePR, RequestedAt: landNow}
+			if w.reopens[0] != want {
+				t.Errorf("reopen(%q) wrote %+v; want %+v", tt.slug, w.reopens[0], want)
+			}
+			if got["request"] != "/hub/b/.lym/beam/reopen-request.json" || got["close"] != tt.closePR || got["ready_removed"] != flagged || !strings.Contains(got["way_forward"].(string), tt.wantWayForward) {
+				t.Errorf("reopen(%q) = %v; want the request's path, close %v, ready_removed %v and a way forward naming %q", tt.slug, got, tt.closePR, flagged, tt.wantWayForward)
+			}
+		})
 	}
 }
 

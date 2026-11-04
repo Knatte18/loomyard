@@ -62,6 +62,7 @@ func newWorld(t *testing.T) *world {
 	return &world{
 		paths: pawlengine.Paths{
 			LandRequest:     filepath.Join(dir, pawlengine.LandRequestFileName),
+			ReopenRequest:   filepath.Join(dir, pawlengine.ReopenRequestFileName),
 			DobbyStopMarker: filepath.Join(dir, pawlengine.DobbyStopMarkerName),
 			AwaitMarker:     filepath.Join(dir, pawlengine.AwaitMarkerName),
 		},
@@ -103,6 +104,14 @@ func (w *world) snapshotSleeps() []time.Duration {
 func (w *world) request(t *testing.T, runID string) {
 	t.Helper()
 	if err := pawlengine.WriteLandRequest(w.paths, pawlengine.LandRequest{RunID: runID, RequestedAt: w.now}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// reopen writes a reopen request naming runID.
+func (w *world) reopen(t *testing.T, runID string) {
+	t.Helper()
+	if err := pawlengine.WriteReopenRequest(w.paths, pawlengine.ReopenRequest{RunID: runID, RequestedAt: w.now}); err != nil {
 		t.Fatal(err)
 	}
 }

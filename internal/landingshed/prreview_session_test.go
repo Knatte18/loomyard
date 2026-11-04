@@ -32,10 +32,12 @@ type fakePRSessions struct {
 	startErr    error
 	liveErr     error
 	registerErr error
-	live        map[string]bool
-	starts      []shuttleengine.Spec
-	stops       []string
-	registered  []string
+	// stopErr is what every stop fails with; a failed stop leaves the strand live.
+	stopErr    error
+	live       map[string]bool
+	starts     []shuttleengine.Spec
+	stops      []string
+	registered []string
 }
 
 var _ prSessions = (*fakePRSessions)(nil)
@@ -63,6 +65,9 @@ func (f *fakePRSessions) StopStrand(guid string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stops = append(f.stops, guid)
+	if f.stopErr != nil {
+		return f.stopErr
+	}
 	f.live[guid] = false
 	return nil
 }

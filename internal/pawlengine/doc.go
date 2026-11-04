@@ -14,11 +14,15 @@
 // A passing re-check ends the row; a failing one lifts the hold again, restarts the dobby the marker says was stopped, with its orch, removes the request and posts the blockers to the beam's orch.
 // An await marker tells a re-entry from the first entry: a re-entry whose dobby is down (once until a re-entry sees it live, recorded in the marker), and a re-entry that finds the hold standing after a crash, post one notice naming `lym beam start` and `lym beam land`.
 // A beam another machine owns removes any request and yields, deciding nothing.
+// An entry that finds a reopen request removes it: PR-Review answered it by sending the run back here.
+// An entry that cannot remove a request naming this run posts one notice naming the file and retries at the next wake, so PR-Review never reads the request again as a fresh one; a request of another run it cannot remove is logged.
+// For a request naming this run the entry starts the beam's dobby when it is down, since the landing stopped it, and posts that the beam is reopened, naming `lym beam ready`, and `lym beam start` when the start failed.
 //
 // Beam-Down stops the beam's dobby and orch through the told Down seam; a failure is logged and the row is Done, since Worktree-Teardown ends what is left.
 //
-// The land request, the dobby-stop marker and the await marker are files under the beam worktree's `.lym/beam/`, whose paths the hub wiring composes and tells through Paths.
+// The land request, the reopen request, the dobby-stop marker and the await marker are files under the beam worktree's `.lym/beam/`, whose paths the hub wiring composes and tells through Paths.
+// A ReopenRequest, which `lym beam reopen` writes, names its run as a land request does and says whether the run's pull request is closed rather than kept open as a draft.
 //
-// The ready record, ReadyRecord, flags a beam ready to be merged into its parent and names the beam it flags, since a pair forked from the beam inherits it; ReadyFor reads a record naming another slug as no flag.
+// The ready record, ReadyRecord, flags a beam ready to be merged into its parent and names the beam it flags, since a pair forked from the beam inherits it; ReadyFor reads a record naming another slug as no flag, and RemoveReady removes only a record naming the beam.
 // It is tracked, unlike the files above, and its path and lock path are told by the caller.
 package pawlengine

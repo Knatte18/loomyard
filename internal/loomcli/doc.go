@@ -37,13 +37,14 @@
 // `ArmAt`, which `lym shed` shares, leaves `loomPath` false and never refuses a recipe, and `lym loom checklist` is exempt, being a read-only pane the pre-run never arms.
 //
 // A run seeded with the recipe `pawl` is a beam's life, batten's Seed-Child seeds it in the beam's pair.
-// Its shed reads Preflight, Record-Write, Beam-Up, Beam-Await, Parent-Align, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan, no review round and no reroute edge.
+// Its shed reads Preflight, Record-Write, Beam-Up, Beam-Await, Parent-Align, Beam-Describe, PR-Review, Finalize and Beam-Down, with no plan, no review round and one reroute edge, PR-Review's back to Beam-Await, which a reopen request takes.
+// The PR-Review row's Reopen seam reads the reopen request under the pair's `.lym/beam/` directory, and a request naming another run than the seed's reads as none.
 // Its Record-Write writes the project record and its support log from the project entry's body and commits them under the beam's slug.
 // wire fills `Env.Pawl` for it through `pawlDeps`: the run's seed id is the seed's start time, the status is written on the beam's project entry through the board, and Beam-Up's one step is `orchcli.BeamUp` with no prepare, since the run already judged origin; the warnings its report carries are logged and posted to the beam's orch as one `PAWL` notice, and none halts the row.
 // The beam's dobby is stopped through `runproc.EndRole` by its `RoleDobby` record, and restarted through `orchcli.BeamUpWorktree` naming the beam, which brings the beam's orch up with it.
 // Beam-Await's re-check reads `battencli.ReadBeamLandBlockers` and `battencli.BeamLandRefusal` with the beam's owner, its parent's owner and the beam's ready record, and words each failure as `pawlRecheckLines` does, naming `lym adopt <beam>` or the parent's adopt subject, `root` for the prime, and `lym beam ready <slug>` for a beam not flagged ready.
 // A running shed also watches the land request's directory, so a request wakes Beam-Await at once.
-// Beam-Describe writes the change description from the beam's board entry, the commits the beam adds over the parent branch its pair records and the project record's added entries.
+// Beam-Describe writes the change description from the beam's board entry, the commits on the beam's first-parent line that the parent branch its pair records lacks, and the project record's added entries.
 // Its Finalize reads the hub's `finalize` gate key over the whole merged tree and halts for the orch on a fixer that is spent or over its caps.
 // A land check backstops the re-check: Finalize halts, behind its own prefix, while an open member or a pair forked from the beam still works, reading `pawlLandBlockers` and naming the beam's parent worktree as where a cancel runs.
 //

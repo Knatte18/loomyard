@@ -1,4 +1,4 @@
-// landrequest.go holds the pawl run's file records: the names of the files under the beam's `.lym/beam/` directory, Paths, and the land request with its write, read and remove.
+// landrequest.go holds the pawl run's file records: the names of the files under the beam's `.lym/beam/` directory, Paths, and the land and reopen requests with their writes, reads and removes.
 
 package pawlengine
 
@@ -16,6 +16,8 @@ import (
 const (
 	// LandRequestFileName is the file name of the land request under the beam's `.lym/beam/` directory.
 	LandRequestFileName = "land-request.json"
+	// ReopenRequestFileName is the file name of the reopen request under the beam's `.lym/beam/` directory.
+	ReopenRequestFileName = "reopen-request.json"
 	// DobbyStopMarkerName is the file name of the marker that says the landing stopped the beam's dobby.
 	DobbyStopMarkerName = "dobby-stop"
 	// AwaitMarkerName is the file name of the marker that says Beam-Await was entered before and whether its dobby-down notice was posted.
@@ -26,6 +28,8 @@ const (
 type Paths struct {
 	// LandRequest is the land request file.
 	LandRequest string
+	// ReopenRequest is the reopen request file, which PR-Review answers by sending the run back to Beam-Await and Beam-Await removes.
+	ReopenRequest string
 	// DobbyStopMarker is the marker file the landing writes before it stops the dobby.
 	DobbyStopMarker string
 	// AwaitMarker is the marker file Beam-Await writes on its first entry; it also carries the line recording a posted dobby-down notice.
@@ -62,6 +66,40 @@ func ReadLandRequest(paths Paths) (LandRequest, bool, error) {
 // RemoveLandRequest removes the land request file; removing an absent one succeeds.
 func RemoveLandRequest(paths Paths) error {
 	return removeFile(paths.LandRequest)
+}
+
+// ReopenRequest asks a pawl run past Beam-Await, and not yet at Finalize, to go back to Beam-Await, so the beam takes new members.
+// It names the run it was written for, as a land request does.
+type ReopenRequest struct {
+	// RunID is the seed id of the pawl run the request is for.
+	RunID string `json:"run_id"`
+	// Close asks for the run's pull request to be closed, so the next landing opens a new one, instead of kept open as a draft.
+	Close bool `json:"close,omitempty"`
+	// RequestedAt is when the request was written.
+	RequestedAt time.Time `json:"requested_at"`
+}
+
+// WriteReopenRequest writes req to the reopen request file, replacing a request already there.
+func WriteReopenRequest(paths Paths, req ReopenRequest) error {
+	if err := state.WriteJSON(paths.ReopenRequest, lockPath(paths.ReopenRequest), req); err != nil {
+		return fmt.Errorf("pawlengine: write the reopen request: %w", err)
+	}
+	return nil
+}
+
+// ReadReopenRequest reads the reopen request file and reports whether one stands.
+// An absent file reads as none.
+func ReadReopenRequest(paths Paths) (ReopenRequest, bool, error) {
+	req, found, err := state.ReadJSON[ReopenRequest](paths.ReopenRequest, lockPath(paths.ReopenRequest))
+	if err != nil {
+		return ReopenRequest{}, false, fmt.Errorf("pawlengine: read the reopen request: %w", err)
+	}
+	return req, found, nil
+}
+
+// RemoveReopenRequest removes the reopen request file; removing an absent one succeeds.
+func RemoveReopenRequest(paths Paths) error {
+	return removeFile(paths.ReopenRequest)
 }
 
 // lockPath is the lock file that guards the record at path.

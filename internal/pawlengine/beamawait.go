@@ -118,9 +118,11 @@ type awaitRun struct {
 	*BeamAwait
 	// interrupted is true when the entry found the hold a crash left standing.
 	interrupted bool
-	// entered is true once the entry's status write succeeded.
-	entered  bool
-	lastWake time.Time
+	// entered is true once the entry's status write succeeded and any reopen request of this run it found is removed.
+	entered bool
+	// reopenStuckNoticed is true once a notice told that a reopen request of this run could not be removed.
+	reopenStuckNoticed bool
+	lastWake           time.Time
 }
 
 // awaitWake is what one wake decided.
@@ -169,11 +171,14 @@ func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 	return r.accept(ctx)
 }
 
-// enter writes the status naming this row and, once it is written, the entry's markers and notices.
-// It reports whether the status write succeeded; a failed one is retried at the next wake.
+// enter writes the status naming this row and, once it is written, answers a reopen request and writes the entry's markers and notices.
+// It reports whether the entry completed; a failed status write, and a reopen request of this run that could not be removed, are retried at the next wake.
 func (r *awaitRun) enter() bool {
 	if err := r.deps.SetStatus(NameBeamAwait); err != nil {
 		logger.Warn("pawlengine: the entry's status could not be written, so it is retried at the next wake", "producer", r.name, "error", err)
+		return false
+	}
+	if !r.answerReopen() {
 		return false
 	}
 	r.entered = true
@@ -197,6 +202,48 @@ func (r *awaitRun) enter() bool {
 	if !r.interrupted {
 		r.noticeDownDobby()
 	}
+	return true
+}
+
+// answerReopen removes a reopen request the entry finds, which PR-Review answered by sending the run back here, and reports whether the entry may go on.
+// For a request naming this run it starts the beam's dobby when it is down, since the landing stopped it, and posts that the beam is reopened; a request of another run is removed alone.
+// A failed read or dobby read is logged, and a failed start is named in the notice with `lym beam start`.
+// A request of another run whose removal fails is logged and the entry goes on, since PR-Review reads it as none.
+// A request naming this run whose removal fails would be read by PR-Review as a fresh request and reroute at once, so the entry starts nothing, posts one notice naming the file, and reports false for the next wake to retry.
+func (r *awaitRun) answerReopen() bool {
+	req, found, err := ReadReopenRequest(r.deps.Paths)
+	if err != nil {
+		logger.Warn("pawlengine: the reopen request could not be read on entry", "producer", r.name, "error", err)
+		return true
+	}
+	if !found {
+		return true
+	}
+	if err := RemoveReopenRequest(r.deps.Paths); err != nil {
+		logger.Warn("pawlengine: the answered reopen request could not be removed", "producer", r.name, "path", r.deps.Paths.ReopenRequest, "error", err)
+		if req.RunID != r.deps.RunID {
+			return true
+		}
+		if !r.reopenStuckNoticed {
+			r.reopenStuckNoticed = r.notify(fmt.Sprintf("the beam %s is reopened, but its reopen request %s could not be removed (%v), so the row waits at %s until the file is removed", r.deps.Slug, r.deps.Paths.ReopenRequest, err, NameBeamAwait))
+		}
+		return false
+	}
+	if req.RunID != r.deps.RunID {
+		return true
+	}
+	line := fmt.Sprintf("the beam %s is reopened: its run waits at %s and takes new members; run `lym beam ready %s` once it is ready to land again", r.deps.Slug, NameBeamAwait, r.deps.Slug)
+	live, err := r.deps.DobbyLive()
+	if err != nil {
+		logger.Warn("pawlengine: whether the reopened beam's dobby runs could not be read", "producer", r.name, "error", err)
+		live = true
+	}
+	if !live {
+		if err := r.deps.StartDobby(); err != nil {
+			line = fmt.Sprintf("%s; the beam's dobby could not be started (%v), so run `lym beam start %s`", line, err, r.deps.Slug)
+		}
+	}
+	r.notify(line)
 	return true
 }
 

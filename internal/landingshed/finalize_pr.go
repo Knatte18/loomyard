@@ -232,8 +232,13 @@ func (fz *Finalize) dropRecordedPullRequest(ctx context.Context, origin Origin, 
 	return prLanding{}, "", shedengine.OutputPointer{}, nil, false
 }
 
+// pullRequestCommitTitle is the title of the commit a merge of pull request number writes: title followed by ` (#<number>)`, the form GitHub's own squash merge writes, so the landed commit names the pull request it came from.
+func pullRequestCommitTitle(title string, number int) string {
+	return fmt.Sprintf("%s (#%d)", title, number)
+}
+
 // mergeOnGitHub merges the run's pull request on GitHub, which Finalize does after its lock re-check and before the parent-side merge.
-// It pushes the task branch and merges with the pushed head as the expected head, squashing as Config.Squash says, with title as the commit title and message as the commit message.
+// It pushes the task branch and merges with the pushed head as the expected head, squashing as Config.Squash says, with title and the pull request's number as the commit title and message as the commit message.
 // A merge GitHub refuses as pending is retried for at most a minute of the told clock.
 // It then fetches the parent's upstream and fast-forwards the parent pair to it, so the parent-side merge that follows finds the parent holding the task's work.
 // stop is true when Call returns the other values at once; each halt opens with LandingStopPrefix.
@@ -253,7 +258,7 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 	deadline := pr.Now().Add(prMergeRetryWindow)
 	wait := prWaitFloor
 	for {
-		err := landing.api.Merge(ctx, landing.record.Number, head, fz.deps.Config.Squash, title, message)
+		err := landing.api.Merge(ctx, landing.record.Number, head, fz.deps.Config.Squash, pullRequestCommitTitle(title, landing.record.Number), message)
 		if err == nil {
 			break
 		}

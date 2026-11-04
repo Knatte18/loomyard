@@ -38,6 +38,8 @@ type Status struct {
 	Approved bool
 	// ChangesRequested reports whether any reviewer's standing review requests changes.
 	ChangesRequested bool
+	// Draft reports whether the pull request is a draft, which GitHub refuses to merge.
+	Draft bool
 }
 
 // Ref names a pull request.
@@ -85,6 +87,10 @@ type API interface {
 	Close(ctx context.Context, number int, comment string) error
 	// Reopen reopens a pull request closed without merging, so it can be merged.
 	Reopen(ctx context.Context, number int) error
+	// SetDraft turns an open pull request into a draft, or a draft back into one ready for review.
+	SetDraft(ctx context.Context, number int, draft bool) error
+	// Comment posts one comment on a pull request.
+	Comment(ctx context.Context, number int, body string) error
 	// Merge merges a pull request whose head is expectedHead, squashing when squash is set.
 	// A merge GitHub refuses returns a *MergeRefusal.
 	Merge(ctx context.Context, number int, expectedHead string, squash bool, title, message string) error
@@ -168,7 +174,7 @@ func (c *Client) Status(ctx context.Context, number int) (Status, error) {
 	if err != nil {
 		return Status{}, fmt.Errorf("pullrequest: read pull request #%d: %w", number, err)
 	}
-	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA()}
+	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA(), Draft: pull.GetDraft()}
 	switch {
 	case pull.GetMerged():
 		status.State = StateMerged
@@ -211,6 +217,56 @@ func (c *Client) Reopen(ctx context.Context, number int) error {
 	open := "open"
 	if _, _, err := c.gh.PullRequests.Edit(ctx, c.owner, c.repo, number, &github.PullRequest{State: &open}); err != nil {
 		return fmt.Errorf("pullrequest: reopen pull request #%d: %w", number, err)
+	}
+	return nil
+}
+
+// Comment posts body as one comment on a pull request.
+func (c *Client) Comment(ctx context.Context, number int, body string) error {
+	if _, _, err := c.gh.Issues.CreateComment(ctx, c.owner, c.repo, number, &github.IssueComment{Body: &body}); err != nil {
+		return fmt.Errorf("pullrequest: comment on pull request #%d: %w", number, err)
+	}
+	return nil
+}
+
+// SetDraft turns a pull request into a draft with draft set, and marks a draft ready for review without it.
+// GitHub's REST API sets neither, so it reads the pull request's node id and runs the GraphQL mutation that does.
+func (c *Client) SetDraft(ctx context.Context, number int, draft bool) error {
+	pull, _, err := c.gh.PullRequests.Get(ctx, c.owner, c.repo, number)
+	if err != nil {
+		return fmt.Errorf("pullrequest: read pull request #%d: %w", number, err)
+	}
+	mutation := "markPullRequestReadyForReview"
+	if draft {
+		mutation = "convertPullRequestToDraft"
+	}
+	query := fmt.Sprintf("mutation($id: ID!) { %s(input: {pullRequestId: $id}) { clientMutationId } }", mutation)
+	if err := c.graphQL(ctx, query, map[string]any{"id": pull.GetNodeID()}); err != nil {
+		return fmt.Errorf("pullrequest: %s on pull request #%d: %w", mutation, number, err)
+	}
+	return nil
+}
+
+// graphQL runs query with variables against GitHub's GraphQL endpoint, failing on a transport or HTTP failure and on any error GitHub lists in the response.
+func (c *Client) graphQL(ctx context.Context, query string, variables map[string]any) error {
+	req, err := c.gh.NewRequest(http.MethodPost, "graphql", map[string]any{"query": query, "variables": variables})
+	if err != nil {
+		return err
+	}
+	var response struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if _, err := c.gh.Do(ctx, req, &response); err != nil {
+		return err
+	}
+	if len(response.Errors) > 0 {
+		messages := make([]string, len(response.Errors))
+		for i, e := range response.Errors {
+			messages[i] = e.Message
+		}
+		return fmt.Errorf("github refused the request: %s", strings.Join(messages, "; "))
 	}
 	return nil
 }

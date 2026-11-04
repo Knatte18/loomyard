@@ -229,6 +229,9 @@ func LandingDeps(dir string) landingshed.Deps {
 			Sessions:        noopSessions{},
 			SessionLive:     func(string) (bool, error) { return false, nil },
 			RegisterSession: func(string) error { return nil },
+			Reopen: func() (landingshed.ReopenRequest, bool, error) {
+				return landingshed.ReopenRequest{}, false, nil
+			},
 		},
 	}
 }
@@ -365,7 +368,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			DescriptionPath:  filepath.Join(dir, "beam-description.md"),
 			ProjectDecisions: func() ([]string, error) { return nil, nil },
 			Entry:            func() (string, string, error) { return "Title", "Brief", nil },
-			CommitSubjects:   func() ([]string, error) { return nil, nil },
+			Commits:          func() ([]landingshed.BeamCommit, error) { return nil, nil },
 			Commit:           func() error { return nil },
 		},
 		Pawl: pawlengine.Deps{
@@ -373,6 +376,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			RunID: "run-1",
 			Paths: pawlengine.Paths{
 				LandRequest:     filepath.Join(dir, "land-request.json"),
+				ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
 			},

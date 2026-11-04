@@ -21,7 +21,7 @@ type Step struct {
 type Deps struct {
 	// Slug is the beam's slug, which names its landing and start in a notice.
 	Slug string
-	// Paths holds the run's land request, dobby-stop marker and await marker.
+	// Paths holds the run's land and reopen requests, dobby-stop marker and await marker.
 	Paths Paths
 	// RunID is the pawl run's seed id, which a land request names.
 	RunID string
@@ -79,6 +79,7 @@ func requireSeams(producer string, seams ...seam) error {
 func (d Deps) pathsSeams() []seam {
 	return []seam{
 		{"Paths.LandRequest", d.Paths.LandRequest != ""},
+		{"Paths.ReopenRequest", d.Paths.ReopenRequest != ""},
 		{"Paths.DobbyStopMarker", d.Paths.DobbyStopMarker != ""},
 		{"Paths.AwaitMarker", d.Paths.AwaitMarker != ""},
 	}

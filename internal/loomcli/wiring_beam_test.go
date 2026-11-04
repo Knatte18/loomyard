@@ -1,4 +1,4 @@
-// wiring_beam_test.go covers the wiring a pawl run adds to wire: the BeamDescribe and Pawl seams, the nine-row routing, and the landing deps a pawl run's Finalize is built with.
+// wiring_beam_test.go covers the wiring a pawl run adds to wire: the BeamDescribe and Pawl seams, the nine-row routing, the landing deps a pawl run's Finalize is built with, and the reopen request PR-Review reads.
 // wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
@@ -15,12 +15,59 @@ import (
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
+
+// TestReadReopenRequest asserts PR-Review reads only a reopen request that names the pair's own run:
+// no request file, a request of another run and a request with no seed to name the run read as none, and a matching request reads with its close flag.
+func TestReadReopenRequest(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const runStart = "2026-03-01T09:30:00Z"
+	tests := []struct {
+		name string
+		// seeded says the pair's pawl run has a seed started at runStart.
+		seeded bool
+		// request is the reopen request written first; nil writes none.
+		request   *pawlengine.ReopenRequest
+		want      landingshed.ReopenRequest
+		wantFound bool
+	}{
+		{name: "NoRequestFileReadsAsNone", seeded: true},
+		{name: "RequestOfAnotherRunReadsAsNone", seeded: true, request: &pawlengine.ReopenRequest{RunID: "2026-02-28T08:00:00Z"}},
+		{name: "RequestWithNoSeedReadsAsNone", request: &pawlengine.ReopenRequest{RunID: runStart}},
+		{name: "RequestOfThePairsRunReadsAsKeepingThePullRequest", seeded: true, request: &pawlengine.ReopenRequest{RunID: runStart}, wantFound: true},
+		{name: "RequestOfThePairsRunReadsWithItsCloseFlag", seeded: true, request: &pawlengine.ReopenRequest{RunID: runStart, Close: true}, want: landingshed.ReopenRequest{Close: true}, wantFound: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			loc := hubLocation(t, "pair", ".")
+			if tt.seeded {
+				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipePawl, Driver: shedrun.DriverGo, StartedAt: runStart}); err != nil {
+					t.Fatalf("WriteSeed() = %v; want nil", err)
+				}
+			}
+			if tt.request != nil {
+				if err := pawlengine.WriteReopenRequest(hubgeom.PawlPaths(loc), *tt.request); err != nil {
+					t.Fatalf("WriteReopenRequest() = %v; want nil", err)
+				}
+			}
+
+			got, found, err := readReopenRequest(loc)
+
+			if err != nil || found != tt.wantFound || got != tt.want {
+				t.Errorf("readReopenRequest() = %+v, %v, %v; want %+v, %v, nil", got, found, err, tt.want, tt.wantFound)
+			}
+		})
+	}
+}
 
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
@@ -52,7 +99,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its rows with no reroute edge", func(t *testing.T) {
+	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its rows with PR-Review's one reroute edge back to Beam-Await", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipePawl}
@@ -109,8 +156,8 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if got, want := filepath.Base(c.env.BeamDescribe.DescriptionPath), filepath.Base(c.env.DescriptionPath); got != want {
 			t.Errorf("c.env.BeamDescribe.DescriptionPath base = %q; want the landing description's %q", got, want)
 		}
-		if _, err := c.env.BeamDescribe.CommitSubjects(); err == nil || !strings.Contains(err.Error(), "way forward") {
-			t.Errorf("c.env.BeamDescribe.CommitSubjects() of a pair with no origin record = %v; want a refusal naming the way forward", err)
+		if _, err := c.env.BeamDescribe.Commits(); err == nil || !strings.Contains(err.Error(), "way forward") {
+			t.Errorf("c.env.BeamDescribe.Commits() of a pair with no origin record = %v; want a refusal naming the way forward", err)
 		}
 
 		routing, err := c.recipeRouting()
@@ -120,8 +167,12 @@ func TestWire_BeamRecipe(t *testing.T) {
 		var rows []string
 		for _, producer := range routing.Producers {
 			rows = append(rows, producer.Name)
-			if producer.OnReroute != "" {
-				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
+			want := ""
+			if producer.Name == "PR-Review" {
+				want = "Beam-Await"
+			}
+			if producer.OnReroute != want {
+				t.Errorf("row %q OnReroute = %q; want %q", producer.Name, producer.OnReroute, want)
 			}
 		}
 		if want := []string{"Preflight", "Record-Write", "Beam-Up", "Beam-Await", "Parent-Align", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {

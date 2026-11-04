@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +26,20 @@ func cancelAfter(w *world, n int) {
 			w.cancel()
 		}
 	}
+}
+
+// readOnlyBeamDir makes the directory of the world's pawl files read-only for the rest of the test, so removing a file there is refused.
+// It skips the test where a directory mode refuses no removal: for root, and on Windows.
+func readOnlyBeamDir(t *testing.T, w *world) {
+	t.Helper()
+	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
+		t.Skip("only a non-root user on a POSIX filesystem is refused a removal from a read-only directory")
+	}
+	dir := filepath.Dir(w.paths.ReopenRequest)
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 }
 
 // TestBeamAwait asserts the row's behavior over each state a run can enter it in and each answer to a land request:
@@ -64,7 +80,7 @@ func TestBeamAwait(t *testing.T) {
 		wantEvents    []string
 		// wantNotices holds, per posted notice in order, the substrings it carries.
 		wantNotices [][]string
-		// wantFiles maps request, stop and await to whether that file stands afterwards, and record to whether the await marker carries the posted dobby-down notice.
+		// wantFiles maps request, reopen, stop and await to whether that file stands afterwards, and record to whether the await marker carries the posted dobby-down notice.
 		wantFiles      map[string]bool
 		wantDobbyReads int
 		// wantSleeps is checked when non-nil.
@@ -293,6 +309,71 @@ func TestBeamAwait(t *testing.T) {
 			wantSleeps:  seconds(1),
 		},
 		{
+			name: "ReopenRequestIsRemovedTheDownDobbyStartedAndTheReopenPosted",
+			setup: func(t *testing.T, w *world) {
+				w.dobbyLive = false
+				w.reopen(t, testRunID)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"}, wantDobbyReads: 1,
+			wantNotices: [][]string{{"my-beam is reopened", "lym beam ready my-beam"}},
+			wantFiles:   map[string]bool{"reopen": false, "await": true},
+		},
+		{
+			name: "ReopenWithALiveDobbyStartsNothing",
+			setup: func(t *testing.T, w *world) {
+				w.reopen(t, testRunID)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantNotices: [][]string{{"my-beam is reopened"}},
+			wantFiles:   map[string]bool{"reopen": false},
+		},
+		{
+			name: "ReopenWhoseDobbyStartFailsNamesBeamStart",
+			setup: func(t *testing.T, w *world) {
+				w.dobbyLive = false
+				w.startErr = errors.New("dobby will not start")
+				w.reopen(t, testRunID)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"}, wantDobbyReads: 1,
+			wantNotices: [][]string{{"my-beam is reopened", "dobby will not start", "lym beam start my-beam"}},
+			wantFiles:   map[string]bool{"reopen": false},
+		},
+		{
+			name: "ReopenRequestOfAnotherRunIsRemovedAlone",
+			setup: func(t *testing.T, w *world) {
+				w.dobbyLive = false
+				w.reopen(t, "an-earlier-run")
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"reopen": false},
+		},
+		{
+			name: "ReopenRequestOfThisRunThatCannotBeRemovedPostsOneNoticeStartsNothingAndRetriesTheEntry",
+			setup: func(t *testing.T, w *world) {
+				w.dobbyLive = false
+				w.reopen(t, testRunID)
+				readOnlyBeamDir(t, w)
+				cancelAfter(w, 2)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, beamAwait},
+			wantNotices: [][]string{{"my-beam is reopened", "reopen-request.json", "could not be removed"}},
+			wantFiles:   map[string]bool{"reopen": true},
+		},
+		{
+			name: "ReopenRequestOfAnotherRunThatCannotBeRemovedDoesNotHoldTheEntry",
+			setup: func(t *testing.T, w *world) {
+				w.reopen(t, "an-earlier-run")
+				readOnlyBeamDir(t, w)
+				cancelAfter(w, 2)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantFiles: map[string]bool{"reopen": true},
+		},
+		{
 			name:          "IdleTimerDoublesToTheCeilingWithNoWatch",
 			setup:         func(t *testing.T, w *world) { cancelAfter(w, 8) },
 			wantCancelled: true, wantEvents: []string{beamAwait},
@@ -332,7 +413,7 @@ func TestBeamAwait(t *testing.T) {
 					}
 				}
 			}
-			paths := map[string]string{"request": w.paths.LandRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker}
+			paths := map[string]string{"request": w.paths.LandRequest, "reopen": w.paths.ReopenRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker}
 			for key, want := range tt.wantFiles {
 				got := exists(paths[key])
 				if key == "record" {

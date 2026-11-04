@@ -1,4 +1,4 @@
-// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
+// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam reopen <slug> [--close]`, the return of a beam's landing to Beam-Await, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
 // The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
@@ -43,6 +43,15 @@
 // It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses, and reports a beam already flagged without writing.
 // The record names its beam because a pair forked from the beam inherits the beam's `_lym` records: `pawlengine.ReadyFor` reads a record naming another slug as no flag.
 // The beam's orch or the operator runs it; dobby never does.
+//
+// # reopen
+//
+// `reopen <slug> [--close]` sends the landing of a beam back to Beam-Await, so the beam takes new members.
+// It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses and a beam another machine owns, naming `lym adopt <slug>`, and refuses a beam with no pawl run, naming `lym beam create <slug>`, and a run that is done or at any row but Parent-Align, Beam-Describe and PR-Review, naming `lym batten status <slug>`.
+// It writes a `pawlengine.ReopenRequest` naming the run by its child seed's `started_at`, with `--close` as its Close, through `pawlengine.WriteReopenRequest` under the beam worktree's `.lym/beam/` directory.
+// It then removes the ready record through `pawlengine.RemoveReady` and commits the landing directory whether or not a record was removed, unless the directory holds nothing to commit, so a rerun after a failed commit commits the removal, and a standing flag cannot make the dobby land the beam again.
+// The run's PR-Review row answers the request: it stops the pr-reviewer, keeps the pull request open as a draft with a comment, or closes it under `--close`, and reroutes the run to Beam-Await, which removes the request and restarts the beam's dobby.
+// The envelope names the request's path, the run id, the close flag, whether a ready record was removed, and the way forward: `lym batten status <slug>` for a running run, and `lym loom resume` in the beam's worktree for a halted one.
 //
 // # land
 //

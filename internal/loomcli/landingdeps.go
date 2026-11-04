@@ -37,6 +37,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pairteardown"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
@@ -381,7 +382,25 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 		RecordChanges: func() (<-chan struct{}, func()) {
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
+		Reopen: func() (landingshed.ReopenRequest, bool, error) { return readReopenRequest(l) },
 	}
+}
+
+// readReopenRequest reads the reopen request `lym beam reopen` writes into the pair at l, and reports whether one names the pair's own run.
+// Only a beam's pair is ever written one, and a request naming another run reads as none, for Beam-Await to remove.
+func readReopenRequest(l *lymcwd.Location) (landingshed.ReopenRequest, bool, error) {
+	req, found, err := pawlengine.ReadReopenRequest(hubgeom.PawlPaths(l))
+	if err != nil || !found {
+		return landingshed.ReopenRequest{}, false, err
+	}
+	seed, seeded, err := shedrun.ReadSeed(l, shedrun.SelfRunID)
+	if err != nil {
+		return landingshed.ReopenRequest{}, false, err
+	}
+	if !seeded || seed.StartedAt != req.RunID {
+		return landingshed.ReopenRequest{}, false, nil
+	}
+	return landingshed.ReopenRequest{Close: req.Close}, true, nil
 }
 
 // landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.

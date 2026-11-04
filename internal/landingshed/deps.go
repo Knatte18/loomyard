@@ -378,6 +378,15 @@ type PullRequestDeps struct {
 	SessionLive func(guid string) (bool, error)
 	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
 	RegisterSession func(guid string) error
+	// Reopen reads whether a request stands to send the run back, through the row's reroute edge, to take more work before it lands.
+	// Nil reads as never: only a beam's run is told one.
+	Reopen func() (req ReopenRequest, found bool, err error)
+}
+
+// ReopenRequest asks the PR-Review row to send its run back through the row's reroute edge.
+type ReopenRequest struct {
+	// Close asks for the run's pull request to be closed, so the next landing opens a new one, instead of kept open as a draft.
+	Close bool
 }
 
 // ParentOwnership is who owns the parent a run lands on.

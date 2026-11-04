@@ -19,6 +19,12 @@
 // A merged pull request takes the merged verdicts whatever the flag says, and an uncommitted file at any ending is Stuck with Halt.
 // A pause that covers the run holds the row in process, before its push and at each wake, and does no gate, push or GitHub call meanwhile.
 //
+// A reopen request, which the told Deps.PullRequest.Reopen reads and only a beam's run is told, is read on entry before the mode decision and at every wake of the wait after the pause hold.
+// It stops the session, then keeps an open recorded pull request open as a draft, through GitHub's GraphQL mutation, with a comment saying the landing was reopened, or closes it with a comment when the request asks.
+// A kept record loses the continue flag, the operator's ending, the mailed head and the session; a pull request closed by the request, or closed or merged on GitHub, loses its record, so the next entry opens a new one.
+// The row then ends Stuck with Reroute, which the recipe's reroute edge sends back to the row that takes more work, and leaves the request for that row to remove.
+// A later entry that finds its recorded pull request open as a draft marks it ready for review before it sets the title and body, so the reopened pull request keeps its link, comments and history.
+//
 // The row keeps one interactive agent session per run, in a window of its own in the task worktree, for the operator to discuss the pull request in; the row never waits on its output.
 // After it records the pull request, and before it waits, it reuses the recorded strand when that is live, resumes the recorded session id when the strand is not, and otherwise starts a new session.
 // A review whose record carries the operator's ending gets no session.
@@ -244,7 +250,7 @@
 // A yes with no record is Stuck with Halt naming `lym loom goto PR-Review`, and a yes whose pull request GitHub reports closed while the record carries no operator's ending is Stuck with Halt naming a reopen on GitHub and `lym batten cancel`; only PR-Review writes that mark.
 // A yes whose record carries the operator's ending and whose pull request is closed is reopened on GitHub and merged like an open one, since GitHub squash-merges only an open pull request; a failed reopen is judged as any GitHub failure.
 // A merged pull request makes no GitHub merge, and the parent sync fast-forwards to the merged upstream so the parent-side merge takes the already-landed path.
-// An open one is merged on GitHub after the lock re-check and before the parent-side merge: Finalize pushes the task branch, merges with the pushed head as the expected head, `squash` choosing the method, the change description's title as the commit title and its body and the credit block as the commit message, then fetches and fast-forwards the parent pair.
+// An open one is merged on GitHub after the lock re-check and before the parent-side merge: Finalize pushes the task branch, merges with the pushed head as the expected head, `squash` choosing the method, the change description's title followed by ` (#<number>)` as the commit title, the form GitHub's own squash merge writes, so the landed commit names its pull request after the board entry is pruned, and its body and the credit block as the commit message, then fetches and fast-forwards the parent pair.
 // A merge GitHub refuses as pending is retried for at most a minute under the lock, a method refusal names `lym config landing --set squash=<true|false>`, and any other refusal names a second person's approval or a settled check or conflict, and `lym batten cancel`.
 // The retry after a merge-in-required error never merges on GitHub a second time.
 // Every GitHub failure is judged as PR-Review judges one, with each halt opening with LandingStopPrefix.
@@ -271,7 +277,8 @@
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
 // DescribeTable builds every loom recipe's session from one stencil, which reads the decision record, the board entry, the diff and the run records that exist, rendering an absent record as `(none)`.
 // The stencil also shows the regression check the landing appends, so the session writes no section of its own for it and lists no check it settled as one to run by hand.
-// NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry, the subjects of the commits the beam adds and the entries `lym loom decision add` added to the beam's project record, validates it with the check the Describe gate runs, and commits it.
+// NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry, the commits on the beam branch's own first-parent line and the entries `lym loom decision add` added to the beam's project record, validates it with the check the Describe gate runs, and commits it.
+// Its `## Changes` list names each pull request a member landed through by the ` (#<number>)` Finalize writes into the merge's subject, with its title, merge time and the first sentence of its body, and each other commit, a merge from the parent included, by its object name, subject and time, oldest first.
 // A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.
 //
 // It takes told absolute paths and has no direct production import of internal/lymcwd, per the

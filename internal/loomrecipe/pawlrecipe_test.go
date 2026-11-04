@@ -1,4 +1,4 @@
-// pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment and of a reroute edge, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
+// pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment, PR-Review's one reroute edge back to Beam-Await, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
 
 package loomrecipe
 
@@ -21,6 +21,7 @@ type wantPawlRow struct {
 	name         string
 	producerType reflect.Type
 	onDone       string
+	onReroute    string
 }
 
 func wantPawlRows(t *testing.T) []wantPawlRow {
@@ -31,15 +32,15 @@ func wantPawlRows(t *testing.T) []wantPawlRow {
 		t.Fatalf("landingshed.NewBeamDescribe() error = %v; want nil", err)
 	}
 	return []wantPawlRow{
-		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), loomshed.NameRecordWrite},
-		{loomshed.NameRecordWrite, reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{})), pawlengine.NameBeamUp},
-		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait},
-		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameParentAlign},
-		{loomshed.NameParentAlign, reflect.TypeOf(&landingshed.ParentAlign{}), "Beam-Describe"},
-		{"Beam-Describe", reflect.TypeOf(describe), loomshed.NamePRReview},
-		{loomshed.NamePRReview, reflect.TypeOf(&landingshed.PRReview{}), loomshed.NameFinalize},
-		{loomshed.NameFinalize, reflect.TypeOf(&landingshed.Finalize{}), pawlengine.NameBeamDown},
-		{pawlengine.NameBeamDown, reflect.TypeOf(&pawlengine.BeamDown{}), ""},
+		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), loomshed.NameRecordWrite, ""},
+		{loomshed.NameRecordWrite, reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{})), pawlengine.NameBeamUp, ""},
+		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait, ""},
+		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameParentAlign, ""},
+		{loomshed.NameParentAlign, reflect.TypeOf(&landingshed.ParentAlign{}), loomshed.NameBeamDescribe, ""},
+		{loomshed.NameBeamDescribe, reflect.TypeOf(describe), loomshed.NamePRReview, ""},
+		{loomshed.NamePRReview, reflect.TypeOf(&landingshed.PRReview{}), loomshed.NameFinalize, pawlengine.NameBeamAwait},
+		{loomshed.NameFinalize, reflect.TypeOf(&landingshed.Finalize{}), pawlengine.NameBeamDown, ""},
+		{pawlengine.NameBeamDown, reflect.TypeOf(&pawlengine.BeamDown{}), "", ""},
 	}
 }
 
@@ -65,8 +66,8 @@ func TestPawlRecipe(t *testing.T) {
 			if got.Name != w.name {
 				t.Errorf("row %d name = %q; want %q", i, got.Name, w.name)
 			}
-			if got.OnDone != w.onDone || got.OnStuck != "" || got.OnReroute != "" {
-				t.Errorf("row %q OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/empty", w.name, got.OnDone, got.OnStuck, got.OnReroute, w.onDone)
+			if got.OnDone != w.onDone || got.OnStuck != "" || got.OnReroute != w.onReroute {
+				t.Errorf("row %q OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", w.name, got.OnDone, got.OnStuck, got.OnReroute, w.onDone, w.onReroute)
 			}
 			if got.Segment != "" || got.MaxBounces != 0 {
 				t.Errorf("row %q Segment/MaxBounces = %q/%d; want no review segment", w.name, got.Segment, got.MaxBounces)
@@ -91,8 +92,8 @@ func TestPawlRecipe(t *testing.T) {
 			t.Fatalf("Routing(pawl) has %d rows; want %d", len(routing.Producers), len(want))
 		}
 		for i, w := range want {
-			if got := routing.Producers[i]; got.Name != w.name || got.OnDone != w.onDone {
-				t.Errorf("Routing(pawl) row %d = %q -> %q; want %q -> %q", i, got.Name, got.OnDone, w.name, w.onDone)
+			if got := routing.Producers[i]; got.Name != w.name || got.OnDone != w.onDone || got.OnReroute != w.onReroute {
+				t.Errorf("Routing(pawl) row %d = %q -> %q, reroute %q; want %q -> %q, reroute %q", i, got.Name, got.OnDone, got.OnReroute, w.name, w.onDone, w.onReroute)
 			}
 		}
 	})

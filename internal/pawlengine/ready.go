@@ -1,4 +1,4 @@
-// ready.go holds a beam's ready record, the flag that says the beam is ready to be merged into its parent, with its write and read.
+// ready.go holds a beam's ready record, the flag that says the beam is ready to be merged into its parent, with its write, read and removal.
 
 package pawlengine
 
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -29,6 +30,24 @@ func WriteReady(path, lockPath string, record ReadyRecord) error {
 		return fmt.Errorf("pawlengine: write the ready record: %w", err)
 	}
 	return nil
+}
+
+// RemoveReady removes the ready record at path under the lock at lockPath when it flags the beam slug, and reports whether it did.
+// An absent record, and one naming another slug, are left as they are.
+func RemoveReady(path, lockPath, slug string) (bool, error) {
+	flagged, err := ReadyFor(path, lockPath, slug)
+	if err != nil || !flagged {
+		return false, err
+	}
+	held, err := lock.AcquireWriteLock(lockPath)
+	if err != nil {
+		return false, fmt.Errorf("pawlengine: lock the ready record: %w", err)
+	}
+	defer held.Release()
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return false, fmt.Errorf("pawlengine: remove the ready record: %w", err)
+	}
+	return true, nil
 }
 
 // ReadyFor reports whether the ready record at path flags the beam slug.

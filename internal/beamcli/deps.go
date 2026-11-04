@@ -1,4 +1,4 @@
-// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, the ready record, and the landing's refusal and land request.
+// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, the ready record, the landing's refusal and land request, and the reopen request.
 
 package beamcli
 
@@ -149,6 +149,35 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			}
 			paths := hubgeom.PawlPaths(beam)
 			return paths.LandRequest, pawlengine.WriteLandRequest(paths, req)
+		},
+		WriteReopen: func(slug string, req pawlengine.ReopenRequest) (string, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return "", err
+			}
+			paths := hubgeom.PawlPaths(beam)
+			return paths.ReopenRequest, pawlengine.WriteReopenRequest(paths, req)
+		},
+		// Unready commits even when no record was removed, so a rerun after a failed commit commits the removal it left.
+		// It skips the commit when the landing directory holds nothing git tracks or finds, since git refuses a commit pathspec that matches nothing.
+		Unready: func(slug string) (bool, error) {
+			beam, err := beamOf(slug)
+			if err != nil {
+				return false, err
+			}
+			removed, err := pawlengine.RemoveReady(loomengine.BeamReadyPath(beam), loomengine.BeamReadyLockPath(beam), slug)
+			if err != nil {
+				return false, err
+			}
+			stands, err := fabricengine.AnchoredPathHasContent(beam, loomengine.LandingDirRel())
+			if err != nil {
+				return removed, err
+			}
+			if !stands {
+				return removed, nil
+			}
+			_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), beam, []string{loomengine.LandingDirRel()}, fmt.Sprintf("beam: %s is reopened", slug), fabricengine.EnvSyncOptions())
+			return removed, err
 		},
 		Now: time.Now,
 	}

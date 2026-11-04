@@ -40,8 +40,9 @@
 // The caller carries a run parked under an old name across with shedengine.RenameProducers.
 //
 // The pawl recipe, a beam's life, is a loom recipe New builds like the others.
-// It reads `Preflight → Record-Write → Beam-Up → Beam-Await → Parent-Align → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no review segment and no reroute edge:
+// It reads `Preflight → Record-Write → Beam-Up → Beam-Await → Parent-Align → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no review segment:
 // Record-Write writes the project record, Beam-Await is its build row, held while the members' runs work in the beam, and a merge Finalize cannot land halts the run for the orch.
+// Its one reroute edge takes PR-Review back to Beam-Await, which PR-Review follows when `lym beam reopen` asked for the beam to take more work.
 // A run at Parent-Align or any row after it holds its beam; before it the beam is free to start members.
 //
 // Rows and RowNames serve the tapestry, darn, batten, pawl, sampler and motif recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:

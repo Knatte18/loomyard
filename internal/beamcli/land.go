@@ -1,13 +1,15 @@
-// land.go is the "lym beam land" and "lym beam ready" sequences: they judge the named beam; land applies the refusals that stop a landing of a beam not flagged ready or with work remaining under it and writes the land request the beam's pawl run consumes at Beam-Await, and ready writes the ready record.
+// land.go is the "lym beam land", "lym beam ready" and "lym beam reopen" sequences: they judge the named beam; land applies the refusals that stop a landing of a beam not flagged ready or with work remaining under it and writes the land request the beam's pawl run consumes at Beam-Await, ready writes the ready record, and reopen writes the reopen request that sends a landing back to Beam-Await and removes the ready record.
 
 package beamcli
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
@@ -18,7 +20,8 @@ import (
 // RunID returns the seed id of that pawl run, which a land request names.
 // Ready reads whether the beam's ready record flags it, and MarkReady writes that record unless it already flags the beam, commits it and returns its path.
 // Refusal is the landing's refusal of a beam with work remaining under it.
-// WriteRequest writes the land request into the beam worktree and returns its path.
+// WriteRequest writes the land request into the beam worktree and returns its path, and WriteReopen the reopen request.
+// Unready removes the beam's ready record when it flags the beam, commits the landing directory either way and reports whether it removed one.
 type landDeps struct {
 	Machine      func() (string, error)
 	ReadOwners   func() (boardengine.Owners, error)
@@ -31,7 +34,69 @@ type landDeps struct {
 	MarkReady    func(slug string, record pawlengine.ReadyRecord) (string, error)
 	Refusal      func(slug string) error
 	WriteRequest func(slug string, req pawlengine.LandRequest) (string, error)
+	WriteReopen  func(slug string, req pawlengine.ReopenRequest) (string, error)
+	Unready      func(slug string) (bool, error)
 	Now          func() time.Time
+}
+
+// reopenRows are the pawl rows a reopen sends a run back from: those past Beam-Await and before Finalize.
+var reopenRows = []string{loomshed.NameParentAlign, loomshed.NameBeamDescribe, loomshed.NamePRReview}
+
+// reopen sends the landing of the beam slug back to Beam-Await, so the beam takes new members, and returns the request's path and how the run follows.
+// It writes a reopen request naming the beam's pawl run, with closePR asking for the pull request to be closed instead of kept as a draft, and then removes the beam's ready record, so its dobby does not land it again.
+// The run's PR-Review row answers the request; a halted run answers it once resumed.
+func reopen(deps landDeps, slug string, closePR bool) (map[string]any, error) {
+	const verb = "lym beam reopen"
+	here, err := deps.Machine()
+	if err != nil {
+		return nil, fmt.Errorf("%s: read this machine's name: %w", verb, err)
+	}
+	owners, err := deps.ReadOwners()
+	if err != nil {
+		return nil, fmt.Errorf("%s: read the board's owners: %w", verb, err)
+	}
+	if err := judgeLandEntry(deps, owners, verb, slug); err != nil {
+		return nil, err
+	}
+	if owner := owners.Entries[slug].Owner; boardengine.OwnedElsewhere(owner, here) {
+		return nil, fmt.Errorf("%s: the beam %s is owned by machine %s; way forward: run `%s %s` on %s, or run `lym adopt %s` here to take the beam over", verb, slug, owner, verb, slug, owner, slug)
+	}
+	status, found, err := deps.ChildStatus(slug)
+	if err != nil {
+		return nil, fmt.Errorf("%s: read the pawl run of %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, slug, err, verb, slug)
+	}
+	if !found {
+		return nil, fmt.Errorf("%s: the beam %s has no pawl run on this machine; way forward: run `lym beam create %s`, which starts it", verb, slug, slug)
+	}
+	if status.State == shedengine.StateDone || !slices.Contains(reopenRows, status.CurrentProducer) {
+		return nil, fmt.Errorf("%s: the pawl run of %s is %s at %s, and only a run past %s and before %s is sent back; way forward: run `lym batten status %s`; a run waiting at %s takes new members already, and a landing at %s or past it is no longer reopened", verb, slug, status.State, status.CurrentProducer, pawlengine.NameBeamAwait, loomshed.NameFinalize, slug, pawlengine.NameBeamAwait, loomshed.NameFinalize)
+	}
+
+	runID, err := deps.RunID(slug)
+	if err != nil {
+		return nil, fmt.Errorf("%s: read the pawl run id of %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, slug, err, verb, slug)
+	}
+	path, err := deps.WriteReopen(slug, pawlengine.ReopenRequest{RunID: runID, Close: closePR, RequestedAt: deps.Now().UTC()})
+	if err != nil {
+		return nil, fmt.Errorf("%s: write the reopen request of %s: %w; way forward: fix the cause it names, then run `%s %s` again", verb, slug, err, verb, slug)
+	}
+	removed, err := deps.Unready(slug)
+	if err != nil {
+		return nil, fmt.Errorf("%s: the reopen request of %s is written, but its ready record could not be removed and committed: %w; way forward: fix the cause it names, then run `%s %s` again, since a standing flag lands the beam again", verb, slug, err, verb, slug)
+	}
+
+	wayForward := fmt.Sprintf("the run's %s row takes the request and sends the run back to %s; run `lym batten status %s` to follow it, and `lym beam ready %s` once the beam is ready to land again", loomshed.NamePRReview, pawlengine.NameBeamAwait, slug, slug)
+	if status.State != shedengine.StateRunning {
+		wayForward = fmt.Sprintf("the run is %s at %s; run `lym loom resume` in the beam's worktree, after which its %s row takes the request and sends the run back to %s", status.State, status.CurrentProducer, loomshed.NamePRReview, pawlengine.NameBeamAwait)
+	}
+	return map[string]any{
+		"slug":          slug,
+		"request":       path,
+		"run_id":        runID,
+		"close":         closePR,
+		"ready_removed": removed,
+		"way_forward":   wayForward,
+	}, nil
 }
 
 // land asks the pawl run of the beam slug to land the beam, and returns the request's path and the command that follows the landing.

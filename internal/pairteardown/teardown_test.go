@@ -1256,6 +1256,14 @@ func (a *closeRecordingAPI) Reopen(context.Context, int) error {
 	panic("closeOpenPullRequest called Reopen")
 }
 
+func (a *closeRecordingAPI) SetDraft(context.Context, int, bool) error {
+	panic("closeOpenPullRequest called SetDraft")
+}
+
+func (a *closeRecordingAPI) Comment(context.Context, int, string) error {
+	panic("closeOpenPullRequest called Comment")
+}
+
 func (a *closeRecordingAPI) RequiresPullRequest(context.Context, string) (bool, error) {
 	panic("closeOpenPullRequest called RequiresPullRequest")
 }

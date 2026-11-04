@@ -48,7 +48,7 @@ func minimalEntries() map[string]minimalEntry {
 					DescriptionPath:  filepath.Join(t.TempDir(), "summary.md"),
 					ProjectDecisions: func() ([]string, error) { return nil, nil },
 					Entry:            func() (string, string, error) { return "Title", "Brief", nil },
-					CommitSubjects:   func() ([]string, error) { return nil, nil },
+					Commits:          func() ([]landingshed.BeamCommit, error) { return nil, nil },
 					Commit:           func() error { return nil },
 				}
 				return env

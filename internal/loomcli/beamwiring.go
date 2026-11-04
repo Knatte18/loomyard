@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"slices"
-	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -22,7 +21,7 @@ import (
 
 // beamDescribeDeps assembles the BeamDescribe row's seams for the beam pair at location, whose slug names its board entry, whose parentBranch is the branch it lands on and whose project record is at recordPath.
 // Every closure reads or writes on demand and opens nothing at build time.
-// An empty parentBranch, a pair with no origin record, is refused when the commit subjects are read.
+// An empty parentBranch, a pair with no origin record, is refused when the beam's commits are read.
 func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath string) landingshed.BeamDescribeDeps {
 	return landingshed.BeamDescribeDeps{
 		Slug:            slug,
@@ -44,8 +43,8 @@ func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath 
 			}
 			return task.Title, task.Brief, nil
 		},
-		CommitSubjects: func() ([]string, error) {
-			return beamCommitSubjects(location, parentBranch)
+		Commits: func() ([]landingshed.BeamCommit, error) {
+			return beamCommits(location, parentBranch)
 		},
 		// Commit mirrors CommitDescription, including its discard of (sha, committed), which makes a repeat commit over an unchanged directory a no-op.
 		Commit: func() error {
@@ -55,8 +54,9 @@ func beamDescribeDeps(location *lymcwd.Location, slug, parentBranch, recordPath 
 	}
 }
 
-// beamCommitSubjects lists the subjects of the commits the beam at location adds over its merge base with parentBranch, oldest first, merge commits left out.
-func beamCommitSubjects(location *lymcwd.Location, parentBranch string) ([]string, error) {
+// beamCommits lists the commits on the first-parent line of the beam at location that its merge base with parentBranch lacks, oldest first.
+// The first-parent line holds what landed on the beam branch itself: a squash or merge of each member, each merge from the parent and each commit made on the beam directly, and never the commits a merge brought in.
+func beamCommits(location *lymcwd.Location, parentBranch string) ([]landingshed.BeamCommit, error) {
 	if parentBranch == "" {
 		return nil, errors.New("the beam's pair records no parent branch to measure its commits from; way forward: make the beam through \"lym beam create\", which records its parent branch")
 	}
@@ -74,29 +74,29 @@ func beamCommitSubjects(location *lymcwd.Location, parentBranch string) ([]strin
 		return nil, err
 	}
 	added, err := repo.CommitsNotIn(head, base)
+	if err != nil || len(added) == 0 {
+		return nil, err
+	}
+	beamOwn := make(map[string]bool, len(added))
+	for _, sha := range added {
+		beamOwn[sha] = true
+	}
+
+	// The first-parent line leaves the merge base's history at its first commit the parent already holds, so it is at most as long as added.
+	line, err := repo.Log(head, gitrepo.LogQuery{FirstParent: true, Limit: len(added)})
 	if err != nil {
 		return nil, err
 	}
-
-	// CommitsNotIn answers newest first.
-	slices.Reverse(added)
-	subjects := make([]string, 0, len(added))
-	for _, sha := range added {
-		parents, err := repo.CommitParents(sha)
-		if err != nil {
-			return nil, err
+	var commits []landingshed.BeamCommit
+	for _, commit := range line {
+		if !beamOwn[commit.SHA] {
+			break
 		}
-		if len(parents) > 1 {
-			continue
-		}
-		detail, err := repo.CommitDetail(sha)
-		if err != nil {
-			return nil, err
-		}
-		subject, _, _ := strings.Cut(strings.TrimSpace(detail.Message), "\n")
-		subjects = append(subjects, subject)
+		commits = append(commits, landingshed.BeamCommit{SHA: commit.SHA, Message: commit.Message, Committed: commit.Committed})
 	}
-	return subjects, nil
+	// Log answers newest first.
+	slices.Reverse(commits)
+	return commits, nil
 }
 
 // beamParentBranch returns the parent branch the beam pair at location records, or "" when the pair has no origin record yet.

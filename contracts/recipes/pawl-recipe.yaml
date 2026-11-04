@@ -71,10 +71,13 @@ producers:
     engine: BeamDescribe
     on_done: PR-Review
 
-  # PR-Review carries no entry_gate and no on_stuck, because its Stuck is always a Halt.
+  # PR-Review carries no entry_gate and no on_stuck, because its Stuck is always a Halt or a reroute.
+  # Its on_reroute takes a reopen request, which `lym beam reopen` writes, back to Beam-Await, so the beam takes new members;
+  # Beam-Await removes the request on entry.
   - name: PR-Review
     engine: PRReview
     on_done: Finalize
+    on_reroute: Beam-Await
 
   - name: Finalize
     engine: Finalize

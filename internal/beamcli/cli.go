@@ -1,4 +1,4 @@
-// cli.go builds the beam cobra command with its create, ready, land, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the beam cobra command with its create, ready, reopen, land, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 
 package beamcli
 
@@ -32,17 +32,17 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, flag ready, land, start and stop beams, the long-lived pairs that group board work, and show their dobbies and orchs",
+		Short: "make, flag ready, reopen, land, start and stop beams, the long-lived pairs that group board work, and show their dobbies and orchs",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
 beam's own branch and land back into it, and it is one unit of two parts, its dobby
 and its orch, that run on the machine owning it. The dobby drives the runs of the
 beam's tasks, and the orch is the session that works the beam with the operator.
 "lym beam start" brings both up and "lym beam stop" takes both down. Create and
-status run from the hub's prime worktree and from any beam, ready and land from
-anywhere in the hub, and all act on the prime's location.`,
+status run from the hub's prime worktree and from any beam, ready, reopen and land
+from anywhere in the hub, and all act on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), readyCmd(), landCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
+	beam.AddCommand(createCmd(), readyCmd(), reopenCmd(), landCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
 	return beam
 }
 
@@ -608,7 +608,52 @@ Example:
 	}
 }
 
-// onHubLandDeps runs verb, `beam land` or `beam ready`, over the land deps of the hub the command's cwd belongs to.
+// reopenCmd returns the `beam reopen` verb.
+func reopenCmd() *cobra.Command {
+	var closePR bool
+	cmd := &cobra.Command{
+		Use:         "reopen <slug>",
+		Short:       "send a beam's landing back to Beam-Await, so the beam takes new members",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Sends the landing of the beam <slug> back to Beam-Await, so new members can
+join the beam. The beam's pawl run must be past Beam-Await and before Finalize:
+at Parent-Align, Beam-Describe or PR-Review.
+
+The verb writes a reopen request naming the run into the beam worktree's
+.lym/beam directory, then removes the beam's ready record and commits that, so its
+dobby does not land the beam again. The run's PR-Review row takes the request: it
+stops the pr-reviewer, keeps the pull request open as a draft with a comment
+saying the beam was reopened, and sends the run back to Beam-Await, which restarts
+the beam's dobby. With --close it closes the pull request instead, and the next
+landing opens a new one; use it when the reopened work changes the beam enough
+that a fresh pull request reads better.
+
+A later "lym beam ready <slug>" lands the beam again through Parent-Align,
+Beam-Describe and PR-Review, which refreshes the kept pull request's description
+and marks it ready for review. A halted run takes the request once "lym loom
+resume" in the beam's worktree resumes it.
+
+It runs anywhere in the hub and refuses, each naming its way forward, an entry
+that is not an open beam project with a pair here, a beam another machine owns,
+a beam with no pawl run, and a run at any other row.
+
+Example:
+  lym beam reopen payments
+  lym beam reopen payments --close`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam reopen", func(deps landDeps) (map[string]any, error) { return reopen(deps, args[0], closePR) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+	cmd.Flags().BoolVar(&closePR, "close", false, "close the beam's pull request instead of keeping it open as a draft, so the next landing opens a new one")
+	return cmd
+}
+
+// onHubLandDeps runs verb, `beam land`, `beam ready` or `beam reopen`, over the land deps of the hub the command's cwd belongs to.
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
 func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map[string]any, error)) (*map[string]any, error) {

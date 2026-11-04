@@ -69,12 +69,13 @@ func DobbyBeamDir(worktree *lymcwd.Location) string {
 	return filepath.Join(worktree.HubPath, worktree.WorktreeName, worktree.AnchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName)
 }
 
-// PawlPaths tells the pawl producers the land request, dobby-stop marker and await marker paths of the beam whose pair is at beam.
-// All three lie directly under the beam worktree's `.lym/beam/` directory at the worktree's own anchor, where DobbyGeometry puts the dobby's files, so the dobby, `lym beam land` and Beam-Await read one directory.
+// PawlPaths tells the pawl producers the land request, reopen request, dobby-stop marker and await marker paths of the beam whose pair is at beam.
+// All four lie directly under the beam worktree's `.lym/beam/` directory at the worktree's own anchor, where DobbyGeometry puts the dobby's files, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 	beamDir := filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName, lymdirs.BeamDirName)
 	return pawlengine.Paths{
 		LandRequest:     filepath.Join(beamDir, pawlengine.LandRequestFileName),
+		ReopenRequest:   filepath.Join(beamDir, pawlengine.ReopenRequestFileName),
 		DobbyStopMarker: filepath.Join(beamDir, pawlengine.DobbyStopMarkerName),
 		AwaitMarker:     filepath.Join(beamDir, pawlengine.AwaitMarkerName),
 	}
