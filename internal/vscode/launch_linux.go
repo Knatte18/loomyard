@@ -9,6 +9,7 @@ import (
 	"os/exec"
 
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/proc"
 )
 
 // Launch launches VS Code for the given worktree directory on Linux.
@@ -24,6 +25,7 @@ func Launch(worktreeDir string) error {
 		logger.Warn("vscode: VS Code launch spawn failed", "worktreeDir", worktreeDir, "cause", err)
 		return fmt.Errorf("launch code: %w", err)
 	}
+	proc.Reap(cmd)
 
 	return nil
 }

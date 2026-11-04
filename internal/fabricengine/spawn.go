@@ -63,7 +63,7 @@ type SpawnResult struct {
 // SpawnDetachedPush launches a detached, windowless child that pushes the sides req carries.
 // Returns nil immediately, forking no child, when FABRIC_SKIP_GIT or FABRIC_SKIP_PUSH is set or when both paths are empty — there is nothing to push.
 // Returns ErrSpawnUnderTest, forking no child, in a test binary.
-// The child is started but never Waited,
+// The child is reaped in the background through proc.Reap rather than waited for,
 // and its stdin/stdout/stderr are left nil so no handle is inherited from the parent.
 // The started child is registered in the hub's owner record.
 func SpawnDetachedPush(req PushSpawn) error {
@@ -97,12 +97,13 @@ func startDetachedPush(exe string, req PushSpawn) error {
 		logger.Warn("fabricengine: spawn detached push failed", "exe", exe, "args", args, "dir", dir, "error", err)
 		return err
 	}
+	proc.Reap(cmd)
 	pid := cmd.Process.Pid
 	logger.Info("fabricengine: spawned detached push", "exe", exe, "args", args, "dir", dir, "pid", pid)
 	if err := runproc.Register(RunProcDir(filepath.Dir(dir)), owner, runproc.ChildRecord(pid, runproc.RolePush, args)); err != nil {
 		logger.Warn("fabricengine: detached push not registered", "owner", owner, "pid", pid, "error", err)
 	}
-	return nil // intentionally not Wait()ed
+	return nil
 }
 
 // pushSpawnCommand returns the arguments, working directory and owner of the child req describes.

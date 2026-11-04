@@ -229,6 +229,62 @@ func TestProcessTreeReads(t *testing.T) {
 	}
 }
 
+// awaitReaped polls until pid no longer answers a signal, which an exited child does only once its parent has waited on it.
+func awaitReaped(t *testing.T, pid int) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); IsAlive(pid); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("child %d was never reaped", pid)
+		}
+	}
+}
+
+func TestReap(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	child := exec.Command("true")
+	if err := child.Start(); err != nil {
+		t.Fatalf("start true: %v", err)
+	}
+	Reap(child)
+	awaitReaped(t, child.Process.Pid)
+}
+
+// TestReapInheritedChildren is not parallel: it waits on every child of the test process, which would race the wait of a parallel test's own child.
+func TestReapInheritedChildren(t *testing.T) {
+	tiergate.Require(t, 0)
+
+	exited := exec.Command("true")
+	running := exec.Command("sleep", "30")
+	for _, child := range []*exec.Cmd{exited, running} {
+		if err := child.Start(); err != nil {
+			t.Fatalf("start %v: %v", child.Args, err)
+		}
+	}
+	t.Cleanup(func() { _ = running.Process.Kill() })
+	for deadline := time.Now().Add(5 * time.Second); IsRunning(exited.Process.Pid); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("child %d never exited", exited.Process.Pid)
+		}
+	}
+
+	pids, err := ReapInheritedChildren()
+	if err != nil {
+		t.Fatalf("ReapInheritedChildren() error = %v", err)
+	}
+	for _, child := range []*exec.Cmd{exited, running} {
+		if !slices.Contains(pids, child.Process.Pid) {
+			t.Errorf("ReapInheritedChildren() = %v; want it to hold child %d", pids, child.Process.Pid)
+		}
+	}
+	awaitReaped(t, exited.Process.Pid)
+	if err := SignalProcess(running.Process.Pid, true); err != nil {
+		t.Fatalf("SignalProcess(running child, true): %v", err)
+	}
+	awaitReaped(t, running.Process.Pid)
+}
+
 func TestHideWindowIsNoop(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()

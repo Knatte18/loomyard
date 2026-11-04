@@ -50,10 +50,11 @@ func spawnSync(boardPath string) error {
 	proc.Detach(cmd)
 	// Leave stdin/stdout/stderr nil so no handles are inherited from the parent.
 	logger.Info("boardengine: spawning detached board sync", "exe", exe, "boardPath", abs)
-	if err := cmd.Start(); err != nil { // intentionally not Wait()ed
+	if err := cmd.Start(); err != nil {
 		logger.Warn("boardengine: board sync spawn failed", "exe", exe, "boardPath", abs, "cause", err)
 		return err
 	}
+	proc.Reap(cmd)
 	pid := cmd.Process.Pid
 	record := runproc.ChildRecord(pid, runproc.RoleSync, cmd.Args)
 	if err := runproc.Register(fabricengine.RunProcDir(filepath.Dir(abs)), runproc.HubOwner, record); err != nil {

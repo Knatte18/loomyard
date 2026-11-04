@@ -115,6 +115,8 @@ func TestWatch(t *testing.T) {
 			t.Parallel()
 
 			c := newTestCLI(t, &fakeStrands{})
+			reaps := 0
+			c.reapInherited = func() { reaps++ }
 			// The watch verb tells the watcher the prime's pause record, which needs a prime worktree to tell.
 			c.location = &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime", AnchorRel: "."}
 			if err := os.MkdirAll(filepath.Join(c.location.WorktreePath(), ".git"), 0o755); err != nil {
@@ -137,6 +139,9 @@ func TestWatch(t *testing.T) {
 			}
 			if tc.wantAlreadyRunning && env["already_running"] != true {
 				t.Errorf("watch = %v; want already_running", env)
+			}
+			if reaps != 1 {
+				t.Errorf("watch reaped inherited children %d times; want once, before it reads its state", reaps)
 			}
 		})
 	}

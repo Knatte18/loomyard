@@ -106,22 +106,31 @@ func recordPath(dir, owner string, rec Record) string {
 	return filepath.Join(dir, owner, fmt.Sprintf("%d-%s.json", rec.PID, rec.StartTime))
 }
 
-// lister reads the records of an owner against the liveness seams, so a test reaches the Windows branch on Linux.
+// lister reads the records of an owner against the liveness seams, so a test reaches the Windows branch and a zombie on any platform.
 type lister struct {
 	startTime func(pid int) (string, bool)
-	isAlive   func(pid int) bool
+	// isAlive reports whether the pid answers, a zombie included.
+	isAlive func(pid int) bool
+	// isRunning reports whether the pid answers and is not a zombie.
+	isRunning func(pid int) bool
+}
+
+// productionLister is the lister over the real process table.
+func productionLister() lister {
+	return lister{startTime: proc.StartTime, isAlive: proc.IsAlive, isRunning: proc.IsRunning}
 }
 
 // List returns the live records of one owner, ordered by pid.
-// It removes every record whose process is gone or whose pid now carries another start time, with its lock file; a record file that does not decode is skipped.
+// It removes, with its lock file, every record whose process is gone or whose pid now carries another start time; a record file that does not decode is skipped.
+// A record whose process is a zombie is left out of the result but kept on disk, since members of its group may still run and an end must still reach them; it is removed once the zombie is reaped.
 // A missing owner directory lists nothing.
 func List(dir, owner string) ([]Record, error) {
-	return lister{startTime: proc.StartTime, isAlive: proc.IsAlive}.list(dir, owner)
+	return productionLister().list(dir, owner)
 }
 
 // Owners returns List for every owner directory under dir, leaving out an owner with no live record.
 func Owners(dir string) (map[string][]Record, error) {
-	return lister{startTime: proc.StartTime, isAlive: proc.IsAlive}.owners(dir)
+	return productionLister().owners(dir)
 }
 
 func (l lister) owners(dir string) (map[string][]Record, error) {
@@ -167,22 +176,33 @@ func (l lister) list(dir, owner string) ([]Record, error) {
 		if err != nil || !found {
 			continue
 		}
-		if !l.live(record) {
+		present, running := l.liveness(record)
+		if !present {
 			_ = os.Remove(path)
 			_ = os.Remove(path + ".lock")
 			continue
 		}
-		records = append(records, record)
+		if running {
+			records = append(records, record)
+		}
 	}
 	slices.SortFunc(records, func(a, b Record) int { return a.PID - b.PID })
 	return records, nil
 }
 
-// live reports whether the record's process is still the one that was registered.
-// Where no start time can be read, as on Windows, a record with an empty start time lives while its pid does.
-func (l lister) live(record Record) bool {
-	if startTime, ok := l.startTime(record.PID); ok {
-		return startTime == record.StartTime
+// liveness reports whether the record's process is still the one that was registered, and whether it runs.
+// present is false when the pid is gone or carries another start time; running is false for a zombie, which has ended though its parent has not reaped it.
+// Where no start time can be read, as on Windows, a record with an empty start time is present while its pid answers.
+func (l lister) liveness(record Record) (present, running bool) {
+	if !l.isAlive(record.PID) {
+		return false, false
 	}
-	return record.StartTime == "" && l.isAlive(record.PID)
+	if startTime, ok := l.startTime(record.PID); ok {
+		if startTime != record.StartTime {
+			return false, false
+		}
+	} else if record.StartTime != "" {
+		return false, false
+	}
+	return true, l.isRunning(record.PID)
 }

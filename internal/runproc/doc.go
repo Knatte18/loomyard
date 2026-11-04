@@ -7,8 +7,9 @@
 // `HubOwner` is the Bolt checkout's directory name, which the fabric slug check refuses as reserved hub geometry, so no slug can take it.
 //
 // No process removes its own record.
-// List prunes on read: it drops every record whose pid is dead or now carries another start time, with its lock file, and skips a file that does not decode.
-// Where no start time can be read, as on Windows, a record with an empty start time lives while its pid does.
+// List prunes on read: it drops, with its lock file, every record whose pid is gone or now carries another start time, and skips a file that does not decode.
+// A zombie has ended and only waits for its parent's wait, so List leaves its record out of the result but keeps the file until the zombie is reaped; members of the zombie leader's group may still run, and End still reaches them through the kept record.
+// Where no start time can be read, as on Windows, a record with an empty start time lives while its pid runs.
 // Owners lists every owner directory the same way.
 //
 // End, EndSparing and EndRole are the only ways an owner's registered processes are ended, and End is the base sequence.

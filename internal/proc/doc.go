@@ -12,6 +12,10 @@
 // IsAlive reports whether a pid answers a signal, which a zombie still does;
 // IsRunning reports whether it is alive and not a zombie, so a process that exited but was not yet reaped counts as gone.
 //
+// Reap waits on a started command in the background, so a detached child its starter never waits on leaves no zombie.
+// ReapInheritedChildren waits in the background on every child the calling process has:
+// a process that re-execs itself keeps its children but not the goroutines that waited on them, so the new image calls it before it starts a child of its own.
+//
 // TreeCPU samples the user plus system CPU time of a process and each of its descendants.
 // IsAncestor reports whether a pid is one of the calling process's ancestors.
 // ListProcesses lists every process with its start time, exe and cwd links and command line.

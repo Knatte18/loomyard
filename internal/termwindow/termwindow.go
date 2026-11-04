@@ -101,7 +101,8 @@ func (l Launcher) OpenAttach(dir, title, lymPath string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("termwindow: start %s: %w", l.name, err)
 	}
-	return cmd.Process.Release()
+	proc.Reap(cmd)
+	return nil
 }
 
 // pairGoneWaitSeconds is how long a window whose attach ended with a nonzero status waits for the run's worktree to be removed before it keeps an interactive shell.

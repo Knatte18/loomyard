@@ -360,7 +360,7 @@ func liftOwnerPause(prime *lymcwd.Location, recordPath, slug string) error {
 	return nil
 }
 
-// spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor, and delivers its exit once.
+// spawnPass starts `<lym> batten run <slug>` for geom as its own process, in the prime's anchor, and delivers its exit once, which reaps it.
 // The pass registers itself in the run-process registry as the run's batten, so dobby registers nothing.
 func spawnPass(geom dobbyengine.Geometry, slug string, continuePass, noReopen bool) (<-chan dobbyengine.PassExit, error) {
 	if testing.Testing() {

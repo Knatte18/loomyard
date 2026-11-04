@@ -132,12 +132,19 @@ type unit struct {
 	members   []watched
 }
 
+// recordLister returns the lister an end reads records through.
+// A record whose leader is a zombie stays listed: members of its group may still run, and the group signal must reach them.
+// The lister's running check is therefore the alive check.
+func (e ender) recordLister() lister {
+	return lister{startTime: e.startTime, isAlive: e.isAlive, isRunning: e.isAlive}
+}
+
 // end is the sequence behind End, EndSparing and EndRole: a live record whose role the ends predicate rejects is treated like the caller, left out of every signalled set with the processes below it.
 func (e ender) end(dir, owner string, callerPID int, ends func(role string) bool) ([]Ended, error) {
 	if e.goos == "windows" {
 		return nil, nil
 	}
-	list := lister{startTime: e.startTime, isAlive: e.isAlive}
+	list := e.recordLister()
 	attempted := map[string]bool{}
 	var ended, survivors []Ended
 	for pass := 0; pass < endPasses; pass++ {

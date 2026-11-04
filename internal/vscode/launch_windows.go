@@ -23,6 +23,7 @@ func Launch(worktreeDir string) error {
 		logger.Warn("vscode: VS Code launch spawn failed", "worktreeDir", worktreeDir, "cause", err)
 		return fmt.Errorf("launch code: %w", err)
 	}
+	proc.Reap(cmd)
 
 	return nil
 }

@@ -219,7 +219,7 @@ func suiteArgs(subject string) []string {
 }
 
 // startSuite starts the adopt check of subject detached in dir, with its stdout and stderr appended to the file at outPath, and returns its pid.
-// The check is started and never waited for, so the adopt returns while it runs; the file holds a losing check's envelope and a panic, and the gate's own output goes to the suite log the check truncates.
+// The check is reaped in the background through proc.Reap rather than waited for, so the adopt returns while it runs; the file holds a losing check's envelope and a panic, and the gate's own output goes to the suite log the check truncates.
 // It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
 func startSuite(dir, outPath, subject string) (int, error) {
 	if testing.Testing() {
@@ -248,6 +248,7 @@ func startSuite(dir, outPath, subject string) (int, error) {
 		logger.Warn("adoptcli: the adopt check did not start", "exe", executable, "args", args, "dir", dir, "error", err)
 		return 0, err
 	}
+	proc.Reap(command)
 	pid := command.Process.Pid
 	logger.Info("adoptcli: spawned the adopt check", "exe", executable, "args", args, "dir", dir, "pid", pid, "out", outPath)
 	return pid, nil

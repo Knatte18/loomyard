@@ -446,6 +446,7 @@
 // A watcher never told a pause record reads no entry, and a state or record read error waits for the next tick.
 //
 // The exec keeps the argv and environment, and the watch lock does not survive it, since the lock file is opened close-on-exec.
+// The exec keeps the watcher's children too, but not the goroutines that waited on them, so `lym orch watch` reaps every child it has through `proc.ReapInheritedChildren` before it starts anything.
 // The new image takes the lock again through the acquire retry.
 // In that gap a start may spawn a second watcher; both contend for the one lock and the loser exits as already running, so exactly one watcher remains.
 // A refresh, distill, hub pause or revive in the gap reports no live watcher, as it does with none.

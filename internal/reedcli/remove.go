@@ -75,10 +75,12 @@ func (c *reedCLI) spawnDetachedRemove(guid string, recursive bool) error {
 	proc.Detach(cmd)
 
 	logger.Info("reed: spawning detached remove", "exe", exe, "guid", guid, "dir", c.anchorPath, "wait_pid", os.Getpid())
-	if err := cmd.Start(); err != nil { // no Wait: detached, so the spawn is the only lifecycle line
+	// Detached, so the spawn is the only lifecycle line.
+	if err := cmd.Start(); err != nil {
 		logger.Warn("reed: detached remove spawn failed", "exe", exe, "guid", guid, "err", err)
 		return fmt.Errorf("spawn detached remove: %w", err)
 	}
+	proc.Reap(cmd)
 	return nil
 }
 

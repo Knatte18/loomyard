@@ -24,6 +24,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/output"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/spf13/cobra"
 )
 
@@ -383,16 +384,27 @@ machine owns the beam. It is launched by "lym beam start", never by hand.`,
 // runDobby places the worktree at root, registers this process as its dobby and runs it until ctx ends, and prints the outcome.
 // A worktree dobby cannot be placed is refused before anything is registered or locked, and the registration waits for the lock, so a dobby that finds another one holding it ends the call with nothing registered.
 func runDobby(ctx context.Context, out io.Writer, root string) int {
-	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped)
+	return runDobbyWith(ctx, out, root, hubDobbyDeps, orchcli.NotifyFromScoped, reapInheritedChildren)
 }
 
-// runDobbyWith is runDobby over the seams that wire the dobby over the hub and post a notice to the nearest live orch.
+// reapInheritedChildren waits on the batten passes a dobby re-exec'd onto a new binary keeps from its old image, with nothing left waiting on them.
+func reapInheritedChildren() {
+	if pids, err := proc.ReapInheritedChildren(); err != nil {
+		logger.Warn("beamcli: the dobby's inherited children are not reaped", "error", err)
+	} else if len(pids) > 0 {
+		logger.Info("beamcli: the dobby reaps the children it inherited", "pids", pids)
+	}
+}
+
+// runDobbyWith is runDobby over the seams that wire the dobby over the hub, post a notice to the nearest live orch and reap the children it inherited.
+// The reap runs once the worktree is placed and before the dobby starts anything, so a refused start waits on no child of the process.
 // Each exit it takes before dobbyengine.Run leaves a line in the dobby's log, and one after a re-exec also a notice.
 // Where selfexec execs, it moves the process's standard output and error onto the beam's `dobby.out`, and rotates that file once it holds the lock.
 func runDobbyWith(
 	ctx context.Context, out io.Writer, root string,
 	wire func(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengine.Deps, error),
 	notify func(from *lymcwd.Location, slug, program, line string) (bool, error),
+	reap func(),
 ) int {
 	location, prime, geom, err := placeDobby(root)
 	if err != nil {
@@ -401,6 +413,7 @@ func runDobbyWith(
 		}
 		return output.Err(out, err.Error())
 	}
+	reap()
 	if selfexecs() {
 		if err := reopenStdio(geom.OutPath); err != nil {
 			logger.Warn("beamcli: the dobby's output was not moved onto its output file", "path", geom.OutPath, "error", err)

@@ -135,6 +135,7 @@ func TestRegisterAndList(t *testing.T) {
 	unreadable := lister{
 		startTime: func(int) (string, bool) { return "", false },
 		isAlive:   func(int) bool { return alive },
+		isRunning: func(int) bool { return alive },
 	}
 	if listed, err := unreadable.list(dir, "windows"); err != nil || len(listed) != 1 {
 		t.Errorf("list with the pid alive = %+v, %v; want the record kept", listed, err)
@@ -142,5 +143,33 @@ func TestRegisterAndList(t *testing.T) {
 	alive = false
 	if listed, err := unreadable.list(dir, "windows"); err != nil || len(listed) != 0 {
 		t.Errorf("list with the pid dead = %+v, %v; want the record pruned", listed, err)
+	}
+
+	// A zombie's stat still carries the registered start time: the record is left out of the listing yet kept on disk, until the zombie is gone.
+	if err := Register(dir, "zombie", self); err != nil {
+		t.Fatal(err)
+	}
+	running, alive := true, true
+	zombieAware := lister{
+		startTime: func(int) (string, bool) { return self.StartTime, true },
+		isAlive:   func(int) bool { return alive },
+		isRunning: func(int) bool { return running },
+	}
+	if listed, err := zombieAware.list(dir, "zombie"); err != nil || len(listed) != 1 {
+		t.Errorf("list with the pid running = %+v, %v; want the record listed", listed, err)
+	}
+	running = false
+	if listed, err := zombieAware.list(dir, "zombie"); err != nil || len(listed) != 0 {
+		t.Errorf("list with the pid a zombie = %+v, %v; want the record left out", listed, err)
+	}
+	if _, err := os.Stat(recordPath(dir, "zombie", self)); err != nil {
+		t.Errorf("Stat(zombie record) = %v; want the file kept for an end to reach the group", err)
+	}
+	alive = false
+	if listed, err := zombieAware.list(dir, "zombie"); err != nil || len(listed) != 0 {
+		t.Errorf("list with the pid reaped = %+v, %v; want nothing", listed, err)
+	}
+	if _, err := os.Stat(recordPath(dir, "zombie", self)); !os.IsNotExist(err) {
+		t.Errorf("Stat(zombie record) after the reap = %v; want the file removed", err)
 	}
 }

@@ -107,6 +107,7 @@
 // # dobby
 //
 // `dobby <worktree root>` is hidden and internal: `dobbyengine.SpawnDetached` launches it, with the hub root as its working directory.
+// Before it starts anything it reaps every child it already has through `proc.ReapInheritedChildren`: a dobby re-exec'd onto a new binary keeps the batten passes its old image started, with no wait left on them.
 // It resolves the prime and runs `dobbyengine.Run` over `hubDobbyDeps` under a SIGINT/SIGTERM context.
 // `registerDobby` runs only once `Run` holds the lock, through `Deps.Locked`: it writes `runproc.SelfRecord(runproc.RoleDobby)` under the beam's slug, or `runproc.HubOwner` for the prime, so the pair teardown of a landed beam ends that beam's dobby.
 // It prints `already_running` when the lock stays held past the lock wait, with nothing registered.

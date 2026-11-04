@@ -65,10 +65,12 @@ func SpawnWatchdog(hubPath, tmuxPath, shellPath string, suppress bool) {
 	proc.Detach(cmd)
 
 	logger.Info("reed: spawning detached per-hub watchdog", "exe", exe, "hub", hubPath, "tmux", tmuxPath, "shell", shellPath)
-	if err := cmd.Start(); err != nil { // intentionally not Wait()ed: a detached Start with no Wait
-		// logs the spawn alone, since there is no teardown to log.
+	// A detached spawn logs the spawn alone, since there is no teardown to log.
+	if err := cmd.Start(); err != nil {
 		logger.Warn("reed: watchdog spawn failed", "exe", exe, "hub", hubPath, "err", err)
+		return
 	}
+	proc.Reap(cmd)
 }
 
 // spawnWatchdogEnv returns environ without any entry whose key is exactly LYM_LOG_FILE.

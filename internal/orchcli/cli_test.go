@@ -115,6 +115,7 @@ func newTestCLI(t *testing.T, fake *fakeStrands) *orchCLI {
 		indexRunner:     func(string) (string, error) { return fakeRunnerIndex, nil },
 		newCreel:        func() (orchengine.Creel, error) { return &fakeCreel{}, nil },
 		spawnWatcher:    func() error { return nil },
+		reapInherited:   func() {},
 		// A short wait keeps a stop that finds start.lock held from waiting out the production minute.
 		startLockWait: 100 * time.Millisecond,
 		paths: orchengine.Paths{

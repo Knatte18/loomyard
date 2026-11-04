@@ -118,6 +118,8 @@ type orchCLI struct {
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
 	endDobby func() error
+	// reapInherited waits on the children a re-exec'd watcher inherited, which `watch` calls before it starts anything.
+	reapInherited func()
 }
 
 // Command returns the cobra command tree for the orch module.
@@ -237,6 +239,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.spawnWatcher = c.spawnWatcherProcess
 	c.startLockWait = stopStartLockWait
 	c.sleep = time.Sleep
+	c.reapInherited = reapInheritedChildren
 	c.indexRunner = runHelpIndex
 	c.executable = os.Executable
 	c.currentBuild = statuspane.CurrentBuild

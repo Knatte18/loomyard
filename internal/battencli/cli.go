@@ -503,7 +503,7 @@ func (c *battenCLI) startFirstPass(cmd *cobra.Command) error {
 }
 
 // spawnDetachedPass starts `<lym> args...` as a detached process in its own process group with dir as its working directory, and returns its pid.
-// The child's output is discarded, and the child is started but never waited for.
+// The child's output is discarded, and the child is reaped in the background while this process lives.
 // It returns an error, starting nothing, in a test binary, where forking the running binary would re-run the test suite.
 func spawnDetachedPass(dir string, args []string) (int, error) {
 	if testing.Testing() {
@@ -521,6 +521,7 @@ func spawnDetachedPass(dir string, args []string) (int, error) {
 		return 0, err
 	}
 	logger.Info("battencli: spawned pass", "exe", executable, "args", args, "dir", dir, "pid", cmd.Process.Pid)
+	proc.Reap(cmd)
 	return cmd.Process.Pid, nil
 }
 

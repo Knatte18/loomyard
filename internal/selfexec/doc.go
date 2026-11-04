@@ -9,6 +9,7 @@
 // A changed identity is acted on only when it is seen on two consecutive checks, so a binary caught mid-write is not exec'd.
 // A failed stat counts as unchanged, logs at Debug and resets that streak.
 // The exec replaces the process with the recorded path, its own os.Args and its own environment, logging at Info first; that is the spawn's log.
+// The new image keeps the process's children but none of the goroutines that waited on them, so a caller that starts children reaps them again with `proc.ReapInheritedChildren` before it starts one.
 // A failed exec logs at Warn and marks that identity as failed, so no later check execs for it again; a different identity is tried again after its own two checks.
 // Nothing a poll repeats logs above Debug.
 //

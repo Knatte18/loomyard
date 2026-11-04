@@ -14,11 +14,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/parentlock"
+	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
 	"github.com/spf13/cobra"
 )
@@ -77,6 +79,15 @@ func beamOwnerElsewhere(location *lymcwd.Location) (owner string, elsewhere bool
 	return owner, boardengine.OwnedElsewhere(owner, here), nil
 }
 
+// reapInheritedChildren waits on the children a watcher re-exec'd onto a new binary keeps from its old image, with nothing left waiting on them.
+func reapInheritedChildren() {
+	if pids, err := proc.ReapInheritedChildren(); err != nil {
+		logger.Warn("orch: the watcher's inherited children are not reaped", "error", err)
+	} else if len(pids) > 0 {
+		logger.Info("orch: the watcher reaps the children it inherited", "pids", pids)
+	}
+}
+
 // watchCmd builds the `watch` subcommand, hidden because start launches it and an operator never needs to.
 func (c *orchCLI) watchCmd() *cobra.Command {
 	return &cobra.Command{
@@ -93,6 +104,7 @@ A second watcher finding the first alive reports already_running and exits.`,
 				return nil
 			}
 			out := cmd.OutOrStdout()
+			c.reapInherited()
 
 			st, err := orchengine.LoadState(c.paths)
 			if err != nil {

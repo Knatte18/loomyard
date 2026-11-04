@@ -468,6 +468,7 @@ func (e *Engine) ensureServerAndSessionLocked() (booted bool, strippedKeys []str
 			logger.Warn("reed: failed to start tmux server", "socket", e.Socket(), "session", session, "err", err)
 			return fmt.Errorf("start tmux: %w", err)
 		}
+		proc.Reap(cmd)
 		logger.Info("reed: spawned tmux server", "socket", e.Socket(), "session", session, "pid", cmd.Process.Pid)
 		return nil
 	}

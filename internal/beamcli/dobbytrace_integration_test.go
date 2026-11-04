@@ -50,13 +50,15 @@ func TestRunDobbyWith_TracesEachExitBeforeRun(t *testing.T) {
 		notices = append(notices, postedNotice{from.WorktreeName, slug, program, line})
 		return true, nil
 	}
+	reaps, reapsAtWiring := 0, -1
 	failWiring := func(*lymcwd.Location, dobbyengine.Geometry) (dobbyengine.Deps, error) {
+		reapsAtWiring = reaps
 		return dobbyengine.Deps{}, errors.New("hub unreadable")
 	}
 	run := func(root string, wire func(*lymcwd.Location, dobbyengine.Geometry) (dobbyengine.Deps, error)) string {
 		t.Helper()
 		var out bytes.Buffer
-		runDobbyWith(context.Background(), &out, root, wire, notify)
+		runDobbyWith(context.Background(), &out, root, wire, notify, func() { reaps++ })
 		return out.String()
 	}
 	readLog := func(path string) string {
@@ -82,6 +84,9 @@ func TestRunDobbyWith_TracesEachExitBeforeRun(t *testing.T) {
 	if got := readLog(primeGeom.LogPath); !strings.Contains(got, startFailed) || len(notices) != 0 {
 		t.Fatalf("prime log, notices after a failed wiring with no state record = %q, %v; want the start-failed line and no notice", got, notices)
 	}
+	if reaps != 1 || reapsAtWiring != 1 {
+		t.Fatalf("reaps after a placed worktree, reaps when wiring ran = %d, %d; want the one reap done before the wiring", reaps, reapsAtWiring)
+	}
 
 	recordThisPid(primeGeom.StatePath)
 	envelope.RequireErr(t, run(h.PrimeWorktree(), failWiring), "hub unreadable")
@@ -104,6 +109,9 @@ func TestRunDobbyWith_TracesEachExitBeforeRun(t *testing.T) {
 	}
 	if len(notices) != 2 {
 		t.Fatalf("notices after the refusal = %v; want a second", notices)
+	}
+	if reaps != 2 {
+		t.Errorf("reaps after a refused placement = %d; want still 2, the refused start reaping nothing", reaps)
 	}
 	if n := notices[1]; n.worktree != "task1" || n.slug != "task1" || !strings.Contains(n.line, "is neither the prime nor a beam") || !strings.Contains(n.line, wayForward) {
 		t.Errorf("notice = %+v; want task1's, naming the refusal and %q", n, wayForward)

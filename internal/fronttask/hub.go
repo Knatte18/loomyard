@@ -109,7 +109,7 @@ func HubSettleDeps(prime *lymcwd.Location, beam string) (SettleDeps, error) {
 	}, nil
 }
 
-// startDetached starts command detached, releases its handle and returns its pid.
+// startDetached starts command detached, reaps it in the background and returns its pid.
 // It starts nothing and returns an error in a test binary, where forking the running binary would re-run the test binary.
 func startDetached(command *exec.Cmd) (int, error) {
 	if testing.Testing() {
@@ -119,9 +119,8 @@ func startDetached(command *exec.Cmd) (int, error) {
 	if err := command.Start(); err != nil {
 		return 0, err
 	}
-	pid := command.Process.Pid
-	// The dobby that started it never waits for it, so the handle is released to leave no zombie.
-	return pid, command.Process.Release()
+	proc.Reap(command)
+	return command.Process.Pid, nil
 }
 
 // startAction builds the lym command of the action table's row key for subject, to run in the prime's anchor with its output appended to a file in the front-task directory, and starts it through start.

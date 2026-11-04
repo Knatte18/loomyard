@@ -258,13 +258,19 @@ func Live(geom Geometry) (bool, error) {
 }
 
 // SpawnDetached starts `<lym> beam dobby <worktree root>` for geom as a detached process with the hub root as its working directory.
-// The child's output is appended to the file at geom.OutPath, and the child is started but never waited for.
+// The child's output is appended to the file at geom.OutPath, and the child is reaped in the background while this process lives.
 // It returns ErrSpawnUnderTest, starting nothing, in a test binary.
 func SpawnDetached(geom Geometry) error {
 	if testing.Testing() {
 		return ErrSpawnUnderTest
 	}
-	return spawnDetached(geom, (*exec.Cmd).Start)
+	return spawnDetached(geom, func(cmd *exec.Cmd) error {
+		if err := cmd.Start(); err != nil {
+			return err
+		}
+		proc.Reap(cmd)
+		return nil
+	})
 }
 
 // spawnDetached rotates the raw-output file where the platform needs it, opens geom.OutPath for append, builds the dobby command with stdout and stderr on that file and starts it through start.
