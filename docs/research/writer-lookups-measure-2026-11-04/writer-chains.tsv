@@ -1,0 +1,15 @@
+slug	session	role	start_turn	length	calls	ctx_first	ctx_max	cost_usd	first_turn_cost_usd	cost_over_line_usd
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	3	4	5	26485	59608	0.2359	0.0217	0.0000
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	13	11	11	92379	120339	0.6911	0.0597	0.0000
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	7	30	26687	185837	0.9827	0.0085	0.0000
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	11	5	5	200286	213463	0.3465	0.0813	0.3465
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	21	6	6	232172	259378	0.4907	0.0600	0.4907
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	9	28	26708	207355	1.1837	0.0088	0.1934
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	13	5	10	226041	252249	0.5474	0.1076	0.5474
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	3	20	28	26483	191041	1.7348	0.0216	0.0000
+decision-record-on-board	b6756453-ec14-4e68-9423-67de6eeeb9e0	discussion	3	4	5	26488	59317	0.2256	0.0216	0.0000
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	3	15	34	26488	162563	1.3220	0.0217	0.0000
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	8	34	26745	147253	0.7959	0.0086	0.0000
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	13	4	12	216111	260443	0.5201	0.1162	0.5201
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	18	2	5	269766	280556	0.2055	0.0886	0.2055
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	28	3	3	336024	340183	0.2692	0.1008	0.2692

@@ -1,0 +1,51 @@
+slug	session	role	batch	kind	description	model	questions	turns	cost_usd
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	lookup	Trace bug 2: archive tag push	sonnet	5	7	0.20300720000000003
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	lookup	Trace bug 3: cancel push race	sonnet	6	8	0.31434490000000004
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	1	lookup	Trace bug 1: pair gone	sonnet	6	9	0.239793
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: interactions	inherit	4	3	0.2472856
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: board-scope	inherit	4	3	0.128999
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: leanness	inherit	4	2	0.0935674
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: existing-paths	inherit	4	5	0.356288
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: walkthrough	inherit	4	5	0.2983432
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	2	fork	Lens: bound-breaker	inherit	4	5	0.5133928
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	lookup	Fabric pushes and locks lookup	sonnet	7	11	0.39558580000000004
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	lookup	Batten pre-run flow lookup	sonnet	9	10	0.3788542
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	lookup	Fabric remove way-forward lookup	sonnet	6	8	0.26746410000000004
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	1	lookup	Origin reconcile entry lookup	sonnet	5	4	0.2373652
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	2	fork	fork0 writes the plan	inherit	5	16	2.5869406
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	fork	Lens row-validity review	inherit	4	4	0.6110864
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	fork	Lens coverage review	inherit	4	4	0.6153476000000001
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	fork	Lens way-forward review	inherit	4	8	0.9547620000000001
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	fork	Lens guard-reach review	inherit	4	7	0.9944442
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	3	fork	Lens forced-edits review	inherit	4	8	1.003327
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	lookup	Find docs naming board get, decision verbs	sonnet	6	5	0.1792786
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	lookup	Map boardengine tests and helpers	sonnet	8	5	0.1732147
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	1	lookup	Map loomcli decision and seam tests	sonnet	7	9	0.2107313
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	2	fork	fork0 writes the plan	inherit	5	20	2.0106478
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	fork	Lens fork: way-forward	inherit	4	5	0.6605924000000001
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	fork	Lens fork: row-validity	inherit	4	6	0.6641174
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	fork	Lens fork: guard-reach	inherit	4	3	0.5078813999999999
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	fork	Lens fork: coverage	inherit	4	2	0.3182502
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	3	fork	Lens fork: forced-edits	inherit	4	7	0.6848044
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: leanness	inherit	4	2	0.1435062
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: walkthrough	inherit	4	4	0.300105
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: interactions	inherit	4	3	0.3052828
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: board-scope	inherit	4	3	0.1777312
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: bound-breaker	inherit	4	4	0.40944060000000004
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	1	fork	Lens: existing-paths	inherit	4	6	0.4321368
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: walkthrough	inherit	4	5	0.39139960000000007
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: bound-breaker	inherit	4	4	0.3608022
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: board-scope	inherit	4	4	0.2349542
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: leanness	inherit	4	2	0.20767460000000001
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: interactions	inherit	4	3	0.25298160000000003
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	1	fork	Lens: existing-paths	inherit	4	7	0.4724472
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	lookup	Registry coverage guards lookup	sonnet	5	7	0.2345602
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	lookup	Status rendering lookup	sonnet	4	4	0.1941144
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	lookup	Tapestry-by-name sites	sonnet	0	6	0.22587669999999999
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	1	lookup	Profile block lookup	sonnet	0	6	0.15137520000000002
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	2	fork	fork0 writes the plan	inherit	5	12	1.8045417999999998
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	fork	Lens forced-edits review	inherit	4	9	1.0799172000000001
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	fork	Lens guard-reach review	inherit	4	4	0.5625194
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	fork	Lens row-validity review	inherit	4	6	0.7384034
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	fork	Lens way-forward review	inherit	4	3	0.37942240000000005
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	3	fork	Lens coverage review	inherit	4	3	0.5089878

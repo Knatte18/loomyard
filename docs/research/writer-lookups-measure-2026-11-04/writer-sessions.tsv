@@ -1,0 +1,9 @@
+slug	session	role	turns	cost_usd	explore_turns	explore_cost_usd	explore_over_line_usd	explore_over_line_turns	chains	chain_turns	chain_cost_usd	chains3	chain3_turns	chain3_cost_usd	chain3_first_turn_cost_usd	agent_turns	max_ctx	explore_result_tokens	explore_result_carry_usd	search_turns	search_cost_usd	search_over_line_usd
+batten-remote-order	2a21cc59-db9b-4250-8a2d-60cc010620dc	discussion	32	2.7903	19	1.2736	0.0000	0	2	15	0.9270	2	15	0.9270	0.0813	2	185579	78739	0.7074	15	1.0368	0.0000
+batten-remote-order	a398e4f3-ba57-4b24-b1d6-596f17b4bd1f	plan	46	5.6273	22	2.2159	1.2331	15	3	18	1.8199	3	18	1.8199	0.1498	3	379790	251873	2.9231	17	1.9460	1.0687
+decision-record-on-board	28d93419-263a-4ffe-8d12-419ea0b81ad9	plan	32	4.1524	16	1.9295	0.9392	9	2	14	1.7311	2	14	1.7311	0.1164	3	346633	252183	2.3530	6	1.0056	0.4771
+decision-record-on-board	36602133-4927-4580-9929-a4f9bc571cd5	discussion	33	3.3310	22	1.8872	0.1524	2	1	20	1.7348	1	20	1.7348	0.0216	1	248946	169685	1.5887	18	1.7396	0.0899
+decision-record-on-board	b6756453-ec14-4e68-9423-67de6eeeb9e0	discussion	6	0.3637	4	0.2256	0.0000	0	1	4	0.2256	1	4	0.2256	0.0216	0	59317	32829	0.1730	3	0.2040	0.0000
+shed-sub-run-block	02072f8e-c066-4701-a378-a4832af2946d	discussion	26	2.7974	17	1.4953	0.0816	1	1	15	1.3220	1	15	1.3220	0.0217	1	220830	140479	1.1500	12	1.1334	0.0816
+shed-sub-run-block	ff2ee39d-1896-4684-8752-c15b4f20d8f7	plan	37	4.7025	19	1.9997	1.2038	11	4	17	1.7907	3	15	1.5852	0.2256	3	371160	233249	2.3554	9	1.1292	0.5898
+TOTAL	7 sessions		212	23.7645	119	11.0266	3.6101	38	14	103	9.5511	13	101	9.3456	0.6380	13		1159037	11.2507	80	8.1946	2.3071
