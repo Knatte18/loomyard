@@ -43,7 +43,7 @@ func TestWriteVSCodeConfigCreatesFilesWhenAbsent(t *testing.T) {
 	dir := t.TempDir()
 	lymPath := "/opt/lym/bin/lym"
 
-	if err := WriteConfig(dir, ".", testLook, lymPath); err != nil {
+	if err := WriteConfig(dir, ".", testLook, true, lymPath); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -125,7 +125,7 @@ func TestWriteConfigFallsBackToBareName(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	if err := WriteConfig(dir, ".", testLook, ""); err != nil {
+	if err := WriteConfig(dir, ".", testLook, true, ""); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -158,7 +158,7 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 		t.Fatalf("failed to write original tasks.json: %v", err)
 	}
 
-	if err := WriteConfig(dir, ".", testLook, "/opt/lym/bin/lym"); err != nil {
+	if err := WriteConfig(dir, ".", testLook, true, "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 
@@ -191,6 +191,89 @@ func TestWriteConfigRewritesOwnSettingsKeysAndOverwritesTasks(t *testing.T) {
 	}
 }
 
+// TestWriteConfigOwnsMarkdownPreviewEntry pins the "*.md" editor association: set to the markdown preview when asked to render, removed while it names the preview when not, and every other association kept.
+func TestWriteConfigOwnsMarkdownPreviewEntry(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name     string
+		existing string
+		render   bool
+		// want is the workbench.editorAssociations value after the write, nil for no key.
+		want any
+	}{
+		{name: "FreshFileRendered", render: true, want: map[string]any{"*.md": "vscode.markdown.preview.editor"}},
+		{name: "FreshFileNotRendered", render: false, want: nil},
+		{
+			name:     "RenderKeepsOtherAssociations",
+			existing: `{"workbench.editorAssociations": {"*.png": "imagePreview.previewEditor", "*.md": "default"}}`,
+			render:   true,
+			want:     map[string]any{"*.png": "imagePreview.previewEditor", "*.md": "vscode.markdown.preview.editor"},
+		},
+		{
+			name:     "OffRemovesPreviewAndEmptyMap",
+			existing: `{"workbench.editorAssociations": {"*.md": "vscode.markdown.preview.editor"}}`,
+			render:   false,
+			want:     nil,
+		},
+		{
+			name:     "OffKeepsOperatorsMarkdownEditor",
+			existing: `{"workbench.editorAssociations": {"*.md": "default"}}`,
+			render:   false,
+			want:     map[string]any{"*.md": "default"},
+		},
+		{
+			name:     "RenderReplacesNullAssociations",
+			existing: `{"workbench.editorAssociations": null}`,
+			render:   true,
+			want:     map[string]any{"*.md": "vscode.markdown.preview.editor"},
+		},
+		{
+			name:     "RenderKeepsArrayFormAssociations",
+			existing: `{"workbench.editorAssociations": [{"viewType": "imagePreview.previewEditor", "filenamePattern": "*.png"}]}`,
+			render:   true,
+			want:     []any{map[string]any{"viewType": "imagePreview.previewEditor", "filenamePattern": "*.png"}},
+		},
+		{
+			name:     "OffKeepsArrayFormAssociations",
+			existing: `{"workbench.editorAssociations": [{"viewType": "imagePreview.previewEditor", "filenamePattern": "*.png"}]}`,
+			render:   false,
+			want:     []any{map[string]any{"viewType": "imagePreview.previewEditor", "filenamePattern": "*.png"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			settingsPath := filepath.Join(dir, ".vscode", "settings.json")
+			if tt.existing != "" {
+				if err := os.MkdirAll(filepath.Dir(settingsPath), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(settingsPath, []byte(tt.existing), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			if err := WriteConfig(dir, ".", testLook, tt.render, "/opt/lym/bin/lym"); err != nil {
+				t.Fatalf("WriteConfig(render %v) failed: %v", tt.render, err)
+			}
+
+			data, err := os.ReadFile(settingsPath)
+			if err != nil {
+				t.Fatalf("read settings.json: %v", err)
+			}
+			var settings map[string]any
+			if err := json.Unmarshal(data, &settings); err != nil {
+				t.Fatalf("settings.json is not valid JSON: %v\n%s", err, data)
+			}
+			if got := settings["workbench.editorAssociations"]; !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("WriteConfig(render %v) workbench.editorAssociations = %v; want %v", tt.render, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestWriteConfigLeavesUndecodableSettingsAlone pins that a settings.json that is not a JSON object keeps its bytes while tasks.json is still written.
 func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -205,7 +288,7 @@ func TestWriteConfigLeavesUndecodableSettingsAlone(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := WriteConfig(dir, ".", testLook, "/opt/lym/bin/lym"); err != nil {
+		if err := WriteConfig(dir, ".", testLook, true, "/opt/lym/bin/lym"); err != nil {
 			t.Fatalf("WriteConfig(%q settings) failed: %v", content, err)
 		}
 
@@ -226,7 +309,7 @@ func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 
-	if err := WriteConfig(dir, ".", testLook, "/opt/lym/bin/lym"); err != nil {
+	if err := WriteConfig(dir, ".", testLook, true, "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".gitignore")); !os.IsNotExist(err) {
@@ -237,7 +320,7 @@ func TestWriteConfigLeavesGitignoreAlone(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), existing, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteConfig(dir, ".", testLook, "/opt/lym/bin/lym"); err != nil {
+	if err := WriteConfig(dir, ".", testLook, true, "/opt/lym/bin/lym"); err != nil {
 		t.Fatalf("WriteConfig failed: %v", err)
 	}
 	got, _ := os.ReadFile(filepath.Join(dir, ".gitignore"))

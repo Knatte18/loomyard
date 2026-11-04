@@ -56,7 +56,7 @@ A local override file is pruned of every such key on any reconcile, since its lo
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one, except `runprofile`.
 
-- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, lenses, desktophook, heddleengine, hibernateconfig, envconfig}`.
+- Degrading callers: `{shuttleengine, claudeengine, reedengine, websterengine, batcher, orchengine, loggerconfig, battenshed, languageconfig, lenses, desktophook, heddleengine, hibernateconfig, ideconfig, envconfig}`.
 - Strict callers: `{fabricengine, boardengine, loomengine, landingshed, gateslot, configcli, configreg}`.
   `configcli` loads strictly only to validate a hub-wide module's file before committing it.
   `configreg` loads strictly only to answer a recipe row's setting.

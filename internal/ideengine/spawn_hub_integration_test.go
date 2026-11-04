@@ -26,14 +26,70 @@ import (
 // recordLauncher swaps CodeLauncher for a recorder and returns the launched paths, restoring the seam on cleanup.
 func recordLauncher(t *testing.T) *[]string {
 	t.Helper()
+	launched, _ := recordLaunches(t)
+	return launched
+}
+
+// recordLaunches swaps CodeLauncher for a recorder and returns the launched paths and, per launch, the files opened beside the path, restoring the seam on cleanup.
+func recordLaunches(t *testing.T) (launched *[]string, opened *[][]string) {
+	t.Helper()
 	original := CodeLauncher
 	t.Cleanup(func() { CodeLauncher = original })
-	var launched []string
-	CodeLauncher = func(path string) error {
-		launched = append(launched, path)
+	var paths []string
+	var files [][]string
+	CodeLauncher = func(path string, openFiles ...string) error {
+		paths = append(paths, path)
+		files = append(files, openFiles)
 		return nil
 	}
-	return &launched
+	return &paths, &files
+}
+
+// setIDEConfig writes h's hub ide.yaml with contents and removes it on cleanup.
+func setIDEConfig(t *testing.T, h *hubforge.Hub, contents string) {
+	t.Helper()
+	board := fabricengine.BoltDir(h.Location.HubPath)
+	if err := os.MkdirAll(configengine.ConfigDir(board), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", configengine.ConfigDir(board), err)
+	}
+	configPath := configengine.ConfigFile(board, "ide")
+	if err := os.WriteFile(configPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", configPath, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Remove(configPath); err != nil && !os.IsNotExist(err) {
+			t.Errorf("remove %s: %v", configPath, err)
+		}
+	})
+}
+
+// setLocalIDEConfig writes the local override of the ide module under anchor, where a worktree's local config layer is read from, and removes it on cleanup.
+func setLocalIDEConfig(t *testing.T, anchor, contents string) {
+	t.Helper()
+	for _, dir := range []string{configengine.ConfigDir(anchor), configengine.ScratchDir(anchor)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%q): %v", dir, err)
+		}
+	}
+	localPath := configengine.LocalFile(anchor, "ide")
+	if err := os.WriteFile(localPath, []byte(contents), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", localPath, err)
+	}
+	t.Cleanup(func() { _ = os.Remove(localPath) })
+}
+
+// writeFileUnder writes a small file at rel under dir, creating its directory, and removes the file on cleanup.
+func writeFileUnder(t *testing.T, dir, rel string) string {
+	t.Helper()
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(full, []byte("# "+rel+"\n"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+	t.Cleanup(func() { _ = os.Remove(full) })
+	return full
 }
 
 // primeOf returns the hub's prime worktree name.
@@ -65,12 +121,16 @@ func resetPrimeEditorState(t *testing.T, h *hubforge.Hub) {
 
 // checkPrimeWritesHubWorkspace covers the workspace file's location, folders and launch argument at the hub's anchor:
 // the prime's branch, Bolt and every task pair the scenario added so far, and no _portals folder.
+// The launch opens beside the workspace, in order, the existing files the hub's ide.yaml lists for the prime, with {beam} resolved to the prime's name and an absent file skipped.
 func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
 	prime := primeOf(t, h)
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
 	markerPath := setDesktopWindowCommand(t, h)
+	setIDEConfig(t, h, "open_files:\n  prime: [notes.md, absent.md, \"{beam}.md\"]\n")
+	primeAnchor := filepath.Join(h.Path, prime, l.AnchorRel)
+	wantFiles := []string{writeFileUnder(t, primeAnchor, "notes.md"), writeFileUnder(t, primeAnchor, prime+".md")}
 
 	if _, err := Spawn(l, prime); err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -79,6 +139,9 @@ func checkPrimeWritesHubWorkspace(t *testing.T, h *hubforge.Hub) {
 	wsPath := fabricengine.HubWorkspacePath(l)
 	if len(*launched) != 1 || (*launched)[0] != wsPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, wsPath)
+	}
+	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
+		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
 	}
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Errorf("window command runs after a prime Spawn = %d; want 1, since the command runs in the hub directory beside the workspace file", runs)
@@ -150,10 +213,12 @@ func readOptionalFile(t *testing.T, path string) (data []byte, exists bool) {
 // checkTaskSlugOpensBareFolder asserts a task spawn launches its bare folder, and that a task seed and spawn leave the workspace file's bytes, or its absence, unchanged.
 // It also asserts Seed writes the same on-demand attach task Spawn does and seeds the keybindings.json as Spawn does, each into a missing file.
 // It also asserts Spawn, and never Seed, runs the machine's desktop window command.
+// An ide.yaml that fails to load fails Seed, Spawn and OpenTask, with nothing launched and no settings.json written.
+// A valid one opens beside the folder the existing files it lists for a task, with {beam} resolved to the prime for a task forked from it and a directory entry skipped.
 func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
 	hubforge.AddPair(t, h, slug)
 	keybindingsPath, err := KeybindingsPath()
 	if err != nil {
@@ -164,6 +229,32 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	}
 	markerPath := setDesktopWindowCommand(t, h)
 	workspaceBefore, workspaceExisted := readOptionalFile(t, fabricengine.HubWorkspacePath(l))
+	taskAnchor := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+
+	setIDEConfig(t, h, "open_files:\n  task: [\"/absolute.md\"]\n")
+	verbs := []struct {
+		name string
+		run  func() error
+	}{
+		{"Seed", func() error { _, err := Seed(l, slug); return err }},
+		{"Spawn", func() error { _, err := Spawn(l, slug); return err }},
+		{"OpenTask", func() error { return OpenTask(l, slug) }},
+	}
+	for _, verb := range verbs {
+		if err := verb.run(); err == nil || !strings.Contains(err.Error(), "load the ide config") {
+			t.Errorf("%s error = %v; want the ide.yaml load failure", verb.name, err)
+		}
+	}
+	if len(*launched) != 0 {
+		t.Errorf("CodeLauncher calls with an invalid ide.yaml = %v; want none", *launched)
+	}
+	if _, err := os.Stat(filepath.Join(taskAnchor, ".vscode", "settings.json")); !os.IsNotExist(err) {
+		t.Errorf("settings.json after an invalid ide.yaml: stat error %v; want it absent, since the load runs before any write", err)
+	}
+
+	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\", docs, absent.md]\n")
+	writeFileUnder(t, taskAnchor, "docs/guide.md")
+	wantFiles := []string{writeFileUnder(t, taskAnchor, primeOf(t, h)+".md")}
 
 	keybindings, err := Seed(l, slug)
 	if err != nil {
@@ -194,6 +285,9 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, want)
 	}
+	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
+		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
+	}
 	if marker, err := os.ReadFile(markerPath); err != nil || strings.TrimSpace(string(marker)) != "ran" {
 		t.Errorf("window command marker = %q, %v; want one run of the window command", marker, err)
 	}
@@ -205,16 +299,22 @@ func checkTaskSlugOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 
 // checkBeamOpensBeamWorkspace asserts a beam seed regenerates the beam's workspace file with its workspace title and launches nothing,
 // and a beam spawn regenerates that file, launches it with the beam as its first folder and runs the window command once.
+// The spawn opens beside it, in order, the existing files the hub's ide.yaml lists for a beam, with {beam} resolved to the beam's slug and an absent file and a directory skipped,
+// and the workspace's settings open a markdown file rendered.
+// A task forked from the beam opens, through OpenTask and Spawn, the file ide.yaml lists for a task with {beam} resolved to the beam's slug.
 func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
 	hubforge.AddPair(t, h, slug)
 	if marked, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Path), l, slug); err != nil || !marked {
 		t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
 	}
 	markerPath := setDesktopWindowCommand(t, h)
 	beamPath := fabricengine.BeamWorkspacePath(l, slug)
+	setIDEConfig(t, h, "open_files:\n  beam: [README.md, absent.md, docs, \"docs/{beam}.md\"]\n  task: [\"{beam}.md\"]\n")
+	beamAnchor := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+	wantFiles := []string{writeFileUnder(t, beamAnchor, "README.md"), writeFileUnder(t, beamAnchor, "docs/"+slug+".md")}
 
 	if _, err := Seed(l, slug); err != nil {
 		t.Fatalf("Seed: %v", err)
@@ -235,6 +335,12 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(*launched) != 1 || (*launched)[0] != beamPath {
 		t.Fatalf("CodeLauncher calls = %v, want exactly [%s]", *launched, beamPath)
 	}
+	if files := (*opened)[0]; !slices.Equal(files, wantFiles) {
+		t.Errorf("CodeLauncher files = %v; want %v", files, wantFiles)
+	}
+	if got := readWorkspaceLook(t, beamPath).Associations["*.md"]; got != "vscode.markdown.preview.editor" {
+		t.Errorf("beam workspace *.md editor association = %q; want the markdown preview", got)
+	}
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Errorf("window command runs after a beam Spawn = %d; want 1", runs)
 	}
@@ -253,20 +359,45 @@ func checkBeamOpensBeamWorkspace(t *testing.T, h *hubforge.Hub, slug string) {
 	if len(ws.Folders) == 0 || ws.Folders[0].Name != slug {
 		t.Errorf("beam workspace folders = %+v, want %q first", ws.Folders, slug)
 	}
+
+	child := slug + "-task"
+	hubforge.AddPairWith(t, h, child, fabricengine.AddOptions{Parent: slug})
+	// Removed on cleanup, since the hub workspace check of a later step lists every pair of the hub.
+	t.Cleanup(func() {
+		if _, err := h.Topology.Remove(l, child, true, false); err != nil {
+			t.Errorf("remove the task forked from the beam: %v", err)
+		}
+	})
+	childAnchor := filepath.Join(fabricengine.WorktreePath(l, child), l.AnchorRel)
+	wantChildFiles := []string{writeFileUnder(t, childAnchor, slug+".md")}
+	_, childOpened := recordLaunches(t)
+	if err := OpenTask(l, child); err != nil {
+		t.Fatalf("OpenTask of a task forked from the beam: %v", err)
+	}
+	if _, err := Spawn(l, child); err != nil {
+		t.Fatalf("Spawn of a task forked from the beam: %v", err)
+	}
+	if len(*childOpened) != 2 || !slices.Equal((*childOpened)[0], wantChildFiles) || !slices.Equal((*childOpened)[1], wantChildFiles) {
+		t.Errorf("OpenTask and Spawn files of a task forked from %q = %v; want %v each", slug, *childOpened, wantChildFiles)
+	}
 }
 
 // checkBeamWithoutReadableOriginOpensBareFolder asserts Spawn returns no error and launches the pair's bare anchor folder, never a workspace file.
 // It covers a marked beam whose origin record cannot be read because its records worktree's lock directory is missing, and one whose record is absent.
+// It also asserts a {beam} entry of ide.yaml's task list opens nothing for such a pair, since its parent cannot be read, even beside a file named ".md".
 // It restores the lock directory before returning, so later steps regenerate the hub workspace over a readable pair.
 func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
 	hubforge.AddPair(t, h, slug)
 	if marked, err := fabricengine.MarkBeam(fabricengine.NewMutations(h.Path), l, slug); err != nil || !marked {
 		t.Fatalf("MarkBeam(%q) = (%v, %v); want (true, nil)", slug, marked, err)
 	}
 	setDesktopWindowCommand(t, h)
+	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\"]\n")
+	// A file named ".md" is what the entry reads as if the placeholder were replaced by nothing.
+	writeFileUnder(t, filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel), ".md")
 	pair, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
 		t.Fatalf("NamedWorktree(%q): %v", slug, err)
@@ -297,6 +428,11 @@ func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub
 	if want := []string{bareFolder, bareFolder}; !slices.Equal(*launched, want) {
 		t.Errorf("CodeLauncher calls = %v, want %v", *launched, want)
 	}
+	for i, files := range *opened {
+		if len(files) != 0 {
+			t.Errorf("CodeLauncher files of launch %d = %v; want none, since no beam resolves the {beam} entry", i, files)
+		}
+	}
 	if _, err := os.Stat(fabricengine.BeamWorkspacePath(l, slug)); !os.IsNotExist(err) {
 		t.Errorf("beam workspace file written for a beam with no readable origin record (stat err = %v)", err)
 	}
@@ -304,26 +440,34 @@ func checkBeamWithoutReadableOriginOpensBareFolder(t *testing.T, h *hubforge.Hub
 
 // checkWindowCommandFollowsALaunch asserts OpenTask runs the machine's window command once after a launch,
 // and that a failing CodeLauncher makes Spawn and OpenTask return its error and run no command.
+// It also asserts OpenTask passes the launcher the files ide.yaml lists for a task, with {beam} resolved to the prime for a task forked from it,
+// and that the task worktree's own local override of ide.yaml applies although the location OpenTask runs from is another worktree.
 func checkWindowCommandFollowsALaunch(t *testing.T, h *hubforge.Hub, slug string) {
 	resetPrimeEditorState(t, h)
 	l := h.Location
 	hubforge.AddPair(t, h, slug)
 	markerPath := setDesktopWindowCommand(t, h)
+	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\"]\n")
+	slugAnchor := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+	wantSlugFiles := []string{writeFileUnder(t, slugAnchor, primeOf(t, h)+".md")}
 
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
 	if err := OpenTask(l, slug); err != nil {
 		t.Fatalf("OpenTask: %v", err)
 	}
-	want := filepath.Join(fabricengine.WorktreePath(l, slug), l.AnchorRel)
+	want := slugAnchor
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Fatalf("CodeLauncher calls = %v, want [%s]", *launched, want)
+	}
+	if files := (*opened)[0]; !slices.Equal(files, wantSlugFiles) {
+		t.Errorf("OpenTask files = %v; want %v", files, wantSlugFiles)
 	}
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Fatalf("window command runs after OpenTask = %d; want 1", runs)
 	}
 
 	launchErr := errors.New("code is not installed")
-	CodeLauncher = func(string) error { return launchErr }
+	CodeLauncher = func(string, ...string) error { return launchErr }
 	if err := OpenTask(l, slug); !errors.Is(err, launchErr) {
 		t.Errorf("OpenTask error = %v; want the launcher's error", err)
 	}
@@ -332,6 +476,16 @@ func checkWindowCommandFollowsALaunch(t *testing.T, h *hubforge.Hub, slug string
 	}
 	if runs := windowCommandRuns(t, markerPath); runs != 1 {
 		t.Errorf("window command runs after failed launches = %d; want still 1, since a failed launch opens no window", runs)
+	}
+
+	localFile := writeFileUnder(t, slugAnchor, "local.md")
+	setLocalIDEConfig(t, slugAnchor, "open_files:\n  task: [local.md]\n")
+	_, localOpened := recordLaunches(t)
+	if err := OpenTask(l, slug); err != nil {
+		t.Fatalf("OpenTask with a local override: %v", err)
+	}
+	if want := []string{localFile}; len(*localOpened) != 1 || !slices.Equal((*localOpened)[0], want) {
+		t.Errorf("OpenTask files with a local override = %v; want [%v]", *localOpened, want)
 	}
 }
 
@@ -490,9 +644,10 @@ func checkPrimeWriteFailure(t *testing.T, h *hubforge.Hub) {
 
 // primeLook is the part of a seeded settings.json, or of a workspace file's settings, the prime checks read.
 type primeLook struct {
-	TabSize int               `json:"editor.tabSize"`
-	Title   string            `json:"window.title"`
-	Colors  map[string]string `json:"workbench.colorCustomizations"`
+	TabSize      int               `json:"editor.tabSize"`
+	Title        string            `json:"window.title"`
+	Colors       map[string]string `json:"workbench.colorCustomizations"`
+	Associations map[string]string `json:"workbench.editorAssociations"`
 }
 
 // readWorkspaceLook reads the workspace file at path and decodes the settings it carries.

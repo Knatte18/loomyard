@@ -190,8 +190,11 @@ func checkSkipsTrackedVSCode(t *testing.T, h *hubforge.Hub, slug string, onPrime
 
 // checkPrimeNameFailureOpensBareFolder asserts a Location whose worktree is not a git checkout logs the resolve-prime-name warning and launches the pair's bare folder.
 func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug string) {
-	launched := recordLauncher(t)
+	launched, opened := recordLaunches(t)
+	setIDEConfig(t, h, "open_files:\n  task: [\"{beam}.md\"]\n")
 	hubforge.AddPair(t, h, slug)
+	// A file named ".md" is what the entry reads as if the placeholder were replaced by nothing.
+	writeFileUnder(t, filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel), ".md")
 	notGit := "not-a-checkout"
 	notGitDir := filepath.Join(h.Path, notGit)
 	if err := os.MkdirAll(notGitDir, 0o755); err != nil {
@@ -208,8 +211,14 @@ func checkPrimeNameFailureOpensBareFolder(t *testing.T, h *hubforge.Hub, slug st
 	if !strings.Contains(logBuf.String(), "resolve prime name") {
 		t.Errorf("no resolve prime name warning logged:\n%s", logBuf.String())
 	}
+	if !strings.Contains(logBuf.String(), "resolve the prime for a task's beam") {
+		t.Errorf("no warning logged for the prime a task's beam could not resolve:\n%s", logBuf.String())
+	}
 	want := filepath.Join(fabricengine.WorktreePath(h.Location, slug), h.Location.AnchorRel)
 	if len(*launched) != 1 || (*launched)[0] != want {
 		t.Errorf("CodeLauncher calls = %v, want [%s]", *launched, want)
+	}
+	if len(*opened) != 1 || len((*opened)[0]) != 0 {
+		t.Errorf("CodeLauncher files = %v; want none, since no beam resolves the {beam} entry", *opened)
 	}
 }

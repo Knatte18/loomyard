@@ -7,7 +7,10 @@
 // A task's activity-bar colour is any palette colour but its project's, avoiding its siblings', the worktrees whose title bar holds the same project colour, while one is free.
 // Text on either bar is black or white by the background's luminance.
 // No status-bar, border or tab colour is written: the status bar loses its background in an unfocused window, the active border is not drawn, and tab colours follow the selected tab.
-// lym owns those keys and window.title in a worktree's settings.json and rewrites them at every seed; every other key is the operator's.
+// lym owns those keys and window.title in a worktree's settings.json and rewrites them at every seed.
+// Every other key is the operator's, but for the "*.md" entry of workbench.editorAssociations:
+// a seed asked to render markdown points that entry at the markdown preview, so a markdown file opens rendered, unless the operator holds the setting in its array form, which is left as it is.
+// Launch opens a folder or workspace file and any files beside it in the new window.
 // A workspace window keeps its project's colour on the title bar and takes WorkspaceColor, which no worktree takes, on its activity bar;
 // WorkspaceSettings sets that look in the settings a workspace file splices.
 // It also seeds the marked block of key bindings into the user's keybindings.json (see SeedKeybindings):
@@ -44,6 +47,13 @@ const (
 	inactiveForegroundAlphaHex    = "aa"
 )
 
+// The editor association lym owns in a worktree's settings.json: the "*.md" entry, pointed at VS Code's markdown preview.
+const (
+	editorAssociationsKey = "workbench.editorAssociations"
+	markdownPattern       = "*.md"
+	markdownPreviewEditor = "vscode.markdown.preview.editor"
+)
+
 // Look is how a worktree's VS Code window shows itself: its window title, the project colour its title bar takes and the worktree's own colour its activity bar takes, each a #rrggbb colour.
 type Look struct {
 	Title         string
@@ -55,13 +65,15 @@ type Look struct {
 // A missing settings.json is created with look and lym's defaults.
 // In an existing one only the keys lym owns are set from look: window.title and the title-bar and activity-bar keys of workbench.colorCustomizations;
 // every other key is kept, though comments are not, and a file that does not decode as JSONC is left untouched with a warning.
+// With renderMarkdown on, either file's "*.md" editor association is set to the markdown preview, so a markdown file opens rendered, unless the file holds the setting in its array form, which is left as it is;
+// with it off, that entry is removed while it names the preview, so an editor the operator chose stays.
 // tasks.json is always written, overwriting any existing file, and holds one "reed attach" task, run on demand or by its seeded key binding;
 // no task runs on folder open, so opening the folder starts no session and no agent.
 // Neither file touches .gitignore; the caller keeps .vscode/ out of git through info/exclude.
 // lymPath is the resolved absolute lym path stamped into the task;
 // an empty lymPath becomes "lym", so a resolution failure upstream still produces a runnable (PATH-dependent) task file rather than a broken one.
 // Returns an error if I/O fails.
-func WriteConfig(worktreeDir, relpath string, look Look, lymPath string) error {
+func WriteConfig(worktreeDir, relpath string, look Look, renderMarkdown bool, lymPath string) error {
 	if lymPath == "" {
 		lymPath = "lym"
 	}
@@ -70,15 +82,15 @@ func WriteConfig(worktreeDir, relpath string, look Look, lymPath string) error {
 	if err := os.MkdirAll(vscodePath, 0o755); err != nil {
 		return err
 	}
-	if err := writeSettings(filepath.Join(vscodePath, "settings.json"), look); err != nil {
+	if err := writeSettings(filepath.Join(vscodePath, "settings.json"), look, renderMarkdown); err != nil {
 		return err
 	}
 	return writeAttachTask(filepath.Join(vscodePath, "tasks.json"), lymPath)
 }
 
-// writeSettings creates settingsPath with lym's defaults and look, or sets look's keys in the existing file, keeping its other keys.
+// writeSettings creates settingsPath with lym's defaults, look and the markdown association renderMarkdown asks for, or sets those keys in the existing file, keeping its other keys.
 // An existing file that does not decode as a JSONC object is logged and left untouched.
-func writeSettings(settingsPath string, look Look) error {
+func writeSettings(settingsPath string, look Look, renderMarkdown bool) error {
 	content, err := os.ReadFile(settingsPath)
 	var settings map[string]any
 	switch {
@@ -102,6 +114,7 @@ func writeSettings(settingsPath string, look Look) error {
 	}
 
 	applyLook(settings, look)
+	applyMarkdownPreview(settings, renderMarkdown)
 
 	data, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
@@ -130,6 +143,32 @@ func applyLook(settings map[string]any, look Look) {
 	customizations[activityBarInactiveForeground] = activityForeground + inactiveForegroundAlphaHex
 	settings[colorCustomizationsKey] = customizations
 	settings[windowTitleKey] = look.Title
+}
+
+// applyMarkdownPreview sets the "*.md" entry of settings' workbench.editorAssociations to the markdown preview when render is on, keeping every other association.
+// When render is off it removes that entry only while it names the preview, and drops an association map left empty.
+// A value that is neither a map nor null, such as the array form of the setting, is left as it is, since lym cannot set its entry without replacing the operator's.
+func applyMarkdownPreview(settings map[string]any, render bool) {
+	existing := settings[editorAssociationsKey]
+	associations, isMap := existing.(map[string]any)
+	if existing != nil && !isMap {
+		return
+	}
+	if render {
+		if associations == nil {
+			associations = map[string]any{}
+		}
+		associations[markdownPattern] = markdownPreviewEditor
+		settings[editorAssociationsKey] = associations
+		return
+	}
+	if associations[markdownPattern] != markdownPreviewEditor {
+		return
+	}
+	delete(associations, markdownPattern)
+	if len(associations) == 0 {
+		delete(settings, editorAssociationsKey)
+	}
 }
 
 // attachTaskLabel names the reed attach task; the seeded key binding finds the task by this label.

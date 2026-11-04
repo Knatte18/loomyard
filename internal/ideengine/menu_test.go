@@ -146,7 +146,7 @@ func TestMenuScenario(t *testing.T) {
 
 		originalLauncher := CodeLauncher
 		defer func() { CodeLauncher = originalLauncher }()
-		CodeLauncher = func(dir string) error { return nil }
+		CodeLauncher = func(string, ...string) error { return nil }
 
 		var out bytes.Buffer
 
@@ -195,7 +195,7 @@ func TestMenuScenario(t *testing.T) {
 		var launchCount int
 		originalLauncher := CodeLauncher
 		defer func() { CodeLauncher = originalLauncher }()
-		CodeLauncher = func(dir string) error {
+		CodeLauncher = func(string, ...string) error {
 			launchCount++
 			return nil
 		}

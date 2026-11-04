@@ -1,0 +1,6 @@
+open_files:  # files `lym ide spawn` and `lym ide open` open beside the folder or workspace they launch, one list per place, in order; each a path relative to the worktree's anchored directory, the folder its window shows, where {beam} stands for the beam's slug: a beam's own, a task's parent's, or the prime's name for the prime and a task forked from it; an entry naming no existing file is skipped
+  prime: []
+  beam:
+    - README.md
+  task: []
+render_markdown: true  # whether a markdown file opens rendered, as VS Code's markdown preview, in a worktree `lym ide` seeds; lym then owns the "*.md" entry of workbench.editorAssociations in the worktree's settings.json, and off removes that entry while it names the preview; "Reopen Editor With..." switches one file either way

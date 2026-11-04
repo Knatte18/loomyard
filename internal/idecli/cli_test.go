@@ -32,7 +32,7 @@ func TestRunCLI_SpawnScenario(t *testing.T) {
 	defer func() { ideengine.CodeLauncher, ideengine.KeybindingsPath = originalLauncher, originalKeybindingsPath }()
 	var launches []string
 	var launchErr error
-	ideengine.CodeLauncher = func(dir string) error {
+	ideengine.CodeLauncher = func(dir string, _ ...string) error {
 		launches = append(launches, dir)
 		return launchErr
 	}

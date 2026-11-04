@@ -237,6 +237,7 @@ github.com/Knatte18/loomyard/
 ├── internal/shortcutcli/         the top-level operator shortcuts (`lym a`, `lym s`, `lym p`, `lym r`) from one embedded file
 ├── internal/idecli/              the ide CLI command
 ├── internal/ideengine/           the ide domain kernel
+├── internal/ideconfig/           the hub-wide `ide.yaml` config: the files a VS Code window lym opens shows on start, per place, and whether a markdown file opens rendered
 ├── internal/pairteardown/        the one sequence that ends a pair: quiet wait or the skip's run-lock wait, refusal probe, owned-process end, loop and reed session end, then fabric removal
 ├── internal/reedcli/             the reed CLI command
 ├── internal/reedengine/          the reed domain kernel (overlay + strand bookkeeping)
@@ -402,6 +403,9 @@ User-facing modules each get one `lym <module>` namespace:
   `lym ide spawn <beam>` opens the beam's workspace `<hub>/<RepoName>-<beam>.code-workspace` (the beam, its parent, `Bolt` and the beam's pairs) the same way.
   The files are lym-owned and regenerated on each prime or beam spawn, overwriting any edit made in them;
   a task slug still opens its bare folder.
+  `lym ide spawn` and `lym ide open` also open, beside the folder or workspace, the files the hub-wide `ide.yaml` lists under `open_files` for the worktree's place, the prime, a beam or a task: paths relative to the worktree's anchored directory, `{beam}` standing for the beam's slug, and an entry naming no file skipped.
+  The template opens `README.md` for a beam and nothing for the prime or a task.
+  With `ide.yaml`'s `render_markdown` on, the default, a seed points the `*.md` entry of `workbench.editorAssociations` in the worktree's `settings.json` at the markdown preview, so a markdown file opens rendered, unless the operator holds that setting in its array form, which is left as it is.
   The generated `tasks.json` holds one on-demand `reed attach` task, with the `lym` path stamped absolute at generation time, reached through "Tasks: Run Task" or the seeded `ctrl+alt+a` key binding;
   no task runs on folder open, so opening a worktree in VS Code starts no session and no `claude`.
   `lym ide spawn` and batten's Seed-IDE row write this config through one shared path.
