@@ -13,7 +13,13 @@
 // A tier run that fails without timing out and whose output holds a resource-shortage marker, `resource temporarily unavailable`, `failed to create new OS thread` or `cannot fork` in any case, runs once more inside the same slots after a ten-second delay, and the rerun's result is the tier's;
 // a stderr line names the marker, and the rerun's log opens with it.
 // A rerun that fails on a marker again keeps its exit code, and the closing line names the run as a resource shortage, an environment error, with the way forward of re-running once the machine's process load drops.
-// Bound: one rerun per tier run, so a test whose own output holds a marker costs one extra run and keeps its verdict; the build step is not rerun.
+// A tier run that fails without timing out, reports no failing test and exits 128 plus the number of a crash signal, SIGABRT, SIGILL, SIGTRAP, SIGBUS, SIGSEGV or SIGFPE, as a shell reports a runtime that aborted, crashed its test runner and judged no code, so it also runs once more after the same delay;
+// a command the shell replaced and the signal ended takes that same exit code.
+// A run with no shortage marker is read for a crash, the stderr line names the exit code and the signal, and the rerun's log opens with it.
+// Before either rerun starts the first run's record and log are written, its record carrying a crash's signal as `runner_crash`, and the rerun's record carries `rerun` and counts its slot wait as none, since the first run's record holds it.
+// A rerun that crashes again keeps its exit code, and the closing line names the run as a runner crash with no failing test.
+// When every failed run of a call crashed so, with no failing test, failed build or lint finding beside them, the call closes with `gateslot.RunnerCrashLine` after the line of failed runs, so a site tells a runtime's crash from a failing test.
+// Bound: one rerun per tier run, so a test whose own output holds a marker costs one extra run and keeps its verdict, and a test that aborts its own runner, such as a .NET stack overflow, is reported as a crash rather than as a failing test; the build step is not rerun.
 // A refusal, a slot wait that does not end with the slots held and a terminating signal still end the call at once.
 // `--gate <key>` runs the tiers and the scope the `gates` key of that name holds, and `listedTiers` takes the key's tiers as the listed tiers.
 // It goes with none of `--tier`, `--upto`, `--all` and `--base`, which is refused before hub resolution naming the key and the flag to drop, since the key's tiers and scope come from gate.yaml.
@@ -390,7 +396,7 @@
 // `runWithFixer` runs in place of `runRequest`:
 // before the gate runs it waits on a live fixer record of an earlier run in the key directory's `fixer.json`, and when it cannot attach it stops the strand through `fixerStopper` and marks the record dead only once the stop succeeded, ending with exit 1 and the way forward when the stop failed;
 // on a red verdict, after `runRequest` released its slots, it writes the phase `fixing`, the stderr report to `fixer-report.md`, spawns one fixer with the shared cold frame and the card body, waits on it, rewrites `tree.json` and runs `runRequest` again, then marks the fixer's record terminal, so a restart during the re-run still finds it live, and appends the fixer's reply or the dead note to the re-run's stderr under `## Cold fixer reply`.
-// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a `card-verify` request and a spawn that failed end with the first run's result, the last with a stderr line saying no fixer ran.
+// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a red verdict whose stderr holds `gateslot.RunnerCrashLine`, a `card-verify` request and a spawn that failed end with the first run's result, the last with a stderr line saying no fixer ran.
 // A passed lease or a terminating signal during the phase stops the fixer, marks its record dead once the stop succeeded and ends the run abandoned.
 // A run in the phase `fixing` is joinable under changed dirty paths, so a caller's repeated call joins whatever tree the fixer is changing; from the re-run's start the rewritten `tree.json` holds the rule again.
 // Bound: one fixer per red call, which Go bounds; the number of red calls per card rests on the Webster fork prompt's self-fix cap.
@@ -435,10 +441,11 @@
 // The caller names only the key and the directory, never targets or tiers, and gets the call's exit code, the envelope on `out` and the summary lines on `stderr`.
 // A `TierObserver` hears each tier of the run: `Started` with the tier's number once its slots are held, or at once for a run that takes none, and `Ended` with the tier's run record when the tier reports.
 // A tier carried as already green ends with no start, and a tier blocked by a failed build ends with its blocked record, started only for the tier whose slots ran the build.
+// A tier rerun after a crash or a resource shortage ends once, with the rerun's record.
 // A guard or vet run reports through the same calls with its record's own flags, and a refusal after a start ends with no end.
 // A nil func is skipped, and every CLI call passes the zero observer.
 //
 // # Exit codes
 //
-// The first failing run's own code, in plan order, which for a test binary the watchdog quit is the test run's failure code; 1 for a tier that timed out; SlotBusyExit (75) only as a capped call's `done: false` answer, which is no failure and never the code of a call that runs in this process; 1 for a run that ended without a failure while the call was cancelled; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
+// The first failing run's own code, in plan order, which for a test binary the watchdog quit is the test run's failure code and for a runner crash 128 plus the signal's number; 1 for a tier that timed out; SlotBusyExit (75) only as a capped call's `done: false` answer, which is no failure and never the code of a call that runs in this process; 1 for a run that ended without a failure while the call was cancelled; 128 plus the signal number after a terminating signal; 1 for a refusal, with a JSON error envelope on stdout.
 package gatecli

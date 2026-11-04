@@ -27,6 +27,9 @@ const verifyGateName = "verify"
 // verifyGateSite is the site label the gate's verify call writes to the running marker.
 const verifyGateSite = "webster gate"
 
+// verifyGateCrashFindingsPrefix opens the findings of a verify whose test runner crashed, which verifyGateStuckReason reads to end the stuck reason in reentry alone.
+const verifyGateCrashFindingsPrefix = "The verify command's test runner crashed"
+
 // VerifyGateNotes collects what a gate's evaluations observed that is not a failure: the identities that failed once and passed on rerun, and the commits made above the pre-fix head.
 // Run applies it after the wait, so a flaky pass reaches the warnings, summary.md and a friction note, and the fixer's commits reach summary.md.
 // It also holds the fixer the latest failure went to, which the re-prompt line names.
@@ -198,6 +201,7 @@ type verifyGateSeams struct {
 // it renders the hub's `webster` gate call over the whole tree from the told gate config, and returns the config's refusal, which names `lym config gate`, as its error;
 // otherwise it runs that call through verifytree.Verify, told geom.VerifyHold on the first run and the rerun alike, reruns it once on a failure, and passes a flaky failure whose rerun passed.
 // A run that timed out or hung, as classifyHang reads its log and exit code, is not re-run: it fails at once.
+// A run whose every failed tier run crashed its test runner with no failing test judged no code: it fails `Terminal` at once, on the first run or the rerun, naming the crashed runs, and no fixer gets it, no attempt is spent and no report is written.
 // A failure that survives returns findings, and the first failure of any kind records HEAD as the pre-fix head.
 // Each failure goes to a fixer, which the report, the findings and the re-prompt line name:
 // the cold fixer for the failure that reaches attempts, for one after a fixer that added no commit above the pre-fix head, and for every failure after one that went cold;
@@ -375,6 +379,14 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		})
 	}
 
+	// failRunnerCrash fails the gate terminally for res, a verify whose every failed tier run crashed its test runner with no failing test:
+	// no change to the code mends it, so no fixer gets it, and it is never re-run.
+	failRunnerCrash := func(res verifytree.Result) shuttleengine.GateResult {
+		logger.Warn("websterengine: verify gate's test runner crashed, so no fixer runs", "attempt", attempt, "detail", res.Detail, "log", res.Log)
+		findings := fmt.Sprintf("%s in its run and its one rerun, so no test judged the code: %s. No change to the code mends it, so no fixer runs and the run stops here; output: %s.", verifyGateCrashFindingsPrefix, res.Detail, res.Log)
+		return shuttleengine.GateResult{Passed: false, Terminal: true, Findings: findings}
+	}
+
 	return func() (shuttleengine.GateResult, error) {
 		attempt++
 
@@ -431,6 +443,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		if res.TimedOut {
 			return failTimedOut(res)
 		}
+		if res.RunnerCrash {
+			return failRunnerCrash(res), nil
+		}
 
 		firstOutput, err := readOutput(res)
 		if err != nil {
@@ -454,6 +469,9 @@ func newVerifyGate(reportsDir string, attempts int, notes *VerifyGateNotes, fixP
 		}
 		if res.TimedOut {
 			return failTimedOut(res)
+		}
+		if res.RunnerCrash {
+			return failRunnerCrash(res), nil
 		}
 		rerunOutput, err := readOutput(res)
 		if err != nil {
@@ -481,9 +499,13 @@ func readVerifyGateReport(path string) (VerifyGateReport, error) {
 
 // verifyGateStuckReason is the stuck reason of a done run whose verify gate did not pass.
 // A Terminal failure, the rejection of a fixer commit, names the gate's own reason and ends in the reset to the pre-fix head followed by reentry.
+// A Terminal runner crash names the gate's own reason and ends in reentry alone, since no fixer commit exists to reset.
 // Otherwise it names the hang, the failing identities, the dirty paths or the verify timeout and its log the latest failed evaluation's report holds, and the attempts spent.
 // After a CPU watchdog quit the reason also names the window and the way forward for a package that is CPU-bound but healthy, then reentry.
 func verifyGateStuckReason(reportsDir string, gate *shuttleengine.GateOutcome, reentry string) string {
+	if strings.HasPrefix(gate.Reason, verifyGateCrashFindingsPrefix) {
+		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps(reentry)
+	}
 	if gate.Reason != "" {
 		return "verify gate failed: " + oneLine(gate.Reason) + "; " + wayForwardSteps("lym webster reset --to pre-fix", reentry)
 	}

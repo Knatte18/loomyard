@@ -47,6 +47,12 @@ func TestVerifyFailureFindings(t *testing.T) {
 			wantNot: []string{"exit code", "could not start"},
 		},
 		{
+			name:    "a runner crash names the crashed runs instead of an exit code",
+			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)"},
+			want:    []string{"test runner crashed in its run and its one rerun", "tier1 (exit 134, SIGABRT)", "the run stops here"},
+			wantNot: []string{"failed with exit code", "could not start", "timed out"},
+		},
+		{
 			name:    "a log with the watchdog line names the window and the way forward",
 			result:  verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 1},
 			log:     "ok  \texample.com/mod/b\t0.1s\n" + gateslot.WatchdogLine("/tmp/x/a.test", 42, 2*time.Minute) + "\nSIGQUIT: quit\nlast line\n",

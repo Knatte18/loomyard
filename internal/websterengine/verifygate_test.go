@@ -287,6 +287,56 @@ func TestVerifyGate_HungVerifyFailsAtOnceWithoutRerun(t *testing.T) {
 	}
 }
 
+// TestVerifyGate_RunnerCrashFailsTerminalWithoutFixer pins that a verify whose test runner crashed fails the gate terminally at once, on the first run or the rerun, naming the crashed runs, with no pre-fix head, no failure report and a stuck reason that ends in reentry alone.
+func TestVerifyGate_RunnerCrashFailsTerminalWithoutFixer(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const crashDetail = "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)"
+	crashed := verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: crashDetail}
+	tests := []struct {
+		name          string
+		results       []verifytree.Result
+		wantVerifyRun int
+	}{
+		{name: "first run crashes", results: []verifytree.Result{crashed}, wantVerifyRun: 1},
+		{name: "rerun crashes", results: []verifytree.Result{failedResult(), crashed}, wantVerifyRun: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reports := t.TempDir()
+			f := &gateFake{outcome: outcomeDone, command: "go test ./...", head: "head0", results: tt.results, logs: []string{failingPackageLog}}
+			gate := newVerifyGate(reports, 3, &VerifyGateNotes{}, testFixPromptPath, f.seams())
+
+			res, err := gate()
+
+			if err != nil || res.Passed || !res.Terminal {
+				t.Fatalf("gate() = %+v, %v; want a terminal failure", res, err)
+			}
+			if f.verifyCalls != tt.wantVerifyRun {
+				t.Errorf("verify ran %d time(s); want %d", f.verifyCalls, tt.wantVerifyRun)
+			}
+			for _, want := range []string{crashDetail, "no fixer runs", f.issuedLogs[len(f.issuedLogs)-1]} {
+				if !strings.Contains(res.Findings, want) {
+					t.Errorf("findings = %q; want %q in it", res.Findings, want)
+				}
+			}
+			if len(f.recorded) != 0 {
+				t.Errorf("pre-fix heads recorded = %v; want none for a crash", f.recorded)
+			}
+			if _, err := os.Stat(VerifyGateReportPath(reports)); err == nil {
+				t.Error("a verify-gate report was written; want none, since no fixer reads it")
+			}
+			reason := verifyGateStuckReason(reports, &shuttleengine.GateOutcome{Reason: res.Findings}, "lym webster run")
+			if !strings.HasSuffix(reason, "way forward: lym webster run") || strings.Contains(reason, "reset --to pre-fix") || strings.Contains(reason, "\n") || !strings.Contains(reason, crashDetail) {
+				t.Errorf("verifyGateStuckReason() = %q; want one line naming the crash and ending in reentry alone", reason)
+			}
+		})
+	}
+}
+
 //testtiming:keep pins the failure report's attempt, cap, failures, card hint, fix commits and log path, and the findings naming them; the run-level verify-gate test observes only the failure
 func TestVerifyGate_FailedEvaluationWritesReport(t *testing.T) {
 	tiergate.Require(t, 0)

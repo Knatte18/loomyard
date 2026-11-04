@@ -1455,6 +1455,96 @@ func TestGateTest_Scenario(t *testing.T) {
 		requireFree(t)
 	})
 
+	// A stand-in exiting 134 with no test event is a tier that crashed its test runner on SIGABRT, as a shell reports one.
+	crashEnv := []string{helperExitEnv + "=134"}
+	// closingOf returns the last closing line of failed runs in output.
+	closingOf := func(output string) string {
+		closing := ""
+		for _, line := range strings.Split(output, "\n") {
+			if strings.HasPrefix(line, gateslot.FailedRunsPrefix) {
+				closing = line
+			}
+		}
+		return closing
+	}
+
+	t.Run("a tier that crashes its test runner twice closes the call with the runner crash line", func(t *testing.T) {
+		g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--tier", "6", "./pkg"}, env: crashEnv})
+		if code := g.wait(t); code != 134 {
+			t.Fatalf("exit code = %d, stdout %q; want the crash's 134", code, g.stdout.String())
+		}
+		if got := len(g.tierRecords(t)); got != 2 {
+			t.Errorf("tier invocations = %d; want the run and one rerun", got)
+		}
+		runs, found := gateslot.FindRunnerCrash(g.stdout.String())
+		if !found || runs != "tier6 (exit 134, SIGABRT)" {
+			t.Errorf("runner crash line runs = %q, %v; want tier6 (exit 134, SIGABRT)", runs, found)
+		}
+		requireFree(t)
+	})
+
+	t.Run("a crash beside a run that judged the code closes the call without the runner crash line", func(t *testing.T) {
+		tests := []struct {
+			name  string
+			setup func(t *testing.T) (gate string, env []string)
+			want  []string
+		}{
+			{
+				name: "a failing tier",
+				setup: func(t *testing.T) (string, []string) {
+					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+						cfg["tiers"].(map[string]any)["tier7"] = map[string]any{"command": "exit 1", "all_targets": "./pkg", "timeout_min": 1, "counter": "go-json"}
+						cfg["gates"] = map[string]any{"mixed": map[string]any{"tiers": []int{6, 7}, "scope": "all"}}
+					}))
+					return "mixed", crashEnv
+				},
+				want: []string{"tier6 (exit 134, a runner crash, SIGABRT", "tier7 (exit 1)"},
+			},
+			{
+				name: "a lint finding",
+				setup: func(t *testing.T) (string, []string) {
+					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+						cfg["gates"] = map[string]any{"linted": map[string]any{"tiers": []int{6}, "scope": "all", "lints": []string{"comments"}}}
+					}))
+					wrapComment(t)
+					return "linted", crashEnv
+				},
+				want: []string{"tier6 (exit 134, a runner crash, SIGABRT", "lint comments (1 finding)"},
+			},
+			{
+				name: "a tier blocked by the build",
+				setup: func(t *testing.T) (string, []string) {
+					writeConfig(t, scenarioConfig(t, func(cfg map[string]any) {
+						withSharedBuild(buildDir)(cfg)
+						cfg["gates"] = map[string]any{"built": map[string]any{"tiers": []int{0, 2}, "scope": "all"}}
+					}))
+					return "built", append(slices.Clone(crashEnv), helperBuildExitEnv+"=3")
+				},
+				want: []string{"build (exit 3)", "tier0 (blocked by the build)", "tier2 (exit 134, a runner crash, SIGABRT"},
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				defer writeConfig(t, gateConfig)
+				gate, env := tt.setup(t)
+
+				g := startGate(t, gateRun{cwd: prime, args: []string{"test", "--gate", gate}, env: env})
+				g.wait(t)
+
+				if runs, found := gateslot.FindRunnerCrash(g.stdout.String()); found {
+					t.Errorf("stdout = %q; want no runner crash line, which a run that judged the code rules out, got runs %q", g.stdout.String(), runs)
+				}
+				closing := closingOf(g.stdout.String())
+				for _, want := range tt.want {
+					if !strings.Contains(closing, want) {
+						t.Errorf("closing line = %q; want it to name %q", closing, want)
+					}
+				}
+				requireFree(t)
+			})
+		}
+	})
+
 	t.Run("a halted call prints its failure report before the closing line and runs no lint", func(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(prime, "cmd", "lym"), 0o755); err != nil {
 			t.Fatal(err)

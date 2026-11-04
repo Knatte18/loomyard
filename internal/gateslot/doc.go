@@ -130,6 +130,7 @@
 // The line the gate prints when a tier outlives its `timeout_min` is rendered by TierTimeoutLine and found by FindTierTimeout;
 // it names the tier, the timeout and the whole-tier `lym config gate --set` rewrite that raises it.
 // The build step's timeout line is rendered by BuildTimeoutLine, names `lym config gate --set 'build={...}'` as the rewrite, and FindTierTimeout finds it too and returns `build` as the tier.
+// The line a gate call closes with when every failed run crashed its test runner, in its run and its one rerun, is rendered by RunnerCrashLine and found by FindRunnerCrash, which returns the runs it names, so a site tells a runtime's crash from a failing test.
 //
 // # Run log
 //
@@ -139,6 +140,7 @@
 // The record is a domain log that no run reads to proceed.
 // Every record of one gate call carries the call's id, and a record written after the call was cancelled is marked abandoned; a record without either reads with them empty.
 // A tier the gate carried forward over an unchanged tree writes its record with `carried` set.
+// A tier run that crashed its test runner carries the signal as `runner_crash`, and the one rerun after such a crash or a resource shortage writes its own record with `rerun` set beside the first run's.
 // A go-json tier's record lists a PackageLaunch per package whose test binary ran; a record written without the list reads with none.
 // A tier the build step blocked by failing writes its record with `blocked_by` set to the failed build's log path.
 // TierSummaryLine renders the one stderr line the gate prints after each tier run, marking a carried tier with `carried` after the scope form, and BuildSummaryLine renders the build step's line, `gate test: build before tier<N> wall <s>s exit <code> log <path>`, which no tier summary reader matches.

@@ -2,6 +2,7 @@
 // It renders the hub's `webster` gate key's call from the told gate config, then calls verifytree.Verify over the worktree with it, the same call the webster verify gate makes.
 // A pass or skip is ok.
 // A dirty tree or a failing command is an error envelope carrying a `findings` key, the shape the gate-parity test maps onto a stuck verdict.
+// A command whose test runner crashed in its run and its rerun is an error envelope too, naming the crashed runs and the way forward of running the verb again instead of a fix.
 
 package webstercli
 
@@ -35,7 +36,9 @@ names the same command exits 0 without running. A dirty tree is refused with
 its paths under "findings", and a failing command with its exit code, log path
 and failing identities under "findings"; both exit non-zero. A gate.yaml that
 cannot be loaded, or a "webster" key naming an undeclared tier, is refused
-naming "lym config gate".
+naming "lym config gate". A command whose test runner crashed in its run and
+its one rerun judged no code: it is refused naming the crashed runs under
+"findings", and the way forward is to run the verb again.
 
 A pause covering the worktree holds the run until the resume: the verify waits
 before its command, and stops a running command at the pause's grace end.
@@ -78,6 +81,12 @@ func (c *websterCLI) runVerify(cmd *cobra.Command) int {
 		return output.ErrFields(out,
 			"webster: verify: the worktree has uncommitted changes, so the verify command did not run; commit or discard them",
 			map[string]any{"findings": map[string]any{"dirty": res.Dirty}})
+	}
+
+	if res.RunnerCrash {
+		return output.ErrFields(out,
+			fmt.Sprintf("webster: verify: the verify command's test runner crashed in its run and its one rerun, so no test judged the code (%s); no change to the code mends it; way forward: run `lym webster verify` again, and when the runner crashes again, find the runtime's own fault in %s", res.Detail, res.Log),
+			map[string]any{"findings": map[string]any{"exit_code": res.ExitCode, "log": res.Log, "detail": res.Detail}})
 	}
 
 	findings := map[string]any{"exit_code": res.ExitCode, "log": res.Log}

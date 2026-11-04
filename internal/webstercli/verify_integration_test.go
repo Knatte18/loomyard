@@ -171,6 +171,33 @@ func TestVerifyVerb_FailureExitsOneWithFindings(t *testing.T) {
 	}
 }
 
+// TestVerifyVerb_RunnerCrashIsNoFailureToFix pins that a verify whose log holds the gate's runner crash line is refused naming the crashed run, with no failing identities to fix.
+// The tier prints the line itself and exits 1, which is no crash signal, so the gate does not wait out its rerun delay.
+func TestVerifyVerb_RunnerCrashIsNoFailureToFix(t *testing.T) {
+	tiergate.Require(t, 1)
+	crashLine := filepath.Join(t.TempDir(), "crash.txt")
+	if err := os.WriteFile(crashLine, []byte(gateslot.RunnerCrashLine("tier0 (exit 134, SIGABRT)")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fx := newVerifyFixture(t, "cat '"+crashLine+"'; exit 1")
+
+	code, env := fx.run(t)
+
+	if code != 1 || env.OK {
+		t.Fatalf("verify on a crashing runner = %d, envelope %+v; want 1 and not ok", code, env)
+	}
+	findings, ok := env.Raw["findings"].(map[string]any)
+	if !ok {
+		t.Fatalf("crash envelope has no findings object: %+v", env.Raw)
+	}
+	if detail, _ := findings["detail"].(string); !strings.Contains(detail, "SIGABRT") {
+		t.Errorf("findings detail = %q; want it to name SIGABRT", detail)
+	}
+	if _, hasFailures := findings["failures"]; hasFailures {
+		t.Errorf("findings = %+v; want no failures list for a crash", findings)
+	}
+}
+
 func TestVerifyVerb_DirtyTreeExitsOneNamingPaths(t *testing.T) {
 	tiergate.Require(t, 1)
 	fx := newVerifyFixture(t, "exit 0")

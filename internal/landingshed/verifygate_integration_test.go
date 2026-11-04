@@ -59,7 +59,10 @@ func TestVerifyGate_RealVerifytreeScenario(t *testing.T) {
 	command := "echo verify-ok; echo run >> " + counter
 	deps.VerifyCommand = func(string) (string, error) { return command, nil }
 	gate := newVerifyGate(deps)
-	check := func(ctx context.Context) (string, error) { return gate.check(ctx, "Publish", "main") }
+	check := func(ctx context.Context) (string, error) {
+		reason, _, err := gate.check(ctx, "Publish", "main")
+		return reason, err
+	}
 	requireRuns := func(t *testing.T, want int) {
 		t.Helper()
 		if got := runs(t, counter); got != want {

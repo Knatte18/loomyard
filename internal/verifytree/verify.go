@@ -101,7 +101,10 @@ type Result struct {
 	// TimedOut is set when the failed command's log holds a gate tier timeout line;
 	// the status is then StatusFailed with the command's own exit code.
 	TimedOut bool
-	// Detail carries the cause of a shell that could not start, or names the tier and timeout of a timed-out run.
+	// RunnerCrash is set when the failed command's log holds the gate's runner crash line: every failed tier run crashed its test runner on a signal with no failing test, in its run and its one rerun, so no test judged the code.
+	// The status is then StatusFailed with the command's own exit code.
+	RunnerCrash bool
+	// Detail carries the cause of a shell that could not start, names the tier and timeout of a timed-out run, or names the crashed runs of a runner crash.
 	Detail string
 	// Log is this run's own verify log, empty for a dirty or skipped result.
 	Log string
@@ -302,6 +305,7 @@ func parsePorcelainZ(out string) []string {
 // The write replaces the entry of command and drops every other command's entry naming a different tree, except site.BaseCommand's.
 // A non-zero exit is StatusFailed with the exit code, and a shell that could not start is StatusFailed with exit code -1 and the cause in Detail.
 // A failed command whose log holds a tier timeout line is also marked TimedOut, with the tier and its timeout in Detail and the command's own exit code.
+// One whose log holds no timeout line but the gate's runner crash line is marked RunnerCrash instead, with the crashed runs in Detail.
 // A cancelled ctx is a returned error and writes no record.
 // With a site.Hold, a covering pause holds Verify before its command and stops a running command at the pause's grace end, then Verify starts over from the dirty check after the resume.
 // A held Verify removes its marker on every return, its dirty and skipped returns included.
@@ -415,6 +419,9 @@ func runAndRecord(ctx context.Context, p Paths, site Site, command, tree, commit
 	if code != 0 {
 		failed := Result{Status: StatusFailed, ExitCode: code, Tree: tree, Log: logPath}
 		failed.TimedOut, failed.Detail = tierTimeoutDetail(logPath)
+		if !failed.TimedOut {
+			failed.RunnerCrash, failed.Detail = runnerCrashDetail(logPath)
+		}
 		return failed, false, nil
 	}
 
@@ -495,6 +502,19 @@ func tierTimeoutDetail(logPath string) (bool, string) {
 		break
 	}
 	return true, detail
+}
+
+// runnerCrashDetail reports whether the log at logPath holds the gate's runner crash line, and names the crashed runs when it does.
+func runnerCrashDetail(logPath string) (bool, string) {
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		return false, ""
+	}
+	runs, ok := gateslot.FindRunnerCrash(string(data))
+	if !ok {
+		return false, ""
+	}
+	return true, "gate test runner crashed with no failing test: " + runs
 }
 
 // headTree returns HEAD's tree SHA in worktree.

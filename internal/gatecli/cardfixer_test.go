@@ -152,6 +152,8 @@ type fixerRig struct {
 	recordStatusAtCall []string
 	// silent makes a gate call exit without writing a failure report, as a refusal does.
 	silent bool
+	// closing is written after the failure report of every gate call, as the closing line a call ends with.
+	closing string
 
 	stopperErr   error
 	stoppedGuids []string
@@ -186,7 +188,7 @@ func (r *fixerRig) gateTree() *cobra.Command {
 			r.recordStatusAtCall = append(r.recordStatusAtCall, record.Status)
 			r.treeMu.Unlock()
 			if !r.silent {
-				_, _ = cmd.ErrOrStderr().Write([]byte("failure report " + string(rune('0'+call)) + "\n"))
+				_, _ = cmd.ErrOrStderr().Write([]byte("failure report " + string(rune('0'+call)) + "\n" + r.closing))
 			}
 			code := r.codes[min(call, len(r.codes))-1]
 			clihelp.SetExit(cmd.Context(), code)
@@ -320,6 +322,21 @@ func TestRunWithFixer(t *testing.T) {
 		}
 		if stderr := rig.stderr(); stderr != "" {
 			t.Errorf("stderr = %q; want it empty, so the guard is what stopped the hand-off", stderr)
+		}
+	})
+
+	t.Run("RunnerCrashLineSpawnsNone", func(t *testing.T) {
+		t.Parallel()
+		rig := newFixerRig(t, 134)
+		rig.closing = gateslot.RunnerCrashLine("tier1 (exit 134, SIGABRT)") + "\n"
+		if exit := rig.runRequest(request); exit != (detachExit{Code: 134}) {
+			t.Errorf("exit = %+v; want the first exit 134", exit)
+		}
+		if len(rig.fixer.specs) != 0 || rig.calls.Load() != 1 {
+			t.Errorf("spawned %d fixers over %d gate calls; want none over one", len(rig.fixer.specs), rig.calls.Load())
+		}
+		if stderr := rig.stderr(); strings.Contains(stderr, "Cold fixer reply") {
+			t.Errorf("stderr = %q; want no fixer reply for a crash", stderr)
 		}
 	})
 

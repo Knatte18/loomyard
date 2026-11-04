@@ -63,4 +63,25 @@ func TestWatchdogLine(t *testing.T) {
 	if line, want := BuildTimeoutLine(5*time.Minute), "--set 'build={...}'"; !strings.Contains(line, want) {
 		t.Errorf("BuildTimeoutLine() = %q; want it to name the whole-build step %q", line, want)
 	}
+
+	crashLine := RunnerCrashLine("tier1 (exit 134, SIGABRT)")
+	crashTests := []struct {
+		name     string
+		log      string
+		wantRuns string
+		wantOK   bool
+	}{
+		{"the crash line after the closing line of failed runs", "Aborted (core dumped)\n" + FailedRunsPrefix + "tier1 (exit 134)\r\n" + crashLine + "\r\n", "tier1 (exit 134, SIGABRT)", true},
+		{"a log with no crash line", "Fatal error. Internal CLR error. (0x80131506)\n" + FailedRunsPrefix + "tier1 (exit 134)\n", "", false},
+	}
+	for _, tt := range crashTests {
+		t.Run("RunnerCrash_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			runs, ok := FindRunnerCrash(tt.log)
+			if runs != tt.wantRuns || ok != tt.wantOK {
+				t.Errorf("FindRunnerCrash() = %q, %v; want %q, %v", runs, ok, tt.wantRuns, tt.wantOK)
+			}
+		})
+	}
 }

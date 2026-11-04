@@ -1,4 +1,4 @@
-// runlog.go keeps one diagnostic record and log per tier run under the gate directory, and renders and finds the tier timeout and tier summary lines a site reads from a log.
+// runlog.go keeps one diagnostic record and log per tier run under the gate directory, and renders and finds the tier timeout, runner crash and tier summary lines a site reads from a log.
 
 package gateslot
 
@@ -26,6 +26,8 @@ const (
 
 	buildTimeoutPrefix = "lym gate test: build timeout: "
 	buildTierName      = "build"
+
+	runnerCrashPrefix = "lym gate test: runner crash: "
 )
 
 var (
@@ -74,6 +76,10 @@ type RunRecord struct {
 	CallID string `json:"call_id,omitempty"`
 	// Abandoned is set on a record written after its call was cancelled, such as by a terminating signal or a passed lease; reports count such a record apart.
 	Abandoned bool `json:"abandoned,omitempty"`
+	// RunnerCrash names the signal, such as SIGABRT, that ended a tier run with no failing test, so the run judged no code; empty for any other run.
+	RunnerCrash string `json:"runner_crash,omitempty"`
+	// Rerun is set on the record of a tier's one rerun after its first run crashed its test runner or failed on a resource shortage; the first run has its own record.
+	Rerun bool `json:"rerun,omitempty"`
 }
 
 // TestFailure is one failed test of a tier run.
@@ -208,6 +214,27 @@ func FindTierTimeout(log string) (tier string, ok bool) {
 		if tier, _, found := strings.Cut(rest, tierTimeoutMid); found {
 			return tier, true
 		}
+	}
+	return "", false
+}
+
+// RunnerCrashLine renders the line a gate call closes with when every run that failed crashed its test runner on a signal with no failing test, in its run and its one rerun.
+// runs names each such run with its exit code and signal, and holds no semicolon.
+// The line names the way forward, since no change to the code under test mends a runtime's crash.
+func RunnerCrashLine(runs string) string {
+	return fmt.Sprintf("%s%s; every failed run ended on a signal with no failing test, in its run and its one rerun, so no test judged the code; way forward: re-run the same command, and when the runner crashes again, look in the runs' logs for a fault of the runtime itself, such as a .NET CLR or Go runtime error",
+		runnerCrashPrefix, runs)
+}
+
+// FindRunnerCrash returns the runs the first runner crash line in log names, and false when log holds none.
+func FindRunnerCrash(log string) (runs string, ok bool) {
+	for _, line := range strings.Split(log, "\n") {
+		rest, found := strings.CutPrefix(strings.TrimRight(line, "\r"), runnerCrashPrefix)
+		if !found {
+			continue
+		}
+		runs, _, _ = strings.Cut(rest, ";")
+		return runs, true
 	}
 	return "", false
 }

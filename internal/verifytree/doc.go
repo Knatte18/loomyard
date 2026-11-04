@@ -12,6 +12,8 @@
 // Verify takes no gate slot and applies no timeout: every command it runs is one `lym gate test --wait` call, or such calls joined by `&&`, which take their own slots and are bounded by the gate's pre-tier ceiling and the tiers' timeouts.
 // A failed command whose log holds the gate's tier timeout line (gateslot.FindTierTimeout) is read as timed out:
 // the result is a failed one with the command's own exit code, TimedOut set and the tier and its timeout in Detail.
+// A failed command whose log holds no such line but the gate's runner crash line (gateslot.FindRunnerCrash) is read as a runner crash, which judged no code:
+// the result is a failed one with the command's own exit code, RunnerCrash set and the crashed runs in Detail, so a site stops rather than hand it to a fixer.
 // The marker is written as running from the start, and a waiting gate shows through the gate's own wait record.
 // A marker an older binary wrote in the waiting state, or without a state, stays readable.
 // The command's environment drops the strand-name variable (agentname.StrandNameEnv), so a test that drives `lym fabric` never meets the sandboxed-role guard.

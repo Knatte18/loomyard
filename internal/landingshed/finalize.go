@@ -679,6 +679,7 @@ func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shede
 // The fixer and the fix review run with the parent lock freed.
 //
 // A failing gate spawns the fixer on the attempts landing.yaml's finalize_fix_attempts leaves the entry, read from the attempt record under the row's entry.
+// A gate whose every failed run crashed its test runner judged no code, so it halts with the gate's LandingStopPrefix reason, spawning no fixer and spending no attempt.
 // A pass after the lock was taken again spends from the same attempts, so a second failed verify never grants a fresh cap.
 // The fixer's whole change is judged against the size and kind caps from the entry's Baseline, the HEAD before its first turn, so turns that each stay under the cap but sum past it are over it.
 // An entry has no attempts left when its Spent reaches the cap, whatever the record's Halt notes, and such an entry spawns no fixer: over a failing gate it ends as a spent cap, and over a passing one its change since Baseline is judged.
@@ -710,9 +711,12 @@ func (fz *Finalize) gateAndFix(ctx context.Context) (shedengine.Outcome, shedeng
 		return fz.errorStop(ctx, err)
 	}
 
-	gateReason, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
+	gateReason, crashed, err := fz.gate.check(ctx, finalizeName, fz.deps.ParentBranch)
 	if outcome, out, err, stop := fz.gateStop(ctx, "", err); stop {
 		return outcome, out, err, true
+	}
+	if crashed {
+		return fz.halt(ctx, gateReason)
 	}
 	passed := gateReason == ""
 	if passed {

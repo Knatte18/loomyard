@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -43,6 +44,8 @@ type tierResult struct {
 	buildFailed bool
 	// shortage is the resource-shortage marker of a tier that failed on one in its run and again in its one rerun; empty otherwise.
 	shortage string
+	// crash is the signal name of a tier that crashed its test runner in its run and again in its one rerun; empty otherwise.
+	crash string
 	// failures are the failed tests and packages the counter read, causes the lines the verb itself states a failure with, such as a timeout, and unparsed the first lines of output no test event carried, all for the failure report.
 	failures []runFailure
 	causes   []string
@@ -163,18 +166,49 @@ func failedOnShortage(result tierResult) string {
 	return resourceShortage(result.log)
 }
 
-// retryOnShortage runs attempt, the tier named tier, and when it failed on a resource shortage, an environment error a rerun clears, runs it once more after delay and returns the rerun's result.
-// The rerun's log opens with the line announcing it, which also goes to stderr, and a rerun that fails on a shortage again carries its marker in shortage.
+// crashSignals names the signals a test runner dies of when it crashes, as opposed to being stopped from outside: an abort, a bad instruction, a trap, a bus or segmentation fault and a floating-point fault.
+var crashSignals = map[syscall.Signal]string{
+	syscall.SIGABRT: "SIGABRT",
+	syscall.SIGILL:  "SIGILL",
+	syscall.SIGTRAP: "SIGTRAP",
+	syscall.SIGBUS:  "SIGBUS",
+	syscall.SIGSEGV: "SIGSEGV",
+	syscall.SIGFPE:  "SIGFPE",
+}
+
+// runnerCrash returns the name of the crash signal that ended a tier run with no failing test, read from an exit code of 128 plus the signal's number as a shell reports it, or "" for any other result.
+// A refusal, a blocked or timed-out run and a run that reported a failing test are no crash, since each says something about the code under test or none ran.
+func runnerCrash(result tierResult) string {
+	if result.refusal != "" || result.buildFailed || result.record.TimedOut || result.record.Failed > 0 || len(result.record.Failures) > 0 {
+		return ""
+	}
+	return crashSignals[syscall.Signal(result.record.ExitCode-128)]
+}
+
+// retryTier runs attempt, the tier named tier, and runs it once more after delay when it failed on a resource shortage or crashed its test runner with no failing test, since neither judges the code under test, returning the rerun's result.
+// The line announcing the rerun goes to stderr and opens the rerun's log.
+// Once the delay has passed, recordFirst gets the first run's result, so its record stays on file beside the rerun's, which is marked Rerun.
+// A rerun that fails on a shortage again carries its marker in shortage, and a rerun that crashes after a first run that crashed carries its signal in crash and its record's RunnerCrash.
+// A rerun that crashes after a first run that failed on a shortage carries no crash, since only one of the two runs crashed.
 // A ctx cancelled before or during the delay returns the first result.
-func retryOnShortage(ctx context.Context, stderr io.Writer, tier string, delay time.Duration, attempt func() tierResult) tierResult {
+func retryTier(ctx context.Context, stderr io.Writer, tier string, delay time.Duration, attempt func() tierResult, recordFirst func(tierResult)) tierResult {
 	result := attempt()
 	marker := failedOnShortage(result)
-	if marker == "" || ctx.Err() != nil {
+	signal := ""
+	if marker == "" {
+		signal = runnerCrash(result)
+	}
+	if (marker == "" && signal == "") || ctx.Err() != nil {
 		return result
 	}
-	line := fmt.Sprintf("gate test: %s failed on a resource shortage (%q in its output), an environment error a rerun clears; running it once more in %s", tier, marker, delay)
+	cause := fmt.Sprintf("failed on a resource shortage (%q in its output), an environment error a rerun clears", marker)
+	if signal != "" {
+		cause = fmt.Sprintf("crashed its test runner (exit %d, %s) with no failing test, which judges no code", result.record.ExitCode, signal)
+		result.record.RunnerCrash = signal
+	}
+	line := fmt.Sprintf("gate test: %s %s; running it once more in %s", tier, cause, delay)
 	printLine(stderr, line)
-	logger.Warn("gate test: rerunning a tier that failed on a resource shortage", "tier", tier, "marker", marker, "delay", delay)
+	logger.Warn("gate test: rerunning a tier that failed on its environment", "tier", tier, "marker", marker, "signal", signal, "delay", delay)
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
 	select {
@@ -182,8 +216,14 @@ func retryOnShortage(ctx context.Context, stderr io.Writer, tier string, delay t
 		return result
 	case <-timer.C:
 	}
+	recordFirst(result)
 	retried := attempt()
+	retried.record.Rerun = true
 	retried.shortage = failedOnShortage(retried)
+	if retried.shortage == "" && signal != "" {
+		retried.crash = runnerCrash(retried)
+		retried.record.RunnerCrash = retried.crash
+	}
 	retried.log = append([]byte(line+"\n"), retried.log...)
 	return retried
 }
@@ -237,7 +277,7 @@ func runInvocations(ctx context.Context, run tierRun, counter counter, env []str
 		})
 		stopWatching()
 		watchdogDone.Wait()
-		exit = exitCodeOf(runErr)
+		exit = tierExitCodeOf(runErr)
 		logger.Info("gate test: tier command ended", "tier", tierName(run.number), "exit", exit, "error", runErr)
 		if cmd.Process == nil && ctx.Err() == nil {
 			return 0, commands, fmt.Sprintf("gate test: could not start the shell for %s in %s: %v; way forward: make the tier's dir an existing directory and put the platform shell on PATH, then re-run the same command", tierName(run.number), dir, runErr)

@@ -406,6 +406,20 @@ func TestPRReview_Wait(t *testing.T) {
 			},
 		},
 		{
+			name: "ARunnerCrashHaltsTheRowNamingTheCrashAndMailsNothing", record: seed("h1", withStrand), scripts: statusScript(open), head: "h2",
+			setup: func(w *waitWorld) {
+				w.withGateCommand()
+				w.tree.result = verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)", Log: "/logs/gate.log"}
+				w.cancelAfter(3)
+			},
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{LandingStopPrefix, "tier1 (exit 134, SIGABRT)", "/logs/gate.log", "`lym loom resume`"},
+			check: func(t *testing.T, w *waitWorld, _ string) {
+				if len(w.mails) != 0 {
+					t.Errorf("mails = %q; want none, a crash halting the row instead of telling the agent", w.mails)
+				}
+			},
+		},
+		{
 			name: "AFailedMailPostIsLoggedAndNotRetriedForThatHead", record: seed("h1", withStrand), scripts: statusScript(open), head: "h2",
 			setup:   func(w *waitWorld) { failingGate(w); w.mailErr = errors.New("creel down"); w.cancelAfter(3) },
 			wantErr: context.Canceled,

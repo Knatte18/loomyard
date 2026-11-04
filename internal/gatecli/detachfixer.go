@@ -16,6 +16,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fsx"
 	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/languageconfig"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
@@ -94,7 +95,7 @@ func (d detachRun) watchPhase(ctx context.Context) (context.Context, func() (det
 // runWithFixer runs request as runRequest does, with the card fixer around a `test` request.
 // Before the gate runs, a live fixer record in the key directory is waited on and marked terminal, or its strand is stopped when it cannot be attached to.
 // A red verdict, after the run released its slots, goes to a cold fixer whose reply the re-run's stderr carries; the re-run's exit is the call's.
-// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a `card-verify` request, and a request the seam turns down or errors on end with the first run's result.
+// A pass, an abandoned exit, a non-zero exit that left nothing on stderr, as a refusal does, a red verdict whose every failed run crashed its test runner, a `card-verify` request, and a request the seam turns down or errors on end with the first run's result.
 func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gateTree func() *cobra.Command, seams detachSeams) detachExit {
 	if request.Verb != verbTest {
 		return d.runRequest(ctx, request, gateTree)
@@ -109,7 +110,7 @@ func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gate
 		return exit
 	}
 	first := d.runRequest(ctx, request, gateTree)
-	if !on || first.Abandoned || first.Code == 0 || !d.holdsFailureReport() {
+	if !on || first.Abandoned || first.Code == 0 || !d.holdsFailureReport() || d.endedOnRunnerCrash() {
 		return first
 	}
 	return d.fixAndRerun(ctx, request, gateTree, seams, kit, store, first)
@@ -119,6 +120,16 @@ func (d detachRun) runWithFixer(ctx context.Context, request detachRequest, gate
 func (d detachRun) holdsFailureReport() bool {
 	info, err := os.Stat(d.path(stderrFile))
 	return err == nil && info.Size() > 0
+}
+
+// endedOnRunnerCrash reports whether the run's stderr file holds the line a call closes with when every failed run crashed its test runner, a failure no change to the code mends.
+func (d detachRun) endedOnRunnerCrash() bool {
+	report, err := os.ReadFile(d.path(stderrFile))
+	if err != nil {
+		return false
+	}
+	_, crashed := gateslot.FindRunnerCrash(string(report))
+	return crashed
 }
 
 // settleLiveFixer waits on the live fixer record of an earlier run before the gate runs, under the phase fixing.

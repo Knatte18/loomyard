@@ -54,6 +54,8 @@ const (
 	fixerEndDirty fixerEnd = "dirty"
 	// fixerEndPushed is a session during which the task branch's remote ref moved.
 	fixerEndPushed fixerEnd = "pushed"
+	// fixerEndCrash is a landing gate after a turn whose every failed run crashed its test runner, which judged no code.
+	fixerEndCrash fixerEnd = "crash"
 )
 
 // fixerOutcome is how a fixer run ended and what the halt that follows names.
@@ -72,6 +74,8 @@ type fixerOutcome struct {
 	pushedRef string
 	// dirty lists the uncommitted or untracked paths the last turn left; set for a dirty end.
 	dirty []string
+	// crash is the landing gate's halt reason naming the crashed runs; set for a crash end.
+	crash string
 }
 
 // fixerRun runs the merge fixer for one row.
@@ -234,6 +238,7 @@ func (s *fixerSession) halt(end fixerEnd, findings string) (shuttleengine.GateRe
 // It judges the turn's duration, then the tree, then the report, and on a fixed verdict the landing gate.
 // A dirty tree with a turn left charges it and re-prompts naming the paths, so the fixer commits or deletes what it left; one with none left is the dirty end.
 // A failing gate with a turn left charges it and re-prompts; one with none left is the spent end.
+// A gate whose every failed run crashed its test runner is the crash end, whatever turns are left, since no turn mends it.
 func (s *fixerSession) check() (shuttleengine.GateResult, error) {
 	result, err := s.judge()
 	if err != nil {
@@ -279,9 +284,13 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 		return s.halt(fixerEndEscalate, report.Conflict)
 	}
 
-	reason, err := gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
+	reason, crashed, err := gate.check(s.ctx, s.run.row, s.run.deps.ParentBranch)
 	if err != nil {
 		return shuttleengine.GateResult{}, err
+	}
+	if crashed {
+		s.outcome.crash = reason
+		return s.halt(fixerEndCrash, reason)
 	}
 	if reason == "" {
 		passed := shuttleengine.GateResult{Passed: true}
@@ -312,10 +321,13 @@ func (s *fixerSession) judge() (shuttleengine.GateResult, error) {
 // Every reason except a tapestry, darn or sampler escalate opens with LandingStopPrefix and ends with a way forward, and is one line.
 // An escalate end with escalateJudgedFirst true opens with EscalateStopPrefix instead and names the decision verb as its way forward;
 // with it false the way forward is the conflict settled on the task branch, since a pawl run refuses the decision verb.
+// A crash end's reason is the landing gate's own, which already opens with LandingStopPrefix and names its way forward.
 func (o fixerOutcome) haltReason(row string, escalateJudgedFirst bool) string {
 	prefix := LandingStopPrefix
 	var cause, wayForward string
 	switch o.end {
+	case fixerEndCrash:
+		return o.crash
 	case fixerEndSpent:
 		cause = fmt.Sprintf("the fixer spent every attempt of %s and the landing gate still fails; log: %s", row, o.failureLog)
 		wayForward = "fix the failure on the task branch, then `lym loom resume`"

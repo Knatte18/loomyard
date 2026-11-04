@@ -549,11 +549,12 @@ func (p *PRReview) readTree() (string, []string, error) {
 
 // gateHead runs the pr-review gate over head, a clean tree whose head the record has not gated.
 // A pass pushes head and records it as gated, and a failure pushes nothing and mails its reason to the PR-Review session once per head.
+// A runner crash judges no code, so it halts the row naming the crash and mails nothing; the resume gates the head again.
 // A head moved or a tree dirtied during the gate discards the verdict.
 // It reports whether it ended the call.
 func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Record, label string) (shedengine.Outcome, shedengine.OutputPointer, bool, error) {
 	pr := p.deps.PullRequest
-	reason, err := p.gate.checkHead(ctx, p.name)
+	reason, crashed, err := p.gate.checkHead(ctx, p.name)
 	p.gate.markWait(label)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, true, err
@@ -566,6 +567,10 @@ func (p *PRReview) gateHead(ctx context.Context, head string, rec pullrequest.Re
 		return "", shedengine.OutputPointer{}, false, nil
 	}
 
+	if crashed {
+		outcome, pointer, serr := stuckVerdict(ctx, p.name, reason, true)
+		return outcome, pointer, true, serr
+	}
 	if reason == "" {
 		if err := pr.PushTask(); err != nil {
 			if terr := transientFailure(ctx, p.name, "push the task branch", err); terr != nil {

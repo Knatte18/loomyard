@@ -10,7 +10,7 @@
 // The wait has no timeout and wakes at least a second apart, doubling to a minute while nothing changes and back to a second when the task head moves.
 // Each wake re-reads the record, which the agent's `lym loom pr-continue` writes the continue flag into; a record write goes through the record's update so a flag written meanwhile survives.
 // A change to the record file, seen through the PullRequest.RecordChanges watch, ends the sleep between two wakes early, still a second after the last wake began, so a continue flag is acted on at once and not after up to a minute.
-// A clean tree whose head the record has not gated runs the `pr-review` gate key; a pass pushes the head and records it as gated, and a failure pushes nothing and mails the reason, naming the failing tier and log, to the PR-Review session once per head.
+// A clean tree whose head the record has not gated runs the `pr-review` gate key; a pass pushes the head and records it as gated, and a failure pushes nothing and mails the reason, naming the failing tier and log, to the PR-Review session once per head, except that a failure whose every failed run crashed its test runner halts the row with LandingStopPrefix, naming the crashed runs, and mails nothing.
 // A head moved or a tree dirtied during the gate discards its verdict, and a dirty tree is the agent at work and is not gated.
 // The pull request's status is read at most once a minute, the entry's own read counting as the first, and at once on the first wake that sees the continue flag.
 // Merged at the gated head on a clean tree is Done, and merged without task commits or at another head is Stuck with Halt naming the way forward.
@@ -156,6 +156,7 @@
 // The row's gate key is the told Deps.GateKey, which each row's registry entry sets from its optional `gate_key` config key, else its row name in lower case.
 // The told call, that key's `lym gate test` call rendered from the hub's gate config at each run, runs through internal/verifytree, unless its verified-tree record already names the tree and the command.
 // The merge fixer a row spawns judges each turn through that row's gate, so it runs the same key.
+// A gate whose every failed run crashed its test runner with no failing test, in its run and its one rerun, judged no code: at Parent-Align, at Finalize, after a fixer's turn and at the pr-review gate alike it halts the row with LandingStopPrefix, naming the crashed runs and the way forward of `lym loom resume`, which runs the gate again, and spawns no fixer and writes no landing failure record.
 // A fixer turn that leaves the tree dirty is re-prompted with the paths, on a charged turn, to commit what belongs to the fix and delete the rest; only a dirty tree after the last turn ends the fixer.
 // Its base command is the told Deps.BaseCommand, the fix rows' `code-burler-fix` call, so a landing pass keeps the entry the Code-Burler-Fix lint base reads.
 // A refusal of the gate config or of the key is the producer's returned error, carrying the refusal's way forward.

@@ -189,6 +189,24 @@ func TestMergeIn_Fixer(t *testing.T) {
 		}
 	})
 
+	t.Run("a runner crash halts naming the crashed runs, with no fixer session and no landing failure record", func(t *testing.T) {
+		t.Parallel()
+		fx := newMergeInFixture(t)
+		brought(fx)
+		writeVerifyLog(t, fx.gate, "FAIL")
+		fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)"})
+
+		outcome, ptr := fx.call(t)
+
+		requireHalt(t, outcome, ptr, "test runner crashed", "tier1 (exit 134, SIGABRT)", "no fixer runs", "`lym loom resume`")
+		if len(fx.seats.tables) != 0 {
+			t.Errorf("fixer sessions = %d; want none after a runner crash", len(fx.seats.tables))
+		}
+		if _, found, err := verifytree.ReadLandingFailure(fx.gate.paths); err != nil || found {
+			t.Errorf("ReadLandingFailure() = (_, %v, %v); want no record for a runner crash", found, err)
+		}
+	})
+
 	t.Run("escalate on a run's first Merge-In halts naming the report, and the resumed entry still reads the fork point", func(t *testing.T) {
 		t.Parallel()
 		fx := newMergeInFixture(t)

@@ -64,7 +64,7 @@ func TestGateRunner_Refusals(t *testing.T) {
 			tt.prepare(t, detachRun{dir: dir})
 
 			var out bytes.Buffer
-			command := newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultShortageRetryDelay, defaultPipeWaitDelay, seams)
+			command := newCommand(defaultGoBinary, defaultSamplePeriod, defaultPreTierCeiling, time.Minute, defaultRerunDelay, defaultPipeWaitDelay, seams)
 			if code := clihelp.ExecuteIn(command, dir, &out, []string{"run-detached", dir}); code != 1 {
 				t.Errorf("run-detached exit = %d, stdout %q; want 1", code, out.String())
 			}

@@ -143,6 +143,26 @@ func TestFinalizeVerify_Fail(t *testing.T) {
 	}
 }
 
+// TestFinalizeVerify_RunnerCrashHaltsWithoutFixer pins that a verify whose every failed run crashed its test runner halts naming the crashed runs, with no fixer session, no landing failure record and nothing landed.
+func TestFinalizeVerify_RunnerCrashHaltsWithoutFixer(t *testing.T) {
+	tiergate.Require(t, 0)
+	fx := newFinalizeGateFixture(t)
+	fx.scriptGate(verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)"})
+
+	outcome, ptr := fx.call(t)
+
+	requireHalt(t, outcome, ptr, "test runner crashed", "tier1 (exit 134, SIGABRT)", "no fixer runs")
+	if len(fx.seats.tables) != 0 {
+		t.Errorf("fixer sessions = %d; want none after a runner crash", len(fx.seats.tables))
+	}
+	if _, found, err := verifytree.ReadLandingFailure(fx.gate.paths); err != nil || found {
+		t.Errorf("ReadLandingFailure() = (_, %v, %v); want no record for a runner crash", found, err)
+	}
+	if len(fx.merger.calls) != 0 || len(fx.merger.pushCalls) != 0 {
+		t.Errorf("merge calls = %d, push calls = %d; want none after a halted gate", len(fx.merger.calls), len(fx.merger.pushCalls))
+	}
+}
+
 // TestFinalizeVerify_DirtyTreeHalts pins that a dirty tree at each of the three points ends Stuck naming the paths,
 // before the parent-side merge.
 func TestFinalizeVerify_DirtyTreeHalts(t *testing.T) {

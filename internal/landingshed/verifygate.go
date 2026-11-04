@@ -56,11 +56,11 @@ type failureRecorder struct {
 // recordFailure writes the landing failure record for a verify of the row's gate key that ended in result.
 // The record's kind is that key, and its tier is the first failing tier the log's summary lines name;
 // a log without one, such as a refusal before the first tier, takes the highest tier of the key.
-// A result that is not a failed run, a timeout and a shell that could not start write none, since none of them names a failing test.
+// A result that is not a failed run, a timeout, a runner crash and a shell that could not start write none, since none of them names a failing test.
 // It returns whether it wrote the record: a write failure is logged, reported as false and changes nothing else.
 func (g verifyGate) recordFailure(result verifytree.Result) bool {
 	kind := verifytree.FailureKind(g.key)
-	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.ExitCode < 0 {
+	if g.recorder == nil || result.Status != verifytree.StatusFailed || result.TimedOut || result.RunnerCrash || result.ExitCode < 0 {
 		return false
 	}
 	failure := verifytree.LandingFailure{
@@ -222,24 +222,26 @@ func (g verifyGate) readBase(producer string) (string, error) {
 // The base command is the site's BaseCommand, so a pass keeps the entry the next round diffs from.
 //
 // It returns a non-empty Stuck reason naming the gate when the call fails or the tree is dirty,
-// a non-nil error for an infrastructure fault or a cancellation, and ("", nil) when the producer may proceed.
+// a non-nil error for an infrastructure fault or a cancellation, and ("", false, nil) when the producer may proceed.
+// crashed is set when every failed run of the call crashed its test runner with no failing test, so no test judged the code:
+// the reason is then a halt reason opening with LandingStopPrefix, which the producer halts with instead of spawning a fixer.
 // A pass, and a skip over a tree already recorded as passed, remove a landing failure record an earlier failed call left.
-func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (string, error) {
+func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (reason string, crashed bool, err error) {
 	if g.command == nil {
-		return "", nil
+		return "", false, nil
 	}
 
 	command, err := g.command(g.key)
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
+		return "", false, fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
 	}
 	if command == "" {
 		logger.Warn("landingshed: post-merge verify skipped because no verify command is configured", "producer", producer, "parentBranch", parentBranch)
-		return "", nil
+		return "", false, nil
 	}
 	base, err := g.readBase(producer)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	g.markWait("")
@@ -247,36 +249,38 @@ func (g verifyGate) check(ctx context.Context, producer, parentBranch string) (s
 	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
 	g.markWait("")
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
+		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
 	g.recordFailure(result)
-	reason, err := g.verdict(result, "landing gate", producer, parentBranch)
+	reason, err = g.verdict(result, "landing gate", producer, parentBranch)
 	if reason == "" && err == nil {
 		g.clearFailure()
 	}
-	return reason, err
+	return reason, result.Status == verifytree.StatusFailed && result.RunnerCrash, err
 }
 
 // checkHead runs the call of the row's gate key over the task head for producer, the PR-Review gate over an agent's commits.
 // It reads the key's command and base command and marks the wait as check does, skipping with a warning when no command is configured, and writes no landing failure record.
 //
-// It returns the reason the gate refuses the head, written for the agent to act on in a new commit, an error for an infrastructure fault or a cancellation, and ("", nil) on a pass or a skip.
+// It returns the reason the gate refuses the head, written for the agent to act on in a new commit, an error for an infrastructure fault or a cancellation, and ("", false, nil) on a pass or a skip.
 // A dirty result returns the dirty reason.
-func (g verifyGate) checkHead(ctx context.Context, producer string) (string, error) {
+// crashed is set when every failed run of the call crashed its test runner with no failing test, so no test judged the head:
+// the reason is then a halt reason opening with LandingStopPrefix, which the caller halts the row with instead of telling the agent.
+func (g verifyGate) checkHead(ctx context.Context, producer string) (reason string, crashed bool, err error) {
 	if g.command == nil {
-		return "", nil
+		return "", false, nil
 	}
 	command, err := g.command(g.key)
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
+		return "", false, fmt.Errorf("landingshed: %s: read gate command: %w", producer, err)
 	}
 	if command == "" {
 		logger.Warn("landingshed: the pr-review gate skipped because no verify command is configured", "producer", producer)
-		return "", nil
+		return "", false, nil
 	}
 	base, err := g.readBase(producer)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	g.markWait("")
@@ -284,7 +288,7 @@ func (g verifyGate) checkHead(ctx context.Context, producer string) (string, err
 	result, err := g.verify(ctx, g.paths, verifytree.Site{Label: producer, BaseCommand: base, Hold: g.hold}, command)
 	g.markWait("")
 	if err != nil {
-		return "", fmt.Errorf("landingshed: %s: %w", producer, err)
+		return "", false, fmt.Errorf("landingshed: %s: %w", producer, err)
 	}
 	switch result.Status {
 	case verifytree.StatusPassed:
@@ -292,21 +296,24 @@ func (g verifyGate) checkHead(ctx context.Context, producer string) (string, err
 	case verifytree.StatusSkipped:
 		logger.Info("landingshed: the pr-review gate skipped because the tree is already verified", "producer", producer, "tree", result.Tree)
 	case verifytree.StatusDirty:
-		return dirtyReason("when the pr-review gate was about to run", result.Dirty), nil
+		return dirtyReason("when the pr-review gate was about to run", result.Dirty), false, nil
 	case verifytree.StatusFailed:
-		return g.headFailureReason(result), nil
+		return g.headFailureReason(result), result.RunnerCrash, nil
 	default:
-		return "", fmt.Errorf("landingshed: %s: unknown pr-review gate status %q", producer, result.Status)
+		return "", false, fmt.Errorf("landingshed: %s: unknown pr-review gate status %q", producer, result.Status)
 	}
-	return "", nil
+	return "", false, nil
 }
 
 // headFailureReason is the reason a failed run of the pr-review gate gives the agent: the failing tier or the build, the log and the instruction to fix it in a new commit.
-// A timeout and a shell that could not start name no tier, since neither names a failing test.
+// A timeout, a runner crash and a shell that could not start name no tier, since none names a failing test.
+// A runner crash is a halt reason opening with LandingStopPrefix, since no change to the code mends it and the agent has no commit to make.
 func (g verifyGate) headFailureReason(result verifytree.Result) string {
 	switch {
 	case result.TimedOut:
 		return fmt.Sprintf("the pr-review gate timed out: %s; output: %s; fix the hanging test or build in a new commit", result.Detail, result.Log)
+	case result.RunnerCrash:
+		return fmt.Sprintf("%sthe pr-review gate's test runner crashed in its run and its one rerun (%s), so no test judged the head and no change to the code mends it; output: %s; way forward: `lym loom resume`, which runs the gate again, and when the runner crashes again, find the runtime's own fault in the output", LandingStopPrefix, result.Detail, result.Log)
 	case result.ExitCode < 0:
 		return fmt.Sprintf("the pr-review gate could not start: %s; output: %s", result.Detail, result.Log)
 	}
@@ -346,6 +353,7 @@ func watchdogClause(logPath string) string {
 // It returns a non-empty Stuck reason for a dirty tree or a failed command, an error for an unknown status, and ("", nil) when the producer may proceed.
 // A failed command with an exit code ends its reason with the clause asking to fix forward on the task branch.
 // After a CPU watchdog quit the reason names the window and the busy_quit_sec way forward before that clause.
+// A runner crash is a halt reason opening with LandingStopPrefix that names the crashed runs and the way forward of resuming, which runs the gate again.
 func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBranch string) (string, error) {
 	switch result.Status {
 	case verifytree.StatusPassed:
@@ -363,6 +371,9 @@ func (g verifyGate) verdict(result verifytree.Result, what, producer, parentBran
 		}
 		if result.ExitCode < 0 {
 			return fmt.Sprintf("%s could not start after merging parent branch %q: %s; output: %s", what, parentBranch, result.Detail, result.Log), nil
+		}
+		if result.RunnerCrash {
+			return fmt.Sprintf("%s%s's test runner crashed after merging parent branch %q, in its run and its one rerun (%s), so no test judged the code and no fixer runs; output: %s; way forward: `lym loom resume`, which runs the gate again, and when the runner crashes again, find the runtime's own fault in the output", LandingStopPrefix, what, parentBranch, result.Detail, result.Log), nil
 		}
 		watchdog := watchdogClause(result.Log)
 		return fmt.Sprintf("%s failed after merging parent branch %q (exit code %d); output: %s%s; fix forward on the task branch, then resume", what, parentBranch, result.ExitCode, result.Log, watchdog), nil

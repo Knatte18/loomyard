@@ -50,6 +50,7 @@ const verifyFailureTruncated = "\n[truncated]"
 // `StatusPassed` and `StatusSkipped` pass.
 // `StatusDirty` fails with the dirty paths.
 // `StatusFailed` fails with the exit code, the log path and the log's tail, and, after a CPU watchdog quit, the window and the `busy_quit_sec` way forward; a test file the command's guard scan rejects, such as a misplaced `//lym:guard` marker, reaches the findings through that tail with its file and line.
+// A `StatusFailed` runner crash, every failed run having crashed its test runner with no failing test, fails terminally naming the crashed runs, since no change the writer makes mends it and no fixer gets it.
 // A headroom finding or a comment lint finding fails with its file and line or its bytes and the way forward.
 // A command, merge base or tree scope read error, a failure to read git, a lint run error or a cancelled verify is a returned error, since none is a defect the writer can fix.
 func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase func() (string, error), treeScope func() (string, bool, error), hold *verifytree.PauseHold) shuttleengine.Gate {
@@ -136,8 +137,8 @@ func NewVerifyGate(worktreeRoot, verifyDir, siteLabel string, command, mergeBase
 			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
 		default:
 			findings := verifyFailureFindings(res, res.Log)
-			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "log", res.Log)
-			return shuttleengine.GateResult{Passed: false, Findings: findings}, nil
+			logger.Warn("loomshed: verify gate failed", "gate", siteLabel, "attempt", attempt, "exitCode", res.ExitCode, "runnerCrash", res.RunnerCrash, "log", res.Log)
+			return shuttleengine.GateResult{Passed: false, Findings: findings, Terminal: res.RunnerCrash}, nil
 		}
 	}
 }
@@ -163,15 +164,18 @@ func commentLintFindings(findings []commentlint.Finding) string {
 	return b.String()
 }
 
-// verifyFailureFindings renders a StatusFailed result as the exit code or the timeout, the log path, and the failing tests and packages the log names, each with its own output, and the gate's closing line of failed runs;
+// verifyFailureFindings renders a StatusFailed result as the exit code, the timeout or the runner crash, the log path, and the failing tests and packages the log names, each with its own output, and the gate's closing line of failed runs;
 // a log that names no failing test or package is quoted as its tail instead, since in the output of parallel packages the last lines need not hold the failures.
 // When the whole log holds the CPU watchdog's line, a paragraph after the first sentence names the window and the way forward for a healthy package that is CPU-bound.
 func verifyFailureFindings(res verifytree.Result, logPath string) string {
 	log, _ := os.ReadFile(logPath)
 	var b strings.Builder
-	if res.TimedOut {
+	switch {
+	case res.TimedOut:
 		fmt.Fprintf(&b, "The verify command timed out: %s.", res.Detail)
-	} else {
+	case res.RunnerCrash:
+		fmt.Fprintf(&b, "The verify command's test runner crashed in its run and its one rerun, so no test judged the code: %s. No change to the code mends it, so the run stops here; resuming it runs the gate again.", res.Detail)
+	default:
 		fmt.Fprintf(&b, "The verify command failed with exit code %d.", res.ExitCode)
 		if res.Detail != "" {
 			fmt.Fprintf(&b, " Its shell could not start: %s.", res.Detail)

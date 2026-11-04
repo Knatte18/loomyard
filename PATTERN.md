@@ -54,7 +54,7 @@
 - `PATTERN-friction-capture` — Halting or crash-resuming a run, or refusing in webster: Go writes a note via `internal/friction`; none is archived before a reflection covers it. (test)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test) — [background](pattern/PATTERN-gate-slot.md)
-- `PATTERN-gate-fixer` — Clearing a failed gate with a cold agent: only `gatefixer`, one fixer per failed evaluation; Go's re-run of the gate judges, never the fixer; a fixer's own gate calls spawn none.
+- `PATTERN-gate-fixer` — Clearing a failed gate with a cold agent: only `gatefixer`, one fixer per failed evaluation; Go's re-run of the gate judges, never the fixer; a fixer's own gate calls spawn none; a runner crash gets none.
 - `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe or halt note, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 - `PATTERN-shed-shared-machinery` — Adding what every phase machine needs: once, in shed's packages, never in one recipe's or module's own package.
 

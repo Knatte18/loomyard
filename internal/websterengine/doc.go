@@ -611,6 +611,7 @@
 // Bound: a re-prompt shuttle could not deliver is evaluated again, which counts one more failure, so the routing can go cold one attempt early.
 // A run that outlives the verify timeout is never rerun, since a hang is not flakiness: it fails the gate at once,
 // and the report names the timeout, the log path and the log tail, and says the step was not re-run.
+// A run whose every failed tier run crashed its test runner with no failing test judged no code: on the first run or the rerun it fails the gate at once and terminally, naming the crashed runs, with no fixer, no spent attempt, no pre-fix head and no report.
 // A failed run that hung is not re-run either: classifyHang reads the log and exit code, and the first failure and the rerun's failure are both checked.
 // The markers are checked in this order: the CPU watchdog line of `lym gate test`, go test's `panic: test timed out after`, the runtime's `SIGQUIT: quit` dump header and a log line starting `signal: `.
 // Without a marker, an exit code of 128 or above, or -1 with no `Detail`, which `verifyrun` returns for a shell killed by a signal, is a hang.

@@ -1,12 +1,14 @@
-// tierrun_test.go covers the one rerun of a tier that failed on a resource shortage and how the closing line names such a run, over fake attempts that spawn nothing.
+// tierrun_test.go covers the one rerun of a tier that failed on a resource shortage or crashed its test runner and how the closing line names such a run, over fake attempts that spawn nothing.
 
 package gatecli
 
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,7 +27,7 @@ func (w cancelOnWrite) Write(p []byte) (int, error) {
 	return w.Writer.Write(p)
 }
 
-func TestRetryOnShortage(t *testing.T) {
+func TestRetryTier(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
@@ -34,6 +36,12 @@ func TestRetryOnShortage(t *testing.T) {
 	}
 	eagain := failed(2, "fork/exec /usr/bin/git: Resource temporarily unavailable\n")
 	thread := failed(2, "runtime: failed to create new OS thread (have 12 already; errno=11)\n")
+	abort := 128 + int(syscall.SIGABRT)
+	aborted := failed(abort, "Fatal error. Internal CLR error. (0x80131506)\nAborted (core dumped)\n")
+	segv := failed(128+int(syscall.SIGSEGV), "Segmentation fault (core dumped)\n")
+	abortedWithFailure := tierResult{record: gateslot.RunRecord{ExitCode: abort, Failed: 1}, log: aborted.log}
+	const shortageAnnounced = "gate test: tier0 failed on a resource shortage"
+	crashAnnounced := fmt.Sprintf("gate test: tier0 crashed its test runner (exit %d, SIGABRT) with no failing test", abort)
 	tests := []struct {
 		name      string
 		attempts  []tierResult
@@ -43,18 +51,26 @@ func TestRetryOnShortage(t *testing.T) {
 		wantAttempts      int
 		wantExit          int
 		wantShortage      string
-		wantRetry         bool
+		wantCrash         string
+		// wantAnnounced opens stderr when the rerun is announced, and is empty when it is not.
+		wantAnnounced string
 	}{
 		{name: "PassIsNotRerun", attempts: []tierResult{failed(0, "Resource temporarily unavailable\n")}, wantAttempts: 1},
 		{name: "FailureWithoutMarkerIsNotRerun", attempts: []tierResult{failed(1, "--- FAIL: TestX\n")}, wantAttempts: 1, wantExit: 1},
 		{name: "TimeoutIsNotRerun", attempts: []tierResult{{record: gateslot.RunRecord{ExitCode: 1, TimedOut: true}, log: eagain.log}}, wantAttempts: 1, wantExit: 1},
 		{name: "RefusalIsNotRerun", attempts: []tierResult{{refusal: "no shell", log: eagain.log}}, wantAttempts: 1},
 		{name: "CancelledCallIsNotRerun", attempts: []tierResult{eagain}, cancelled: true, wantAttempts: 1, wantExit: 2},
-		{name: "CancelDuringTheDelayReturnsTheFirstResult", attempts: []tierResult{eagain}, cancelDuringDelay: true, wantAttempts: 1, wantExit: 2, wantRetry: true},
-		{name: "ShortageThenPassEndsPassed", attempts: []tierResult{eagain, failed(0, "ok\n")}, wantAttempts: 2, wantRetry: true},
-		{name: "ShortageThenOrdinaryFailureCarriesNoShortage", attempts: []tierResult{thread, failed(1, "--- FAIL: TestX\n")}, wantAttempts: 2, wantExit: 1, wantRetry: true},
-		{name: "ShortageTwiceCarriesTheMarker", attempts: []tierResult{eagain, thread}, wantAttempts: 2, wantExit: 2, wantShortage: "failed to create new os thread", wantRetry: true},
-		{name: "ShellForkFailureIsAShortage", attempts: []tierResult{failed(1, "sh: Cannot fork\n"), failed(1, "bash: fork: Cannot fork\n")}, wantAttempts: 2, wantExit: 1, wantShortage: "cannot fork", wantRetry: true},
+		{name: "CancelDuringTheDelayReturnsTheFirstResult", attempts: []tierResult{eagain}, cancelDuringDelay: true, wantAttempts: 1, wantExit: 2, wantAnnounced: shortageAnnounced},
+		{name: "ShortageThenPassEndsPassed", attempts: []tierResult{eagain, failed(0, "ok\n")}, wantAttempts: 2, wantAnnounced: shortageAnnounced},
+		{name: "ShortageThenOrdinaryFailureCarriesNoShortage", attempts: []tierResult{thread, failed(1, "--- FAIL: TestX\n")}, wantAttempts: 2, wantExit: 1, wantAnnounced: shortageAnnounced},
+		{name: "ShortageTwiceCarriesTheMarker", attempts: []tierResult{eagain, thread}, wantAttempts: 2, wantExit: 2, wantShortage: "failed to create new os thread", wantAnnounced: shortageAnnounced},
+		{name: "ShellForkFailureIsAShortage", attempts: []tierResult{failed(1, "sh: Cannot fork\n"), failed(1, "bash: fork: Cannot fork\n")}, wantAttempts: 2, wantExit: 1, wantShortage: "cannot fork", wantAnnounced: shortageAnnounced},
+		{name: "CrashThenPassEndsPassed", attempts: []tierResult{aborted, failed(0, "Passed!  - Failed: 0, Passed: 138, Skipped: 0, Total: 138\n")}, wantAttempts: 2, wantAnnounced: crashAnnounced},
+		{name: "CrashTwiceCarriesTheSignal", attempts: []tierResult{aborted, segv}, wantAttempts: 2, wantExit: 128 + int(syscall.SIGSEGV), wantCrash: "SIGSEGV", wantAnnounced: crashAnnounced},
+		{name: "CrashThenFailingTestCarriesNoCrash", attempts: []tierResult{aborted, abortedWithFailure}, wantAttempts: 2, wantExit: abort, wantAnnounced: crashAnnounced},
+		{name: "ShortageThenCrashCarriesNoCrash", attempts: []tierResult{eagain, aborted}, wantAttempts: 2, wantExit: abort, wantAnnounced: shortageAnnounced},
+		{name: "SignalExitWithAFailingTestIsNotRerun", attempts: []tierResult{abortedWithFailure}, wantAttempts: 1, wantExit: abort},
+		{name: "TerminatedRunIsNoCrash", attempts: []tierResult{failed(128+int(syscall.SIGTERM), "Terminated\n")}, wantAttempts: 1, wantExit: 128 + int(syscall.SIGTERM)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -72,22 +88,36 @@ func TestRetryOnShortage(t *testing.T) {
 				delay = time.Hour
 			}
 			calls := 0
-			got := retryOnShortage(ctx, out, "tier0", delay, func() tierResult {
+			var recorded []tierResult
+			got := retryTier(ctx, out, "tier0", delay, func() tierResult {
 				calls++
 				return tt.attempts[calls-1]
-			})
+			}, func(first tierResult) { recorded = append(recorded, first) })
 			if calls != tt.wantAttempts {
-				t.Errorf("retryOnShortage ran %d attempts; want %d", calls, tt.wantAttempts)
+				t.Errorf("retryTier ran %d attempts; want %d", calls, tt.wantAttempts)
 			}
-			if got.record.ExitCode != tt.wantExit || got.shortage != tt.wantShortage {
-				t.Errorf("retryOnShortage() = exit %d, shortage %q; want exit %d, shortage %q", got.record.ExitCode, got.shortage, tt.wantExit, tt.wantShortage)
+			if got.record.ExitCode != tt.wantExit || got.shortage != tt.wantShortage || got.crash != tt.wantCrash || got.record.RunnerCrash != tt.wantCrash {
+				t.Errorf("retryTier() = exit %d, shortage %q, crash %q, record crash %q; want exit %d, shortage %q, crash %q", got.record.ExitCode, got.shortage, got.crash, got.record.RunnerCrash, tt.wantExit, tt.wantShortage, tt.wantCrash)
 			}
-			const announced = "gate test: tier0 failed on a resource shortage"
-			if retried := strings.HasPrefix(stderr.String(), announced); retried != tt.wantRetry {
-				t.Errorf("stderr = %q; want the rerun announced: %v", stderr.String(), tt.wantRetry)
+			retried := tt.wantAnnounced != ""
+			if announced := retried && strings.HasPrefix(stderr.String(), tt.wantAnnounced); announced != retried || (!retried && stderr.Len() > 0) {
+				t.Errorf("stderr = %q; want the rerun announced with %q", stderr.String(), tt.wantAnnounced)
 			}
-			if tt.wantRetry && calls == 2 && !strings.HasPrefix(string(got.log), stderr.String()) {
-				t.Errorf("rerun log = %q; want it to open with the announcement %q", got.log, stderr.String())
+			if calls != 2 {
+				if len(recorded) != 0 {
+					t.Errorf("recorded %d first runs; want none for a run that was not rerun", len(recorded))
+				}
+				return
+			}
+			if !strings.HasPrefix(string(got.log), stderr.String()) || !got.record.Rerun {
+				t.Errorf("rerun log = %q, rerun mark %v; want the log to open with the announcement %q and the record marked a rerun", got.log, got.record.Rerun, stderr.String())
+			}
+			wantFirstCrash := ""
+			if tt.wantAnnounced == crashAnnounced {
+				wantFirstCrash = "SIGABRT"
+			}
+			if len(recorded) != 1 || recorded[0].record.ExitCode != tt.attempts[0].record.ExitCode || recorded[0].record.Rerun || recorded[0].record.RunnerCrash != wantFirstCrash {
+				t.Errorf("recorded first runs = %+v; want the first run once, not marked a rerun, with runner crash %q", recorded, wantFirstCrash)
 			}
 		})
 	}
@@ -107,6 +137,11 @@ func TestFailedRunLabel(t *testing.T) {
 			name: "ShortageTwice",
 			end:  runEnd{code: 2, ran: true, shortage: "cannot fork"},
 			want: `tier1 (exit 2, a resource shortage, "cannot fork", in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)`,
+		},
+		{
+			name: "CrashTwice",
+			end:  runEnd{code: 134, ran: true, crash: "SIGABRT"},
+			want: "tier1 (exit 134, a runner crash, SIGABRT, in its run and its rerun with no failing test: the code under test was not judged)",
 		},
 	}
 	for _, tt := range tests {

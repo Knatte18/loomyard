@@ -184,7 +184,7 @@ func TestVerifyGate_WaitMark(t *testing.T) {
 					return tc.markErr
 				}
 			}
-			reason, err := f.gate.check(context.Background(), "Publish", "main")
+			reason, _, err := f.gate.check(context.Background(), "Publish", "main")
 
 			if !strings.Contains(reason, tc.wantReason) || (tc.wantReason == "" && reason != "") {
 				t.Errorf("reason = %q, want it to contain %q", reason, tc.wantReason)
@@ -229,6 +229,8 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 		wantErrHas      string
 		// staleRecord, when set, leaves a landing failure record from an earlier failed call that the verdict must remove.
 		staleRecord bool
+		// wantCrashed is the crash flag the check returns beside its reason.
+		wantCrashed bool
 	}{
 		{name: "pass", command: "go test ./...", site: "Publish", result: verifytree.Result{Status: verifytree.StatusPassed}},
 		{name: "site label follows the producer", command: "true", site: "Finalize", result: verifytree.Result{Status: verifytree.StatusPassed}},
@@ -274,6 +276,12 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 			},
 		},
 		{
+			name: "runner crash is a halt reason naming the crashed runs and no fixer", command: "true", site: "Finalize",
+			result:        verifytree.Result{Status: verifytree.StatusFailed, ExitCode: 134, RunnerCrash: true, Detail: "gate test runner crashed with no failing test: tier1 (exit 134, SIGABRT)", Log: failedLog},
+			wantReasonHas: []string{LandingStopPrefix, "test runner crashed", "tier1 (exit 134, SIGABRT)", "no fixer runs", "`lym loom resume`"},
+			wantCrashed:   true,
+		},
+		{
 			name: "dirty result names the paths", command: "true", site: "Publish",
 			result:        verifytree.Result{Status: verifytree.StatusDirty, Dirty: []string{"a.txt", "b.txt"}},
 			wantReasonHas: []string{"a.txt", "b.txt"},
@@ -304,7 +312,10 @@ func TestVerifyGate_CheckMapsVerifyResult(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			reason, err := f.gate.check(context.Background(), tc.site, "main")
+			reason, crashed, err := f.gate.check(context.Background(), tc.site, "main")
+			if crashed != tc.wantCrashed {
+				t.Errorf("check() crashed = %v; want %v", crashed, tc.wantCrashed)
+			}
 			if tc.staleRecord {
 				if _, found, readErr := verifytree.ReadLandingFailure(f.paths); readErr != nil || found {
 					t.Errorf("ReadLandingFailure() = (_, %v, %v); want the stale record removed", found, readErr)
@@ -369,7 +380,7 @@ func TestVerifyGate_CheckWithoutCommandSkipsVerify(t *testing.T) {
 			if tc.noGate {
 				f.gate.command = nil
 			}
-			reason, err := f.gate.check(context.Background(), "Publish", "main")
+			reason, _, err := f.gate.check(context.Background(), "Publish", "main")
 			if reason != "" || err != nil {
 				t.Fatalf("got (%q, %v), want (\"\", nil)", reason, err)
 			}
@@ -396,7 +407,7 @@ func TestVerifyGate_ClosureError(t *testing.T) {
 	t.Parallel()
 
 	f := newGateFixture(t, "finalize", "", errors.New("plan unreadable"))
-	reason, err := f.gate.check(context.Background(), "Publish", "main")
+	reason, _, err := f.gate.check(context.Background(), "Publish", "main")
 	if reason != "" || err == nil || !strings.Contains(err.Error(), "plan unreadable") || !strings.Contains(err.Error(), "Publish") {
 		t.Fatalf("got (%q, %v)", reason, err)
 	}
@@ -413,7 +424,7 @@ func TestVerifyGate_Cancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	f.fake.onVerify = cancel
 	f.fake.verifyErr = context.Canceled
-	reason, err := f.gate.check(ctx, "Publish", "main")
+	reason, _, err := f.gate.check(ctx, "Publish", "main")
 	if reason != "" || !errors.Is(err, context.Canceled) {
 		t.Fatalf("got (%q, %v), want a context.Canceled error", reason, err)
 	}

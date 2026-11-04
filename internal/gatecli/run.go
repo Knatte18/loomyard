@@ -147,6 +147,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	var failures []string
 	code, firstFailed := 0, ""
 	buildNamed := false
+	// crashed names the failed runs that crashed their test runner twice, and judged is set once any other run failed, so the call closes with the runner crash line only when no failure judged the code.
+	var crashed []string
+	judged := false
 	for _, run := range plan {
 		var end runEnd
 		if run.guardStep {
@@ -155,6 +158,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			end = exe.runListed(run)
 		}
 		if end.blocked {
+			judged = true
 			// The build is a failed run counted before the first tier it blocked.
 			if !buildNamed {
 				buildNamed = true
@@ -166,6 +170,11 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 			failures = append(failures, runLabel(run)+" (blocked by the build)")
 		} else if end.ran && end.code != 0 {
 			failures = append(failures, failedRunLabel(run, end))
+			if end.crash != "" {
+				crashed = append(crashed, fmt.Sprintf("%s (exit %d, %s)", runLabel(run), end.code, end.crash))
+			} else {
+				judged = true
+			}
 			if code == 0 {
 				code, firstFailed = end.code, runLabel(run)
 			}
@@ -182,6 +191,7 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	// The lint steps run after the tiers, so a call that fails both reports the two in one go.
 	if request.gate != "" && runCtx.Err() == nil {
 		for _, lint := range runLints(request.root, cfg.Gates[request.gate].Lints) {
+			judged = true
 			exe.failed = append(exe.failed, lint)
 			failures = append(failures, fmt.Sprintf("%s (%s)", lint.label, lint.outcome))
 			if code == 0 {
@@ -191,6 +201,9 @@ func runTest(ctx context.Context, out io.Writer, request testRequest) int {
 	}
 	exe.printReport(inHub)
 	printFailedRuns(request.stderr, failures, firstFailed, false)
+	if len(crashed) > 0 && !judged {
+		printLine(request.stderr, gateslot.RunnerCrashLine(strings.Join(crashed, ", ")))
+	}
 	if code == 0 && sc.form == scopeCard {
 		printNotRunTiers(request.stderr, notRunTiers(cfg, plan))
 	}
@@ -234,12 +247,17 @@ func printNotRunTiers(stderr io.Writer, numbers []int) {
 	printLine(stderr, "gate test: "+tierNames(numbers)+notRunSuffix)
 }
 
-// failedRunLabel names run, which ran and failed as end says, in the closing line of failed runs: its label and exit code, and for a run that failed on a resource shortage twice, the marker and the way forward of re-running once the load drops.
+// failedRunLabel names run, which ran and failed as end says, in the closing line of failed runs: its label and exit code;
+// for a run that failed on a resource shortage twice, the marker and the way forward of re-running once the load drops;
+// and for a run that crashed its test runner twice, the signal and that no test failed.
 func failedRunLabel(run tierRun, end runEnd) string {
-	if end.shortage == "" {
-		return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
+	switch {
+	case end.shortage != "":
+		return fmt.Sprintf("%s (exit %d, a resource shortage, %q, in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)", runLabel(run), end.code, end.shortage)
+	case end.crash != "":
+		return fmt.Sprintf("%s (exit %d, a runner crash, %s, in its run and its rerun with no failing test: the code under test was not judged)", runLabel(run), end.code, end.crash)
 	}
-	return fmt.Sprintf("%s (exit %d, a resource shortage, %q, in its run and its rerun: an environment error, not a test failure; way forward: re-run the same command once the machine's process load drops)", runLabel(run), end.code, end.shortage)
+	return fmt.Sprintf("%s (exit %d)", runLabel(run), end.code)
 }
 
 // runEnd is how one run of the plan ended: its exit code, and whether the call stops there instead of going on to the next run.
@@ -253,6 +271,8 @@ type runEnd struct {
 	blocked bool
 	// shortage is the resource-shortage marker of a run that failed on one twice, its run and its one rerun; empty otherwise.
 	shortage string
+	// crash is the signal name of a run that crashed its test runner twice, its run and its one rerun, with no failing test; empty otherwise.
+	crash string
 }
 
 // runLabel names run in the closing line of failed runs: its tier, prefixed `guard` for a guard run and `vet` for a vet run.
@@ -442,7 +462,7 @@ func (e *execution) runListed(run tierRun) runEnd {
 	}
 	if len(run.invocations) == 0 && !run.buildOnly {
 		printLine(e.request.stderr, fmt.Sprintf("gate test: the scope is empty, so %s runs no command", tierName(run.number)))
-		return e.runWithSlots(run, true, func(env []string) tierResult {
+		return e.runWithSlots(run, true, func(env []string, _ time.Time) tierResult {
 			return runTier(e.ctx, e.out, run, env, e.request)
 		})
 	}
@@ -472,14 +492,17 @@ func (e *execution) runGreenAware(run tierRun) runEnd {
 		}
 		run.invocations = plan.invocations
 	}
-	end := e.runWithSlots(run, false, func(env []string) tierResult {
+	end := e.runWithSlots(run, false, func(env []string, waitStart time.Time) tierResult {
 		if run.tier.SharedBuild && !run.guardStep && !run.vetStep && !e.buildDone {
 			if result, ok := e.runBuild(run, env); !ok {
 				return result
 			}
 		}
-		return retryOnShortage(e.ctx, e.request.stderr, runLabel(run), e.request.shortageRetryDelay, func() tierResult {
+		return retryTier(e.ctx, e.request.stderr, runLabel(run), e.request.rerunDelay, func() tierResult {
 			return runTier(e.ctx, e.out, run, env, e.request)
+		}, func(first tierResult) {
+			first.record.WaitStart = waitStart
+			e.writeRecord(first.record, first.log, tierName(run.number))
 		})
 	})
 	if end.code == 0 && !end.halt && e.green != nil {
@@ -495,9 +518,9 @@ func (e *execution) reportCarried(run tierRun) runEnd {
 	return e.report(run, tierResult{record: record}, now)
 }
 
-// runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty, runs body inside them with the environment the slots give, releases the slots and reports the tier's outcome.
+// runWithSlots takes the slots of run's tier unless the call is unslotted, inherited or the run empty, runs body inside them with the environment the slots give and the time the wait for them started, releases the slots and reports the tier's outcome.
 // A wait that does not end with the slots held halts the call.
-func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string) tierResult) runEnd {
+func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string, waitStart time.Time) tierResult) runEnd {
 	waitStart := time.Now()
 	env := e.env
 	if e.pool != nil && !e.inherited && !empty {
@@ -514,7 +537,7 @@ func (e *execution) runWithSlots(run tierRun, empty bool, body func(env []string
 	if e.request.observer.Started != nil {
 		e.request.observer.Started(run.number)
 	}
-	return e.report(run, body(env), waitStart)
+	return e.report(run, body(env, waitStart), waitStart)
 }
 
 // report writes the tier's run record and log, prints its `-trimpath` line, when it has one, and its summary line to stderr and returns the tier's exit code.
@@ -529,6 +552,10 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	}
 	record := result.record
 	record.WaitStart = waitStart
+	if record.Rerun {
+		// The slot wait is on the first run's record, so the rerun's own record waited for nothing.
+		record.WaitStart = record.Start
+	}
 	logPath := e.writeRecord(record, result.log, tierName(run.number))
 	if result.trimpathNote != "" {
 		printLine(e.request.stderr, result.trimpathNote)
@@ -540,7 +567,7 @@ func (e *execution) report(run tierRun, result tierResult, waitStart time.Time) 
 	if e.request.observer.Ended != nil {
 		e.request.observer.Ended(record)
 	}
-	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage}
+	return runEnd{code: record.ExitCode, halt: e.ctx.Err() != nil, ran: true, shortage: result.shortage, crash: result.crash}
 }
 
 // writeRecord adds the call's worktree, slug, tier list, gate key and call id to record, marks it abandoned when the call's context is cancelled, writes it with log under a stamp later than the previous record's, and returns the log's path, "(not written)" when the write failed.
@@ -650,10 +677,26 @@ func exitCodeOf(runErr error) int {
 		return 0
 	}
 	var exitErr *exec.ExitError
-	if errors.As(runErr, &exitErr) && exitErr.ExitCode() >= 0 {
-		return exitErr.ExitCode()
+	if !errors.As(runErr, &exitErr) {
+		return 1
+	}
+	if code := exitErr.ExitCode(); code >= 0 {
+		return code
 	}
 	return 1
+}
+
+// tierExitCodeOf returns the exit code of a finished tier command: 128 plus the signal's number for a child a crash signal ended, as a shell reports one, which is how a tier whose test runner died of a signal reads as a runner crash, and otherwise what exitCodeOf returns.
+func tierExitCodeOf(runErr error) int {
+	var exitErr *exec.ExitError
+	if errors.As(runErr, &exitErr) && exitErr.ExitCode() < 0 {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			if _, crash := crashSignals[status.Signal()]; crash {
+				return 128 + int(status.Signal())
+			}
+		}
+	}
+	return exitCodeOf(runErr)
 }
 
 // withBuildServerOff returns env with every proc.BuildServerOffEnv variable set to its value, replacing an inherited one, so no .NET build a run starts leaves MSBuild servers behind.
