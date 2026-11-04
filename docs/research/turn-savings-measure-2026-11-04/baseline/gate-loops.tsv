@@ -1,0 +1,6 @@
+slug	session	role	fail_turn	green_turn	turns	ctx_tokens	weight	peak_ctx
+interactive-recipe	agent-a388696df514a7fff	webster+fork	10	11	1	128811	20415	128811
+run-verbs-shared	agent-a1d64a59b270648d6	webster+fork	98	145	47	19336633	2182056	454263
+run-verbs-shared	agent-a93a508821c471fc7	webster+fork	51	52	1	245626	32028	245626
+run-verbs-shared	agent-ab6f65f6d03ea8e28	webster+fork	9	10	1	140037	21681	140037
+run-verbs-shared	agent-ae969e51519f6cf31	webster+fork	56	59	3	590417	72292	198076

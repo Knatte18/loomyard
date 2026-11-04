@@ -1,0 +1,13 @@
+class	command	removable_turns	removable_weight
+search	grep	71	1837746
+search	sed	21	648050
+read	Read	14	331018
+read	sed	8	139676
+search	cat	4	87081
+search	ls	4	79940
+lym-read	lym board	2	22351
+search	awk	2	54814
+search	wc	2	39636
+git-read	find	1	26438
+search	echo	1	27151
+search	find	1	18529
