@@ -47,7 +47,7 @@ func (c *Claude) AuditForksIncremental(sessionID, workdir string, seenTranscript
 		return shuttleengine.ForkAudit{}, err
 	}
 
-	subagentsDir := filepath.Join(projectDir, sessionID, "subagents")
+	subagentsDir := filepath.Join(projectDir, sessionID, subagentsDirName)
 	entries, err := os.ReadDir(subagentsDir)
 	if err != nil {
 		if os.IsNotExist(err) {

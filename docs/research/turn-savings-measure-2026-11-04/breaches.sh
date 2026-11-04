@@ -6,8 +6,9 @@
 # A turn counts in a run whatever its own context, and counts in a figure only when its own context is at or above the line.
 #
 # Lookup chains come in two readings of "a message that holds one lookup and nothing else":
-#   tool reading (lf, l3): exactly one Read, Grep or Glob call, the tool calls the hook matches and judges.
-#   class reading (cf, c3): exactly one call the turn audit classes read or search, which takes in a search made with a Bash grep, find or ls.
+#   tool reading (lf, l3): exactly one Read, Grep or Glob call, the tool calls the hook judged lookups before it counted a read-only Bash command as one.
+#   class reading (cf, c3): exactly one call the turn audit classes read or search, which takes in a search made with a Bash grep, find or ls,
+#   and is the nearer reading of the hook's lookup since it counts a read-only Bash command.
 # The f figures count a lookup message above the line that follows a lookup message (the baseline audit's "single-lookup turn following another");
 # the 3 figures count one above the line that ends a run of three or more (the hook's lookup_run).
 # ef: an edit message above the line that follows an edit message, an edit message holding only Edit and Write calls

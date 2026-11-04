@@ -266,7 +266,7 @@ type ToolBoundaryContextRenderer interface {
 // BatchingHookVerb is the name of the hidden `lym shuttle` verb an engine's after-tool-call hook runs to nudge its session back to batching its calls.
 const BatchingHookVerb = "hook-batching"
 
-// BatchingNudger is an optional capability beside Engine: the after-tool-call hook that adds one line to a session's context when its recent calls break lym's batching rules.
+// BatchingNudger is an optional capability beside Engine: the after-tool-call hook that adds one line to the calling chain's context when its recent calls break lym's batching rules.
 // An engine without it installs no such hook.
 type BatchingNudger interface {
 	// BatchingNudge judges the tool call the provider's hook input payload describes against the run's nudge state file at statePath.

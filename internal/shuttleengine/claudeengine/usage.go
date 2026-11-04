@@ -59,7 +59,7 @@ func readContext(r io.ReaderAt, size int64, chunk int) shuttleengine.ContextRead
 	var reading shuttleengine.ContextReading
 	readBackward(r, size, chunk, func(data []byte) bool {
 		var found bool
-		reading, found = latestReading(data)
+		reading, found = latestReading(data, false)
 		return found
 	})
 	return reading
@@ -220,7 +220,8 @@ func boundarySince(data []byte, since time.Time, readMessage string) (boundary s
 }
 
 // latestReading scans the complete lines of data from the last to the first and returns the reading of the first qualifying entry.
-func latestReading(data []byte) (shuttleengine.ContextReading, bool) {
+// It reads the sidechain entries of a subagent's transcript when sidechain is true, and the main-chain entries otherwise.
+func latestReading(data []byte, sidechain bool) (shuttleengine.ContextReading, bool) {
 	type usage struct {
 		Input         int `json:"input_tokens"`
 		CacheCreation int `json:"cache_creation_input_tokens"`
@@ -247,7 +248,7 @@ func latestReading(data []byte) (shuttleengine.ContextReading, bool) {
 			continue
 		}
 		var e entry
-		if err := json.Unmarshal(line, &e); err != nil || e.IsSidechain {
+		if err := json.Unmarshal(line, &e); err != nil || e.IsSidechain != sidechain {
 			continue
 		}
 		switch {
@@ -284,7 +285,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 		return shuttleengine.SessionUsage{}
 	}
 
-	subagentsDir := filepath.Join(projectDir, sessionID, "subagents")
+	subagentsDir := filepath.Join(projectDir, sessionID, subagentsDirName)
 	entries, err := os.ReadDir(subagentsDir)
 	if err != nil && !os.IsNotExist(err) {
 		return shuttleengine.SessionUsage{}

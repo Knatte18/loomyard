@@ -7,13 +7,13 @@ prompt_cache_ttl_roles:  # prompt-cache TTL per role, keyed by a strand's role s
   orch: 1h
 keep_warm_cap: 250s  # the keep-warm cap for every role without an entry in keep_warm_cap_roles: the longest one wait an agent of the role blocks on; a Go duration, at least 60s, below the role's prompt-cache lifetime and at most 55m; validated when a run starts and on lym config claude; a cap above five minutes leaves that role's forks' caches cold, since forks run at Claude Code's 5-minute subagent lifetime
 keep_warm_cap_roles: {}  # keep-warm cap per role, keyed by a strand's role segment (Spec.Role), replacing keep_warm_cap for that role; the operator's own map, replacing the template's whole when present; values follow the same rules as keep_warm_cap and are validated when a run starts and on lym config claude
-batching_nudge:  # the after-tool-call hook that adds one line to a session's context when its recent calls break the batching rules, and never denies a call; read when a run starts, so a running session keeps the values it started with; validated when a run starts and on lym config claude
+batching_nudge:  # the after-tool-call hook that adds one line to the calling chain's context when its recent calls break the batching rules, and never denies a call; read when a run starts, so a running session keeps the values it started with; validated when a run starts and on lym config claude
   enabled: true  # install the hook in every run's settings; false installs none
-  lookup_chain: true  # nudge a run of consecutive messages that each hold exactly one Read, Grep or Glob call and nothing else
+  lookup_chain: true  # nudge a run of consecutive messages that each hold exactly one lookup and nothing else: a Read, Grep or Glob call, or a Bash call whose command is a read-only lookup such as grep, find, ls, cat, sed -n or a git read
   read_slice: true  # nudge a Read with an offset or limit of a file under slice_lines lines, or of a file an earlier message read and that has not changed since
   edit_chain: true  # nudge a run of consecutive messages that hold only Edit or Write calls
-  context_tokens: 150000  # the context size, in tokens, below which the hook stays silent; at least 0
+  context_tokens: 150000  # the calling chain's own context size, in tokens, below which the hook stays silent; at least 0
   lookup_run: 3  # the number of consecutive single-lookup messages that fires; at least 1
   edit_run: 2  # the number of consecutive edit-only messages that fires; at least 1
   slice_lines: 2000  # the line count under which a sliced Read of a file fires; at least 1
-  max_nudges: 5  # the most nudges one run's session gets, so a session that ignores the line is not nagged on every turn; at least 1
+  max_nudges: 5  # the most nudges one run's session, and each of its subagents and forks, gets, so a session that ignores the line is not nagged on every turn; at least 1

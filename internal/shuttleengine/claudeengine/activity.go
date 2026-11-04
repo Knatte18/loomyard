@@ -74,7 +74,7 @@ func (c *Claude) TurnEndActivity(turnEnd shuttleengine.Event) shuttleengine.Turn
 // any other fork reads its last write time.
 // A fork transcript that cannot be read is skipped.
 func forkActivity(transcriptPath string, now time.Time) time.Time {
-	dir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), "subagents")
+	dir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), subagentsDirName)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return time.Time{}
@@ -265,7 +265,7 @@ func readTurnLimit(data []byte) (reading turnLimitReading, settled bool) {
 // forkStoppedOnUsageLimit reports whether a fork transcript under the subagents directory beside transcriptPath, last written after since, has a usage-limit entry as its newest assistant entry.
 // A fork transcript that cannot be read is skipped.
 func forkStoppedOnUsageLimit(transcriptPath string, since time.Time) bool {
-	dir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), "subagents")
+	dir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), subagentsDirName)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return false

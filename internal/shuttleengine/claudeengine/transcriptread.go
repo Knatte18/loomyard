@@ -14,6 +14,12 @@ import (
 
 var _ shuttleengine.TranscriptReader = (*Claude)(nil)
 
+// subagentsDirName is the directory, beside a session's transcript and named after it, that holds the transcripts of the session's subagents and forks.
+const subagentsDirName = "subagents"
+
+// subagentTranscriptPrefix starts the file name of a subagent's transcript, followed by its agent id and ".jsonl".
+const subagentTranscriptPrefix = "agent-"
+
 // projectsRoot returns the directory Claude Code keeps its per-worktree project directories in.
 func projectsRoot() (string, error) {
 	home, err := claudeHomeDir()
@@ -67,7 +73,7 @@ func locateSessions(projects, worktree string) ([]shuttleengine.LocatedSession, 
 		if err != nil {
 			return nil, fmt.Errorf("claudeengine: stat session %s: %w", filepath.Join(projectDir, entry.Name()), err)
 		}
-		subagentsDir := filepath.Join(projectDir, strings.TrimSuffix(entry.Name(), ".jsonl"), "subagents")
+		subagentsDir := filepath.Join(projectDir, strings.TrimSuffix(entry.Name(), ".jsonl"), subagentsDirName)
 		forks, err := locateForks(subagentsDir)
 		if err != nil {
 			return nil, err

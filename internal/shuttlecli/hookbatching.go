@@ -24,8 +24,8 @@ func hookBatchingCmd() *cobra.Command {
 		Hidden:      true,
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceInternal},
 		Long: `hook-batching reads the engine's after-tool-call hook input from standard
-input, judges the call and the session's recent messages against the run's
-batching nudge state file, and prints the engine's hook output that adds one
+input, judges the call and the calling chain's recent messages against the
+run's batching nudge state file, and prints the engine's hook output that adds one
 line naming the breach and the rule to the session's context. With no breach,
 below the state file's context threshold or past its nudge cap it prints
 nothing. It needs no hub and reads no config: the state file carries the

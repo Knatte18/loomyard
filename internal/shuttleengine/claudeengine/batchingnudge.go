@@ -1,5 +1,5 @@
 // batchingnudge.go implements the batching nudge: claude.yaml's batching_nudge block, the PostToolUse hook command that runs it, the per-run state file Prepare seeds,
-// and the judgment that reads the session's transcript tail for a breach of lym's batching rules and answers with one line of additional context.
+// and the judgment that reads the calling chain's transcript tail for a breach of lym's batching rules and answers with one line of additional context.
 
 package claudeengine
 
@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -29,7 +32,7 @@ type BatchingNudgeConfig struct {
 	ReadSlice bool `yaml:"read_slice" json:"read_slice"`
 	// EditChain switches the edit-only chain breach.
 	EditChain bool `yaml:"edit_chain" json:"edit_chain"`
-	// ContextTokens is the context size, in tokens, below which the hook stays silent.
+	// ContextTokens is the calling chain's own context size, in tokens, below which the hook stays silent.
 	ContextTokens int `yaml:"context_tokens" json:"context_tokens"`
 	// LookupRun is the number of consecutive single-lookup messages that fires the single-lookup chain breach.
 	LookupRun int `yaml:"lookup_run" json:"lookup_run"`
@@ -37,7 +40,7 @@ type BatchingNudgeConfig struct {
 	EditRun int `yaml:"edit_run" json:"edit_run"`
 	// SliceLines is the line count under which a sliced Read of a file is a breach.
 	SliceLines int `yaml:"slice_lines" json:"slice_lines"`
-	// MaxNudges is the most nudges one run's session gets, so a session that ignores the line is not nagged on every turn.
+	// MaxNudges is the most nudges one run's session, and each of its subagents and forks, gets, so a session that ignores the line is not nagged on every turn.
 	MaxNudges int `yaml:"max_nudges" json:"max_nudges"`
 }
 
@@ -76,12 +79,13 @@ const (
 	toolRead  = "Read"
 	toolGrep  = "Grep"
 	toolGlob  = "Glob"
+	toolBash  = "Bash"
 	toolEdit  = "Edit"
 	toolWrite = "Write"
 )
 
 // batchingNudgeMatcher is the PostToolUse matcher of the batching hook: the tools a breach is made of, so no other tool call starts a process.
-const batchingNudgeMatcher = toolRead + "|" + toolGrep + "|" + toolGlob + "|" + toolEdit + "|" + toolWrite
+const batchingNudgeMatcher = toolRead + "|" + toolGrep + "|" + toolGlob + "|" + toolBash + "|" + toolEdit + "|" + toolWrite
 
 // batchingNudgeStateFileName is the file in a run directory that holds the run's nudge settings and count.
 const batchingNudgeStateFileName = "batching-nudge.json"
@@ -111,12 +115,43 @@ const (
 // errNoNudge ends a state update that nudges nothing, so the state file is left unwritten.
 var errNoNudge = errors.New("no nudge")
 
-// batchingNudgeState is a run's nudge state file: the settings Prepare copied from claude.yaml, the nudges given and the message last nudged.
-type batchingNudgeState struct {
-	Settings BatchingNudgeConfig `json:"settings"`
-	Nudges   int                 `json:"nudges"`
+// batchingNudgeCount is the nudges one chain of a session got: the main session's, or one subagent's or fork's.
+type batchingNudgeCount struct {
+	Nudges int `json:"nudges"`
 	// NudgedMessage is the id of the assistant message the latest nudge answered, so the parallel calls of one message nudge at most once.
 	NudgedMessage string `json:"nudged_message"`
+}
+
+// batchingNudgeState is a run's nudge state file: the settings Prepare copied from claude.yaml, and the nudge count of the main session and of each subagent and fork.
+type batchingNudgeState struct {
+	Settings BatchingNudgeConfig `json:"settings"`
+	// batchingNudgeCount is the main session's count.
+	batchingNudgeCount
+	// Agents holds each subagent's and fork's own count, keyed by its agent id.
+	Agents map[string]batchingNudgeCount `json:"agents,omitempty"`
+}
+
+// count returns the nudge count of the chain agentID names, the main session's for an empty id.
+func (s batchingNudgeState) count(agentID string) batchingNudgeCount {
+	if agentID == "" {
+		return s.batchingNudgeCount
+	}
+	return s.Agents[agentID]
+}
+
+// withCount returns s with the nudge count of the chain agentID names set to count, leaving s's own agent map unchanged.
+func (s batchingNudgeState) withCount(agentID string, count batchingNudgeCount) batchingNudgeState {
+	if agentID == "" {
+		s.batchingNudgeCount = count
+		return s
+	}
+	agents := maps.Clone(s.Agents)
+	if agents == nil {
+		agents = map[string]batchingNudgeCount{}
+	}
+	agents[agentID] = count
+	s.Agents = agents
+	return s
 }
 
 // batchingNudgeLockPath returns the lock file guarding the state file at statePath.
@@ -139,7 +174,25 @@ type batchingHookInput struct {
 		FilePath string `json:"file_path"`
 		Offset   *int   `json:"offset"`
 		Limit    *int   `json:"limit"`
+		Command  string `json:"command"`
 	} `json:"tool_input"`
+}
+
+// chainTranscript returns the transcript the call's own chain is written to:
+// the session's for a main-chain call, and for a subagent's or fork's call its own transcript under the subagents directory beside the session's, unless transcript_path already names that file.
+// It reports false for an agent id that is not a plain file name part.
+func (in batchingHookInput) chainTranscript() (string, bool) {
+	if in.AgentID == "" {
+		return in.TranscriptPath, true
+	}
+	if strings.ContainsAny(in.AgentID, `/\`) || in.AgentID == "." || in.AgentID == ".." {
+		return "", false
+	}
+	name := subagentTranscriptPrefix + in.AgentID + ".jsonl"
+	if filepath.Base(in.TranscriptPath) == name {
+		return in.TranscriptPath, true
+	}
+	return filepath.Join(strings.TrimSuffix(in.TranscriptPath, ".jsonl"), subagentsDirName, name), true
 }
 
 // sliced reports whether the call reads part of a file: a Read with a limit, or with an offset past the first line.
@@ -150,8 +203,9 @@ func (in batchingHookInput) sliced() bool {
 	return in.ToolInput.Limit != nil || (in.ToolInput.Offset != nil && *in.ToolInput.Offset > 1)
 }
 
-// BatchingNudge judges the tool call a PostToolUse input describes and returns the hook output that adds one nudge line to the session's context, or nil when no nudge is due.
-// A call from a subagent or fork, a run with no state file, a session below the context threshold, a run past its nudge cap and a message already nudged get none.
+// BatchingNudge judges the tool call a PostToolUse input describes and returns the hook output that adds one nudge line to the calling chain's context, or nil when no nudge is due.
+// A call from a subagent or fork is judged against that agent's own transcript, context reading and nudge count, under the same settings as the main session.
+// A Bash call whose command is no read-only lookup, a run with no state file, a chain below the context threshold, a chain past its nudge cap and a message already nudged get none.
 // The judgment and the count update hold the state file's lock, so the parallel calls of one message nudge at most once.
 // A transcript that cannot be read gets no nudge and no error, since its format is a Claude Code internal; a malformed input or state file is an error.
 func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error) {
@@ -159,9 +213,18 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 	if err := json.Unmarshal(payload, &input); err != nil {
 		return nil, fmt.Errorf("claudeengine: parse the batching hook input: %w", err)
 	}
-	if input.AgentID != "" || input.TranscriptPath == "" || input.ToolUseID == "" {
+	if input.TranscriptPath == "" || input.ToolUseID == "" {
 		return nil, nil
 	}
+	// A Bash call that is no lookup makes a message that is neither a lookup nor edits, so no breach can fire and the transcript is left unread.
+	if input.ToolName == toolBash && !isReadOnlyLookup(input.ToolInput.Command) {
+		return nil, nil
+	}
+	transcript, ok := input.chainTranscript()
+	if !ok {
+		return nil, nil
+	}
+	sidechain := input.AgentID != ""
 	if _, err := os.Stat(statePath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -171,29 +234,28 @@ func (c *Claude) BatchingNudge(statePath string, payload []byte) ([]byte, error)
 
 	var line string
 	err := state.UpdateJSON(statePath, batchingNudgeLockPath(statePath), func(cur batchingNudgeState, found bool) (batchingNudgeState, error) {
-		if !found || cur.Nudges >= cur.Settings.MaxNudges {
+		count := cur.count(input.AgentID)
+		if !found || count.Nudges >= cur.Settings.MaxNudges {
 			return cur, errNoNudge
 		}
-		tail, err := readTranscriptTail(input.TranscriptPath, batchingTailBytes)
+		tail, err := readTranscriptTail(transcript, batchingTailBytes)
 		if err != nil {
 			return cur, errNoNudge
 		}
-		reading, _ := latestReading(tail)
+		reading, _ := latestReading(tail, sidechain)
 		if !reading.Known || reading.Tokens < cur.Settings.ContextTokens {
 			return cur, errNoNudge
 		}
-		messages := tailMessages(tail)
+		messages := tailMessages(tail, sidechain)
 		current := messageHolding(messages, input.ToolUseID)
-		if current < 0 || messages[current].id == cur.NudgedMessage {
+		if current < 0 || messages[current].id == count.NudgedMessage {
 			return cur, errNoNudge
 		}
 		line = judgeBatching(cur.Settings, messages, current, input)
 		if line == "" {
 			return cur, errNoNudge
 		}
-		cur.Nudges++
-		cur.NudgedMessage = messages[current].id
-		return cur, nil
+		return cur.withCount(input.AgentID, batchingNudgeCount{Nudges: count.Nudges + 1, NudgedMessage: messages[current].id}), nil
 	})
 	if errors.Is(err, errNoNudge) {
 		return nil, nil
@@ -234,23 +296,36 @@ func readTranscriptTail(transcriptPath string, budget int64) ([]byte, error) {
 	return tail, nil
 }
 
-// tailMessage is one main-chain assistant message of a transcript tail: its id, the time of its first line and its tool calls in order.
+// tailMessage is one assistant message of a transcript tail's chain: its id, the time of its first line and its tool calls in order.
 type tailMessage struct {
 	id    string
 	at    time.Time
 	calls []tailCall
 }
 
-// tailCall is one tool call of a tail message.
+// tailCall is one tool call of a tail message, with the file path or the shell command its input names.
 type tailCall struct {
 	id       string
 	name     string
 	filePath string
+	command  string
 }
 
-// tailMessages groups the main-chain assistant lines of tail by message id, in the order each message first appears.
-// A line that does not parse, a sidechain line and a line with no message id are skipped.
-func tailMessages(tail []byte) []tailMessage {
+// lookup reports whether the call is one lookup: a Read, Grep or Glob call, or a Bash call whose command is a read-only lookup.
+func (call tailCall) lookup() bool {
+	switch call.name {
+	case toolRead, toolGrep, toolGlob:
+		return true
+	case toolBash:
+		return isReadOnlyLookup(call.command)
+	}
+	return false
+}
+
+// tailMessages groups the assistant lines of tail's chain by message id, in the order each message first appears:
+// the sidechain lines of a subagent's transcript when sidechain is true, and the main-chain lines otherwise.
+// A line that does not parse, a line of the other chain and a line with no message id are skipped.
+func tailMessages(tail []byte, sidechain bool) []tailMessage {
 	var messages []tailMessage
 	index := map[string]int{}
 	for _, line := range bytes.Split(tail, []byte("\n")) {
@@ -266,7 +341,7 @@ func tailMessages(tail []byte) []tailMessage {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(line, &record) != nil || record.Type != "assistant" || record.IsSidechain || record.Message.ID == "" {
+		if json.Unmarshal(line, &record) != nil || record.Type != "assistant" || record.IsSidechain != sidechain || record.Message.ID == "" {
 			continue
 		}
 		i, seen := index[record.Message.ID]
@@ -281,7 +356,7 @@ func tailMessages(tail []byte) []tailMessage {
 	return messages
 }
 
-// contentToolCalls returns the tool calls of an assistant line's content, with the file path a call's input names.
+// contentToolCalls returns the tool calls of an assistant line's content, with the file path or shell command a call's input names.
 func contentToolCalls(content json.RawMessage) []tailCall {
 	var blocks []struct {
 		Type  string `json:"type"`
@@ -289,6 +364,7 @@ func contentToolCalls(content json.RawMessage) []tailCall {
 		Name  string `json:"name"`
 		Input struct {
 			FilePath string `json:"file_path"`
+			Command  string `json:"command"`
 		} `json:"input"`
 	}
 	if json.Unmarshal(content, &blocks) != nil {
@@ -297,7 +373,7 @@ func contentToolCalls(content json.RawMessage) []tailCall {
 	var calls []tailCall
 	for _, block := range blocks {
 		if block.Type == "tool_use" {
-			calls = append(calls, tailCall{id: block.ID, name: block.Name, filePath: block.Input.FilePath})
+			calls = append(calls, tailCall{id: block.ID, name: block.Name, filePath: block.Input.FilePath, command: block.Input.Command})
 		}
 	}
 	return calls
@@ -321,7 +397,7 @@ type messageKind int
 const (
 	// kindOther is a message that holds no call, or calls that make no chain.
 	kindOther messageKind = iota
-	// kindLookup is a message that holds exactly one Read, Grep or Glob call and nothing else.
+	// kindLookup is a message that holds exactly one lookup call and nothing else.
 	kindLookup
 	// kindEdits is a message that holds only Edit or Write calls.
 	kindEdits
@@ -332,11 +408,8 @@ func kindOf(m tailMessage) messageKind {
 	if len(m.calls) == 0 {
 		return kindOther
 	}
-	if len(m.calls) == 1 {
-		switch m.calls[0].name {
-		case toolRead, toolGrep, toolGlob:
-			return kindLookup
-		}
+	if len(m.calls) == 1 && m.calls[0].lookup() {
+		return kindLookup
 	}
 	for _, call := range m.calls {
 		if call.name != toolEdit && call.name != toolWrite {

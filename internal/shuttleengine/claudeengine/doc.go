@@ -157,16 +157,21 @@
 // Prepare marks the launch CreelHooks exactly when it passes the board directory's flag directory, so a strand is marked only when its settings carry the PostToolUse, Stop and waiter hooks.
 // On Windows the flag directory takes the same git-bash POSIX conversion as the events path.
 //
-// The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the session's context when its recent calls break lym's batching rules; it never denies a call.
+// The batching nudge (BatchingNudger) is a PostToolUse hook that adds one line to the calling chain's context when its recent calls break lym's batching rules; it never denies a call.
 // `claude.yaml`'s `batching_nudge` block holds `enabled`, the breach switches `lookup_chain`, `read_slice` and `edit_chain`, and the thresholds `context_tokens`, `lookup_run`, `edit_run`, `slice_lines` and `max_nudges`.
 // ValidateBatchingNudge refuses a negative `context_tokens`, or any other threshold below 1, while the hook is on, in Prepare and on a config write.
-// With `enabled` on, Prepare copies the block into `batching-nudge.json` beside the events file, and the settings carry a PostToolUse entry matching `Read|Grep|Glob|Edit|Write` that runs `lym shuttle hook-batching claude <state file>; true`, so no other tool call starts a process and a running session keeps the values its Prepare wrote.
+// With `enabled` on, Prepare copies the block into `batching-nudge.json` beside the events file, and the settings carry a PostToolUse entry matching `Read|Grep|Glob|Bash|Edit|Write` that runs `lym shuttle hook-batching claude <state file>; true`, so no other tool call starts a process and a running session keeps the values its Prepare wrote.
 // On Windows the state file takes the git-bash POSIX path of the events file's directory, which git-bash converts back for the native lym.
-// The judgment reads the call's own input and the transcript tail `batchingTailBytes` bounds, whose main-chain assistant lines it groups by message id, so the parallel calls of one message count as one message.
-// It is silent for a subagent's call, below `context_tokens` by the tail's latest usage reading, past `max_nudges` nudges, and for a message it already nudged;
+// The judgment reads the call's own input and the tail, `batchingTailBytes` long, of the calling chain's transcript, whose assistant lines it groups by message id, so the parallel calls of one message count as one message.
+// A main-session call reads the session's transcript and its main-chain lines.
+// A call carrying an agent id, from a subagent or fork, reads the sidechain lines of that agent's own transcript, `subagents/agent-<id>.jsonl` beside the session's.
+// Such a call counts its nudges apart from the session's, under the same block.
+// It is silent for a Bash call whose command is no read-only lookup, below `context_tokens` by the tail's latest usage reading, past `max_nudges` nudges of the chain, and for a message it already nudged;
 // the judgment holds the state file's lock, so the parallel calls of one message get at most one nudge.
-// A single-lookup chain is a run of at least `lookup_run` consecutive messages, the current one as far as the transcript shows it included, that each hold exactly one Read, Grep or Glob call;
-// an edit-only chain is a run of at least `edit_run` consecutive messages that hold only Edit or Write calls.
+// A single-lookup chain is a run of at least `lookup_run` consecutive messages, the current one as far as the transcript shows it included, that each hold exactly one lookup call:
+// a Read, Grep or Glob call, or a Bash call whose command is a read-only lookup, a pipe or chain of `grep`, `rg`, `find`, `ls`, `cat`, `head`, `tail`, `sed -n`, `wc` and git reads with no write, substitution or redirect into a file, and no option that writes a file or runs a program;
+// a Bash call with any other command breaks the chain.
+// An edit-only chain is a run of at least `edit_run` consecutive messages that hold only Edit or Write calls.
 // A read slice is a Read with a `limit`, or an `offset` past the first line, of a file under `slice_lines` lines, or of a file that the latest earlier message reading it in the tail read no earlier than the file's last modification.
 // The line names one breach, the single-lookup chain before the read slice before the edit-only chain, and quotes the rule it breaks.
 // Bound: the hook is a heuristic, since some lookups must run in sequence, so it fires at times on a right call;

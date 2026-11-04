@@ -1,5 +1,5 @@
 // batchingnudge_test.go pins the batching nudge.
-// It covers which breach a transcript tail fires and what holds it back, and the count its state file keeps.
+// It covers which breach a transcript tail fires and what holds it back, for the main session and for a subagent's own transcript, and the counts its state file keeps.
 // It also covers the transcript tail read, the bounds of claude.yaml's batching_nudge block, and the hook and state file Prepare installs from it.
 
 package claudeengine
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -34,6 +35,8 @@ const (
 	nudgeSidechain = "!sidechain"
 	// nudgeNoID is a message written as a line holding one Read and no message id.
 	nudgeNoID = "!noid"
+	// nudgeMainChain is a message written as a main-chain line holding one Read and a context reading of one token, even in a subagent's transcript.
+	nudgeMainChain = "!mainchain"
 )
 
 // nudgeCallID names call j of fixture message i, the calls counted without the non-call entries.
@@ -51,10 +54,34 @@ func firstNudgeCall(message []string) string {
 	return ""
 }
 
-// writeNudgeTranscript writes a transcript into dir holding the main-chain assistant lines of each message, each message followed by a user line answering its first call, and returns its path.
-// A call is written "Tool" or "Tool:file", the file named relative to dir; message i is dated i+1 minutes after nudgeFixtureBase and reports tokens of context.
-// A message is one line unless it holds nudgeLineBreak entries, and the one-entry messages nudgeSidechain and nudgeNoID are written as the lines their names say.
-func writeNudgeTranscript(t *testing.T, dir string, tokens int, messages [][]string) string {
+// nudgeAgentID is the agent id of the fixture subagent.
+const nudgeAgentID = "fork-1"
+
+// nudgeAgentTranscript returns the path of agent agentID's transcript beside the fixture session transcript in dir.
+func nudgeAgentTranscript(dir, agentID string) string {
+	return filepath.Join(dir, "transcript", subagentsDirName, subagentTranscriptPrefix+agentID+".jsonl")
+}
+
+// nudgeCallInput returns the tool name and tool input of a fixture call written "Tool" or "Tool:arg":
+// arg is a Bash call's command, and any other call's file, named relative to dir.
+func nudgeCallInput(dir, entry string) (string, map[string]any) {
+	name, arg, _ := strings.Cut(entry, ":")
+	input := map[string]any{}
+	switch {
+	case arg == "":
+	case name == toolBash:
+		input["command"] = arg
+	default:
+		input["file_path"] = filepath.Join(dir, arg)
+	}
+	return name, input
+}
+
+// writeNudgeTranscript writes the transcript at path holding the assistant lines of each message, each message followed by a user line answering its first call.
+// A call is written as nudgeCallInput reads it, a file named relative to dir; message i is dated i+1 minutes after nudgeFixtureBase and reports tokens of context.
+// Every assistant line is a sidechain line when sidechain is true, as in a subagent's transcript.
+// A message is one line unless it holds nudgeLineBreak entries, and the one-entry messages nudgeSidechain, nudgeMainChain and nudgeNoID are written as the lines their names say.
+func writeNudgeTranscript(t *testing.T, dir, path string, tokens int, sidechain bool, messages [][]string) {
 	t.Helper()
 	var lines []string
 	appendRecord := func(record map[string]any) {
@@ -65,10 +92,12 @@ func writeNudgeTranscript(t *testing.T, dir string, tokens int, messages [][]str
 		lines = append(lines, string(data))
 	}
 	for i, message := range messages {
-		id, sidechain := fmt.Sprintf("msg-%d", i), false
+		id, lineSidechain, lineTokens := fmt.Sprintf("msg-%d", i), sidechain, tokens
 		switch {
 		case slices.Equal(message, []string{nudgeSidechain}):
-			message, sidechain = []string{"Read:short.go"}, true
+			message, lineSidechain = []string{"Read:short.go"}, true
+		case slices.Equal(message, []string{nudgeMainChain}):
+			message, lineSidechain, lineTokens = []string{"Read:short.go"}, false, 1
 		case slices.Equal(message, []string{nudgeNoID}):
 			message, id = []string{"Read:short.go"}, ""
 		}
@@ -83,24 +112,20 @@ func writeNudgeTranscript(t *testing.T, dir string, tokens int, messages [][]str
 			case nudgeTextBlock:
 				block = map[string]any{"type": "text", "text": "thinking aloud"}
 			default:
-				name, file, _ := strings.Cut(entry, ":")
-				input := map[string]any{}
-				if file != "" {
-					input["file_path"] = filepath.Join(dir, file)
-				}
+				name, input := nudgeCallInput(dir, entry)
 				block = map[string]any{"type": "tool_use", "id": nudgeCallID(i, calls), "name": name, "input": input}
 				calls++
 			}
 			lineBlocks[len(lineBlocks)-1] = append(lineBlocks[len(lineBlocks)-1], block)
 		}
 		for _, blocks := range lineBlocks {
-			content := map[string]any{"content": blocks, "usage": map[string]any{"input_tokens": tokens}}
+			content := map[string]any{"content": blocks, "usage": map[string]any{"input_tokens": lineTokens}}
 			if id != "" {
 				content["id"] = id
 			}
 			appendRecord(map[string]any{
 				"type":        "assistant",
-				"isSidechain": sidechain,
+				"isSidechain": lineSidechain,
 				"timestamp":   nudgeFixtureBase.Add(time.Duration(i+1) * time.Minute).Format(time.RFC3339Nano),
 				"message":     content,
 			})
@@ -110,11 +135,12 @@ func writeNudgeTranscript(t *testing.T, dir string, tokens int, messages [][]str
 			"message": map[string]any{"content": []map[string]any{{"type": "tool_result", "tool_use_id": nudgeCallID(i, 0), "content": "an assistant result"}}},
 		})
 	}
-	transcript := filepath.Join(dir, "transcript.jsonl")
-	if err := os.WriteFile(transcript, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create the transcript directory: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
 		t.Fatalf("write transcript: %v", err)
 	}
-	return transcript
 }
 
 // writeNudgeFile writes a file of lines lines named name into dir, last modified at modified.
@@ -129,8 +155,8 @@ func writeNudgeFile(t *testing.T, dir, name string, lines int, modified time.Tim
 	}
 }
 
-// TestBatchingNudge pins which breach a call fires, from the call's own input and the transcript tail, and what holds a nudge back.
-// A fired nudge counts in the state file and records its message; a silent call leaves the state file as it was.
+// TestBatchingNudge pins which breach a call fires, from the call's own input and its chain's transcript tail, and what holds a nudge back.
+// A fired nudge counts in the state file under its chain, the main session's or the subagent's, and records its message; a silent call leaves the state file as it was.
 func TestBatchingNudge(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -151,8 +177,9 @@ func TestBatchingNudge(t *testing.T) {
 		offset, limit *int
 		// longModified is how long after nudgeFixtureBase long.go was last modified.
 		longModified time.Duration
-		subagent     bool
-		noState      bool
+		// agentID is the hook input's agent id; set, the messages are written as that agent's transcript, beside a session transcript holding no chain.
+		agentID string
+		noState bool
 		// corruptState seeds a state file that is not JSON.
 		corruptState bool
 		before       func(*batchingNudgeState)
@@ -160,7 +187,9 @@ func TestBatchingNudge(t *testing.T) {
 		input func(dir string, hookInput map[string]any)
 		// payload replaces the hook input outright.
 		payload []byte
-		wantErr bool
+		// nudgedMessage is the message id a fired nudge records; empty means the last message's.
+		nudgedMessage string
+		wantErr       bool
 		// want returns the nudge line for the fixture directory; nil wants no nudge.
 		want func(dir string) string
 	}{
@@ -168,10 +197,21 @@ func TestBatchingNudge(t *testing.T) {
 		{name: "LookupChainShorterThanTheRunIsSilent", tokens: 200000, messages: [][]string{{"Bash"}, {"Read:short.go"}, {"Grep"}}},
 		{name: "BatchedCurrentMessageIsSilent", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {"Read:short.go", "Read:long.go"}}},
 		{name: "BelowTheContextThresholdIsSilent", tokens: 100000, messages: lookupChain},
+		{name: "ReadOnlyBashCommandsCountAsLookups", tokens: 200000, messages: [][]string{{"Bash:grep -n x short.go"}, {"Read:short.go"}, {"Bash:git log --oneline | head -5"}}, want: lookupNudge},
+		{name: "BashCommandThatIsNoLookupBreaksTheChain", tokens: 200000, messages: [][]string{{"Bash:grep -n x short.go"}, {"Bash:go vet ./internal/x"}, {"Grep"}, {"Glob"}}},
+		{name: "BashCallThatIsNoLookupIsSilent", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {"Bash:lym board list"}}},
+		// A corrupt state file is an error once it is read, so a silent answer shows the call returned before the state.
+		{name: "BashCallThatIsNoLookupLeavesTheStateUnread", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {"Bash:lym board list"}}, corruptState: true},
 		{name: "LookupChainSplitAcrossLinesStillCountsAsOneMessage", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {nudgeTextBlock, nudgeLineBreak, "Glob"}}, want: lookupNudge},
 		{name: "SidechainLineDoesNotBreakTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeSidechain}, {"Grep"}, {"Glob"}}, want: lookupNudge},
 		{name: "SidechainLineIsNotCountedInTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeSidechain}, {"Grep"}}},
 		{name: "LineWithoutAMessageIDIsNotCountedInTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeNoID}, {"Grep"}}},
+		{name: "SubagentMainChainLineIsNotCountedInTheChain", tokens: 200000, messages: [][]string{{"Read:short.go"}, {nudgeMainChain}, {"Grep"}}, agentID: nudgeAgentID},
+		{
+			// The main-chain line is the transcript's last assistant line and reads below the threshold, so the agent's context reading is its earlier sidechain line.
+			name: "SubagentMainChainLineIsNotItsContextReading", tokens: 200000, messages: [][]string{{"Read:short.go"}, {"Grep"}, {"Glob"}, {nudgeMainChain}}, agentID: nudgeAgentID,
+			input: func(_ string, in map[string]any) { in["tool_use_id"] = nudgeCallID(2, 0) }, nudgedMessage: "msg-2", want: lookupNudge,
+		},
 		{name: "SlicedReadOfAShortFileFires", tokens: 200000, messages: shortRead, offset: &offsetTen, limit: &limitFive, want: shortSliceNudge},
 		{name: "SlicedReadByLimitAloneFires", tokens: 200000, messages: shortRead, limit: &limitFive, want: shortSliceNudge},
 		{name: "SlicedReadByOffsetPastTheFirstLineAloneFires", tokens: 200000, messages: shortRead, offset: &offsetTen, want: shortSliceNudge},
@@ -200,9 +240,30 @@ func TestBatchingNudge(t *testing.T) {
 			name: "EditChainSwitchedOffIsSilent", tokens: 200000, messages: [][]string{{"Edit:short.go"}, {"Write:long.go"}},
 			before: func(s *batchingNudgeState) { s.Settings.EditChain = false },
 		},
-		{name: "SubagentCallIsSilent", tokens: 200000, messages: lookupChain, subagent: true},
+		{name: "SubagentLookupChainFiresFromItsOwnTranscript", tokens: 200000, messages: lookupChain, agentID: nudgeAgentID, want: lookupNudge},
+		{name: "SubagentEditChainFires", tokens: 200000, messages: [][]string{{"Edit:short.go"}, {"Write:long.go"}}, agentID: nudgeAgentID, want: func(string) string { return fmt.Sprintf(editChainNudge, 2) }},
+		{name: "SubagentBelowTheContextThresholdByItsOwnReadingIsSilent", tokens: 100000, messages: lookupChain, agentID: nudgeAgentID},
+		{name: "SubagentNudgesCountApartFromTheSession", tokens: 200000, messages: lookupChain, agentID: nudgeAgentID, before: func(s *batchingNudgeState) { s.Nudges = 2 }, want: lookupNudge},
+		{
+			name: "SubagentPastItsOwnCapIsSilent", tokens: 200000, messages: lookupChain, agentID: nudgeAgentID,
+			before: func(s *batchingNudgeState) { *s = s.withCount(nudgeAgentID, batchingNudgeCount{Nudges: 2}) },
+		},
+		{
+			name: "SubagentTranscriptPathNamingTheAgentFileIsReadAsIs", tokens: 200000, messages: lookupChain, agentID: nudgeAgentID,
+			input: func(dir string, in map[string]any) { in["transcript_path"] = nudgeAgentTranscript(dir, nudgeAgentID) }, want: lookupNudge,
+		},
+		{name: "AgentIDHoldingASlashIsSilent", tokens: 200000, messages: lookupChain, agentID: "nested/agent"},
+		{name: "AgentIDHoldingABackslashIsSilent", tokens: 200000, messages: lookupChain, agentID: `nested\agent`},
+		{name: "AgentIDOfOneDotIsSilent", tokens: 200000, messages: lookupChain, agentID: "."},
+		{name: "AgentIDOfTwoDotsIsSilent", tokens: 200000, messages: lookupChain, agentID: ".."},
 		{name: "NudgeCapReachedIsSilent", tokens: 200000, messages: lookupChain, before: func(s *batchingNudgeState) { s.Nudges = 2 }},
 		{name: "MessageAlreadyNudgedIsSilent", tokens: 200000, messages: lookupChain, before: func(s *batchingNudgeState) { s.Nudges, s.NudgedMessage = 1, "msg-2" }},
+		{
+			name: "SubagentMessageAlreadyNudgedIsSilent", tokens: 200000, messages: lookupChain, agentID: nudgeAgentID,
+			before: func(s *batchingNudgeState) {
+				*s = s.withCount(nudgeAgentID, batchingNudgeCount{Nudges: 1, NudgedMessage: "msg-2"})
+			},
+		},
 		{name: "SwitchedOffBreachIsSilent", tokens: 200000, messages: lookupChain, before: func(s *batchingNudgeState) { s.Settings.LookupChain = false }},
 		{name: "NoStateFileIsSilent", tokens: 200000, messages: lookupChain, noState: true},
 		{name: "MalformedPayloadIsAnError", tokens: 200000, messages: lookupChain, payload: []byte("{not json"), wantErr: true},
@@ -225,7 +286,13 @@ func TestBatchingNudge(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "unterminated.go"), []byte(strings.Repeat("line\n", 19)+"line"), 0o644); err != nil {
 				t.Fatalf("write unterminated.go: %v", err)
 			}
-			transcript := writeNudgeTranscript(t, dir, tt.tokens, tt.messages)
+			transcript := filepath.Join(dir, "transcript.jsonl")
+			if tt.agentID == "" {
+				writeNudgeTranscript(t, dir, transcript, tt.tokens, false, tt.messages)
+			} else {
+				writeNudgeTranscript(t, dir, transcript, 200000, false, [][]string{{"Bash"}})
+				writeNudgeTranscript(t, dir, nudgeAgentTranscript(dir, tt.agentID), tt.tokens, true, tt.messages)
+			}
 			statePath := filepath.Join(dir, batchingNudgeStateFileName)
 			before := batchingNudgeState{Settings: settings}
 			if tt.before != nil {
@@ -243,11 +310,7 @@ func TestBatchingNudge(t *testing.T) {
 			}
 
 			last := len(tt.messages) - 1
-			name, file, _ := strings.Cut(firstNudgeCall(tt.messages[last]), ":")
-			toolInput := map[string]any{}
-			if file != "" {
-				toolInput["file_path"] = filepath.Join(dir, file)
-			}
+			name, toolInput := nudgeCallInput(dir, firstNudgeCall(tt.messages[last]))
 			if tt.offset != nil {
 				toolInput["offset"] = *tt.offset
 			}
@@ -255,8 +318,8 @@ func TestBatchingNudge(t *testing.T) {
 				toolInput["limit"] = *tt.limit
 			}
 			hookInput := map[string]any{"hook_event_name": "PostToolUse", "transcript_path": transcript, "tool_name": name, "tool_use_id": nudgeCallID(last, 0), "tool_input": toolInput}
-			if tt.subagent {
-				hookInput["agent_id"] = "fork-1"
+			if tt.agentID != "" {
+				hookInput["agent_id"] = tt.agentID
 			}
 			if tt.input != nil {
 				tt.input(dir, hookInput)
@@ -295,10 +358,17 @@ func TestBatchingNudge(t *testing.T) {
 				if string(got) != string(want) {
 					t.Errorf("BatchingNudge() = %s; want %s", got, want)
 				}
-				wantAfter.Nudges++
-				wantAfter.NudgedMessage = fmt.Sprintf("msg-%d", last)
+				nudged := tt.nudgedMessage
+				if nudged == "" {
+					nudged = fmt.Sprintf("msg-%d", last)
+				}
+				counted := batchingNudgeCount{Nudges: before.count(tt.agentID).Nudges + 1, NudgedMessage: nudged}
+				wantAfter = before.withCount(tt.agentID, counted)
 			}
 
+			if tt.corruptState {
+				return
+			}
 			after, found, err := state.ReadJSON[batchingNudgeState](statePath, batchingNudgeLockPath(statePath))
 			if err != nil {
 				t.Fatalf("read state: %v", err)
@@ -309,7 +379,7 @@ func TestBatchingNudge(t *testing.T) {
 				}
 				return
 			}
-			if after != wantAfter {
+			if !reflect.DeepEqual(after, wantAfter) {
 				t.Errorf("state after = %+v; want %+v", after, wantAfter)
 			}
 		})
@@ -404,6 +474,12 @@ func TestPrepare_BatchingNudgeHook(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load the shipped claude template: %v", err)
 	}
+	matcherTools := strings.Split(batchingNudgeMatcher, "|")
+	for _, tool := range []string{toolRead, toolGrep, toolGlob, toolBash, toolEdit, toolWrite} {
+		if !slices.Contains(matcherTools, tool) {
+			t.Errorf("batchingNudgeMatcher = %q; want it to hold %s", batchingNudgeMatcher, tool)
+		}
+	}
 	tests := []struct {
 		name     string
 		mutate   func(*BatchingNudgeConfig)
@@ -473,7 +549,7 @@ func TestPrepare_BatchingNudgeHook(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read state: %v", err)
 			}
-			if found != tt.wantHook || (found && seeded != (batchingNudgeState{Settings: claude.BatchingNudge})) {
+			if found != tt.wantHook || (found && !reflect.DeepEqual(seeded, batchingNudgeState{Settings: claude.BatchingNudge})) {
 				t.Errorf("state file = %+v, found=%t; want found=%t holding the block %+v", seeded, found, tt.wantHook, claude.BatchingNudge)
 			}
 		})
