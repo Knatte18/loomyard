@@ -1,6 +1,7 @@
 // command.go composes the opaque pane-shell command lines Prepare (settings.go) hands back as a
 // Launch: the launch line that starts a fresh session and the resume line that reattaches an
 // existing one.
+// It also holds OpenLaunch, which writes an opened session's creel settings and composes its lines.
 // Both are single-line strings typed verbatim into a pane via tmux send-keys (see
 // reedengine/spawn.go's launchStrandLocked) — no newline may appear in either, since send-keys
 // submits a line at a time.
@@ -12,6 +13,8 @@ package claudeengine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -365,8 +368,9 @@ func buildLaunchCmd(sh shell.Shell, bin, pointer, settingsPath, sessionID, model
 // It names the session with --name as a reference to LYM_STRAND_NAME, as buildLaunchCmd does, and appends --model and --effort only when non-empty.
 // It appends --dangerously-skip-permissions when skipPermissions is true, on the fresh and the resume form alike.
 // Reed replays the resume line verbatim, so a resume without the flag would bring a bypass session back prompting.
-// It passes no prompt, no --settings (the session takes the worktree's own settings) and no environment assignment, so the line is one pipeline that OrElse may join.
-func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPermissions, resume bool) string {
+// A non-empty settingsPath adds --settings naming it, which Claude Code stacks over the worktree's own settings, and a non-empty appendPromptPath adds --append-system-prompt-file naming it.
+// It passes no prompt and no environment assignment, so the line is one pipeline that OrElse may join.
+func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort, settingsPath, appendPromptPath string, skipPermissions, resume bool) string {
 	sessionFlag := " --session-id "
 	if resume {
 		sessionFlag = " --resume "
@@ -381,19 +385,29 @@ func buildOpenCmd(sh shell.Shell, bin, sessionID, model, effort string, skipPerm
 	if skipPermissions {
 		cmd += " --dangerously-skip-permissions"
 	}
+	if settingsPath != "" {
+		cmd += " --settings " + sh.Quote(settingsPath)
+	}
+	if appendPromptPath != "" {
+		cmd += " --append-system-prompt-file " + sh.Quote(appendPromptPath)
+	}
 	return cmd
 }
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
 // It loads claude.yaml, validates the effort and the permission mode and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
+// An engine told a hub board directory then creates dir and writes into it settings.json, holding creel's hook delivery alone, and the append-system-prompt file, holding the creel trust sentence alone;
+// both lines name the two files, and the launch is marked CreelHooks, so the session gets its mail through its hooks as a run session does.
+// A failure after it creates dir removes dir.
+// An engine told no board directory writes nothing, leaves dir uncreated and marks nothing.
 // Bypass is the default, and spec.PermissionMode "prompt" opts out per call;
-// the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle --settings or guard.
+// the session still loads Claude Code's own settings layers, whose deny rules and hooks Claude Code applies in bypass too, and carries no shuttle guard.
 // "prompt" adds nothing, so it cannot override a default mode the settings set.
 // The session takes no turn until text reaches its pane through the operator or creel, each bounded by its own rules.
 // ResumeCmd resumes the session and falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn, so --resume fails there.
 // Bound: the fresh line runs whenever the resume line exits nonzero, including a resumed session that ends nonzero after a working life;
 // a fresh start under a session id whose transcript exists fails at once, so the fallback never starts a second live session over a recorded one.
-func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
 		return shuttleengine.Launch{}, err
@@ -409,15 +423,57 @@ func (c *Claude) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Confi
 	if err != nil {
 		return shuttleengine.Launch{}, err
 	}
+	creelFlagDirForHook, err := c.creelFlagDirForHook()
+	if err != nil {
+		return shuttleengine.Launch{}, err
+	}
 	sessionID, err := newSessionID()
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("mint session id: %w", err)
 	}
+	settingsPath, appendPromptPath := "", ""
+	if creelFlagDirForHook != "" {
+		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook)
+		if err != nil {
+			return shuttleengine.Launch{}, err
+		}
+	}
 	sh := shell.ForGOOS()
 	bin := claudeBinary(claude)
-	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, skipPermissions, false)
-	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, skipPermissions, true)
-	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID}, nil
+	fresh := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, false)
+	resumeLine := buildOpenCmd(sh, bin, sessionID, resolvedModel, spec.Effort, settingsPath, appendPromptPath, skipPermissions, true)
+	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID, CreelHooks: creelFlagDirForHook != ""}, nil
+}
+
+// writeOpenFiles creates dir and writes an opened session's settings.json, holding creel's hook delivery over the flag directory creelFlagDirPosix, and its append-system-prompt file, holding the creel trust sentence.
+// It returns the two files' absolute paths.
+// A failure after the directory is created removes it, so a failed launch leaves nothing behind.
+func writeOpenFiles(dir, creelFlagDirPosix string) (settingsPath, appendPromptPath string, err error) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", "", fmt.Errorf("resolve the open session directory: %w", err)
+	}
+	if err := os.MkdirAll(absDir, 0o755); err != nil {
+		return "", "", fmt.Errorf("create the open session directory: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(absDir)
+		}
+	}()
+	settingsJSON, err := buildOpenSettings(creelFlagDirPosix)
+	if err != nil {
+		return "", "", fmt.Errorf("build open settings: %w", err)
+	}
+	settingsPath = filepath.Join(absDir, settingsFileName)
+	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
+		return "", "", fmt.Errorf("write open settings: %w", err)
+	}
+	appendPromptPath = filepath.Join(absDir, appendPromptFileName)
+	if err := os.WriteFile(appendPromptPath, []byte(appendPromptText("", nil)), 0o644); err != nil {
+		return "", "", fmt.Errorf("write open append system prompt: %w", err)
+	}
+	return settingsPath, appendPromptPath, nil
 }
 
 // Compile-time proof that Claude can open a session with no prompt.

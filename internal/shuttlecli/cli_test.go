@@ -736,7 +736,7 @@ type openRecorderEngine struct {
 	specs []shuttleengine.OpenSpec
 }
 
-func (e *openRecorderEngine) OpenLaunch(spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
+func (e *openRecorderEngine) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	e.specs = append(e.specs, spec)
 	return shuttleengine.Launch{Cmd: "open-cmd", ResumeCmd: "resume-cmd", SessionID: "session-1"}, e.err
 }

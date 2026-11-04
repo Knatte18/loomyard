@@ -851,6 +851,19 @@ func eventsSize(path string) int64 {
 // turnStartedSince reports whether the events file holds a turn_start past byte offset.
 // An engine without SessionSignalParser and an unreadable file read as no.
 func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
+	return turnStartMatchedSince(engine, eventsPath, offset, func(SessionSignal) bool { return true })
+}
+
+// promptTurnStartedSince reports whether the events file holds past byte offset a turn start whose typed instruction is promptLine, trimmed, so a turn the operator or another send started never counts as the prompt's.
+// An engine without SessionSignalParser and an unreadable file read as no.
+func promptTurnStartedSince(engine Engine, eventsPath string, offset int64, promptLine string) bool {
+	instruction := strings.TrimSpace(promptLine)
+	return turnStartMatchedSince(engine, eventsPath, offset, func(signal SessionSignal) bool { return signal.Instruction == instruction })
+}
+
+// turnStartMatchedSince reports whether the events file holds past byte offset a turn start that match accepts.
+// An engine without SessionSignalParser and an unreadable file read as no.
+func turnStartMatchedSince(engine Engine, eventsPath string, offset int64, match func(SessionSignal) bool) bool {
 	parser, ok := engine.(SessionSignalParser)
 	if !ok {
 		return false
@@ -861,7 +874,7 @@ func turnStartedSince(engine Engine, eventsPath string, offset int64) bool {
 	}
 	signals, _ := parser.ParseSessionSignals(data[offset:])
 	for _, signal := range signals {
-		if signal.Kind == SessionSignalTurnStart {
+		if signal.Kind == SessionSignalTurnStart && match(signal) {
 			return true
 		}
 	}

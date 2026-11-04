@@ -331,6 +331,12 @@ type Run struct {
 	stopMarked bool
 	// sendMu orders the in-process sends on this run: Send and sendWithin each hold it for the whole idle wait, typing and delivery check.
 	sendMu sync.Mutex
+	// promptDelivered reports that DeliverPendingPrompt typed the deferred prompt line through this handle, so no later call types it again; sendMu guards it.
+	promptDelivered bool
+	// attachPromptTried reports that Wait judged the attach-time prompt delivery through this handle, so no later tick judges it again; only Wait's goroutine touches it.
+	attachPromptTried bool
+	// attached reports that Attach reconstructed this handle over a persisted record, so Wait first delivers a deferred prompt the crashed driver never sent.
+	attached bool
 
 	// offset is the byte offset already consumed from state.EventsPath.
 	offset int64
@@ -787,8 +793,8 @@ func (run *Run) typeStartupColor(color segmentcolor.Color) {
 // So Wait never reads one as a held turn end of the run's own.
 // A pane that dies meanwhile is a died startup.
 // Every other failure tears the run down through abandonStartup too: a skill-load send, a prompt-offset persist or a prompt delivery that fails returns an error wrapping ErrNotStarted beside the cause.
-// A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset landed late.
-// Start then returns the run.
+// A prompt delivery that fails with ErrSubmissionNotLanded but is followed by a turn start in the events file past the pre-send offset is taken as landed late, and Start returns the run.
+// That turn start may be one the operator typed, so Wait checks the prompt's own turn at each held turn end and types the line again when it never started.
 // Residual: a prompt consumed between that signal read and the strand removal is killed with its agent;
 // if it wrote an output file, the re-step's Spec.validate refuses on that file.
 func (run *Run) loadSkillsThenPrompt(promptLine string, color segmentcolor.Color) (Result, error) {
@@ -857,15 +863,23 @@ func (run *Run) sendThroughPause(sc sendContext, text string) error {
 }
 
 // DeliverPendingPrompt types the run's deferred prompt line when the prompt's turn never started, and reports whether it did.
-// It reads the persisted record: a record with no prompt line, or whose events file holds a turn start at or past the prompt offset, reports false and sends nothing.
+// It reads the persisted record: a record with no prompt line, or whose events file holds past the prompt offset a turn start whose instruction is that line, reports false and sends nothing.
+// A turn start with any other instruction, such as one the operator typed or the skill-load turn before a zero prompt offset, leaves the prompt pending.
 // Otherwise it persists the events file's current size as the prompt offset when none was recorded, sends the line through the guarded paste-submit, and reports true.
+// A pending-send record left by an earlier failed send is cleared first, so the send types the line instead of reading an operator's turn start as the line having gone out.
+// A handle types the line at most once: every call after a delivery through it reports false.
 // A failure is returned and nothing else changes.
 func (run *Run) DeliverPendingPrompt() (bool, error) {
+	run.sendMu.Lock()
+	defer run.sendMu.Unlock()
+	if run.promptDelivered {
+		return false, nil
+	}
 	record, found, err := loadRunState(run.runDir)
 	if err != nil {
 		return false, fmt.Errorf("shuttle: read the run record in %s to deliver a pending prompt: %w", run.runDir, err)
 	}
-	if !found || record.PromptLine == "" || turnStartedSince(run.engine, record.EventsPath, record.PromptOffset) {
+	if !found || record.PromptLine == "" || promptTurnStartedSince(run.engine, record.EventsPath, record.PromptOffset, record.PromptLine) {
 		return false, nil
 	}
 	if record.PromptOffset == 0 {
@@ -881,11 +895,13 @@ func (run *Run) DeliverPendingPrompt() (bool, error) {
 			return false, fmt.Errorf("shuttle: persist the prompt offset in %s before delivering the pending prompt: %w", run.runDir, err)
 		}
 	}
-	run.sendMu.Lock()
-	defer run.sendMu.Unlock()
+	if err := clearPendingSend(run.runDir); err != nil {
+		logger.Warn("shuttle: pending send not cleared before delivering the pending prompt", "strandGUID", run.state.StrandGUID, "error", err)
+	}
 	if err := run.sendThroughPause(run.newSendContext(), record.PromptLine); err != nil {
 		return false, fmt.Errorf("shuttle: deliver the pending prompt: %w", err)
 	}
+	run.promptDelivered = true
 	return true, nil
 }
 

@@ -9,6 +9,10 @@
 package claudeengine
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -355,9 +359,16 @@ func TestOpenLaunch(t *testing.T) {
 		spec shuttleengine.OpenSpec
 		// invalidConfig makes the engine load a claude.yaml the loader refuses.
 		invalidConfig bool
-		wantErr       string
-		check         func(t *testing.T, launch shuttleengine.Launch)
+		// board gives the engine a hub board directory, so the launch writes creel's files into the open directory.
+		board bool
+		// obstructAppendPrompt makes a directory of the append-prompt file's path, so the write of that file fails after the directory and settings.json exist.
+		obstructAppendPrompt bool
+		wantErr              string
+		check                func(t *testing.T, launch shuttleengine.Launch)
 	}{
+		{name: "a failed append-prompt write removes the directory", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true, obstructAppendPrompt: true, wantErr: "write open append system prompt"},
+		{name: "a board writes the creel settings and the append prompt", spec: shuttleengine.OpenSpec{Role: "explore"}, board: true},
+		{name: "a board refusal creates nothing", spec: shuttleengine.OpenSpec{Role: "explore", PermissionMode: "auto"}, board: true, wantErr: "invalid permission mode"},
 		{
 			name: "fresh line",
 			spec: shuttleengine.OpenSpec{Role: "explore", ModelChoice: shuttleengine.ModelChoice{Model: "opus", Effort: "high"}},
@@ -443,7 +454,18 @@ func TestOpenLaunch(t *testing.T) {
 			if tt.invalidConfig {
 				engine = engineWithInvalidConfig(t)
 			}
-			launch, err := engine.OpenLaunch(tt.spec, shuttleengine.Config{})
+			boardDir := ""
+			if tt.board {
+				boardDir = t.TempDir()
+				engine.dirs.Board = boardDir
+			}
+			dir := filepath.Join(t.TempDir(), "open")
+			if tt.obstructAppendPrompt {
+				if err := os.MkdirAll(filepath.Join(dir, appendPromptFileName), 0o755); err != nil {
+					t.Fatalf("MkdirAll: %v", err)
+				}
+			}
+			launch, err := engine.OpenLaunch(dir, tt.spec, shuttleengine.Config{})
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("OpenLaunch() error = %v; want it to contain %q", err, tt.wantErr)
@@ -458,6 +480,9 @@ func TestOpenLaunch(t *testing.T) {
 				if launch.SessionID != "" {
 					t.Errorf("SessionID = %q; want none from a refused open", launch.SessionID)
 				}
+				if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+					t.Errorf("Stat(%s) error = %v; want the directory uncreated by a refused open", dir, statErr)
+				}
 				return
 			}
 			if err != nil {
@@ -466,11 +491,90 @@ func TestOpenLaunch(t *testing.T) {
 			if strings.ContainsAny(launch.Cmd+launch.ResumeCmd, "\r\n") {
 				t.Errorf("launch = %+v; want single-line commands", launch)
 			}
+			if tt.board {
+				checkOpenCreelFiles(t, launch, dir, boardDir, sh)
+				return
+			}
+			if launch.CreelHooks {
+				t.Errorf("Launch.CreelHooks = true; want false for an engine told no board directory")
+			}
 			if strings.Contains(launch.Cmd+launch.ResumeCmd, "--append-system-prompt-file") {
-				t.Errorf("launch = %+v; want no --append-system-prompt-file on an open session", launch)
+				t.Errorf("launch = %+v; want no --append-system-prompt-file on an open session without a board", launch)
+			}
+			if strings.Contains(launch.Cmd+launch.ResumeCmd, "--settings") {
+				t.Errorf("launch = %+v; want no --settings on an open session without a board", launch)
+			}
+			if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+				t.Errorf("Stat(%s) error = %v; want the directory uncreated without a board", dir, statErr)
 			}
 			tt.check(t, launch)
 		})
+	}
+}
+
+// checkOpenCreelFiles asserts what an open launch with a board directory leaves: CreelHooks, both lines naming the two files in dir, the settings document holding creel's hooks alone, and the append prompt holding the trust sentence alone.
+func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell) {
+	t.Helper()
+	if !launch.CreelHooks {
+		t.Errorf("Launch.CreelHooks = false; want true for an engine told a board directory")
+	}
+	settingsPath := filepath.Join(dir, "settings.json")
+	appendPath := filepath.Join(dir, "append-system-prompt.txt")
+	for _, line := range []string{launch.Cmd, launch.ResumeCmd} {
+		for _, want := range []string{"--settings " + sh.Quote(settingsPath), "--append-system-prompt-file " + sh.Quote(appendPath)} {
+			if !strings.Contains(line, want) {
+				t.Errorf("line = %q; want it to hold %q", line, want)
+			}
+		}
+	}
+	flagDir := CreelFlagDir(boardDir)
+	if runtime.GOOS == "windows" {
+		posixFlagDir, err := shuttleengine.PosixPath(flagDir)
+		if err != nil {
+			t.Fatalf("PosixPath(%q) error: %v", flagDir, err)
+		}
+		flagDir = posixFlagDir
+	}
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		t.Fatalf("read settings.json: %v", err)
+	}
+	var doc map[string]map[string][]struct {
+		Hooks []struct {
+			Command       string `json:"command"`
+			AsyncRewake   bool   `json:"asyncRewake"`
+			Timeout       int    `json:"timeout"`
+			RewakeMessage string `json:"rewakeMessage"`
+			RewakeSummary string `json:"rewakeSummary"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("parse settings.json %q: %v", data, err)
+	}
+	if len(doc) != 1 || len(doc["hooks"]) != 2 {
+		t.Fatalf("settings.json = %s; want a hooks object holding only Stop and PostToolUse", data)
+	}
+	stop, post := doc["hooks"]["Stop"], doc["hooks"]["PostToolUse"]
+	if len(stop) != 2 || len(stop[0].Hooks) != 1 || len(stop[1].Hooks) != 1 || len(post) != 1 || len(post[0].Hooks) != 1 {
+		t.Fatalf("settings.json = %s; want two Stop entries and one PostToolUse entry of one hook each", data)
+	}
+	quotedFlagDir := shQuote(flagDir)
+	if got, want := stop[0].Hooks[0].Command, creelOpenStopHookCommand(quotedFlagDir); got != want {
+		t.Errorf("Stop delivery command = %q; want %q", got, want)
+	}
+	waiter := stop[1].Hooks[0]
+	if waiter.Command != creelWaitHookCommand() || !waiter.AsyncRewake || waiter.Timeout != creelWaitTimeout || waiter.RewakeMessage != creelRewakeMessage || waiter.RewakeSummary != creelRewakeSummary {
+		t.Errorf("Stop waiter = %+v; want the idle waiter with asyncRewake", waiter)
+	}
+	if got, want := post[0].Hooks[0].Command, creelMailHookCommand(quotedFlagDir); got != want {
+		t.Errorf("PostToolUse command = %q; want %q", got, want)
+	}
+	appendBytes, err := os.ReadFile(appendPath)
+	if err != nil {
+		t.Fatalf("read append-system-prompt.txt: %v", err)
+	}
+	if got, want := string(appendBytes), appendPromptText("", nil); got != want {
+		t.Errorf("append-system-prompt.txt = %q; want %q", got, want)
 	}
 }
 

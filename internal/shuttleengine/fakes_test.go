@@ -915,18 +915,20 @@ var (
 	_ UsageLimitReader    = (*sessionFakeEngine)(nil)
 )
 
-// openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the spec it was given and returns the scripted launch, or the scripted error.
+// openerFakeEngine is fakeEngine plus the SessionOpener capability: OpenLaunch records the directory and the spec it was given and returns the scripted launch, or the scripted error.
 type openerFakeEngine struct {
 	fakeEngine
 
 	launch    Launch
 	openErr   error
+	openDirs  []string
 	openSpecs []OpenSpec
 }
 
-func (e *openerFakeEngine) OpenLaunch(spec OpenSpec, cfg Config) (Launch, error) {
+func (e *openerFakeEngine) OpenLaunch(dir string, spec OpenSpec, cfg Config) (Launch, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.openDirs = append(e.openDirs, dir)
 	e.openSpecs = append(e.openSpecs, spec)
 	return e.launch, e.openErr
 }

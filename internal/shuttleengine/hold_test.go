@@ -38,11 +38,17 @@ type echoReed struct {
 
 	pane  string
 	typed []string
+	// sendFailures is how many leading SendText calls fail before the rest succeed.
+	sendFailures int
 }
 
 func (r *echoReed) CapturePane(string) (string, error) { return r.pane, nil }
 
 func (r *echoReed) SendText(guid, text string, submit bool) error {
+	if r.sendFailures > 0 {
+		r.sendFailures--
+		return errors.New("pane gone")
+	}
 	if err := r.fakeReed.SendText(guid, text, submit); err != nil {
 		return err
 	}
@@ -87,6 +93,11 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 		// apiError makes the engine read the "STOP:overloaded" turn end as an API error and the pane take the lines sent to it, and sendFails makes that send fail.
 		apiError  bool
 		sendFails bool
+		// prompt is the run's deferred prompt line, which makes the engine parse session signals and the pane take the lines sent to it.
+		prompt string
+		// pendingSend seeds the pending-send record a failed earlier send of the prompt line left, at the prompt offset, and promptSendFailures is how many leading sends into the pane fail.
+		pendingSend        bool
+		promptSendFailures int
 		// usageLimit makes the engine read the "STOP:limit" turn end as one the provider's usage limit caused.
 		usageLimit bool
 		// sleepJump is the clock jump per Sleep, nonzero to reach a wait bound in a few ticks, and timeout is the run's deadline, heldTestTimeout when zero.
@@ -305,6 +316,63 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			},
 		},
 		{
+			name:   "a held turn end after an operator's turn start types the deferred prompt once and sends no notice",
+			events: skillLoadEvents + "START:fortsett?\nSTOP:answered\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.",
+			check: func(t *testing.T, got heldRun) {
+				if !slices.Equal(got.sent, []string{"Read the task prompt and carry it out."}) || len(got.notices) != 0 {
+					t.Errorf("sent = %q, notices = %q; want the prompt line once and no notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name:   "a held turn end after the prompt's own turn start types nothing and is notified",
+			events: skillLoadEvents + "START:Read the task prompt and carry it out.\nSTOP:answered\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.",
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 || len(got.notices) != 1 {
+					t.Errorf("sent = %q, notices = %q; want nothing typed and one notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name:   "a held turn end after an operator's turn start types the prompt over a pending-send record of it",
+			events: skillLoadEvents + "START:fortsett?\nSTOP:answered\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.", pendingSend: true,
+			check: func(t *testing.T, got heldRun) {
+				if !slices.Equal(got.sent, []string{"Read the task prompt and carry it out."}) || len(got.notices) != 0 {
+					t.Errorf("sent = %q, notices = %q; want the prompt line once and no notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name:   "a held turn end read while a pause covers the run types no prompt",
+			events: skillLoadEvents + "START:fortsett?\nSTOP:answered\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.", coveredSleeps: 3,
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 || len(got.notices) != 0 {
+					t.Errorf("sent = %q, notices = %q; want nothing typed and no notice", got.sent, got.notices)
+				}
+			},
+		},
+		{
+			name:   "a held turn end with a turn start read after it in the same batch types no prompt",
+			events: skillLoadEvents + "START:fortsett?\nSTOP:answered\nSTART\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.",
+			check: func(t *testing.T, got heldRun) {
+				if len(got.sent) != 0 {
+					t.Errorf("sent = %q; want nothing typed", got.sent)
+				}
+			},
+		},
+		{
+			name:   "a failed prompt send is notified as a held stop and the next held turn end types the prompt",
+			events: skillLoadEvents + "START\nSTOP:first\n", session: true, promptOffset: skillLoadOffset, prompt: "Read the task prompt and carry it out.", promptSendFailures: 1,
+			script: func(appendLine func(string), _ func(time.Duration)) []func() {
+				return []func(){func() { appendLine("START:fortsett?") }, func() { appendLine("STOP:second") }}
+			},
+			check: func(t *testing.T, got heldRun) {
+				if !slices.Equal(got.sent, []string{"Read the task prompt and carry it out."}) || len(got.notices) != 1 || !strings.HasSuffix(got.notices[0], "«first»") {
+					t.Errorf("sent = %q, notices = %q; want the prompt line once, typed at the second turn end, and one notice for the first", got.sent, got.notices)
+				}
+			},
+		},
+		{
 			name: "a plain stop on an engine that wakes on background work is notified", events: "STOP:which approach?\n", strand: strandName,
 			backgroundWake: true,
 			check: func(t *testing.T, got heldRun) {
@@ -464,12 +532,13 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 			}
 			var reed ReedOps = &fakeReed{StatusQueue: liveStrandStatus(true)}
 			var paneReed *echoReed
-			if tt.apiError {
+			if tt.apiError || tt.prompt != "" {
 				engine = &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}, liveness: LivenessAlive, apiErrorLine: "STOP:overloaded"}
 				paneReed = &echoReed{fakeReed: &fakeReed{StatusQueue: liveStrandStatus(true)}, pane: "❯ "}
 				if tt.sendFails {
 					paneReed.SendTextErr = errors.New("pane gone")
 				}
+				paneReed.sendFailures = tt.promptSendFailures
 				reed = paneReed
 			}
 			if tt.backgroundWake {
@@ -502,7 +571,7 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				holdDeferral = tt.deferral(t, elapsed)
 			}
 			runOpts := []runOpt{
-				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1", PromptOffset: tt.promptOffset}),
+				withRunState(RunState{StrandGUID: "strand-1", StrandName: tt.strand, SessionID: "session-1", PromptOffset: tt.promptOffset, PromptLine: tt.prompt}),
 				withRunEvents(tt.events),
 				withRunOffset(tt.promptOffset),
 				withRunClock(clk, fc.Now().Add(timeout)),
@@ -511,6 +580,16 @@ func TestWait_HeldTurnEndNotice(t *testing.T) {
 				runOpts = append(runOpts, withRunGate(GateSpec{{Name: "check", Gate: func() (GateResult, error) { return GateResult{Passed: true}, nil }}}))
 			}
 			run := fx.newRun(Spec{OutputFiles: []string{filepath.Join(t.TempDir(), "out.md")}, Timeout: timeout, Interactive: tt.interact, QuietHold: tt.quiet, HoldDeferral: holdDeferral}, runOpts...)
+			if tt.prompt != "" {
+				if err := saveRunState(run.runDir, run.state); err != nil {
+					t.Fatalf("saveRunState: %v", err)
+				}
+				if tt.pendingSend {
+					if err := savePendingSend(run.runDir, pendingSend{Text: tt.prompt, EventsOffset: tt.promptOffset}); err != nil {
+						t.Fatalf("savePendingSend: %v", err)
+					}
+				}
+			}
 			for _, text := range tt.sentTexts {
 				recordSentText(run.runDir, text)
 			}

@@ -144,7 +144,7 @@ func (e *dispatchEngine) ParseSessionSignals(data []byte) ([]SessionSignal, int)
 	return nil, len(data)
 }
 
-func (e *dispatchEngine) OpenLaunch(OpenSpec, Config) (Launch, error) {
+func (e *dispatchEngine) OpenLaunch(string, OpenSpec, Config) (Launch, error) {
 	e.record("OpenLaunch")
 	return Launch{Cmd: "open-" + e.name, ResumeCmd: "resume-" + e.name, SessionID: "session-" + e.name}, nil
 }

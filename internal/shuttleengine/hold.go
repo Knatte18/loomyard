@@ -2,6 +2,7 @@
 // It also declares the optional capability that tells a held turn end the provider's usage limit caused, which sends no notice.
 // Its background-wake check sends none for a held turn end left waiting on background work a session wakes from.
 // Its operator-turn check sends none for a held turn end of a turn the operator started by typing into the pane.
+// It also types a deferred prompt line whose own turn never started, at a held turn end and when Attach reconstructs a run, in place of a notice.
 
 package shuttleengine
 
@@ -120,6 +121,46 @@ func (run *Run) operatorStartedTurn(held *heldTurnEnd) bool {
 // wakesOnBackground reports whether held left background work running on an engine whose sessions wake when their own background work completes.
 func (run *Run) wakesOnBackground(held *heldTurnEnd) bool {
 	return held.background && meetsAll(run.engine, []Requirement{RequirementBackgroundWake})
+}
+
+// deliverPromptAtHold types the run's deferred prompt line at held when the prompt's own turn never started, and reports whether it did.
+// It sends only for a run with a deferred prompt line, no pause covering it and no turn start read past held;
+// DeliverPendingPrompt judges the prompt's turn and types the line at most once per handle.
+// A failed send is logged at Warn and held is held as any other turn end, so the next held turn end tries again.
+func (run *Run) deliverPromptAtHold(held *heldTurnEnd) bool {
+	if run.state.PromptLine == "" || run.covered || run.turnStartRead {
+		return false
+	}
+	sent, err := run.DeliverPendingPrompt()
+	if err != nil {
+		logger.Warn("shuttle: the deferred prompt never started a turn and could not be typed at a held turn end", "strandGUID", run.state.StrandGUID, "offset", held.offset, "error", err)
+		return false
+	}
+	if sent {
+		logger.Warn("shuttle: the deferred prompt never started a turn; typed it at a held turn end", "strandGUID", run.state.StrandGUID, "offset", held.offset)
+	}
+	return sent
+}
+
+// deliverPromptOnAttach types the deferred prompt line of an attached run whose output files are missing when the prompt's own turn never started, as when the driver that launched it died before the line went out.
+// It judges the delivery once per handle, at the first call made while no pause covers the run; a call made under a pause does nothing, so the pause is waited out by Wait's own polling and not inside the send.
+// A failed send is logged at Warn, and the run's next held turn end tries again.
+func (run *Run) deliverPromptOnAttach() {
+	if !run.attached || run.attachPromptTried || run.covered {
+		return
+	}
+	run.attachPromptTried = true
+	if run.state.PromptLine == "" || allOutputFilesExist(run.state.OutputFiles) {
+		return
+	}
+	sent, err := run.DeliverPendingPrompt()
+	if err != nil {
+		logger.Warn("shuttle: attach: the deferred prompt never started a turn and could not be typed", "strandGUID", run.state.StrandGUID, "error", err)
+		return
+	}
+	if sent {
+		logger.Warn("shuttle: attach: the deferred prompt never started a turn; typed it", "strandGUID", run.state.StrandGUID)
+	}
 }
 
 // apiErrorContinueLine is the one line an agent whose turn ended on an API error across a machine sleep is given to carry on.

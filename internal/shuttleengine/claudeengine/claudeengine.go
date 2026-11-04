@@ -200,23 +200,16 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		}
 	}
 
-	// A session in a hub gets creel's mail hook; the flag directory takes the same POSIX conversion as the events path.
-	creelFlagDirForHook := ""
-	if c.dirs.Board != "" {
-		creelFlagDirForHook = CreelFlagDir(c.dirs.Board)
-		if runtime.GOOS == "windows" {
-			creelFlagDirForHook, err = shuttleengine.PosixPath(creelFlagDirForHook)
-			if err != nil {
-				return shuttleengine.Launch{}, fmt.Errorf("convert creel flag directory to posix: %w", err)
-			}
-		}
+	creelFlagDirForHook, err := c.creelFlagDirForHook()
+	if err != nil {
+		return shuttleengine.Launch{}, err
 	}
 
 	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}
-	settingsPath := filepath.Join(runDir, "settings.json")
+	settingsPath := filepath.Join(runDir, settingsFileName)
 	if err := os.WriteFile(settingsPath, settingsJSON, 0o644); err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("write settings: %w", err)
 	}
@@ -265,4 +258,24 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		// The settings carry the PostToolUse, Stop and waiter hooks exactly when a creel flag directory was passed.
 		CreelHooks: creelFlagDirForHook != "",
 	}, nil
+}
+
+// settingsFileName is the settings document a launch writes and names with --settings.
+const settingsFileName = "settings.json"
+
+// creelFlagDirForHook returns the creel flag directory a session's hooks test, empty for an engine told no hub board directory.
+// On Windows it takes the git-bash POSIX conversion the hook commands need.
+func (c *Claude) creelFlagDirForHook() (string, error) {
+	if c.dirs.Board == "" {
+		return "", nil
+	}
+	flagDir := CreelFlagDir(c.dirs.Board)
+	if runtime.GOOS != "windows" {
+		return flagDir, nil
+	}
+	posix, err := shuttleengine.PosixPath(flagDir)
+	if err != nil {
+		return "", fmt.Errorf("convert creel flag directory to posix: %w", err)
+	}
+	return posix, nil
 }

@@ -254,7 +254,7 @@
 // A resume through the launch's resume line reuses the file its launch wrote, so its passages stay;
 // a Prepare that runs again, as an adopted session's does, reads the passages afresh.
 // It is a file because the sentence holds a double quote, which an argument passed through pwsh's Legacy mode (an npm claude.cmd shim) would drop.
-// A session opened with `lym shuttle open` writes no run directory and carries no file.
+// A session opened with `lym shuttle open` in a hub carries its own such file in the session directory Runner.Open names, holding the creel trust sentence alone; one opened outside a hub carries none.
 // Both the hooks and the notice are built from one deny list in settings.go, so the two cannot drift:
 // each row names its tool matcher, hook command, notice sentence and the run inputs that install it.
 // The webster fork guard has no notice sentence and is not announced.
@@ -300,7 +300,11 @@
 // It is a guardrail, not a barrier: a launch behind `bash -c`, a script, an assignment prefix or `env` with an assignment passes, and a claude subcommand, or a command launched through one, taking a single-dash flag word holding `p` of its own is falsely denied.
 //
 // The open launch (Claude.OpenLaunch) starts a named interactive session with no prompt.
-// Its line carries the session id and the strand-name reference, adds `--model` and `--effort` only when set, and passes no `--settings`, so the session takes the worktree's own settings.
+// Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
+// An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.
+// An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
+// The settings' PostToolUse mail hook and idle waiter are a run's; its Stop delivery is the merged command without the recording, since an opened session has no events file: it exits 0 whatever the delivery printed, so an echo reaches the operator.
+// Claude Code stacks `--settings` over the worktree's own settings, so every other setting stays the worktree's.
 // It carries `--dangerously-skip-permissions` unless the open's permission mode is `prompt`, on the fresh and the resume line alike, and an unknown mode refuses the open.
 // Its resume line falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn and `--resume` then fails.
 //

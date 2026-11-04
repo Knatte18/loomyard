@@ -12,6 +12,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -62,6 +63,9 @@ type seedAttachRunOpts struct {
 	started bool
 	// forkSubagents seeds RunState.ForkSubagents; the key is written only when true, so a seed without it is the older record's shape.
 	forkSubagents bool
+	// promptLine and promptOffset seed RunState.PromptLine and PromptOffset, written only when set.
+	promptLine   string
+	promptOffset int64
 }
 
 // seedAttachRun writes a run.json fixture at <root>/<id>/run.json built from a plain map rather than
@@ -89,6 +93,12 @@ func seedAttachRun(t *testing.T, root, id string, opts seedAttachRunOpts) string
 	}
 	if opts.forkSubagents {
 		fields["forkSubagents"] = true
+	}
+	if opts.promptLine != "" {
+		fields["promptLine"] = opts.promptLine
+	}
+	if opts.promptOffset != 0 {
+		fields["promptOffset"] = opts.promptOffset
 	}
 	data, err := json.MarshalIndent(fields, "", "  ")
 	if err != nil {
@@ -1054,6 +1064,74 @@ func TestAttach_OffsetStartsAtZero(t *testing.T) {
 			t.Errorf("hold log = %q, want the replayed Stop's message", buf.String())
 		}
 	})
+}
+
+// TestAttach_DeliversTheDeferredPrompt pins that a run Attach reconstructs types its deferred prompt line once at Wait entry when its output files are missing and no turn of the prompt started, and types nothing when every output file exists.
+func TestAttach_DeliversTheDeferredPrompt(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const promptLine = "Read the task prompt and carry it out."
+	tests := []struct {
+		name         string
+		events       string
+		promptOffset int64
+		outputExists bool
+		// covered runs Attach under a hub entry that a later clock sleep resumes, and sendFails makes every send into the pane fail.
+		covered   bool
+		sendFails bool
+		wantTyped []string
+	}{
+		{name: "a zero prompt offset with output files missing types the prompt", events: "SESSIONSTART:startup\n", wantTyped: []string{promptLine}},
+		{name: "a set prompt offset with no prompt turn start types the prompt", events: skillLoadEvents, promptOffset: skillLoadOffset, wantTyped: []string{promptLine}},
+		{name: "output files that all exist type nothing", events: skillLoadEvents, promptOffset: skillLoadOffset, outputExists: true},
+		{name: "a covering pause holds the prompt until the pause lifts", events: skillLoadEvents, promptOffset: skillLoadOffset, covered: true, wantTyped: []string{promptLine}},
+		{name: "a failed send is logged and Attach still returns the run", events: skillLoadEvents, promptOffset: skillLoadOffset, sendFails: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &echoReed{fakeReed: &fakeReed{StatusQueue: []reedengine.StatusResult{liveStatus("strand-1", "%1")}}, pane: "❯ "}
+			engine := &sessionFakeEngine{waitingEngine: waitingEngine{fakeEngine: fakeEngine{StartupScript: []StartupState{StartupReady}}}, liveness: LivenessAlive}
+			if tt.sendFails {
+				reed.SendTextErr = errors.New("pane gone")
+			}
+			fc := newFakeClock(time.Now())
+			geometry, resume := coverHub(t, fc.Now())
+			var clock Clock = fc
+			if tt.covered {
+				clock = &liftClock{Clock: fc, liftAfter: 3, lift: func() { resume(fc.Now()) }}
+			}
+			fx := newFixture(t, reed, engine, withConfig(fastConfig), withSeparateRunDir(), withClock(clock))
+			if tt.covered {
+				fx.Runner.SetPause(geometry)
+			}
+			seedPresentReedState(t, fx.DotLym)
+			outputFile := filepath.Join(fx.RunRoot, "out.md")
+			if tt.outputExists {
+				touchOutputFile(t, outputFile)
+			}
+			runDir := seedAttachRun(t, fx.RunRoot, "run-1", seedAttachRunOpts{
+				strandGUID: "strand-1", sessionID: "session-1", outputFiles: []string{outputFile}, outcome: runOutcomeRunning, includeOutcome: true,
+				promptLine: promptLine, promptOffset: tt.promptOffset,
+			})
+			if err := os.WriteFile(filepath.Join(runDir, eventsFileName), []byte(tt.events), 0o644); err != nil {
+				t.Fatalf("seed events: %v", err)
+			}
+
+			_, found, err := fx.Runner.Attach(Spec{OutputFiles: []string{outputFile}, Timeout: heldTestTimeout})
+			if err != nil || !found {
+				t.Fatalf("Attach() = (_, %v, %v); want found and no error", found, err)
+			}
+
+			if !slices.Equal(reed.typed, tt.wantTyped) {
+				t.Errorf("Attach() typed %q; want %q", reed.typed, tt.wantTyped)
+			}
+			if tt.sendFails && len(reed.SendTextCalls) == 0 {
+				t.Errorf("SendText calls = none; want the failed send attempted")
+			}
+		})
+	}
 }
 
 // TestAttach_StartedSeededTrue pins the started seed: attaching to a strand whose run.json already

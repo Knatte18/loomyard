@@ -295,6 +295,7 @@ func (run *Run) Wait() (Result, error) {
 	run.turnSince = run.clock.Now()
 	for tick := 1; ; tick++ {
 		run.observePause()
+		run.deliverPromptOnAttach()
 		outcome, held, err := run.pollEventsTick()
 		if err == nil && run.turnStartRead {
 			run.turnSince = run.clock.Now()
@@ -327,6 +328,8 @@ func (run *Run) Wait() (Result, error) {
 				}
 				switch {
 				case continued:
+				case run.deliverPromptAtHold(held):
+					// The agent never got its task; the turn its prompt now starts is the work, so the parent has nothing to answer.
 				case run.holdNoticePending() && run.usageLimited(held):
 					// The parent cannot act while the account is limited, and a notice sent now lands in its context as stale clutter after the reset.
 					logger.Info("shuttle: held turn end stopped on the usage limit; no hold notice", "strandGUID", run.state.StrandGUID, "offset", held.offset)

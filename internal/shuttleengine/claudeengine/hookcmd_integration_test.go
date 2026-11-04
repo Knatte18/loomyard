@@ -357,12 +357,17 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 		wantRecord  bool
 		wantStubRun bool
 		wantFailure bool
+		// open runs creelOpenStopHookCommand, which records nothing and always exits 0, in place of the merged command.
+		open bool
 	}{
-		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false},
-		{"FlagStandsAndAnEchoAloneIsWritten", true, "1", echo, "", echo + "\n", true, true, false},
-		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false},
-		{"FlagAbsent", false, "0", mail, "", "", true, false, false},
-		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true},
+		{"FlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, false},
+		{"FlagStandsAndAnEchoAloneIsWritten", true, "1", echo, "", echo + "\n", true, true, false, false},
+		{"FlagStandsAndNothingIsClaimed", true, "1", "", "", "", true, true, false, false},
+		{"FlagAbsent", false, "0", mail, "", "", true, false, false, false},
+		{"UnwritableEventsFile", true, "1", "", "missing-dir", "", false, true, true, false},
+		{"OpenFlagStandsAndMailIsWritten", true, "0", mail, "", mail + "\n", false, true, false, true},
+		{"OpenFlagStandsAndAnEchoReachesTheOperator", true, "1", echo, "", echo + "\n", false, true, false, true},
+		{"OpenFlagAbsent", false, "0", mail, "", "", false, false, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -387,6 +392,9 @@ func TestCreelStopHook_RecordsATurnEndOnlyWithoutABlock(t *testing.T) {
 			}
 			eventsPath := filepath.Join(root, tt.eventsDir, "events.jsonl")
 			command := creelStopHookCommand(shQuote(flagDir), shQuote(eventsPath))
+			if tt.open {
+				command = creelOpenStopHookCommand(shQuote(flagDir))
+			}
 			env := []string{
 				"PATH=" + binDir + ":/usr/bin:/bin", "CLAUDE_PROJECT_DIR=" + projectDir, agentname.StrandNameEnv + "=" + name,
 				"STUB_STDIN=" + stdinPath, "STUB_OUT=" + tt.stubOut, "STUB_EXIT=" + tt.stubExit,

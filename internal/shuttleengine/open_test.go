@@ -20,6 +20,16 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
+// dirCreatingOpenerEngine is an openerFakeEngine whose OpenLaunch creates the session directory, as an engine that writes the session's files does.
+type dirCreatingOpenerEngine struct{ *openerFakeEngine }
+
+func (e dirCreatingOpenerEngine) OpenLaunch(dir string, spec OpenSpec, cfg Config) (Launch, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return Launch{}, err
+	}
+	return e.openerFakeEngine.OpenLaunch(dir, spec, cfg)
+}
+
 // TestRunner_Open pins the strand Open adds and what it refuses before creating one.
 func TestRunner_Open(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -92,6 +102,15 @@ func TestRunner_Open(t *testing.T) {
 			t.Fatalf("Open() error = %v", err)
 		}
 
+		if len(engine.openDirs) != 1 || len(reed.AddStrandCalls) != 1 || len(reed.AddStrandCalls[0].DoneWhen) != 1 {
+			t.Fatalf("OpenLaunch dirs = %v and AddStrand calls = %v; want one of each, the strand with one marker", engine.openDirs, reed.AddStrandCalls)
+		}
+		sessionDir := engine.openDirs[0]
+		wantMarker := sessionDir + ".exited"
+		if filepath.Dir(sessionDir) != filepath.Join(fx.Anchor, lymdirs.DotLymDirName, openMarkerDirName) || reed.AddStrandCalls[0].DoneWhen[0] != wantMarker {
+			t.Errorf("OpenLaunch dir = %q and marker = %q; want a dir under the marker directory and the marker %q named by the same token", sessionDir, reed.AddStrandCalls[0].DoneWhen[0], wantMarker)
+		}
+
 		if len(engine.openSpecs) != 1 || engine.openSpecs[0].PermissionMode != "bypass" {
 			t.Errorf("OpenLaunch specs = %+v; want exactly one carrying PermissionMode bypass", engine.openSpecs)
 		}
@@ -126,6 +145,50 @@ func TestRunner_Open(t *testing.T) {
 		}
 		if _, err := os.Stat(fx.RunRoot); !os.IsNotExist(err) {
 			t.Errorf("run-directory root stat err = %v; want it absent, since an open writes no run directory", err)
+		}
+	})
+
+	creelTests := []struct {
+		name       string
+		creelHooks bool
+	}{
+		{name: "a launch marked with creel hooks marks the strand", creelHooks: true},
+		{name: "a launch without creel hooks leaves the strand unmarked"},
+	}
+	for _, tt := range creelTests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			reed := &fakeReed{}
+			marked := launch
+			marked.CreelHooks = tt.creelHooks
+			fx := newFixture(t, reed, &openerFakeEngine{launch: marked})
+
+			if _, err := fx.Runner.Open(spec); err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+
+			if len(reed.AddStrandCalls) != 1 || reed.AddStrandCalls[0].CreelHooks != tt.creelHooks {
+				t.Errorf("AddStrand calls = %+v; want one with CreelHooks %v", reed.AddStrandCalls, tt.creelHooks)
+			}
+		})
+	}
+
+	t.Run("a failed strand add removes the session directory", func(t *testing.T) {
+		t.Parallel()
+		reed := &fakeReed{AddStrandErr: errors.New("reed down")}
+		engine := &openerFakeEngine{launch: launch}
+		fx := newFixture(t, reed, dirCreatingOpenerEngine{engine})
+
+		_, err := fx.Runner.Open(spec)
+
+		if err == nil || !strings.Contains(err.Error(), "reed down") {
+			t.Fatalf("Open() error = %v; want it to contain %q", err, "reed down")
+		}
+		if len(engine.openDirs) != 1 {
+			t.Fatalf("OpenLaunch dirs = %v; want one", engine.openDirs)
+		}
+		if _, statErr := os.Stat(engine.openDirs[0]); !os.IsNotExist(statErr) {
+			t.Errorf("session directory stat err = %v; want it removed after the failed add", statErr)
 		}
 	})
 

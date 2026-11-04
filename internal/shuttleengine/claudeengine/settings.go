@@ -1,4 +1,4 @@
-// settings.go composes the Claude Code settings.json document Prepare writes for each run:
+// settings.go composes the Claude Code settings.json document Prepare writes for each run, and the creel-only document OpenLaunch writes for a session opened in a hub:
 // a Stop hook that appends every turn-end event to the run's events.jsonl (the only channel ParseEvents reads).
 // A session in a hub also gets creel's hook delivery: the PostToolUse mail hook, a Stop hook that merges the turn-end recording with creel's turn-end delivery so a Stop that handed mail to the session records no turn end, and the idle waiter hook that wakes an idle session.
 // The UserPromptSubmit, StopFailure, Notification, SessionEnd, SessionStart and PermissionRequest hooks append their payloads to the same file for ParseSessionSignals;
@@ -136,9 +136,21 @@ func strandFlagName() string {
 // An exit 0 of that step means mail was handed to the session, which continues the turn, and the command then exits 0 having appended nothing to the events file at quotedEventsPath.
 // Otherwise, or when the flag is absent, it appends the Stop stamp and the input as recordingCommand does and exits with that append's status, leaving whatever the delivery step printed as the hook's output, which an echo printed with exit 1 relies on to reach the operator.
 func creelStopHookCommand(quotedFlagDir, quotedEventsPath string) string {
-	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
 	record := `printf '%s' "$in" | { ` + recordingCommand(hookEventStop, quotedEventsPath) + `; }`
-	return `in=$(cat); ` + strandFlagName() + `; ` + deliver + `; ` + record
+	return creelStopDelivery(quotedFlagDir) + `; ` + record
+}
+
+// creelOpenStopHookCommand returns the Stop hook command of a session with no events file: creel's turn-end delivery alone.
+// It reads the hook input once and, when the strand's flag stands in the directory at quotedFlagDir, pipes it to creelMailCommand from the session's project directory, whose output is the hook's.
+// It always exits 0, so whatever the delivery printed, an echo with exit 1 included, reaches Claude Code as the hook's output.
+func creelOpenStopHookCommand(quotedFlagDir string) string {
+	return creelStopDelivery(quotedFlagDir) + `; true`
+}
+
+// creelStopDelivery returns the opening of a creel Stop hook command: it reads the hook input into $in, forms the strand's flag name, and when that flag stands in the directory at quotedFlagDir pipes the input to creelMailCommand from the session's project directory, exiting 0 when that hands out mail.
+func creelStopDelivery(quotedFlagDir string) string {
+	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
+	return `in=$(cat); ` + strandFlagName() + `; ` + deliver
 }
 
 // creelWaitCommand is the command the idle waiter hook runs: creel's waiter verb, told this engine's registry name so it renders the wake as this engine's.
@@ -160,6 +172,42 @@ const creelRewakeSummary = "creel mail"
 // It runs whether or not the strand's mail flag stands, since the waiter is what wakes an idle session for mail that arrives later.
 func creelWaitHookCommand() string {
 	return `cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelWaitCommand
+}
+
+// creelWaitHookEntry returns the Stop hook entry of the idle waiter: it runs creelWaitHookCommand in the background for up to creelWaitTimeout seconds and wakes the idle session, under creel's labels, when it exits 2.
+func creelWaitHookEntry() hookEntry {
+	return hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout, RewakeMessage: creelRewakeMessage, RewakeSummary: creelRewakeSummary}}}
+}
+
+// openSettingsHooks is the "hooks" object of an opened session's settings document: creel's hook delivery and nothing else.
+type openSettingsHooks struct {
+	Stop        []hookEntry `json:"Stop"`
+	PostToolUse []hookEntry `json:"PostToolUse"`
+}
+
+// openSettingsDoc is the settings document OpenLaunch writes for a session opened in a hub.
+// It carries hooks alone, so every other setting of the session stays the worktree's own.
+type openSettingsDoc struct {
+	Hooks openSettingsHooks `json:"hooks"`
+}
+
+// buildOpenSettings marshals an opened session's settings document over the creel flag directory creelFlagDirPosix, a git-bash POSIX path:
+// the PostToolUse creel mail hook, and on Stop creel's turn-end delivery followed by the idle waiter.
+// It records nothing, since an opened session has no events file.
+func buildOpenSettings(creelFlagDirPosix string) ([]byte, error) {
+	quotedFlagDir := shQuote(creelFlagDirPosix)
+	doc := openSettingsDoc{Hooks: openSettingsHooks{
+		Stop: []hookEntry{
+			{Hooks: []hookCommand{{Type: "command", Command: creelOpenStopHookCommand(quotedFlagDir)}}},
+			creelWaitHookEntry(),
+		},
+		PostToolUse: []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}}},
+	}}
+	data, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("marshal open settings: %w", err)
+	}
+	return data, nil
 }
 
 // settingsDoc is the Claude Code settings.json document Prepare writes.
@@ -390,7 +438,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 		doc.Hooks.PostToolUse = append(doc.Hooks.PostToolUse, hookEntry{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}})
 		doc.Hooks.Stop = []hookEntry{
 			{Hooks: []hookCommand{{Type: "command", Command: creelStopHookCommand(quotedFlagDir, quotedEventsPath)}}},
-			{Hooks: []hookCommand{{Type: "command", Command: creelWaitHookCommand(), AsyncRewake: true, Timeout: creelWaitTimeout, RewakeMessage: creelRewakeMessage, RewakeSummary: creelRewakeSummary}}},
+			creelWaitHookEntry(),
 		}
 	}
 

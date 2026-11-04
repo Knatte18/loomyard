@@ -581,15 +581,29 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 		wantOffset int64
 		// covered runs the send under a hub entry that a later clock sleep resumes.
 		covered bool
+		// pendingSend seeds the pending-send record a failed earlier send of the prompt line left, at the prompt offset.
+		pendingSend bool
 	}{
+		{
+			name: "an operator's turn start past a pending-send record of the prompt still types the prompt", promptLine: promptLine, events: loadTurns + "START:fortsett?\n",
+			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)), pendingSend: true,
+		},
 		{name: "a record with no prompt line sends nothing", events: loadTurns, promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns))},
 		{
 			name: "a covering hub entry holds the prompt until its resume", promptLine: promptLine, events: loadTurns,
 			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)), covered: true,
 		},
 		{
-			name: "a turn start past the prompt offset means the prompt was taken", promptLine: promptLine, events: loadTurns + "START\n",
+			name: "a turn start of the prompt line past the prompt offset means the prompt was taken", promptLine: promptLine, events: loadTurns + "START:" + promptLine + "\n",
 			promptOffset: int64(len(loadTurns)), wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "an operator's turn start past the prompt offset leaves the prompt pending", promptLine: promptLine, events: loadTurns + "START:fortsett?\n",
+			promptOffset: int64(len(loadTurns)), wantSent: true, wantOffset: int64(len(loadTurns)),
+		},
+		{
+			name: "a zero prompt offset over the load turn's own start sends the prompt", promptLine: promptLine, events: loadTurns,
+			wantSent: true, wantOffset: int64(len(loadTurns)),
 		},
 		{
 			name: "only the load turns before the prompt offset sends the prompt once", promptLine: promptLine, events: loadTurns,
@@ -630,6 +644,11 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 			if err := saveRunState(run.runDir, record); err != nil {
 				t.Fatalf("saveRunState: %v", err)
 			}
+			if tt.pendingSend {
+				if err := savePendingSend(run.runDir, pendingSend{Text: promptLine, EventsOffset: tt.promptOffset}); err != nil {
+					t.Fatalf("savePendingSend: %v", err)
+				}
+			}
 
 			sent, err := run.DeliverPendingPrompt()
 			if err != nil {
@@ -654,6 +673,17 @@ func TestRun_DeliverPendingPrompt_SendsOnlyAPromptWhoseTurnNeverStarted(t *testi
 			}
 			if persisted.PromptOffset != tt.wantOffset {
 				t.Errorf("persisted PromptOffset = %d, want %d", persisted.PromptOffset, tt.wantOffset)
+			}
+
+			again, err := run.DeliverPendingPrompt()
+			if err != nil {
+				t.Fatalf("second DeliverPendingPrompt() error = %v", err)
+			}
+			if again {
+				t.Errorf("second DeliverPendingPrompt() = %v, want false", again)
+			}
+			if !reflect.DeepEqual(reed.typed, wantTyped) {
+				t.Errorf("typed after the second call = %q, want %q", reed.typed, wantTyped)
 			}
 		})
 	}

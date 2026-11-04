@@ -194,6 +194,8 @@ func replayCorpusCase(t *testing.T, name string) {
 	}
 	checkCorpusStates(t, claude, name, c, lines, turnEndOf, consumed)
 
+	const promptLine = "Read the prompt."
+
 	worktree := t.TempDir()
 	replay := &corpusReplay{
 		t:          t,
@@ -210,15 +212,20 @@ func replayCorpusCase(t *testing.T, name string) {
 	reed := &shuttlefake.Reed{
 		SendTextFn: func(_, text string, _ bool) error {
 			pane.WriteString(text + "\n")
+			if text == promptLine {
+				// The recorded events hold no turn start for the deferred prompt, which Wait would type again at a held turn end.
+				// So the replay appends the one the prompt's own turn writes when the line is typed.
+				appendEventsLine(t, name, replay.eventsPath, promptTurnStartLine(t, name, lines[0], promptLine))
+			}
 			return nil
 		},
 		CapturePaneFn: func(string) (string, error) { return pane.String(), nil },
 	}
 	launch := shuttleengine.Launch{Cmd: "replay", SessionID: "replay"}
 	if len(c.Skills) > 0 {
-		launch.PromptLine = "Read the prompt."
+		launch.PromptLine = promptLine
 	}
-	engine := &shuttlefake.Engine{
+	fake := &shuttlefake.Engine{
 		PrepareFn: func(runDir string, _ shuttleengine.Spec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 			replay.eventsPath = filepath.Join(runDir, "events.jsonl")
 			return launch, nil
@@ -229,6 +236,12 @@ func replayCorpusCase(t *testing.T, name string) {
 		},
 		SkillLoadMessageFn:  claude.SkillLoadMessage,
 		ClassifySkillLoadFn: claude.ClassifySkillLoad,
+	}
+	var engine shuttleengine.Engine = fake
+	if len(c.Skills) > 0 {
+		// Only a run with a deferred prompt needs the signal parser: it tells the run whether the prompt's own turn started.
+		// The other cases keep the inert engine, so a recorded operator turn does not silence the notice their expected readings name.
+		engine = &corpusEngine{Engine: fake, claude: claude}
 	}
 	cfg := shuttleengine.Config{PollIntervalMS: 1000, LivenessEveryNPolls: 1, RunTimeoutMin: 60, StartupTimeoutS: 30, BackgroundShellWaitMin: 10}
 	runner := shuttleengine.NewRunner(reed, shuttlefake.EngineSet(engine), worktree, worktree, cfg)
@@ -263,6 +276,46 @@ func replayCorpusCase(t *testing.T, name string) {
 	if result.Outcome != want || replay.appended != len(lines) {
 		t.Errorf("%s: the run ended %q after line %d of %d; want %q after the last", name, result.Outcome, replay.appended, len(lines), want)
 	}
+}
+
+// corpusEngine is the replay's fake engine with the real Claude session-signal parser, so the run can tell whether its deferred prompt's own turn started.
+type corpusEngine struct {
+	*shuttlefake.Engine
+	claude *claudeengine.Claude
+}
+
+// ParseSessionSignals reads data through the real Claude parser.
+func (e *corpusEngine) ParseSessionSignals(data []byte) ([]shuttleengine.SessionSignal, int) {
+	return e.claude.ParseSessionSignals(data)
+}
+
+// appendEventsLine appends line to the events file at path.
+func appendEventsLine(t *testing.T, name, path, line string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatalf("%s: open events file: %v", name, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line + "\n"); err != nil {
+		t.Fatalf("%s: append to events file: %v", name, err)
+	}
+}
+
+// promptTurnStartLine returns a UserPromptSubmit events line for prompt, built from the session fields of sample, an events line of the same session.
+func promptTurnStartLine(t *testing.T, name, sample, prompt string) string {
+	t.Helper()
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(sample), &fields); err != nil {
+		t.Fatalf("%s: parse events line: %v", name, err)
+	}
+	fields["hook_event_name"] = "UserPromptSubmit"
+	fields["prompt"] = prompt
+	line, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatalf("%s: build the prompt's turn start: %v", name, err)
+	}
+	return string(line)
 }
 
 // checkCorpusStates folds the case's lines after the ones Start consumes, a line at a time, through the real ParseSessionSignals into one SessionFold,

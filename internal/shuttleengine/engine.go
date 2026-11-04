@@ -315,13 +315,14 @@ type OpenSpec struct {
 }
 
 // SessionOpener is an optional capability beside Engine: the provider's way of opening a named interactive session with no prompt.
-// OpenLaunch returns the launch and resume lines and the session id of a session that runs with no prompt, no run directory and no run artifacts.
-// The session runs under the caller's own worktree settings, takes no turn, and is opened by Runner.Open.
-// An implementing engine honours spec.PermissionMode or refuses it from OpenLaunch,
-// so the refusal lands before Runner.Open mints the marker token, creates the marker directory or adds a strand.
+// OpenLaunch returns the launch and resume lines and the session id of a session that runs with no prompt, no run directory and no run record.
+// dir is a directory of the session's own that does not yet exist; the engine creates it only to write files its launch lines read, such as settings that carry creel's hook delivery, and then marks the launch CreelHooks.
+// The session runs under the caller's own worktree settings and any the engine adds, takes no turn, and is opened by Runner.Open.
+// An implementing engine honours spec.PermissionMode or refuses it from OpenLaunch before it writes anything,
+// so the refusal lands before Runner.Open creates the marker directory or adds a strand.
 // It is separate from Engine for the same reason SessionCycler is: most implementers and test fakes never open a session.
 type SessionOpener interface {
-	OpenLaunch(spec OpenSpec, cfg Config) (Launch, error)
+	OpenLaunch(dir string, spec OpenSpec, cfg Config) (Launch, error)
 }
 
 // SkillLoader is an optional capability beside Engine: the provider's way of loading a list of named skills into a live session in one submitted turn, and of checking that turn afterwards.

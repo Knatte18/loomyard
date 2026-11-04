@@ -361,6 +361,7 @@ func (r *Runner) reconstruct(candidate attachCandidate, normalized Spec, gate Ga
 		deadline:  createdAt.Add(normalized.Timeout),
 		createdAt: createdAt,
 		gate:      gate,
+		attached:  true,
 	}
 
 	// Live-Substrate Spawn Observability invariant: a re-attach to a live agent is as instrumented as

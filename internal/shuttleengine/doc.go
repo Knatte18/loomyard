@@ -145,8 +145,12 @@
 // # Pending prompt
 //
 // A launch that defers its prompt to a typed line (Launch.PromptLine) records the line in run.json as `promptLine`.
-// Run.DeliverPendingPrompt reads that record and types the line through the guarded paste-submit when no turn start lies at or past RunState.PromptOffset, so a step that died between its skill-load turns and its prompt delivery does not leave an agent that never got its task.
-// It persists the events file's size as the prompt offset first when none was recorded, reports whether it sent, and changes nothing when it fails.
+// Run.DeliverPendingPrompt reads that record and types the line through the guarded paste-submit when no turn start whose instruction is the line lies at or past RunState.PromptOffset, so a step that died between its skill-load turns and its prompt delivery does not leave an agent that never got its task.
+// A turn start with another instruction, one the operator typed included, does not count as the prompt's.
+// It persists the events file's size as the prompt offset first when none was recorded, clears any pending-send record so the send types the line, reports whether it sent, types the line at most once per handle, and changes nothing when it fails.
+// Wait calls it on two occasions: once, at the first tick no pause covers the run, for a run Attach reconstructed whose output files are missing, and at a held turn end with no turn start read past it and no pause covering the run.
+// A held turn end it types the prompt at sends no hold notice, and a failed delivery is logged at Warn and tried again at the next held turn end.
+// Bound: a prompt the provider queued while a turn ran starts its turn only when that turn ends, so a held turn end read before it can type the line a second time.
 //
 // # Pause
 //
@@ -186,7 +190,8 @@
 // It needs an engine with the optional SessionOpener capability, and a covered pause refuses it before anything is created.
 // The strand's command chains, after the provider line, an exit marker under the anchor's ephemeral `shuttle-open` directory, reed's detached self-removal and the shell's exit, so ending the session closes its window.
 // The marker is the strand's done-when path, so a resume drops a finished session instead of relaunching it.
-// The strand carries the provider's session id, which the watchdog's name repair reads.
+// OpenLaunch is told a directory of the session's own beside the marker, named by the same token, for the files its launch reads, and the engine creates it only when it writes one.
+// The strand carries the provider's session id, which the watchdog's name repair reads, and the launch's CreelHooks mark, so a session whose launch carries creel's hook delivery gets its mail through its hooks as a run session does.
 // An open writes no run directory, no run.json and no output file, so the state verb and the hold notices never cover an opened session.
 // OpenSpec.PermissionMode is engine vocabulary carried blind to OpenLaunch, and the engine realizes it or refuses it before anything is created.
 //
