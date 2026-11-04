@@ -114,6 +114,7 @@ func TestCLI(t *testing.T) {
 		{"TaskSessionFilesNotesOnly", stepTaskSessionFilesNotesOnly},
 		{"Rename", stepRename},
 		{"Prune", stepPrune},
+		{"NotifyOnLandOnALandedEntry", stepNotifyOnLandOnALandedEntry},
 		{"Find", stepFind},
 		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
 		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},

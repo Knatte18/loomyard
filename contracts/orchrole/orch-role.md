@@ -188,7 +188,7 @@ After a run lands, amend the board entries it superseded.
 
 ## After landing
 
-A landing needs nothing more from you than these steps: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board, and then Worktree-Teardown removes the pair.
+A landing needs nothing more from you than these steps: batten's Land row pulls the prime, runs the hub's landing `deploy` command and prunes the board (a done entry still carrying `notify_on_land` stays until its dobby has sent the line and cleared the field), and then Worktree-Teardown removes the pair.
 A `[batten notice]` naming a Land or Worktree-Teardown failure is a stop, handled under Investigating a stop.
 - At every wake, any task whose board entry is `done` or gone from the board is no longer running, and a pair that is gone alone never reads as landed.
   Dobby starts each task that became ready, so you start none.

@@ -1478,6 +1478,31 @@ func TestSweep_RemovedHolders(t *testing.T) {
 				t.Errorf("messages back with %s are marked ended unread by %v; want %v", alpha, endedBy, want)
 			}
 		}},
+		{"UnreadProgramMailToAnUnlistedHubOrchOutlivesTheSweepAndWaitsForItsStrand", func(t *testing.T, e *env) {
+			const absentOrch = "ly:gone:orch"
+			const line = "[dobby notice] task: landed as 0123456789ab"
+			e.post(t, program(batten), absentOrch, line)
+			// Mail held by a listed strand keeps the sweep running while the orch is down.
+			e.post(t, strand(alpha), beta, "keeps the sweep running")
+			e.start(t)
+			for range 4 {
+				e.sweepStep()
+			}
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(absentOrch))
+			wantBodies(t, e.readBodies(t, strand(absentOrch), ""), line)
+		}},
+		{"ProgramMailForwardedToAnUnlistedHubOrchReturnsToItsForwarder", func(t *testing.T, e *env) {
+			const absentOrch = "ly:gone:orch"
+			// The mail is forwarded before the scheduler starts, so no worker has typed it into the listed orch's pane.
+			id := e.post(t, program(batten), orch, "forwarded")
+			if err := e.store.Forward(strand(orch), id, absentOrch); err != nil {
+				t.Fatalf("Forward(%s -> %s): %v", orch, absentOrch, err)
+			}
+			e.start(t)
+			e.sweepStep()
+			e.sweepLast()
+			e.awaitEvent(t, id, "returned")
+		}},
 		{"PostInsideTheConfirmIntervalKeepsTheConfirmDeadline", func(t *testing.T, e *env) {
 			_, first, err := e.store.PostWait(external(), orch, "one")
 			if err != nil {

@@ -450,8 +450,16 @@ func findCycle(adjacency map[string][]string, start string) (string, bool) {
 	return walk(start)
 }
 
+// StatusDone is the status of an entry whose work landed, or that was marked done by hand.
+const StatusDone = "done"
+
+// IsDoneStatus reports whether status is StatusDone.
+func IsDoneStatus(status *string) bool {
+	return status != nil && *status == StatusDone
+}
+
 func isDone(t Task) bool {
-	return t.Status != nil && *t.Status == "done"
+	return IsDoneStatus(t.Status)
 }
 
 // MergeStatusUpdate carries the resolved set_status step for a MergeTasks call.
@@ -770,12 +778,13 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	return incoming, true, nil
 }
 
-// Prune removes every done entry, strips the removed slugs from the survivors' depends_on and order, and returns the removed slugs in store order.
+// Prune removes every done entry bar the survivors named below, strips the removed slugs from the survivors' depends_on and order, and returns the removed slugs in store order.
 // An abandoned entry survives, and so does a done project while an entry the same prune does not remove names it in project.
+// A done entry carrying notify_on_land survives too, so its request outlives the landing until the dobby has sent its line and cleared it.
 func (s *Store) Prune() []string {
 	gone := make(map[string]bool)
 	for _, t := range s.tasks {
-		if isDone(t) {
+		if isDone(t) && !t.NotifyOnLand {
 			gone[t.Slug] = true
 		}
 	}

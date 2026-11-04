@@ -250,12 +250,13 @@ Example:
 	var pruneApply bool
 	pruneCmd := &cobra.Command{
 		Use:         "prune",
-		Short:       "remove every done task, clearing finished work off the board",
+		Short:       "remove the done tasks, clearing finished work off the board",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Without --apply, prune is a read-only dry run: it prints the slugs it would remove and changes nothing.
 With --apply it removes every task whose status is done, strips the removed slugs from the remaining
-tasks' depends_on, and prints the removed slugs. Takes no payload. The output carries "applied": true
-or false.
+tasks' depends_on, and prints the removed slugs. A done entry still carrying notify_on_land is kept
+until its dobby has sent the landing line and cleared the field. Takes no payload. The output carries
+"applied": true or false.
 
 Example:
   lym board prune
@@ -272,7 +273,7 @@ Example:
 			return output.Ok(out, map[string]any{"removed": removed, "applied": pruneApply})
 		}),
 	}
-	pruneCmd.Flags().BoolVar(&pruneApply, "apply", false, "remove the done tasks (default is dry-run/report)")
+	pruneCmd.Flags().BoolVar(&pruneApply, "apply", false, "remove the done tasks, keeping one still carrying notify_on_land (default is dry-run/report)")
 
 	var findText bool
 	var findLabels []string
@@ -510,7 +511,7 @@ Optional fields:
   "run_settings" object — module name to config keys for the pair's local config; {} clears it
   "profile"    string — a "lym board profiles" name; "" clears it
   "pull_request" string — "on" or "off" overrides beam.yaml; "" clears it
-  "notify_on_land" bool — tell the orch when the run lands
+  "notify_on_land" bool — tell the orch when the run lands, at once if it has
   "owner_machine" string — the effective owner only; "lym adopt" moves it
   "project"    string — slug of the open project holding the entry; "" leaves none
   "order"      array  — a project's member slugs, in order
@@ -543,6 +544,9 @@ Example:
 				if decodeErr != nil {
 					return outputError(out, fmt.Sprintf("invalid json: %v", decodeErr))
 				}
+				if err := refuseNoticeOnAbsentEntry(board(), fields); err != nil {
+					return outputError(out, err.Error())
+				}
 				notice, err := prepareRunSettings(board(), fields, strandNameFromEnv(), profiles)
 				if err != nil {
 					return outputError(out, err.Error())
@@ -551,7 +555,7 @@ Example:
 				if err != nil {
 					return outputError(out, err.Error())
 				}
-				return outputSuccessWithTask(out, task, joinNotices(notice, siblingNotice(siblings)))
+				return outputSuccessWithTask(out, task, joinNotices(notice, siblingNotice(siblings), landedNotice(task, fields)))
 			})(cmd, args)
 		},
 	}
@@ -1206,6 +1210,28 @@ func siblingNotice(siblings []boardengine.Sibling) string {
 			sibling.Task, strings.Join(sibling.Deps, ", "), sibling.Sibling, strings.Join(sibling.Labels, ", "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// refuseNoticeOnAbsentEntry refuses a payload that only asks for a landing notice, its slug and notify_on_land true, on a slug the board does not hold.
+// Land prunes an entry once its run lands, so such an upsert would file a new entry for a run that already landed.
+func refuseNoticeOnAbsentEntry(board *boardengine.Board, fields map[string]any) error {
+	slug, _ := fields["slug"].(string)
+	if fields["notify_on_land"] != true || len(fields) != 2 || slug == "" {
+		return nil
+	}
+	_, found, err := board.GetTask(slug)
+	if err != nil || found {
+		return err
+	}
+	return fmt.Errorf("no entry %q is on the board, and Land prunes an entry once its run lands, so a run of that slug already landed or the slug is wrong: lym batten status %s shows the run; nothing was written", slug, slug)
+}
+
+// landedNotice tells an upsert whose payload set notify_on_land on a done entry that its run already landed, so its parent's dobby handles the request at its next tick; it is empty for any other write.
+func landedNotice(task boardengine.Task, fields map[string]any) string {
+	if fields["notify_on_land"] != true || !task.NotifyOnLand || !boardengine.IsDoneStatus(task.Status) {
+		return ""
+	}
+	return fmt.Sprintf("%q is done, so its run already landed: its parent's dobby sends the landing line at its next tick, or only clears notify_on_land when land_notice is off", task.Slug)
 }
 
 // joinNotices joins its non-empty notices with newlines.

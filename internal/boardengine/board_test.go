@@ -771,6 +771,8 @@ func TestNotifyOnLand(t *testing.T) {
 		wantStored bool
 		// unchanged requires board.json to read byte-identical after act.
 		unchanged bool
+		// wantGone requires the entry x to be off the board after act.
+		wantGone bool
 	}{
 		{name: "upsert sets it on a task", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels},
 			act: func(b *boardengine.Board) error {
@@ -798,6 +800,19 @@ func TestNotifyOnLand(t *testing.T) {
 			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("x") }, unchanged: true},
 		{name: "clear of an absent slug writes nothing", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true},
 			act: func(b *boardengine.Board) error { return b.ClearNotifyOnLand("ghost") }, wantStored: true, unchanged: true},
+		{name: "prune keeps a done entry carrying it", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true, "status": "done"},
+			act: func(b *boardengine.Board) error {
+				_, err := b.Prune(true)
+				return err
+			}, wantStored: true},
+		{name: "prune drops the done entry once it is cleared", seed: map[string]any{"slug": "x", "kind": "task", "labels": bugLabels, "notify_on_land": true, "status": "done"},
+			act: func(b *boardengine.Board) error {
+				if err := b.ClearNotifyOnLand("x"); err != nil {
+					return err
+				}
+				_, err := b.Prune(true)
+				return err
+			}, wantGone: true},
 	}
 	for _, tc := range rows {
 		t.Run(tc.name, func(t *testing.T) {
@@ -832,6 +847,9 @@ func TestNotifyOnLand(t *testing.T) {
 			}
 			if strings.Contains(string(after), `"notify_on_land": false`) {
 				t.Errorf("board.json stores a false notify_on_land:\n%s", after)
+			}
+			if _, found, err := b.GetTask("x"); err != nil || found == tc.wantGone {
+				t.Errorf("GetTask(x) found = %v, error = %v; want found %v", found, err, !tc.wantGone)
 			}
 		})
 	}

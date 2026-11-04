@@ -401,7 +401,7 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 	return result.(Task), nil
 }
 
-// Prune removes every done entry under the write lock and returns the removed slugs;
+// Prune removes every done entry under the write lock, bar one still carrying notify_on_land, and returns the removed slugs;
 // the render that follows drops their design docs.
 // With apply false it is a dry run: the slugs a pruning run would remove are reported, and the store is neither saved nor rendered.
 // A dry run still takes the board write lock, creating the board directory and the lock file when they are absent.

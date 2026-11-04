@@ -25,9 +25,9 @@ type TaskView struct {
 	Status *string
 	// PendingDependencies holds the slugs of the entries the task depends on that are not done.
 	PendingDependencies []string
-	// Parent is the name of the task's parent worktree, the prime's name for the prime; read only for a released task.
+	// Parent is the name of the entry's parent worktree, the prime's name for the prime; read only for a released task and for an entry carrying NotifyOnLand.
 	Parent string
-	// OwnedElsewhere reports whether the entry's effective owner is another machine; read only for a released task.
+	// OwnedElsewhere reports whether the entry's effective owner is another machine; read only for a released task and for an entry carrying NotifyOnLand.
 	OwnedElsewhere bool
 	// StartRefusal is the refusal every start of the slug gets now, such as for a finished run record of the same slug, with its way forward; empty when none.
 	// Dobby spawns no pass for a task that carries one, and starts it on the first tick after the refusal is gone; read only for a released task.

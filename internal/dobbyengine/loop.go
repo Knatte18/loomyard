@@ -125,7 +125,7 @@ type Deps struct {
 	// Land asks the beam's pawl run to land the beam by writing its land request, and returns the refusal that kept it from writing one.
 	// It is set whenever CanLand is.
 	Land func() error
-	// ClearNotifyOnLand clears the notify_on_land field of the board entry slug once its landing notice went out; nil clears nothing.
+	// ClearNotifyOnLand clears the notify_on_land field of the board entry slug once its landing notice went out; nil clears nothing and takes up no done entry, since an entry left flagged would be taken up at every tick.
 	ClearNotifyOnLand func(slug string) error
 	// SettleFronts settles the front tasks of this dobby's worktree, running the land action of each one that landed (`fronttask.Settle` in production); nil settles nothing.
 	// It runs each tick before the start step, so a front entry with no record is recorded before it starts.
@@ -294,6 +294,8 @@ type daemon struct {
 	// landNoticeConfig and landNoticeBoard are the failure episodes of the landing notices' beam.yaml and board reads.
 	landNoticeConfig logger.Episode
 	landNoticeBoard  logger.Episode
+	// landNoticePosts guards each owed landing notice's post by its slug.
+	landNoticePosts logger.EpisodeSet
 	// listedRuns is the run listing of the tick's pass step, done runs included.
 	listedRuns []RunView
 

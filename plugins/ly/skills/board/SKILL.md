@@ -182,4 +182,4 @@ The README computes each task's After column and its Ready or layer subsection f
 Whenever you set `depends_on`, check the other tasks waiting on the same entry for overlap, not only the running ones, and act on the `notice` warning `set-deps` and the upsert verbs print by chaining overlapping tasks with `lym board set-deps`.
 A relation between notes has no `depends_on`, so it is a sentence in a body.
 A body holds an entry's design while it is unbuilt.
-The task that builds it documents the result in the repository and never rewrites its own entry's body or scope: the landing marks the entry done and `lym board prune` removes it.
+The task that builds it documents the result in the repository and never rewrites its own entry's body or scope: the landing marks the entry done and `lym board prune` removes it, keeping one that still carries `notify_on_land` until its dobby has sent the line and cleared the field.

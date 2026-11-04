@@ -262,8 +262,28 @@ func DobbyLandings(prime *lymcwd.Location, geom dobbyengine.Geometry, parents *D
 	return landed, nil
 }
 
+// unreadableNoticeEntry keeps one failure episode per entry carrying notify_on_land whose parent or owner does not read, keyed by slug, so a persistent failure logs one Warn and not one line per dobby tick.
+var unreadableNoticeEntry logger.EpisodeSet
+
+// readTaskPlacement reads the parent worktree of slug, the prime's name for the prime, and whether another machine owns slug.
+func readTaskPlacement(prime *lymcwd.Location, parents *DobbyParents, owners boardengine.Owners, here, slug string) (parent string, ownedElsewhere bool, err error) {
+	parent, err = parents.Of(slug)
+	if err != nil {
+		return "", false, fmt.Errorf("read the parent of %s: %w", slug, err)
+	}
+	if parent == "" {
+		parent = prime.WorktreeName
+	}
+	owner, err := owners.Effective(slug, parents.Of)
+	if err != nil {
+		return "", false, fmt.Errorf("read the owner of %s: %w", slug, err)
+	}
+	return parent, boardengine.OwnedElsewhere(owner, here), nil
+}
+
 // DobbyTasks reads the local board under boardDir as TaskViews.
-// Only a released task, one with an empty status, gets its parent worktree and owner read; the others carry neither.
+// A released task, one with an empty status, and an entry carrying notify_on_land get their parent worktree and owner read; the others carry neither.
+// A parent or owner that does not read fails the whole read for a released task, and leaves an entry carrying notify_on_land with neither, logged once per episode, so one such entry never blocks the starts of the others.
 // A released task whose slug has a finished run record under the prime carries the refusal every start of that slug gets; a run status that does not read holds nothing.
 // A dependency is pending until its entry is done, whatever its kind, a plain project also once every landing member of it is done, and a dependency no longer on the board was pruned as done.
 func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) ([]dobbyengine.TaskView, error) {
@@ -284,20 +304,20 @@ func DobbyTasks(prime *lymcwd.Location, boardDir string, parents *DobbyParents) 
 	for _, task := range tasks {
 		view := dobbyengine.TaskView{Slug: task.Slug, Kind: task.Kind, Status: task.Status, NotifyOnLand: task.NotifyOnLand, Front: task.Front, Project: task.Project}
 		view.PendingDependencies = dependencies.Pending(task)
-		if task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status) {
-			parent, err := parents.Of(task.Slug)
-			if err != nil {
-				return nil, fmt.Errorf("read the parent of %s: %w", task.Slug, err)
+		released := task.Kind == boardengine.KindTask && boardengine.IsEmptyStatus(task.Status)
+		if released || task.NotifyOnLand {
+			parent, ownedElsewhere, err := readTaskPlacement(prime, parents, owners, here, task.Slug)
+			switch {
+			case err != nil && released:
+				return nil, err
+			case err != nil:
+				unreadableNoticeEntry.Fail(task.Slug, "battencli: the parent or owner of an entry carrying notify_on_land is unreadable, so its landing notice waits", "slug", task.Slug, "error", err)
+			default:
+				unreadableNoticeEntry.Recover(task.Slug, "battencli: the parent and owner of an entry carrying notify_on_land read again", "slug", task.Slug)
+				view.Parent, view.OwnedElsewhere = parent, ownedElsewhere
 			}
-			if parent == "" {
-				parent = prime.WorktreeName
-			}
-			view.Parent = parent
-			owner, err := owners.Effective(task.Slug, parents.Of)
-			if err != nil {
-				return nil, fmt.Errorf("read the owner of %s: %w", task.Slug, err)
-			}
-			view.OwnedElsewhere = boardengine.OwnedElsewhere(owner, here)
+		}
+		if released {
 			status, found, err := readDobbyRunStatus(shedrun.StatusFile(prime, task.Slug))
 			if err != nil {
 				logger.Warn("battencli: a released task's run status is unreadable and holds no start", "slug", task.Slug, "error", err)

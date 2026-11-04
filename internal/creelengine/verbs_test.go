@@ -199,6 +199,30 @@ func TestStore_Mail(t *testing.T) {
 			_, err := e.store.Post(strand(alpha), "ly:nobody:driver", "hi")
 			wantErr(t, err, "unknown receiver", alpha, beta, orch)
 		}},
+		{"Post_ToAnOrchOfTheHubWithNoStrandWaitsForItsStrand", func(t *testing.T, e *env) {
+			const (
+				absentOrch  = "ly:gone:orch"
+				forwardOrch = "ly:fwd:orch"
+				line        = "[dobby notice] task: landed as 0123456789ab"
+			)
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta))
+			e.post(t, program(batten), absentOrch, line)
+			e.post(t, program(batten), orch, "prime line")
+			forwarded := e.post(t, strand(alpha), beta, "to forward")
+			if err := e.store.Forward(strand(beta), forwarded, forwardOrch); err != nil {
+				t.Fatalf("Forward(%s -> %s): %v", beta, forwardOrch, err)
+			}
+			_, err := e.store.Post(strand(alpha), "zz:orch", "another hub's orch")
+			wantErr(t, err, "unknown receiver")
+			_, err = e.store.Post(strand(alpha), "ly:gone:orch-2", "an orch thread")
+			wantErr(t, err, "unknown receiver")
+			_, err = e.store.Post(strand(alpha), "ly:gone:orc", "a mistyped slug")
+			wantErr(t, err, "unknown receiver")
+			e.del.SetStrands(creelfake.LiveStrand(alpha), creelfake.LiveStrand(beta), creelfake.LiveStrand(absentOrch), creelfake.LiveStrand(orch), creelfake.LiveStrand(forwardOrch))
+			wantBodies(t, e.readBodies(t, strand(absentOrch), ""), line)
+			wantBodies(t, e.readBodies(t, strand(orch), ""), "prime line")
+			wantBodies(t, e.readBodies(t, strand(forwardOrch), ""), "to forward")
+		}},
 		{"Post_RefusesExternalReceiver", func(t *testing.T, e *env) {
 			_, err := e.store.Post(strand(alpha), "ly:EXTERNAL", "hi")
 			wantErr(t, err, "--wait-reply", "--reply")

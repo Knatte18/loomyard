@@ -50,8 +50,9 @@
 //
 // # Receivers
 //
-// A receiver is a strand name or the name of a program that has read once; any other name is refused with the names that exist, and EXTERNAL is never a receiver.
+// A receiver is a strand name, the name of a program that has read once, or the fixed name of an orch of this hub, `<shortname>:orch` or `<shortname>:<slug>:orch`, whether a strand of that name is listed or not; any other name is refused with the names that exist, and EXTERNAL is never a receiver.
 // A dormant strand keeps its mail and its queue, and delivery resumes when its strand is live again.
+// Mail to an orch whose strand is not listed waits in the pool, unread, and is delivered once a strand of that name is listed, so a notice to an orch that is down is never refused for it.
 // A terminal is never typed into; a caller that wants an answer waits on the socket with `post --wait-reply` or `read --wait`.
 //
 // # Storage
@@ -261,12 +262,13 @@
 //
 // # Removed holders
 //
-// A sweep runs while a strand holds unread mail, a read message that expects a reply and has none, or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
+// A sweep runs while a strand holds unread mail (bar program mail waiting for a hub orch's strand), a read message that expects a reply and has none, or has an inject queued, starting 30 seconds apart and doubling to 50 seconds while the set of strand names holds, and returning to the base on a change or a failed listing.
 // A new post or inject shortens the wait to the base when more is left, and never lengthens it.
 // A holder counts as gone after two successful sweeps in a row, at least 10 seconds apart, miss it: a sweep that misses a holder for the first time is followed by a confirming sweep after 10 seconds, whatever else would set the wait, and a post or inject during that wait keeps its deadline.
 // A removed holder is settled within 60 seconds while listings succeed.
 // Each unread message of a gone holder goes one step back along its path, to the last forwarder or else the sender, and is marked with the receiver that ended without reading it.
 // When that step is no strand, the message is journaled undelivered and a waiting sender is answered that it returned undelivered.
+// Unread mail from a program to an orch of the hub that no strand forwarded is the exception: a program has no mailbox to take a return, so it stays under the orch's name, counts for no sweep, and reaches the orch once a strand of that name is listed.
 // Each message the gone holder read and left unanswered while it expected a reply is settled unanswered with the reason `holder-gone`, which answers a waiting sender and posts the sender's notice as a chase-limit outcome does; no chase goes to a gone holder.
 // Each inject queued for the gone holder expires.
 // Creel learns only that the strand no longer exists, never why.

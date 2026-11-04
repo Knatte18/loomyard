@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -93,6 +94,9 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 		`{"id":2,"slug":"done-dep","title":"D","kind":"task","labels":["bug"],"status":"done"}`,
 		`{"id":3,"slug":"beam-dep","title":"B","kind":"project","labels":["bug"],"beam":true,"status":"running · Beam-Await"}`,
 		`{"id":4,"slug":"beam-member","title":"M","kind":"task","labels":["bug"],"project":"beam-dep","status":"done"}`,
+		`{"id":5,"slug":"landed","title":"L","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`,
+		`{"id":6,"slug":"landed-here","title":"H","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`,
+		`{"id":7,"slug":"beam-b","title":"B2","kind":"project","labels":["bug"],"beam":true,"owner_machine":"another-machine","status":"running · Beam-Await"}`,
 	}, ",")
 	content := `{"version":1,"entries":[` + entries + `]}`
 	if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
@@ -101,6 +105,9 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	prime := &lymcwd.Location{WorktreeName: "main"}
 	parents := NewDobbyParents(prime)
 	parents.known["released"] = "beam-a"
+	parents.known["landed"] = "beam-b"
+	parents.known["landed-here"] = "beam-a"
+	parents.known["beam-b"] = ""
 
 	views, err := DobbyTasks(prime, boardDir, parents)
 	if err != nil {
@@ -122,6 +129,62 @@ func TestDobbyTasks_ReadsDependenciesParentAndNotifyOnLand(t *testing.T) {
 	}
 	if draft := bySlug["open-dep"]; draft.Parent != "" {
 		t.Errorf("DobbyTasks() draft Parent = %q; want none read for a task with a status", draft.Parent)
+	}
+	if landed := bySlug["landed"]; landed.Parent != "beam-b" || !landed.OwnedElsewhere {
+		t.Errorf("DobbyTasks() landed Parent, OwnedElsewhere = %q, %v; want %q, true for a done entry carrying notify_on_land under a beam another machine owns", landed.Parent, landed.OwnedElsewhere, "beam-b")
+	}
+	if landed := bySlug["landed-here"]; landed.Parent != "beam-a" || landed.OwnedElsewhere {
+		t.Errorf("DobbyTasks() landed-here Parent, OwnedElsewhere = %q, %v; want %q, false for a done entry carrying notify_on_land under a beam no machine owns", landed.Parent, landed.OwnedElsewhere, "beam-a")
+	}
+}
+
+func TestDobbyTasks_AnUnreadableParentFailsOnlyAReleasedTask(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name    string
+		entry   string
+		wantErr bool
+	}{
+		{name: "ADoneEntryCarryingTheRequestIsLeftWithNoParent", entry: `{"id":1,"slug":"broken","title":"B","kind":"task","labels":["bug"],"status":"done","notify_on_land":true}`},
+		{name: "AReleasedTaskFailsTheRead", entry: `{"id":1,"slug":"broken","title":"B","kind":"task","labels":["bug"]}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			content := `{"version":1,"entries":[{"id":0,"slug":"fine","title":"F","kind":"task","labels":["bug"],"status":"draft"},` + tt.entry + `]}`
+			if err := os.WriteFile(filepath.Join(boardDir, "board.json"), []byte(content), 0o644); err != nil {
+				t.Fatalf("write board.json: %v", err)
+			}
+			// The hub's own board is unreadable, which is what fails the parent read of a slug with no origin record.
+			prime := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "main", AnchorRel: "."}
+			hubBoard := fabricengine.BoardDir(prime.HubPath)
+			if err := os.MkdirAll(hubBoard, 0o755); err != nil {
+				t.Fatalf("create the hub board directory: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(hubBoard, "board.json"), []byte("{not json"), 0o644); err != nil {
+				t.Fatalf("write the hub board: %v", err)
+			}
+
+			views, err := DobbyTasks(prime, boardDir, NewDobbyParents(prime))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("DobbyTasks() error = %v; want an error = %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			bySlug := map[string]dobbyengine.TaskView{}
+			for _, view := range views {
+				bySlug[view.Slug] = view
+			}
+			if _, ok := bySlug["fine"]; !ok || len(views) != 2 {
+				t.Errorf("DobbyTasks() slugs = %v; want fine and broken both returned", bySlug)
+			}
+			if broken := bySlug["broken"]; broken.Parent != "" || broken.OwnedElsewhere {
+				t.Errorf("DobbyTasks() broken Parent, OwnedElsewhere = %q, %v; want none read", broken.Parent, broken.OwnedElsewhere)
+			}
+		})
 	}
 }
 

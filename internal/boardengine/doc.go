@@ -233,6 +233,8 @@
 //
 // A task or project may carry `notify_on_land`, true asking the dobby that drives its run for a creel line once the run lands or ends without landing, as the dobby's beam.yaml `land_notice` decides; false stores no key, and a note carrying it is refused.
 // The field is not scope, so the run lock and the revised date ignore it and a run-held entry takes it.
+// A done entry takes it too: its run already landed, and its parent's dobby sends the line at its next tick.
+// Prune keeps a done entry while it carries the field, so the request outlives the landing until the dobby has sent its line.
 // ClearNotifyOnLand clears it once the line went out, and writes nothing when the entry is gone or does not carry it.
 //
 // # Run lock

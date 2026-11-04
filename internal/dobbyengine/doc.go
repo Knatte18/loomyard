@@ -148,14 +148,18 @@
 //
 // The landing notice:
 //
-//   - Each tick with no anchor change standing, after the run notices, dobby remembers in the state record every listed run ahead of its Land row, with whether its board entry carries `notify_on_land`, refreshed while the entry is on the board, since Land prunes a landed entry.
+//   - Each tick with no anchor change standing, after the run notices, dobby remembers in the state record every listed run ahead of its Land row, with whether its board entry carries `notify_on_land`, refreshed while the entry is on the board.
 //     A RunView tells a run past its Land row, and whether it landed, from `battenrecipe.LandOutcomeOf`, with the landing commit Finalize recorded.
-//   - A remembered run seen past its Land row gets one line to the nearest live orch through Deps.Notice when beam.yaml's `land_notice` is all, or per-task with the entry's request, and none under off:
+//   - A remembered run seen past its Land row owes one line to the nearest live orch through Deps.Notice when beam.yaml's `land_notice` is all, or per-task with the entry's request, remembered or read that tick, and none under off:
 //     `[dobby notice] <slug>: landed as <commit>`, `landed, commit unknown` with no commit recorded, or `ended without landing` with `lym batten status <slug>`.
 //     A beam's batten run is driven by its parent's dobby, so a beam's landing gets its line the same way.
-//   - Once a line for a run whose entry asked for it went out, Deps.ClearNotifyOnLand clears the entry's field, and a failed clear is only logged.
-//   - A failed post is tried on the next tick, at most three times, then dropped with a Warn; the run's memory goes once its notice is settled or the run is no longer listed.
-//   - Bound: a run first seen past its Land row gets no line, so a fresh state record notices no old landing; a request set after the run passed Land is not read.
+//   - A done board entry whose parent is the dobby's worktree and that this machine owns, that carries `notify_on_land` and has no memory of its own, owes the landed line as well, naming the commit when its run is listed past Land, and none under off.
+//     A done entry is read as landed whatever set its status, so an entry marked done by hand gets a landed line for a landing it never made.
+//     So a request set after its run passed Land, and a landing the dobby never saw ahead of Land, one made while it was down included, are noticed at the first tick that reads the entry; board prune keeps the entry until its request is cleared.
+//   - Once a requested run's or entry's line went out, or at once when it owes none, Deps.ClearNotifyOnLand clears the entry's field, so prune can drop the landed entry; a failed clear is tried again at the next tick.
+//   - An owed line is kept in the state record and posted at every tick until a post succeeds, with no cap, through the end of the run's listing, a restart and a re-exec; each failed post is logged once per episode.
+//     Creel keeps mail to an orch whose strand is not listed until a strand of that name is, so a post fails only while creel or the orch record cannot be reached.
+//   - Bound: a run first seen past its Land row whose entry asks nothing gets no line, so `land_notice: all` notices no landing the dobby did not see ahead of Land.
 //
 // The board tidy:
 //

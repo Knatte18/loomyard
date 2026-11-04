@@ -208,12 +208,19 @@ func isExternalName(full string) bool {
 	return err == nil && name == agentname.External
 }
 
-// checkReceiverLocked refuses a name that is no receiver: EXTERNAL always, and a name that is neither a strand nor a program that has posted or read.
+// isHubOrchName reports whether full is the fixed name of an orch of this hub, `<shortname>:orch` for the prime's or `<shortname>:<slug>:orch` for a beam's.
+// Such a name takes mail while no strand of that name is listed, so a notice to an orch that is down waits for its strand to come back.
+func (s *Store) isHubOrchName(full string) bool {
+	name, err := agentname.Parse(full)
+	return err == nil && name.Shortname == s.geom.Shortname && name.Role == agentname.RoleOrch
+}
+
+// checkReceiverLocked refuses a name that is no receiver: EXTERNAL always, and a name that is neither a strand, a program that has posted or read, nor the fixed name of an orch of this hub.
 func (s *Store) checkReceiverLocked(strands []Strand, name string) error {
 	if isExternalName(name) {
 		return fmt.Errorf("creel: %s is never a receiver: it has no address; an external sender waits for its answer with `lym creel post --wait-reply`, and a reply reaches it with `--reply`", name)
 	}
-	if _, ok := findStrand(strands, name); ok || s.state.programs[name] {
+	if _, ok := findStrand(strands, name); ok || s.state.programs[name] || s.isHubOrchName(name) {
 		return nil
 	}
 	known := make([]string, 0, len(strands)+len(s.state.programs))

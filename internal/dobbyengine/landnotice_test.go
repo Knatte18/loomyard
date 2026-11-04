@@ -1,4 +1,4 @@
-// landnotice_test.go pins the landing notice over a pass harness: which runs get a line under each land_notice value, the line's text, the request's clearing, the retry of a failed post and the memory's upkeep.
+// landnotice_test.go pins the landing notice over a pass harness: which runs and done entries get a line under each land_notice value, the line's text, the request's clearing, the owed line's posts until one succeeds and the memory's upkeep.
 
 package dobbyengine
 
@@ -22,6 +22,7 @@ func TestLandNotices(t *testing.T) {
 	unlanded := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true}
 	landedNoCommit := RunView{Slug: "task", State: runStateDone, Producer: "Worktree-Teardown", PastLand: true, Landed: true}
 	const landedLine = "[dobby notice] task: landed as 0123456789ab"
+	const unknownCommitLine = "[dobby notice] task: landed, commit unknown"
 
 	tests := []struct {
 		name string
@@ -32,10 +33,20 @@ func TestLandNotices(t *testing.T) {
 		requestedByTick []bool
 		// failBoardOnTick is the one-based tick whose board read fails; zero fails none.
 		failBoardOnTick int
+		// failConfigOnTick is the one-based tick whose beam.yaml read fails; zero fails none.
+		failConfigOnTick int
+		// rebuildBeforeTick is the one-based tick that a new daemon over the same state record runs; zero rebuilds none.
+		rebuildBeforeTick int
+		// doneEntryParent, when set, puts on the board, at each tick with no run ahead of Land, a done entry of the slug carrying notify_on_land under this parent worktree, until the request is cleared.
+		doneEntryParent string
+		// doneEntryOwnedElsewhere marks that done entry as owned by another machine.
+		doneEntryOwnedElsewhere bool
 		// ticks are the run listings of successive ticks.
 		ticks [][]RunView
 		// failPosts is how many posts fail before the Notice seam succeeds.
-		failPosts  int
+		failPosts int
+		// failClears is how many clears fail before the ClearNotifyOnLand seam succeeds.
+		failClears int
 		want       []string
 		wantClears []string
 		// wantPosts counts the calls of the Notice seam, failed ones included, when it differs from len(want).
@@ -44,24 +55,41 @@ func TestLandNotices(t *testing.T) {
 		{name: "AllLandedNamesTheCommitOnce", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{landedLine}},
 		{name: "AllTeardownRowCountsAsPastLand", mode: LandNoticeAll, ticks: [][]RunView{{running}, {tearingDown}, {landed}}, want: []string{landedLine}},
 		{name: "AllUnlandedNamesTheOutcome", mode: LandNoticeAll, ticks: [][]RunView{{running}, {unlanded}}, want: []string{"[dobby notice] task: ended without landing; lym batten status task shows the run"}},
-		{name: "AllLandedWithNoCommitRecorded", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{"[dobby notice] task: landed, commit unknown"}},
+		{name: "AllLandedWithNoCommitRecorded", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landedNoCommit}}, want: []string{unknownCommitLine}},
 		{name: "AllFirstSeenPastLandSendsNothing", mode: LandNoticeAll, ticks: [][]RunView{{landed}, {landed}}},
 		{name: "PerTaskRequestedSendsAndClearsAfterThePrune", mode: LandNoticePerTask, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
 		{name: "PerTaskUnrequestedSendsNothing", mode: LandNoticePerTask, ticks: [][]RunView{{running}, {landed}}},
-		{name: "OffSendsNothingAndKeepsTheRequest", mode: LandNoticeOff, requested: true, ticks: [][]RunView{{running}, {landed}}},
+		{name: "OffSendsNothingAndClearsTheRequest", mode: LandNoticeOff, requested: true, ticks: [][]RunView{{running}, {landed}}, wantClears: []string{"task"}},
 		{name: "AllRequestedClearsTheRequest", mode: LandNoticeAll, requested: true, ticks: [][]RunView{{running}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
-		{name: "AFailedPostIsRetriedOnTheNextTick", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landed}, {landed}}, failPosts: 1, want: []string{landedLine}, wantPosts: 2},
-		{name: "APostIsDroppedAfterItsLastAttempt", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landed}, {landed}, {landed}, {landed}}, failPosts: 9, wantPosts: landNoticeMaxAttempts},
+		{name: "AFailedPostIsOwedUntilItGoesOut", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landed}, {landed}, {landed}, {landed}, {landed}}, failPosts: 4, want: []string{landedLine}, wantPosts: 5},
+		{name: "AnOwedLineOutlivesTheRunsListing", mode: LandNoticeAll, ticks: [][]RunView{{running}, {landed}, {}}, failPosts: 1, want: []string{landedLine}, wantPosts: 2},
 		{name: "PerTaskFollowsARequestWithdrawnBetweenTicks", mode: LandNoticePerTask, requestedByTick: []bool{true, false}, ticks: [][]RunView{{running}, {running}, {landed}}},
 		{name: "PerTaskFollowsARequestRaisedBetweenTicks", mode: LandNoticePerTask, requestedByTick: []bool{false, true}, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
 		{name: "AFailedBoardReadKeepsTheFirstReading", mode: LandNoticePerTask, requestedByTick: []bool{true, false}, failBoardOnTick: 2, ticks: [][]RunView{{running}, {running}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
 		{name: "ARunNoLongerListedIsForgotten", mode: LandNoticeAll, ticks: [][]RunView{{running}, {}, {landed}}},
+		{name: "ADoneEntryWithNoRunSeenIsNoticedAndCleared", mode: LandNoticePerTask, doneEntryParent: "prime", ticks: [][]RunView{{}, {}}, want: []string{unknownCommitLine}, wantClears: []string{"task"}},
+		{name: "ADoneEntryWithItsRunFirstSeenPastLandNamesTheCommit", mode: LandNoticePerTask, doneEntryParent: "prime", ticks: [][]RunView{{landed}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
+		{name: "ADoneEntryUnderOffIsClearedWithNoLine", mode: LandNoticeOff, doneEntryParent: "prime", ticks: [][]RunView{{}}, wantClears: []string{"task"}},
+		{name: "ADoneEntryOfAnotherWorktreeIsLeftToItsDobby", mode: LandNoticeAll, doneEntryParent: "beam-x", ticks: [][]RunView{{}}},
+		{name: "ARequestRaisedAsTheRunLandsIsSentOnce", mode: LandNoticePerTask, doneEntryParent: "prime", ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
+		{name: "AFailedPostOfADoneEntryIsOwedUntilItGoesOut", mode: LandNoticePerTask, doneEntryParent: "prime", ticks: [][]RunView{{}, {}, {}}, failPosts: 2, want: []string{unknownCommitLine}, wantClears: []string{"task"}, wantPosts: 3},
+		{name: "ADoneEntryOwnedByAnotherMachineIsLeftToItsDobby", mode: LandNoticeAll, doneEntryParent: "prime", doneEntryOwnedElsewhere: true, ticks: [][]RunView{{}, {}}},
+		{name: "AFailedClearIsRetriedWithoutAnotherPost", mode: LandNoticePerTask, requested: true, failClears: 1, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{landedLine}, wantClears: []string{"task", "task"}},
+		{name: "AFailedModeReadDecidesNothingUntilItReads", mode: LandNoticePerTask, requested: true, failConfigOnTick: 2, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{landedLine}, wantClears: []string{"task"}},
+		{name: "ADoneEntryIsNotTakenUpWhileTheModeReadFails", mode: LandNoticePerTask, doneEntryParent: "prime", failConfigOnTick: 1, ticks: [][]RunView{{}, {}}, want: []string{unknownCommitLine}, wantClears: []string{"task"}},
+		{name: "AnOwedLineIsPostedOnceByARebuiltDaemon", mode: LandNoticeAll, failPosts: 1, rebuildBeforeTick: 3, ticks: [][]RunView{{running}, {landed}, {landed}}, want: []string{landedLine}, wantPosts: 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			h := newPassHarness(t)
-			h.d.deps.LoadConfig = func() (Config, error) { return Config{MaxRuns: 3, LandNotice: tt.mode}, nil }
+			var tickNumber int
+			h.d.deps.LoadConfig = func() (Config, error) {
+				if tt.failConfigOnTick != 0 && tickNumber == tt.failConfigOnTick {
+					return Config{}, errors.New("beam.yaml does not load")
+				}
+				return Config{MaxRuns: 3, LandNotice: tt.mode}, nil
+			}
 			var posts int
 			var sent, clears []string
 			h.d.deps.Notice = func(_ context.Context, line string) error {
@@ -72,12 +100,16 @@ func TestLandNotices(t *testing.T) {
 				sent = append(sent, line)
 				return nil
 			}
+			cleared := false
 			h.d.deps.ClearNotifyOnLand = func(slug string) error {
 				clears = append(clears, slug)
+				if len(clears) <= tt.failClears {
+					return errors.New("the board is locked")
+				}
+				cleared = true
 				return nil
 			}
-			status := "running · Run-Shed"
-			var tickNumber int
+			status, done := "running · Run-Shed", "done"
 			h.d.deps.Tasks = func() ([]TaskView, error) {
 				if tickNumber == tt.failBoardOnTick {
 					return nil, errors.New("the board is unreadable")
@@ -86,14 +118,23 @@ func TestLandNotices(t *testing.T) {
 			}
 			for i, runs := range tt.ticks {
 				tickNumber = i + 1
+				if tickNumber == tt.rebuildBeforeTick {
+					h.d = &daemon{
+						geom: h.d.geom, deps: h.d.deps, probe: h.d.probe,
+						flights: map[string]flight{}, childSeen: map[string]time.Time{}, wasCovered: map[string]bool{}, liftPending: map[string]bool{},
+					}
+				}
 				h.fake.runs = runs
 				h.fake.tasks = nil
 				requested := tt.requested
 				if i < len(tt.requestedByTick) {
 					requested = tt.requestedByTick[i]
 				}
-				if slices.ContainsFunc(runs, func(run RunView) bool { return !run.PastLand }) {
+				switch {
+				case slices.ContainsFunc(runs, func(run RunView) bool { return !run.PastLand }):
 					h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: &status, NotifyOnLand: requested}}
+				case tt.doneEntryParent != "" && !cleared:
+					h.fake.tasks = []TaskView{{Slug: "task", Kind: "task", Status: &done, NotifyOnLand: true, Parent: tt.doneEntryParent, OwnedElsewhere: tt.doneEntryOwnedElsewhere}}
 				}
 				if tickNumber == tt.failBoardOnTick {
 					// The tick's own start step reads the board after the notice step, so a failed read fails the tick; the notice step has run by then.
@@ -101,6 +142,12 @@ func TestLandNotices(t *testing.T) {
 					if err := h.d.tick(context.Background(), h.clock.now()); err == nil {
 						t.Fatalf("tick() = nil on a failed board read; want the start step's error")
 					}
+					continue
+				}
+				if tickNumber == tt.failConfigOnTick {
+					// The tick may stop on the unreadable beam.yaml before or after its notice step; either way that step decides nothing.
+					h.clock.sleep(context.Background(), 10*time.Second)
+					_ = h.d.tick(context.Background(), h.clock.now())
 					continue
 				}
 				h.tick(false)

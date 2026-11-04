@@ -69,7 +69,7 @@ type LandDeps struct {
 	// RunDeploy runs command in the prime with its output to logPath, ending it after timeout.
 	// An error means the shell could not start.
 	RunDeploy func(ctx context.Context, command, logPath string, timeout time.Duration) (DeployResult, error)
-	// PruneBoard prunes the done tasks off the board.
+	// PruneBoard prunes the done tasks off the board, keeping one that still carries notify_on_land.
 	PruneBoard func() error
 	// LandLock is the hub-level lock one landing holds for its whole body, with the same non-blocking acquire shape as the prime lock.
 	LandLock PrimeLock

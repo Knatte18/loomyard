@@ -192,6 +192,36 @@ func stepPrune(t *testing.T, f *cliFixture) {
 	}
 }
 
+// stepNotifyOnLandOnALandedEntry pins notify_on_land set after the run landed: the write on a done entry says so, prune keeps the entry while it carries the request, and a bare request on a slug the board no longer holds is refused.
+func stepNotifyOnLandOnALandedEntry(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"landed","title":"Landed","kind":"task","labels":["bug"]}`)
+	runJSON(t, 0, "set-status", `{"slug":"landed","status":"done"}`)
+
+	result := runJSON(t, 0, "upsert", `{"slug":"landed","notify_on_land":true}`)
+	const wantNotice = `"landed" is done, so its run already landed: its parent's dobby sends the landing line at its next tick, or only clears notify_on_land when land_notice is off`
+	if notice, _ := result["notice"].(string); notice != wantNotice {
+		t.Errorf("notice = %q; want %q", notice, wantNotice)
+	}
+
+	result = runJSON(t, 0, "upsert", `{"slug":"landed","title":"Landed again"}`)
+	if notice, _ := result["notice"].(string); notice != "" {
+		t.Errorf("notice of a title-only upsert = %q; want none", notice)
+	}
+
+	result = runJSON(t, 0, "prune", "--apply")
+	if removed, ok := result["removed"].([]any); !ok || len(removed) != 0 {
+		t.Errorf("prune removed = %v; want [] while the done entry carries notify_on_land", result["removed"])
+	}
+
+	result = runJSON(t, 1, "upsert", `{"slug":"pruned","notify_on_land":true}`)
+	if message, _ := result["error"].(string); !strings.Contains(message, `no entry "pruned" is on the board`) || !strings.Contains(message, "lym batten status pruned") {
+		t.Errorf("error %q does not name the absent entry and lym batten status pruned", message)
+	}
+	if got := slugsOf(t, runJSON(t, 0, "list")); !slices.Equal(got, []string{"landed"}) {
+		t.Errorf("slugs = %v; want [landed], the refused write filing nothing", got)
+	}
+}
+
 func stepFind(t *testing.T, f *cliFixture) {
 	mustUpsert(t, `{"slug":"needle-slug","title":"A","labels":["bug"]}`)
 	mustUpsert(t, `{"slug":"b","title":"has Needle title","labels":["bug"]}`)
