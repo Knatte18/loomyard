@@ -173,13 +173,16 @@
 //
 // A user interrupt fires no Stop, so a hook strand can sit idle with mail no waiter reaches; the worker then types the fixed bell line into its pane, `[creel] Mail is waiting for you. End this turn now; creel hands the mail to you as the turn ends. Do not run lym creel read for it.`, which carries no sender text, so no post is typed.
 // A ring is answered by the acknowledgement of its own claim, by a claim of the strand that hands out at least one message, or by a probe that reads a turn in progress after the ring.
-// When the worker does not ring, it types the bell for a claimable set no bell was typed for, in one of two cases.
-// With no unanswered ring standing, it types it when no waiter is live and none has been for 5 seconds, counted from the later of the store's opening and the end of the strand's last waiter, so the bell stays out of the moment between a Stop and its waiter's connection.
-// With the last ring unanswered, the grace does not apply, since a ring ends the waiter it rings, and it types the bell once the ring has gone unanswered for 30 seconds.
+// When the worker does not ring, it types the bell for a claimable set no bell was typed for.
+// Within 30 seconds of a ring it types none while the ring stands unanswered or no turn end was read after the ring:
+// an unanswered ring may still wake the strand, and the turn an answered ring woke, still queued or already running, ends in a Stop that hands out the mail that arrived since, so that mail starts no turn of its own.
+// Past that window an unanswered ring is followed by the bell at once, since a ring ends the waiter it rings and the grace below does not apply.
+// Otherwise it types the bell when no waiter is live and none has been for 5 seconds, counted from the later of the store's opening and the end of the strand's last waiter, so the bell stays out of the moment between a Stop and its waiter's connection.
 // The bell goes through the guarded send under every rule a typed line has: a draft, a too-short pane or a missing input box holds it, a send that did not land is recorded and never retyped for the set, and a busy send is tried again on the next probe.
 // A newer set may get its own bell, and an unchanged set never gets a second; a pause silences the bell as it does the ring, and under a hold from another sender only the owner's mail makes a set.
 // Only a strand marked `CreelHooks` gets the bell: every other strand is a pane-mail strand and has its notice and reminder, so mail to an idle strand always wakes it.
 // Bound: one fixed line per claimable set; a waiter whose session died rings into nothing once and the window hands the set to the bell; a restarted daemon may type the bell once more for a set it already woke.
+// Bound: a woken turn the operator interrupts before its Stop, or a reading the pane decided, which carries no turn end, holds the bell for mail that arrived since the ring until the window ends.
 //
 // # Delivery log
 //

@@ -1708,6 +1708,7 @@ func TestSweep_RemovedHolders(t *testing.T) {
 // TestScheduler_HookWake drives a store over the fake delivery and clock with hook strands, and pins when the daemon rings a strand's idle waiter and when it types the bell.
 // A strand's waiter is answered once per claimable set, and only while no turn is in progress, whatever the input box holds.
 // The bell follows a set no waiter reaches, once per set, after the grace of 5 seconds or after a ring unanswered for 30.
+// Within 30 seconds of a ring the bell is also held while no turn end was read after it, since the woken turn's Stop hands out the mail.
 func TestScheduler_HookWake(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -2401,6 +2402,34 @@ func TestScheduler_HookWake(t *testing.T) {
 			}
 			if got := e.typed(alpha); len(got) != 0 {
 				t.Errorf("typed %q after a running turn answered the ring; want no bell", got)
+			}
+		}},
+		{"MailAfterAnAcknowledgedRingGetsNoBellBeforeTheWindowWhileTheWokenTurnHasNotEnded", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			ackedRing(t, e, "one")
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the acknowledged ring; want none before the 30s window, since the woken turn's Stop hands out the mail", elapsed)
+			}
+		}},
+		{"MailAfterAnAcknowledgedRingGetsTheBellAfterTheGraceOnceATurnEndFollowsTheRing", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, ringAt.Add(-time.Minute))
+			ackedRing(t, e, "one")
+			e.del.SetTurn(alpha, false, ringAt.Add(time.Second))
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if elapsed := untilBell(t, e, ringAt); elapsed < 5*time.Second || elapsed >= 30*time.Second {
+				t.Errorf("the bell came %v after the acknowledged ring; want it after the 5s grace and before the 30s window, since the woken turn ended", elapsed)
+			}
+		}},
+		{"MailAfterAnAcknowledgedRingGetsNoBellBeforeTheWindowWhenTheReadingHasNoTurnEndTime", func(t *testing.T, e *env) {
+			ringAt := e.clock.Now()
+			e.del.SetTurn(alpha, false, time.Time{})
+			ackedRing(t, e, "one")
+			settle(e, func() { e.post(t, strand(beta), alpha, "two") })
+			if elapsed := untilBell(t, e, ringAt); elapsed < 30*time.Second {
+				t.Errorf("the bell came %v after the acknowledged ring; want none before the 30s window, since a reading with no turn end time holds the bell", elapsed)
 			}
 		}},
 		{"AWaiterThatEndsWithoutARingStartsTheGraceAgainFromItsEnd", func(t *testing.T, e *env) {

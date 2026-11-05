@@ -22,7 +22,7 @@ const (
 	agedPersistInterval = time.Minute
 	// bellGrace is how long a hook strand with no waiter live waits, after the later of the store's opening and its last waiter's end, before it gets the bell; it keeps the bell out of the moment between a Stop and its waiter's connection.
 	bellGrace = 5 * time.Second
-	// ringAnswerWindow is how long a ring may stand unanswered before the bell follows it.
+	// ringAnswerWindow is how long a ring may stand unanswered, or the turn it woke go without a turn end, before the bell follows it.
 	ringAnswerWindow = 30 * time.Second
 )
 
@@ -253,7 +253,9 @@ func (w *worker) probe() (delivered, pending bool) {
 // A woken turn records no prompt submit, so from a ring on the reading counts as no turn only once a turn end was recorded after the ring; a reading the pane decided has no turn end time and is taken as it reads.
 // A probe that reads a turn in progress after a ring marks the ring answered.
 // When it does not ring, it types the bell for a claimable set no bell was typed for.
-// With no unanswered ring standing, the bell waits for bellGrace with no waiter live; with one standing, it waits until the ring has gone unanswered for ringAnswerWindow.
+// Within ringAnswerWindow of a ring it types none while the ring stands unanswered or no turn end was read after the ring.
+// The turn an answered ring woke, queued or running, ends in a Stop that hands out the mail that arrived since.
+// Past that window an unanswered ring is followed by the bell at once; otherwise the bell waits for bellGrace with no waiter live.
 func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
 	store := w.scheduler.store
 	ids, mark, waiting := store.hookWakeState(strand.Name)
@@ -282,11 +284,11 @@ func (w *worker) wakeHookStrand(strand Strand, now time.Time) bool {
 	if belled {
 		return false
 	}
-	if unanswered {
-		if now.Sub(mark.at) < ringAnswerWindow {
-			return false
-		}
-	} else if waiting || now.Sub(store.lastHookWaiterEnd(strand.Name)) < bellGrace {
+	woken := !mark.at.IsZero() && !idleness.TurnEndedAt.After(mark.at)
+	if (unanswered || woken) && now.Sub(mark.at) < ringAnswerWindow {
+		return false
+	}
+	if !unanswered && (waiting || now.Sub(store.lastHookWaiterEnd(strand.Name)) < bellGrace) {
 		return false
 	}
 	return w.typeBell(strand, ids)
