@@ -1,6 +1,6 @@
-// capture.go — the main capture and the side capture: the body of the detached capture child and the one an agent runs for a spare baseline.
+// capture.go — the main capture and the current capture: the body of the detached capture child and the one a check runs into a scratch directory.
 //
-// Both render the declared capture command through the shared runner; only the main capture holds the capture lock and writes the capture record.
+// Both render the declared capture command through the shared runner and hold the capture lock while it runs; only the main capture writes the capture record.
 
 package driftengine
 
@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"time"
 
@@ -22,7 +21,7 @@ import (
 // CaptureHaltPrefix opens every Drift-Baseline Stuck reason on a failed or refused capture.
 const CaptureHaltPrefix = "drift capture halt: "
 
-// CaptureRequest is the told input of a main or side capture.
+// CaptureRequest is the told input of a main or current capture.
 type CaptureRequest struct {
 	// Paths are the drift paths of the task's anchor root.
 	Paths Paths
@@ -36,8 +35,11 @@ type CaptureRequest struct {
 	Pool *gateslot.Pool
 	// WaitDir is where the capture's wait record is written while it waits for a slot.
 	WaitDir string
-	// Skip is the scope's skipped tests, written to the skip file.
-	Skip []string
+	// InheritedSlot is the lock path of the slot a gate holds around the caller, empty for a caller outside a gate.
+	// A capture told one that the pool reports held runs in it and acquires none; the wiring reads it from the process environment, since the engine never does.
+	InheritedSlot string
+	// Sleep is the wait of a current capture for the capture lock, which nil leaves sleeping for real.
+	Sleep func(context.Context, time.Duration) error
 	// Check is the precondition a main capture runs under its lock; its error is returned untouched.
 	// It returns the commit the capture runs on, which the capture record names.
 	Check func() (head string, err error)
@@ -57,13 +59,37 @@ func lockHeldRefusal(lockPath string) error {
 }
 
 // RunCapture runs the main capture under the capture lock and returns its final record.
+// It takes its gate slot before the lock, so a capture waiting for a slot holds no lock and writes no record, and a lock holder always holds its slot.
 // A refusal of the lock or of Check is returned with no record written.
+// A command still holding the retired {skip_file} placeholder is refused first, before the slot, the lock and the baseline backup, with no record written.
 // A command that fails, times out or writes no file under the baseline directory is a record in state failed with no error,
 // and its reason names the directory the command ran in and the command's last output lines, or that it printed nothing.
 // An existing non-empty baseline directory is first moved to the first free numbered backup beside it, so no baseline is deleted or overwritten.
 // Once the command ran, the final record is handed to OnEnd under the capture lock.
 func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) {
+	if err := refuseSkipFilePlaceholder(siteCapture, stepCapture, req.Step.Command); err != nil {
+		return CaptureRecord{}, err
+	}
 	p := req.Paths
+	run := stepRun{
+		WorktreeDir:   req.WorktreeDir,
+		AnchorDir:     req.AnchorDir,
+		Name:          stepCapture,
+		Step:          req.Step,
+		Pool:          req.Pool,
+		WaitDir:       req.WaitDir,
+		InheritedSlot: req.InheritedSlot,
+		Site:          siteCapture,
+		BaselineDir:   p.BaselineDir,
+		Timeout:       req.Timeout,
+		Now:           req.Now,
+	}
+	slot, err := acquireSlot(ctx, run)
+	if err != nil {
+		return CaptureRecord{}, err
+	}
+	defer slot.release()
+
 	if err := os.MkdirAll(filepath.Dir(p.CaptureLock), 0o755); err != nil {
 		return CaptureRecord{}, fmt.Errorf("drift: create %s: %w", filepath.Dir(p.CaptureLock), err)
 	}
@@ -81,44 +107,28 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		return CaptureRecord{}, err
 	}
 
-	rec := CaptureRecord{State: CaptureRunning, Pid: os.Getpid(), Head: head, Skip: req.Skip}
+	rec := CaptureRecord{State: CaptureRunning, Pid: os.Getpid(), Head: head}
 	if err := WriteCapture(p, rec); err != nil {
 		return CaptureRecord{}, err
 	}
 	if err := backUpBaseline(p.BaselineDir); err != nil {
 		return failCapture(p, rec, req.Now, err)
 	}
-	if err := writeSkipFile(p.SkipFile, req.Skip); err != nil {
-		return failCapture(p, rec, req.Now, err)
-	}
 
 	rec.Log = logPathFor(p.LogsDir, "capture", req.Now())
-	outcome, err := runStep(ctx, stepRun{
-		WorktreeDir: req.WorktreeDir,
-		AnchorDir:   req.AnchorDir,
-		Name:        stepCapture,
-		Step:        req.Step,
-		Pool:        req.Pool,
-		WaitDir:     req.WaitDir,
-		Site:        siteCapture,
-		BaselineDir: p.BaselineDir,
-		SkipFile:    p.SkipFile,
-		LogPath:     rec.Log,
-		Timeout:     req.Timeout,
-		Now:         req.Now,
-		OnSlot: func(at time.Time) {
-			rec.SlotAcquiredAt = stamp(at)
-			_ = WriteCapture(p, rec)
-		},
-		OnStart: func(_ int, at time.Time) {
-			rec.CommandStartedAt = stamp(at)
-			_ = WriteCapture(p, rec)
-		},
-	})
+	run.Slot, run.LogPath = slot, rec.Log
+	run.OnSlot = func(at time.Time) {
+		rec.SlotAcquiredAt = stamp(at)
+		_ = WriteCapture(p, rec)
+	}
+	run.OnStart = func(_ int, at time.Time) {
+		rec.CommandStartedAt = stamp(at)
+		_ = WriteCapture(p, rec)
+	}
+	outcome, err := runStep(ctx, run)
 	if err != nil {
 		return failCapture(p, rec, req.Now, err)
 	}
-	defer outcome.release()
 
 	rec.ExitCode = outcome.ExitCode
 	rec.EndedAt = stamp(req.Now())
@@ -136,7 +146,7 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 		if wrote {
 			rec.State = CapturePassed
 		} else {
-			rec.State, rec.Reason, rec.WroteNoFile = CaptureFailed, noFileReason(p.BaselineDir, req.Skip)+report(), true
+			rec.State, rec.Reason, rec.WroteNoFile = CaptureFailed, noFileReason(p.BaselineDir)+report(), true
 		}
 	}
 	if err := WriteCapture(p, rec); err != nil {
@@ -150,27 +160,12 @@ func RunCapture(ctx context.Context, req CaptureRequest) (CaptureRecord, error) 
 
 // FailedCaptureError is the error of a main capture whose record ended failed: the record's reason and log, and the ways forward a Drift-Await halt over the record names while HEAD is on the branch point, where every main capture runs.
 func FailedCaptureError(rec CaptureRecord) error {
-	return fmt.Errorf("drift: the baseline capture ended %s (%s)%s; way forward: %s", rec.State, rec.Reason, logClause(rec.Log), awaitWaysForward(true, emptyUnderSkips(rec)))
+	return fmt.Errorf("drift: the baseline capture ended %s (%s)%s; way forward: %s", rec.State, rec.Reason, logClause(rec.Log), awaitWaysForward(true))
 }
 
 // noFileReason is the reason of a capture that exited 0 and wrote no file under baselineDir.
-// Under skipped tests it names the scope and the count, since a skip list covering every test the command runs leaves the harness nothing to profile.
-func noFileReason(baselineDir string, skip []string) string {
-	reason := "exit 0 but wrote no file to " + baselineDir
-	if len(skip) == 0 {
-		return reason
-	}
-	distinct := len(slices.Compact(slices.Sorted(slices.Values(skip))))
-	tests := "tests"
-	if distinct == 1 {
-		tests = "test"
-	}
-	return fmt.Sprintf("%s while scope %s skipped %d %s, so every test the capture command ran may have been skipped", reason, ScopePartial, distinct, tests)
-}
-
-// emptyUnderSkips reports whether capture exited 0 with no file written while it skipped tests, the failure a scope change settles and a plain capture repeats.
-func emptyUnderSkips(capture CaptureRecord) bool {
-	return capture.WroteNoFile && len(capture.Skip) > 0
+func noFileReason(baselineDir string) string {
+	return "exit 0 but wrote no file to " + baselineDir
 }
 
 // failCapture records rec as failed because err stopped the capture, and returns both.
@@ -236,100 +231,147 @@ func holdsFile(dir string) (bool, error) {
 	return found, nil
 }
 
-// SideResult is how a side capture ended.
-type SideResult struct {
-	// Dir is the numbered directory under the side directory that the command wrote to.
+// CurrentCapture is how a current capture ended.
+type CurrentCapture struct {
+	// Dir is the fresh directory under the current-capture directory that the command wrote to.
 	Dir string
-	// Log is the command's log file.
+	// Log is the command's log file, a sibling of Dir so the log never counts as a captured file.
 	Log string
-	// ExitCode is the command's exit code, -1 when a signal ended it.
-	ExitCode int
-	// TimedOut is true when the timeout killed the command.
-	TimedOut bool
-	// CommandDir is the absolute directory the command ran in.
-	CommandDir string
-}
-
-// RunSideCapture runs the capture command into the next free numbered directory under the side directory.
-// It takes no capture lock, writes no capture record and needs no clean tree or branch point, so an agent can take a second profile beside the baseline.
-func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error) {
-	return captureInto(ctx, req, nextFree(req.Paths.SideDir, ""), siteSideCapture, "side-capture")
-}
-
-// AcceptanceCapture is how the capture of a test's output for its acceptance ended.
-type AcceptanceCapture struct {
-	// Passed is true when the command exited 0 within its timeout and wrote at least one profile file of the test.
+	// Passed is true when the command exited 0 within its timeout and wrote at least one file.
 	Passed bool
-	// Log is the command's log file.
-	Log string
-	// Reason says why the capture did not pass, where its command ran and what it printed last, and names its log; empty when it passed.
+	// Reason says why the capture did not pass, where its command ran and what it printed last, or the refusal of its step; empty when it passed.
 	Reason string
 }
 
-// RunAcceptanceCapture captures the current code's output for an acceptance of test: the capture command run into the accepting directory, which it empties first.
-// Accept then keeps the test's profile files as the output the acceptance saw, so the accepted profile holds that output and not a later one.
-// It takes no capture lock and writes no capture record; a command that fails, times out or writes no profile file of test is a result that did not pass, not an error.
-func RunAcceptanceCapture(ctx context.Context, req CaptureRequest, test string) (AcceptanceCapture, error) {
-	dir := req.Paths.AcceptingDir
-	if err := os.RemoveAll(dir); err != nil {
-		return AcceptanceCapture{}, fmt.Errorf("drift: empty the accepting directory %s: %w", dir, err)
+// CaptureCurrent runs the declared capture command into a fresh directory of its own under the current-capture directory, so a check can diff the current code against the baseline.
+// It takes its gate slot first and then waits for the capture lock with no bound of its own, since a lock holder already holds its slot, and holds the lock while the command runs.
+// It writes no capture record and never touches the baseline directory or its backups.
+// A step refused before its command starts, such as a dir that is no directory or a command holding the retired {skip_file} placeholder, and a command that fails, times out or writes no file are results that did not pass, not errors; an error is an I/O failure.
+func CaptureCurrent(ctx context.Context, req CaptureRequest) (CurrentCapture, error) {
+	p := req.Paths
+	dir, err := newCurrentDir(p.CurrentDir, req.Now())
+	if err != nil {
+		return CurrentCapture{}, err
 	}
-	side, err := captureInto(ctx, req, dir, siteAcceptanceCapture, "acceptance-capture")
-	result := AcceptanceCapture{Log: side.Log}
+	result := CurrentCapture{Dir: dir, Log: dir + ".log"}
+	if err := refuseSkipFilePlaceholder(siteCurrentCapture, stepCapture, req.Step.Command); err != nil {
+		result.Reason = err.Error()
+		return result, nil
+	}
+	run := stepRun{
+		WorktreeDir:   req.WorktreeDir,
+		AnchorDir:     req.AnchorDir,
+		Name:          stepCapture,
+		Step:          req.Step,
+		Pool:          req.Pool,
+		WaitDir:       req.WaitDir,
+		InheritedSlot: req.InheritedSlot,
+		Site:          siteCurrentCapture,
+		BaselineDir:   dir,
+		LogPath:       result.Log,
+		Timeout:       req.Timeout,
+		Now:           req.Now,
+		OnSlot:        func(time.Time) {},
+		OnStart:       func(int, time.Time) {},
+	}
+	slot, err := acquireSlot(ctx, run)
 	if err != nil {
 		return result, err
 	}
-	report := func() string { return commandReport(side.CommandDir, side.Log) + "; log " + side.Log }
+	defer slot.release()
+	held, err := acquireCaptureLockWaiting(ctx, p.CaptureLock, req.Sleep)
+	if err != nil {
+		return result, err
+	}
+	defer held.Release()
+
+	run.Slot = slot
+	outcome, err := runStep(ctx, run)
+	var refusal *stepRefusal
+	if errors.As(err, &refusal) {
+		result.Reason = refusal.Error()
+		return result, nil
+	}
+	if err != nil {
+		return result, err
+	}
+	report := commandReport(outcome.Dir, result.Log)
 	switch {
-	case side.TimedOut:
-		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m" + report()
-	case side.ExitCode != 0:
-		result.Reason = "exit " + strconv.Itoa(side.ExitCode) + report()
+	case outcome.TimedOut:
+		result.Reason = "timed out after " + timeoutMinutes(req.Timeout) + "m" + report
+	case outcome.ExitCode != 0:
+		result.Reason = "exit " + strconv.Itoa(outcome.ExitCode) + report
 	default:
-		files, err := testFiles(dir, test)
+		wrote, err := holdsFile(dir)
 		if err != nil {
 			return result, err
 		}
-		if len(files) == 0 {
-			result.Reason = "exit 0 but wrote no file for " + test + " to " + dir + report()
-			break
+		if wrote {
+			result.Passed = true
+		} else {
+			result.Reason = noFileReason(dir) + report
 		}
-		result.Passed = true
 	}
 	return result, nil
 }
 
-// captureInto runs the capture command into dir, which it creates, logging to a new log named for logName, and returns how the command ended.
-func captureInto(ctx context.Context, req CaptureRequest, dir, site, logName string) (SideResult, error) {
-	p := req.Paths
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return SideResult{}, fmt.Errorf("drift: create %s: %w", dir, err)
+// newCurrentDir creates a fresh directory under currentDir named by the UTC stamp of now and the pid, with a counter suffix when a concurrent capture of this process took the same name.
+func newCurrentDir(currentDir string, now time.Time) (string, error) {
+	if err := os.MkdirAll(currentDir, 0o755); err != nil {
+		return "", fmt.Errorf("drift: create %s: %w", currentDir, err)
 	}
-	if err := writeSkipFile(p.SkipFile, req.Skip); err != nil {
-		return SideResult{}, err
+	name := now.UTC().Format(stampLayout) + "-" + strconv.Itoa(os.Getpid())
+	for n := 1; ; n++ {
+		candidate := filepath.Join(currentDir, name)
+		if n > 1 {
+			candidate += "-" + strconv.Itoa(n)
+		}
+		err := os.Mkdir(candidate, 0o755)
+		if err == nil {
+			return candidate, nil
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", fmt.Errorf("drift: create %s: %w", candidate, err)
+		}
 	}
+}
 
-	result := SideResult{Dir: dir, Log: logPathFor(p.LogsDir, logName, req.Now())}
-	outcome, err := runStep(ctx, stepRun{
-		WorktreeDir: req.WorktreeDir,
-		AnchorDir:   req.AnchorDir,
-		Name:        stepCapture,
-		Step:        req.Step,
-		Pool:        req.Pool,
-		WaitDir:     req.WaitDir,
-		Site:        site,
-		BaselineDir: dir,
-		SkipFile:    p.SkipFile,
-		LogPath:     result.Log,
-		Timeout:     req.Timeout,
-		Now:         req.Now,
-		OnSlot:      func(time.Time) {},
-		OnStart:     func(int, time.Time) {},
-	})
-	if err != nil {
-		return result, err
+// acquireCaptureLockWaiting takes the capture lock, sleeping through sleep from one second and doubling to thirty while another holder keeps it; a nil sleep sleeps for real.
+// It has no bound of its own and returns when it holds the lock or ctx ends.
+func acquireCaptureLockWaiting(ctx context.Context, lockPath string, sleep func(context.Context, time.Duration) error) (*lock.FileLock, error) {
+	if sleep == nil {
+		sleep = sleepFor
 	}
-	outcome.release()
-	result.ExitCode, result.TimedOut, result.CommandDir = outcome.ExitCode, outcome.TimedOut, outcome.Dir
-	return result, nil
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return nil, fmt.Errorf("drift: create %s: %w", filepath.Dir(lockPath), err)
+	}
+	wait := captureWaitFloor
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		held, taken, err := lock.TryAcquireWriteLock(lockPath)
+		if err != nil {
+			return nil, err
+		}
+		if taken {
+			return held, nil
+		}
+		if err := sleep(ctx, wait); err != nil {
+			return nil, err
+		}
+		wait = min(wait*2, captureWaitCeiling)
+	}
+}
+
+// sleepFor waits d, or returns the context's error once ctx ends first.
+func sleepFor(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }

@@ -24,8 +24,8 @@ func TestDriftRows_EntryGate(t *testing.T) {
 		recipe string
 		rows   []string
 	}{
-		{"loom", shedrun.RecipeTapestry, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
-		{"darn", shedrun.RecipeDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
+		{"loom", shedrun.RecipeTapestry, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
+		{"darn", shedrun.RecipeDarn, []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDriftVerify, loomshed.NameDriftRecheck}},
 	}
 	for _, recipe := range recipes {
 		t.Run(recipe.name, func(t *testing.T) {

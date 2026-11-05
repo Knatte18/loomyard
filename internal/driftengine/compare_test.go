@@ -34,7 +34,7 @@ func newCompareFixture(t *testing.T, command string) (CompareRequest, *gateslot.
 	}, f.pool
 }
 
-// TestRunCompare covers a pass, a failure naming its log, the rendered placeholders, the marker read as held while the run waits for a slot, the timeout tree kill and a held marker.
+// TestRunCompare covers a pass, a failure naming its log, the rendered baseline placeholder, the retired skip file placeholder's refusal, the marker read as held while the run waits for a slot, the timeout tree kill and a held marker.
 func TestRunCompare(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -64,29 +64,32 @@ func TestRunCompare(t *testing.T) {
 		}
 	})
 
-	t.Run("the command sees the skip list and the baseline directory", func(t *testing.T) {
+	t.Run("the command sees the baseline directory", func(t *testing.T) {
 		t.Parallel()
-		req, _ := newCompareFixture(t, "cat {skip_file} > seen.txt; echo {baseline_dir} >> seen.txt")
-		req.Skip = []string{"TestA", "TestB"}
+		req, _ := newCompareFixture(t, "echo {baseline_dir} > seen.txt")
 		if got, err := RunCompare(context.Background(), req); err != nil || !got.Passed {
 			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
 		}
-		want := "TestA\nTestB\n" + req.Paths.BaselineDir + "\n"
+		want := req.Paths.BaselineDir + "\n"
 		if text := readFile(t, filepath.Join(req.AnchorDir, "seen.txt")); text != want {
 			t.Errorf("seen.txt = %q; want %q", text, want)
 		}
 	})
 
-	t.Run("a told profile directory replaces the baseline directory in the command", func(t *testing.T) {
+	t.Run("a command holding the retired skip file placeholder is refused naming the edit, with the slot and the marker free", func(t *testing.T) {
 		t.Parallel()
-		req, _ := newCompareFixture(t, "echo {baseline_dir} > seen.txt")
-		req.ProfileDir = req.Paths.AcceptedDir
-		if got, err := RunCompare(context.Background(), req); err != nil || !got.Passed {
-			t.Fatalf("RunCompare() = %+v, %v; want a pass", got, err)
+		req, pool := newCompareFixture(t, "cat {skip_file}")
+		_, err := RunCompare(context.Background(), req)
+		for _, want := range []string{"the drift compare command holds {skip_file}, which drift no longer renders", "remove it from compare in the hub's drift.yaml with lym config drift --set from the prime"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("RunCompare() = %v; want an error naming %q", err, want)
+			}
 		}
-		want := req.Paths.AcceptedDir + "\n"
-		if text := readFile(t, filepath.Join(req.AnchorDir, "seen.txt")); text != want {
-			t.Errorf("seen.txt = %q; want %q, the told profile directory and not %q", text, want, req.Paths.BaselineDir)
+		if !slotFree(t, pool) {
+			t.Errorf("the slot is held after a refused command")
+		}
+		if held, err := ProbeLock(req.Paths.CompareMarker); held || err != nil {
+			t.Errorf("ProbeLock(CompareMarker) after the refusal = %v, %v; want free", held, err)
 		}
 	})
 

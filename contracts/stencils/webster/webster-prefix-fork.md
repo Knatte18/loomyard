@@ -29,3 +29,8 @@ Ignore any inherited instinct to drive the webster loop.
 `{{.outcome_path}}` and `{{.summary_path}}` are Merriam's own contract files.
 **NEVER write, create or delete either of them.**
 A fork that writes one forges the run's terminal judgment and halts the run at its exit audit.
+
+## The drift check
+
+After a card you may run `lym drift check` to see whether your change moved a value outside the sealed expectation.
+You never edit `_lym/drift/expected.yaml`.

@@ -99,7 +99,7 @@ func TestNames(t *testing.T) {
 			"DiscussionWrite",
 			"DriftAwait",
 			"DriftBaseline",
-			"DriftRecheck",
+			"DriftExpect",
 			"DriftVerify",
 			"Finalize",
 			"FrictionReflect",

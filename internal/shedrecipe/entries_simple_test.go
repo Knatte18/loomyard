@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // nilFabricOpener is a landingshed pair-opener closure fake. It returns a typed-nil
@@ -394,7 +395,7 @@ func TestWebsterEntry_SeamFields(t *testing.T) {
 }
 
 // TestWebsterEntry_GateKeys covers the "gates" key websterEntry resolves through resolveGateSpec:
-// an absent "gates" constructs (the shipped row's own ungated shape), and a named validator is rejected by resolveGateSpec's closed vocabulary, since no Webster validator exists to name.
+// an absent "gates" constructs, a `drift` entry reaches the run-level gate Merriam's run is handed, and a name outside the closed vocabulary is rejected, since no Webster validator exists to name.
 func TestWebsterEntry_GateKeys(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Run("AbsentGateConstructs", func(t *testing.T) {
@@ -404,6 +405,23 @@ func TestWebsterEntry_GateKeys(t *testing.T) {
 		}
 		if producer == nil {
 			t.Fatalf("websterEntry() = nil producer; want non-nil")
+		}
+	})
+
+	t.Run("DriftGateReachesTheRunLevelGate", func(t *testing.T) {
+		env := newTestEnv(t)
+		var received []websterengine.RunDeps
+		env.WebsterRun = func(deps websterengine.RunDeps, _ websterengine.RunOptions) (websterengine.RunResult, error) {
+			received = append(received, deps)
+			return websterengine.RunResult{Outcome: "done"}, nil
+		}
+		producer, err := websterEntry(RowIdentity{Name: "Webster"}, gatesCfg("drift", 3), env)
+		if err != nil {
+			t.Fatalf("websterEntry() error = %v; want nil", err)
+		}
+		shedfake.RequireOutcome(t, producer, shedengine.Done)
+		if len(received) != 1 || len(received[0].Gate) != 1 || received[0].Gate[0].Name != "drift" || received[0].Gate[0].Attempts != 3 || received[0].Gate[0].Gate == nil {
+			t.Errorf("Webster run was handed gates %+v; want the one drift entry with 3 attempts and its closure", received)
 		}
 	})
 

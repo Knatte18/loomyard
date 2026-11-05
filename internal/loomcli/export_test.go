@@ -15,6 +15,9 @@ func DriftDepsAt(location *lymcwd.Location, statusPath, statusLockPath string) d
 // CaptureSpawnRequest re-exports the request that starts the detached capture child.
 var CaptureSpawnRequest = captureSpawnRequest
 
+// StrandRoleStopper re-exports the seam that ends the chairs of told roles.
+var StrandRoleStopper = strandRoleStopper
+
 // OwnerVerdict is the verdict RunOwnerVerdict returns.
 type OwnerVerdict = ownerVerdict
 

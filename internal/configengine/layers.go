@@ -77,6 +77,8 @@ const (
 // RetiredKeys are the dotted keys the module no longer reads, each mapped to the category it held as a template key;
 // they stay out of Categories and OpenMaps, the local and machine layers admit them by that category, and a load drops them from the stacked document.
 // RetiredWayForward maps a retired key, by the same dotted key, to the text telling the operator where the key lives now; the local layer's refusal of that key ends with it as a way forward.
+// HubOnlyWayForward maps a top-level key a task's run settings may not carry to the text telling the operator where to set it instead;
+// the key still loads from the hub layers, and only the run-settings refusal reads the map.
 // SeedOnly marks the module whose file is the operator's registry, seeded whole and never pruned down to the template, so its base stays full in a hub too.
 // Overlay is the module's optional template overlay, picked by a selector key in the base layer; its zero value means none.
 type Spec struct {
@@ -91,6 +93,7 @@ type Spec struct {
 	Categories        map[string]Category
 	RetiredKeys       map[string]Category
 	RetiredWayForward map[string]string
+	HubOnlyWayForward map[string]string
 	SeedOnly          bool
 	Overlay           Overlay
 }

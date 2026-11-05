@@ -52,13 +52,13 @@ func driftMarkerRel() string {
 	return filepath.ToSlash(configengine.ReinterpretedMarkerRel(driftengine.DirBaseReinterpretation))
 }
 
-// driftYAMLWithDir returns a drift.yaml declaring capture and compare, each with dir when dir is not empty.
+// driftYAMLWithDir returns a drift.yaml declaring capture and compare, each with dir when dir is not empty, and diff: command so the diff-mode reinterpretation flags nothing.
 func driftYAMLWithDir(dir string) string {
 	dirLine := ""
 	if dir != "" {
 		dirLine = "  dir: " + dir + "\n"
 	}
-	return "capture:\n  command: \"profile --out {baseline_dir}\"\n" + dirLine + "  timeout_min: 30\n" +
+	return "diff: command\ncapture:\n  command: \"profile --out {baseline_dir}\"\n" + dirLine + "  timeout_min: 30\n" +
 		"compare:\n  command: \"cmp {baseline_dir}\"\n" + dirLine + "  timeout_min: 5\n"
 }
 

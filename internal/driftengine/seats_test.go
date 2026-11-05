@@ -1,9 +1,8 @@
-// seats_test.go — tier 0 tests for the two agents' seat tables, over a seeded stencils directory, a model registry of the built-in aliases and the prompts the seat engine composes without starting anything.
+// seats_test.go — tier 0 tests for the expect and judge seat tables, over a seeded stencils directory, a model registry of the built-in aliases and the prompts the seat engine composes without starting anything.
 
 package driftengine
 
 import (
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/modelspec"
-	"github.com/Knatte18/loomyard/internal/pattern"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -45,265 +43,187 @@ func seatPrompt(t *testing.T, stencilsDir, worktreeRoot, slug string, table seat
 	return prompts[""]
 }
 
-// TestSeatTables covers both builders: each missing required input refused by name, the lead's model, role, output, skills and timeout, the markers each prompt renders, the two subjects and an unparsable model.
+// TestSeatTables covers the two builders: each missing required input refused by name, the lead's model, role, output, skills and timeout, the markers each prompt renders and an unparsable model.
 func TestSeatTables(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	cfg := Config{BaselineModel: "sonnet[effort=medium]", VerifyModel: "opus[effort=high]", VerifyMaxRuns: 5}
+	cfg := Config{ExpectModel: "sonnet[effort=medium]", JudgeModel: "opus[effort=high]"}
 
-	baseline := func(t *testing.T) BaselineInputs {
-		t.Helper()
-		dir, root := t.TempDir(), t.TempDir()
-		return BaselineInputs{
-			StencilsDir:        stencilkit.Seed(t),
-			WorktreeRoot:       root,
-			AnchorDir:          root,
-			Subject:            SubjectDecisionRecord,
-			Slug:               "fix-the-thing",
-			DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
-			BaselineReportPath: filepath.Join(dir, "baseline.md"),
-		}
-	}
-	verify := func(t *testing.T) VerifyInputs {
+	expect := func(t *testing.T) ExpectInputs {
 		t.Helper()
 		dir := t.TempDir()
-		return VerifyInputs{
-			StencilsDir:        stencilkit.Seed(t),
-			WorktreeRoot:       t.TempDir(),
+		return ExpectInputs{
 			Subject:            SubjectDecisionRecord,
 			Slug:               "fix-the-thing",
 			DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
-			ScopePath:          filepath.Join(dir, "scope.json"),
-			BaselineReportPath: filepath.Join(dir, "baseline.md"),
-			VerifyReportPath:   filepath.Join(dir, "verify-report.md"),
-			CompareLog:         filepath.Join(dir, "compare.log"),
-			BaselineHead:       "0123abc",
+			PlanDir:            filepath.Join(dir, "plan"),
+			BaselineDir:        filepath.Join(dir, "baseline"),
+			ListingPath:        filepath.Join(dir, "listing.yaml"),
+			ExpectedPath:       filepath.Join(dir, "expected.yaml"),
+			DiffMode:           DiffLines,
 		}
 	}
 
-	t.Run("a missing required input is refused by name", func(t *testing.T) {
+	t.Run("the expect table refuses a missing input, an unknown mode and an unparsable model", func(t *testing.T) {
 		t.Parallel()
-		baselineRows := []struct {
-			field string
-			clear func(*BaselineInputs)
-		}{
-			{"StencilsDir", func(in *BaselineInputs) { in.StencilsDir = "" }},
-			{"WorktreeRoot", func(in *BaselineInputs) { in.WorktreeRoot = "" }},
-			{"AnchorDir", func(in *BaselineInputs) { in.AnchorDir = "" }},
-			{"DecisionRecordPath", func(in *BaselineInputs) { in.DecisionRecordPath = "" }},
-			{"BaselineReportPath", func(in *BaselineInputs) { in.BaselineReportPath = "" }},
-		}
-		for _, row := range baselineRows {
-			in := baseline(t)
-			row.clear(&in)
-			if _, err := BaselineTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), row.field) {
-				t.Errorf("BaselineTable() without %s = %v; want a refusal naming it", row.field, err)
-			}
-		}
-		verifyRows := []struct {
-			field string
-			clear func(*VerifyInputs)
-		}{
-			{"StencilsDir", func(in *VerifyInputs) { in.StencilsDir = "" }},
-			{"WorktreeRoot", func(in *VerifyInputs) { in.WorktreeRoot = "" }},
-			{"DecisionRecordPath", func(in *VerifyInputs) { in.DecisionRecordPath = "" }},
-			{"ScopePath", func(in *VerifyInputs) { in.ScopePath = "" }},
-			{"BaselineReportPath", func(in *VerifyInputs) { in.BaselineReportPath = "" }},
-			{"VerifyReportPath", func(in *VerifyInputs) { in.VerifyReportPath = "" }},
-			{"CompareLog", func(in *VerifyInputs) { in.CompareLog = "" }},
-			{"BaselineHead", func(in *VerifyInputs) { in.BaselineHead = "" }},
-		}
-		for _, row := range verifyRows {
-			in := verify(t)
-			row.clear(&in)
-			if _, err := VerifyTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), row.field) {
-				t.Errorf("VerifyTable() without %s = %v; want a refusal naming it", row.field, err)
-			}
-		}
-	})
-
-	t.Run("the subject is refused unknown, and a board entry needs its slug", func(t *testing.T) {
-		t.Parallel()
-		in := baseline(t)
-		in.Subject = "other"
-		if _, err := BaselineTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), `Subject "other"`) {
-			t.Errorf("BaselineTable() with an unknown subject = %v; want a refusal naming it", err)
-		}
-		in = baseline(t)
-		in.Subject, in.Slug = SubjectBoardEntry, ""
-		if _, err := BaselineTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), "Slug") {
-			t.Errorf("BaselineTable() for a board entry without a slug = %v; want a refusal naming Slug", err)
-		}
-	})
-
-	t.Run("an unparsable model is refused", func(t *testing.T) {
-		t.Parallel()
-		bad := Config{BaselineModel: "not a spec[", VerifyModel: "not a spec[", VerifyMaxRuns: 5}
-		if _, err := BaselineTable(baseline(t), bad, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), "model-spec") {
-			t.Errorf("BaselineTable() with an unparsable model = %v; want a model-spec refusal", err)
-		}
-		if _, err := VerifyTable(verify(t), bad, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), "model-spec") {
-			t.Errorf("VerifyTable() with an unparsable model = %v; want a model-spec refusal", err)
-		}
-	})
-
-	t.Run("the baseline lead and its prompt", func(t *testing.T) {
-		t.Parallel()
-		in := baseline(t)
-		in.ScopeNote = "A scope is already recorded; write baseline.md alone against it."
-		captured := cfg
-		captured.Capture = CommandStep{Command: "dotnet test Suite {baseline_dir}", Dir: "."}
-		table, err := BaselineTable(in, captured, seatRegistry(t))
-		if err != nil {
-			t.Fatalf("BaselineTable() = _, %v; want nil error", err)
-		}
-		if err := table.Validate(in.StencilsDir, ""); err != nil {
-			t.Fatalf("table.Validate() = %v; want nil", err)
-		}
-		lead := table.Chair()
-		if len(table.Seats) != 1 || lead.Name != "" || table.RolePrefix != "drift-baseline" || table.Segment != segmentcolor.Plan || table.Timeout != baselineTimeout {
-			t.Errorf("table = %d seats, lead %q, role %q, segment %q, timeout %v; want the lone lead of role drift-baseline on the plan segment", len(table.Seats), lead.Name, table.RolePrefix, table.Segment, table.Timeout)
-		}
-		if lead.Engine != "claude" || lead.Model != "sonnet" || lead.Effort != "medium" {
-			t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/sonnet/medium", lead.Engine, lead.Model, lead.Effort)
-		}
-		if !slices.Equal(lead.Outputs, []string{in.BaselineReportPath}) || !slices.Equal(lead.Skills, []string{"scribe:prose"}) {
-			t.Errorf("lead outputs %v and skills %v; want baseline.md alone and scribe:prose", lead.Outputs, lead.Skills)
-		}
-
-		prompt := seatPrompt(t, in.StencilsDir, in.WorktreeRoot, in.Slug, table)
-		for _, want := range []string{in.BaselineReportPath, in.DecisionRecordPath, in.ScopeNote, "the-parent", "`dotnet test Suite {baseline_dir}`, run in `.`", "project references"} {
-			if !strings.Contains(prompt, want) {
-				t.Errorf("baseline prompt lacks %q", want)
-			}
-		}
-
-		entry := baseline(t)
-		entry.Subject = SubjectBoardEntry
-		entryTable, err := BaselineTable(entry, cfg, seatRegistry(t))
-		if err != nil {
-			t.Fatalf("BaselineTable() for a board entry = _, %v; want nil error", err)
-		}
-		entryPrompt := seatPrompt(t, entry.StencilsDir, entry.WorktreeRoot, entry.Slug, entryTable)
-		if !strings.Contains(entryPrompt, `lym board get '{"slug":"fix-the-thing"}'`) {
-			t.Errorf("board-entry prompt lacks the board reading")
-		}
-		if !strings.Contains(entryPrompt, "The capture command is not declared yet") {
-			t.Errorf("a prompt with no capture declared does not say so")
-		}
-		if strings.Contains(entryPrompt, "the decision record at `"+entry.DecisionRecordPath+"`, in which") || strings.Contains(prompt, "lym board get") {
-			t.Errorf("the two subjects render alike; want the decision-record and board-entry readings distinct")
-		}
-	})
-
-	t.Run("the capture's run directory is told relative to the worktree root", func(t *testing.T) {
-		t.Parallel()
-		outside := t.TempDir()
 		rows := []struct {
-			name string
-			dir  string
-			want string
+			want  string
+			clear func(*ExpectInputs)
 		}{
-			{"NoDirRunsInTheAnchor", "", "`p {baseline_dir}`, run in `dotnet` relative to the worktree root"},
-			{"DotIsTheWorktreeRoot", ".", "`p {baseline_dir}`, run in `.` relative to the worktree root"},
-			{"ARelativeDirIsKept", "tests", "`p {baseline_dir}`, run in `tests` relative to the worktree root"},
-			{"AnAbsoluteDirOutsideTheRootIsToldWhole", outside, "`p {baseline_dir}`, run in `" + outside + "`"},
+			{"DecisionRecordPath", func(in *ExpectInputs) { in.DecisionRecordPath = "" }},
+			{"BaselineDir", func(in *ExpectInputs) { in.BaselineDir = "" }},
+			{"ListingPath", func(in *ExpectInputs) { in.ListingPath = "" }},
+			{"ExpectedPath", func(in *ExpectInputs) { in.ExpectedPath = "" }},
+			{"DiffMode", func(in *ExpectInputs) { in.DiffMode = "other" }},
+			{"Slug", func(in *ExpectInputs) { in.Subject, in.Slug = SubjectBoardEntry, "" }},
+		}
+		for _, row := range rows {
+			in := expect(t)
+			row.clear(&in)
+			if _, err := ExpectTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), row.want) {
+				t.Errorf("ExpectTable() with %s unusable = %v; want a refusal naming it", row.want, err)
+			}
+		}
+		bad := Config{ExpectModel: "not a spec["}
+		if _, err := ExpectTable(expect(t), bad, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), "model-spec") {
+			t.Errorf("ExpectTable() with an unparsable model = %v; want a model-spec refusal", err)
+		}
+	})
+
+	t.Run("the expect lead and its prompt", func(t *testing.T) {
+		t.Parallel()
+		stencilsDir, worktreeRoot := stencilkit.Seed(t), t.TempDir()
+		rows := []struct {
+			name   string
+			edit   func(*ExpectInputs)
+			want   []string
+			absent []string
+		}{
+			{"lines with a plan", func(*ExpectInputs) {}, []string{"mode: lines", "range: ", "the plan in `"}, []string{"mode: command", "has no plan"}},
+			{"command with no plan", func(in *ExpectInputs) { in.DiffMode, in.PlanDir = DiffCommand, "" }, []string{"mode: command", "has no plan"}, []string{"mode: lines", "the plan in `"}},
 		}
 		for _, row := range rows {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
-				in := baseline(t)
-				in.AnchorDir = filepath.Join(in.WorktreeRoot, "dotnet")
-				captured := cfg
-				captured.Capture = CommandStep{Command: "p {baseline_dir}", Dir: row.dir}
-				table, err := BaselineTable(in, captured, seatRegistry(t))
+				in := expect(t)
+				row.edit(&in)
+				table, err := ExpectTable(in, cfg, seatRegistry(t))
 				if err != nil {
-					t.Fatalf("BaselineTable() = _, %v; want nil error", err)
+					t.Fatalf("ExpectTable() = _, %v; want nil error", err)
 				}
-				if got := table.Values["capture_command"]; got != row.want {
-					t.Errorf("capture_command = %q; want %q", got, row.want)
+				if err := table.Validate(stencilsDir, ""); err != nil {
+					t.Fatalf("table.Validate() = %v; want nil", err)
+				}
+				lead := table.Chair()
+				if len(table.Seats) != 1 || lead.Name != "" || table.RolePrefix != "drift-expect" || table.Segment != segmentcolor.Plan || table.Timeout != expectTimeout || table.Interactive {
+					t.Errorf("table = %d seats, lead %q, role %q, segment %q, timeout %v, interactive %v; want the lone non-interactive lead of role drift-expect on the plan segment", len(table.Seats), lead.Name, table.RolePrefix, table.Segment, table.Timeout, table.Interactive)
+				}
+				if lead.Engine != "claude" || lead.Model != "sonnet" || lead.Effort != "medium" {
+					t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/sonnet/medium", lead.Engine, lead.Model, lead.Effort)
+				}
+				if !slices.Equal(lead.Outputs, []string{in.ExpectedPath}) || !slices.Equal(lead.Skills, []string{"scribe:prose"}) {
+					t.Errorf("lead outputs %v and skills %v; want expected.yaml alone and scribe:prose", lead.Outputs, lead.Skills)
+				}
+
+				prompt := seatPrompt(t, stencilsDir, worktreeRoot, in.Slug, table)
+				for _, want := range append([]string{in.ExpectedPath, in.ListingPath, in.BaselineDir, in.DecisionRecordPath, "the-parent"}, row.want...) {
+					if !strings.Contains(prompt, want) {
+						t.Errorf("expect prompt lacks %q", want)
+					}
+				}
+				for _, absent := range row.absent {
+					if strings.Contains(prompt, absent) {
+						t.Errorf("expect prompt holds %q", absent)
+					}
 				}
 			})
 		}
 	})
 
-	t.Run("the verify lead and its prompt", func(t *testing.T) {
-		t.Parallel()
-		in := verify(t)
-		in.LanguageSkills = []string{"scribe:golang-testing", "scribe:testing"}
-		const overview = "# PATTERN\n\n- `PATTERN-example` — an entry the verify agent must follow.\n"
-		if err := os.WriteFile(pattern.File(in.WorktreeRoot), []byte(overview), 0o644); err != nil {
-			t.Fatal(err)
+	judge := func(t *testing.T) JudgeInputs {
+		t.Helper()
+		dir := t.TempDir()
+		return JudgeInputs{
+			Subject:            SubjectDecisionRecord,
+			Slug:               "fix-the-thing",
+			DecisionRecordPath: filepath.Join(dir, "decision-record.md"),
+			RequestPath:        filepath.Join(dir, "judge-request.json"),
+			JudgementPath:      filepath.Join(dir, "judgement.yaml"),
 		}
-		table, err := VerifyTable(in, cfg, seatRegistry(t))
-		if err != nil {
-			t.Fatalf("VerifyTable() = _, %v; want nil error", err)
-		}
-		if err := table.Validate(in.StencilsDir, ""); err != nil {
-			t.Fatalf("table.Validate() = %v; want nil", err)
-		}
-		lead := table.Chair()
-		if len(table.Seats) != 1 || lead.Name != "" || table.RolePrefix != "drift-verify" || table.Segment != segmentcolor.Review || table.Timeout != verifyTimeout {
-			t.Errorf("table = %d seats, lead %q, role %q, segment %q, timeout %v; want the lone lead of role drift-verify on the review segment", len(table.Seats), lead.Name, table.RolePrefix, table.Segment, table.Timeout)
-		}
-		if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" {
-			t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/opus/high", lead.Engine, lead.Model, lead.Effort)
-		}
-		wantSkills := []string{"scribe:prose", "scribe:code-quality", "scribe:testing", "scribe:golang-testing"}
-		if !slices.Equal(lead.Outputs, []string{in.VerifyReportPath}) || !slices.Equal(lead.Skills, wantSkills) {
-			t.Errorf("lead outputs %v and skills %v; want verify-report.md alone and %v", lead.Outputs, lead.Skills, wantSkills)
-		}
-		if baselineTimeout >= verifyTimeout {
-			t.Errorf("baseline timeout %v is not shorter than the verify timeout %v", baselineTimeout, verifyTimeout)
-		}
-		if table.Values["pattern_directive"] == "" {
-			t.Errorf("the verify table renders no PATTERN directive; want the implementer directive, since its agent changes code")
-		}
+	}
 
-		prompt := seatPrompt(t, in.StencilsDir, in.WorktreeRoot, in.Slug, table)
-		wants := []string{"PATTERN-example", in.CompareLog, in.ScopePath, in.BaselineReportPath, in.VerifyReportPath, in.DecisionRecordPath, in.BaselineHead, "5 runs", "the-parent"}
-		for _, want := range wants {
-			if !strings.Contains(prompt, want) {
-				t.Errorf("verify prompt lacks %q", want)
+	t.Run("the judge table refuses a missing input and an unparsable model", func(t *testing.T) {
+		t.Parallel()
+		rows := []struct {
+			want  string
+			clear func(*JudgeInputs)
+		}{
+			{"DecisionRecordPath", func(in *JudgeInputs) { in.DecisionRecordPath = "" }},
+			{"RequestPath", func(in *JudgeInputs) { in.RequestPath = "" }},
+			{"JudgementPath", func(in *JudgeInputs) { in.JudgementPath = "" }},
+			{"Slug", func(in *JudgeInputs) { in.Subject, in.Slug = SubjectBoardEntry, "" }},
+		}
+		for _, row := range rows {
+			in := judge(t)
+			row.clear(&in)
+			if _, err := JudgeTable(in, cfg, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), row.want) {
+				t.Errorf("JudgeTable() with %s unusable = %v; want a refusal naming it", row.want, err)
 			}
+		}
+		bad := Config{JudgeModel: "not a spec["}
+		if _, err := JudgeTable(judge(t), bad, seatRegistry(t)); err == nil || !strings.Contains(err.Error(), "model-spec") {
+			t.Errorf("JudgeTable() with an unparsable model = %v; want a model-spec refusal", err)
 		}
 	})
 
-	t.Run("verify_interactive makes the verify lead the operator's session", func(t *testing.T) {
+	t.Run("the judge lead and its prompt, autonomous and with the operator", func(t *testing.T) {
 		t.Parallel()
-		in := verify(t)
+		stencilsDir, worktreeRoot := stencilkit.Seed(t), t.TempDir()
 		operatorCfg := cfg
-		operatorCfg.VerifyInteractive = true
+		operatorCfg.JudgeInteractive = true
 		rows := []struct {
 			name        string
 			cfg         Config
 			interactive bool
-			want        []string
-			absent      []string
+			want        string
+			absent      string
 		}{
-			{"autonomous", cfg, false, []string{autonomousVerifyMode, "giving the reason the drift is intended"}, []string{"Present the drift to the operator"}},
-			{"with the operator", operatorCfg, true, []string{"Present the drift to the operator", "for each quantity that drifted", "the baseline report's expectation", "giving the operator's reason", "`AskUserQuestion`"}, []string{autonomousVerifyMode}},
+			{"autonomous", cfg, false, autonomousJudgeMode, "present each cell or case"},
+			{"with the operator", operatorCfg, true, "present each cell or case", autonomousJudgeMode},
 		}
 		for _, row := range rows {
-			table, err := VerifyTable(in, row.cfg, seatRegistry(t))
-			if err != nil {
-				t.Fatalf("%s: VerifyTable() = _, %v; want nil error", row.name, err)
-			}
-			if table.Interactive != row.interactive {
-				t.Errorf("%s: table.Interactive = %v; want %v", row.name, table.Interactive, row.interactive)
-			}
-			prompt := seatPrompt(t, in.StencilsDir, in.WorktreeRoot, in.Slug, table)
-			for _, want := range row.want {
-				if !strings.Contains(prompt, want) {
-					t.Errorf("%s: verify prompt lacks %q", row.name, want)
+			t.Run(row.name, func(t *testing.T) {
+				t.Parallel()
+				in := judge(t)
+				table, err := JudgeTable(in, row.cfg, seatRegistry(t))
+				if err != nil {
+					t.Fatalf("JudgeTable() = _, %v; want nil error", err)
 				}
-			}
-			for _, absent := range row.absent {
-				if strings.Contains(prompt, absent) {
-					t.Errorf("%s: verify prompt holds %q", row.name, absent)
+				if err := table.Validate(stencilsDir, ""); err != nil {
+					t.Fatalf("table.Validate() = %v; want nil", err)
 				}
-			}
+				lead := table.Chair()
+				if len(table.Seats) != 1 || lead.Name != "" || table.RolePrefix != "drift-judge" || table.Segment != segmentcolor.Review || table.Timeout != judgeTimeout || table.Interactive != row.interactive {
+					t.Errorf("table = %d seats, lead %q, role %q, segment %q, timeout %v, interactive %v; want the lone lead of role drift-judge on the review segment, interactive %v", len(table.Seats), lead.Name, table.RolePrefix, table.Segment, table.Timeout, table.Interactive, row.interactive)
+				}
+				if lead.Engine != "claude" || lead.Model != "opus" || lead.Effort != "high" {
+					t.Errorf("lead engine/model/effort = %q/%q/%q; want claude/opus/high", lead.Engine, lead.Model, lead.Effort)
+				}
+				if !slices.Equal(lead.Outputs, []string{in.JudgementPath}) || !slices.Equal(lead.Skills, []string{"scribe:prose"}) {
+					t.Errorf("lead outputs %v and skills %v; want judgement.yaml alone and scribe:prose", lead.Outputs, lead.Skills)
+				}
+
+				prompt := seatPrompt(t, stencilsDir, worktreeRoot, in.Slug, table)
+				for _, want := range []string{in.RequestPath, in.JudgementPath, in.DecisionRecordPath, "the-parent", row.want} {
+					if !strings.Contains(prompt, want) {
+						t.Errorf("judge prompt lacks %q", want)
+					}
+				}
+				if strings.Contains(prompt, row.absent) {
+					t.Errorf("judge prompt holds %q", row.absent)
+				}
+			})
 		}
 	})
 }

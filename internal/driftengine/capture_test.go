@@ -1,6 +1,6 @@
 //go:build !windows
 
-// capture_test.go — tier 1 tests for RunCapture, RunSideCapture and RunAcceptanceCapture, driven by fake sh commands against a temp gate-slot pool.
+// capture_test.go — tier 1 tests for the main and current captures, driven by fake sh commands against a temp gate-slot pool.
 
 package driftengine
 
@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,7 +87,7 @@ func slotFree(t *testing.T, pool *gateslot.Pool) bool {
 	return len(holders) == 0
 }
 
-// TestFailedCaptureError covers the reason and log the error carries and the ways forward by whether the capture wrote no file under skipped tests.
+// TestFailedCaptureError covers the reason and log the error carries and the capture and defer ways forward it names.
 func TestFailedCaptureError(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -104,15 +105,10 @@ func TestFailedCaptureError(t *testing.T) {
 			wantNot: []string{"lym drift scope"},
 		},
 		{
-			name:    "no file under an empty skip list is a plain failure",
+			name:    "a capture that wrote no file is a plain failure",
 			rec:     CaptureRecord{State: CaptureFailed, Reason: "exit 3; it ran in /w and printed nothing", Log: "/logs/capture.log", WroteNoFile: true},
 			want:    []string{"lym drift capture followed by lym loom resume"},
 			wantNot: []string{"lym drift scope"},
-		},
-		{
-			name: "no file under skipped tests names the scope changes",
-			rec:  CaptureRecord{State: CaptureFailed, Reason: "exit 3; it ran in /w and printed nothing", Log: "/logs/capture.log", WroteNoFile: true, Skip: []string{"TestA"}},
-			want: []string{"lym drift scope --scope full", "lym drift scope --scope off"},
 		},
 	}
 	for _, tt := range tests {
@@ -140,7 +136,184 @@ func TestFailedCaptureError(t *testing.T) {
 	}
 }
 
-// TestRunCapture covers the command's outcome rows, the skip file, the timeout tree kill, the kept backup, the capture lock, the slot wait, Check's refusal and the side capture.
+// TestCaptureCurrent covers the current capture's own directory, its lock wait, its slot, and the results that did not pass.
+func TestCaptureCurrent(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	t.Run("concurrent captures each write their own directory and leave the baseline and the records alone", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo profile > {baseline_dir}/p.json")
+		p := f.req.Paths
+		if err := os.MkdirAll(p.BaselineDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		if err := os.WriteFile(filepath.Join(p.BaselineDir, "old.json"), []byte("old"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v; want nil", err)
+		}
+
+		results := make([]CurrentCapture, 2)
+		var wg sync.WaitGroup
+		for i := range results {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				got, err := CaptureCurrent(context.Background(), f.req)
+				if err != nil {
+					t.Errorf("CaptureCurrent() = _, %v; want nil", err)
+				}
+				results[i] = got
+			}()
+		}
+		wg.Wait()
+
+		if results[0].Dir == results[1].Dir {
+			t.Errorf("both captures wrote %s; want a directory each", results[0].Dir)
+		}
+		for _, got := range results {
+			if !got.Passed || filepath.Dir(got.Dir) != p.CurrentDir || readFile(t, filepath.Join(got.Dir, "p.json")) != "profile\n" {
+				t.Errorf("CaptureCurrent() = %+v; want a passed capture with its file under %s", got, p.CurrentDir)
+			}
+		}
+		if _, found, _ := ReadCapture(p); found {
+			t.Errorf("a current capture wrote a capture record")
+		}
+		if got := readFile(t, filepath.Join(p.BaselineDir, "old.json")); got != "old" {
+			t.Errorf("baseline/old.json = %q; want the baseline untouched", got)
+		}
+		if _, err := os.Stat(p.BaselineDir + ".1"); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("a baseline backup exists; want a current capture to make none")
+		}
+		if !slotFree(t, f.pool) {
+			t.Errorf("the slot is still held after the captures")
+		}
+	})
+
+	t.Run("a held capture lock is waited for through Sleep from one second doubling", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo profile > {baseline_dir}/p.json")
+		if err := os.MkdirAll(filepath.Dir(f.req.Paths.CaptureLock), 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		held, err := lock.AcquireWriteLock(f.req.Paths.CaptureLock)
+		if err != nil {
+			t.Fatalf("AcquireWriteLock() = %v; want nil", err)
+		}
+		var waits []time.Duration
+		f.req.Sleep = func(_ context.Context, d time.Duration) error {
+			waits = append(waits, d)
+			if len(waits) == 2 {
+				return held.Release()
+			}
+			return nil
+		}
+
+		got, err := CaptureCurrent(context.Background(), f.req)
+		if err != nil || !got.Passed {
+			t.Fatalf("CaptureCurrent() = %+v, %v; want a passed capture once the lock was released", got, err)
+		}
+		if want := []time.Duration{time.Second, 2 * time.Second}; !slices.Equal(waits, want) {
+			t.Errorf("Sleep waits = %v; want %v", waits, want)
+		}
+		if held, _ := ProbeLock(f.req.Paths.CaptureLock); held {
+			t.Errorf("the capture lock is still held after the capture")
+		}
+	})
+
+	t.Run("a capture inside a gate runs in the gate's slot and a second waits for the slot", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "echo profile > {baseline_dir}/p.json")
+		gate, err := f.pool.Acquire(context.Background(), gateslot.Holder{Worktree: f.req.AnchorDir, Site: "test gate"})
+		if err != nil {
+			t.Fatalf("Acquire() = %v; want nil", err)
+		}
+		gateSlot, _ := strings.CutPrefix(gate.InheritEnv(nil)[0], gateslot.InheritEnv+"=")
+
+		inside := f.req
+		inside.InheritedSlot = gateSlot
+		if got, err := CaptureCurrent(context.Background(), inside); err != nil || !got.Passed {
+			t.Fatalf("CaptureCurrent() inside the gate = %+v, %v; want a passed capture with no slot of its own", got, err)
+		}
+
+		done := make(chan CurrentCapture, 1)
+		go func() {
+			got, err := CaptureCurrent(context.Background(), f.req)
+			if err != nil {
+				t.Errorf("CaptureCurrent() = _, %v; want nil", err)
+			}
+			done <- got
+		}()
+		eventually(t, "the second capture's wait record", func() bool {
+			waits, _ := gateslot.ReadWaits(f.req.WaitDir)
+			return len(waits) == 1
+		})
+		if err := gate.Release(); err != nil {
+			t.Fatalf("Release() = %v; want nil", err)
+		}
+		if got := <-done; !got.Passed {
+			t.Errorf("CaptureCurrent() after the gate released = %+v; want a passed capture", got)
+		}
+	})
+
+	failures := []struct {
+		name    string
+		command string
+		dir     string
+		// wantReason lists text the reason holds; "{dir}" stands for the capture's directory and "{root}" for the worktree.
+		wantReason []string
+		// wantLog is text the log holds.
+		wantLog string
+	}{
+		{
+			name:       "a failing command does not pass and names the exit, where it ran, its last output and its log",
+			command:    "echo boom; exit 3",
+			wantReason: []string{"exit 3; it ran in {root} and its last output was: boom"},
+			wantLog:    "boom",
+		},
+		{
+			name:       "exit 0 with no file does not pass and names the directory",
+			command:    "true",
+			wantReason: []string{"exit 0 but wrote no file to {dir}"},
+		},
+		{
+			name:       "a step whose dir is no directory is a refusal naming the dir write",
+			command:    "true",
+			dir:        "gone",
+			wantReason: []string{"lym config drift --set capture.dir=<dir> from the prime"},
+		},
+		{
+			name:       "a command holding the retired skip file placeholder is a refusal naming the edit",
+			command:    "cat {skip_file}",
+			wantReason: []string{"the drift current capture command holds {skip_file}, which drift no longer renders", "remove it from capture in the hub's drift.yaml with lym config drift --set from the prime"},
+		},
+	}
+	for _, tt := range failures {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := newCaptureFixture(t, tt.command)
+			f.req.Step.Dir = tt.dir
+
+			got, err := CaptureCurrent(context.Background(), f.req)
+			if err != nil || got.Passed {
+				t.Fatalf("CaptureCurrent() = %+v, %v; want a result that did not pass and no error", got, err)
+			}
+			for _, want := range tt.wantReason {
+				want = strings.ReplaceAll(strings.ReplaceAll(want, "{dir}", got.Dir), "{root}", f.req.WorktreeDir)
+				if !strings.Contains(got.Reason, want) {
+					t.Errorf("CaptureCurrent() reason = %q; want it to name %q", got.Reason, want)
+				}
+			}
+			if tt.wantLog != "" && !strings.Contains(readFile(t, got.Log), tt.wantLog) {
+				t.Errorf("log %s = %q; want it to hold %q", got.Log, readFile(t, got.Log), tt.wantLog)
+			}
+			if !slotFree(t, f.pool) {
+				t.Errorf("the slot is still held after the capture")
+			}
+		})
+	}
+}
+
+// TestRunCapture covers the command's outcome rows, the timeout tree kill, the kept backup, the capture lock, the slot wait, Check's refusal and a command holding the retired skip file placeholder.
 func TestRunCapture(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -148,41 +321,21 @@ func TestRunCapture(t *testing.T) {
 	outcomes := []struct {
 		name       string
 		command    string
-		skip       []string
 		wantState  string
 		wantReason string
 		wantFile   string
 		wantText   string
 		// timeout, when set, replaces the fixture's timeout.
 		timeout time.Duration
-		// wantNamed lists text the reason holds past its opening.
-		wantNamed []string
 		// wantEnds is the exact end of the reason; "{dir}" stands for the directory the command ran in.
 		wantEnds        string
 		wantWroteNoFile bool
 	}{
 		{name: "a command writing a file passes", command: "echo profile > {baseline_dir}/p.json", wantState: CapturePassed, wantFile: "p.json", wantText: "profile\n"},
-		{name: "the command sees the skip file with one test per line", command: "cat {skip_file} > {baseline_dir}/seen", skip: []string{"TestA", "TestB"}, wantState: CapturePassed, wantFile: "seen", wantText: "TestA\nTestB\n"},
-		{name: "the command sees an empty skip file when nothing is skipped", command: "cat {skip_file} > {baseline_dir}/seen", wantState: CapturePassed, wantFile: "seen", wantText: ""},
 		{
 			name:    "exit 0 with no file and no output fails and says the command printed nothing",
 			command: "true", wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
 			wantEnds: "; it ran in {dir} and printed nothing",
-		},
-		{
-			name:    "exit 0 with no file under skipped tests names the scope, the count and the skips",
-			command: "true", skip: []string{"TestA", "TestB"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
-			wantNamed: []string{"scope partial skipped 2 tests", "every test the capture command ran may have been skipped"},
-		},
-		{
-			name:    "exit 0 with no file under one skipped test names the singular count",
-			command: "true", skip: []string{"TestA"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
-			wantNamed: []string{"scope partial skipped 1 test,"},
-		},
-		{
-			name:    "exit 0 with no file counts a repeated skip once",
-			command: "true", skip: []string{"TestA", "TestA"}, wantState: CaptureFailed, wantReason: "exit 0 but wrote no file to ", wantWroteNoFile: true,
-			wantNamed: []string{"scope partial skipped 1 test,"},
 		},
 		{name: "a non-zero exit fails", command: "exit 3", wantState: CaptureFailed, wantReason: "exit 3"},
 		{
@@ -215,7 +368,6 @@ func TestRunCapture(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := newCaptureFixture(t, tt.command)
-			f.req.Skip = tt.skip
 			if tt.timeout > 0 {
 				f.req.Timeout = tt.timeout
 			}
@@ -227,16 +379,8 @@ func TestRunCapture(t *testing.T) {
 			if rec.State != tt.wantState || !strings.HasPrefix(rec.Reason, tt.wantReason) {
 				t.Errorf("RunCapture() record = %+v; want state %q and a reason opening %q", rec, tt.wantState, tt.wantReason)
 			}
-			for _, want := range tt.wantNamed {
-				if !strings.Contains(rec.Reason, want) {
-					t.Errorf("RunCapture() reason = %q; want it to name %q", rec.Reason, want)
-				}
-			}
 			if wantEnds := strings.ReplaceAll(tt.wantEnds, "{dir}", f.req.WorktreeDir); !strings.HasSuffix(rec.Reason, wantEnds) {
 				t.Errorf("RunCapture() reason = %q; want it to end %q", rec.Reason, wantEnds)
-			}
-			if len(tt.wantNamed) == 0 && strings.Contains(rec.Reason, "skipped") {
-				t.Errorf("RunCapture() reason = %q; want no skips named when none were skipped", rec.Reason)
 			}
 			if rec.WroteNoFile != tt.wantWroteNoFile {
 				t.Errorf("RunCapture() wrote_no_file = %v; want %v", rec.WroteNoFile, tt.wantWroteNoFile)
@@ -252,9 +396,6 @@ func TestRunCapture(t *testing.T) {
 			}
 			if rec.Pid != os.Getpid() || rec.Head != "head1" || rec.SlotAcquiredAt == "" || rec.CommandStartedAt == "" || rec.EndedAt == "" {
 				t.Errorf("record = %+v; want the pid, head and the slot, start and end times", rec)
-			}
-			if !slices.Equal(rec.Skip, tt.skip) {
-				t.Errorf("record skip = %v; want the skipped tests %v the capture ran under", rec.Skip, tt.skip)
 			}
 			if _, err := os.Stat(rec.Log); err != nil {
 				t.Errorf("record log %q: %v; want the log file", rec.Log, err)
@@ -405,7 +546,7 @@ func TestRunCapture(t *testing.T) {
 		}
 	})
 
-	t.Run("with the only slot held the record stays running without a slot time", func(t *testing.T) {
+	t.Run("with the only slot held the capture holds no lock and writes no record while it waits", func(t *testing.T) {
 		t.Parallel()
 		f := newCaptureFixture(t, "echo x > {baseline_dir}/p.json")
 		lease, err := f.pool.Acquire(context.Background(), gateslot.Holder{Worktree: f.req.AnchorDir, Site: "test"})
@@ -425,9 +566,11 @@ func TestRunCapture(t *testing.T) {
 			waits, _ := gateslot.ReadWaits(f.req.WaitDir)
 			return len(waits) == 1
 		})
-		rec, found, err := ReadCapture(f.req.Paths)
-		if err != nil || !found || rec.State != CaptureRunning || rec.SlotAcquiredAt != "" {
-			t.Errorf("ReadCapture() while waiting = %+v, %v, %v; want running with no slot_acquired_at", rec, found, err)
+		if rec, found, err := ReadCapture(f.req.Paths); err != nil || found {
+			t.Errorf("ReadCapture() while waiting = %+v, %v, %v; want no record before the slot is taken", rec, found, err)
+		}
+		if held, _ := ProbeLock(f.req.Paths.CaptureLock); held {
+			t.Errorf("the capture lock is held while the capture waits for its slot")
 		}
 
 		if err := lease.Release(); err != nil {
@@ -459,6 +602,39 @@ func TestRunCapture(t *testing.T) {
 		}
 	})
 
+	t.Run("a command holding the retired skip file placeholder is refused naming the edit, with the slot free and the baseline untouched", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "cat {skip_file} > {baseline_dir}/seen")
+		if err := os.MkdirAll(f.req.Paths.BaselineDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll() = %v; want nil", err)
+		}
+		if err := os.WriteFile(filepath.Join(f.req.Paths.BaselineDir, "old.json"), []byte("old"), 0o644); err != nil {
+			t.Fatalf("WriteFile() = %v; want nil", err)
+		}
+
+		rec, err := RunCapture(context.Background(), f.req)
+		for _, want := range []string{"the drift capture command holds {skip_file}, which drift no longer renders", "remove it from capture in the hub's drift.yaml with lym config drift --set from the prime"} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Errorf("RunCapture() = %v; want an error naming %q", err, want)
+			}
+		}
+		if !reflect.DeepEqual(rec, CaptureRecord{}) {
+			t.Errorf("RunCapture() record = %+v; want none for a refused command", rec)
+		}
+		if _, found, _ := ReadCapture(f.req.Paths); found {
+			t.Errorf("a capture record was written for a refused command")
+		}
+		if got := readFile(t, filepath.Join(f.req.Paths.BaselineDir, "old.json")); got != "old" {
+			t.Errorf("baseline/old.json = %q; want the baseline untouched", got)
+		}
+		if _, err := os.Stat(f.req.Paths.BaselineDir + ".1"); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("a baseline backup exists; want a refused command to move no baseline")
+		}
+		if !slotFree(t, f.pool) {
+			t.Errorf("the slot is held after a refused command")
+		}
+	})
+
 	t.Run("OnEnd is called once with the final record while the capture lock is held", func(t *testing.T) {
 		t.Parallel()
 		f := newCaptureFixture(t, "exit 3")
@@ -481,166 +657,6 @@ func TestRunCapture(t *testing.T) {
 		}
 		if held, _ := ProbeLock(f.req.Paths.CaptureLock); held {
 			t.Errorf("the capture lock is still held after the capture")
-		}
-	})
-
-	acceptanceRows := []struct {
-		name    string
-		command string
-		// stale seeds a profile file of t1 in the accepting directory before the capture.
-		stale bool
-		// timeout, when set, replaces the fixture's timeout.
-		timeout    time.Duration
-		wantPassed bool
-		// wantFile is the file the command wrote under the accepting directory.
-		wantFile     string
-		wantReasonIn []string
-	}{
-		{name: "an acceptance capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after ", "; it ran in {dir} and printed nothing; log "}},
-		{name: "an acceptance capture writing the test's file passes and leaves it under the accepting directory", command: "echo profile > {baseline_dir}/t1.json", wantPassed: true, wantFile: "t1.json"},
-		{name: "an acceptance capture empties a file left in the accepting directory first", command: "echo profile > {baseline_dir}/t1.json", stale: true, wantPassed: true, wantFile: "t1.json"},
-		{
-			name:    "an acceptance capture exiting non-zero does not pass and names the exit, the directory, the last output and the log",
-			command: "echo boom; exit 3", wantReasonIn: []string{"exit 3; it ran in {dir} and its last output was: boom; log "},
-		},
-		{
-			name:    "an acceptance capture writing only another test's file does not pass and names the test, the directory and the log",
-			command: "echo profile > {baseline_dir}/t2.json", wantReasonIn: []string{"wrote no file for t1", "; it ran in {dir} and printed nothing; log "},
-		},
-		{name: "a file of the test left in the accepting directory does not make an empty capture pass", command: "true", stale: true, wantReasonIn: []string{"wrote no file for t1"}},
-	}
-	for _, tt := range acceptanceRows {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			f := newCaptureFixture(t, tt.command)
-			if tt.timeout > 0 {
-				f.req.Timeout = tt.timeout
-			}
-			dir := f.req.Paths.AcceptingDir
-			if tt.stale {
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("MkdirAll() = %v; want nil", err)
-				}
-				if err := os.WriteFile(filepath.Join(dir, "t1.stale"), []byte("old"), 0o644); err != nil {
-					t.Fatalf("WriteFile() = %v; want nil", err)
-				}
-			}
-
-			got, err := RunAcceptanceCapture(context.Background(), f.req, "t1")
-			if err != nil {
-				t.Fatalf("RunAcceptanceCapture() = _, %v; want nil", err)
-			}
-			if got.Passed != tt.wantPassed {
-				t.Errorf("RunAcceptanceCapture() = %+v; want passed = %v", got, tt.wantPassed)
-			}
-			if tt.wantPassed && got.Reason != "" {
-				t.Errorf("RunAcceptanceCapture() reason = %q; want none for a pass", got.Reason)
-			}
-			for _, want := range tt.wantReasonIn {
-				want = strings.ReplaceAll(want, "{dir}", f.req.WorktreeDir)
-				if !strings.Contains(got.Reason, want) {
-					t.Errorf("RunAcceptanceCapture() reason = %q; want it to name %q", got.Reason, want)
-				}
-			}
-			if !tt.wantPassed && !strings.Contains(got.Reason, got.Log) {
-				t.Errorf("RunAcceptanceCapture() reason = %q; want it to name the log %q", got.Reason, got.Log)
-			}
-			if _, err := os.Stat(got.Log); err != nil {
-				t.Errorf("acceptance capture log %q: %v; want the log file", got.Log, err)
-			}
-			if tt.wantFile != "" {
-				if text := readFile(t, filepath.Join(dir, tt.wantFile)); text != "profile\n" {
-					t.Errorf("accepting/%s = %q; want the command's output", tt.wantFile, text)
-				}
-			}
-			if _, err := os.Stat(filepath.Join(dir, "t1.stale")); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("the stale file is still in the accepting directory")
-			}
-			if _, found, _ := ReadCapture(f.req.Paths); found {
-				t.Errorf("an acceptance capture wrote a capture record")
-			}
-			if !slotFree(t, f.pool) {
-				t.Errorf("the slot is still held after the acceptance capture")
-			}
-		})
-	}
-
-	t.Run("a side capture's relative dir joins the worktree root, not the anchor", func(t *testing.T) {
-		t.Parallel()
-		f := newCaptureFixture(t, "pwd -P > {baseline_dir}/ran")
-		f.req.AnchorDir = filepath.Join(f.req.WorktreeDir, "dotnet")
-		if err := os.MkdirAll(f.req.AnchorDir, 0o755); err != nil {
-			t.Fatalf("MkdirAll() = %v; want nil", err)
-		}
-		f.req.Step.Dir = "dotnet"
-
-		got, err := RunSideCapture(context.Background(), f.req)
-		if err != nil || got.ExitCode != 0 {
-			t.Fatalf("RunSideCapture() = %+v, %v; want exit 0", got, err)
-		}
-		want, err := filepath.EvalSymlinks(f.req.AnchorDir)
-		if err != nil {
-			t.Fatalf("EvalSymlinks() = %v; want nil", err)
-		}
-		if ran := strings.TrimSpace(readFile(t, filepath.Join(got.Dir, "ran"))); ran != want {
-			t.Errorf("the command ran in %s; want %s", ran, want)
-		}
-	})
-
-	t.Run("a side capture of a missing dir is refused with the side capture as its way forward", func(t *testing.T) {
-		t.Parallel()
-		f := newCaptureFixture(t, "true")
-		f.req.Step.Dir = "gone"
-
-		_, err := RunSideCapture(context.Background(), f.req)
-		for _, want := range []string{filepath.Join(f.req.WorktreeDir, "gone"), `drift.yaml key "capture.dir"`, "lym config drift --set capture.dir=<dir> from the prime, then lym drift capture --side"} {
-			if err == nil || !strings.Contains(err.Error(), want) {
-				t.Errorf("RunSideCapture() = %v; want an error naming %q", err, want)
-			}
-		}
-		if err != nil && strings.Contains(err.Error(), "lym loom resume") {
-			t.Errorf("RunSideCapture() = %v; want no loom resume in a side capture's way forward", err)
-		}
-		if !slotFree(t, f.pool) {
-			t.Errorf("the slot is held after a refused dir")
-		}
-	})
-
-	t.Run("an acceptance capture of a missing dir is refused with the acceptance as its way forward", func(t *testing.T) {
-		t.Parallel()
-		f := newCaptureFixture(t, "true")
-		f.req.Step.Dir = "gone"
-
-		_, err := RunAcceptanceCapture(context.Background(), f.req, "t1")
-		if err == nil || !strings.Contains(err.Error(), "lym config drift --set capture.dir=<dir> from the prime, then lym drift accept") {
-			t.Errorf("RunAcceptanceCapture() = %v; want an error naming the dir write and lym drift accept", err)
-		}
-	})
-
-	t.Run("a side capture writes the next numbered directory and leaves the main capture's files", func(t *testing.T) {
-		t.Parallel()
-		f := newCaptureFixture(t, "echo side > {baseline_dir}/p.json")
-
-		for _, dir := range []string{"1", "2"} {
-			got, err := RunSideCapture(context.Background(), f.req)
-			if err != nil || got.ExitCode != 0 || got.Dir != filepath.Join(f.req.Paths.SideDir, dir) {
-				t.Fatalf("RunSideCapture() = %+v, %v; want exit 0 into side/%s", got, err, dir)
-			}
-			if text := readFile(t, filepath.Join(got.Dir, "p.json")); text != "side\n" {
-				t.Errorf("side/%s/p.json = %q; want the command's output", dir, text)
-			}
-			if _, err := os.Stat(got.Log); err != nil {
-				t.Errorf("side log %q: %v; want the log file", got.Log, err)
-			}
-		}
-		if _, found, _ := ReadCapture(f.req.Paths); found {
-			t.Errorf("a side capture wrote a capture record")
-		}
-		if _, err := os.Stat(f.req.Paths.BaselineDir); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("a side capture touched the baseline directory")
-		}
-		if !slotFree(t, f.pool) {
-			t.Errorf("the slot is still held after the side capture")
 		}
 	})
 }

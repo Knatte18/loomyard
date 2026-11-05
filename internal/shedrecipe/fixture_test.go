@@ -14,6 +14,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
+	"github.com/Knatte18/loomyard/internal/driftengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
@@ -233,6 +235,7 @@ func reviewRow(name string) RowIdentity {
 }
 
 // newTestEnv builds an Env whose every path field is an absolute path derived from a single t.TempDir(), one subdirectory per field: a directory field (Cwd, WorktreeRoot, StencilsDir, SpecsDir, RunRoot, AnchorPath, ScratchDir) is created with os.MkdirAll, while a file field (StatusPath, StatusLockPath, DecisionRecordPath, SupportLogPath, RelevantPath, PrimeLock.Path) is left as a joined path nobody creates.
+// It fills the Drift seams the `drift` gate reads (Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare) with no-ops.
 // It fills Shuttle and Burler with shedfake's fakes and WebsterRun with this file's fake, fills WebsterDeps with shedfake.WebsterSeams, fills DiscussionTable with a closure returning a one-chair seatengine.Table over one absolute output path under the same temp root, fills CommitDiscussion with a closure returning nil, fills DiscussionHistory with an empty history, sets RecordEngine to DiscussionWrite, fills PlanTable with a closure returning a one-lead seatengine.Table over one absolute output path under the same temp root, fills CommitPlan with a closure returning nil, leaves Landing zero, and leaves Now nil.
 //
 // It also fills the six batten fields: a non-empty Slug, CreateWorktree returning nil, InnerRun
@@ -281,8 +284,22 @@ func newTestEnv(t *testing.T) Env {
 		ReflectFriction:    func() string { return "skipped" },
 		WebsterDeps:        shedfake.WebsterSeams(),
 		PlanIndex:          placeholderIndex{},
-		Pawl:               validPawlDeps(dir),
-		Sampler:            validSamplerDeps(dir),
+		Drift: driftengine.Deps{
+			Config: func() (driftengine.Config, error) { return driftengine.Config{}, nil },
+			Status: func() (shedengine.Status, error) { return shedengine.Status{}, nil },
+			CaptureCurrent: func(context.Context) (driftengine.CurrentCapture, error) {
+				return driftengine.CurrentCapture{Passed: true}, nil
+			},
+			TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+				return fabricengine.TrailerCommit{}, false, nil
+			},
+			FileAt: func(string, string) ([]byte, bool, error) { return nil, false, nil },
+			Compare: func(context.Context) (driftengine.CompareResult, error) {
+				return driftengine.CompareResult{Passed: true}, nil
+			},
+		},
+		Pawl:    validPawlDeps(dir),
+		Sampler: validSamplerDeps(dir),
 		DiscussionTable: func() (seatengine.Table, error) {
 			return seatengine.Table{
 				RolePrefix: "discussion",

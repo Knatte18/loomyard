@@ -38,6 +38,17 @@ const (
 	stepCompare = "compare"
 )
 
+// The values of the `diff` key.
+const (
+	// DiffLines compares the two capture directories line by line in Go, against the expectation the expect agent writes.
+	DiffLines = "lines"
+	// DiffCommand runs the declared compare command and judges its result.
+	DiffCommand = "command"
+)
+
+// hubOnlyWayForward is the way forward a task's run settings are refused with for a key only the hub's drift.yaml sets.
+const hubOnlyWayForward = "set it in the hub's drift.yaml with lym config drift --set <key>=<value> from the prime"
+
 // CommandStep is one declared drift command: the shell command, its run directory and the environment it runs with.
 // The zero CommandStep is an undeclared step.
 type CommandStep struct {
@@ -59,32 +70,34 @@ type Config struct {
 	Capture CommandStep
 	// Compare is the declared compare step, or the zero CommandStep.
 	Compare CommandStep
-	// BaselineModel is the model-spec of the Drift-Baseline agent.
-	BaselineModel string
-	// VerifyModel is the model-spec of the Drift-Verify agent.
-	VerifyModel string
-	// VerifyInteractive makes the Drift-Verify agent a session with the operator in its pane, who decides each acceptance and fix.
-	VerifyInteractive bool
-	// VerifyMaxRuns is how many compare or side-capture runs one Drift-Verify agent session may take.
-	VerifyMaxRuns int
-	// Scope is the task's regression scope, ScopeOff, ScopePartial or ScopeFull, which Drift-Baseline records with no agent;
-	// empty leaves the choice to the Drift-Baseline agent.
+	// Diff is how a run compares a capture with the baseline: DiffLines or DiffCommand.
+	Diff string
+	// KeyPatterns are the regular expressions, tried in order, that key a captured line; each holds the named groups `key` and `value`.
+	KeyPatterns []string
+	// ExpectModel is the model-spec of the expect agent.
+	ExpectModel string
+	// JudgeModel is the model-spec of the judge.
+	JudgeModel string
+	// JudgeInteractive makes the judge a session with the operator in its pane, who decides each ruling.
+	JudgeInteractive bool
+	// Scope is the task's regression scope, ScopeOff or ScopeFull, which Drift-Baseline records with no agent; empty records full.
+	// A stored partial reads as ScopeFull.
 	Scope string
-	// Skip is the tests scope partial leaves out, and nil under any other scope.
-	Skip []string
+	// ScopeWasPartial is true when the stored scope was partial, which Scope reads as full.
+	ScopeWasPartial bool
 }
 
 // configFile is drift.yaml as it is spelled, before defaults and validation.
 type configFile struct {
-	Enabled           bool     `yaml:"enabled"`
-	Capture           stepFile `yaml:"capture"`
-	Compare           stepFile `yaml:"compare"`
-	BaselineModel     string   `yaml:"baseline_model"`
-	VerifyModel       string   `yaml:"verify_model"`
-	VerifyInteractive bool     `yaml:"verify_interactive"`
-	VerifyMaxRuns     int      `yaml:"verify_max_runs"`
-	Scope             string   `yaml:"scope"`
-	Skip              []string `yaml:"skip"`
+	Enabled          bool     `yaml:"enabled"`
+	Capture          stepFile `yaml:"capture"`
+	Compare          stepFile `yaml:"compare"`
+	Diff             string   `yaml:"diff"`
+	KeyPatterns      []string `yaml:"key_patterns"`
+	ExpectModel      string   `yaml:"expect_model"`
+	JudgeModel       string   `yaml:"judge_model"`
+	JudgeInteractive bool     `yaml:"judge_interactive"`
+	Scope            string   `yaml:"scope"`
 }
 
 // stepFile is a command step as drift.yaml spells it; TimeoutMin is a pointer so a missing key reads apart from a zero.
@@ -102,7 +115,9 @@ func ConfigOpenMaps() []string {
 
 // ConfigSpec returns drift's layered-load spec.
 // capture and compare run commands, so they are executable keys and closed to the local layer.
-// Both carry the shape their decode gives them, so `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`, or reaches one key inside it, such as `capture.env.NAME`, and refuses a key a step lacks.
+// diff and key_patterns decide what counts as drift, so they are guard keys, and a task's run settings are refused them with the hub's drift.yaml as the way forward.
+// Both steps carry the shape their decode gives them, so `--set` writes a step whole, such as `capture={command: ..., timeout_min: 30}`, or reaches one key inside it, such as `capture.env.NAME`, and refuses a key a step lacks.
+// skip and verify_max_runs are retired keys: a task's run settings that still carry one seed, the load drops it, and a reconcile prunes it from a hub base.
 func ConfigSpec() configengine.Spec {
 	return configengine.Spec{
 		Name:     configModule,
@@ -114,15 +129,23 @@ func ConfigSpec() configengine.Spec {
 			stepCompare: yamlengine.ShapeOf(stepFile{}),
 		},
 		Categories: map[string]configengine.Category{
-			"enabled":            configengine.CategoryNone,
-			stepCapture:          configengine.CategoryExecutable,
-			stepCompare:          configengine.CategoryExecutable,
-			"baseline_model":     configengine.CategoryNone,
-			"verify_model":       configengine.CategoryNone,
-			"verify_interactive": configengine.CategoryNone,
-			"verify_max_runs":    configengine.CategoryNone,
-			"scope":              configengine.CategoryNone,
-			"skip":               configengine.CategoryNone,
+			"enabled":           configengine.CategoryNone,
+			stepCapture:         configengine.CategoryExecutable,
+			stepCompare:         configengine.CategoryExecutable,
+			"diff":              configengine.CategoryGuard,
+			"key_patterns":      configengine.CategoryGuard,
+			"expect_model":      configengine.CategoryNone,
+			"judge_model":       configengine.CategoryNone,
+			"judge_interactive": configengine.CategoryNone,
+			"scope":             configengine.CategoryNone,
+		},
+		RetiredKeys: map[string]configengine.Category{
+			"verify_max_runs": configengine.CategoryNone,
+			"skip":            configengine.CategoryNone,
+		},
+		HubOnlyWayForward: map[string]string{
+			"diff":         hubOnlyWayForward,
+			"key_patterns": hubOnlyWayForward,
 		},
 	}
 }
@@ -130,7 +153,8 @@ func ConfigSpec() configengine.Spec {
 // LoadConfig loads and validates the drift module's configuration strictly through the hub-wide layer stack under dirs.
 // A declared step needs a command holding {baseline_dir} and a timeout_min of at least 1;
 // an all-empty step is undeclared and loads as the zero CommandStep.
-// A scope must be empty, off, partial or full, and skip names tests under scope partial only, where it is required.
+// A scope must be empty, off, partial or full; a stored partial reads as full and sets ScopeWasPartial.
+// A diff must be lines or command, every key_patterns entry must compile with the named groups key and value, and diff command needs a declared compare.
 // Every refusal names the key and lym config drift as the way forward.
 func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	resolved, err := configengine.Load(dirs, ConfigSpec())
@@ -154,31 +178,38 @@ func LoadConfig(dirs configengine.Dirs) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	if file.VerifyMaxRuns < 1 {
-		return Config{}, refuseKey("verify_max_runs", fmt.Sprintf("%d; want at least 1", file.VerifyMaxRuns))
+	if file.Diff != DiffLines && file.Diff != DiffCommand {
+		return Config{}, refuseKey("diff", fmt.Sprintf("%q; want %s or %s", file.Diff, DiffLines, DiffCommand))
 	}
-	for key, spec := range map[string]string{"baseline_model": file.BaselineModel, "verify_model": file.VerifyModel} {
+	if _, err := CompileKeyPatterns(file.KeyPatterns); err != nil {
+		return Config{}, refuseKey("key_patterns", err.Error())
+	}
+	if file.Diff == DiffCommand && compare.Command == "" {
+		return Config{}, refuseKey(stepCompare, "not declared under diff: command; want the command that compares a capture with the baseline")
+	}
+	for key, spec := range map[string]string{"expect_model": file.ExpectModel, "judge_model": file.JudgeModel} {
 		if _, err := modelspec.Parse(spec); err != nil {
 			return Config{}, refuseKey(key, err.Error())
 		}
 	}
-	if err := checkScope(file.Scope, file.Skip); err != nil {
+	if err := checkScope(file.Scope); err != nil {
 		return Config{}, err
 	}
-	var skip []string
-	if file.Scope == ScopePartial {
-		skip = file.Skip
+	scope := file.Scope
+	if scope == ScopePartial {
+		scope = ScopeFull
 	}
 	return Config{
-		Scope:             file.Scope,
-		Skip:              skip,
-		Enabled:           file.Enabled,
-		Capture:           capture,
-		Compare:           compare,
-		BaselineModel:     file.BaselineModel,
-		VerifyModel:       file.VerifyModel,
-		VerifyInteractive: file.VerifyInteractive,
-		VerifyMaxRuns:     file.VerifyMaxRuns,
+		Scope:            scope,
+		ScopeWasPartial:  file.Scope == ScopePartial,
+		Enabled:          file.Enabled,
+		Capture:          capture,
+		Compare:          compare,
+		Diff:             file.Diff,
+		KeyPatterns:      file.KeyPatterns,
+		ExpectModel:      file.ExpectModel,
+		JudgeModel:       file.JudgeModel,
+		JudgeInteractive: file.JudgeInteractive,
 	}, nil
 }
 
@@ -187,21 +218,15 @@ func refuseKey(key, want string) error {
 	return fmt.Errorf("drift config key %q: %s; way forward: fix it with lym config drift", key, want)
 }
 
-// checkScope refuses a scope other than empty, off, partial or full, a partial scope with no skipped test and a skipped test under any other scope.
-// Each refusal names the key and its ways forward, the task's run_settings among them, since a task sets its scope there.
-func checkScope(scope string, skip []string) error {
-	var key, want string
-	switch {
-	case scope != "" && scope != ScopeOff && scope != ScopePartial && scope != ScopeFull:
-		key, want = "scope", fmt.Sprintf("%q; want %s, %s, %s, or empty to let the Drift-Baseline agent decide", scope, ScopeOff, ScopePartial, ScopeFull)
-	case scope == ScopePartial && len(skip) == 0:
-		key, want = "skip", "empty under scope partial; want each test the scope leaves out"
-	case scope != ScopePartial && len(skip) > 0:
-		key, want = "skip", fmt.Sprintf("set under scope %q; want skip only with scope partial", scope)
-	default:
+// checkScope refuses a scope other than empty, off, partial or full.
+// A stored partial passes, since LoadConfig reads it as full.
+// The refusal names the key and its ways forward, the task's run_settings among them, since a task sets its scope there.
+func checkScope(scope string) error {
+	switch scope {
+	case "", ScopeOff, ScopePartial, ScopeFull:
 		return nil
 	}
-	return fmt.Errorf("drift config key %q: %s; way forward: fix it in the board entry's run_settings, or with lym config drift", key, want)
+	return fmt.Errorf("drift config key \"scope\": %q; want %s, %s, or empty for %s; way forward: fix it in the board entry's run_settings, or with lym config drift", scope, ScopeOff, ScopeFull, ScopeFull)
 }
 
 // decodeStep validates one declared command step and fills its defaults; a step with no key set is undeclared and decodes to the zero CommandStep.

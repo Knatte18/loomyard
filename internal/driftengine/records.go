@@ -1,11 +1,10 @@
-// records.go — the scope record, the capture record and the Drift-Verify run counter, and their locked reads and writes.
+// records.go — the scope record and the capture record, and their locked reads and writes.
 //
 // Every record is JSON written through internal/state, so a key a newer binary wrote survives an older binary's rewrite.
 
 package driftengine
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -102,17 +101,126 @@ type ScopeRecord struct {
 	ComparePassed bool `json:"compare_passed"`
 	// AcceptedProfileHead is the commit a compare against the accepted profile last passed at, and empty while no profile holds the current acceptances: an acceptance, a withdrawal and a lapse clear it.
 	AcceptedProfileHead string `json:"accepted_profile_head"`
+	// ScopeSource is the config key that set scope off, such as drift.scope, and empty for any other scope.
+	ScopeSource string `json:"scope_source,omitempty"`
+	// Diff is the config's diff mode, DiffLines or DiffCommand, recorded once so a later config change never moves a running task.
+	Diff string `json:"diff,omitempty"`
+	// KeyPatterns are the config's key patterns, recorded with Diff.
+	KeyPatterns []string `json:"key_patterns,omitempty"`
+	// ExpectSession marks the expect agent's session.
+	ExpectSession SessionMark `json:"expect_session,omitzero"`
+	// JudgeSession marks the judge's session.
+	JudgeSession SessionMark `json:"judge_session,omitzero"`
+	// Amendments are the changes the parent made to the sealed expectation or the records, in order.
+	Amendments []Amendment `json:"amendments,omitempty"`
+	// LastCheck is the result of the last drift check.
+	LastCheck CheckResult `json:"last_check,omitzero"`
+	// LastPassHead is the code head of the last passing check, and empty before one.
+	LastPassHead string `json:"last_pass_head,omitempty"`
+	// LastPassAmendments is the number of amendments recorded when the last check passed.
+	LastPassAmendments int `json:"last_pass_amendments,omitempty"`
+	// Unsealed is true when the run passed Drift-Expect without sealing an expectation, so containment reads an empty one.
+	Unsealed bool `json:"unsealed,omitempty"`
+	// SnapshotLost is true when the judge's snapshot of the checkouts could not be restored.
+	SnapshotLost bool `json:"snapshot_lost,omitempty"`
 }
 
-// Unruled returns the accepted entries whose ruling is RulingUnruled.
-func (s ScopeRecord) Unruled() []Acceptance {
-	var unruled []Acceptance
-	for _, acceptance := range s.Accepted {
-		if acceptance.Ruling == RulingUnruled {
-			unruled = append(unruled, acceptance)
-		}
-	}
-	return unruled
+// SessionMark records whether an agent session, the expect agent's or the judge's, is open.
+type SessionMark struct {
+	// Open is true from the session's start until its return closes it.
+	Open bool `json:"open"`
+	// OpenedAt is the RFC 3339 time the mark opened.
+	// The expect agent's mark keeps it when closed by a return without an error, so a closed expect mark with OpenedAt set records an ended session.
+	OpenedAt string `json:"opened_at,omitempty"`
+	// SpawnID is the id of the spawn that opened the mark.
+	SpawnID string `json:"spawn_id,omitempty"`
+}
+
+// Amendment is one change the run's parent made to the sealed expectation or the records.
+type Amendment struct {
+	// By is the caller label that made the amendment.
+	By string `json:"by"`
+	// At is the RFC 3339 time of the amendment.
+	At string `json:"at"`
+	// Kind is `entries`, `restore` or `discard`.
+	Kind string `json:"kind"`
+	// Entries is the amended YAML of an `entries` amendment, shaped like expected.yaml, and empty for the other kinds.
+	Entries string `json:"entries,omitempty"`
+}
+
+// CheckResult is what the last drift check found, which the verdict renders.
+type CheckResult struct {
+	// Head is the code head the check ran at.
+	Head string `json:"head"`
+	// Passed reports that the check found nothing left to judge or stop on.
+	Passed bool `json:"passed"`
+	// At is the RFC 3339 time of the check.
+	At string `json:"at"`
+	// Mode is DiffLines or DiffCommand.
+	Mode string `json:"mode"`
+	// Changed, Expected, Matched, Reused and Unexpected count the cells the check found, the cells an expectation covers, the cells the judge ruled matching, the cells a stored ruling decided and the cells nothing explains.
+	Changed    int `json:"changed"`
+	Expected   int `json:"expected"`
+	Matched    int `json:"matched"`
+	Reused     int `json:"reused"`
+	Unexpected int `json:"unexpected"`
+	// UnexpectedCells names each cell nothing explains.
+	UnexpectedCells []string `json:"unexpected_cells,omitempty"`
+	// UncoveredEntries names each expectation entry that covers no cell.
+	UncoveredEntries []string `json:"uncovered_entries,omitempty"`
+	// CompareExit is the compare command's exit code under DiffCommand.
+	CompareExit int `json:"compare_exit,omitempty"`
+	// CompareLog is the compare command's log file under DiffCommand.
+	CompareLog string `json:"compare_log,omitempty"`
+}
+
+// JudgedRecord is the judge's stored rulings, which Drift-Verify writes and the verdict renders.
+type JudgedRecord struct {
+	// Tuples are the rulings on single cells, each against the exact old and new value it judged.
+	Tuples []JudgedTuple `json:"tuples,omitempty"`
+	// Ranges are the judge's notes on open ranges; a later listing of the same range replaces an earlier one.
+	Ranges []JudgedRange `json:"ranges,omitempty"`
+	// Cases are the rulings on a failing compare under DiffCommand.
+	Cases []JudgedCase `json:"cases,omitempty"`
+}
+
+// JudgedTuple is the judge's ruling on one cell, stored with the exact values it judged.
+type JudgedTuple struct {
+	Case     string   `json:"case"`
+	Identity Identity `json:"identity"`
+	Kind     CellKind `json:"kind"`
+	Old      string   `json:"old"`
+	New      string   `json:"new"`
+	Ruling   Ruling   `json:"ruling"`
+	Reason   string   `json:"reason"`
+	// Strand is the judge's strand name.
+	Strand string `json:"strand"`
+	// At is the RFC 3339 time of the ruling.
+	At string `json:"at"`
+}
+
+// JudgedRange is the judge's note on an open range, stored with the covering entry's why so the verdict renders both without reading the expectation.
+type JudgedRange struct {
+	Case string `json:"case"`
+	// Range is the range as the expectation spells it.
+	Range string `json:"range"`
+	// Why is the covering entry's why.
+	Why string `json:"why"`
+	// Checked is the judge's sentence on what it looked at under the range.
+	Checked string `json:"checked"`
+	Strand  string `json:"strand"`
+	At      string `json:"at"`
+}
+
+// JudgedCase is the judge's ruling on one case of a failing compare at one code head.
+type JudgedCase struct {
+	// CodeHead is the code head the compare ran at.
+	CodeHead string `json:"code_head"`
+	Case     string `json:"case"`
+	Ruling   Ruling `json:"ruling"`
+	Reason   string `json:"reason"`
+	Strand   string `json:"strand"`
+	At       string `json:"at"`
 }
 
 // CaptureRecord is the state of the latest main capture.
@@ -140,21 +248,6 @@ type CaptureRecord struct {
 	// Log is the capture command's log file.
 	Log string `json:"log"`
 }
-
-// runsRecord is the Drift-Verify agent session's run counter.
-type runsRecord struct {
-	Count       int    `json:"count"`
-	Head        string `json:"head"`
-	SessionOpen bool   `json:"session_open"`
-	// Operator is true for a session spawned interactive, with the operator in its pane.
-	Operator bool `json:"operator"`
-}
-
-// ErrRunsSpent marks a run refused because the agent session's run budget is spent.
-var ErrRunsSpent = errors.New("drift: the run budget is spent")
-
-// errNoRecord stops an update that has nothing to change.
-var errNoRecord = errors.New("drift: no record")
 
 // recordLock returns the lock file of a record named name, in the ephemeral drift directory, which it creates.
 func recordLock(p Paths, name string) (string, error) {
@@ -200,88 +293,4 @@ func WriteCapture(p Paths, rec CaptureRecord) error {
 		return err
 	}
 	return state.WriteJSON(p.Capture, lock, rec)
-}
-
-// CountedCapture reports whether the capture record counts as the baseline the compare reads.
-// It counts when found and passed and the scope record holds awaited_at, which Drift-Await sets once it saw the capture pass.
-func CountedCapture(scope ScopeRecord, capture CaptureRecord, found bool) bool {
-	return found && capture.State == CapturePassed && scope.AwaitedAt != ""
-}
-
-// updateRuns applies mutate to the run counter under its lock.
-func updateRuns(p Paths, mutate func(cur runsRecord, found bool) (runsRecord, error)) error {
-	lock, err := recordLock(p, "runs.json")
-	if err != nil {
-		return err
-	}
-	return state.UpdateJSON(p.Runs, lock, mutate)
-}
-
-// readRuns reads the run counter, answering found false when none was written.
-func readRuns(p Paths) (runsRecord, bool, error) {
-	lock, err := recordLock(p, "runs.json")
-	if err != nil {
-		return runsRecord{}, false, err
-	}
-	return state.ReadJSON[runsRecord](p.Runs, lock)
-}
-
-// TakeRun counts one compare or side-capture run of the Drift-Verify agent session and returns the new count.
-// At max it refuses with an error wrapping ErrRunsSpent and writes nothing.
-func TakeRun(p Paths, max int) (int, error) {
-	var taken int
-	err := updateRuns(p, func(cur runsRecord, _ bool) (runsRecord, error) {
-		if cur.Count >= max {
-			return cur, fmt.Errorf("%w: all %d runs of this attempt are taken", ErrRunsSpent, max)
-		}
-		cur.Count++
-		taken = cur.Count
-		return cur, nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	return taken, nil
-}
-
-// ResetRuns zeroes the run count, records head as the attempt's start and opens the agent-session mark, recording whether the session is the operator's.
-// Drift-Verify calls it at each fresh spawn of its agent.
-func ResetRuns(p Paths, head string, operator bool) error {
-	return updateRuns(p, func(runsRecord, bool) (runsRecord, error) {
-		return runsRecord{Head: head, SessionOpen: true, Operator: operator}, nil
-	})
-}
-
-// AttemptHead returns the commit recorded at the attempt's start, and false when no attempt was recorded.
-func AttemptHead(p Paths) (string, bool, error) {
-	rec, found, err := readRuns(p)
-	return rec.Head, found, err
-}
-
-// CloseAgentSession closes the agent-session mark and keeps the run count and the attempt head.
-// With no record it changes nothing.
-func CloseAgentSession(p Paths) error {
-	err := updateRuns(p, func(cur runsRecord, found bool) (runsRecord, error) {
-		if !found {
-			return cur, errNoRecord
-		}
-		cur.SessionOpen = false
-		return cur, nil
-	})
-	if errors.Is(err, errNoRecord) {
-		return nil
-	}
-	return err
-}
-
-// AgentSessionOpen reports whether the agent-session mark is open, and false when no attempt was recorded.
-func AgentSessionOpen(p Paths) (bool, error) {
-	rec, _, err := readRuns(p)
-	return rec.SessionOpen, err
-}
-
-// OperatorSessionOpen reports whether the agent-session mark is open on a session spawned with the operator in its pane, and false when no attempt was recorded.
-func OperatorSessionOpen(p Paths) (bool, error) {
-	rec, _, err := readRuns(p)
-	return rec.SessionOpen && rec.Operator, err
 }

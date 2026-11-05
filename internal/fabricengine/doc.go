@@ -737,6 +737,16 @@
 // `RecordsBranchFile` reads one anchored file of a records branch, from the local branch when it exists and otherwise from origin's copy fetched by SHA, and reports it absent when the branch or the file is.
 // `RecordsBranchHasUpstream` reports whether the records repository configures `branch.<branch>.remote` or `branch.<branch>.merge`.
 //
+// Three trailer seams (trailercommit.go) serve a caller that stamps its own marker into a records commit and finds it again, and name no caller's concept.
+// `CommitAnchoredPathsWithTrailers` commits anchor-relative paths as `CommitAnchoredPaths` does, with a message ending in a trailer block: `Warp-SHA: <the warp checkout's HEAD>`, which `CommitAnchoredPaths` writes none of, then one `Key: Value` line per `Trailer`, in order.
+// A key outside `[A-Za-z][A-Za-z0-9-]*` or a value that is empty or holds a line break is refused, naming the trailer, before anything is staged.
+// `FindTrailerCommit` walks the records branch's first-parent history from HEAD and returns the newest or the oldest commit carrying a key as a `TrailerCommit` (its SHA, the key's last value and its `Warp-SHA` value); a records branch with no commit reads as not found.
+// `AnchoredFileAt` reads an anchor-relative file as stored in a records commit, and reads a path absent there as not found.
+//
+// Two read-only reads of the checkouts (checkoutstate.go) name no caller's concept either.
+// `CheckoutStates` returns a `CheckoutState` for the warp checkout and for the weft worktree: its root, its HEAD, its tracked paths that differ from HEAD and its untracked paths outside the ignore rules and `.git/info/exclude`, every list slash-separated, relative to the root, sorted and never nil.
+// `RecordsPathsChangedSince` lists the weft paths whose committed content differs between a revision and the weft worktree's HEAD, in the same form.
+//
 // # The one-repo illusion at the public API boundary
 //
 // fabric exists to sell one illusion to every other package: a developer, an agent, and every lym module see one repository, called fabric, never the warp/weft split underneath it.

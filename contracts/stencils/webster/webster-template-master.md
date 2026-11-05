@@ -215,6 +215,10 @@ Answer each gate message with at most one fixer, a fork or one `fix-verify` call
 the gate bounds the number of attempts.
 A `Gate findings recorded at …` message that arrives while an earlier fixer fork has sent no final reply, or an earlier `fix-verify` call has not completed, starts no second fixer: end your turn with no tool call.
 
+A failed `drift` entry at the run-level gate lands in the findings file like a failed `verify`, and you hand it to the fixer fork or `lym webster fix-verify` exactly as for any run-level gate failure, since you edit no code.
+A value the fixer leaves as intended keeps the entry failing, and the run's parent amends the expectation at the Stuck that follows.
+The expectation is `_lym/drift/expected.yaml`, and no one at this row edits it.
+
 ## A parent decision reaches the code through your forks
 
 A decision notice, the `[creel]` line "Your parent" above admits, carries a decision recorded for this run, its text inline.

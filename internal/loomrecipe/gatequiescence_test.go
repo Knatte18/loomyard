@@ -24,8 +24,9 @@ const gateQuiescenceFailureMessage = "a turn end whose Stop payload reports an o
 // gatedRowFanViolations returns one message per gated row of r that breaks the fork rule.
 // A row is gated when its config carries a non-empty "gates" list.
 // A gated row receives a fan from its profile's "cluster-fan" or from fans, a row-name to fan-list map of the values the rows' fan settings would answer, when any entry of its list is non-empty.
-// A gated row must be a writer engine (DiscussionWrite, PlanWrite, PartsWrite, PartsPlanWrite, DarnWrite, DriftVerify, Describe, PRRework) or BurlerFix, and none of them may receive a cluster fan.
+// A gated row must be a writer engine (DiscussionWrite, PlanWrite, PartsWrite, PartsPlanWrite, DarnWrite, DriftExpect, DriftVerify, Describe, PRRework), the Implementer, or BurlerFix, and none of them may receive a cluster fan.
 // A writer engine's spec factory never sets shuttleengine.Spec.ForkSubagents, and burlerengine.Engine.Review sets it from a non-empty fan alone, so a cluster fan on the ungated BurlerReview row is the one legal reviewer fork.
+// The Implementer row's gates run at Merriam's turn ends beside the verify gate, where a turn end with an outstanding card fork is a wait, so its gated entry rests on the same turn-end rule.
 // A gated BurlerFix fixer forks only under the fixer fan the review row recorded, so only a BurlerFix row may name "fixer_fan_setting".
 func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []string {
 	var violations []string
@@ -51,12 +52,12 @@ func gatedRowFanViolations(r shedbuild.Recipe, fans map[string][]string) []strin
 		}
 
 		switch row.Engine {
-		case "DiscussionWrite", "PlanWrite", "PartsWrite", "PartsPlanWrite", "DarnWrite", "DriftVerify", "Describe", "PRRework", "BurlerFix":
+		case "DiscussionWrite", "PlanWrite", "PartsWrite", "PartsPlanWrite", "DarnWrite", "DriftExpect", "DriftVerify", "Describe", "PRRework", "Implementer", "BurlerFix":
 			if fan != "" {
 				violations = append(violations, fmt.Sprintf("row %q (engine %q): receives fan %q; want no fan on a gated row -- %s", row.Name, row.Engine, fan, gateQuiescenceFailureMessage))
 			}
 		default:
-			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/PartsWrite/PartsPlanWrite/DarnWrite/DriftVerify/Describe/PRRework) nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
+			violations = append(violations, fmt.Sprintf("row %q: carries a \"gates\" config list with engine %q, neither a writer engine (DiscussionWrite/PlanWrite/PartsWrite/PartsPlanWrite/DarnWrite/DriftExpect/DriftVerify/Describe/PRRework), the Implementer nor BurlerFix -- %s", row.Name, row.Engine, gateQuiescenceFailureMessage))
 		}
 	}
 	return violations
@@ -144,16 +145,28 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 		{name: "gated writer row receiving a fan from the map", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {"", "standard"}}, wantViolations: 1},
 		{name: "gated writer row receiving a fan from its profile", recipe: gatedWriter("standard"), wantViolations: 1},
 		{name: "gated writer row with no fan", recipe: gatedWriter(nil)},
+		{
+			name: "gated DriftExpect row with no fan",
+			recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{
+				Name: "Drift-Expect", Engine: "DriftExpect", Config: map[string]any{"gates": []any{map[string]any{"name": "expectation"}}},
+			}}},
+		},
 		{name: "gated writer row with an all-empty fan list", recipe: gatedWriter(nil), fans: map[string][]string{"Writer": {""}}},
 		{name: "ungated BurlerReview row with a fan", recipe: burlerRow("BurlerReview", false), fans: map[string][]string{"Burler": {"full"}}},
 		{name: "gated BurlerFix row with no fan", recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{Name: "Fixer", Engine: "BurlerFix", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}}}}}},
 		{name: "gated BurlerFix row receiving a fan from the map", recipe: burlerRow("BurlerFix", true), fans: map[string][]string{"Burler": {"full"}}, wantViolations: 1},
 		{
-			name: "gated row of an engine that is neither a writer nor BurlerFix",
+			name: "gated row of an engine that is neither a writer, the Implementer nor BurlerFix",
 			recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{
-				Name: "Other", Engine: "Implementer", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}},
+				Name: "Other", Engine: "Bouncer", Config: map[string]any{"gates": []any{map[string]any{"name": "verify"}}},
 			}}},
 			wantViolations: 1,
+		},
+		{
+			name: "gated Implementer row with no fan",
+			recipe: shedbuild.Recipe{Producers: []shedbuild.Row{{
+				Name: "Webster", Engine: "Implementer", Config: map[string]any{"gates": []any{map[string]any{"name": "drift"}}},
+			}}},
 		},
 	}
 	for _, tt := range tests {
@@ -166,9 +179,9 @@ func TestNoGatedRowAuthorizesForkSubagents(t *testing.T) {
 	}
 }
 
-// TestWebsterRoundCarriesNoGateKey asserts the Webster round carries no "gates" key at all, so TestNoGatedRowAuthorizesForkSubagents's rule over gated rows is exhaustive without a case for it.
+// TestWebsterRoundCarriesNoGateKey asserts the Webster round's only gate entry is `drift`, so TestNoGatedRowAuthorizesForkSubagents's rule over gated rows covers the Implementer row it admits and no other validator reaches Merriam's turn ends unseen.
 //
-//testtiming:keep pins that the shipped Webster round has no gates key, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
+//testtiming:keep pins that the shipped Webster round's gates list is exactly the drift entry, a guard that fires on the recipe file, which TestApproveSeam_FailsToBuild never reads
 func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 	tiergate.Require(t, 0)
 	r, err := shedbuild.Parse(recipes.TapestryRecipe)
@@ -182,8 +195,9 @@ func TestWebsterRoundCarriesNoGateKey(t *testing.T) {
 			continue
 		}
 		found = true
-		if gates, hasGates := row.Config["gates"]; hasGates {
-			t.Errorf("row %q (engine %q): config[\"gates\"] = %v; want absent -- %s", row.Name, row.Engine, gates, gateQuiescenceFailureMessage)
+		gates, _ := row.Config["gates"].([]any)
+		if len(gates) != 1 || fmt.Sprint(gates[0]) != "map[attempts:3 name:drift]" {
+			t.Errorf("row %q (engine %q): config[\"gates\"] = %v; want exactly the drift entry with 3 attempts -- %s", row.Name, row.Engine, gates, gateQuiescenceFailureMessage)
 		}
 	}
 	if !found {

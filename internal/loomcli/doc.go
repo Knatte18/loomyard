@@ -381,6 +381,8 @@
 // Every loom recipe builds its Describe session from one `landingshed.DescribeTable`, which lists the run records that exist and renders `(none)` for a run that has none, as a darn run has no webster summary.
 // One `commitDescription` commits the landing directory for the Describe row and for the Darn-Write row, so every loom recipe has one description commit.
 //
+// The Drift rows' records guard rests on three seams `driftDeps` wires over the worktree's location: `CommitWithTrailers` commits anchored paths through `fabricengine.CommitAnchoredPathsWithTrailers` with the message `loom: drift records for <slug>`, `TrailerCommit` finds the oldest or newest records commit carrying a trailer key through `fabricengine.FindTrailerCommit`, and `FileAt` reads an anchored file at a records commit through `fabricengine.AnchoredFileAt`.
+//
 // # The recorded driver's one reading site
 //
 // A recorded seed driver value is read only in a recipe's bootstrap verbs: loom's start and resume, and `lym loom drive`'s own package.

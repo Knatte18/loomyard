@@ -1,17 +1,20 @@
-// verify_test.go — tier 0 tests for the Drift-Verify producer over the fake Deps the baseline tests use, a scripted compare and a seat runner that evaluates the agent's gate the way the run loop does.
+// verify_test.go — tier 0 tests for the Drift-Verify producer over the in-memory records store, two fake checkouts, a scripted current capture and a judge that evaluates the judgement gate the way the run loop does.
 
 package driftengine
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -94,164 +97,290 @@ func gateLoopSeats(t *testing.T, actions []func()) *shedfake.SeatRunner {
 	}
 }
 
-// verifyFixture is the fake world one DriftVerify pass runs in.
-type verifyFixture struct {
-	*baselineFixture
-
-	history   []shedengine.HistoryEntry
-	compares  []CompareResult
-	verifyFn  func() (shuttleengine.GateResult, error)
-	liveChair bool
-	events    []string
-	told      []VerifyTold
-
-	// acceptedCompares are what the scripted compares against the accepted profile answer in turn, the last one repeating;
-	// acceptedHeads is the HEAD each of their calls saw and acceptedProfiles the accepted profile's t1.txt each read.
-	acceptedCompares []CompareResult
-	acceptedHeads    []string
-	acceptedProfiles []string
-
-	compareCalls int
-	verifyCalls  int
-}
-
 var (
+	// verifyBaseline and verifyChanged are a capture's files before and after the task changes the value of the key y.
+	verifyBaseline = map[string]string{"a.txt": "x=1\ny=2\n"}
+	verifyChanged  = map[string]string{"a.txt": "x=1\ny=3\n"}
+
+	// darnRows and tapestryRows are the row orders a run of each recipe holds around the Drift rows.
+	darnRows     = []string{"Record-Write", "Drift-Baseline", "Drift-Await", expectRow, darnWriteRow, "Drift-Verify", "Drift-Recheck"}
+	tapestryRows = []string{"Drift-Baseline", "Drift-Await", expectRow, websterRow, "Parent-Align", "Drift-Verify", "Code-Bouncer", "Drift-Recheck"}
+
 	passingCompare = CompareResult{Passed: true}
 	failingCompare = CompareResult{ExitCode: 1, Log: "compare-1.log", Reason: "exit 1; log compare-1.log"}
 )
 
-// newVerifyFixture returns a fixture with a counted capture at HEAD holding the profile files t1.txt and t2.txt, a declared compare and a scope record of scope.
-func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verifyFixture {
-	t.Helper()
-	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}, acceptedCompares: []CompareResult{passingCompare}}
-	writeProfileFile(t, f.paths.BaselineDir, "t1.txt", "baseline\n")
-	writeProfileFile(t, f.paths.BaselineDir, "t2.txt", "baseline\n")
-	f.verifyFn = func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{Passed: true}, nil }
-	if scope.Scope != "" {
-		scope.AwaitedAt = "2026-01-01T00:00:00Z"
-		f.seedScopeRecord(scope, false)
-	}
-	f.writeCapture(CaptureRecord{State: CapturePassed, Head: "aaa"})
+// expectsX is an expectation covering the key `x` of `a.txt` alone, which leaves a change of `y` uncovered.
+const expectsX = "cases:\n  a.txt:\n    keys:\n      - key: x\n        why: x is expected to move\n"
 
+// verifyFixture is the fake world one DriftVerify pass runs in.
+type verifyFixture struct {
+	t     *testing.T
+	store *commitStore
+	paths Paths
+	deps  Deps
+	seats *shedfake.SeatRunner
+
+	// head is the code HEAD, which moveHead keeps equal to the store's.
+	head string
+	// row is the row the Status seam reports.
+	row    string
+	config Config
+	// current is the files the next current capture writes, captureDir the directory of the last one, and captureFails makes the next one fail; captures counts the captures and compares the compares.
+	current      map[string]string
+	captureDir   string
+	captureFails bool
+	captures     int
+	compares     int
+	// compare is what the Compare seam returns, and caseRulings the ruling the scripted judge gives each case of a failing compare by case name.
+	compare     CompareResult
+	caseRulings map[string]Ruling
+	// endedRoles holds the roles of each call of EndRoles.
+	endedRoles [][]string
+	// liveChair is whether a probe finds the judge's chair.
+	liveChair bool
+	// codeCheckout and recordsCheckout are the two fake checkouts, and recordsChanged is what RecordsChangedSince answers.
+	codeCheckout, recordsCheckout fabricengine.CheckoutState
+	recordsChanged                []string
+	// rulings is the ruling the scripted judge gives each cell by "<case> <key>", matches when absent, and rangeChecked the sentence it notes under an open range.
+	rulings      map[string]Ruling
+	rangeChecked string
+	// onArrival runs at each judge arrival before its judgement is written, and badJudgement makes the judge write a judgement that does not parse.
+	onArrival    func()
+	badJudgement bool
+	// requests holds the request as each judge arrival found it, judgementPresent whether judgement.yaml was there as it arrived, and marksAtArrival the session mark it found.
+	requests         []JudgeRequest
+	judgementPresent []bool
+	marksAtArrival   []SessionMark
+}
+
+// newVerifyFixture returns a fixture at Drift-Verify under darn's rows, with the lines mode, the key=value pattern and a judge that rules every cell matching.
+func newVerifyFixture(t *testing.T) *verifyFixture {
+	t.Helper()
+	store := newCommitStore(t)
+	f := &verifyFixture{
+		t:               t,
+		store:           store,
+		paths:           NewPaths(store.root),
+		head:            store.codeHead,
+		row:             "Drift-Verify",
+		config:          Config{Enabled: true, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}},
+		rangeChecked:    "read what the range covers",
+		compare:         passingCompare,
+		codeCheckout:    fabricengine.CheckoutState{Root: t.TempDir(), Head: "code-1"},
+		recordsCheckout: fabricengine.CheckoutState{Root: t.TempDir(), Head: "records-1"},
+	}
+
+	actions := make([]func(), 12)
+	for i := range actions {
+		actions[i] = f.judgeArrives
+	}
 	f.seats = gateLoopSeats(t, actions)
 	f.seats.ProbeFn = func(seatengine.Table) (seatengine.LiveTable, error) {
-		f.events = append(f.events, "probe")
 		if f.liveChair {
 			return seatengine.LiveTable{Chair: fakeChair{}}, nil
 		}
 		return seatengine.LiveTable{}, nil
 	}
-	loopRun, loopResume := f.seats.RunFn, f.seats.ResumeFn
-	f.seats.RunFn = func(table seatengine.Table) (seatengine.Result, error) {
-		f.events = append(f.events, "run")
-		return loopRun(table)
-	}
-	f.seats.ResumeFn = func(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
-		f.events = append(f.events, "resume")
-		return loopResume(table, live)
-	}
 
-	d := &f.deps
-	d.Config = func() (Config, error) {
-		return Config{Enabled: true, Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}}, nil
-	}
+	d := store.deps(f.paths)
+	d.Rows = darnRows
+	d.Head = func() (string, error) { return f.head, nil }
+	d.Config = func() (Config, error) { return f.config, nil }
+	d.Status = func() (shedengine.Status, error) { return shedengine.Status{CurrentProducer: f.row}, nil }
 	d.Seats = f.seats
 	d.Now = func() time.Time { return time.Date(2026, 1, 2, 3, 4, 5, 700_000_000, time.UTC) }
 	d.GateFindingsFile = filepath.Join(t.TempDir(), "gate-findings.md")
-	d.Status = func() (shedengine.Status, error) {
-		return shedengine.Status{CurrentProducer: "Drift-Verify", State: shedengine.StateRunning, History: f.history}, nil
-	}
-	dirty := d.DirtyPaths
-	d.DirtyPaths = func() ([]string, error) {
-		f.events = append(f.events, "dirty")
-		return dirty()
-	}
-	d.VerifyTable = func(told VerifyTold) (seatengine.Table, error) {
-		f.told = append(f.told, told)
-		cfg, err := f.deps.Config()
-		if err != nil {
-			return seatengine.Table{}, err
+	d.CaptureCurrent = func(context.Context) (CurrentCapture, error) {
+		f.captures++
+		if f.captureFails {
+			return CurrentCapture{Log: "/logs/current.log", Reason: "exit 3"}, nil
 		}
-		return seatengine.Table{Interactive: cfg.VerifyInteractive, Seats: []seatengine.Seat{{Outputs: []string{f.paths.VerifyReport}}}}, nil
+		f.captureDir = t.TempDir()
+		writeTree(t, f.captureDir, f.current)
+		return CurrentCapture{Dir: f.captureDir, Log: "/logs/current.log", Passed: true}, nil
 	}
 	d.Compare = func(context.Context) (CompareResult, error) {
-		f.events = append(f.events, "compare")
-		result := f.compares[min(f.compareCalls, len(f.compares)-1)]
-		f.compareCalls++
-		return result, nil
+		f.compares++
+		return f.compare, nil
 	}
-	d.CompareAccepted = func(context.Context) (CompareResult, error) {
-		f.events = append(f.events, "compare-accepted")
-		f.acceptedHeads = append(f.acceptedHeads, f.head)
-		profile, err := os.ReadFile(filepath.Join(f.paths.AcceptedDir, "t1.txt"))
-		if err != nil {
-			return CompareResult{}, err
-		}
-		f.acceptedProfiles = append(f.acceptedProfiles, string(profile))
-		return f.acceptedCompares[min(len(f.acceptedHeads)-1, len(f.acceptedCompares)-1)], nil
+	d.JudgeTable = func(string) (seatengine.Table, error) {
+		return seatengine.Table{Seats: []seatengine.Seat{{Outputs: []string{f.paths.Judgement}}}}, nil
 	}
+	d.JudgeSnapshotDir = filepath.Join(t.TempDir(), "snapshot")
+	d.LoomRecordsDirs = []string{testRunDirRel, testFrictionRel, testFrictionPrefix}
+	d.Checkouts = func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+		return f.codeCheckout, f.recordsCheckout, nil
+	}
+	d.RecordsChangedSince = func(string) ([]string, error) { return f.recordsChanged, nil }
+	d.EndRoles = func(roles []string) error {
+		f.endedRoles = append(f.endedRoles, slices.Clone(roles))
+		return nil
+	}
+	f.deps = d
 	return f
 }
 
-// call runs one DriftVerify pass.
+// moveHead moves the code HEAD of the fixture and of its records store.
+func (f *verifyFixture) moveHead(head string) {
+	f.head = head
+	f.store.codeHead = head
+}
+
+// judgeArrives is the scripted judge's action at each arrival: it reads the request and writes a judgement that rules every cell by rulings and notes every open range.
+func (f *verifyFixture) judgeArrives() {
+	_, statErr := os.Stat(f.paths.Judgement)
+	f.judgementPresent = append(f.judgementPresent, statErr == nil)
+	request, found, err := readJudgeRequest(f.paths)
+	if err != nil || !found {
+		f.t.Fatalf("the judge arrived with no readable request: found %v, error %v", found, err)
+	}
+	f.requests = append(f.requests, request)
+	f.marksAtArrival = append(f.marksAtArrival, f.records().Scope.JudgeSession)
+	if f.onArrival != nil {
+		f.onArrival()
+	}
+	if f.badJudgement {
+		writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: "spawn_id: not-this-spawn\n"})
+		return
+	}
+
+	if request.Mode == DiffCommand {
+		var text strings.Builder
+		fmt.Fprintf(&text, "spawn_id: %s\ncases:\n", request.SpawnID)
+		for _, name := range slices.Sorted(maps.Keys(f.caseRulings)) {
+			fmt.Fprintf(&text, "  - case: %s\n    ruling: %s\n    reason: compared the old and the new value\n", name, f.caseRulings[name])
+		}
+		writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
+		return
+	}
+
+	var text strings.Builder
+	fmt.Fprintf(&text, "spawn_id: %s\ncells:\n", request.SpawnID)
+	for _, cell := range request.Cells {
+		ruling := RulingMatches
+		if set, ok := f.rulings[cell.Case+" "+cell.Identity.Key]; ok {
+			ruling = set
+		}
+		fmt.Fprintf(&text, "  - id: %s\n    ruling: %s\n    reason: compared the old and the new value\n", cell.ID, ruling)
+	}
+	text.WriteString("open_ranges:\n")
+	for _, open := range request.OpenRanges {
+		fmt.Fprintf(&text, "  - case: %s\n    range: %q\n    checked: %s\n", open.Case, open.Range, f.rangeChecked)
+	}
+	writeTree(f.t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: text.String()})
+}
+
+// seed writes the baseline files, a passed capture record at the code HEAD, and the scope record with the baseline's digest in one records commit.
+func (f *verifyFixture) seed(scope ScopeRecord, baseline map[string]string) {
+	f.t.Helper()
+	writeTree(f.t, f.paths.BaselineDir, baseline)
+	digest, err := BaselineDigest(f.paths.BaselineDir)
+	if err != nil {
+		f.t.Fatalf("BaselineDigest() = _, %v; want nil", err)
+	}
+	if err := WriteCapture(f.paths, CaptureRecord{State: CapturePassed, Head: f.head}); err != nil {
+		f.t.Fatalf("WriteCapture() = %v; want nil", err)
+	}
+	change := func(s *ScopeRecord, _ *JudgedRecord) error { *s = scope; return nil }
+	if err := WriteRecords(f.deps, change, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest}); err != nil {
+		f.t.Fatalf("WriteRecords() = %v; want nil", err)
+	}
+}
+
+// seal writes expected.yaml and commits it as the seal.
+func (f *verifyFixture) seal(expected string) {
+	f.t.Helper()
+	writeTree(f.t, filepath.Dir(f.paths.Expected), map[string]string{expectedFileName: expected})
+	if err := SealExpectation(f.deps); err != nil {
+		f.t.Fatalf("SealExpectation() = %v; want nil", err)
+	}
+}
+
+// seedChanged seeds the baseline, sealed expectation expected when it is not empty, and a current capture in which y changed from 2 to 3.
+func (f *verifyFixture) seedChanged(expected string) {
+	f.t.Helper()
+	f.seed(countedScope(), verifyBaseline)
+	if expected != "" {
+		f.seal(expected)
+	}
+	f.current = verifyChanged
+}
+
+// seedCommand seeds the baseline under diff command, the sealed expectation of the case a.txt and a failing compare.
+func (f *verifyFixture) seedCommand() {
+	f.t.Helper()
+	scope := countedScope()
+	scope.Diff = DiffCommand
+	f.seed(scope, verifyBaseline)
+	f.seal(expectsCommandCase)
+	f.compare = failingCompare
+}
+
+// seedMark opens the judge-session mark under spawnID, and takes the snapshot of the fake checkouts when snapshot is set.
+func (f *verifyFixture) seedMark(spawnID string, snapshot bool) {
+	f.t.Helper()
+	err := WriteRecords(f.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.JudgeSession = SessionMark{Open: true, OpenedAt: "2026-01-01T00:00:00Z", SpawnID: spawnID}
+		return nil
+	})
+	if err != nil {
+		f.t.Fatalf("WriteRecords() = %v; want nil", err)
+	}
+	if snapshot {
+		if _, err := TakeJudgeSnapshot(f.deps, ""); err != nil {
+			f.t.Fatalf("TakeJudgeSnapshot() = _, %v; want nil", err)
+		}
+	}
+}
+
+// storeRuling stores tuple in judged.json through the records guard.
+func (f *verifyFixture) storeRuling(tuple JudgedTuple) {
+	f.t.Helper()
+	err := WriteRecords(f.deps, func(_ *ScopeRecord, judged *JudgedRecord) error {
+		judged.Tuples = append(judged.Tuples, tuple)
+		return nil
+	})
+	if err != nil {
+		f.t.Fatalf("WriteRecords() = %v; want nil", err)
+	}
+}
+
+// call runs one DriftVerify pass with a judgement entry of three attempts.
 func (f *verifyFixture) call() (shedengine.Outcome, shedengine.OutputPointer, error) {
-	verify := shuttleengine.GateEntry{Name: "verify", Attempts: 3, Gate: func() (shuttleengine.GateResult, error) {
-		f.events = append(f.events, "verify")
-		f.verifyCalls++
-		return f.verifyFn()
-	}}
-	return NewDriftVerify("Drift-Verify", Row{}, verify, f.deps).Call(context.Background())
+	entry := shuttleengine.GateEntry{Name: "judgement", Attempts: 3, Gate: NewJudgementGate(f.deps)}
+	return NewDriftVerify(f.row, Row{}, entry, f.deps).Call(context.Background())
+}
+
+// records reads the two records as the guard returns them.
+func (f *verifyFixture) records() Records {
+	f.t.Helper()
+	records, err := ReadRecords(f.deps)
+	if err != nil {
+		f.t.Fatalf("ReadRecords() = _, %v; want nil", err)
+	}
+	return records
 }
 
 // scope reads the scope record.
 func (f *verifyFixture) scope() ScopeRecord {
 	f.t.Helper()
-	scope, _ := mustReadScope(f.t, f.paths)
-	return scope
+	return f.records().Scope
 }
 
-// stuckHistory sets the run's history to one Stuck of this row at the given times.
-func (f *verifyFixture) stuckHistory(at, lastAt string) {
-	f.history = []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: at, LastAt: lastAt}}
+// untouched reports whether the seat runner was never asked to probe, run or resume the judge.
+func (f *verifyFixture) untouched() bool {
+	return f.seats.Calls+f.seats.ProbeCalls+f.seats.ResumeCalls == 0
 }
 
-// captureForAcceptance leaves t1's output at the current HEAD in the accepting directory, as `lym drift accept` captures it before Accept.
-func (f *verifyFixture) captureForAcceptance() {
-	writeProfileFile(f.t, f.paths.AcceptingDir, "t1.txt", "accepted at "+f.head+"\n")
+// judgementGone reports whether judgement.yaml is absent.
+func (f *verifyFixture) judgementGone() bool {
+	_, err := os.Stat(f.paths.Judgement)
+	return os.IsNotExist(err)
 }
 
-// agentAccept is the action of the agent accepting test t1.
-func (f *verifyFixture) agentAccept() func() {
-	return func() {
-		f.captureForAcceptance()
-		if err := Accept(f.paths, statusAt("Drift-Verify", shedengine.StateRunning, "", true), "t1", "intended"); err != nil {
-			f.t.Fatal(err)
-		}
-	}
-}
-
-// sessionAccept is the action of the agent session accepting test t1, with the session read from the run counter as `lym drift accept` reads it.
-func (f *verifyFixture) sessionAccept() func() {
-	return func() {
-		open, err := AgentSessionOpen(f.paths)
-		if err != nil {
-			f.t.Fatal(err)
-		}
-		operator, err := OperatorSessionOpen(f.paths)
-		if err != nil {
-			f.t.Fatal(err)
-		}
-		st := statusAt("Drift-Verify", shedengine.StateRunning, "", open)
-		st.OperatorSession = operator
-		f.captureForAcceptance()
-		if err := Accept(f.paths, st, "t1", "intended"); err != nil {
-			f.t.Fatal(err)
-		}
-	}
-}
-
-// commit is the action of the agent committing a fix.
-func (f *verifyFixture) commit() func() { return func() { f.head = "bbb" } }
+// commit is the action of the judge committing on the code side.
+func (f *verifyFixture) commit() func() { return func() { f.codeCheckout.Head = "code-2" } }
 
 // requireStuck checks the outcome is Stuck and the reason names every fragment; prefixed says whether it opens with the decision halt prefix.
 func requireStuck(t *testing.T, outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error, prefixed bool, fragments ...string) {
@@ -269,19 +398,12 @@ func requireStuck(t *testing.T, outcome shedengine.Outcome, pointer shedengine.O
 	}
 }
 
-// earlierCaptureHead is the commit a row's capture is taken at when the row tells the baseline's commit from the fixture's HEAD, which is aaa.
-const earlierCaptureHead = "base"
-
-// captureAt rewrites the fixture's counted capture to be taken at head.
-func (f *verifyFixture) captureAt(head string) {
-	f.writeCapture(CaptureRecord{State: CapturePassed, Head: head})
-}
-
-// requireCompareRecorded checks scope records a compare of comparedHead against the capture taken at baselineHead, at the fixture's clock, passed or not.
-func requireCompareRecorded(t *testing.T, scope ScopeRecord, baselineHead, comparedHead string, passed bool) {
+// requireDeferPrefix checks the reason carries DeferHaltPrefix right after the decision halt prefix exactly when deferred is set.
+func requireDeferPrefix(t *testing.T, reason string, deferred bool) {
 	t.Helper()
-	if scope.BaselineHead != baselineHead || scope.ComparedHead != comparedHead || scope.ComparedAt != "2026-01-02T03:04:05Z" || scope.ComparePassed != passed {
-		t.Errorf("scope compare fields = %q, %q, %q, %v; want %s, %s, 2026-01-02T03:04:05Z, %v", scope.BaselineHead, scope.ComparedHead, scope.ComparedAt, scope.ComparePassed, baselineHead, comparedHead, passed)
+	got := strings.HasPrefix(reason, shedadapters.DecisionHaltPrefix+DeferHaltPrefix)
+	if got != deferred || (!deferred && strings.Contains(reason, DeferHaltPrefix)) {
+		t.Errorf("reason %q carries the defer prefix after the decision prefix = %v; want %v", reason, got, deferred)
 	}
 }
 
@@ -294,689 +416,762 @@ func requireDone(f *verifyFixture) {
 	}
 }
 
-// TestDriftVerify covers the row's order of checks, its decision halts under each scope, the agent's gate, the halts that record gate_halt_at and the resumes from them, the interrupted agent, and the rulings under scope full.
+// TestDriftVerify covers the passes that need no judge, the Stuck passes that stop before it, the stored rulings and the judge with its request and its rulings, the session an earlier entry left open and the snapshot guard around it.
 func TestDriftVerify(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	partial := ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}
-	full := ScopeRecord{Scope: ScopeFull}
-	withdrawn := ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}, Withdrawn: []string{"t9"}}
-	const markedAt = "2026-01-02T03:04:05Z"
+	const checkedAt = "2026-01-02T03:04:05Z"
 
-	t.Run("a pass that needs no compare is Done", func(t *testing.T) {
+	t.Run("a pass that needs no judge is Done with no capture", func(t *testing.T) {
 		t.Parallel()
-		rows := []struct {
-			name  string
-			scope ScopeRecord
-		}{
-			{"no scope record", ScopeRecord{}},
-			{"scope off", ScopeRecord{Scope: ScopeOff}},
-			{"a waived scope", ScopeRecord{Scope: ScopeFull, WaivedAt: markedAt, WaivedReason: "no baseline possible"}},
+		withDiff := func(mutate func(*ScopeRecord)) ScopeRecord {
+			scope := countedScope()
+			mutate(&scope)
+			return scope
 		}
-		for _, row := range rows {
-			f := newVerifyFixture(t, row.scope, nil)
-			requireDone(f)
-			if f.compareCalls != 0 || len(f.events) != 0 {
-				t.Errorf("%s: events = %v; want no compare, dirty check or agent", row.name, f.events)
-			}
-			if len(f.commits) != 1 || !slices.Equal(f.commits[0], []string{DirRel()}) {
-				t.Errorf("%s: commits = %v; want the durable directory once", row.name, f.commits)
-			}
+		tests := []struct {
+			name       string
+			scope      *ScopeRecord
+			wantReason string
+		}{
+			{"NoScopeRecord", nil, "no scope is recorded"},
+			{"ScopeOffNamingItsSource", ptr(withDiff(func(s *ScopeRecord) { s.Scope, s.ScopeSource = ScopeOff, "drift.scope" })), "set by drift.scope"},
+			{"ADeferredCapture", ptr(withDiff(func(s *ScopeRecord) { s.Deferred = true })), "deferred"},
+			{"ADeferredCaptureUnderCommand", ptr(withDiff(func(s *ScopeRecord) { s.Deferred, s.Diff = true, DiffCommand })), "deferred"},
+			{"AWaiver", ptr(withDiff(func(s *ScopeRecord) { s.WaivedAt, s.WaivedReason = checkedAt, "no profile" })), "no profile"},
+			{"TheHeadOfTheLastPassWithNoAmendmentSince", ptr(withDiff(func(s *ScopeRecord) { s.LastPassHead = "code-head-0" })), "code-head-0"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t)
+				if tt.scope != nil {
+					f.seed(*tt.scope, verifyBaseline)
+				}
+				f.current = verifyChanged
+
+				outcome, pointer, err := f.call()
+
+				if err != nil || outcome != shedengine.Done || !strings.Contains(pointer.Reason, tt.wantReason) {
+					t.Fatalf("Call() = %q, %v (%s); want Done naming %q", outcome, err, pointer.Reason, tt.wantReason)
+				}
+				if f.captures != 0 || f.compares != 0 || !f.untouched() {
+					t.Errorf("%d captures, %d compares, judge untouched %v; want no capture, no compare and no judge", f.captures, f.compares, f.untouched())
+				}
+			})
 		}
 	})
 
-	t.Run("drift switched off passes a run with no counted capture, with no compare and no commit", func(t *testing.T) {
+	t.Run("drift switched off is Done at once with no chair ended and no commit", func(t *testing.T) {
 		t.Parallel()
-		f := newVerifyFixture(t, full, nil)
-		f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
-		f.deps.Config = func() (Config, error) { return Config{}, nil }
+		f := newVerifyFixture(t)
+		f.seedChanged(expectsY)
+		commits := len(f.store.commits)
+		f.config.Enabled = false
+
 		outcome, pointer, err := f.call()
+
 		if err != nil || outcome != shedengine.Done || !strings.Contains(pointer.Reason, "drift.enabled = false") {
 			t.Fatalf("Call() = %q, %v (%s); want Done naming the switch", outcome, err, pointer.Reason)
 		}
-		if len(f.events) != 0 || len(f.commits) != 0 {
-			t.Errorf("events %v, commits %v; want no compare, agent or commit", f.events, f.commits)
+		if len(f.endedRoles) != 0 || len(f.store.commits) != commits || f.captures != 0 {
+			t.Errorf("ended %v, %d new commits, %d captures; want none", f.endedRoles, len(f.store.commits)-commits, f.captures)
 		}
 	})
 
-	t.Run("no counted capture is a decision halt naming the waiver under every scope", func(t *testing.T) {
+	t.Run("a pass stops for the parent before any judge", func(t *testing.T) {
 		t.Parallel()
-		rows := []struct {
-			name    string
-			scope   ScopeRecord
-			arrange func(f *verifyFixture)
+		tests := []struct {
+			name      string
+			rows      []string
+			prepare   func(f *verifyFixture)
+			fragments []string
+			// absent holds text the reason must not name.
+			absent []string
+			// deferred says the reason carries DeferHaltPrefix after the decision halt prefix.
+			deferred bool
+			check    func(t *testing.T, f *verifyFixture)
 		}{
-			{"partial, passed but not awaited", partial, func(f *verifyFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}, false)
-			}},
-			{"full, passed but not awaited", full, func(f *verifyFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false) }},
-			{"partial, no record", partial, func(f *verifyFixture) {
-				if err := os.Remove(f.paths.Capture); err != nil {
-					f.t.Fatal(err)
-				}
-			}},
-			{"full, no record", full, func(f *verifyFixture) {
-				if err := os.Remove(f.paths.Capture); err != nil {
-					f.t.Fatal(err)
-				}
-			}},
-		}
-		for _, row := range rows {
-			f := newVerifyFixture(t, row.scope, nil)
-			row.arrange(f)
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "lym drift waive", "lym loom resume")
-			if f.compareCalls != 0 {
-				t.Errorf("%s: the compare ran %d times; want none", row.name, f.compareCalls)
-			}
-		}
-	})
-
-	t.Run("an undeclared compare is Stuck naming lym config drift, with the prefix under full", func(t *testing.T) {
-		t.Parallel()
-		for _, scope := range []ScopeRecord{partial, full} {
-			f := newVerifyFixture(t, scope, nil)
-			f.deps.Config = func() (Config, error) { return Config{Enabled: true}, nil }
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, "lym config drift", "lym loom resume")
-		}
-	})
-
-	t.Run("a passing compare is Done with no agent", func(t *testing.T) {
-		t.Parallel()
-		f := newVerifyFixture(t, partial, nil)
-		f.captureAt(earlierCaptureHead)
-		requireDone(f)
-		if f.seats.Calls != 0 || f.compareCalls != 1 {
-			t.Errorf("agents %d, compares %d; want no agent and one compare", f.seats.Calls, f.compareCalls)
-		}
-		requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", true)
-	})
-
-	t.Run("a failing compare spawns one agent and resets the run count", func(t *testing.T) {
-		t.Parallel()
-		f := newVerifyFixture(t, partial, nil)
-		f.captureAt(earlierCaptureHead)
-		f.compares = []CompareResult{failingCompare, passingCompare}
-		if err := ResetRuns(f.paths, "old", false); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := TakeRun(f.paths, 8); err != nil {
-			t.Fatal(err)
-		}
-		if err := CloseAgentSession(f.paths); err != nil {
-			t.Fatal(err)
-		}
-
-		requireDone(f)
-		if f.seats.Calls != 1 {
-			t.Errorf("agents = %d; want one", f.seats.Calls)
-		}
-		if head, found, err := AttemptHead(f.paths); err != nil || !found || head != "aaa" {
-			t.Errorf("AttemptHead() = %q, %v, %v; want the spawn's HEAD", head, found, err)
-		}
-		if count, err := RunCount(f.paths); err != nil || count != 0 {
-			t.Errorf("RunCount() = %d, %v; want the count reset", count, err)
-		}
-		if want := (VerifyTold{CompareLog: "compare-1.log", BaselineHead: earlierCaptureHead}); len(f.told) == 0 || f.told[0] != want {
-			t.Errorf("told = %v; want %v", f.told, want)
-		}
-		if open, _ := AgentSessionOpen(f.paths); open {
-			t.Errorf("the agent-session mark reads open after the agent's end")
-		}
-		requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", true)
-	})
-
-	t.Run("a final compare still failing is Stuck naming accept, with the prefix by scope", func(t *testing.T) {
-		t.Parallel()
-		rows := []struct {
-			name     string
-			scope    ScopeRecord
-			prefixed bool
-		}{
-			{"partial", partial, false},
-			{"partial with a withdrawn test", withdrawn, true},
-			{"full", full, true},
-		}
-		for _, row := range rows {
-			f := newVerifyFixture(t, row.scope, nil)
-			f.captureAt(earlierCaptureHead)
-			f.compares = []CompareResult{failingCompare, failingCompare}
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, row.prefixed, "lym drift accept", "verify-report.md", "lym loom resume")
-			requireCompareRecorded(t, f.scope(), earlierCaptureHead, "aaa", false)
-		}
-	})
-
-	t.Run("a dirty tree re-prompts and, left dirty, is Stuck naming committing or cleaning", func(t *testing.T) {
-		t.Parallel()
-		clean := newVerifyFixture(t, partial, nil)
-		arrivals := 0
-		clean.compares = []CompareResult{failingCompare, passingCompare}
-		clean.seats = gateLoopSeats(t, []func(){
-			func() { arrivals++; clean.dirty = []string{"a.go"} },
-			func() { arrivals++; clean.dirty = nil },
-		})
-		clean.deps.Seats = clean.seats
-		requireDone(clean)
-		if arrivals != 2 {
-			t.Errorf("arrivals = %d; want the dirty tree re-prompted once", arrivals)
-		}
-
-		for _, scope := range []ScopeRecord{partial, full} {
-			f := newVerifyFixture(t, scope, nil)
-			f.compares = []CompareResult{failingCompare}
-			f.seats = gateLoopSeats(t, []func(){func() { f.dirty = []string{"a.go"} }})
-			f.deps.Seats = f.seats
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, dirtyHaltOpening, "commit or clean", "lym loom resume", f.deps.GateFindingsFile)
-			if f.scope().GateHaltAt != markedAt {
-				t.Errorf("gate_halt_at = %q; want %q", f.scope().GateHaltAt, markedAt)
-			}
-		}
-	})
-
-	t.Run("a verify entry failing its attempts is Stuck naming its findings file, with the prefix under full", func(t *testing.T) {
-		t.Parallel()
-		for _, scope := range []ScopeRecord{partial, full} {
-			f := newVerifyFixture(t, scope, nil)
-			f.compares = []CompareResult{failingCompare}
-			f.seats = gateLoopSeats(t, []func(){f.commit()})
-			f.deps.Seats = f.seats
-			f.verifyFn = func() (shuttleengine.GateResult, error) {
-				return shuttleengine.GateResult{Findings: "TestCache failed"}, nil
-			}
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, scope.Scope == ScopeFull, gateHaltOpening, f.deps.GateFindingsFile, "lym loom resume")
-			if f.verifyCalls != 4 {
-				t.Errorf("verify ran %d times; want the first arrival and three re-prompts", f.verifyCalls)
-			}
-			if f.scope().GateHaltAt != markedAt {
-				t.Errorf("gate_halt_at = %q; want %q", f.scope().GateHaltAt, markedAt)
-			}
-		}
-	})
-
-	t.Run("the verify entry waits for the agent's commit and a fix after its re-prompt is compared again", func(t *testing.T) {
-		t.Parallel()
-		unchanged := newVerifyFixture(t, partial, nil)
-		unchanged.compares = []CompareResult{failingCompare, passingCompare}
-		requireDone(unchanged)
-		if unchanged.verifyCalls != 0 {
-			t.Errorf("verify ran %d times at an unchanged HEAD; want none", unchanged.verifyCalls)
-		}
-
-		f := newVerifyFixture(t, partial, nil)
-		f.compares = []CompareResult{failingCompare, passingCompare}
-		f.seats = gateLoopSeats(t, []func(){f.commit(), nil})
-		f.deps.Seats = f.seats
-		results := []shuttleengine.GateResult{{Findings: "TestCache failed"}, {Passed: true}}
-		f.verifyFn = func() (shuttleengine.GateResult, error) {
-			result := results[0]
-			results = results[1:]
-			return result, nil
-		}
-		requireDone(f)
-		if f.verifyCalls != 2 || f.compareCalls != 2 {
-			t.Errorf("verify ran %d times and the compare %d; want two each, the fix compared again before Done", f.verifyCalls, f.compareCalls)
-		}
-	})
-
-	t.Run("an entry with a dirty tree is Stuck before any compare, and records-side dirt is no dirty tree", func(t *testing.T) {
-		t.Parallel()
-		f := newVerifyFixture(t, partial, nil)
-		f.dirty = []string{"a.go"}
-		outcome, pointer, err := f.call()
-		requireStuck(t, outcome, pointer, err, false, dirtyHaltOpening, "a.go", "commit or clean")
-		if f.compareCalls != 0 || f.scope().GateHaltAt != markedAt {
-			t.Errorf("compares %d, gate_halt_at %q; want no compare and the halt recorded", f.compareCalls, f.scope().GateHaltAt)
-		}
-
-		// The scope record under the durable directory is a records-side file the fake dirty reading never lists.
-		records := newVerifyFixture(t, partial, nil)
-		requireDone(records)
-	})
-
-	t.Run("a resume from a gate halt", func(t *testing.T) {
-		t.Parallel()
-		seed := func(f *verifyFixture, attemptHead string, headNow string) {
-			f.t.Helper()
-			f.head = headNow
-			if err := ResetRuns(f.paths, attemptHead, false); err != nil {
-				f.t.Fatal(err)
-			}
-			if err := CloseAgentSession(f.paths); err != nil {
-				f.t.Fatal(err)
-			}
-			f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}, AwaitedAt: "2026-01-01T00:00:00Z", GateHaltAt: markedAt}, false)
-			f.stuckHistory(markedAt, "")
-		}
-
-		t.Run("a failing gate is Stuck before any compare and keeps gate_halt_at", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, ScopeRecord{}, nil)
-			seed(f, "aaa", "bbb")
-			f.verifyFn = func() (shuttleengine.GateResult, error) {
-				return shuttleengine.GateResult{Findings: "TestCache failed"}, nil
-			}
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, false, gateHaltOpening, f.deps.GateFindingsFile, "lym loom resume")
-			if f.compareCalls != 0 || f.scope().GateHaltAt != markedAt {
-				t.Errorf("compares %d, gate_halt_at %q; want no compare and the seeded mark kept", f.compareCalls, f.scope().GateHaltAt)
-			}
-		})
-
-		t.Run("a passing gate clears gate_halt_at and goes on to the compare", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, ScopeRecord{}, nil)
-			seed(f, "aaa", "bbb")
-			requireDone(f)
-			if f.verifyCalls != 1 || f.compareCalls != 1 || f.scope().GateHaltAt != "" {
-				t.Errorf("verify %d, compares %d, gate_halt_at %q; want one each and the mark cleared", f.verifyCalls, f.compareCalls, f.scope().GateHaltAt)
-			}
-		})
-
-		t.Run("a context error leaves gate_halt_at set and the next entry runs the gate again", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, ScopeRecord{}, nil)
-			seed(f, "aaa", "bbb")
-			f.verifyFn = func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{}, context.Canceled }
-			if _, _, err := f.call(); !errors.Is(err, context.Canceled) {
-				t.Fatalf("Call() error = %v; want the context error", err)
-			}
-			if f.scope().GateHaltAt != markedAt || f.compareCalls != 0 {
-				t.Errorf("gate_halt_at %q, compares %d; want the mark kept and no compare", f.scope().GateHaltAt, f.compareCalls)
-			}
-			f.verifyFn = func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{Passed: true}, nil }
-			requireDone(f)
-			if f.verifyCalls != 2 || f.compareCalls != 1 {
-				t.Errorf("verify %d, compares %d; want the gate run again before the compare", f.verifyCalls, f.compareCalls)
-			}
-		})
-
-		t.Run("an attempt head equal to HEAD runs no verify gate, clears the mark and compares", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, ScopeRecord{}, nil)
-			seed(f, "aaa", "aaa")
-			requireDone(f)
-			if f.verifyCalls != 0 || f.compareCalls != 1 || f.scope().GateHaltAt != "" {
-				t.Errorf("verify %d, compares %d, gate_halt_at %q; want no verify, one compare and the mark cleared", f.verifyCalls, f.compareCalls, f.scope().GateHaltAt)
-			}
-		})
-
-		t.Run("a halt stamped from a sub-second clock is read as the resume at its second", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, partial, nil)
-			f.dirty = []string{"a.go"}
-			if _, _, err := f.call(); err != nil {
-				t.Fatal(err)
-			}
-			if err := ResetRuns(f.paths, "aaa", false); err != nil {
-				t.Fatal(err)
-			}
-			if err := CloseAgentSession(f.paths); err != nil {
-				t.Fatal(err)
-			}
-			f.dirty, f.head = nil, "bbb"
-			f.stuckHistory(markedAt, "")
-			requireDone(f)
-			if f.verifyCalls != 1 {
-				t.Errorf("verify ran %d times; want the resume to run the gate once", f.verifyCalls)
-			}
-		})
-
-		notResumes := []struct {
-			name    string
-			history []shedengine.HistoryEntry
-			attempt bool
-		}{
-			{"a last history entry of another row", []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Stuck, At: markedAt}}, true},
-			{"a last history entry older than the mark", []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: "2026-01-02T03:04:04Z"}}, true},
-			{"a first entry with no attempt head", []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: markedAt}}, false},
-		}
-		for _, tt := range notResumes {
-			t.Run(tt.name+" runs no verify gate", func(t *testing.T) {
-				t.Parallel()
-				f := newVerifyFixture(t, ScopeRecord{}, nil)
-				seed(f, "aaa", "bbb")
-				f.history = tt.history
-				if !tt.attempt {
-					if err := os.Remove(f.paths.Runs); err != nil {
-						t.Fatal(err)
+			{
+				name: "ARecordsMismatch",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsY)
+					if err := os.WriteFile(f.paths.Scope, []byte(`{"scope":"full","awaited_at":"2026-01-01T00:00:00Z","diff":"lines"}`), 0o644); err != nil {
+						f.t.Fatal(err)
 					}
-				}
-				requireDone(f)
-				if f.verifyCalls != 0 || f.compareCalls != 1 {
-					t.Errorf("verify %d, compares %d; want no verify gate and one compare", f.verifyCalls, f.compareCalls)
-				}
-			})
+				},
+				fragments: []string{"differ from their newest committed copy", "lym drift amend <slug> --restore", "lym loom resume"},
+			},
+			{
+				name: "ACaptureThatNeverCounted",
+				prepare: func(f *verifyFixture) {
+					scope := countedScope()
+					scope.AwaitedAt = ""
+					f.seed(scope, verifyBaseline)
+				},
+				fragments: []string{"never counted", "lym drift defer", "lym loom resume"},
+				deferred:  true,
+			},
+			{
+				name: "AMissingBaselineWithNoCaptureRecord",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsY)
+					if err := os.RemoveAll(f.paths.BaselineDir); err != nil {
+						f.t.Fatal(err)
+					}
+					if err := os.Remove(f.paths.Capture); err != nil {
+						f.t.Fatal(err)
+					}
+				},
+				fragments: []string{"baseline directory", "lym drift defer", "lym loom resume"},
+				deferred:  true,
+			},
+			{
+				name: "AnEditedBaseline",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsY)
+					writeTree(f.t, f.paths.BaselineDir, map[string]string{"a.txt": "x=1\ny=9\n"})
+				},
+				fragments: []string{"no longer matches", "lym drift defer"},
+				deferred:  true,
+			},
+			{
+				name: "AnExpectationWithNoSealCommit",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged("")
+					writeTree(f.t, filepath.Dir(f.paths.Expected), map[string]string{expectedFileName: expectsY})
+				},
+				fragments: []string{"no commit sealed it", "lym drift amend <slug> --discard"},
+				check: func(t *testing.T, f *verifyFixture) {
+					if f.scope().Unsealed {
+						t.Errorf("the scope record reads unsealed beside an expected.yaml; want it left unmarked")
+					}
+				},
+			},
+			{
+				name: "AFailedCurrentCapture",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsY)
+					f.captureFails = true
+				},
+				fragments: []string{"exit 3", "/logs/current.log", "lym loom resume", "lym loom goto --to Darn-Write then lym loom resume", "lym drift defer"},
+				deferred:  true,
+			},
+			{
+				name: "AnUnexpectedCellOfAnUnsealedRunUnderDarnsRows",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged("")
+				},
+				fragments: []string{`changed in case "a.txt"`, `key "y"`, `old "2"`, `new "3"`, "lym drift amend <slug>", "lym loom goto --to Darn-Write then lym loom resume"},
+				check: func(t *testing.T, f *verifyFixture) {
+					scope := f.scope()
+					if !scope.Unsealed || scope.LastCheck.Passed || scope.LastCheck.Unexpected != 1 || scope.LastCheck.Changed != 1 {
+						t.Errorf("scope = unsealed %v, last check %+v; want an unsealed run whose last check found one unexpected cell", scope.Unsealed, scope.LastCheck)
+					}
+				},
+			},
+			{
+				name: "AnUnexpectedCellUnderTapestrysRows",
+				rows: tapestryRows,
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsX)
+				},
+				fragments: []string{`key "y"`, "lym drift amend <slug>", "lym loom goto --to Webster then lym loom resume"},
+				absent:    []string{"Darn-Write"},
+			},
+			{
+				name: "AStoredRulingOfDoesNotMatch",
+				prepare: func(f *verifyFixture) {
+					f.seedChanged(expectsY)
+					f.storeRuling(JudgedTuple{Case: "a.txt", Identity: Identity{Key: "y", N: 1}, Kind: CellChanged, Old: "2", New: "3", Ruling: RulingNoMatch, Reason: "wrong direction"})
+				},
+				fragments: []string{`key "y"`, "wrong direction", "lym drift amend <slug>", "lym loom goto --to Darn-Write then lym loom resume"},
+			},
 		}
-
-		t.Run("a mark left by a gate halt the run left by a goto is cleared by the next entry", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, ScopeRecord{}, nil)
-			seed(f, "aaa", "bbb")
-			f.history = []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Stuck, At: markedAt}}
-			f.writeCapture(CaptureRecord{State: CaptureRunning})
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "lym drift waive")
-			if f.scope().GateHaltAt != "" {
-				t.Errorf("gate_halt_at = %q; want the stale mark cleared", f.scope().GateHaltAt)
-			}
-			f.stuckHistory(markedAt, "")
-			outcome, pointer, err = f.call()
-			requireStuck(t, outcome, pointer, err, true, "lym drift waive")
-			if f.verifyCalls != 0 {
-				t.Errorf("verify ran %d times; want none, the second entry being no resume", f.verifyCalls)
-			}
-		})
-	})
-
-	t.Run("an interrupted agent", func(t *testing.T) {
-		t.Parallel()
-		arrange := func(f *verifyFixture) {
-			f.t.Helper()
-			if err := ResetRuns(f.paths, "aaa", false); err != nil {
-				f.t.Fatal(err)
-			}
-			if err := os.MkdirAll(f.paths.LogsDir, 0o755); err != nil {
-				f.t.Fatal(err)
-			}
-			for _, name := range []string{"compare-20260101T000000.000Z.log", "compare-20260102T000000.000Z.log"} {
-				if err := os.WriteFile(filepath.Join(f.paths.LogsDir, name), nil, 0o644); err != nil {
-					f.t.Fatal(err)
-				}
-			}
-		}
-
-		resumeRows := []struct {
-			name     string
-			operator bool
-		}{
-			{"a live chair is resumed before any check", false},
-			{"a live operator chair is resumed keeping its mode while the config no longer asks for it", true},
-		}
-		for _, tt := range resumeRows {
+		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				f := newVerifyFixture(t, partial, nil)
-				arrange(f)
-				if err := ResetRuns(f.paths, "aaa", tt.operator); err != nil {
-					t.Fatal(err)
+				f := newVerifyFixture(t)
+				if tt.rows != nil {
+					f.deps.Rows = tt.rows
 				}
-				if _, err := TakeRun(f.paths, 8); err != nil {
-					t.Fatal(err)
-				}
-				f.liveChair = true
-				operatorAtResume := false
-				resume := f.seats.ResumeFn
-				f.seats.ResumeFn = func(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
-					operatorAtResume, _ = OperatorSessionOpen(f.paths)
-					return resume(table, live)
-				}
-				requireDone(f)
-				if want := []string{"probe", "probe", "resume"}; !slices.Equal(f.events[:3], want) {
-					t.Errorf("events = %v; want the two probes and the resume first, before any dirty check, verify gate or compare", f.events)
-				}
-				if f.seats.Calls != 0 || f.seats.ResumeCalls != 1 {
-					t.Errorf("runs %d, resumes %d; want the live chair resumed and none started", f.seats.Calls, f.seats.ResumeCalls)
-				}
-				if operatorAtResume != tt.operator {
-					t.Errorf("OperatorSessionOpen() at the resume = %v; want the spawned mode %v kept", operatorAtResume, tt.operator)
-				}
-				if count, err := RunCount(f.paths); err != nil || count != 1 {
-					t.Errorf("RunCount() = %d, %v; want the run counter left as it was", count, err)
-				}
-				if want := filepath.Join(f.paths.LogsDir, "compare-20260102T000000.000Z.log"); len(f.told) == 0 || f.told[0].CompareLog != want {
-					t.Errorf("told = %v; want the newest compare log %s", f.told, want)
-				}
-				if open, _ := AgentSessionOpen(f.paths); open {
-					t.Errorf("the agent-session mark reads open after the agent's end")
-				}
-			})
-		}
+				tt.prepare(f)
 
-		t.Run("no live chair closes the mark and goes on to the compare", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, partial, nil)
-			arrange(f)
-			requireDone(f)
-			if f.seats.Calls != 0 || f.compareCalls != 1 {
-				t.Errorf("runs %d, compares %d; want no agent and one compare", f.seats.Calls, f.compareCalls)
-			}
-			if open, _ := AgentSessionOpen(f.paths); open {
-				t.Errorf("the agent-session mark reads open")
-			}
-		})
-
-		t.Run("the mark reads closed after an agent that errors", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, partial, nil)
-			f.compares = []CompareResult{failingCompare}
-			f.seats.RunFn = func(seatengine.Table) (seatengine.Result, error) {
-				return seatengine.Result{}, errors.New("the agent died")
-			}
-			if _, _, err := f.call(); err == nil || !strings.Contains(err.Error(), "the agent died") {
-				t.Fatalf("Call() error = %v; want the agent's error", err)
-			}
-			if open, _ := AgentSessionOpen(f.paths); open {
-				t.Errorf("the agent-session mark reads open after the agent's error")
-			}
-		})
-	})
-
-	t.Run("under scope full the parent rules on the agent's acceptances", func(t *testing.T) {
-		t.Parallel()
-		haltFirst := func(t *testing.T) *verifyFixture {
-			t.Helper()
-			f := newVerifyFixture(t, full, nil)
-			f.compares = []CompareResult{failingCompare, passingCompare}
-			f.seats = gateLoopSeats(t, []func(){f.agentAccept()})
-			f.deps.Seats = f.seats
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "t1", "lym loom resume", "lym drift withdraw")
-			if scope := f.scope(); !slices.Equal(scope.HaltNamed, []string{"t1"}) || scope.HaltNamedAt != markedAt {
-				t.Fatalf("halt_named %v at %q; want t1 recorded at %q", scope.HaltNamed, scope.HaltNamedAt, markedAt)
-			}
-			f.compares = []CompareResult{passingCompare}
-			f.compareCalls = 0
-			return f
-		}
-
-		resumes := []struct {
-			name    string
-			history []shedengine.HistoryEntry
-		}{
-			{"a Stuck at or after the recorded time", []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: markedAt}}},
-			{"a folded Stuck whose first time predates it and whose last follows it", []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: "2026-01-02T03:00:00Z", LastAt: "2026-01-02T03:04:06Z"}}},
-		}
-		for _, tt := range resumes {
-			t.Run(tt.name+" rules the acceptance", func(t *testing.T) {
-				t.Parallel()
-				f := haltFirst(t)
-				f.history = tt.history
-				requireDone(f)
-				scope := f.scope()
-				if len(scope.Accepted) != 1 || scope.Accepted[0].Ruling != RulingRuled || scope.HaltNamed != nil || scope.HaltNamedAt != "" {
-					t.Errorf("scope = %+v; want t1 ruled and the halt cleared", scope)
-				}
-				if f.seats.Calls != 1 {
-					t.Errorf("agents = %d; want no new agent", f.seats.Calls)
-				}
-			})
-		}
-
-		nonResumes := []struct {
-			name    string
-			history []shedengine.HistoryEntry
-		}{
-			{"a last history entry of another row", []shedengine.HistoryEntry{{Producer: "Plan-Write", Outcome: shedengine.Stuck, At: markedAt}}},
-			{"a last history entry older than the recorded time", []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: "2026-01-02T03:04:04Z"}}},
-		}
-		for _, tt := range nonResumes {
-			t.Run(tt.name+" rules nothing and halts again", func(t *testing.T) {
-				t.Parallel()
-				f := haltFirst(t)
-				f.history = tt.history
 				outcome, pointer, err := f.call()
-				requireStuck(t, outcome, pointer, err, true, "t1")
-				if f.compareCalls != 0 || f.scope().Accepted[0].Ruling != RulingUnruled {
-					t.Errorf("compares %d, ruling %q; want no compare and t1 unruled", f.compareCalls, f.scope().Accepted[0].Ruling)
+
+				requireStuck(t, outcome, pointer, err, true, tt.fragments...)
+				requireDeferPrefix(t, pointer.Reason, tt.deferred)
+				for _, absent := range tt.absent {
+					if strings.Contains(pointer.Reason, absent) {
+						t.Errorf("reason %q names %q; want it left out", pointer.Reason, absent)
+					}
+				}
+				if !f.untouched() || f.compares != 0 {
+					t.Errorf("judge untouched %v, %d compares; want no judge and no compare", f.untouched(), f.compares)
+				}
+				if tt.check != nil {
+					tt.check(t, f)
 				}
 			})
 		}
+	})
 
-		t.Run("a test withdrawn at the halt is not ruled and is compared again", func(t *testing.T) {
+	t.Run("every cell expected passes with stored rulings and judges a changed value again", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name       string
+			current    map[string]string
+			wantJudged bool
+		}{
+			{"AReproducedTupleReusesItsRuling", verifyChanged, false},
+			{"AChangedNewValueIsJudgedAgain", map[string]string{"a.txt": "x=1\ny=4\n"}, true},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newVerifyFixture(t)
+				f.seedChanged(expectsY)
+				f.current = tt.current
+				f.storeRuling(JudgedTuple{Case: "a.txt", Identity: Identity{Key: "y", N: 1}, Kind: CellChanged, Old: "2", New: "3", Ruling: RulingMatches, Reason: "seeded"})
+
+				requireDone(f)
+
+				if (f.seats.Calls == 1) != tt.wantJudged {
+					t.Errorf("%d judge runs; want a run = %v", f.seats.Calls, tt.wantJudged)
+				}
+				scope, judged := f.records().Scope, f.records().Judged
+				if !scope.LastCheck.Passed || scope.LastPassHead != "code-head-0" || scope.LastPassAmendments != 0 || scope.LastCheck.At != checkedAt {
+					t.Errorf("scope = last check %+v, last pass %q at %d amendments; want a pass at code-head-0 with none", scope.LastCheck, scope.LastPassHead, scope.LastPassAmendments)
+				}
+				wantTuples, wantReused := 1, 1
+				if tt.wantJudged {
+					wantTuples, wantReused = 2, 0
+				}
+				if len(judged.Tuples) != wantTuples || scope.LastCheck.Reused != wantReused || scope.LastCheck.Expected != 1 {
+					t.Errorf("%d stored tuples and %d reused in %+v; want %d and %d", len(judged.Tuples), scope.LastCheck.Reused, scope.LastCheck, wantTuples, wantReused)
+				}
+				if !reflect.DeepEqual(f.endedRoles, [][]string{{"drift-baseline", "drift-verify"}}) {
+					t.Errorf("ended roles = %v; want the removed agents' roles once", f.endedRoles)
+				}
+			})
+		}
+	})
+
+	t.Run("a cell with no stored ruling spawns one judge whose request lists it", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seedChanged(expectsY)
+		writeTree(t, filepath.Dir(f.paths.Judgement), map[string]string{judgementFileName: "spawn_id: stale\n"})
+
+		requireDone(f)
+
+		if len(f.requests) != 1 || f.seats.Calls != 1 {
+			t.Fatalf("%d requests and %d runs; want one judge", len(f.requests), f.seats.Calls)
+		}
+		request := f.requests[0]
+		wantCell := JudgeCell{ID: "c1", Case: "a.txt", Identity: JudgeIdentity{Key: "y", N: 1}, Kind: CellChanged, Old: "2", New: "3", Why: "tuned the setting"}
+		if !strings.HasPrefix(request.SpawnID, "judge-") || request.Mode != DiffLines || !slices.Equal(request.Cells, []JudgeCell{wantCell}) || request.Expectation != expectsY || request.Amendments != "" {
+			t.Errorf("request = %+v; want one lines-mode cell %+v under a fresh spawn id with the sealed expectation and no amendments", request, wantCell)
+		}
+		if f.compares != 0 {
+			t.Errorf("%d compares under diff lines; want none", f.compares)
+		}
+		if f.judgementPresent[0] {
+			t.Errorf("a stale judgement.yaml was still there when the judge arrived; want it removed before the spawn")
+		}
+		if mark := f.marksAtArrival[0]; !mark.Open || mark.SpawnID != request.SpawnID {
+			t.Errorf("session mark at the judge's arrival = %+v; want it open under the request's spawn id %q", mark, request.SpawnID)
+		}
+		if _, found, err := ReadJudgeSnapshot(f.deps); err != nil || !found {
+			t.Errorf("ReadJudgeSnapshot() = _, %v, %v; want the snapshot taken before the spawn", found, err)
+		}
+		if gate := f.seats.GotTables[0].Gate; len(gate) != 1 || gate[0].Name != "judgement" {
+			t.Errorf("judge table gate = %+v; want the one judgement entry", gate)
+		}
+
+		scope, judged := f.records().Scope, f.records().Judged
+		wantTuple := JudgedTuple{Case: "a.txt", Identity: Identity{Key: "y", N: 1}, Kind: CellChanged, Old: "2", New: "3", Ruling: RulingMatches, Reason: "compared the old and the new value", At: checkedAt}
+		if !slices.Equal(judged.Tuples, []JudgedTuple{wantTuple}) {
+			t.Errorf("stored tuples = %+v; want %+v", judged.Tuples, wantTuple)
+		}
+		if scope.JudgeSession.Open || !scope.LastCheck.Passed || scope.LastCheck.Matched != 1 || scope.LastPassHead != "code-head-0" {
+			t.Errorf("scope = mark %+v, last check %+v, last pass %q; want a closed mark and a pass with one matched cell", scope.JudgeSession, scope.LastCheck, scope.LastPassHead)
+		}
+		if !f.judgementGone() {
+			t.Errorf("judgement.yaml is still there after the Done; want it removed once the rulings are stored")
+		}
+	})
+
+	t.Run("a judge ruling does not match stops naming the cell and stores the ruling", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seedChanged(expectsY)
+		f.rulings = map[string]Ruling{"a.txt y": RulingNoMatch}
+
+		outcome, pointer, err := f.call()
+
+		requireStuck(t, outcome, pointer, err, true, `key "y"`, "compared the old and the new value", "lym drift amend <slug>", "lym loom goto --to Darn-Write then lym loom resume")
+		requireDeferPrefix(t, pointer.Reason, false)
+		scope, judged := f.records().Scope, f.records().Judged
+		if len(judged.Tuples) != 1 || judged.Tuples[0].Ruling != RulingNoMatch {
+			t.Errorf("stored tuples = %+v; want the one ruling of does not match", judged.Tuples)
+		}
+		if scope.JudgeSession.Open || scope.LastCheck.Passed || scope.LastPassHead != "" {
+			t.Errorf("scope = mark %+v, last check %+v, last pass %q; want a closed mark and no pass", scope.JudgeSession, scope.LastCheck, scope.LastPassHead)
+		}
+		if !f.judgementGone() {
+			t.Errorf("judgement.yaml is still there after the does-not-match Stuck; want it removed once the rulings are stored")
+		}
+	})
+
+	t.Run("a cell of an added case names the case's file in the current capture", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seed(countedScope(), map[string]string{"a.txt": "x=1\n"})
+		f.seal("added:\n  - case: b.txt\n    why: the task adds b\n")
+		f.current = map[string]string{"a.txt": "x=1\n", "b.txt": "x=1\n"}
+
+		requireDone(f)
+
+		want := JudgeCell{ID: "c1", Case: "b.txt", Kind: CellAddedCase, Why: "the task adds b", File: filepath.Join(f.captureDir, "b.txt")}
+		if len(f.requests) != 1 || !slices.Equal(f.requests[0].Cells, []JudgeCell{want}) {
+			t.Errorf("requests = %+v; want the one added-case cell %+v", f.requests, want)
+		}
+	})
+
+	t.Run("an open range is stored with its why and the judge's sentence, and a later listing replaces it", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seed(countedScope(), map[string]string{"a.txt": "x=1\nfree\nmore\n"})
+		f.seal("cases:\n  a.txt:\n    lines:\n      - range: \"1-\"\n        why: the free text is rewritten\n")
+		f.current = map[string]string{"a.txt": "x=1\nfree2\nmore2\n"}
+		f.rangeChecked = "first look"
+
+		requireDone(f)
+
+		wantOpen := []JudgeOpenRange{{Case: "a.txt", Range: "1-", Why: "the free text is rewritten"}}
+		if len(f.requests) != 1 || !slices.Equal(f.requests[0].OpenRanges, wantOpen) {
+			t.Fatalf("requests = %+v; want the one open range %+v listed once for both cells", f.requests, wantOpen)
+		}
+		wantRange := JudgedRange{Case: "a.txt", Range: "1-", Why: "the free text is rewritten", Checked: "first look", At: checkedAt}
+		if got := f.records().Judged.Ranges; !slices.Equal(got, []JudgedRange{wantRange}) {
+			t.Errorf("stored ranges = %+v; want %+v", got, wantRange)
+		}
+
+		f.moveHead("code-head-1")
+		f.current = map[string]string{"a.txt": "x=1\nfree3\nmore3\n"}
+		f.rangeChecked = "second look"
+
+		requireDone(f)
+
+		wantRange.Checked = "second look"
+		if got := f.records().Judged.Ranges; !slices.Equal(got, []JudgedRange{wantRange}) {
+			t.Errorf("stored ranges after a later judge = %+v; want the one range replaced by %+v", got, wantRange)
+		}
+	})
+
+	t.Run("a record with no diff records the config's, and a later config change moves neither", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		scope := countedScope()
+		scope.Diff, scope.KeyPatterns = "", nil
+		f.seed(scope, verifyBaseline)
+		f.current = verifyBaseline
+
+		requireDone(f)
+
+		recorded := f.scope()
+		if recorded.Diff != DiffLines || !slices.Equal(recorded.KeyPatterns, []string{keyValuePattern}) {
+			t.Fatalf("scope diff %q and patterns %q; want the config's %q and %q", recorded.Diff, recorded.KeyPatterns, DiffLines, keyValuePattern)
+		}
+
+		f.config.Diff, f.config.KeyPatterns = DiffCommand, []string{`^(?P<key>\w+):(?P<value>.*)$`}
+		f.moveHead("code-head-1")
+		requireDone(f)
+
+		if again := f.scope(); again.Diff != DiffLines || !slices.Equal(again.KeyPatterns, recorded.KeyPatterns) {
+			t.Errorf("scope diff %q and patterns %q after the config changed; want %q and %q kept", again.Diff, again.KeyPatterns, DiffLines, recorded.KeyPatterns)
+		}
+	})
+
+	t.Run("under command the compare decides and the judge rules each case", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("a passing compare is Done with no judge and no capture", func(t *testing.T) {
 			t.Parallel()
-			f := haltFirst(t)
-			if err := Withdraw(f.paths, statusAt("Drift-Verify", shedengine.StateBlocked, shedadapters.DecisionHaltPrefix, false), "t1"); err != nil {
-				t.Fatal(err)
-			}
-			f.stuckHistory(markedAt, "")
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			f.compare = passingCompare
+
 			requireDone(f)
+
 			scope := f.scope()
-			if len(scope.Accepted) != 0 || !slices.Equal(scope.Withdrawn, []string{"t1"}) || f.compareCalls != 1 {
-				t.Errorf("scope = %+v, compares %d; want t1 withdrawn, not ruled, and compared again", scope, f.compareCalls)
+			if f.compares != 1 || f.captures != 0 || !f.untouched() {
+				t.Errorf("%d compares, %d captures, judge untouched %v; want one compare, no capture and no judge", f.compares, f.captures, f.untouched())
+			}
+			if !scope.LastCheck.Passed || scope.LastCheck.Mode != DiffCommand || scope.LastPassHead != "code-head-0" {
+				t.Errorf("last check %+v, last pass %q; want a command-mode pass at code-head-0", scope.LastCheck, scope.LastPassHead)
 			}
 		})
 
-		t.Run("an agent that accepts and then errors leaves the resumed entry halting before any compare", func(t *testing.T) {
+		t.Run("a failing compare spawns one judge whose request holds the log, the expectation and the amendments, and all matches records the pass", func(t *testing.T) {
 			t.Parallel()
-			f := newVerifyFixture(t, full, nil)
-			f.compares = []CompareResult{failingCompare}
-			f.seats.RunFn = func(seatengine.Table) (seatengine.Result, error) {
-				f.agentAccept()()
-				return seatengine.Result{}, errors.New("the agent died")
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			const amended = "cases:\n  b.txt:\n    why: the amendment explains b\n"
+			err := WriteRecords(f.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+				scope.Amendments = []Amendment{{By: "parent", At: "2026-01-01T12:00:00Z", Kind: amendmentKindEntries, Entries: amended}}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("WriteRecords() = %v; want nil", err)
 			}
-			if _, _, err := f.call(); err == nil {
-				t.Fatal("Call() error = nil; want the agent's error")
+			f.caseRulings = map[string]Ruling{"a.txt": RulingMatches}
+
+			requireDone(f)
+
+			if len(f.requests) != 1 {
+				t.Fatalf("%d requests; want one judge", len(f.requests))
 			}
-			compares := f.compareCalls
-			f.stuckHistory(markedAt, "")
+			request := f.requests[0]
+			wantAmendments := "# amendment entries by parent at 2026-01-01T12:00:00Z\n" + amended
+			if request.Mode != DiffCommand || request.CompareLog != failingCompare.Log || request.Expectation != expectsCommandCase || request.Amendments != wantAmendments || len(request.Cells) != 0 {
+				t.Errorf("request = %+v; want the command mode, the compare's log, the sealed expectation, the amendments as text and no cells", request)
+			}
+			scope := f.scope()
+			if len(f.records().Judged.Cases) != 0 || scope.JudgeSession.Open || !scope.LastCheck.Passed || scope.LastCheck.CompareExit != 1 || scope.LastCheck.Matched != 1 {
+				t.Errorf("cases %+v, mark %+v, last check %+v; want no stored ruling, a closed mark and a pass with one matched case", f.records().Judged.Cases, scope.JudgeSession, scope.LastCheck)
+			}
+			if !f.judgementGone() {
+				t.Errorf("judgement.yaml is still there after the Done; want it removed once the rulings are stored")
+			}
+
+			requireDone(f)
+
+			if f.compares != 1 || f.seats.Calls != 1 {
+				t.Errorf("%d compares and %d judge runs after a second entry at the same head; want the pass reused with no compare and no judge", f.compares, f.seats.Calls)
+			}
+		})
+
+		t.Run("a ruling of unexpected or does not match stops naming the case and is stored", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name   string
+				ruling Ruling
+			}{
+				{"Unexpected", RulingUnexpected},
+				{"DoesNotMatch", RulingNoMatch},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					f := newVerifyFixture(t)
+					f.seedCommand()
+					f.caseRulings = map[string]Ruling{"a.txt": tt.ruling}
+
+					outcome, pointer, err := f.call()
+
+					requireStuck(t, outcome, pointer, err, true, `case "a.txt"`, string(tt.ruling), "compared the old and the new value", "lym drift amend <slug>", "lym loom goto --to Darn-Write then lym loom resume")
+					requireDeferPrefix(t, pointer.Reason, false)
+					want := JudgedCase{CodeHead: "code-head-0", Case: "a.txt", Ruling: tt.ruling, Reason: "compared the old and the new value", At: checkedAt}
+					if got := f.records().Judged.Cases; !slices.Equal(got, []JudgedCase{want}) {
+						t.Errorf("stored cases = %+v; want %+v", got, want)
+					}
+					scope := f.scope()
+					if scope.JudgeSession.Open || scope.LastCheck.Passed || scope.LastPassHead != "" {
+						t.Errorf("scope = mark %+v, last check %+v, last pass %q; want a closed mark and no pass", scope.JudgeSession, scope.LastCheck, scope.LastPassHead)
+					}
+					if !f.judgementGone() {
+						t.Errorf("judgement.yaml is still there after the Stuck; want it removed once the rulings are stored")
+					}
+				})
+			}
+		})
+
+		t.Run("a stored ruling stops a resumed row with no judge, and an amendment recorded since judges the case again", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedCommand()
+			err := WriteRecords(f.deps, func(_ *ScopeRecord, judged *JudgedRecord) error {
+				judged.Cases = []JudgedCase{{CodeHead: "code-head-0", Case: "a.txt", Ruling: RulingNoMatch, Reason: "wrong direction", At: "2026-01-01T06:00:00Z"}}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("WriteRecords() = %v; want nil", err)
+			}
+
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, true, "t1")
-			if f.compareCalls != compares {
-				t.Errorf("the resumed entry ran %d more compares; want it to halt before any compare", f.compareCalls-compares)
-			}
-		})
 
-		t.Run("an operator session's acceptances are ruled, so its end is Done with no halt", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, full, nil)
-			f.compares = []CompareResult{failingCompare, passingCompare}
-			f.deps.Config = func() (Config, error) {
-				return Config{Enabled: true, Compare: CommandStep{Command: "compare {baseline_dir}", Dir: ".", TimeoutMin: 1}, VerifyInteractive: true}, nil
+			requireStuck(t, outcome, pointer, err, true, `case "a.txt"`, "wrong direction", "lym drift amend <slug>")
+			if !f.untouched() || f.compares != 1 {
+				t.Fatalf("judge untouched %v, %d compares; want the compare run once and no judge", f.untouched(), f.compares)
 			}
-			f.seats = gateLoopSeats(t, []func(){f.sessionAccept()})
-			f.deps.Seats = f.seats
+
+			err = WriteRecords(f.deps, func(scope *ScopeRecord, _ *JudgedRecord) error {
+				scope.Amendments = []Amendment{{By: "parent", At: "2026-01-02T00:00:00Z", Kind: amendmentKindEntries, Entries: expectsCommandCase}}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("WriteRecords() = %v; want nil", err)
+			}
+			f.caseRulings = map[string]Ruling{"a.txt": RulingMatches}
+
 			requireDone(f)
-			scope := f.scope()
-			if len(scope.Accepted) != 1 || scope.Accepted[0].By != AcceptedByOperator || scope.Accepted[0].Ruling != RulingRuled {
-				t.Errorf("accepted = %+v; want t1 accepted by the operator and ruled", scope.Accepted)
+
+			if f.seats.Calls != 1 || len(f.records().Judged.Cases) != 0 {
+				t.Errorf("%d judge runs and stored cases %+v; want one judge and the old ruling dropped once the case matches", f.seats.Calls, f.records().Judged.Cases)
 			}
 		})
 	})
 
-	t.Run("the accepted profile", func(t *testing.T) {
+	t.Run("the Drift-Recheck row runs the same pass", func(t *testing.T) {
 		t.Parallel()
-		accepted := []Acceptance{{Test: "t1", Reason: "intended", By: AcceptedByAgent}}
-		withAccepted := func(profileHead string) ScopeRecord {
-			return ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}, Accepted: accepted, AcceptedProfileHead: profileHead}
+		f := newVerifyFixture(t)
+		f.row = "Drift-Recheck"
+		f.seedChanged(expectsY)
+
+		requireDone(f)
+
+		if f.seats.Calls != 1 || !f.records().Scope.LastCheck.Passed {
+			t.Errorf("%d judge runs, last check %+v; want one judge and a pass", f.seats.Calls, f.records().Scope.LastCheck)
 		}
-		// withKept is a fixture over scope with t1's output kept at its acceptance.
-		withKept := func(t *testing.T, scope ScopeRecord) *verifyFixture {
-			f := newVerifyFixture(t, scope, nil)
-			writeProfileFile(t, f.paths.AcceptedTestsDir, "t1.txt", "accepted\n")
-			return f
-		}
-		rows := []struct {
-			name  string
-			scope ScopeRecord
-			// wantCompares is how many compares against the accepted profile the pass runs, and wantProfileHead the commit the scope record names afterwards.
-			wantCompares    int
-			wantProfileHead string
+	})
+
+	t.Run("a session an earlier entry left open", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("a live chair is resumed and none is respawned, each under the recorded spawn id", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name        string
+				liveChair   bool
+				wantRuns    int
+				wantResumes int
+			}{
+				{"ALiveChairIsResumed", true, 0, 1},
+				{"NoLiveChairRespawns", false, 1, 0},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					f := newVerifyFixture(t)
+					f.seedChanged(expectsY)
+					f.seedMark("judge-recorded", true)
+					f.liveChair = tt.liveChair
+
+					requireDone(f)
+
+					if f.seats.Calls != tt.wantRuns || f.seats.ResumeCalls != tt.wantResumes || f.seats.ProbeCalls == 0 {
+						t.Errorf("%d runs, %d resumes and %d probes; want %d runs, %d resumes and a probe", f.seats.Calls, f.seats.ResumeCalls, f.seats.ProbeCalls, tt.wantRuns, tt.wantResumes)
+					}
+					if len(f.requests) != 1 || f.requests[0].SpawnID != "judge-recorded" {
+						t.Errorf("requests = %+v; want the one judge under the recorded spawn id", f.requests)
+					}
+					if f.scope().JudgeSession.Open || len(f.records().Judged.Tuples) != 1 {
+						t.Errorf("scope mark %+v and %d tuples; want the mark closed and the ruling stored", f.scope().JudgeSession, len(f.records().Judged.Tuples))
+					}
+				})
+			}
+		})
+
+		t.Run("a change loom's own commits made is no judge edit", func(t *testing.T) {
+			t.Parallel()
+			tests := []struct {
+				name    string
+				changed string
+			}{
+				{"TheRowsStatusCommit", testStatusRel},
+				{"AFrictionNoteCommit", testFrictionRel + "/halt.md"},
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					t.Parallel()
+					f := newVerifyFixture(t)
+					f.seedChanged(expectsY)
+					f.seedMark("judge-recorded", true)
+					writeTestFile(t, f.recordsCheckout.Root, tt.changed, "{}")
+					f.recordsCheckout.Head, f.recordsChanged = "records-2", []string{tt.changed}
+
+					requireDone(f)
+
+					if f.seats.Calls != 1 {
+						t.Errorf("%d judge runs; want the judge resumed", f.seats.Calls)
+					}
+				})
+			}
+		})
+
+		t.Run("a gone snapshot stops recording it lost, and the next entry takes a new snapshot and resumes", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.seedMark("judge-recorded", false)
+
+			outcome, pointer, err := f.call()
+
+			requireStuck(t, outcome, pointer, err, true, "snapshot", "lym loom resume")
+			requireDeferPrefix(t, pointer.Reason, false)
+			if !f.scope().SnapshotLost || !f.untouched() {
+				t.Fatalf("snapshot lost %v, judge untouched %v; want it recorded lost and no judge", f.scope().SnapshotLost, f.untouched())
+			}
+
+			requireDone(f)
+
+			if _, found, err := ReadJudgeSnapshot(f.deps); err != nil || !found {
+				t.Errorf("ReadJudgeSnapshot() = _, %v, %v; want the new snapshot", found, err)
+			}
+			if f.scope().SnapshotLost || f.scope().JudgeSession.Open || len(f.requests) != 1 || f.requests[0].SpawnID != "judge-recorded" {
+				t.Errorf("scope = lost %v, mark %+v; requests %+v; want the flag cleared, the mark closed and the recorded spawn id kept", f.scope().SnapshotLost, f.scope().JudgeSession, f.requests)
+			}
+		})
+	})
+
+	t.Run("a change the judge session makes stops the pass, and a resume stops again until it is undone", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name     string
+			edit     func(t *testing.T, f *verifyFixture)
+			undo     func(t *testing.T, f *verifyFixture)
+			fragment string
 		}{
-			{"a passing compare with tests accepted checks the profile once and records HEAD", withAccepted(""), 1, "aaa"},
-			{"a profile checked at an earlier commit is checked again at HEAD", withAccepted("old"), 1, "aaa"},
-			{"a profile already checked at HEAD runs no compare", withAccepted("aaa"), 0, "aaa"},
-			{"no acceptance runs no compare", partial, 0, ""},
+			{
+				name: "ATrackedFile",
+				edit: func(t *testing.T, f *verifyFixture) {
+					writeTestFile(t, f.codeCheckout.Root, "a.go", "edited")
+					f.codeCheckout.Changed = []string{"a.go"}
+				},
+				undo: func(t *testing.T, f *verifyFixture) {
+					removeTestFile(t, f.codeCheckout.Root, "a.go")
+					f.codeCheckout.Changed = nil
+				},
+				fragment: "code: a.go was changed",
+			},
+			{
+				name: "TheScopeRecord",
+				edit: func(t *testing.T, f *verifyFixture) {
+					writeTestFile(t, f.recordsCheckout.Root, "_lym/drift/scope.json", "{}")
+					f.recordsCheckout.Changed = []string{"_lym/drift/scope.json"}
+				},
+				undo: func(t *testing.T, f *verifyFixture) {
+					removeTestFile(t, f.recordsCheckout.Root, "_lym/drift/scope.json")
+					f.recordsCheckout.Changed = nil
+				},
+				fragment: "records: _lym/drift/scope.json was changed",
+			},
+			{
+				name: "AnAddedUntrackedFile",
+				edit: func(t *testing.T, f *verifyFixture) {
+					writeTestFile(t, f.codeCheckout.Root, "new.txt", "added")
+					f.codeCheckout.Untracked = []string{"new.txt"}
+				},
+				undo: func(t *testing.T, f *verifyFixture) {
+					removeTestFile(t, f.codeCheckout.Root, "new.txt")
+					f.codeCheckout.Untracked = nil
+				},
+				fragment: "code: new.txt was added",
+			},
+			{
+				name:     "ACommitOnTheCodeSide",
+				edit:     func(_ *testing.T, f *verifyFixture) { f.commit()() },
+				undo:     func(_ *testing.T, f *verifyFixture) { f.codeCheckout.Head = "code-1" },
+				fragment: `code: HEAD moved from "code-1" to "code-2"`,
+			},
+			{
+				name: "ACommitOnTheRecordsSide",
+				edit: func(t *testing.T, f *verifyFixture) {
+					writeTestFile(t, f.recordsCheckout.Root, "notes.md", "added")
+					f.recordsCheckout.Head, f.recordsChanged = "records-2", []string{"notes.md"}
+				},
+				undo: func(t *testing.T, f *verifyFixture) {
+					removeTestFile(t, f.recordsCheckout.Root, "notes.md")
+					f.recordsCheckout.Head, f.recordsChanged = "records-1", nil
+				},
+				fragment: "records: notes.md was changed",
+			},
 		}
-		for _, row := range rows {
-			t.Run(row.name, func(t *testing.T) {
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				f := withKept(t, row.scope)
+				f := newVerifyFixture(t)
+				f.seedChanged(expectsY)
+				f.onArrival = func() { tt.edit(t, f) }
+
+				outcome, pointer, err := f.call()
+
+				requireStuck(t, outcome, pointer, err, true, tt.fragment, f.deps.JudgeSnapshotDir, "lym loom resume")
+				requireDeferPrefix(t, pointer.Reason, false)
+				if !f.scope().JudgeSession.Open || len(f.records().Judged.Tuples) != 0 {
+					t.Fatalf("scope mark %+v and %d tuples; want the mark left open and nothing stored", f.scope().JudgeSession, len(f.records().Judged.Tuples))
+				}
+				spawn := f.requests[0].SpawnID
+
+				outcome, pointer, err = f.call()
+
+				requireStuck(t, outcome, pointer, err, true, tt.fragment)
+				if f.seats.Calls != 1 {
+					t.Fatalf("%d judge runs after a resume with the edit still there; want the guard to stop it with no spawn", f.seats.Calls)
+				}
+
+				f.onArrival = nil
+				tt.undo(t, f)
 				requireDone(f)
-				if len(f.acceptedHeads) != row.wantCompares {
-					t.Errorf("compares against the accepted profile = %d; want %d", len(f.acceptedHeads), row.wantCompares)
-				}
-				if row.wantCompares > 0 && f.events[len(f.events)-1] != "compare-accepted" {
-					t.Errorf("events = %v; want the compare against the accepted profile after the compare", f.events)
-				}
-				if got := f.scope().AcceptedProfileHead; got != row.wantProfileHead {
-					t.Errorf("accepted_profile_head = %q; want %q", got, row.wantProfileHead)
+
+				if f.seats.Calls != 2 || f.requests[1].SpawnID != spawn || f.scope().JudgeSession.Open {
+					t.Errorf("%d runs, resumed spawn %q, mark %+v; want a respawn under %q and a closed mark", f.seats.Calls, f.requests[1].SpawnID, f.scope().JudgeSession, spawn)
 				}
 			})
 		}
 
-		t.Run("the profile is the baseline with the accepted test's kept output in its place", func(t *testing.T) {
+		t.Run("AChangeMadeBeforeTheSpawnIsNoJudgeEdit", func(t *testing.T) {
 			t.Parallel()
-			f := withKept(t, withAccepted(""))
-			writeProfileFile(t, f.paths.AcceptedDir, "stale.txt", "old\n")
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			writeTestFile(t, f.codeCheckout.Root, "a.go", "before")
+			f.codeCheckout.Changed = []string{"a.go"}
+
 			requireDone(f)
-			if !slices.Equal(f.acceptedProfiles, []string{"accepted\n"}) {
-				t.Errorf("accepted profile t1.txt = %q; want the kept output", f.acceptedProfiles)
-			}
-			if got, err := os.ReadFile(filepath.Join(f.paths.AcceptedDir, "t2.txt")); err != nil || string(got) != "baseline\n" {
-				t.Errorf("accepted profile t2.txt = %q, %v; want the baseline's", got, err)
-			}
-			if _, err := os.Stat(filepath.Join(f.paths.AcceptedDir, "stale.txt")); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("a file of an earlier profile is still in the accepted profile: %v", err)
-			}
 		})
 
-		t.Run("an accepted output that changed after its acceptance is Stuck naming the ways forward, and records no commit", func(t *testing.T) {
+		t.Run("ABaselineEditedDuringTheSessionStopsNamingDefer", func(t *testing.T) {
 			t.Parallel()
-			f := withKept(t, withAccepted(""))
-			f.acceptedCompares = []CompareResult{failingCompare}
+			f := newVerifyFixture(t)
+			f.seedChanged(expectsY)
+			f.onArrival = func() { writeTree(t, f.paths.BaselineDir, map[string]string{"a.txt": "x=1\ny=9\n"}) }
+
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, false, "changed after its acceptance", "exit 1; log compare-1.log", "lym drift accept <test>", "lym drift withdraw <test>", "lym loom resume")
-			if got := f.scope().AcceptedProfileHead; got != "" {
-				t.Errorf("accepted_profile_head = %q; want none after a compare that did not pass", got)
-			}
-			if len(f.commits) != 1 || !slices.Equal(f.commits[0], []string{DirRel()}) {
-				t.Errorf("commits = %v; want the durable directory once", f.commits)
-			}
-		})
 
-		t.Run("an acceptance with no kept output is Stuck naming the test and a new acceptance, with no compare against the profile", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, withAccepted(""), nil)
-			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, false, "no output was kept at the acceptance of t1", "lym drift accept <test>", "lym loom resume")
-			if len(f.acceptedHeads) != 0 {
-				t.Errorf("compares against the accepted profile = %d; want none", len(f.acceptedHeads))
+			requireStuck(t, outcome, pointer, err, true, "lym drift defer")
+			requireDeferPrefix(t, pointer.Reason, true)
+			if !f.scope().JudgeSession.Open || len(f.records().Judged.Tuples) != 0 {
+				t.Errorf("scope mark %+v and %d tuples; want the mark left open and nothing stored", f.scope().JudgeSession, len(f.records().Judged.Tuples))
 			}
 		})
+	})
 
-		t.Run("an agent's acceptance keeps the output it saw, and the agent's later commit is compared against it", func(t *testing.T) {
-			t.Parallel()
-			f := newVerifyFixture(t, partial, nil)
-			f.compares = []CompareResult{failingCompare, passingCompare}
-			accept := f.agentAccept()
-			f.seats = gateLoopSeats(t, []func(){func() {
-				accept()
-				f.head = "bbb"
-			}})
-			f.deps.Seats = f.seats
-			requireDone(f)
-			if !slices.Equal(f.acceptedHeads, []string{"bbb"}) || !slices.Equal(f.acceptedProfiles, []string{"accepted at aaa\n"}) {
-				t.Errorf("compares against the accepted profile at %v reading %q; want one at the agent's HEAD bbb reading the output accepted at aaa", f.acceptedHeads, f.acceptedProfiles)
-			}
-			scope := f.scope()
-			if scope.AcceptedProfileHead != "bbb" || len(scope.Accepted) != 1 || scope.Accepted[0].Test != "t1" {
-				t.Errorf("scope = %+v; want t1 accepted and the profile at bbb", scope)
-			}
-		})
+	t.Run("a judgement entry that fails every attempt ends Stuck and the next entry respawns the judge", func(t *testing.T) {
+		t.Parallel()
+		f := newVerifyFixture(t)
+		f.seedChanged(expectsY)
+		f.badJudgement = true
+
+		outcome, pointer, err := f.call()
+
+		if err != nil || outcome != shedengine.Stuck || strings.HasPrefix(pointer.Reason, shedadapters.DecisionHaltPrefix) {
+			t.Fatalf("Call() = %q, %v (%s); want the shed's Stuck with no decision prefix", outcome, err, pointer.Reason)
+		}
+		if !f.scope().JudgeSession.Open || len(f.records().Judged.Tuples) != 0 {
+			t.Fatalf("scope mark %+v and %d tuples; want the mark left open and nothing stored", f.scope().JudgeSession, len(f.records().Judged.Tuples))
+		}
+
+		f.badJudgement = false
+		requireDone(f)
+
+		if f.seats.Calls != 2 || f.requests[len(f.requests)-1].SpawnID != f.requests[0].SpawnID {
+			t.Errorf("%d runs, spawn ids %q and %q; want a respawn under the same spawn id", f.seats.Calls, f.requests[0].SpawnID, f.requests[len(f.requests)-1].SpawnID)
+		}
 	})
 }
+
+// ptr returns a pointer to a copy of value.
+func ptr[T any](value T) *T { return &value }

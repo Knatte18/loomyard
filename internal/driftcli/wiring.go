@@ -3,9 +3,12 @@
 package driftcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -34,6 +38,32 @@ func openWorktree(cmd *cobra.Command) (*worktree, error) {
 		return nil, err
 	}
 	location, err := lymcwd.Resolve(cwd)
+	if err != nil {
+		return nil, err
+	}
+	return &worktree{location: location, paths: driftengine.NewPaths(location.AnchorPath())}, nil
+}
+
+// openSlugWorktree resolves the worktree of the board slug in the hub the command's cwd is in, so a verb acts on a run from any of the hub's worktrees.
+// It is the sibling worktree fabricengine.WorktreePath names, at the cwd's own anchor; a slug that names no worktree is refused, naming `lym board list`.
+func openSlugWorktree(cmd *cobra.Command, slug string) (*worktree, error) {
+	cwd, err := lymcwd.CwdFrom(cmd.Context())
+	if err != nil {
+		return nil, err
+	}
+	here, err := lymcwd.Resolve(cwd)
+	if err != nil {
+		return nil, err
+	}
+	root := fabricengine.WorktreePath(here, slug)
+	info, statErr := os.Stat(root)
+	if slug != filepath.Base(slug) || slug == "." || slug == ".." || errors.Is(statErr, fs.ErrNotExist) || (statErr == nil && !info.IsDir()) {
+		return nil, fmt.Errorf("drift: the hub has no worktree %q; way forward: lym board list names the slug of each task", slug)
+	}
+	if statErr != nil {
+		return nil, statErr
+	}
+	location, err := lymcwd.Resolve(filepath.Join(root, here.AnchorRel))
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +90,7 @@ func (w *worktree) config() (driftengine.Config, error) {
 	return driftengine.LoadConfig(w.configDirs())
 }
 
-// verbStatus reads the run status under its lock, the capture lock, the agent-session mark and whether the session is the operator's.
+// verbStatus reads the run status under its lock and whether the capture lock is held.
 func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	status, found, err := state.ReadJSON[shedengine.Status](shedrun.StatusFile(w.location, shedrun.SelfRunID), shedrun.StatusLock(w.location, shedrun.SelfRunID))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -73,20 +103,7 @@ func (w *worktree) verbStatus() (driftengine.VerbStatus, error) {
 	if err != nil {
 		return driftengine.VerbStatus{}, err
 	}
-	agentSession, err := driftengine.AgentSessionOpen(w.paths)
-	if err != nil {
-		return driftengine.VerbStatus{}, err
-	}
-	operatorSession, err := driftengine.OperatorSessionOpen(w.paths)
-	if err != nil {
-		return driftengine.VerbStatus{}, err
-	}
-	return driftengine.VerbStatus{
-		Status:          status,
-		CaptureHeld:     captureHeld,
-		AgentSession:    agentSession,
-		OperatorSession: operatorSession,
-	}, nil
+	return driftengine.VerbStatus{Status: status, CaptureHeld: captureHeld}, nil
 }
 
 // gitFacts reads HEAD, the branch point and the tracked dirty paths of the code checkout.
@@ -120,7 +137,7 @@ func (w *worktree) slots() (*gateslot.Pool, string) {
 	return hubgeom.GateSlots(w.location), gateslot.WaitDir(w.location.AnchorPath())
 }
 
-// captureRequest describes a capture of step in this worktree, which the caller completes with its skip list, precondition and lock bound.
+// captureRequest describes a capture of step in this worktree, which the caller completes with its precondition and lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
 func (w *worktree) captureRequest(step driftengine.CommandStep) driftengine.CaptureRequest {
 	pool, waitDir := w.slots()
@@ -136,7 +153,7 @@ func (w *worktree) captureRequest(step driftengine.CommandStep) driftengine.Capt
 	}
 }
 
-// compareRequest describes a compare of step in this worktree, which the caller completes with its skip list and lock bound.
+// compareRequest describes a compare of step in this worktree, which the caller completes with its lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
 func (w *worktree) compareRequest(step driftengine.CommandStep) driftengine.CompareRequest {
 	pool, waitDir := w.slots()
@@ -150,6 +167,69 @@ func (w *worktree) compareRequest(step driftengine.CommandStep) driftengine.Comp
 		Timeout:     stepTimeout(step),
 		Now:         time.Now,
 	}
+}
+
+// checkDeps builds the seams the drift check reads over this worktree: the records and seal reads, the run status, the row order of the recipe the run's seed names, the current capture and the compare.
+// The current capture runs in the gate slot the process's own gate holds, when it runs inside one.
+func (w *worktree) checkDeps() (driftengine.Deps, error) {
+	seed, found, err := shedrun.ReadSeed(w.location, shedrun.SelfRunID)
+	if err != nil {
+		return driftengine.Deps{}, err
+	}
+	if !found {
+		return driftengine.Deps{}, errors.New("drift: this worktree has no run seed; way forward: lym drift check runs inside a tapestry or darn run's worktree")
+	}
+	rows, err := loomrecipe.RowNames(seed.Recipe)
+	if err != nil {
+		return driftengine.Deps{}, err
+	}
+	stepOf := func(name string) (driftengine.CommandStep, error) {
+		cfg, err := w.config()
+		if err != nil {
+			return driftengine.CommandStep{}, err
+		}
+		return cfg.StepWithHubEnv(name, w.configDirs())
+	}
+
+	return driftengine.Deps{
+		Paths:        w.paths,
+		WorktreeRoot: w.root(),
+		Config:       w.config,
+		Status: func() (shedengine.Status, error) {
+			verb, err := w.verbStatus()
+			return verb.Status, err
+		},
+		Rows: rows,
+		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
+			message := fmt.Sprintf("loom: drift records for %s", w.location.WorktreeName)
+			_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), w.location, relPaths, message, trailers, fabricengine.EnvSyncOptions())
+			return err
+		},
+		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.FindTrailerCommit(w.location, key, newest)
+		},
+		FileAt: func(rev, relPath string) ([]byte, bool, error) {
+			return fabricengine.AnchoredFileAt(w.location, rev, relPath)
+		},
+		CaptureCurrent: func(ctx context.Context) (driftengine.CurrentCapture, error) {
+			step, err := stepOf("capture")
+			if err != nil {
+				return driftengine.CurrentCapture{}, err
+			}
+			request := w.captureRequest(step)
+			request.InheritedSlot = os.Getenv(gateslot.InheritEnv)
+			return driftengine.CaptureCurrent(ctx, request)
+		},
+		Compare: func(ctx context.Context) (driftengine.CompareResult, error) {
+			step, err := stepOf("compare")
+			if err != nil {
+				return driftengine.CompareResult{}, err
+			}
+			request := w.compareRequest(step)
+			request.LockRetry = compareLockRetry
+			return driftengine.RunCompare(ctx, request)
+		},
+	}, nil
 }
 
 // stepTimeout returns how long a declared step may run.

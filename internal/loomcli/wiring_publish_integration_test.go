@@ -12,11 +12,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/samplerengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // TestWireLanding_TellsLanguageSkills asserts wireLanding hands the hub's language skills, as wire loaded them, to the landing deps over a real hub and pair.
@@ -125,8 +129,43 @@ func TestWire_DescribeTableCarriesTheDriftVerdict(t *testing.T) {
 		t.Fatalf("DescribeTable() error = %v; want nil", err)
 	}
 
-	const want = "## Regression check\n\n- Scope: full.\n- Compare: not run.\n- Accepted drift: none."
+	const want = "## Regression check\n\n- Scope: full.\n- Check: not run."
 	if got := table.Values["drift_verdict"]; got != want {
 		t.Errorf("DescribeTable() drift_verdict = %q; want %q", got, want)
+	}
+}
+
+// TestLandingDeps_DriftVerdict_RendersTheScopeRecord asserts the DriftVerdict seam answers no section while the run has recorded no scope, and renders the records of the newest records commit once one exists, read at call time over a real hub and pair.
+func TestLandingDeps_DriftVerdict_RendersTheScopeRecord(t *testing.T) {
+	tiergate.Require(t, 1)
+	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	const slug = "landingverdict"
+	hubforge.AddPair(t, hub, slug)
+	location, err := lymcwd.ResolveWorktree(hub.PairCodeWorktree(slug))
+	if err != nil {
+		t.Fatalf("ResolveWorktree error = %v; want nil", err)
+	}
+	deps := landingDeps(location, shedrun.RecipeTapestry, websterengine.Geometry{}, "task", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(location), parentLockDeps(location, shedrun.SelfRunID, "", ""))
+
+	if got, err := deps.DriftVerdict(); err != nil || got != "" {
+		t.Fatalf("DriftVerdict() with no scope record = %q, %v; want an empty section and nil", got, err)
+	}
+
+	records := driftRecordsDeps(location)
+	records.CommitWithTrailers = func(relPaths []string, trailers []fabricengine.Trailer) error {
+		_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(location.HubPath), location, relPaths, "seed the drift records", trailers, fabricengine.SyncOptions{})
+		return err
+	}
+	err = driftengine.WriteRecords(records, func(scope *driftengine.ScopeRecord, _ *driftengine.JudgedRecord) error {
+		scope.Scope = driftengine.ScopeFull
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WriteRecords() error = %v; want nil", err)
+	}
+	const want = "## Regression check\n\n- Scope: full.\n- Check: not run."
+	if got, err := deps.DriftVerdict(); err != nil || got != want {
+		t.Errorf("DriftVerdict() with a records commit = %q, %v; want %q, nil", got, err, want)
 	}
 }

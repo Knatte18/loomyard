@@ -40,7 +40,7 @@ Rule: Writing a spawned role's stencil: it renders the parent and edit directive
 A spawned role's top-level stencil renders the parent directive, and no stencil tells an agent to ask the operator; the agent asks its parent.
 
 - An interactive role's questions are the one place a question reaches a person, and they come from the `{{.mode_rules}}` marker Go fills, not from stencil text.
-  The Discussion chair is one such role, and the Drift-Verify seat is another when drift.yaml sets `verify_interactive`.
+  The Discussion chair and the raddle agent are such roles, and the judge seat is another when drift.yaml sets `judge_interactive`.
 - The orch stencils are exempt: the orch session is the operator's own delegate and has no parent to ask.
 - Enforced by a test over the stencils.
 

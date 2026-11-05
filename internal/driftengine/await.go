@@ -5,10 +5,9 @@ package driftengine
 import (
 	"context"
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -51,11 +50,11 @@ func (p *DriftAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.O
 // await is Call without the commit.
 func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
-	scope, found, err := ReadScope(d.Paths)
+	records, err := ReadRecords(d)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	if !found || scope.Scope == ScopeOff || scope.AwaitedAt != "" {
+	if !records.ScopeFound || records.Scope.Scope == ScopeOff || records.Scope.AwaitedAt != "" {
 		return shedengine.Done, shedengine.OutputPointer{}, nil
 	}
 
@@ -75,9 +74,8 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, err
 	}
 
-	rescope := captureFound && emptyUnderSkips(capture)
 	stuck := func(what string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("drift: %s; way forward: %s", what, awaitWaysForward(head == branchPoint, rescope))}, nil
+		return shedengine.Stuck, shedengine.OutputPointer{Reason: fmt.Sprintf("drift: %s; way forward: %s", what, awaitWaysForward(head == branchPoint))}, nil
 	}
 	switch {
 	case !captureFound:
@@ -90,14 +88,18 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 		return stuck(fmt.Sprintf("HEAD %s moved off the commit %s the baseline was captured at, and no capture may run on changed code", head, capture.Head))
 	}
 
+	digest, err := BaselineDigest(d.Paths.BaselineDir)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
 	now := d.Now
 	if now == nil {
 		now = time.Now
 	}
-	err = UpdateScope(d.Paths, func(cur ScopeRecord, _ bool) (ScopeRecord, error) {
-		cur.AwaitedAt = stamp(now())
-		return cur, nil
-	})
+	err = WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.AwaitedAt = stamp(now())
+		return nil
+	}, fabricengine.Trailer{Key: BaselineTrailerKey, Value: digest})
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -108,27 +110,12 @@ func (p *DriftAwait) await(ctx context.Context) (shedengine.Outcome, shedengine.
 const deferWay = "lym drift defer followed by lym loom resume, which goes on with regression deferred"
 
 // awaitWaysForward names the ways forward of a Drift-Await Stuck.
-// A capture is one of them only while HEAD is on the branch point;
-// after a capture that wrote nothing under skipped tests, rescope is true and a scope change replaces the plain capture, which would fail the same way.
-func awaitWaysForward(onBranchPoint, rescope bool) string {
-	switch {
-	case rescope:
-		return rescopeWaysForward(onBranchPoint)
-	case onBranchPoint:
-		return "lym drift capture followed by lym loom resume, which captures again on the branch point and re-enters this row, or " + deferWay
-	default:
-		return deferWay
-	}
-}
-
-// rescopeWaysForward names the ways forward after a capture that wrote nothing under skipped tests.
-// A scope comparing more tests, then a capture, is one of them only while HEAD is on the branch point.
-func rescopeWaysForward(onBranchPoint bool) string {
-	ways := []string{"lym drift scope --scope off followed by lym loom resume, which goes on with no regression for this task", deferWay}
+// A capture is one of them only while HEAD is on the branch point.
+func awaitWaysForward(onBranchPoint bool) string {
 	if onBranchPoint {
-		ways = slices.Insert(ways, 0, "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume, which captures again under the new scope")
+		return "lym drift capture followed by lym loom resume, which captures again on the branch point and re-enters this row, or " + deferWay
 	}
-	return strings.Join(ways, ", or ")
+	return deferWay
 }
 
 // logClause returns ", log <path>", or nothing when log is empty.

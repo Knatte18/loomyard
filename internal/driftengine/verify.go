@@ -1,13 +1,15 @@
-// verify.go — the Drift-Verify producer: the mechanical compare, then one strong agent on the drift it finds, and the decision halts that put drift in a task meant to change nothing to the run's parent.
+// verify.go — the Drift-Verify producer: containment of the current code's captured changes by the sealed expectation, and one judge on the expected changes no stored ruling covers.
 
 package driftengine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -19,72 +21,66 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
-// The opening texts of the halts that record gate_halt_at, which follow shedadapters.DecisionHaltPrefix where it applies.
-// They are for the operator's reading; no code reads them back.
+// The recipe rows that edit code, which a Stuck's way forward goes back to.
 const (
-	dirtyHaltOpening   = "drift verify halt: the tracked tree is dirty; "
-	gateHaltOpening    = "drift verify halt: the verify gate failed; "
-	compareHaltOpening = "drift verify halt: the compare still shows drift; "
-	generalHaltOpening = "drift verify halt: "
+	darnWriteRow = "Darn-Write"
+	websterRow   = "Webster"
 )
 
-// The names of the gate entries of the agent's table; the told verify entry keeps its own name.
+// The reasons of the Stuck passes that name no changed value.
 const (
-	dirtyGateName   = "dirty"
-	compareGateName = "compare"
+	recordsMismatchReason = "the drift records on disk differ from their newest committed copy; way forward: the parent runs lym drift amend <slug> --restore, then lym loom resume"
+	neverCountedReason    = "the baseline capture never counted, so there is no baseline to check against; way forward: the parent runs lym drift defer, then lym loom resume"
 )
 
-// dirtyGateAttempts is how many times the agent is asked to commit or clean its tree.
-const dirtyGateAttempts = 3
-
-// VerifyTold carries what the Drift-Verify table renders: the failing compare's log and the commit the baseline was captured at.
-type VerifyTold struct {
-	// CompareLog is the log of the compare that showed the drift.
-	CompareLog string
-	// BaselineHead is the counted capture's head.
-	BaselineHead string
-}
-
-// DriftVerify is the Drift-Verify ShedProducer.
+// DriftVerify is the Drift-Verify ShedProducer; the Drift-Recheck row runs the same engine.
 type DriftVerify struct {
-	name   string
-	row    Row
-	verify shuttleengine.GateEntry
-	deps   Deps
+	name      string
+	row       Row
+	judgement shuttleengine.GateEntry
+	deps      Deps
 }
 
 var _ shedengine.ShedProducer = (*DriftVerify)(nil)
 
 // NewDriftVerify returns the Drift-Verify producer identified as name.
-// verify is the row's resolved test gate entry, which the agent's table runs only once the session committed code.
-func NewDriftVerify(name string, row Row, verify shuttleengine.GateEntry, deps Deps) *DriftVerify {
-	return &DriftVerify{name: name, row: row, verify: verify, deps: deps}
+// judgement is the row's resolved `judgement` gate entry, which the judge's table runs at each turn end.
+func NewDriftVerify(name string, row Row, judgement shuttleengine.GateEntry, deps Deps) *DriftVerify {
+	return &DriftVerify{name: name, row: row, judgement: judgement, deps: deps}
 }
 
-// Call runs one Drift-Verify pass and commits the durable drift directory on every way out but one: with drift switched off it is Done at once, committing nothing.
-// A pass with no scope record, scope off or a waiver is Done with no compare.
-// Otherwise it settles the agent session an interrupted entry left and rules the acceptances the parent stood by.
-// It halts for the parent on an unruled acceptance under scope full and on a missing baseline.
-// It checks that the tree is clean and that the agent's commits pass the verify gate, then runs the compare.
-// A passing compare is Done; a failing one spawns one agent, with the operator in its pane under verify_interactive, whose table gates on a clean tree, on the verify entry and on a final compare.
-// A Done with tests accepted first builds the accepted profile from the baseline and the output each acceptance kept and compares HEAD against it, unless such a compare passed at HEAD since the last acceptance;
-// an acceptance with no kept output, and a compare that does not pass, are a Stuck naming the ways forward.
-// Every Stuck under scope full, and under scope partial the missing-baseline halt and a failing final compare while a test is withdrawn, opens with shedadapters.DecisionHaltPrefix.
+// Call runs one Drift-Verify pass.
+// With drift switched off it is Done at once.
+// Otherwise it first ends the live chairs of the removed drift-baseline and drift-verify agents, and then runs these steps in order, each ending the pass when it answers:
+// no scope record, scope off, a deferred capture, a waiver and a head already checked with no amendment since are Done;
+// a records mismatch, a capture that never counted and a baseline that is missing or edited are a Stuck for the run's parent;
+// an open judge session whose snapshot is gone or whose checkouts changed since is a Stuck, and one that is intact is resumed;
+// a failed current capture, a seal fault and any change the expectation does not cover are a Stuck;
+// a change whose exact old and new value has a stored ruling reuses it, and a stored ruling of does not match is a Stuck.
+// With no change left to judge the check passes; otherwise one judge rules on the rest, and its rulings are stored.
+// Under a recorded diff of command the declared compare replaces the capture and the diff.
+// An exit 0 is Done, and a failing compare is ruled on case by case by one judge.
+// A stored ruling of the same code head stands until an amendment follows it.
+// Every Stuck for the parent opens with shedadapters.DecisionHaltPrefix, and one that names `lym drift defer` carries DeferHaltPrefix right after it.
+// An exhausted `judgement` entry is the shed's Stuck, and its resume respawns the judge under the same spawn id.
 func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
 		seam{"Config", d.Config != nil},
 		seam{"Status", d.Status != nil},
 		seam{"Head", d.Head != nil},
-		seam{"DirtyPaths", d.DirtyPaths != nil},
-		seam{"Commit", d.Commit != nil},
 		seam{"Seats", d.Seats != nil},
-		seam{"VerifyTable", d.VerifyTable != nil},
-		seam{"Compare", d.Compare != nil},
-		seam{"CompareAccepted", d.CompareAccepted != nil},
+		seam{"CommitWithTrailers", d.CommitWithTrailers != nil},
+		seam{"TrailerCommit", d.TrailerCommit != nil},
+		seam{"FileAt", d.FileAt != nil},
+		seam{"CaptureCurrent", d.CaptureCurrent != nil},
+		seam{"JudgeTable", d.JudgeTable != nil},
+		seam{"Checkouts", d.Checkouts != nil},
+		seam{"RecordsChangedSince", d.RecordsChangedSince != nil},
+		seam{"EndRoles", d.EndRoles != nil},
 	)
-	if err == nil && p.verify.Gate == nil {
-		err = fmt.Errorf("drift: %s is wired without a verify gate entry", p.name)
+	if err == nil && p.judgement.Gate == nil {
+		err = fmt.Errorf("drift: %s is wired without a judgement gate entry", p.name)
 	}
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
@@ -92,8 +88,10 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 	if outcome, pointer, stop := passWhenSwitchedOff(d.Config); stop {
 		return outcome, pointer, nil
 	}
-	outcome, pointer, err := p.pass(ctx)
-	return commitOnExit(p.name, d.Commit, []string{DirRel()}, outcome, pointer, err)
+	if err := d.EndRoles([]string{baselineRole, verifyRole}); err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: end the chairs of the removed drift agents: %w", p.name, err)
+	}
+	return p.pass(ctx)
 }
 
 // doneBecause returns a Done carrying why no agent was needed.
@@ -101,208 +99,268 @@ func doneBecause(why string) (shedengine.Outcome, shedengine.OutputPointer, erro
 	return shedengine.Done, shedengine.OutputPointer{Reason: why}, nil
 }
 
-// pass is Call without the commit.
+// scopeOffReason words the Done of a scope that is off, naming the config key that set it when the record holds one.
+func scopeOffReason(scope ScopeRecord) string {
+	if scope.ScopeSource != "" {
+		return "the scope is off, set by " + scope.ScopeSource
+	}
+	return "the scope is off"
+}
+
+// pass is Call after the switch check and the end of the removed agents' chairs.
 func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
-	scope, found, err := ReadScope(d.Paths)
+	rec, err := ReadRecords(d)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
 	switch {
-	case !found:
-		return doneBecause("no scope is recorded, so there is nothing to compare")
-	case scope.Scope == ScopeOff:
-		return doneBecause("the scope is off")
-	case scope.WaivedAt != "":
-		return doneBecause("the compare is waived: " + scope.WaivedReason)
+	case !rec.ScopeFound:
+		return doneBecause("no scope is recorded, so there is nothing to check")
+	case rec.Mismatch:
+		return haltForParent(recordsMismatchReason)
+	case rec.Scope.Scope == ScopeOff:
+		return doneBecause(scopeOffReason(rec.Scope))
+	case rec.Scope.Deferred:
+		return doneBecause("the baseline capture was deferred, so there is no baseline to check against")
+	case rec.Scope.WaivedAt != "":
+		return doneBecause("the check is waived: " + rec.Scope.WaivedReason)
 	}
 
+	if rec.Scope.Diff == "" {
+		if rec, err = p.recordDiffMode(); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	if rec.Scope.AwaitedAt == "" {
+		return haltForParent(DeferHaltPrefix + neverCountedReason)
+	}
+	baseline, err := CheckBaseline(d)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if baseline.Fault != "" {
+		return haltForParent(baseline.Fault)
+	}
+
+	head, err := d.Head()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: read the code HEAD: %w", p.name, err)
+	}
+	if rec.Scope.LastPassHead != "" && head == rec.Scope.LastPassHead && rec.Scope.LastPassAmendments == len(rec.Scope.Amendments) {
+		return doneBecause("no change since the check that passed at " + head)
+	}
+
+	if rec.Scope.JudgeSession.Open && !rec.Scope.SnapshotLost {
+		reason, err := p.judgeSessionChanged()
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if reason != "" {
+			return haltForParent(reason)
+		}
+	}
+	if err := p.recordUnsealed(rec); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if rec.Scope.Diff == DiffCommand {
+		report, err := Check(ctx, p.deps)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		if report.Skip != "" {
+			return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: the check was skipped, which a run at this row never is: %s", p.name, report.Skip)
+		}
+		if reason := p.faultReason(report); reason != "" {
+			return haltForParent(reason)
+		}
+		return p.passCommand(ctx, rec, report)
+	}
+	return p.checkAndJudge(ctx, rec, head)
+}
+
+// recordDiffMode records the config's diff mode and key patterns in a scope record that holds none, which keeps them for the run, and returns the records as written.
+func (p *DriftVerify) recordDiffMode() (Records, error) {
+	d := p.deps
+	cfg, err := d.Config()
+	if err != nil {
+		return Records{}, fmt.Errorf("drift: %s: load the drift config: %w", p.name, err)
+	}
+	err = WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.Diff, scope.KeyPatterns = cfg.Diff, cfg.KeyPatterns
+		return nil
+	})
+	if err != nil {
+		return Records{}, err
+	}
+	return ReadRecords(d)
+}
+
+// recordUnsealed records Unsealed once for a run that has neither a seal commit nor an expected.yaml, so containment reads the empty expectation.
+// A run with an expected.yaml and no seal commit is left unmarked, so the seal check faults on it, and so is a run whose row is not past Drift-Expect, which the check refuses.
+func (p *DriftVerify) recordUnsealed(rec Records) error {
+	d := p.deps
+	if rec.Scope.Unsealed {
+		return nil
+	}
+	_, sealed, err := d.TrailerCommit(SealTrailerKey, false)
+	if err != nil {
+		return fmt.Errorf("drift: %s: find the oldest %s commit: %w", p.name, SealTrailerKey, err)
+	}
+	if sealed {
+		return nil
+	}
+	if _, present, err := readRecordFile(d.Paths.Expected); err != nil || present {
+		return err
+	}
 	status, err := d.Status()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return fmt.Errorf("drift: %s: read the run status: %w", p.name, err)
 	}
-
-	open, err := AgentSessionOpen(d.Paths)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
+	if !PastRow(d.Rows, status.CurrentProducer, expectRow) {
+		return nil
 	}
-	if open {
-		live, told, err := p.probeInterruptedAgent(ctx)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-		if live {
-			return p.runAgent(ctx, told)
-		}
-		if err := CloseAgentSession(d.Paths); err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-	}
-
-	gateResume := p.resumedFrom(scope.GateHaltAt, status)
-	if scope.GateHaltAt != "" && !gateResume {
-		if scope, err = p.updateScope(func(cur *ScopeRecord) { cur.GateHaltAt = "" }); err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-	}
-	if scope.Scope == ScopeFull && p.resumedFrom(scope.HaltNamedAt, status) {
-		scope, err = p.updateScope(func(cur *ScopeRecord) {
-			for i, acceptance := range cur.Accepted {
-				if slices.Contains(cur.HaltNamed, acceptance.Test) && acceptance.Ruling == RulingUnruled {
-					cur.Accepted[i].Ruling = RulingRuled
-				}
-			}
-			cur.HaltNamed, cur.HaltNamedAt = nil, ""
-		})
-		if err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-	}
-
-	if scope.Scope == ScopeFull && len(scope.Unruled()) > 0 {
-		return p.halt(false, generalHaltOpening, "the Drift-Verify agent accepted drift that only the run's parent may rule on")
-	}
-
-	capture, captureFound, err := ReadCapture(d.Paths)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if !CountedCapture(scope, capture, captureFound) {
-		return p.halt(true, generalHaltOpening, "no baseline capture counts, so there is nothing to compare against; way forward: lym drift waive --reason <text> followed by lym loom resume")
-	}
-
-	cfg, err := d.Config()
-	if err == nil {
-		_, err = cfg.Step(stepCompare)
-	}
-	if err != nil {
-		return p.halt(false, generalHaltOpening, fmt.Sprintf("%v; then lym loom resume", err))
-	}
-
-	if outcome, pointer, stopped, err := p.guardCommits(gateResume); stopped || err != nil {
-		return outcome, pointer, err
-	}
-
-	result, err := d.Compare(ctx)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if err := p.recordCompare(capture.Head, result.Passed); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if result.Passed {
-		return p.keepAcceptedProfile(ctx, shedengine.OutputPointer{Reason: "the compare passed"})
-	}
-	return p.runAgent(ctx, VerifyTold{CompareLog: result.Log, BaselineHead: capture.Head})
-}
-
-// keepAcceptedProfile ends a pass whose compare passed as a Done carrying pointer.
-// With tests accepted and no compare against the accepted profile passed at HEAD since their acceptance, it first builds the profile from the baseline and the output each acceptance kept, compares HEAD against it and records HEAD as its commit, so an accepted test whose output changed after its acceptance shows, now and in a later compare.
-// An acceptance with no kept output, and a compare that does not pass, are a Stuck naming the ways forward, and record no commit.
-func (p *DriftVerify) keepAcceptedProfile(ctx context.Context, pointer shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	scope, _, err := ReadScope(p.deps.Paths)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	head, err := p.deps.Head()
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if len(scope.Accepted) == 0 || scope.AcceptedProfileHead == head {
-		return shedengine.Done, pointer, nil
-	}
-	missing, err := buildAcceptedProfile(p.deps.Paths, scope)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if len(missing) > 0 {
-		return p.haltFrom(pointer, false, generalHaltOpening, fmt.Sprintf("no output was kept at the acceptance of %s, so the accepted profile cannot be built; way forward: lym drift accept <test> --reason <text> again for each, which keeps its output, then lym loom resume", strings.Join(missing, ", ")))
-	}
-	compared, err := p.deps.CompareAccepted(ctx)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	if !compared.Passed {
-		return p.haltFrom(pointer, false, generalHaltOpening, "the compare against the accepted profile shows drift, so an accepted test's output changed after its acceptance: "+compared.Reason+"; way forward: lym drift accept <test> --reason <text> again for a test whose new output is intended, lym drift withdraw <test> to judge it again, or a fix that restores its accepted output, then lym loom resume")
-	}
-	if _, err := p.updateScope(func(cur *ScopeRecord) { cur.AcceptedProfileHead = head }); err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	return shedengine.Done, pointer, nil
-}
-
-// probeInterruptedAgent reports whether the agent an earlier entry spawned still has a live chair, and the table text that entry was told.
-func (p *DriftVerify) probeInterruptedAgent(ctx context.Context) (live bool, told VerifyTold, err error) {
-	d := p.deps
-	capture, captureFound, err := ReadCapture(d.Paths)
-	if err != nil {
-		return false, VerifyTold{}, err
-	}
-	if !captureFound {
-		return false, VerifyTold{}, nil
-	}
-	told = VerifyTold{CompareLog: newestCompareLog(d.Paths.LogsDir), BaselineHead: capture.Head}
-	table, err := p.tableFor(ctx, told)
-	if err != nil {
-		return false, told, err
-	}
-	probed, err := d.Seats.Probe(table)
-	if err != nil {
-		return false, told, fmt.Errorf("drift: %s: probe the interrupted agent: %w", p.name, err)
-	}
-	return probed.Chair != nil, told, nil
-}
-
-// newestCompareLog returns the path of the newest compare log under logsDir, and "" when there is none.
-func newestCompareLog(logsDir string) string {
-	entries, err := os.ReadDir(logsDir)
-	if err != nil {
-		return ""
-	}
-	newest := ""
-	for _, entry := range entries {
-		name := entry.Name()
-		if strings.HasPrefix(name, "compare-") && strings.HasSuffix(name, ".log") && name > newest {
-			newest = name
-		}
-	}
-	if newest == "" {
-		return ""
-	}
-	return filepath.Join(logsDir, newest)
-}
-
-// resumedFrom reports whether this entry resumes from a halt the producer recorded at mark: the run's last history entry is a Stuck of this row whose latest time is at or after mark.
-// Both times compare as instants at second precision, since the shed stamps its history after Call returns.
-func (p *DriftVerify) resumedFrom(mark string, status shedengine.Status) bool {
-	if mark == "" || len(status.History) == 0 {
-		return false
-	}
-	last := status.History[len(status.History)-1]
-	if last.Producer != p.name || last.Outcome != shedengine.Stuck {
-		return false
-	}
-	latest := last.LastAt
-	if latest == "" {
-		latest = last.At
-	}
-	at, atErr := time.Parse(time.RFC3339, latest)
-	marked, markErr := time.Parse(time.RFC3339, mark)
-	if atErr != nil || markErr != nil {
-		return false
-	}
-	return !at.Truncate(time.Second).Before(marked.Truncate(time.Second))
-}
-
-// updateScope applies change to the scope record and returns the record as written.
-func (p *DriftVerify) updateScope(change func(cur *ScopeRecord)) (ScopeRecord, error) {
-	var written ScopeRecord
-	err := UpdateScope(p.deps.Paths, func(cur ScopeRecord, _ bool) (ScopeRecord, error) {
-		change(&cur)
-		written = cur
-		return cur, nil
+	return WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.Unsealed = true
+		return nil
 	})
-	return written, err
+}
+
+// checkAndJudge runs the drift check and maps its report: a fault or an unexpected change is a Stuck, stored rulings are reused, and the changes left over go to the judge.
+func (p *DriftVerify) checkAndJudge(ctx context.Context, rec Records, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	report, err := Check(ctx, p.deps)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if report.Skip != "" {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: the check was skipped, which a run at this row never is: %s", p.name, report.Skip)
+	}
+	if reason := p.faultReason(report); reason != "" {
+		return haltForParent(reason)
+	}
+	if unexpected := report.Unexpected(); len(unexpected) > 0 {
+		described := make([]string, len(unexpected))
+		for i, cell := range unexpected {
+			described[i] = describeCell(cell)
+		}
+		if err := p.recordCheck(p.checkResult(report, head, false, 0, 0), nil); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return haltForParent(fmt.Sprintf("the code changed what the expectation does not cover: %s; way forward: the parent runs lym drift amend <slug> --entries <file> to expect an intended change, then lym loom resume; or fix the code with %s", strings.Join(described, "; "), p.fixRoute()))
+	}
+
+	var toJudge []ClassifiedCell
+	var ruledNoMatch []string
+	reused := 0
+	for _, cell := range report.Cells {
+		tuple, stored := storedRuling(rec.Judged, cell.Cell)
+		switch {
+		case !stored:
+			toJudge = append(toJudge, cell)
+		case tuple.Ruling == RulingMatches:
+			reused++
+		default:
+			ruledNoMatch = append(ruledNoMatch, fmt.Sprintf("%s: %s", describeCell(cell), tuple.Reason))
+		}
+	}
+	if len(ruledNoMatch) > 0 {
+		if err := p.recordCheck(p.checkResult(report, head, false, 0, reused), nil); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return haltForParent(p.noMatchReason("a change the judge already ruled does not match its expectation", ruledNoMatch))
+	}
+	if len(toJudge) == 0 {
+		err := p.recordCheck(p.checkResult(report, head, true, 0, reused), closeJudgeSession)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return doneBecause("the check passed: every change is expected and ruled to match")
+	}
+	return p.judge(ctx, rec, report, toJudge, reused, head)
+}
+
+// faultReason returns the reason of the Stuck a fault of the report is, and empty when it holds none.
+// A failed current capture names its reason, its log and three ways forward.
+func (p *DriftVerify) faultReason(report CheckReport) string {
+	switch {
+	case report.BaselineFault != "":
+		return report.BaselineFault
+	case report.RecordsFault != "":
+		return report.RecordsFault
+	case report.SealFault != "":
+		return report.SealFault
+	case report.CaptureFault != "":
+		return DeferHaltPrefix + fmt.Sprintf("the current capture did not pass: %s; log %s; way forward: fix the cause the reason names, then lym loom resume; or fix the code with %s; or the parent runs lym drift defer, then lym loom resume", report.Capture.Reason, report.Capture.Log, p.fixRoute())
+	}
+	return ""
+}
+
+// noMatchReason words a Stuck over changes ruled not to match, naming each with its reason, the parent's amendment and the route that fixes code.
+func (p *DriftVerify) noMatchReason(lead string, ruled []string) string {
+	return fmt.Sprintf("%s: %s; way forward: the parent runs lym drift amend <slug> --entries <file> with entries that explain the change, then lym loom resume; or fix the code with %s", lead, strings.Join(ruled, "; "), p.fixRoute())
+}
+
+// fixRoute returns the parent's route to the row that edits code: Darn-Write when the run's rows hold it, else Webster, whose Merriam meets the cells in its run-level drift entry.
+func (p *DriftVerify) fixRoute() string {
+	row := websterRow
+	if slices.Contains(p.deps.Rows, darnWriteRow) {
+		row = darnWriteRow
+	}
+	return "lym loom goto --to " + row + " then lym loom resume"
+}
+
+// storedRuling returns the newest stored ruling whose case, identity, kind and exact old and new value are the cell's.
+func storedRuling(judged JudgedRecord, cell Cell) (JudgedTuple, bool) {
+	for _, tuple := range slices.Backward(judged.Tuples) {
+		if tuple.Case == cell.Case && tuple.Identity == cell.Identity && tuple.Kind == cell.Kind && tuple.Old == cell.Old && tuple.New == cell.New {
+			return tuple, true
+		}
+	}
+	return JudgedTuple{}, false
+}
+
+// checkResult builds the record of a check over report at head, counting the cells the judge ruled matching and the cells a stored ruling decided.
+func (p *DriftVerify) checkResult(report CheckReport, head string, passed bool, matched, reused int) CheckResult {
+	result := CheckResult{
+		Head:             head,
+		Passed:           passed,
+		At:               stamp(p.now()),
+		Mode:             report.Mode,
+		Changed:          len(report.Cells),
+		Matched:          matched,
+		Reused:           reused,
+		UncoveredEntries: report.Uncovered,
+	}
+	for _, cell := range report.Cells {
+		if cell.Expected {
+			result.Expected++
+			continue
+		}
+		result.Unexpected++
+		result.UnexpectedCells = append(result.UnexpectedCells, describeCell(cell))
+	}
+	return result
+}
+
+// recordCheck writes result as the last check through the records guard, with change applied first when it is not nil.
+// A passing result also records its head and the amendment count as the last pass.
+func (p *DriftVerify) recordCheck(result CheckResult, change func(scope *ScopeRecord, judged *JudgedRecord)) error {
+	return WriteRecords(p.deps, func(scope *ScopeRecord, judged *JudgedRecord) error {
+		if change != nil {
+			change(scope, judged)
+		}
+		scope.LastCheck = result
+		if result.Passed {
+			scope.LastPassHead, scope.LastPassAmendments = result.Head, len(scope.Amendments)
+		}
+		return nil
+	})
+}
+
+// closeJudgeSession closes the judge-session mark and clears the snapshot-lost mark, since a closed session needs no snapshot.
+func closeJudgeSession(scope *ScopeRecord, _ *JudgedRecord) {
+	scope.JudgeSession = SessionMark{}
+	scope.SnapshotLost = false
 }
 
 // now returns the told clock, or the system clock when none was told.
@@ -313,313 +371,485 @@ func (p *DriftVerify) now() time.Time {
 	return p.deps.Now()
 }
 
-// recordCompare records in the scope record a compare of the current HEAD against the baseline captured at baselineHead, and whether it passed.
-func (p *DriftVerify) recordCompare(baselineHead string, passed bool) error {
-	head, err := p.deps.Head()
+// judge spawns the judge on cells, which no stored ruling covers, and stores its rulings.
+// A fresh session removes a stale judgement.yaml, writes the request under a new spawn id, opens the session mark and takes the snapshot of both checkouts.
+// A session an earlier entry left open keeps its spawn id and its snapshot, and takes a new snapshot only when the records say the old one was lost.
+func (p *DriftVerify) judge(ctx context.Context, rec Records, report CheckReport, cells []ClassifiedCell, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	mark := rec.Scope.JudgeSession
+	spawnID := mark.SpawnID
+	if !mark.Open {
+		var err error
+		if spawnID, err = newSpawnID(); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	request, err := p.judgeRequest(spawnID, rec, report, cells)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+
+	if mark.Open {
+		err = p.resumeJudgeSession(rec, request, report.Capture.Dir)
+	} else {
+		err = p.openJudgeSession(request, report.Capture.Dir)
+	}
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+
+	outcome, pointer, session, err := p.runAgent(ctx, request)
+	if session == nil {
+		return outcome, pointer, err
+	}
+	return p.storeRulings(report, cells, request, session, reused, head)
+}
+
+// newSpawnID returns a fresh id for one judge spawn.
+func newSpawnID() (string, error) {
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("drift: draw a judge spawn id: %w", err)
+	}
+	return "judge-" + hex.EncodeToString(raw[:]), nil
+}
+
+// judgeCellID is the id the judge rules on the cell at index in the request.
+func judgeCellID(index int) string {
+	return fmt.Sprintf("c%d", index+1)
+}
+
+// judgeRequest builds the request of one spawn over cells: each cell with its exact old and new value and covering why, the open ranges that cover a cell, and the sealed expectation and the amendments as text.
+// An added case names its file in the current capture and a removed case its file in the baseline.
+func (p *DriftVerify) judgeRequest(spawnID string, rec Records, report CheckReport, cells []ClassifiedCell) (JudgeRequest, error) {
+	d := p.deps
+	baseHead, err := baselineHead(d)
+	if err != nil {
+		return JudgeRequest{}, err
+	}
+	seal, err := CheckSeal(d, rec, baseHead)
+	if err != nil {
+		return JudgeRequest{}, err
+	}
+	request := JudgeRequest{SpawnID: spawnID, Mode: DiffLines, Expectation: string(seal.Sealed), Amendments: amendmentsText(rec.Scope.Amendments)}
+
+	listed := map[[2]string]bool{}
+	for i, classified := range cells {
+		cell := classified.Cell
+		judged := JudgeCell{
+			ID:        judgeCellID(i),
+			Case:      cell.Case,
+			Identity:  JudgeIdentity{Key: cell.Identity.Key, N: cell.Identity.N, Line: cell.Identity.Line},
+			Kind:      cell.Kind,
+			Old:       cell.Old,
+			New:       cell.New,
+			Why:       classified.Coverage.Why,
+			OpenRange: classified.Coverage.Open,
+		}
+		switch cell.Kind {
+		case CellAddedCase:
+			judged.File = filepath.Join(report.Capture.Dir, filepath.FromSlash(cell.Case))
+		case CellRemovedCase:
+			judged.File = filepath.Join(d.Paths.BaselineDir, filepath.FromSlash(cell.Case))
+		}
+		request.Cells = append(request.Cells, judged)
+
+		if !classified.Coverage.Open {
+			continue
+		}
+		entry := coveringLine(report.Expectation, cell)
+		if key := [2]string{cell.Case, entry.Range}; !listed[key] {
+			listed[key] = true
+			request.OpenRanges = append(request.OpenRanges, JudgeOpenRange{Case: cell.Case, Range: entry.Range, Why: entry.Why})
+		}
+	}
+	return request, nil
+}
+
+// coveringLine returns the first line entry of the expectation that covers the unkeyed cell, the entry Cover reports.
+func coveringLine(expectation Expectation, cell Cell) LineEntry {
+	for _, entry := range expectation.Cases[cell.Case].Lines {
+		if covers, _ := coversLine(cell.Case, entry, cell); covers {
+			return entry
+		}
+	}
+	return LineEntry{}
+}
+
+// amendmentsText renders the parent's amendments in order, each as a comment line naming its kind, caller and time and then its entries; it is empty when there is none.
+func amendmentsText(amendments []Amendment) string {
+	var text strings.Builder
+	for _, amendment := range amendments {
+		fmt.Fprintf(&text, "# amendment %s by %s at %s\n", amendment.Kind, amendment.By, amendment.At)
+		if amendment.Entries == "" {
+			continue
+		}
+		text.WriteString(amendment.Entries)
+		if !strings.HasSuffix(amendment.Entries, "\n") {
+			text.WriteString("\n")
+		}
+	}
+	return text.String()
+}
+
+// openJudgeSession starts a judge session: it removes a stale judgement.yaml, writes the request, opens the session mark and takes the snapshot of both checkouts and of scratchDir.
+func (p *DriftVerify) openJudgeSession(request JudgeRequest, scratchDir string) error {
+	d := p.deps
+	if err := p.removeJudgement(); err != nil {
+		return err
+	}
+	if err := WriteJudgeRequest(d.Paths, request); err != nil {
+		return err
+	}
+	err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.JudgeSession = SessionMark{Open: true, OpenedAt: stamp(p.now()), SpawnID: request.SpawnID}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	_, err = p.updateScope(func(cur *ScopeRecord) {
-		cur.BaselineHead, cur.ComparedHead, cur.ComparedAt, cur.ComparePassed = baselineHead, head, stamp(p.now()), passed
-	})
+	_, err = TakeJudgeSnapshot(d, scratchDir)
 	return err
 }
 
-// markGateHalt records gate_halt_at when it is unset, so a resume's halt keeps the time it read.
-func (p *DriftVerify) markGateHalt() error {
-	return UpdateScope(p.deps.Paths, func(cur ScopeRecord, _ bool) (ScopeRecord, error) {
-		if cur.GateHaltAt == "" {
-			cur.GateHaltAt = stamp(p.now())
-		}
-		return cur, nil
-	})
-}
-
-// guardCommits runs the handoff's first two checks again: a clean tracked tree and, on a resume from a gate halt, the verify gate over the agent's commits.
-// stopped is true when it returned a Stuck.
-// It clears gate_halt_at once the tree is clean and the gate passed or was not due.
-func (p *DriftVerify) guardCommits(gateResume bool) (outcome shedengine.Outcome, pointer shedengine.OutputPointer, stopped bool, err error) {
+// resumeJudgeSession rewrites the request of a session an earlier entry left open and, when the records say its snapshot was lost, takes a new one and clears that mark.
+func (p *DriftVerify) resumeJudgeSession(rec Records, request JudgeRequest, scratchDir string) error {
 	d := p.deps
-	dirty, err := d.DirtyPaths()
-	if err != nil {
-		return "", shedengine.OutputPointer{}, false, err
+	if err := WriteJudgeRequest(d.Paths, request); err != nil {
+		return err
 	}
-	if len(dirty) > 0 {
-		if err := p.markGateHalt(); err != nil {
-			return "", shedengine.OutputPointer{}, false, err
-		}
-		outcome, pointer, err = p.halt(false, dirtyHaltOpening, fmt.Sprintf("%s; way forward: commit or clean them, then lym loom resume", strings.Join(dirty, ", ")))
-		return outcome, pointer, true, err
-	}
-
-	if gateResume {
-		attempt, attemptFound, err := AttemptHead(d.Paths)
-		if err != nil {
-			return "", shedengine.OutputPointer{}, false, err
-		}
-		head, err := d.Head()
-		if err != nil {
-			return "", shedengine.OutputPointer{}, false, err
-		}
-		if attemptFound && attempt != head {
-			result, err := p.verify.Gate()
-			if err != nil {
-				return "", shedengine.OutputPointer{}, false, err
-			}
-			if !result.Passed {
-				outcome, pointer, err = p.halt(false, gateHaltOpening, fmt.Sprintf("the verify gate failed on the agent's commits; %s; way forward: fix the tests and commit, then lym loom resume", p.keepFindings(result.Findings)))
-				return outcome, pointer, true, err
-			}
-		}
-		if _, err := p.updateScope(func(cur *ScopeRecord) { cur.GateHaltAt = "" }); err != nil {
-			return "", shedengine.OutputPointer{}, false, err
-		}
-	}
-	return "", shedengine.OutputPointer{}, false, nil
-}
-
-// keepFindings writes findings to the gate findings file and returns the clause naming it, or the findings inline when none can be kept.
-func (p *DriftVerify) keepFindings(findings string) string {
-	file := p.deps.GateFindingsFile
-	if file != "" {
-		err := os.MkdirAll(filepath.Dir(file), 0o755)
-		if err == nil {
-			err = os.WriteFile(file, []byte(findings), 0o644)
-		}
-		if err == nil {
-			return "findings: " + file
-		}
-	}
-	return "findings: " + strings.Join(strings.Fields(findings), " ")
-}
-
-// halt returns a Stuck whose reason is opening followed by detail.
-// The reason opens with shedadapters.DecisionHaltPrefix when always is set or the scope is full.
-// Under scope full, while the scope record holds unruled acceptances, the reason also names them with the parent's ways forward for them, and their names and the time go into the scope record.
-func (p *DriftVerify) halt(always bool, opening, detail string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	reason, err := p.haltReason(always, opening, detail)
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
-	}
-	return shedengine.Stuck, shedengine.OutputPointer{Reason: reason}, nil
-}
-
-// haltReason builds the reason halt returns, and records the unruled acceptances it names.
-func (p *DriftVerify) haltReason(always bool, opening, detail string) (string, error) {
-	scope, _, err := ReadScope(p.deps.Paths)
-	if err != nil {
-		return "", err
-	}
-	reason := opening + detail
-	if always || scope.Scope == ScopeFull {
-		reason = shedadapters.DecisionHaltPrefix + reason
-	}
-	if scope.Scope != ScopeFull {
-		return reason, nil
-	}
-	unruled := scope.Unruled()
-	if len(unruled) == 0 {
-		return reason, nil
-	}
-	named := make([]string, len(unruled))
-	for i, acceptance := range unruled {
-		named[i] = acceptance.Test
-	}
-	_, err = p.updateScope(func(cur *ScopeRecord) {
-		cur.HaltNamed, cur.HaltNamedAt = named, stamp(p.now())
-	})
-	if err != nil {
-		return "", err
-	}
-	return reason + fmt.Sprintf("; the agent's acceptances awaiting the parent's ruling: %s; for them: lym loom resume to stand by them, after any lym drift accept of your own, or lym drift withdraw <test> followed by lym loom resume to reject one", strings.Join(named, ", ")), nil
-}
-
-// recordingSeats passes every call to a seat runner and keeps the result of the last run or resume.
-type recordingSeats struct {
-	inner shedadapters.SeatRunner
-	last  *seatengine.Result
-}
-
-func (r *recordingSeats) Probe(table seatengine.Table) (seatengine.LiveTable, error) {
-	return r.inner.Probe(table)
-}
-
-func (r *recordingSeats) Resume(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
-	result, err := r.inner.Resume(table, live)
-	r.last = &result
-	return result, err
-}
-
-func (r *recordingSeats) Run(table seatengine.Table) (seatengine.Result, error) {
-	result, err := r.inner.Run(table)
-	r.last = &result
-	return result, err
-}
-
-// failedGate returns the name of the gate entry the chair's gate ended on in state failed, and "" when none did.
-func (r *recordingSeats) failedGate() string {
-	if r.last == nil || r.last.Chair.Gate == nil {
-		return ""
-	}
-	for _, entry := range r.last.Chair.Gate.Entries {
-		if entry.State == shuttleengine.GateEntryFailed {
-			return entry.Name
-		}
-	}
-	return ""
-}
-
-// tableFor builds the agent's table for told, gated on a clean tree, the told verify entry and a final compare.
-func (p *DriftVerify) tableFor(ctx context.Context, told VerifyTold) (seatengine.Table, error) {
-	table, err := p.deps.VerifyTable(told)
-	if err != nil {
-		return seatengine.Table{}, err
-	}
-	table.Gate = shuttleengine.GateSpec{p.dirtyEntry(), p.verifyEntry(), p.compareEntry(ctx)}
-	return table, nil
-}
-
-// dirtyEntry fails while the code checkout's tracked tree is dirty, asking the session to commit or clean it.
-func (p *DriftVerify) dirtyEntry() shuttleengine.GateEntry {
-	return shuttleengine.GateEntry{
-		Name:     dirtyGateName,
-		Attempts: dirtyGateAttempts,
-		Gate: func() (shuttleengine.GateResult, error) {
-			dirty, err := p.deps.DirtyPaths()
-			if err != nil {
-				return shuttleengine.GateResult{}, err
-			}
-			if len(dirty) > 0 {
-				return shuttleengine.GateResult{Findings: fmt.Sprintf("The tracked tree is dirty: %s.\nCommit these changes, or restore them to HEAD, and end your turn again.", strings.Join(dirty, ", "))}, nil
-			}
-			return shuttleengine.GateResult{Passed: true}, nil
-		},
-	}
-}
-
-// verifyEntry is the told verify entry, passing without running while HEAD is still the commit the attempt started at.
-func (p *DriftVerify) verifyEntry() shuttleengine.GateEntry {
-	entry := p.verify
-	entry.Gate = p.onceCommitted(entry.Gate)
-	entry.Forked = p.onceCommitted(entry.Forked)
-	entry.Final = p.onceCommitted(entry.Final)
-	return entry
-}
-
-// onceCommitted wraps gate to pass without running while HEAD equals the attempt head; a nil gate stays nil.
-func (p *DriftVerify) onceCommitted(gate shuttleengine.Gate) shuttleengine.Gate {
-	if gate == nil {
+	if !rec.Scope.SnapshotLost {
 		return nil
 	}
-	return func() (shuttleengine.GateResult, error) {
-		attempt, attemptFound, err := AttemptHead(p.deps.Paths)
-		if err != nil {
-			return shuttleengine.GateResult{}, err
-		}
-		head, err := p.deps.Head()
-		if err != nil {
-			return shuttleengine.GateResult{}, err
-		}
-		if attemptFound && attempt == head {
-			return shuttleengine.GateResult{Passed: true}, nil
-		}
-		return gate()
+	if _, err := TakeJudgeSnapshot(d, scratchDir); err != nil {
+		return err
 	}
+	return WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+		scope.SnapshotLost = false
+		return nil
+	})
 }
 
-// compareEntry runs the compare once more and ends the session at once when drift remains, so no fix goes uncompared.
-func (p *DriftVerify) compareEntry(ctx context.Context) shuttleengine.GateEntry {
-	return shuttleengine.GateEntry{
-		Name:     compareGateName,
-		Attempts: 1,
-		Gate: func() (shuttleengine.GateResult, error) {
-			result, err := p.deps.Compare(ctx)
-			if err != nil {
-				return shuttleengine.GateResult{}, err
-			}
-			if result.Passed {
-				return shuttleengine.GateResult{Passed: true}, nil
-			}
-			return shuttleengine.GateResult{Findings: "the compare still shows drift: " + result.Reason, Terminal: true}, nil
-		},
+// removeJudgement removes judgement.yaml, which is no record, and is content with it already gone.
+func (p *DriftVerify) removeJudgement() error {
+	if err := os.Remove(p.deps.Paths.Judgement); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("drift: %s: remove the judgement file: %w", p.name, err)
 	}
+	return nil
 }
 
-// runAgent spawns the Drift-Verify agent, or resumes the live one, and maps its end.
-// The agent's end closes the agent-session mark, unless the context ended, which leaves a possibly live agent for the next entry to reattach to.
-func (p *DriftVerify) runAgent(ctx context.Context, told VerifyTold) (shedengine.Outcome, shedengine.OutputPointer, error) {
+// judgeSessionChanged returns why the checkouts no longer match the snapshot the judge was spawned under, and empty when they match.
+// A snapshot that is gone is recorded as lost first, so the parent's resume takes a new one.
+// The reason names each change, the directory the snapshot's copies are in and the way to restore.
+func (p *DriftVerify) judgeSessionChanged() (string, error) {
 	d := p.deps
-	seats := &recordingSeats{inner: d.Seats}
-	// The mode recorded at a fresh spawn is the mode of the table that spawns, so the two never disagree.
-	interactive := false
-	tables := func() (seatengine.Table, error) {
-		table, err := p.tableFor(ctx, told)
-		interactive = table.Interactive
-		return table, err
+	snapshot, found, err := ReadJudgeSnapshot(d)
+	if err != nil {
+		return "", err
 	}
-	prepare := func() (string, error) {
-		head, err := d.Head()
+	if !found {
+		err := WriteRecords(d, func(scope *ScopeRecord, _ *JudgedRecord) error {
+			scope.SnapshotLost = true
+			return nil
+		})
 		if err != nil {
 			return "", err
 		}
-		return "", ResetRuns(d.Paths, head, interactive)
+		return "the snapshot of both checkouts the judge was spawned under is gone, so what its session changed cannot be told; way forward: the parent or the operator checks both checkouts for the judge's edits, then runs lym loom resume, which takes a new snapshot and resumes the judge", nil
 	}
-	agent := shedadapters.NewMultiLLMProducerSourced(p.name, tables, seats, d.Now, prepare).KeepGateFindings(d.GateFindingsFile)
+	changes, err := snapshot.Changes(d)
+	if err != nil {
+		return "", err
+	}
+	if len(changes) == 0 {
+		return "", nil
+	}
+	return fmt.Sprintf("the judge session changed what it may not: %s; the snapshot taken before it ran, with a copy of each untracked file, is in %s; way forward: the parent or the operator resets a moved branch to its snapshot HEAD, restores a changed tracked file from its HEAD and an untracked path from the snapshot's copy, deletes an added path and the changed scratch directory, then runs lym loom resume", strings.Join(changes, "; "), d.JudgeSnapshotDir), nil
+}
+
+// tableFor builds the judge's table over the request file, gated by the row's judgement entry.
+func (p *DriftVerify) tableFor() (seatengine.Table, error) {
+	table, err := p.deps.JudgeTable(p.deps.Paths.JudgeRequest)
+	if err != nil {
+		return seatengine.Table{}, err
+	}
+	table.Gate = shuttleengine.GateSpec{p.judgement}
+	return table, nil
+}
+
+// judgeSession is the rulings a judge session wrote and the strand that gave them.
+type judgeSession struct {
+	// Judgement is the parsed judgement.yaml.
+	Judgement Judgement
+	// Strand is the guid of the judge's strand, the one identity a seat result carries.
+	Strand string
+}
+
+// strandRecorder passes every call to a seat runner and keeps the strand guid of the last chair it ran or resumed.
+type strandRecorder struct {
+	inner  shedadapters.SeatRunner
+	strand string
+}
+
+func (r *strandRecorder) Probe(table seatengine.Table) (seatengine.LiveTable, error) {
+	return r.inner.Probe(table)
+}
+
+func (r *strandRecorder) Resume(table seatengine.Table, live seatengine.LiveTable) (seatengine.Result, error) {
+	result, err := r.inner.Resume(table, live)
+	r.strand = result.Chair.StrandGUID
+	return result, err
+}
+
+func (r *strandRecorder) Run(table seatengine.Table) (seatengine.Result, error) {
+	result, err := r.inner.Run(table)
+	r.strand = result.Chair.StrandGUID
+	return result, err
+}
+
+// runAgent runs the judge, resuming its live chair, and reads its rulings.
+// It returns the session only when the judge ended Done, both checkouts still match the snapshot and the baseline still matches its digest;
+// otherwise it returns the outcome to end the pass with, which leaves the session mark open, so the next entry resumes the judge.
+func (p *DriftVerify) runAgent(ctx context.Context, request JudgeRequest) (shedengine.Outcome, shedengine.OutputPointer, *judgeSession, error) {
+	d := p.deps
+	seats := &strandRecorder{inner: d.Seats}
+	agent := shedadapters.NewMultiLLMProducerSourced(p.name, p.tableFor, seats, d.Now, nil).KeepGateFindings(d.GateFindingsFile)
 	outcome, pointer, err := agent.Call(ctx)
-	if ctx.Err() == nil {
-		err = errors.Join(err, CloseAgentSession(d.Paths))
-	}
-	if err != nil {
-		return "", shedengine.OutputPointer{}, err
+	if err != nil || outcome != shedengine.Done {
+		return outcome, pointer, nil, err
 	}
 
-	scope, _, err := ReadScope(d.Paths)
+	reason, err := p.judgeSessionChanged()
 	if err != nil {
-		return "", shedengine.OutputPointer{}, err
+		return "", shedengine.OutputPointer{}, nil, err
 	}
-	switch outcome {
-	case shedengine.Done:
-		// The agent ends Done only once its table's final compare passed.
-		if err := p.recordCompare(told.BaselineHead, true); err != nil {
-			return "", shedengine.OutputPointer{}, err
+	if reason == "" {
+		baseline, err := CheckBaseline(d)
+		if err != nil {
+			return "", shedengine.OutputPointer{}, nil, err
 		}
-		if scope.Scope == ScopeFull && len(scope.Unruled()) > 0 {
-			return p.haltFrom(pointer, false, generalHaltOpening, "the Drift-Verify agent accepted drift that only the run's parent may rule on")
-		}
-		return p.keepAcceptedProfile(ctx, pointer)
-	case shedengine.Stuck:
-		return p.stuckAfterAgent(pointer, seats.failedGate(), scope)
+		reason = baseline.Fault
 	}
-	return outcome, pointer, nil
+	if reason != "" {
+		outcome, pointer, err := haltForParent(reason)
+		return outcome, pointer, nil, err
+	}
+
+	data, present, err := readRecordFile(d.Paths.Judgement)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, err
+	}
+	if !present {
+		return "", shedengine.OutputPointer{}, nil, fmt.Errorf("drift: %s: the judge ended Done with no judgement file at %s", p.name, d.Paths.Judgement)
+	}
+	judgement, err := ParseJudgement(data, request.want())
+	if err != nil {
+		return "", shedengine.OutputPointer{}, nil, fmt.Errorf("drift: %s: read the judge's rulings: %w", p.name, err)
+	}
+	return shedengine.Done, pointer, &judgeSession{Judgement: judgement, Strand: seats.strand}, nil
 }
 
-// haltFrom is halt keeping the agent's output pointer.
-func (p *DriftVerify) haltFrom(pointer shedengine.OutputPointer, always bool, opening, detail string) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	reason, err := p.haltReason(always, opening, detail)
+// storeRulings stores the judge's rulings in judged.json as exact tuples, each listed open range with its covering why and the judge's sentence, closes the session mark and records the check, all in one write, and then removes judgement.yaml.
+// Any ruling of does not match is a Stuck naming the cells and their reasons; all matches records the pass and is Done.
+func (p *DriftVerify) storeRulings(report CheckReport, cells []ClassifiedCell, request JudgeRequest, session *judgeSession, reused int, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	at := stamp(p.now())
+	byID := make(map[string]ClassifiedCell, len(cells))
+	for i, cell := range cells {
+		byID[judgeCellID(i)] = cell
+	}
+
+	var tuples []JudgedTuple
+	var notMatching []string
+	matched := 0
+	for _, ruling := range session.Judgement.Cells {
+		cell := byID[ruling.ID]
+		tuples = append(tuples, JudgedTuple{
+			Case:     cell.Cell.Case,
+			Identity: cell.Cell.Identity,
+			Kind:     cell.Cell.Kind,
+			Old:      cell.Cell.Old,
+			New:      cell.Cell.New,
+			Ruling:   ruling.Ruling,
+			Reason:   ruling.Reason,
+			Strand:   session.Strand,
+			At:       at,
+		})
+		if ruling.Ruling == RulingMatches {
+			matched++
+			continue
+		}
+		notMatching = append(notMatching, fmt.Sprintf("%s: %s", describeCell(cell), ruling.Reason))
+	}
+
+	whys := make(map[[2]string]string, len(request.OpenRanges))
+	for _, open := range request.OpenRanges {
+		whys[[2]string{open.Case, open.Range}] = open.Why
+	}
+	var ranges []JudgedRange
+	for _, note := range session.Judgement.OpenRanges {
+		why, covers := whys[[2]string{note.Case, note.Range}]
+		if !covers {
+			continue
+		}
+		ranges = append(ranges, JudgedRange{Case: note.Case, Range: note.Range, Why: why, Checked: note.Checked, Strand: session.Strand, At: at})
+	}
+
+	result := p.checkResult(report, head, len(notMatching) == 0, matched, reused)
+	err := p.recordCheck(result, func(scope *ScopeRecord, judged *JudgedRecord) {
+		closeJudgeSession(scope, judged)
+		for _, tuple := range tuples {
+			judged.Tuples = replaceOrAppend(judged.Tuples, tuple, func(held JudgedTuple) bool {
+				return held.Case == tuple.Case && held.Identity == tuple.Identity && held.Kind == tuple.Kind && held.Old == tuple.Old && held.New == tuple.New
+			})
+		}
+		for _, note := range ranges {
+			judged.Ranges = replaceOrAppend(judged.Ranges, note, func(held JudgedRange) bool {
+				return held.Case == note.Case && held.Range == note.Range
+			})
+		}
+	})
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	pointer.Reason = reason
-	return shedengine.Stuck, pointer, nil
-}
-
-// stuckAfterAgent words the Stuck the agent's gate ended on.
-// A compare that still fails names the report and the ways forward; a dirty tree or a failing verify entry that spent its attempts keeps the gate's findings, records gate_halt_at and opens with its halt text.
-func (p *DriftVerify) stuckAfterAgent(pointer shedengine.OutputPointer, failed string, scope ScopeRecord) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	switch failed {
-	case compareGateName:
-		detail := fmt.Sprintf("%s; the agent's report is %s; way forward: lym drift accept <test> --reason <text> followed by lym loom resume, or fix the drift and lym loom resume", pointer.Reason, path.Join(DirRel(), filepath.Base(p.deps.Paths.VerifyReport)))
-		return p.haltFrom(pointer, scope.Scope == ScopePartial && len(scope.Withdrawn) > 0, compareHaltOpening, detail)
-	case dirtyGateName:
-		if err := p.markGateHalt(); err != nil {
-			return "", shedengine.OutputPointer{}, err
-		}
-		return p.haltFrom(pointer, false, dirtyHaltOpening, pointer.Reason+"; way forward: commit or clean the tree, then lym loom resume")
-	case "":
-		return p.haltFrom(pointer, false, generalHaltOpening, pointer.Reason)
-	}
-	if err := p.markGateHalt(); err != nil {
+	if err := p.removeJudgement(); err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	return p.haltFrom(pointer, false, gateHaltOpening, pointer.Reason+"; way forward: fix the tests and commit, then lym loom resume")
+	if len(notMatching) > 0 {
+		return haltForParent(p.noMatchReason("the judge ruled that a change does not match its expectation", notMatching))
+	}
+	return doneBecause("the check passed: every change is expected and ruled to match")
+}
+
+// passCommand maps the report of a check under diff command, whose declared compare already ran, to an outcome:
+// an exit 0 records the pass and is Done with no judge;
+// a failing compare at a code head whose stored case rulings include a does not match or an unexpected, with no amendment recorded since, is a Stuck naming them, with no new judge;
+// otherwise one judge, spawned under the same snapshot guard as under diff lines, rules on the cases, and its rulings are stored.
+func (p *DriftVerify) passCommand(ctx context.Context, rec Records, report CheckReport) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	d := p.deps
+	head, err := d.Head()
+	if err != nil {
+		return "", shedengine.OutputPointer{}, fmt.Errorf("drift: %s: read the code HEAD: %w", p.name, err)
+	}
+	if report.Compare.Passed {
+		if err := p.recordCheck(p.commandResult(report, head, true), closeJudgeSession); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return doneBecause("the check passed: the compare exited 0")
+	}
+	if stored := storedCaseRulings(rec, head); len(stored) > 0 {
+		if err := p.recordCheck(p.commandResult(report, head, false), nil); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+		return haltForParent(p.noMatchReason("a case the judge already ruled does not match its expectation", stored))
+	}
+
+	mark := rec.Scope.JudgeSession
+	spawnID := mark.SpawnID
+	if !mark.Open {
+		if spawnID, err = newSpawnID(); err != nil {
+			return "", shedengine.OutputPointer{}, err
+		}
+	}
+	baseHead, err := baselineHead(d)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	seal, err := CheckSeal(d, rec, baseHead)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	request := JudgeRequest{SpawnID: spawnID, Mode: DiffCommand, CompareLog: report.Compare.Log, Expectation: string(seal.Sealed), Amendments: amendmentsText(rec.Scope.Amendments)}
+
+	if mark.Open {
+		err = p.resumeJudgeSession(rec, request, "")
+	} else {
+		err = p.openJudgeSession(request, "")
+	}
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	outcome, pointer, session, err := p.runAgent(ctx, request)
+	if session == nil {
+		return outcome, pointer, err
+	}
+	return p.storeCaseRulings(report, session, head)
+}
+
+// commandResult builds the record of a check under diff command over report at head, with the compare's exit and log.
+func (p *DriftVerify) commandResult(report CheckReport, head string, passed bool) CheckResult {
+	result := p.checkResult(report, head, passed, 0, 0)
+	result.CompareExit, result.CompareLog = report.Compare.ExitCode, report.Compare.Log
+	return result
+}
+
+// describeCaseRuling words a ruling of does not match or unexpected on a case with its reason.
+func describeCaseRuling(caseName string, ruling Ruling, reason string) string {
+	return fmt.Sprintf("case %q ruled %q: %s", caseName, ruling, reason)
+}
+
+// storedCaseRulings returns, worded by describeCaseRuling, each stored ruling of does not match or unexpected at head that no amendment was recorded after.
+// Rulings and amendments both carry UTC stamps, so their strings order by time; an amendment stamped in the same second as a ruling counts as after it.
+func storedCaseRulings(rec Records, head string) []string {
+	var ruled []string
+	for _, stored := range rec.Judged.Cases {
+		if stored.CodeHead != head || stored.Ruling == RulingMatches {
+			continue
+		}
+		amended := slices.ContainsFunc(rec.Scope.Amendments, func(amendment Amendment) bool { return amendment.At >= stored.At })
+		if !amended {
+			ruled = append(ruled, describeCaseRuling(stored.Case, stored.Ruling, stored.Reason))
+		}
+	}
+	return ruled
+}
+
+// storeCaseRulings stores the judge's rulings on the cases of the failing compare, closes the session mark and records the check in one write, and then removes judgement.yaml.
+// A ruling of matches is not stored, and drops an earlier stored ruling of the same case at head; each other ruling is stored as a JudgedCase keyed by head and case.
+// Any ruling other than matches is a Stuck naming the cases and their reasons; all matches records the pass and is Done.
+func (p *DriftVerify) storeCaseRulings(report CheckReport, session *judgeSession, head string) (shedengine.Outcome, shedengine.OutputPointer, error) {
+	at := stamp(p.now())
+	var ruled []JudgedCase
+	var matching, notMatching []string
+	for _, ruling := range session.Judgement.Cases {
+		if ruling.Ruling == RulingMatches {
+			matching = append(matching, ruling.Case)
+			continue
+		}
+		ruled = append(ruled, JudgedCase{CodeHead: head, Case: ruling.Case, Ruling: ruling.Ruling, Reason: ruling.Reason, Strand: session.Strand, At: at})
+		notMatching = append(notMatching, describeCaseRuling(ruling.Case, ruling.Ruling, ruling.Reason))
+	}
+
+	result := p.commandResult(report, head, len(notMatching) == 0)
+	result.Matched = len(matching)
+	err := p.recordCheck(result, func(scope *ScopeRecord, judged *JudgedRecord) {
+		closeJudgeSession(scope, judged)
+		judged.Cases = slices.DeleteFunc(judged.Cases, func(held JudgedCase) bool {
+			return held.CodeHead == head && slices.Contains(matching, held.Case)
+		})
+		for _, stored := range ruled {
+			judged.Cases = replaceOrAppend(judged.Cases, stored, func(held JudgedCase) bool {
+				return held.CodeHead == stored.CodeHead && held.Case == stored.Case
+			})
+		}
+	})
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if err := p.removeJudgement(); err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if len(notMatching) > 0 {
+		return haltForParent(p.noMatchReason("the judge ruled that the failing compare does not match its expectation", notMatching))
+	}
+	return doneBecause("the check passed: the judge ruled every case of the failing compare to match")
+}
+
+// replaceOrAppend replaces the first item of items that same accepts with item, and appends item when none is.
+func replaceOrAppend[T any](items []T, item T, same func(held T) bool) []T {
+	for i := range items {
+		if same(items[i]) {
+			items[i] = item
+			return items
+		}
+	}
+	return append(items, item)
 }

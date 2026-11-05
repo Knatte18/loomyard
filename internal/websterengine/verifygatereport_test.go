@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -113,6 +114,8 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 		LogPath:        "/scratch/verify.log",
 		Hint:           []string{"03-third"},
 		FixCommits:     []string{"abc123", "def456"},
+		Entry:          "drift",
+		Findings:       "cell a.txt:3 changed outside the expectation",
 	}
 	if err := WriteVerifyGateReport(path, want); err != nil {
 		t.Fatalf("WriteVerifyGateReport() error = %v", err)
@@ -132,6 +135,66 @@ func TestVerifyGateReport_RoundTrip(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("report read back = %#v, want %#v", got, want)
+	}
+}
+
+func TestWrapRunLevelEntry(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const fixPromptPath = "/scratch/prompts/verify-fix.md"
+	tests := []struct {
+		name       string
+		result     shuttleengine.GateResult
+		wantReport bool
+	}{
+		{name: "FailingEntryWritesReport", result: shuttleengine.GateResult{Findings: "cell a.txt:3 moved"}, wantReport: true},
+		{name: "PassingEntryWritesNothing", result: shuttleengine.GateResult{Passed: true}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			reportPath := VerifyGateReportPath(t.TempDir())
+			notes := &VerifyGateNotes{}
+			entry := wrapRunLevelEntry(shuttleengine.GateEntry{
+				Name:     "drift",
+				Attempts: 3,
+				Gate:     func() (shuttleengine.GateResult, error) { return tt.result, nil },
+			}, reportPath, fixPromptPath, notes)
+
+			got, err := entry.Gate()
+			if err != nil {
+				t.Fatalf("wrapped gate error = %v", err)
+			}
+			if got.Passed != tt.result.Passed {
+				t.Errorf("wrapped gate Passed = %v; want %v", got.Passed, tt.result.Passed)
+			}
+			data, readErr := os.ReadFile(reportPath)
+			if !tt.wantReport {
+				if !errors.Is(readErr, os.ErrNotExist) {
+					t.Errorf("a passing entry wrote a report: read error = %v", readErr)
+				}
+				return
+			}
+			if readErr != nil {
+				t.Fatalf("read report: %v", readErr)
+			}
+			var report VerifyGateReport
+			if err := yaml.Unmarshal(data, &report); err != nil {
+				t.Fatalf("decode report: %v", err)
+			}
+			want := VerifyGateReport{Attempt: 1, Cap: 3, Fixer: FixerFork, Entry: "drift", Findings: "cell a.txt:3 moved"}
+			if !reflect.DeepEqual(report, want) {
+				t.Errorf("report = %#v; want %#v", report, want)
+			}
+			if !strings.Contains(got.Findings, "cell a.txt:3 moved") {
+				t.Errorf("returned findings = %q; want the entry's findings", got.Findings)
+			}
+			if line := entry.Reprompt("/run/gate-findings.md"); !strings.Contains(line, "Gate findings recorded at /run/gate-findings.md") || !strings.Contains(line, fixPromptPath) {
+				t.Errorf("reprompt = %q; want the gate-findings line naming %s", line, fixPromptPath)
+			}
+		})
 	}
 }
 
@@ -209,6 +272,17 @@ func TestRenderVerifyGateFindings(t *testing.T) {
 	}
 	if strings.Contains(exitHang, "stacks") || strings.Contains(exitHang, "busy_quit_sec") {
 		t.Errorf("exit-code hang findings must name no stacks and no watchdog key:\n%s", exitHang)
+	}
+
+	entry := renderVerifyGateFindings(VerifyGateReport{Attempt: 2, Cap: 3, Entry: "drift", Findings: "cell a.txt:3 changed outside the expectation"}, fixPromptPath)
+	assertOpensWithWayForward(entry)
+	for _, want := range []string{"attempt 2 of 3", `"drift"`, "cell a.txt:3 changed outside the expectation"} {
+		if !strings.Contains(entry, want) {
+			t.Errorf("entry findings missing %q:\n%s", want, entry)
+		}
+	}
+	if strings.Contains(entry, "Failing identities") {
+		t.Errorf("entry findings must not list identities:\n%s", entry)
 	}
 
 	dirty := renderVerifyGateFindings(VerifyGateReport{Attempt: 1, Cap: 3, Dirty: []string{"a.go", "b.txt"}}, fixPromptPath)

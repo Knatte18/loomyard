@@ -58,15 +58,15 @@ var DarnFragmentMakeChangeGated []byte
 //go:embed sampler/sampler-template-agent.md
 var SamplerTemplateAgent []byte
 
-// DriftTemplateBaseline is the drift baseline agent's shipped-default prompt: the whole instruction set of the session that scopes a task's regression and writes down the drift it expects.
+// DriftTemplateExpect is the drift expect agent's shipped-default prompt: the whole instruction set of the session that writes down which captured values a task is expected to change and why.
 //
-//go:embed drift/drift-template-baseline.md
-var DriftTemplateBaseline []byte
+//go:embed drift/drift-template-expect.md
+var DriftTemplateExpect []byte
 
-// DriftTemplateVerify is the drift verify agent's shipped-default prompt: the whole instruction set of the session that judges, accepts and fixes the drift between a task's code and its baseline.
+// DriftTemplateJudge is the drift judge's shipped-default prompt: the whole instruction set of the session that rules on each changed value of a task's captured output against the expectation that covers it.
 //
-//go:embed drift/drift-template-verify.md
-var DriftTemplateVerify []byte
+//go:embed drift/drift-template-judge.md
+var DriftTemplateJudge []byte
 
 // LoomTemplateDiscussion is the loom Discussion producer's shipped-default interview prompt.
 //
@@ -644,8 +644,8 @@ var entries = []registryEntry{
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
 	{"sampler-template-agent", &SamplerTemplateAgent},
 	{"raddle-template-agent", &RaddleTemplateAgent},
-	{"drift-template-baseline", &DriftTemplateBaseline},
-	{"drift-template-verify", &DriftTemplateVerify},
+	{"drift-template-expect", &DriftTemplateExpect},
+	{"drift-template-judge", &DriftTemplateJudge},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
 	{"loom-template-discussion-chair", &LoomTemplateDiscussionChair},
 	{"loom-template-discussion-advisor", &LoomTemplateDiscussionAdvisor},
@@ -788,8 +788,8 @@ var roleOpeningStencils = map[string][]string{
 	"darn":                 {"darn-template-write"},
 	"sampler":              {"sampler-template-agent"},
 	"raddle":               {"raddle-template-agent"},
-	"drift-baseline":       {"drift-template-baseline"},
-	"drift-verify":         {"drift-template-verify"},
+	"drift-expect":         {"drift-template-expect"},
+	"drift-judge":          {"drift-template-judge"},
 	"board-tidy":           {"beam-template-board-tidy"},
 }
 

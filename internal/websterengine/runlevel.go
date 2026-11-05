@@ -382,6 +382,7 @@ func countBegunForkBatches(st *State, sessionID string) int {
 // A done outcome passes through the run-exit audit: policy findings nobody dispositioned become run-level warnings on RunResult.Warnings,
 // and an undispositioned correctness finding demotes the outcome to stuck, the same way a done whose verify gate did not pass does.
 // Run hands Merriam's spawn the plan-level verify as a must-pass gate entry named `verify` (NewVerifyGate), so a red tree re-prompts Merriam's live session and a gate that never passes ends the run stuck.
+// Every other entry of RunDeps.Gate is wrapped so that its failure writes the verify-gate report and re-prompts as the verify entry does.
 // Every recorded audit warning is appended to summary.md's "Audit warnings" section when that file exists.
 // A recorded batch at a dead end refuses the run with ErrBatchDeadEnd before Master is spawned, since Master would only end the run stuck on it.
 // With RunOptions.AutoRebaseline, a changed plan is rebaselined and saved before anything else acts on the run, and the warning naming the accepted cards joins RunResult.Warnings, summary.md's "Plan rebaselined" section and a stuck outcome's reason;
@@ -787,7 +788,11 @@ func Run(deps RunDeps, opts RunOptions) (_ RunResult, err error) {
 	// provider's startup window (bounded by startup_timeout_s) — see AcquireStateMutation's own
 	// contract. At run entry no batch forks exist yet, so the hold stalls nothing in practice.
 	verifyGate, gateNotes := NewVerifyGate(deps.Geom, deps.Config.VerifyGateAttempts, batches, deps.ParentBranch, deps.FrictionDir, verifyFixPromptPath)
-	gate := append(slices.Clone(deps.Gate), shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath, gateNotes)})
+	gate := make(shuttleengine.GateSpec, 0, len(deps.Gate)+1)
+	for _, entry := range deps.Gate {
+		gate = append(gate, wrapRunLevelEntry(entry, verifyGateReportPath, verifyFixPromptPath, gateNotes))
+	}
+	gate = append(gate, shuttleengine.GateEntry{Name: verifyGateName, Gate: verifyGate, Attempts: deps.Config.VerifyGateAttempts, Reprompt: verifyGateReprompt(verifyFixPromptPath, gateNotes)})
 	handle, err := deps.Starter.StartMaster(spec, gate)
 	if err != nil {
 		err = shuttleengine.ModelKey{Module: "webster", Key: "master"}.Wrap(err)

@@ -625,6 +625,10 @@
 // a passing evaluation clears it, and `run --fresh` archives state.json with it.
 // A persist failure is returned as the gate's error.
 //
+// Every other entry of RunDeps.Gate, such as the `drift` entry, is wrapped by wrapRunLevelEntry, so its failure takes the verify entry's paths:
+// a failed result writes the verify-gate report with the entry's name and findings (`entry` and `findings`) and the count of its failures, returns the rendered report as the findings, and re-prompts with the verify entry's line, which names the fixer fork or `lym webster fix-verify`.
+// The wrap changes how a failure is reported, never whether the entry passes, and a Terminal result passes through unreported.
+//
 // After the wait, a done run whose gate did not pass ends stuck, with a reason naming the failing identities and the attempts spent, or the `Terminal` failure's own reason.
 //
 // # A broken config stops Master

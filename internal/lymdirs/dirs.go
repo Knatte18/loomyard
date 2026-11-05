@@ -37,6 +37,9 @@ const AdoptDirName = "adopt"
 // FrontTaskDirName is the directory under the hub's board-level DotLymDirName that holds the front-task record, its lock and the output of the actions it runs.
 const FrontTaskDirName = "fronttask"
 
+// DriftJudgeDirName is the directory under the hub's board-level DotLymDirName that holds one snapshot of a task's checkouts per task, taken before the drift judge runs.
+const DriftJudgeDirName = "drift-judge"
+
 // BeamDirName is the directory under a worktree's DotLymDirName that holds dobby's lock, state record and markers.
 const BeamDirName = "beam"
 

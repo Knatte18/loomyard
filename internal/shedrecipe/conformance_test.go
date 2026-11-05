@@ -88,12 +88,17 @@ func minimalEntries() map[string]minimalEntry {
 			env: driftTestEnv,
 			cfg: func(*testing.T, Env) Config { return Config{"subject": "decision-record"} },
 		},
-		"DriftAwait":   {driftTestEnv, emptyConfig},
-		"DriftRecheck": {driftTestEnv, emptyConfig},
+		"DriftExpect": {
+			env: driftTestEnv,
+			cfg: func(*testing.T, Env) Config {
+				return Config{"subject": "decision-record", "gates": []any{map[string]any{"name": "expectation", "attempts": 3}}}
+			},
+		},
+		"DriftAwait": {driftTestEnv, emptyConfig},
 		"DriftVerify": {
 			env: driftTestEnv,
 			cfg: func(*testing.T, Env) Config {
-				return Config{"subject": "decision-record", "gates": []any{map[string]any{"name": "verify", "attempts": 3}}}
+				return Config{"subject": "decision-record", "gates": []any{map[string]any{"name": "judgement", "attempts": 3}}}
 			},
 		},
 	}

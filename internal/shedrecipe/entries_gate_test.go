@@ -59,7 +59,7 @@ func TestResolveGateSpec_AbsentKeyIsUngated(t *testing.T) {
 
 func TestResolveGateSpec_ValidOneEntryPerVocabularyName(t *testing.T) {
 	tiergate.Require(t, 0)
-	for _, name := range []string{"clean", "discussion", "plan", "parts", "description"} {
+	for _, name := range []string{"clean", "discussion", "plan", "parts", "description", "drift", "expectation", "judgement"} {
 		t.Run(name, func(t *testing.T) {
 			env := reworkTestEnv(t)
 			env.DescriptionPath = filepath.Join(t.TempDir(), "summary.md")
@@ -263,6 +263,7 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 		{"PartsRelativeWorktreeRoot", gatesCfg("parts", 1), "WorktreeRoot"},
 		{"PartsNilSetting", gatesCfg("parts", 1), "Setting"},
 		{"PartsMaxBelowOne", gatesCfg("parts", 1), "tapestry.parts_max"},
+		{"DriftNilCaptureCurrent", gatesCfg("drift", 1), "Drift.CaptureCurrent"},
 		{"FixerOnARowThatReadsNone", Config{"gates": []any{map[string]any{"name": "plan", "attempts": 1, "fixer": "tapestry.plan_gate_fixer"}}}, "fixer"},
 	}
 	for _, tt := range tests {
@@ -286,6 +287,8 @@ func TestResolveGateSpec_Rejections(t *testing.T) {
 				env.WorktreeRoot = "relative/worktree"
 			case "PartsMaxBelowOne":
 				env.Setting = partsMaxSetting(0)
+			case "DriftNilCaptureCurrent":
+				env.Drift.CaptureCurrent = nil
 			}
 			_, err := resolveGateSpec("TheRow", tt.cfg, env)
 			assertErrContains(t, err, "TheRow")
@@ -341,7 +344,7 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify"} {
+			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement"} {
 				assertErrContains(t, err, want)
 			}
 		})

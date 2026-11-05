@@ -21,12 +21,6 @@ func TestDriftAwait(t *testing.T) {
 	passedAtHead := CaptureRecord{State: CapturePassed, Head: "aaa"}
 	capturePath := "lym drift capture followed by lym loom resume"
 	deferPath := "lym drift defer followed by lym loom resume"
-	rescopeCapturePath := "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume"
-	scopeOffPath := "lym drift scope --scope off followed by lym loom resume"
-	skippedAllCapture := CaptureRecord{
-		State: CaptureFailed, Skip: []string{"a", "b"}, WroteNoFile: true, Log: "capture.log",
-		Reason: "exit 0 but wrote no file to baseline while scope partial skipped 2 tests, so every test the capture command ran may have been skipped",
-	}
 
 	tests := []struct {
 		name        string
@@ -43,7 +37,7 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "drift switched off is Done with no commit, whatever the capture",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureFailed, Reason: "exit 1"})
 				f.disabled = true
 			},
@@ -53,21 +47,21 @@ func TestDriftAwait(t *testing.T) {
 		},
 		{
 			name:  "scope off is Done",
-			setup: func(f *baselineFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeOff}, false) },
+			setup: func(f *baselineFixture) { f.seedScopeRecord(ScopeRecord{Scope: ScopeOff}) },
 			want:  shedengine.Done,
 		},
 		{
 			name: "awaited_at set is Done with HEAD moved",
 			setup: func(f *baselineFixture) {
 				f.head = "ccc"
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, AwaitedAt: awaited}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, AwaitedAt: awaited})
 			},
 			want: shedengine.Done,
 		},
 		{
 			name: "a missing record under partial is Stuck naming capture and defer",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}})
 			},
 			want:       shedengine.Stuck,
 			wantReason: []string{"no baseline capture", capturePath, deferPath},
@@ -75,36 +69,16 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "a failed record is Stuck naming the log",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureFailed, Reason: "exit 1", Log: "capture.log"})
 			},
 			want:       shedengine.Stuck,
 			wantReason: []string{"ended failed (exit 1)", "log capture.log", capturePath},
 		},
 		{
-			name: "a record that wrote nothing under skipped tests is Stuck naming the scope changes in place of a plain capture",
+			name: "a record that wrote no file names the plain capture way",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a", "b"}}, false)
-				f.writeCapture(skippedAllCapture)
-			},
-			want:       shedengine.Stuck,
-			wantReason: []string{"scope partial skipped 2 tests", "log capture.log", rescopeCapturePath, scopeOffPath, deferPath},
-			wantNoWays: []string{capturePath},
-		},
-		{
-			name: "a failed record under skipped tests that failed for another reason keeps the plain capture way",
-			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a"}}, false)
-				f.writeCapture(CaptureRecord{State: CaptureFailed, Skip: []string{"a"}, Reason: "exit 3", Log: "capture.log"})
-			},
-			want:       shedengine.Stuck,
-			wantReason: []string{"exit 3", capturePath, deferPath},
-			wantNoWays: []string{"--scope"},
-		},
-		{
-			name: "a record that wrote nothing with no skipped tests keeps the plain capture way",
-			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureFailed, WroteNoFile: true, Reason: "exit 0 but wrote no file to baseline", Log: "capture.log"})
 			},
 			want:       shedengine.Stuck,
@@ -112,20 +86,9 @@ func TestDriftAwait(t *testing.T) {
 			wantNoWays: []string{"--scope"},
 		},
 		{
-			name: "a record that wrote nothing under skipped tests with HEAD moved names scope off and defer only",
-			setup: func(f *baselineFixture) {
-				f.head = "bbb"
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"a", "b"}}, false)
-				f.writeCapture(skippedAllCapture)
-			},
-			want:       shedengine.Stuck,
-			wantReason: []string{scopeOffPath, deferPath},
-			wantNoWays: []string{"lym drift capture", "--scope full"},
-		},
-		{
 			name: "a timed-out record is Stuck naming the log",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureFailed, Reason: "timed out after 30m", Log: "capture.log"})
 			},
 			want:       shedengine.Stuck,
@@ -134,7 +97,7 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "a running record with a free lock is Stuck naming the log",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureRunning, Pid: 1, Log: "capture.log"})
 			},
 			want:       shedengine.Stuck,
@@ -143,7 +106,7 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "a held lock is waited on and the passed record is Done with awaited_at written",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				release := f.holdCaptureLock()
 				f.onSleep = func(int) {
 					f.writeCapture(passedAtHead)
@@ -161,7 +124,7 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "a record flipped from running to passed as the lock is released is read as passed",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureRunning, Pid: 1})
 				release := f.holdCaptureLock()
 				f.onSleep = func(int) {
@@ -175,17 +138,37 @@ func TestDriftAwait(t *testing.T) {
 		{
 			name: "a passed record at HEAD is Done with awaited_at written",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(passedAtHead)
 			},
 			want:        shedengine.Done,
 			wantAwaited: true,
 		},
 		{
+			name: "the counted capture's commit carries the baseline directory's digest",
+			setup: func(f *baselineFixture) {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
+				f.writeCapture(passedAtHead)
+			},
+			want:        shedengine.Done,
+			wantAwaited: true,
+			check: func(t *testing.T, f *baselineFixture) {
+				digest, err := BaselineDigest(f.paths.BaselineDir)
+				if err != nil {
+					t.Fatalf("BaselineDigest() = _, %v; want nil", err)
+				}
+				commit, found, err := f.store.trailerCommit(BaselineTrailerKey, false)
+				if err != nil || !found || commit.Value != digest {
+					t.Errorf("%s commit = %+v, %v, %v; want one carrying the digest %q", BaselineTrailerKey, commit, found, err, digest)
+				}
+				requireRecordsCommits(t, f, 1)
+			},
+		},
+		{
 			name: "a passed record with HEAD moved before the first await is Stuck naming only defer",
 			setup: func(f *baselineFixture) {
 				f.head = "bbb"
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(passedAtHead)
 			},
 			want:       shedengine.Stuck,
@@ -196,9 +179,9 @@ func TestDriftAwait(t *testing.T) {
 			name: "after Defer the row is Done on every later entry",
 			setup: func(f *baselineFixture) {
 				f.head = "bbb"
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
-				blocked := statusAt("Drift-Await", shedengine.StateBlocked, "", false)
-				if err := Defer(f.paths, blocked); err != nil {
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
+				blocked := statusAt("Drift-Await", shedengine.StateBlocked, "")
+				if err := Defer(f.deps, blocked); err != nil {
 					f.t.Fatal(err)
 				}
 			},
@@ -221,6 +204,9 @@ func TestDriftAwait(t *testing.T) {
 			f := newBaselineFixture(t)
 			if tt.setup != nil {
 				tt.setup(f)
+			}
+			if tt.wantAwaited {
+				f.seedBaseline()
 			}
 
 			before, _, _ := ReadScope(f.paths)

@@ -1,6 +1,6 @@
-// compare.go — the compare run and the skip list it is told: the mechanical comparison Drift-Verify runs itself and the one an agent asks for.
+// compare.go — the compare run: the mechanical comparison Drift-Verify and `lym drift check` run against the baseline directory under `diff: command`.
 //
-// RunCompare shares the capture's runner and writes no record; counting a run against the agent session's budget is the caller's.
+// RunCompare shares the capture's runner and writes no record.
 
 package driftengine
 
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"time"
 
@@ -31,10 +30,6 @@ type CompareRequest struct {
 	Pool *gateslot.Pool
 	// WaitDir is where the compare's wait record is written while it waits for a slot.
 	WaitDir string
-	// Skip is the tests the compare leaves out, written to the skip file.
-	Skip []string
-	// ProfileDir is the profile `{baseline_dir}` renders to; empty renders the baseline directory.
-	ProfileDir string
 	// Timeout bounds the command from its start; production passes the step's timeout_min.
 	Timeout time.Duration
 	// Now is the clock the log's name comes from.
@@ -56,11 +51,15 @@ type CompareResult struct {
 	Reason string
 }
 
-// RunCompare runs the declared compare command against the baseline directory, or the told profile directory, and returns how it ended.
+// RunCompare runs the declared compare command against the baseline directory and returns how it ended.
 // It takes the compare marker, an OS lock, before it waits for its gate slot and holds it until it ends, so a compare queued for a slot reads as activity and one a dead compare left reads as none.
 // A marker still held once LockRetry runs out is refused.
+// A command still holding the retired {skip_file} placeholder is refused first, before the marker and the slot.
 // A non-zero exit and a timeout are results that did not pass, not errors.
 func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) {
+	if err := refuseSkipFilePlaceholder(siteCompare, stepCompare, req.Step.Command); err != nil {
+		return CompareResult{}, err
+	}
 	p := req.Paths
 	if err := os.MkdirAll(filepath.Dir(p.CompareMarker), 0o755); err != nil {
 		return CompareResult{}, fmt.Errorf("drift: create %s: %w", filepath.Dir(p.CompareMarker), err)
@@ -74,15 +73,8 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 	}
 	defer marker.Release()
 
-	if err := writeSkipFile(p.SkipFile, req.Skip); err != nil {
-		return CompareResult{}, err
-	}
-	profile := req.ProfileDir
-	if profile == "" {
-		profile = p.BaselineDir
-	}
 	result := CompareResult{Log: logPathFor(p.LogsDir, "compare", req.Now())}
-	outcome, err := runStep(ctx, stepRun{
+	run := stepRun{
 		WorktreeDir: req.WorktreeDir,
 		AnchorDir:   req.AnchorDir,
 		Name:        stepCompare,
@@ -90,18 +82,23 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 		Pool:        req.Pool,
 		WaitDir:     req.WaitDir,
 		Site:        siteCompare,
-		BaselineDir: profile,
-		SkipFile:    p.SkipFile,
+		BaselineDir: p.BaselineDir,
 		LogPath:     result.Log,
 		Timeout:     req.Timeout,
 		Now:         req.Now,
 		OnSlot:      func(time.Time) {},
 		OnStart:     func(int, time.Time) {},
-	})
+	}
+	slot, err := acquireSlot(ctx, run)
 	if err != nil {
 		return result, err
 	}
-	outcome.release()
+	defer slot.release()
+	run.Slot = slot
+	outcome, err := runStep(ctx, run)
+	if err != nil {
+		return result, err
+	}
 
 	result.ExitCode = outcome.ExitCode
 	switch {
@@ -113,22 +110,4 @@ func RunCompare(ctx context.Context, req CompareRequest) (CompareResult, error) 
 		result.Passed = true
 	}
 	return result, nil
-}
-
-// SkipList returns the tests a compare leaves out: the scope's skipped tests, then every accepted test, without duplicates.
-// A withdrawn test is off the accepted list, so it is run again.
-func SkipList(scope ScopeRecord) []string {
-	var skip []string
-	add := func(test string) {
-		if !slices.Contains(skip, test) {
-			skip = append(skip, test)
-		}
-	}
-	for _, test := range scope.Skip {
-		add(test)
-	}
-	for _, acceptance := range scope.Accepted {
-		add(acceptance.Test)
-	}
-	return skip
 }

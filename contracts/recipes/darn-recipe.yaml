@@ -1,8 +1,9 @@
-# darn-recipe.yaml is the darn task recipe: Record-Write writes the decision record from the board entry, Drift-Baseline records the regression scope and starts
+# darn-recipe.yaml is the darn task recipe: Record-Write writes the decision record from the board entry, Drift-Baseline records the regression scope from drift.yaml, with no agent, and starts
 # the baseline capture, Drift-Await holds the run until the capture passed or the parent deferred it,
+# Drift-Expect has an agent write the expectation of the task's changes, which Go seals before the writer starts,
 # one gated writer reads the board entry, edits, tests and commits, Drift-Verify
-# compares the writer's code with the baseline, the Code-Review perch reviews the committed diff,
-# Drift-Recheck compares again the code the perch's fixes committed,
+# checks the writer's code against the sealed expectation and has a judge rule on each expected change, the Code-Review perch reviews the committed diff,
+# Drift-Recheck checks again the code the perch's fixes committed,
 # Describe rewrites the change description from the final diff, then PR-Review and Finalize land it.
 # The Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them. It is
@@ -19,12 +20,12 @@
 # gates, so a human is the only thing that can fix them.
 # Finalize fixes its own merge and test failures in its merge fixer, and a failure the fixer cannot
 # fix halts the run for the orch.
-# Record-Write, Drift-Baseline, Drift-Await, Darn-Write, Drift-Verify and Describe carry none either:
+# Record-Write, Drift-Baseline, Drift-Await, Drift-Expect, Darn-Write, Drift-Verify, Drift-Recheck and Describe carry none either:
 # an exhausted writer gate halts the run for the parent, which resumes it with a fresh budget,
 # and a Stuck of a Drift row halts it with the ways forward in its reason.
-# Drift-Verify compares the code the writer committed, and the Code-Review perch reviews its fixes.
-# Drift-Recheck compares the code the perch's fixes changed: its Stuck routes to Drift-Verify, which
-# judges the drift again, and the perch reviews that row's fixes in turn.
+# Drift-Verify checks the code the writer committed, and the Code-Review perch reviews it.
+# Drift-Recheck runs the same check on the code the perch's fixes changed, so a Stuck of either row
+# halts the run with the fix route and the parent's amendment in its reason.
 # No compare sees a Finalize merge and its fixer.
 # PR-Review carries no on_stuck because its Stuck is always a Halt, and Friction-Reflect none because it
 # never returns Stuck.
@@ -51,7 +52,9 @@
 # on a row whose edges changed with them, or on the retired Darn-Burler, Darn-Bouncer,
 # Darn-Burler-Review or Darn-Burler-Fix row, is restarted, not migrated.
 # A run that passed Drift-Baseline before Drift-Await joined the recipe has no awaited_at, halts at
-# Drift-Verify with no counted baseline, and is settled by hand with lym drift waive.
+# Drift-Verify with no counted baseline, and is settled by hand with lym drift defer.
+# A run parked at a Drift-Verify halt from before this change goes on with lym loom resume, which checks it under the new Drift.
+# A run parked before Drift-Expect reaches it, and one already past it has no seal and is checked against an empty expectation.
 #
 # Describe follows the perch because Code-Burler-Fix can change the code after the writer described it.
 # Its entry gate budget.Code-Review skips it when the perch is off.
@@ -75,7 +78,7 @@ producers:
     engine: RecordWrite
     on_done: Drift-Baseline
 
-  # Drift-Baseline has an agent record the task's regression scope and starts the baseline capture.
+  # Drift-Baseline records the task's regression scope from drift.yaml, with no agent, and starts the baseline capture.
   # Its Stuck halts the run, with the ways forward in its reason.
   - name: Drift-Baseline
     engine: DriftBaseline
@@ -89,7 +92,20 @@ producers:
   - name: Drift-Await
     engine: DriftAwait
     entry_gate: drift.enabled
+    on_done: Drift-Expect
+
+  # Drift-Expect has an agent write expected.yaml: the changes the task is expected to make to the captured values,
+  # written against the counted capture's real cases and identities. Go seals the file when the agent's gate passes,
+  # before the writer starts. Its Stuck halts the run, with the ways forward in its reason.
+  - name: Drift-Expect
+    engine: DriftExpect
+    entry_gate: drift.enabled
     on_done: Darn-Write
+    config:
+      subject: decision-record
+      gates:
+        - name: expectation
+          attempts: 3
 
   - name: Darn-Write
     engine: DarnWrite
@@ -112,11 +128,19 @@ producers:
         - name: verify
           attempts: 3
           fixer: darn.gate_fixer
+        # The drift gate runs the drift check over the committed code against the sealed expectation and
+        # fails on a change nothing expects or a current capture that did not pass, with no fixer: the
+        # writer fixes the code or leaves an intended change for the parent's amendment at Drift-Verify.
+        # Drift-Verify repeats the check as the guarantee.
+        - name: drift
+          attempts: 3
         - name: description
           attempts: 3
 
-  # Drift-Verify compares the writer's committed code with the baseline and, when it drifted, spawns
-  # one agent that accepts the intended drift and fixes the rest.
+  # Drift-Verify checks the writer's committed code against the sealed expectation by code, and spawns one
+  # judge on the expected changes whose exact old and new value no stored ruling covers. The judge edits
+  # no code, expectation or record; a change nothing expects, and one the judge rules does not match,
+  # is a Stuck for the parent.
   - name: Drift-Verify
     engine: DriftVerify
     entry_gate: drift.enabled
@@ -124,9 +148,8 @@ producers:
     on_done: Code-Bouncer
     config:
       subject: decision-record
-      gate_key: drift-verify
       gates:
-        - name: verify
+        - name: judgement
           attempts: 3
 
   - name: Code-Bouncer
@@ -220,14 +243,18 @@ producers:
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
 
-  # Drift-Recheck is mechanical and spawns nothing: once the perch approved, it compares again the code
-  # committed since Drift-Verify's last compare, against the accepted profile while tests are accepted.
-  # Its Stuck, on drift or a tree it cannot compare, routes to Drift-Verify, under the shed's bounce budget.
+  # Drift-Recheck runs the Drift-Verify engine again once the perch approved, over the code its fixes
+  # committed since the last passing check. It carries no on_stuck: its Stuck goes through the stop
+  # chain to the parent, with the ways forward in its reason.
   - name: Drift-Recheck
-    engine: DriftRecheck
+    engine: DriftVerify
     entry_gate: drift.enabled
-    on_stuck: Drift-Verify
     on_done: Describe
+    config:
+      subject: decision-record
+      gates:
+        - name: judgement
+          attempts: 3
 
   # Describe writes the change description from the final diff, replacing the writer's own.
   - name: Describe

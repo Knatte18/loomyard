@@ -38,7 +38,7 @@ func (e *RunSettingsError) Unwrap() error {
 // It returns each named module's local-layer YAML document, and drops a module whose object is empty.
 // A key a declared move relocated (see KeyMoves) is first rewritten into its target module's object.
 // A module that is not registered is refused, and one a declared move retired is refused with the way forward of removing its object from the run settings.
-// A top-level key the module's Spec maps to a RetiredWayForward text is refused with that text, before the module's Migrate runs.
+// A top-level key the module's Spec maps to a RetiredWayForward or a HubOnlyWayForward text is refused with that text, before the module's Migrate runs.
 // Every refusal is a [*RunSettingsError]; value semantics are left to the module's load.
 // Each line a module's Migrate returns is logged at Warn, naming the module, the migration and the way forward.
 // Nothing rewrites a profile or a run_settings document, so the Warn repeats at every read until the operator edits it.
@@ -70,6 +70,9 @@ func PrepareRunSettings(settings map[string]any) (map[string][]byte, error) {
 		if err := refuseRetiredKeys(module, keys); err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: err}
 		}
+		if err := refuseHubOnlyKeys(module, keys); err != nil {
+			return nil, &RunSettingsError{Module: name, Cause: err}
+		}
 		document, err := yaml.Marshal(wholeNumbersAsIntegers(keys))
 		if err != nil {
 			return nil, &RunSettingsError{Module: name, Cause: configengine.MarkInvalid(err)}
@@ -99,6 +102,18 @@ func refuseRetiredKeys(module Module, keys map[string]any) error {
 	for _, key := range slices.Sorted(maps.Keys(keys)) {
 		if text, retired := wayForward[key]; retired {
 			return configengine.MarkInvalid(fmt.Errorf("key %q of module %q is retired; way forward: %s", key, module.Name, text))
+		}
+	}
+	return nil
+}
+
+// refuseHubOnlyKeys refuses the first top-level key, in name order, that the module's Spec maps to a HubOnlyWayForward text.
+// The refusal is marked [configengine.ErrInvalid], names the key and the module, and ends with that text as its way forward.
+func refuseHubOnlyKeys(module Module, keys map[string]any) error {
+	wayForward := module.Spec().HubOnlyWayForward
+	for _, key := range slices.Sorted(maps.Keys(keys)) {
+		if text, hubOnly := wayForward[key]; hubOnly {
+			return configengine.MarkInvalid(fmt.Errorf("key %q of module %q is set only in the hub's config; way forward: %s", key, module.Name, text))
 		}
 	}
 	return nil

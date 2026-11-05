@@ -52,9 +52,9 @@ var registry = map[string]Constructor{
 	"Command":          commandEntry,
 	"PRReview":         prReviewEntry,
 	"DriftBaseline":    driftBaselineEntry,
+	"DriftExpect":      driftExpectEntry,
 	"DriftAwait":       driftAwaitEntry,
 	"DriftVerify":      driftVerifyEntry,
-	"DriftRecheck":     driftRecheckEntry,
 	"RaddleWrite":      raddleWriteEntry,
 	"RaddleFile":       raddleFileEntry,
 }

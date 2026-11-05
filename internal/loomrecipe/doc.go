@@ -12,11 +12,12 @@
 // Routing refuses a review segment its map lacks and a negative entry, each naming the segment.
 //
 // The tapestry recipe opens `Preflight → Motif`, a block row that runs the motif recipe's Discussion-Write and Discussion-Review ring inline, and its tail after Webster reads `Parent-Align → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize → Friction-Reflect`.
-// Drift-Baseline sits between the Motif block and Parts-Write, the two parts rows sit between it and Plan-Write, and Drift-Await sits between the Plan-Review ring and Webster.
+// Drift-Baseline sits between the Motif block and Parts-Write, the two parts rows sit between it and Plan-Write, Drift-Await sits between the Plan-Review ring and Drift-Expect, and Drift-Expect sits before Webster.
+// Drift-Expect has an agent write the expectation of the task's changes against the counted capture, and its Stuck halts the run.
 // PR-Review's Stuck is always a Halt, so it carries no on_stuck, and Finalize declares no reroute.
-// The darn recipe reads `Preflight → Record-Write → Drift-Baseline → Drift-Await → Darn-Write → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align.
+// The darn recipe reads `Preflight → Record-Write → Drift-Baseline → Drift-Await → Drift-Expect → Darn-Write → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize → Friction-Reflect`, with no Parent-Align.
 // Every Drift row carries the entry gate `drift.enabled`, so a hub that leaves regression off records each of them skipped.
-// In both recipes Drift-Recheck's on_stuck names Drift-Verify, so drift in code the perch's fixes committed goes back to Drift-Verify and through the perch again.
+// In both recipes Drift-Recheck runs the DriftVerify engine like Drift-Verify and carries no on_stuck, so code the perch's fixes committed is checked and judged again and a Stuck halts the run.
 // Its Code-Review rows are loom's, with the same names, segment, rubric and `loom.yaml` keys; only their answer key differs, the decision record alone in place of the record and the plan.
 //
 // The sampler recipe reads `Preflight → Record-Write → Sampler-Session → Code-Review → Describe → PR-Review → Finalize → Friction-Reflect`, with no Drift rows and no Parent-Align.

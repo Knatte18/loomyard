@@ -221,7 +221,7 @@ func seedLocalDrift(t *testing.T, local string) configengine.Dirs {
 
 // templateConfig returns the Config the embedded template loads as, changed by mutate.
 func templateConfig(mutate func(*Config)) Config {
-	cfg := Config{BaselineModel: "sonnet[medium]", VerifyModel: "opus[high]", VerifyMaxRuns: 8}
+	cfg := Config{Diff: DiffLines, KeyPatterns: defaultTestKeyPatterns, ExpectModel: "sonnet[medium]", JudgeModel: "opus[high]"}
 	mutate(&cfg)
 	return cfg
 }
@@ -249,9 +249,9 @@ func TestLoadConfig(t *testing.T) {
 		},
 		{
 			name: "a declared compare keeps its dir and env", seed: true,
-			contents: withKey(t, "compare", "compare: {command: \"cmp {baseline_dir} {skip_file}\", dir: tools, env: {A: b}, timeout_min: 5}"),
+			contents: withKey(t, "compare", "compare: {command: \"cmp {baseline_dir}\", dir: tools, env: {A: b}, timeout_min: 5}"),
 			want: templateConfig(func(c *Config) {
-				c.Compare = CommandStep{Command: "cmp {baseline_dir} {skip_file}", Dir: "tools", Env: map[string]string{"A": "b"}, TimeoutMin: 5}
+				c.Compare = CommandStep{Command: "cmp {baseline_dir}", Dir: "tools", Env: map[string]string{"A": "b"}, TimeoutMin: 5}
 			}),
 		},
 		{
@@ -260,9 +260,32 @@ func TestLoadConfig(t *testing.T) {
 			want:     templateConfig(func(c *Config) { c.Enabled = true }),
 		},
 		{
-			name: "verify_interactive loads", seed: true,
-			contents: withKey(t, "verify_interactive", "verify_interactive: true"),
-			want:     templateConfig(func(c *Config) { c.VerifyInteractive = true }),
+			name: "judge_interactive loads", seed: true,
+			contents: withKey(t, "judge_interactive", "judge_interactive: true"),
+			want:     templateConfig(func(c *Config) { c.JudgeInteractive = true }),
+		},
+		{
+			name: "diff command loads beside a declared compare", seed: true,
+			contents: withKeys(t, map[string]string{"diff": "diff: command", "compare": `compare: {command: "cmp {baseline_dir}", timeout_min: 5}`}),
+			want: templateConfig(func(c *Config) {
+				c.Diff = DiffCommand
+				c.Compare = CommandStep{Command: "cmp {baseline_dir}", TimeoutMin: 5}
+			}),
+		},
+		{
+			name: "a diff other than lines or command", seed: true,
+			contents: withKey(t, "diff", "diff: words"),
+			wantErr:  []string{`"diff"`, "lines", "command", "lym config drift"},
+		},
+		{
+			name: "a key pattern with no value group", seed: true,
+			contents: withKey(t, "key_patterns", `key_patterns: ['^(?P<key>\w+)$']`),
+			wantErr:  []string{`"key_patterns"`, "pattern 0", `no named group "value"`, "lym config drift"},
+		},
+		{
+			name: "diff command with no compare declared", seed: true,
+			contents: withKey(t, "diff", "diff: command"),
+			wantErr:  []string{`"compare"`, "diff: command", "lym config drift"},
 		},
 		{
 			name: "scope full loads", seed: true,
@@ -270,24 +293,14 @@ func TestLoadConfig(t *testing.T) {
 			want:     templateConfig(func(c *Config) { c.Scope = ScopeFull }),
 		},
 		{
-			name: "scope partial loads with its skipped tests", seed: true,
-			contents: withKeys(t, map[string]string{"scope": "scope: partial", "skip": "skip: [slow, flaky]"}),
-			want:     templateConfig(func(c *Config) { c.Scope, c.Skip = ScopePartial, []string{"slow", "flaky"} }),
-		},
-		{
 			name: "an unknown scope", seed: true,
 			contents: withKey(t, "scope", "scope: some"),
 			wantErr:  []string{`"scope"`, "run_settings", "lym config drift"},
 		},
 		{
-			name: "scope partial with no skipped test", seed: true,
+			name: "scope partial loads as full", seed: true,
 			contents: withKey(t, "scope", "scope: partial"),
-			wantErr:  []string{`"skip"`, "run_settings", "lym config drift"},
-		},
-		{
-			name: "a skipped test under scope full", seed: true,
-			contents: withKeys(t, map[string]string{"scope": "scope: full", "skip": "skip: [slow]"}),
-			wantErr:  []string{`"skip"`, "run_settings", "lym config drift"},
+			want:     templateConfig(func(c *Config) { c.Scope, c.ScopeWasPartial = ScopeFull, true }),
 		},
 		{
 			name: "a capture without the baseline placeholder", seed: true,
@@ -310,19 +323,14 @@ func TestLoadConfig(t *testing.T) {
 			wantErr:  []string{"capture.timeout_min", "lym config drift"},
 		},
 		{
-			name: "verify_max_runs below 1", seed: true,
-			contents: withKey(t, "verify_max_runs", "verify_max_runs: 0"),
-			wantErr:  []string{"verify_max_runs", "lym config drift"},
+			name: "an invalid expect model", seed: true,
+			contents: withKey(t, "expect_model", "expect_model: \"sonnet[medium\""),
+			wantErr:  []string{"expect_model", "lym config drift"},
 		},
 		{
-			name: "an invalid baseline model", seed: true,
-			contents: withKey(t, "baseline_model", "baseline_model: \"sonnet[medium\""),
-			wantErr:  []string{"baseline_model", "lym config drift"},
-		},
-		{
-			name: "an invalid verify model", seed: true,
-			contents: withKey(t, "verify_model", "verify_model: \"opus[high\""),
-			wantErr:  []string{"verify_model", "lym config drift"},
+			name: "an invalid judge model", seed: true,
+			contents: withKey(t, "judge_model", "judge_model: \"opus[high\""),
+			wantErr:  []string{"judge_model", "lym config drift"},
 		},
 		{name: "not initialized", wantErr: []string{`not initialized here; run "lym fabric reconcile"`}},
 	}
@@ -368,14 +376,15 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 
-	t.Run("a local scope with its skipped tests loads over the board's", func(t *testing.T) {
+	t.Run("a local scope partial with the retired skip and verify_max_runs keys loads as full with both keys dropped", func(t *testing.T) {
 		t.Parallel()
-		got, err := LoadConfig(seedLocalDrift(t, "scope: partial\nskip: [slow]\n"))
+		got, err := LoadConfig(seedLocalDrift(t, "scope: partial\nskip: [slow]\nverify_max_runs: 3\n"))
 		if err != nil {
 			t.Fatalf("LoadConfig() = _, %v; want nil error", err)
 		}
-		if got.Scope != ScopePartial || !reflect.DeepEqual(got.Skip, []string{"slow"}) {
-			t.Errorf("LoadConfig() scope, skip = %q, %q; want %q, [slow]", got.Scope, got.Skip, ScopePartial)
+		want := templateConfig(func(c *Config) { c.Scope, c.ScopeWasPartial = ScopeFull, true })
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("LoadConfig() = %+v; want %+v", got, want)
 		}
 	})
 
@@ -441,13 +450,13 @@ func TestLoadConfig(t *testing.T) {
 			t.Errorf("DirRel() = %q; want _lym/drift", got)
 		}
 		durable := filepath.Join(root, filepath.FromSlash(DirRel())) + string(filepath.Separator)
-		for name, file := range map[string]string{"Scope": p.Scope, "BaselineReport": p.BaselineReport, "VerifyReport": p.VerifyReport, "LogsDir": p.LogsDir} {
+		for name, file := range map[string]string{"Scope": p.Scope, "LogsDir": p.LogsDir} {
 			if !strings.HasPrefix(file, durable) {
 				t.Errorf("NewPaths().%s = %q; want it under %q", name, file, durable)
 			}
 		}
 		ephemeral := filepath.Join(root, ".lym", "drift") + string(filepath.Separator)
-		for name, file := range map[string]string{"Capture": p.Capture, "CaptureLock": p.CaptureLock, "CompareMarker": p.CompareMarker, "BaselineDir": p.BaselineDir, "SideDir": p.SideDir, "SkipFile": p.SkipFile, "Runs": p.Runs} {
+		for name, file := range map[string]string{"Capture": p.Capture, "CaptureLock": p.CaptureLock, "CompareMarker": p.CompareMarker, "BaselineDir": p.BaselineDir} {
 			if !strings.HasPrefix(file, ephemeral) {
 				t.Errorf("NewPaths().%s = %q; want it under %q", name, file, ephemeral)
 			}

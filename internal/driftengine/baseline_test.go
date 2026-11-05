@@ -1,4 +1,4 @@
-// baseline_test.go — tier 0 tests for the Drift-Baseline producer over fake Deps and a scripted seat runner.
+// baseline_test.go — tier 0 tests for the Drift-Baseline producer over fake Deps and the in-memory records store.
 
 package driftengine
 
@@ -6,17 +6,15 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lock"
-	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/shedfake"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -24,12 +22,10 @@ import (
 // baselineFixture is the fake world one DriftBaseline pass runs in, with counters of what the pass did.
 type baselineFixture struct {
 	t     *testing.T
+	store *commitStore
 	paths Paths
 	deps  Deps
 
-	// agentScope and agentSkip are what the scripted agent records through RecordScope; an empty agentScope records none.
-	agentScope string
-	agentSkip  []string
 	// head, branchPoint and dirty are what the git seams read.
 	head, branchPoint string
 	dirty             []string
@@ -38,103 +34,92 @@ type baselineFixture struct {
 	// disabled switches drift off, and configErr fails the config load.
 	disabled  bool
 	configErr error
-	// configScope and configSkip are the drift config's scope and skip keys.
-	configScope string
-	configSkip  []string
+	// configScope is the drift config's scope key, and configWasPartial says the config read it from a stored partial.
+	configScope      string
+	configWasPartial bool
 	// startErr is what StartCapture answers, and runRecord what RunCapture answers.
 	startErr  error
 	runRecord CaptureRecord
 	// onSleep runs at each Sleep with the 1-based call number.
 	onSleep func(call int)
 
+	// seats must stay untouched, since no row of the baseline spawns an agent.
 	seats   *shedfake.SeatRunner
-	notes   []string
 	starts  int
 	runs    int
 	sleeps  []time.Duration
 	commits [][]string
+	// endedRoles holds the roles of each call of EndRoles, and scopeAtEnd whether a scope was recorded when it was called.
+	endedRoles [][]string
+	scopeAtEnd []bool
 }
 
-// newBaselineFixture returns a fixture whose agent records a full scope, whose HEAD is on the branch point and whose capture is declared.
+// newBaselineFixture returns a fixture whose HEAD is on the branch point and whose capture is declared, over a fresh records store.
 func newBaselineFixture(t *testing.T) *baselineFixture {
 	t.Helper()
-	f := &baselineFixture{t: t, paths: NewPaths(t.TempDir()), agentScope: ScopeFull, head: "aaa", branchPoint: "aaa", declared: true}
+	store := newCommitStore(t)
+	f := &baselineFixture{t: t, store: store, paths: NewPaths(store.root), head: "aaa", branchPoint: "aaa", declared: true, seats: &shedfake.SeatRunner{}}
 	f.runRecord = CaptureRecord{State: CapturePassed}
-	f.seats = &shedfake.SeatRunner{RunFn: func(seatengine.Table) (seatengine.Result, error) {
-		if err := os.MkdirAll(filepath.Dir(f.paths.BaselineReport), 0o755); err != nil {
-			return seatengine.Result{}, err
+
+	d := store.deps(f.paths)
+	d.Config = func() (Config, error) {
+		if f.configErr != nil {
+			return Config{}, f.configErr
 		}
-		if err := os.WriteFile(f.paths.BaselineReport, []byte("expected drift"), 0o644); err != nil {
-			return seatengine.Result{}, err
+		cfg := Config{Enabled: !f.disabled, Scope: f.configScope, ScopeWasPartial: f.configWasPartial, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}}
+		if f.declared {
+			cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
 		}
-		// The real agent's second `lym drift scope` is refused and it goes on, so the fake records only the first.
-		if _, recorded, err := ReadScope(f.paths); err != nil {
-			return seatengine.Result{}, err
-		} else if f.agentScope != "" && !recorded {
-			if err := RecordScope(f.paths, statusAt("Drift-Baseline", shedengine.StateRunning, "", false), f.agentScope, f.agentSkip); err != nil {
-				return seatengine.Result{}, err
-			}
-		}
-		return seatengine.Result{Chair: shuttleengine.Result{Outcome: shuttleengine.OutcomeDone}, ChairOutputs: []string{f.paths.BaselineReport}}, nil
-	}}
-	f.deps = Deps{
-		Paths:        f.paths,
-		WorktreeRoot: t.TempDir(),
-		Config: func() (Config, error) {
-			if f.configErr != nil {
-				return Config{}, f.configErr
-			}
-			cfg := Config{Enabled: !f.disabled, Scope: f.configScope, Skip: f.configSkip}
-			if f.declared {
-				cfg.Capture = CommandStep{Command: "capture {baseline_dir}", Dir: ".", TimeoutMin: 1}
-			}
-			return cfg, nil
-		},
-		Status: func() (shedengine.Status, error) {
-			return shedengine.Status{CurrentProducer: "Drift-Baseline", State: shedengine.StateRunning}, nil
-		},
-		Head:        func() (string, error) { return f.head, nil },
-		BranchPoint: func() (string, error) { return f.branchPoint, nil },
-		DirtyPaths:  func() ([]string, error) { return f.dirty, nil },
-		Commit: func(rel []string) error {
-			f.commits = append(f.commits, slices.Clone(rel))
-			return nil
-		},
-		Seats: f.seats,
-		BaselineTable: func(note string) (seatengine.Table, error) {
-			f.notes = append(f.notes, note)
-			return seatengine.Table{Seats: []seatengine.Seat{{Outputs: []string{f.paths.BaselineReport}}}}, nil
-		},
-		StartCapture: func() error {
-			f.starts++
-			return f.startErr
-		},
-		RunCapture: func(context.Context) (CaptureRecord, error) {
-			f.runs++
-			return f.runRecord, nil
-		},
-		Sleep: func(_ context.Context, d time.Duration) error {
-			f.sleeps = append(f.sleeps, d)
-			if f.onSleep != nil {
-				f.onSleep(len(f.sleeps))
-			}
-			return nil
-		},
+		return cfg, nil
 	}
+	d.Status = func() (shedengine.Status, error) {
+		return shedengine.Status{CurrentProducer: "Drift-Baseline", State: shedengine.StateRunning}, nil
+	}
+	d.Head = func() (string, error) { return f.head, nil }
+	d.BranchPoint = func() (string, error) { return f.branchPoint, nil }
+	d.DirtyPaths = func() ([]string, error) { return f.dirty, nil }
+	d.Commit = func(rel []string) error {
+		f.commits = append(f.commits, slices.Clone(rel))
+		return nil
+	}
+	d.Seats = f.seats
+	d.EndRoles = func(roles []string) error {
+		f.endedRoles = append(f.endedRoles, slices.Clone(roles))
+		_, found, err := ReadScope(f.paths)
+		f.scopeAtEnd = append(f.scopeAtEnd, found)
+		return err
+	}
+	d.StartCapture = func() error {
+		f.starts++
+		return f.startErr
+	}
+	d.RunCapture = func(context.Context) (CaptureRecord, error) {
+		f.runs++
+		return f.runRecord, nil
+	}
+	d.Sleep = func(_ context.Context, delay time.Duration) error {
+		f.sleeps = append(f.sleeps, delay)
+		if f.onSleep != nil {
+			f.onSleep(len(f.sleeps))
+		}
+		return nil
+	}
+	f.deps = d
 	return f
 }
 
-// seedScopeRecord writes rec as the scope record, and report as baseline.md when true.
-func (f *baselineFixture) seedScopeRecord(rec ScopeRecord, report bool) {
+// seedScopeRecord writes rec as the scope record, as a run seeded before the records guard existed holds it.
+func (f *baselineFixture) seedScopeRecord(rec ScopeRecord) {
 	f.t.Helper()
 	if err := UpdateScope(f.paths, func(ScopeRecord, bool) (ScopeRecord, error) { return rec, nil }); err != nil {
 		f.t.Fatal(err)
 	}
-	if report {
-		if err := os.WriteFile(f.paths.BaselineReport, []byte("expected drift"), 0o644); err != nil {
-			f.t.Fatal(err)
-		}
-	}
+}
+
+// seedBaseline writes a baseline directory with one file, which Drift-Await digests when it counts a capture.
+func (f *baselineFixture) seedBaseline() {
+	f.t.Helper()
+	writeTree(f.t, f.paths.BaselineDir, map[string]string{"a.txt": "x=1\n"})
 }
 
 // writeCapture writes rec as the capture record.
@@ -166,32 +151,38 @@ func (f *baselineFixture) holdCaptureLock() (release func()) {
 	return release
 }
 
-// checkRecordedScope fails t unless the scope record holds scope and skip and baseline.md holds each of report.
-func checkRecordedScope(t *testing.T, f *baselineFixture, scope string, skip []string, report ...string) {
+// checkRecordedScope fails t unless the scope record holds want's scope, source, diff mode and key patterns.
+func checkRecordedScope(t *testing.T, f *baselineFixture, want ScopeRecord) {
 	t.Helper()
-	rec, found, err := ReadScope(f.paths)
-	if err != nil || !found || rec.Scope != scope || !slices.Equal(rec.Skip, skip) {
-		t.Errorf("ReadScope() = %+v, %v, %v; want scope %q skipping %q", rec, found, err, scope, skip)
+	got, found, err := ReadScope(f.paths)
+	if err != nil || !found || got.Scope != want.Scope || got.ScopeSource != want.ScopeSource || got.Diff != want.Diff || !slices.Equal(got.KeyPatterns, want.KeyPatterns) {
+		t.Errorf("ReadScope() = %+v, %v, %v; want scope %q from %q, diff %q, patterns %q", got, found, err, want.Scope, want.ScopeSource, want.Diff, want.KeyPatterns)
 	}
-	data, err := os.ReadFile(f.paths.BaselineReport)
-	if err != nil {
-		t.Fatalf("read baseline.md: %v", err)
+}
+
+// requireRecordsCommits fails t unless the records store holds exactly n commits and each carries the Drift-Records trailer.
+func requireRecordsCommits(t *testing.T, f *baselineFixture, n int) {
+	t.Helper()
+	f.store.mu.Lock()
+	defer f.store.mu.Unlock()
+	if len(f.store.commits) != n {
+		t.Errorf("%d records commits; want %d", len(f.store.commits), n)
 	}
-	for _, want := range report {
-		if !strings.Contains(string(data), want) {
-			t.Errorf("baseline.md = %q; want it to hold %q", data, want)
+	for _, commit := range f.store.commits {
+		if !slices.ContainsFunc(commit.trailers, func(trailer fabricengine.Trailer) bool { return trailer.Key == RecordsTrailerKey }) {
+			t.Errorf("commit %s carries trailers %v; want %s", commit.sha, commit.trailers, RecordsTrailerKey)
 		}
 	}
 }
 
-// TestDriftBaseline covers the producer's way through each scope, a scope the drift config sets, capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
+// TestDriftBaseline covers the scope the row records from config, the capture start and refusal, the pass with drift switched off, and the paths it commits on every way out.
 func TestDriftBaseline(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	scopeAndReport := []string{path.Join(DirRel(), "scope.json"), path.Join(DirRel(), "baseline.md")}
 	whole := []string{DirRel()}
-	haltWays := []string{CaptureHaltPrefix, "lym drift capture", "lym drift defer", "lym loom resume"}
+	haltWays := []string{CaptureHaltPrefix + DeferHaltPrefix, "lym drift capture", "lym drift defer", "lym loom resume"}
+	fullFromConfig := ScopeRecord{Scope: ScopeFull, Diff: DiffLines, KeyPatterns: []string{keyValuePattern}}
 
 	tests := []struct {
 		name       string
@@ -201,128 +192,91 @@ func TestDriftBaseline(t *testing.T) {
 		wantReason []string
 		// wantNoReason lists text the reason must not hold.
 		wantNoReason []string
-		wantAgents   int
 		wantStarts   int
 		wantRuns     int
-		// wantCommit nil wants no commit at all.
+		// wantCommit nil wants no commit through Deps.Commit at all.
 		wantCommit []string
 		// wantDeferrable is true for a Stuck that lym drift defer settles.
 		wantDeferrable bool
 		check          func(t *testing.T, f *baselineFixture)
 	}{
 		{
-			name:       "scope off starts no capture",
-			setup:      func(f *baselineFixture) { f.agentScope = ScopeOff },
-			want:       shedengine.Done,
-			wantAgents: 1,
-			wantCommit: scopeAndReport,
-		},
-		{
-			name:       "partial starts the detached capture",
-			setup:      func(f *baselineFixture) { f.agentScope, f.agentSkip = ScopePartial, []string{"slow"} },
-			want:       shedengine.Done,
-			wantAgents: 1,
-			wantStarts: 1,
-			wantCommit: scopeAndReport,
-		},
-		{
-			name:       "a configured scope full is recorded and captured with no agent",
-			setup:      func(f *baselineFixture) { f.configScope = ScopeFull },
-			want:       shedengine.Done,
-			wantStarts: 1,
-			wantCommit: scopeAndReport,
+			name:  "drift.scope off records off with its source and takes no capture",
+			setup: func(f *baselineFixture) { f.configScope = ScopeOff },
+			want:  shedengine.Done,
 			check: func(t *testing.T, f *baselineFixture) {
-				checkRecordedScope(t, f, ScopeFull, nil, "no baseline agent ran", "Scope: full")
+				checkRecordedScope(t, f, ScopeRecord{Scope: ScopeOff, ScopeSource: driftScopeKey})
+				requireRecordsCommits(t, f, 1)
 			},
 		},
 		{
-			name:       "a configured scope off is recorded with no agent or capture",
-			setup:      func(f *baselineFixture) { f.configScope = ScopeOff },
-			want:       shedengine.Done,
-			wantCommit: scopeAndReport,
-			check: func(t *testing.T, f *baselineFixture) {
-				checkRecordedScope(t, f, ScopeOff, nil, "Scope: off")
-			},
-		},
-		{
-			name:       "a configured scope partial records its skipped tests",
-			setup:      func(f *baselineFixture) { f.configScope, f.configSkip = ScopePartial, []string{"slow", "flaky"} },
+			name:       "an unset scope records full with the config's diff and patterns and starts the capture",
 			want:       shedengine.Done,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 			check: func(t *testing.T, f *baselineFixture) {
-				checkRecordedScope(t, f, ScopePartial, []string{"slow", "flaky"}, "Scope: partial", "Skipped tests: slow, flaky")
+				checkRecordedScope(t, f, fullFromConfig)
+				requireRecordsCommits(t, f, 1)
 			},
 		},
 		{
-			name: "a recorded scope wins over the configured one, and baseline.md names it with no agent",
+			name:       "a config scope read from partial is recorded full",
+			setup:      func(f *baselineFixture) { f.configScope, f.configWasPartial = ScopeFull, true },
+			want:       shedengine.Done,
+			wantStarts: 1,
+			check: func(t *testing.T, f *baselineFixture) {
+				checkRecordedScope(t, f, fullFromConfig)
+			},
+		},
+		{
+			name: "a recorded scope survives a config change, and so do its mode and patterns",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}}, false)
-				f.configScope = ScopeFull
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, Diff: DiffCommand, KeyPatterns: []string{"other"}})
+				f.configScope = ScopeOff
 			},
 			want:       shedengine.Done,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 			check: func(t *testing.T, f *baselineFixture) {
-				checkRecordedScope(t, f, ScopePartial, []string{"slow"}, "Scope: partial", "Skipped tests: slow")
+				checkRecordedScope(t, f, ScopeRecord{Scope: ScopeFull, Diff: DiffCommand, KeyPatterns: []string{"other"}})
+				requireRecordsCommits(t, f, 0)
 			},
 		},
 		{
-			name: "an existing baseline.md is kept under a configured scope, with no agent",
+			name: "an old recorded partial is kept and captured",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
-				f.configScope = ScopeFull
+				f.seedScopeRecord(ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}})
 			},
 			want:       shedengine.Done,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 			check: func(t *testing.T, f *baselineFixture) {
-				data, err := os.ReadFile(f.paths.BaselineReport)
-				if err != nil || string(data) != "expected drift" {
-					t.Errorf("baseline.md = %q, %v; want the seeded report untouched", data, err)
+				checkRecordedScope(t, f, ScopeRecord{Scope: ScopePartial})
+			},
+		},
+		{
+			name: "a live chair of either removed role is ended before the scope is recorded",
+			want: shedengine.Done, wantStarts: 1,
+			check: func(t *testing.T, f *baselineFixture) {
+				if want := [][]string{{"drift-baseline", "drift-verify"}}; !slices.EqualFunc(f.endedRoles, want, slices.Equal) {
+					t.Errorf("ended roles = %v; want %v", f.endedRoles, want)
+				}
+				if !slices.Equal(f.scopeAtEnd, []bool{false}) {
+					t.Errorf("scope recorded when the chairs were ended = %v; want none yet", f.scopeAtEnd)
 				}
 			},
-		},
-		{
-			name: "a scope record without baseline.md spawns the agent with the scope note",
-			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, false)
-			},
-			want:       shedengine.Done,
-			wantAgents: 1,
-			wantStarts: 1,
-			wantCommit: scopeAndReport,
-			check: func(t *testing.T, f *baselineFixture) {
-				if len(f.notes) != 1 || !strings.Contains(f.notes[0], "already recorded as full") {
-					t.Errorf("scope notes = %q; want one saying the scope is already recorded as full", f.notes)
-				}
-			},
-		},
-		{
-			name: "a scope record with baseline.md spawns no agent",
-			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
-			},
-			want:       shedengine.Done,
-			wantStarts: 1,
-			wantCommit: scopeAndReport,
 		},
 		{
 			name: "awaited_at set takes no capture",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, AwaitedAt: "2026-01-01T00:00:00Z", Deferred: true}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull, AwaitedAt: "2026-01-01T00:00:00Z", Deferred: true})
 			},
-			want:       shedengine.Done,
-			wantCommit: scopeAndReport,
+			want: shedengine.Done,
 		},
 		{
 			name: "a held lock is left running",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.holdCaptureLock()
 			},
-			want:       shedengine.Done,
-			wantCommit: scopeAndReport,
+			want: shedengine.Done,
 			check: func(t *testing.T, f *baselineFixture) {
 				if len(f.sleeps) != 0 {
 					t.Errorf("sleeps = %v; want none, since the capture is left running", f.sleeps)
@@ -332,59 +286,51 @@ func TestDriftBaseline(t *testing.T) {
 		{
 			name: "a passed record is left alone",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				if err := WriteCapture(f.paths, CaptureRecord{State: CapturePassed}); err != nil {
 					f.t.Fatal(err)
 				}
 			},
-			want:       shedengine.Done,
-			wantCommit: scopeAndReport,
+			want: shedengine.Done,
 		},
 		{
 			name: "a running record with a free lock captures again",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				if err := WriteCapture(f.paths, CaptureRecord{State: CaptureRunning, Pid: 1}); err != nil {
 					f.t.Fatal(err)
 				}
 			},
 			want:       shedengine.Done,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 		},
 		{
 			name: "a failed record captures again",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				if err := WriteCapture(f.paths, CaptureRecord{State: CaptureFailed}); err != nil {
 					f.t.Fatal(err)
 				}
 			},
 			want:       shedengine.Done,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 		},
 		{
 			name:       "a moved HEAD is Stuck naming defer",
 			setup:      func(f *baselineFixture) { f.head = "bbb" },
 			want:       shedengine.Stuck,
-			wantReason: []string{CaptureHaltPrefix, "lym drift defer", "lym loom resume"},
-			wantAgents: 1,
-			wantCommit: scopeAndReport,
+			wantReason: []string{CaptureHaltPrefix + DeferHaltPrefix, "lym drift defer", "lym loom resume"},
 		},
 		{
 			name:       "a dirty tree on the branch point names restoring or stashing, resume and defer",
 			setup:      func(f *baselineFixture) { f.dirty = []string{"a.go", "b.go"} },
 			want:       shedengine.Stuck,
-			wantReason: []string{CaptureHaltPrefix, "a.go, b.go", "restore those paths to HEAD or stash them", "lym loom resume", "lym drift defer"},
-			wantAgents: 1,
-			wantCommit: scopeAndReport,
+			wantReason: []string{CaptureHaltPrefix + DeferHaltPrefix, "a.go, b.go", "restore those paths to HEAD or stash them", "lym loom resume", "lym drift defer"},
 		},
 		{
 			name:       "a breakaway refusal falls back to the foreground capture",
 			setup:      func(f *baselineFixture) { f.startErr = ErrBreakawayRefused },
 			want:       shedengine.Done,
-			wantAgents: 1,
 			wantStarts: 1,
 			wantRuns:   1,
 			wantCommit: whole,
@@ -397,24 +343,9 @@ func TestDriftBaseline(t *testing.T) {
 			},
 			want:       shedengine.Stuck,
 			wantReason: haltWays,
-			wantAgents: 1,
 			wantStarts: 1,
 			wantRuns:   1,
 			wantCommit: whole,
-		},
-		{
-			name: "a foreground capture that wrote nothing under skipped tests names the scope changes in place of a plain capture",
-			setup: func(f *baselineFixture) {
-				f.startErr = ErrBreakawayRefused
-				f.runRecord = CaptureRecord{State: CaptureFailed, Reason: "exit 0 but wrote no file to baseline while scope partial skipped 1 test", Skip: []string{"slow"}, WroteNoFile: true, Log: "capture.log"}
-			},
-			want:         shedengine.Stuck,
-			wantReason:   []string{CaptureHaltPrefix, "skipped 1 test", "lym drift scope --scope full (or --scope partial with a shorter --skip list) followed by lym drift capture and lym loom resume", "lym drift scope --scope off followed by lym loom resume", "lym drift defer followed by lym loom resume"},
-			wantNoReason: []string{"lym drift capture followed by lym loom resume"},
-			wantAgents:   1,
-			wantStarts:   1,
-			wantRuns:     1,
-			wantCommit:   whole,
 		},
 		{
 			name: "a child that did not record its start is a capture halt naming the child's log, which lym drift defer settles",
@@ -422,10 +353,8 @@ func TestDriftBaseline(t *testing.T) {
 				f.startErr = startFailure(SpawnRequest{}, "child.log", "ended before it recorded its start")
 			},
 			want:           shedengine.Stuck,
-			wantReason:     []string{CaptureHaltPrefix, "child.log", "lym loom resume", "lym drift defer"},
-			wantAgents:     1,
+			wantReason:     []string{CaptureHaltPrefix + DeferHaltPrefix, "child.log", "lym loom resume", "lym drift defer"},
 			wantStarts:     1,
-			wantCommit:     scopeAndReport,
 			wantDeferrable: true,
 		},
 		{
@@ -434,38 +363,37 @@ func TestDriftBaseline(t *testing.T) {
 				f.startErr = childNoRecordError{text: "drift: the capture child ended before it recorded its start: cwd /w does not equal the anchored directory /w/backend; its log is child.log", lasting: true}
 			},
 			want:           shedengine.Stuck,
-			wantReason:     []string{CaptureHaltPrefix, "does not equal the anchored directory", "child.log", "lym loom resume cannot change this error", "lym drift defer followed by lym loom resume", "fix of the error's cause"},
+			wantReason:     []string{CaptureHaltPrefix + DeferHaltPrefix, "does not equal the anchored directory", "child.log", "lym loom resume cannot change this error", "lym drift defer followed by lym loom resume", "fix of the error's cause"},
 			wantNoReason:   []string{"lym loom resume to capture again"},
-			wantAgents:     1,
 			wantStarts:     1,
-			wantCommit:     scopeAndReport,
 			wantDeferrable: true,
 		},
 		{
 			name:       "an environment fault starting the capture is an error that offers no defer",
 			setup:      func(f *baselineFixture) { f.startErr = errors.New("drift: resolve this binary: no such file") },
 			wantErr:    "resolve this binary",
-			wantAgents: 1,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 		},
 		{
 			name:       "a held capture lock at the start keeps its own refusal",
 			setup:      func(f *baselineFixture) { f.startErr = lockHeldRefusal("capture.lock") },
 			wantErr:    "a capture already holds capture.lock",
-			wantAgents: 1,
 			wantStarts: 1,
-			wantCommit: scopeAndReport,
 		},
 		{
-			name: "drift switched off passes a run halted on a failed capture, with no agent, capture or commit",
+			name: "drift switched off passes a run halted on a failed capture, with no capture or commit",
 			setup: func(f *baselineFixture) {
-				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull}, true)
+				f.seedScopeRecord(ScopeRecord{Scope: ScopeFull})
 				f.writeCapture(CaptureRecord{State: CaptureFailed})
 				f.disabled = true
 			},
 			want:       shedengine.Done,
 			wantReason: []string{"drift.enabled = false"},
+			check: func(t *testing.T, f *baselineFixture) {
+				if len(f.endedRoles) != 0 {
+					t.Errorf("ended roles = %v; want none while drift is off", f.endedRoles)
+				}
+			},
 		},
 		{
 			name:       "a drift config that fails to load is Stuck naming lym loom resume",
@@ -478,16 +406,6 @@ func TestDriftBaseline(t *testing.T) {
 			setup:      func(f *baselineFixture) { f.declared = false },
 			want:       shedengine.Stuck,
 			wantReason: []string{"lym config drift", "lym loom resume"},
-			wantAgents: 1,
-			wantCommit: scopeAndReport,
-		},
-		{
-			name:       "an agent that records no scope is Stuck",
-			setup:      func(f *baselineFixture) { f.agentScope = "" },
-			want:       shedengine.Stuck,
-			wantReason: []string{"recorded no scope", "lym loom resume"},
-			wantAgents: 1,
-			wantCommit: scopeAndReport,
 		},
 	}
 	for _, tt := range tests {
@@ -521,21 +439,27 @@ func TestDriftBaseline(t *testing.T) {
 					t.Errorf("Call() reason = %q; want it without %q", pointer.Reason, unwanted)
 				}
 			}
+			if strings.HasPrefix(pointer.Reason, CaptureHaltPrefix) && !strings.HasPrefix(pointer.Reason, CaptureHaltPrefix+DeferHaltPrefix) {
+				t.Errorf("Call() reason = %q; want a capture halt to carry the defer prefix right after the capture prefix", pointer.Reason)
+			}
 			if strings.Contains(pointer.Reason, "remov") {
 				t.Errorf("Call() reason = %q; want no removing offered as a way forward", pointer.Reason)
 			}
-			if f.seats.Calls != tt.wantAgents || f.starts != tt.wantStarts || f.runs != tt.wantRuns {
-				t.Errorf("agents/starts/runs = %d/%d/%d; want %d/%d/%d", f.seats.Calls, f.starts, f.runs, tt.wantAgents, tt.wantStarts, tt.wantRuns)
+			if f.seats.Calls+f.seats.ProbeCalls+f.seats.ResumeCalls != 0 {
+				t.Errorf("seat runner calls = %d runs, %d probes, %d resumes; want no agent", f.seats.Calls, f.seats.ProbeCalls, f.seats.ResumeCalls)
+			}
+			if f.starts != tt.wantStarts || f.runs != tt.wantRuns {
+				t.Errorf("starts/runs = %d/%d; want %d/%d", f.starts, f.runs, tt.wantStarts, tt.wantRuns)
 			}
 			if tt.wantCommit == nil {
 				if len(f.commits) != 0 {
-					t.Errorf("commits = %v; want none", f.commits)
+					t.Errorf("commits = %v; want none through Deps.Commit", f.commits)
 				}
 			} else if len(f.commits) != 1 || !slices.Equal(f.commits[0], tt.wantCommit) {
 				t.Errorf("commits = %v; want one commit of %v", f.commits, tt.wantCommit)
 			}
 			if tt.wantDeferrable {
-				if err := Defer(f.paths, statusAt("Drift-Baseline", shedengine.StateBlocked, pointer.Reason, false)); err != nil {
+				if err := Defer(f.deps, statusAt("Drift-Baseline", shedengine.StateBlocked, pointer.Reason)); err != nil {
 					t.Errorf("Defer() at the halt = %v; want it admitted", err)
 				}
 			}

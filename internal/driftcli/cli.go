@@ -1,13 +1,13 @@
-// cli.go builds the drift cobra command with its scope, accept, withdraw, compare, capture, defer, waive, status and hidden capture-child verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
+// cli.go builds the drift cobra command with its capture, check, amend, defer, status and hidden capture-child verbs, and the RunCLI/RunCLIIn seams that wire them into the standard io.Writer-based call contract.
 
 package driftcli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,7 +16,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
-	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -39,27 +38,41 @@ const (
 func Command() *cobra.Command {
 	drift := &cobra.Command{
 		Use:   "drift",
-		Short: "record a task's regression scope, capture its baseline and compare its code against it",
-		Long: `drift runs regression around a task: Drift-Baseline records the task's
-scope, from drift.scope when the task's run_settings or the hub set it and
-through its agent otherwise, a capture takes the suite's profile on the task's branch point,
-and Drift-Verify compares the task's code against it. The verbs run inside a
-tapestry or darn run's worktree and judge the run's status, so each refusal names
-its way forward. See lym config drift for the capture and compare commands.`,
+		Short: "capture a task's baseline and check its code's changes against the sealed expectation",
+		Long: `drift runs regression around a task: Drift-Baseline records the task's scope
+from drift.scope, off or full, and a capture takes the suite's profile on the
+task's branch point. Drift-Expect has an agent write the changes the task is
+expected to make, and seals them before the writer starts. The drift gate and
+Drift-Verify then diff a capture of the writer's code against the baseline,
+check every changed value against the sealed expectation, and have a judge rule
+on each expected one. The verbs run inside a tapestry or darn run's worktree and
+judge the run's status, so each refusal names its way forward. See lym config
+drift for the capture and compare commands.`,
 		RunE: clihelp.GroupRunE,
 	}
-	drift.AddCommand(scopeCmd(), acceptCmd(), withdrawCmd(), compareCmd(), captureCmd(), deferCmd(), waiveCmd(), statusCmd(), captureChildCmd())
+	drift.AddCommand(captureCmd(), checkCmd(), amendCmd(), deferCmd(), statusCmd(), captureChildCmd())
 	return drift
 }
 
 // runVerb resolves the worktree from the command's cwd and prints what run returns under key in the standard envelope, or a refusal through output.Err.
 func runVerb(cmd *cobra.Command, key string, run func(w *worktree) (any, error)) error {
+	return runVerbAt(cmd, key, "", run)
+}
+
+// runVerbAt is runVerb over the worktree of the board slug in this hub, or over the cwd's own worktree when slug is empty.
+func runVerbAt(cmd *cobra.Command, key, slug string, run func(w *worktree) (any, error)) error {
 	if clihelp.ShouldAbort(cmd.Context()) {
 		return nil
 	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
-	w, err := openWorktree(cmd)
+	var w *worktree
+	var err error
+	if slug == "" {
+		w, err = openWorktree(cmd)
+	} else {
+		w, err = openSlugWorktree(cmd, slug)
+	}
 	if err == nil {
 		var result any
 		if result, err = run(w); err == nil {
@@ -71,253 +84,11 @@ func runVerb(cmd *cobra.Command, key string, run func(w *worktree) (any, error))
 	return nil
 }
 
-// scopeCmd returns the `drift scope` verb.
-func scopeCmd() *cobra.Command {
-	var (
-		scope string
-		skip  []string
-	)
-	cmd := &cobra.Command{
-		Use:         "scope --scope <scope>",
-		Short:       "record the task's regression scope",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `scope records how much of the regression suite covers the task: off checks
-nothing, full checks everything, and partial checks all but the tests --skip
-names, which it requires. The baseline agent runs it once, at a running
-Drift-Baseline; its second call is refused, and it then writes baseline.md
-alone and ends its turn. When drift.scope is set, Drift-Baseline records it
-and spawns no agent. The run's parent records or replaces the scope at a
-blocked Drift-Baseline or Drift-Await, while no capture runs and before the
-baseline wait is settled; a replacement that compares a test the capture
-skipped drops that capture. Run lym loom resume after it.
-
-Example:
-  lym drift scope --scope partial --skip slow_test --skip flaky_test`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "scope", func(w *worktree) (any, error) {
-				st, err := w.verbStatus()
-				if err != nil {
-					return nil, err
-				}
-				if err := driftengine.RecordScope(w.paths, st, scope, skip); err != nil {
-					return nil, err
-				}
-				return map[string]any{"scope": scope, "skip": skip}, nil
-			})
-		},
-	}
-	cmd.Flags().StringVar(&scope, "scope", "", "the scope: off, partial or full")
-	cmd.Flags().StringArrayVar(&skip, "skip", nil, "a test the partial scope leaves out; repeatable")
-	_ = cmd.MarkFlagRequired("scope")
-	return cmd
-}
-
-// acceptCmd returns the `drift accept` verb.
-func acceptCmd() *cobra.Command {
-	var reason string
-	cmd := &cobra.Command{
-		Use:         "accept <test> --reason <text>",
-		Short:       "accept a drifted test as intended",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `accept records that a test's drift is intended, with the reason, so the
-compare skips the test from then on. The test is named as its profile file
-under the baseline directory is named, with or without the file's last
-extension (a dotfile has none), and any other name is refused. Before it records the acceptance it captures
-the current code's output, in a gate slot and outside the session's run
-budget, and keeps the test's output as the accepted one: Drift-Verify and
-Drift-Recheck later compare the code against it, so a change to that output
-after the acceptance shows as drift. The Drift-Verify agent accepts while its
-session runs; under scope full its acceptances stay unruled until the run's
-parent rules at a decision halt. The parent uses accept at a halt, where it is
-the only way to re-accept a test it withdrew. A halt that is no decision halt
-refuses the parent's accept of a withdrawn test or under scope full. With
-drift.yaml's verify_interactive set, the agent's session has the operator in
-its pane, and each acceptance it records is the operator's decision: ruled
-under scope full, and admitted for a withdrawn test. A second accept in the
-same worktree is refused while one runs.
-
-Example:
-  lym drift accept parser_roundtrip --reason "the format changed on purpose"`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "accept", func(w *worktree) (any, error) { return acceptTest(cmd, w, args[0], reason) })
-		},
-	}
-	cmd.Flags().StringVar(&reason, "reason", "", "why the drift is intended")
-	_ = cmd.MarkFlagRequired("reason")
-	return cmd
-}
-
-// holdAcceptLock takes the lock that keeps two accepts of one worktree from sharing the accepting directory, and refuses while another accept holds it.
-func holdAcceptLock(p driftengine.Paths) (*lock.FileLock, error) {
-	if err := os.MkdirAll(filepath.Dir(p.AcceptLock), 0o755); err != nil {
-		return nil, fmt.Errorf("drift: create %s: %w", filepath.Dir(p.AcceptLock), err)
-	}
-	held, taken, err := lock.TryAcquireWriteLock(p.AcceptLock)
-	if err != nil {
-		return nil, err
-	}
-	if !taken {
-		return nil, fmt.Errorf("drift accept refused: another accept holds %s; way forward: wait for it to end, then lym drift accept again", p.AcceptLock)
-	}
-	return held, nil
-}
-
-// acceptTest checks the acceptance, captures the current code's output for it and records it, keeping the test's output as the accepted one.
-// It holds the accept lock throughout, and reads the run status again after the capture, which can last minutes, for who the acceptance is by.
-func acceptTest(cmd *cobra.Command, w *worktree, test, reason string) (any, error) {
-	held, err := holdAcceptLock(w.paths)
-	if err != nil {
-		return nil, err
-	}
-	defer held.Release()
-	st, err := w.verbStatus()
-	if err != nil {
-		return nil, err
-	}
-	if err := driftengine.CheckAccept(w.paths, st, test); err != nil {
-		return nil, err
-	}
-	cfg, err := w.config()
-	if err != nil {
-		return nil, err
-	}
-	step, err := cfg.StepWithHubEnv("capture", w.configDirs())
-	if err != nil {
-		return nil, err
-	}
-	scope, _, err := driftengine.ReadScope(w.paths)
-	if err != nil {
-		return nil, err
-	}
-	request := w.captureRequest(step)
-	request.Skip = scope.Skip
-	captured, err := driftengine.RunAcceptanceCapture(cmd.Context(), request, test)
-	if err != nil {
-		return nil, err
-	}
-	if !captured.Passed {
-		return nil, fmt.Errorf("drift accept refused: the capture of %s's output did not pass: %s; way forward: fix what it names, then lym drift accept again", test, captured.Reason)
-	}
-	if st, err = w.verbStatus(); err != nil {
-		return nil, err
-	}
-	if err := driftengine.Accept(w.paths, st, test, reason); err != nil {
-		return nil, err
-	}
-	return map[string]any{"test": test, "log": captured.Log}, nil
-}
-
-// withdrawCmd returns the `drift withdraw` verb.
-func withdrawCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:         "withdraw <test>",
-		Short:       "withdraw an accepted test so the compare runs it again",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `withdraw moves an accepted test back to the compare, so its drift is judged
-again. The run's parent uses it at a Drift-Verify halt to overrule an
-acceptance; the agent then fixes the drift or reports it in verify-report.md,
-and only the parent at a decision halt, or the operator in a verify_interactive
-session, re-accepts the test. A test that is not accepted is refused; lym drift
-status lists the accepted tests.
-
-Example:
-  lym drift withdraw parser_roundtrip`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "withdraw", func(w *worktree) (any, error) {
-				st, err := w.verbStatus()
-				if err != nil {
-					return nil, err
-				}
-				if err := driftengine.Withdraw(w.paths, st, args[0]); err != nil {
-					return nil, err
-				}
-				return map[string]any{"test": args[0]}, nil
-			})
-		},
-	}
-}
-
-// spentRefusal words a refused run for the caller: the agent session ends its turn, and a caller at a halt resumes the run.
-func spentRefusal(st driftengine.VerbStatus, err error) error {
-	if st.AtAgentSession() {
-		return fmt.Errorf("%w; way forward: write what you found to verify-report.md and end your turn, which stops the row", err)
-	}
-	return fmt.Errorf("%w; way forward: lym loom resume spawns a fresh agent with a fresh budget, since a halt's run spends the counter of no live session", err)
-}
-
-// takeRun checks the Drift-Verify row, reads the declared step, and takes one run of the session's budget.
-func takeRun(w *worktree, verb, stepName string) (driftengine.CommandStep, error) {
-	st, err := w.verbStatus()
-	if err != nil {
-		return driftengine.CommandStep{}, err
-	}
-	if err := driftengine.CheckVerifyRow(st, verb); err != nil {
-		return driftengine.CommandStep{}, err
-	}
-	cfg, err := w.config()
-	if err != nil {
-		return driftengine.CommandStep{}, err
-	}
-	step, err := cfg.StepWithHubEnv(stepName, w.configDirs())
-	if err != nil {
-		return driftengine.CommandStep{}, err
-	}
-	if _, err := driftengine.TakeRun(w.paths, cfg.VerifyMaxRuns); err != nil {
-		if errors.Is(err, driftengine.ErrRunsSpent) {
-			err = spentRefusal(st, err)
-		}
-		return driftengine.CommandStep{}, err
-	}
-	return step, nil
-}
-
-// compareCmd returns the `drift compare` verb.
-func compareCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:         "compare",
-		Short:       "run the compare against the baseline and print its result",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
-		Long: `compare runs the declared compare command against the baseline, skipping the
-scope's skipped and accepted tests, and prints its exit code and log. It runs
-at Drift-Verify only and spends one run of the agent session's budget; once
-the budget is spent the agent writes what it found to verify-report.md and
-ends its turn, and a caller at a halt resumes the run for a fresh budget.
-
-Example:
-  lym drift compare`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "compare", func(w *worktree) (any, error) {
-				step, err := takeRun(w, "compare", "compare")
-				if err != nil {
-					return nil, err
-				}
-				scope, _, err := driftengine.ReadScope(w.paths)
-				if err != nil {
-					return nil, err
-				}
-				request := w.compareRequest(step)
-				request.Skip = driftengine.SkipList(scope)
-				request.LockRetry = compareLockRetry
-				result, err := driftengine.RunCompare(cmd.Context(), request)
-				if err != nil {
-					return nil, err
-				}
-				return map[string]any{"exit_code": result.ExitCode, "log": result.Log, "passed": result.Passed, "reason": result.Reason}, nil
-			})
-		},
-	}
-}
-
 // captureCmd returns the `drift capture` verb.
 func captureCmd() *cobra.Command {
-	var side bool
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:         "capture",
-		Short:       "capture the baseline in a detached process, or a side capture with --side",
+		Short:       "capture the baseline in a detached process",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `capture takes the suite's profile on the task's branch point. It runs at
 Drift-Baseline, or at a Drift-Await halt, with HEAD on the branch point and a
@@ -329,41 +100,73 @@ fails the call with its reason: the directory the command ran in, its last
 output and the ways forward. One that fails later records the same reason,
 which lym drift status shows and the Drift-Await halt carries.
 
---side is the Drift-Verify agent's form: it captures a spare profile into a
-numbered directory under the side directory, spends one run of the session's
-budget, and needs no clean tree.
-
 Example:
   lym drift capture`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if side {
-				return runVerb(cmd, "side_capture", func(w *worktree) (any, error) { return runSideCapture(cmd, w) })
-			}
 			return runVerb(cmd, "capture", func(w *worktree) (any, error) { return startMainCapture(w) })
 		},
 	}
-	cmd.Flags().BoolVar(&side, "side", false, "take a spare side capture at Drift-Verify instead of the baseline")
-	return cmd
 }
 
-// runSideCapture runs the agent's side capture and returns its result.
-func runSideCapture(cmd *cobra.Command, w *worktree) (any, error) {
-	step, err := takeRun(w, "capture --side", "capture")
+// checkCmd returns the `drift check` verb.
+func checkCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "check",
+		Short:       "run the drift gate's check on the current code and print what it found",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
+		Long: `check runs the check the drift gate runs: it captures the current code, diffs
+the capture against the baseline and prints whether the gate would pass, the
+cells the sealed expectation does not cover, and the faults the check found.
+Run it after a change to see what the gate will say before the gate does.
+It decides nothing, since Drift-Verify repeats the check, and writes no
+tracked record, only a scratch capture directory. Before Drift-Expect has
+passed no expectation is sealed, and it prints that and checks nothing.
+
+Example:
+  lym drift check`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runVerb(cmd, "check", func(w *worktree) (any, error) { return runCheck(cmd.Context(), w) })
+		},
+	}
+}
+
+// runCheck runs the drift check over w's worktree and returns what it printed.
+func runCheck(ctx context.Context, w *worktree) (any, error) {
+	deps, err := w.checkDeps()
 	if err != nil {
 		return nil, err
 	}
-	scope, _, err := driftengine.ReadScope(w.paths)
+	report, err := driftengine.Check(ctx, deps)
 	if err != nil {
 		return nil, err
 	}
-	request := w.captureRequest(step)
-	request.Skip = driftengine.SkipList(scope)
-	result, err := driftengine.RunSideCapture(cmd.Context(), request)
-	if err != nil {
-		return nil, err
+	return checkResult(report), nil
+}
+
+// checkResult renders a check report for the envelope: whether the drift gate would pass, the skip, each fault by name, each unexpected cell and the report's findings.
+// The gate fails only on a capture fault or an unexpected cell, and only while no skip or baseline fault ended the check first, since no writer session clears those; a records or seal fault beside either still fails it.
+func checkResult(report driftengine.CheckReport) map[string]any {
+	unexpected := report.Unexpected()
+	cells := make([]map[string]any, 0, len(unexpected))
+	for _, classified := range unexpected {
+		cell := classified.Cell
+		cells = append(cells, map[string]any{
+			"kind": string(cell.Kind), "case": cell.Case,
+			"key": cell.Identity.Key, "n": cell.Identity.N, "line": cell.Identity.Line,
+			"old": cell.Old, "new": cell.New,
+		})
 	}
-	return map[string]any{"dir": result.Dir, "log": result.Log, "exit_code": result.ExitCode, "timed_out": result.TimedOut}, nil
+	faults := map[string]string{}
+	for name, text := range map[string]string{"baseline": report.BaselineFault, "records": report.RecordsFault, "seal": report.SealFault, "capture": report.CaptureFault} {
+		if text != "" {
+			faults[name] = text
+		}
+	}
+	clearable := report.Skip == "" && report.BaselineFault == ""
+	failing := clearable && (report.CaptureFault != "" || len(unexpected) > 0)
+	return map[string]any{"would_pass": !failing, "skipped": report.Skip, "faults": faults, "unexpected": cells, "findings": report.Findings()}
 }
 
 // startMainCapture checks the capture's precondition and starts the detached child.
@@ -466,11 +269,6 @@ func runCaptureChild(cmd *cobra.Command) {
 		fail(err)
 		return
 	}
-	scope, _, err := driftengine.ReadScope(w.paths)
-	if err != nil {
-		fail(err)
-		return
-	}
 	release, err := proc.HoldNamedJob(driftengine.CaptureJobName(w.root()))
 	if err != nil {
 		fail(err)
@@ -478,7 +276,6 @@ func runCaptureChild(cmd *cobra.Command) {
 	}
 
 	request := w.captureRequest(step)
-	request.Skip = scope.Skip
 	request.Check = func() (string, error) {
 		head, err := checkMainCapture(w)
 		if err != nil {
@@ -522,25 +319,43 @@ func checkMainCapture(w *worktree) (string, error) {
 // deferCmd returns the `drift defer` verb.
 func deferCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:         "defer",
+		Use:         "defer [<slug>]",
 		Short:       "settle the baseline wait with no baseline taken",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `defer sets the baseline as awaited with none taken, so the run goes on to
-code changes; run lym loom resume after it. It settles a Drift-Await halt or a
-Drift-Baseline capture halt, and is refused while a capture runs. Drift-Verify
-then halts on no counted capture, unless a passed capture exists, and only the
-run's parent waives there.
+code changes; run lym loom resume after it. It settles a Drift-Await halt, a
+Drift-Baseline capture halt, and a halt of Drift-Expect, the writer,
+Drift-Verify or Drift-Recheck whose reason names it or whose baseline check
+fails. It is refused while a capture or a lym drift check holds the capture
+lock. After the writer it skips the regression check for the rest of the run,
+and the verdict states it, so only the run's parent or the operator's own
+shell runs it.
+
+With a slug it acts on that task's worktree, so the parent need not stand in
+the run's worktree.
 
 Example:
-  lym drift defer`,
-		Args: cobra.NoArgs,
+  lym drift defer
+  lym drift defer my-task`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "defer", func(w *worktree) (any, error) {
+			slug := ""
+			if len(args) == 1 {
+				slug = args[0]
+			}
+			return runVerbAt(cmd, "defer", slug, func(w *worktree) (any, error) {
+				if _, err := w.callerBy("defer"); err != nil {
+					return nil, err
+				}
 				st, err := w.verbStatus()
 				if err != nil {
 					return nil, err
 				}
-				if err := driftengine.Defer(w.paths, st); err != nil {
+				deps, err := w.checkDeps()
+				if err != nil {
+					return nil, err
+				}
+				if err := driftengine.Defer(deps, st); err != nil {
 					return nil, err
 				}
 				return map[string]any{"deferred": true}, nil
@@ -549,49 +364,17 @@ Example:
 	}
 }
 
-// waiveCmd returns the `drift waive` verb.
-func waiveCmd() *cobra.Command {
-	var reason string
-	cmd := &cobra.Command{
-		Use:         "waive --reason <text>",
-		Short:       "waive the compare when no counted capture exists",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `waive records that the run goes on with no regression compare, with the
-reason. It is admitted only at the blocked Drift-Verify halt that finds no
-counted capture, so only the run's parent waives; run lym loom resume after it.
-At any other Drift-Verify halt it is refused, naming the halt's own ways
-forward.
-
-Example:
-  lym drift waive --reason "the suite cannot run on this machine"`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "waive", func(w *worktree) (any, error) {
-				st, err := w.verbStatus()
-				if err != nil {
-					return nil, err
-				}
-				if err := driftengine.Waive(w.paths, st, reason); err != nil {
-					return nil, err
-				}
-				return map[string]any{"waived": true}, nil
-			})
-		},
-	}
-	cmd.Flags().StringVar(&reason, "reason", "", "why the compare is waived")
-	_ = cmd.MarkFlagRequired("reason")
-	return cmd
-}
-
 // statusCmd returns the `drift status` verb.
 func statusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         "status",
-		Short:       "print the scope and capture records, the locks and the run count",
+		Short:       "print the scope and capture records, the locks and the diff mode",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `status prints the scope record, the capture record, whether the capture lock
-and the compare marker are held, and how many runs the Drift-Verify agent
-session has taken. It changes nothing.
+and the compare marker are held, and the diff mode, the one the scope record
+holds or drift.yaml's while none is recorded. Under lines it also prints
+compare_ignored: true, since the compare command never runs under that mode.
+It changes nothing.
 
 Example:
   lym drift status`,
@@ -620,11 +403,18 @@ func readStatus(w *worktree) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	runs, err := driftengine.RunCount(w.paths)
-	if err != nil {
-		return nil, err
+	mode := scope.Diff
+	if mode == "" {
+		cfg, err := w.config()
+		if err != nil {
+			return nil, err
+		}
+		mode = cfg.Diff
 	}
-	result := map[string]any{"capture_held": captureHeld, "compare_held": compareHeld, "runs": runs}
+	result := map[string]any{"capture_held": captureHeld, "compare_held": compareHeld, "diff": mode}
+	if mode == driftengine.DiffLines {
+		result["compare_ignored"] = true
+	}
 	if scopeFound {
 		result["scope"] = scope
 	}

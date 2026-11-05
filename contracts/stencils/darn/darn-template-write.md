@@ -84,6 +84,15 @@ Once the entry exists, the omission is no deviation from the amended board entry
 With no parent to ask, stop and report the step.
 The route admits a drop of an own-entry step only: no other step is left out through it.
 
+## The sealed expectation
+
+The changes the task is expected to make to the captured behavior are sealed in `_lym/drift/expected.yaml` before you start.
+Read it to see which captured values may change; you never edit it.
+The `drift` gate entry checks after each turn that every changed value of the capture is covered by the expectation, and fails naming each value outside it.
+Fix such a value in the code yourself.
+When the change is intended, leave it: only the run's parent amends the expectation, at the Stuck that follows.
+`lym drift check` runs the same check on demand.
+
 ## What happens after you hand off
 
 The handoff checks the change description and re-prompts you in this same session with the findings.

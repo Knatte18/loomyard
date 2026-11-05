@@ -59,7 +59,7 @@
 // `tiers` is an open map keyed `tier0`, `tier1`, and so on, each a Tier written whole with one `lym config gate --set 'tiers.tierN={...}'` flow mapping, or one key at a time, as `--set tiers.tier0.env.LYM_TEST_TIER=0` or `--set build.timeout_min=10`, a key no tier or build step holds refused;
 // `gates` is a per-name map from a gate key to a GateKey written `{tiers: [<n>...], scope: card|diff|all}`, so a hub file that sets one key keeps the template's value for every other, and `tier_parallel` an open map from a tier name to this machine's parallel for it.
 // A GateKey may also hold `lints`, the lint steps its call runs after its tiers, each LintComments or LintPattern; the template's `card` key lists both.
-// The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix`, `drift-verify` and `pr-review` (scope `diff`).
+// The keys lym reads are `card` and `batch` (scope `card`), `webster`, `parent-align`, `finalize` and `adopt` (scope `all`), and `webster-fix`, `darn-write`, `code-burler-fix` and `pr-review` (scope `diff`).
 // `tiers` and `build` are executable keys, since a tier or build command runs any shell command in a task worktree, and `gates`, `scoper`, `refuse_raw` and `inert_paths` are guard keys, so all of them are hub-file only.
 // `build` is an open map, so its sub-keys travel whole through the layer stack and reconcile never prunes a hub's build.
 // A tier may also hold `filter`, its own test-filter expression, `shared_build: true`, which makes the tier depend on the build step, and `carry: false`, which keeps a green run from being carried over an unchanged tree; Tier.NoCarry is the negative form, so a zero Tier carries.
@@ -111,7 +111,6 @@
 //	loom        Webster, end gate                       webster          all
 //	loom        Parent-Align                            parent-align     all
 //	tapestry, darn, sampler         Code-Burler-Fix                         code-burler-fix  diff
-//	tapestry, darn         Drift-Verify                            drift-verify     diff
 //	tapestry, darn, pawl, sampler  PR-Review                         pr-review        diff
 //	tapestry, darn, sampler         Finalize                                finalize         all
 //	adopt       lym adopt check <subject>, in its worktree  adopt            all

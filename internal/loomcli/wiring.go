@@ -826,7 +826,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 			for i, dir := range priorDirs {
 				priorRecords[i] = summaryparser.Path(dir)
 			}
-			verdict, err := driftengine.Verdict(driftengine.NewPaths(location.AnchorPath()))
+			verdict, err := driftengine.Verdict(driftRecordsDeps(location))
 			if err != nil {
 				return seatengine.Table{}, err
 			}
@@ -965,13 +965,28 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 	}
 
 	// Every loom run's Drift rows read the task from the decision record.
+	recipeRows, err := loomrecipe.RowNames(c.recipe)
+	if err != nil {
+		return err
+	}
+	// A darn run has no plan, so only another recipe's expect agent is told one.
+	darnRun, err := loomrecipe.HasEngine(c.recipe, darnWriteEngine)
+	if err != nil {
+		return err
+	}
+	driftPlanDir := ""
+	if !darnRun {
+		driftPlanDir = planparser.PlanDir(location.AnchorPath())
+	}
 	c.env.Drift = driftDeps(location, statusPath, statusLockPath, driftTables{
-		stencilsDir:        websterGeom.StencilsDir,
+		planDir:            driftPlanDir,
+		rows:               recipeRows,
+		runID:              c.runID,
 		registry:           registry,
 		subject:            driftengine.SubjectDecisionRecord,
 		slug:               seedSlug(location.WorktreeName),
 		decisionRecordPath: loomengine.DiscussionDecisionRecord(location),
-		languageSkills:     languageSkills,
+		endRoles:           strandRoleStopper(reedEngine.Status, runner.StopStrand),
 	})
 
 	// c.shedPaths carries the five told values shedengine.Shed itself reads and no shedrecipe.Env

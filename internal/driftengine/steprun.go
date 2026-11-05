@@ -1,6 +1,6 @@
 // steprun.go — the runner behind every drift command: one slot of the gate pool, the shell, the log file and the timeout tree kill.
 //
-// The main capture, the side capture and the compare each describe their run as a stepRun and share this body.
+// The main capture, the current capture and the compare each describe their run as a stepRun and share this body.
 
 package driftengine
 
@@ -30,10 +30,9 @@ const stampLayout = "20060102T150405.000Z"
 
 // The sites a drift command runs from, which label its slot holder and wait record and word the way forward of a refused dir.
 const (
-	siteCapture           = "drift capture"
-	siteSideCapture       = "drift side capture"
-	siteAcceptanceCapture = "drift acceptance capture"
-	siteCompare           = "drift compare"
+	siteCapture        = "drift capture"
+	siteCompare        = "drift compare"
+	siteCurrentCapture = "drift current capture"
 )
 
 // stepRun is one drift command to run.
@@ -50,11 +49,14 @@ type stepRun struct {
 	Pool *gateslot.Pool
 	// WaitDir is where the run's wait record is written while it waits for a slot.
 	WaitDir string
+	// InheritedSlot is the lock path of the slot a gate holds around the run; acquireSlot runs in it, when it is held, instead of taking one.
+	InheritedSlot string
+	// Slot is the slot the run's command runs in, which the caller took with acquireSlot and releases after runStep returns.
+	Slot heldSlot
 	// Site labels the slot holder and the wait record.
 	Site string
-	// BaselineDir and SkipFile are the paths the command's placeholders render to.
+	// BaselineDir is the path the command's {baseline_dir} placeholder renders to.
 	BaselineDir string
-	SkipFile    string
 	// LogPath is the file the command's stdout and stderr go to.
 	LogPath string
 	// Timeout bounds the command from its start, on the monotonic clock.
@@ -75,13 +77,23 @@ type stepOutcome struct {
 	TimedOut bool
 	// Dir is the absolute directory the command ran in.
 	Dir string
-	// release gives back the slot; the caller calls it once it has recorded the outcome.
+}
+
+// heldSlot is the gate slot a drift command runs in.
+type heldSlot struct {
+	// lease is the slot the command acquired; nil when it runs in an inherited one.
+	lease *gateslot.Lease
+	// limits are the gate limits read when the slot was taken.
+	limits gateslot.Limits
+	// inherited is the lock path of the slot a gate holds around the command, empty when the command acquired its own.
+	inherited string
+	// release gives back an acquired slot and does nothing for an inherited one.
 	release func()
 }
 
-// runStep waits for a slot, runs the command and returns once its whole tree is gone.
-// On an error the slot is already released; on success the caller releases it through the outcome.
-// A step whose dir is no existing directory is refused before it waits for a slot, so a shell never fails to start in a missing directory.
+// runStep runs the command in the slot the caller holds and returns once its whole tree is gone.
+// The caller takes the slot with acquireSlot before and releases it after, which lets a capture hold its slot before it takes the capture lock.
+// A step whose dir is no existing directory is refused with a stepRefusal before its command starts, so a shell never fails to start in a missing directory.
 func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	command, err := renderCommand(run)
 	if err != nil {
@@ -94,35 +106,27 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 	if err := os.MkdirAll(filepath.Dir(run.LogPath), 0o755); err != nil {
 		return stepOutcome{}, fmt.Errorf("drift: create the log directory: %w", err)
 	}
-
-	lease, limits, err := acquireSlot(ctx, run)
-	if err != nil {
-		return stepOutcome{}, err
-	}
-	release := func() {
-		if err := lease.Release(); err != nil {
-			logger.Warn("drift: releasing the gate slot failed", "site", run.Site, "error", err.Error())
-		}
-	}
 	run.OnSlot(run.Now())
 
 	logFile, err := os.OpenFile(run.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
-		release()
 		return stepOutcome{}, fmt.Errorf("drift: open the log %s: %w", run.LogPath, err)
 	}
 	defer logFile.Close()
 
+	environ := slices.Concat(os.Environ(), renderEnv(run.Step.Env))
+	if run.Slot.inherited != "" {
+		environ = append(environ, gateslot.InheritEnv+"="+run.Slot.inherited)
+	}
 	shellName, shellFlag := verifyrun.ShellFor(runtime.GOOS)
 	cmd := exec.Command(shellName, shellFlag, command)
 	cmd.Dir = dir
-	cmd.Env = gateslot.HolderEnv(slices.Concat(os.Environ(), renderEnv(run.Step.Env)), lease, limits.Tier0Parallel)
+	cmd.Env = gateslot.HolderEnv(environ, run.Slot.lease, run.Slot.limits.Tier0Parallel)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
 
 	logger.Info("drift: spawning a command", "site", run.Site, "dir", cmd.Dir, "command", command, "log", run.LogPath)
 	tied, err := proc.StartTied(cmd)
 	if err != nil {
-		release()
 		return stepOutcome{}, fmt.Errorf("drift: start the %s command in %s: %w", run.Site, cmd.Dir, err)
 	}
 	run.OnStart(cmd.Process.Pid, run.Now())
@@ -148,10 +152,9 @@ func runStep(ctx context.Context, run stepRun) (stepOutcome, error) {
 
 	exit, err := exitCodeOf(waitErr)
 	if err != nil {
-		release()
 		return stepOutcome{}, fmt.Errorf("drift: wait for the %s command: %w", run.Site, err)
 	}
-	return stepOutcome{ExitCode: exit, TimedOut: timedOut, Dir: dir, release: release}, nil
+	return stepOutcome{ExitCode: exit, TimedOut: timedOut, Dir: dir}, nil
 }
 
 // outputTailLines is how many of a finished command's last non-empty output lines a failure's reason quotes.
@@ -238,56 +241,82 @@ func boundOneLineKeepingEnd(text string, maxRunes int) string {
 	return "…" + string(runes[len(runes)-(maxRunes-1):])
 }
 
+// stepRefusal is the error of a step refused before its command started, as opposed to an I/O failure while running it.
+type stepRefusal struct {
+	cause error
+}
+
+// Error returns the refusal's text, which names its way forward.
+func (e *stepRefusal) Error() string { return e.cause.Error() }
+
+// Unwrap returns the failure the refusal wraps.
+func (e *stepRefusal) Unwrap() error { return e.cause }
+
 // missingDirRefusal is the refusal of a step whose dir is no existing directory.
 // It names the config key and the resolved path, and as the way forward the write that fixes the key from the prime, where hub-wide config is written, and then the verbs that run the step again from its site.
 func missingDirRefusal(run stepRun, cause error) error {
 	again := "lym loom resume"
-	switch run.Site {
-	case siteCapture:
+	if run.Site == siteCapture {
 		again = "lym drift capture and lym loom resume"
-	case siteSideCapture:
-		again = "lym drift capture --side"
-	case siteAcceptanceCapture:
-		again = "lym drift accept"
 	}
-	return fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)}
 }
 
-// acquireSlot writes a wait record, waits for one slot with no deadline and removes the record.
-func acquireSlot(ctx context.Context, run stepRun) (*gateslot.Lease, gateslot.Limits, error) {
+// acquireSlot returns the slot the run's command runs in.
+// A run told an InheritedSlot that the pool reports held runs in it and acquires none, as a command inside a gate does;
+// otherwise it writes a wait record, waits for one slot with no deadline and removes the record.
+// The caller releases the returned slot once the command ended.
+func acquireSlot(ctx context.Context, run stepRun) (heldSlot, error) {
 	limits, err := run.Pool.Limits()
 	if err != nil {
-		return nil, gateslot.Limits{}, fmt.Errorf("drift: read the gate limits: %w", err)
+		return heldSlot{}, fmt.Errorf("drift: read the gate limits: %w", err)
+	}
+	if run.InheritedSlot != "" && run.Pool.Inherited(run.InheritedSlot) {
+		return heldSlot{limits: limits, inherited: run.InheritedSlot, release: func() {}}, nil
 	}
 	waitPath, err := gateslot.WriteWait(run.WaitDir, gateslot.Wait{Site: run.Site, PID: os.Getpid(), Started: run.Now()})
 	if err != nil {
-		return nil, gateslot.Limits{}, err
+		return heldSlot{}, err
 	}
 	lease, err := run.Pool.Acquire(ctx, gateslot.Holder{Worktree: run.AnchorDir, Site: run.Site})
 	if removeErr := os.Remove(waitPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		logger.Warn("drift: removing the gate wait record failed", "path", waitPath, "error", removeErr.Error())
 	}
 	if err != nil {
-		return nil, gateslot.Limits{}, err
+		return heldSlot{}, err
 	}
-	return lease, limits, nil
+	release := func() {
+		if err := lease.Release(); err != nil {
+			logger.Warn("drift: releasing the gate slot failed", "site", run.Site, "error", err.Error())
+		}
+	}
+	return heldSlot{lease: lease, limits: limits, release: release}, nil
 }
 
-// renderCommand returns the step's command with its placeholders replaced by quoted paths.
+// renderCommand returns the step's command with {baseline_dir} replaced by the quoted baseline directory.
+// A command still holding the retired {skip_file} placeholder is refused, since nothing fills it any more.
 func renderCommand(run stepRun) (string, error) {
+	if err := refuseSkipFilePlaceholder(run.Site, run.Name, run.Step.Command); err != nil {
+		return "", err
+	}
 	baseline, err := verifyrun.QuoteArg(runtime.GOOS, run.BaselineDir)
 	if err != nil {
 		return "", fmt.Errorf("drift: quote the baseline directory: %w", err)
 	}
-	skip, err := verifyrun.QuoteArg(runtime.GOOS, run.SkipFile)
-	if err != nil {
-		return "", fmt.Errorf("drift: quote the skip file: %w", err)
-	}
-	return strings.NewReplacer(baselineDirPlaceholder, baseline, skipFilePlaceholder, skip).Replace(run.Step.Command), nil
+	return strings.ReplaceAll(run.Step.Command, baselineDirPlaceholder, baseline), nil
 }
 
-// skipFilePlaceholder is the placeholder a command holds for the file naming the skipped tests.
+// skipFilePlaceholder is the retired placeholder that once rendered the file naming the skipped tests.
 const skipFilePlaceholder = "{skip_file}"
+
+// refuseSkipFilePlaceholder returns the stepRefusal of a command of the told site that still holds the retired {skip_file} placeholder, naming the edit of the told step that clears it.
+// It returns nil for a command holding none.
+func refuseSkipFilePlaceholder(site, step, command string) error {
+	if !strings.Contains(command, skipFilePlaceholder) {
+		return nil
+	}
+	return &stepRefusal{cause: fmt.Errorf("drift: the %s command holds %s, which drift no longer renders; way forward: remove it from %s in the hub's drift.yaml with lym config drift --set from the prime", site, skipFilePlaceholder, step)}
+}
 
 // renderEnv returns env as KEY=VALUE entries in key order.
 func renderEnv(env map[string]string) []string {
@@ -328,21 +357,6 @@ func errorText(err error) string {
 		return ""
 	}
 	return err.Error()
-}
-
-// writeSkipFile writes the skipped tests, one per line, to path; an empty list writes an empty file.
-func writeSkipFile(path string, skip []string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("drift: create the skip file directory: %w", err)
-	}
-	var body strings.Builder
-	for _, test := range skip {
-		body.WriteString(test + "\n")
-	}
-	if err := os.WriteFile(path, []byte(body.String()), 0o644); err != nil {
-		return fmt.Errorf("drift: write the skip file: %w", err)
-	}
-	return nil
 }
 
 // logPathFor returns the log file of a run of kind at now, under logsDir.

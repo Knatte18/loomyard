@@ -77,7 +77,6 @@ var templateDefaults = Config{
 		"webster-fix":     {Tiers: []int{0}, Scope: "diff"},
 		"darn-write":      {Tiers: []int{0}, Scope: "diff"},
 		"code-burler-fix": {Tiers: []int{0}, Scope: "diff"},
-		"drift-verify":    {Tiers: []int{0}, Scope: "diff"},
 		"pr-review":       {Tiers: []int{0}, Scope: "diff"},
 	},
 	Scoper: "none",
@@ -818,8 +817,8 @@ func TestSeedAdoptGate(t *testing.T) {
 	}{
 		{
 			"a tuned finalize with no adopt gains adopt with its value right after it",
-			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  drift-verify: {tiers: [0], scope: diff}\n",
-			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0, 1], scope: all}\n  drift-verify: {tiers: [0], scope: diff}\n",
+			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  pr-review: {tiers: [0], scope: diff}\n",
+			"gates:\n  card: {tiers: [0], scope: card}\n  finalize: {tiers: [0, 1], scope: all}\n  adopt: {tiers: [0, 1], scope: all}\n  pr-review: {tiers: [0], scope: diff}\n",
 			[]string{seededLine}, false,
 		},
 		{

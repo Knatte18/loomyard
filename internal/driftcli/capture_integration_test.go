@@ -1,6 +1,6 @@
 //go:build !windows
 
-// capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, its end by the owned-process end of a teardown, and the compare's refusals.
+// capture_integration_test.go drives the built `lym drift` verbs in a hubforge hub pair: a detached capture that outlives its caller, and its end by the owned-process end of a teardown.
 
 package driftcli_test
 
@@ -37,9 +37,8 @@ const (
 )
 
 // driftYAML returns a hub drift.yaml whose capture command fails while mark is absent and otherwise waits for release, then writes a profile file.
-// Its compare, when given, is a command that is never run.
-func driftYAML(mark, release, pidFile, compare string) string {
-	yaml := fmt.Sprintf(`capture:
+func driftYAML(mark, release, pidFile string) string {
+	return fmt.Sprintf(`capture:
   command: |
     echo $$ > "$PIDFILE"
     [ -f "$MARK" ] || exit 1
@@ -50,12 +49,7 @@ func driftYAML(mark, release, pidFile, compare string) string {
     MARK: %q
     RELEASE: %q
     PIDFILE: %q
-verify_max_runs: 2
 `, mark, release, pidFile)
-	if compare != "" {
-		yaml += fmt.Sprintf("compare:\n  command: %q\n  timeout_min: 1\n", compare)
-	}
-	return yaml
 }
 
 // lymRun runs `lym drift <args>` in dir and decodes its envelope.
@@ -117,7 +111,7 @@ func lastLogEnvelope(path string) (envelope.Envelope, bool) {
 	return env, err == nil
 }
 
-// TestCapture_OutlivesCaller covers a capture that fails, one that passes after its caller exited, one ended by the owned-process end of a teardown, and the compare's refusals.
+// TestCapture_OutlivesCaller covers a capture that fails, one that passes after its caller exited, and one ended by the owned-process end of a teardown, and that the status body names the compare ignored under the template's lines mode.
 func TestCapture_OutlivesCaller(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -134,14 +128,11 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 	work := t.TempDir()
 	mark, release, pidFile := filepath.Join(work, "mark"), filepath.Join(work, "release"), filepath.Join(work, "pid")
 	driftFile := configengine.ConfigFile(h.BoardDir(), "drift")
-	writeDrift := func(compare string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(driftFile), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(driftFile, []byte(driftYAML(mark, release, pidFile, compare)), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(filepath.Dir(driftFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(driftFile, []byte(driftYAML(mark, release, pidFile)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	writeStatus := func(row string, status shedengine.State) {
 		t.Helper()
@@ -157,7 +148,6 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 	if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipeTapestry, Driver: shedrun.DriverGo}); err != nil {
 		t.Fatal(err)
 	}
-	writeDrift("")
 	writeStatus("Drift-Await", shedengine.StateBlocked)
 
 	t.Run("a capture with the marker absent records failed and its child logs the reason", func(t *testing.T) {
@@ -203,6 +193,9 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 		if body["capture_held"] != true || captureState(body) != driftengine.CaptureRunning {
 			t.Errorf("status after the caller returned = %v; want the capture lock held and the record running", body)
 		}
+		if body["diff"] != driftengine.DiffLines || body["compare_ignored"] != true {
+			t.Errorf("status diff and compare_ignored = %v, %v; want %s and true under the template's mode", body["diff"], body["compare_ignored"], driftengine.DiffLines)
+		}
 
 		touch(t, release)
 		waitFor(t, "the capture record to read passed", func() bool { return captureState(statusBody(t, bin, pair)) == driftengine.CapturePassed })
@@ -241,50 +234,5 @@ func TestCapture_OutlivesCaller(t *testing.T) {
 		waitFor(t, "the capture command to be gone", func() bool {
 			return errors.Is(syscall.Kill(commandPid, 0), syscall.ESRCH)
 		})
-	})
-
-	t.Run("compare refuses", func(t *testing.T) {
-		writeStatus("Drift-Verify", shedengine.StateRunning)
-		env := lymRun(t, bin, pair, "compare")
-		if env.OK || !strings.Contains(env.Error, "lym config drift") {
-			t.Errorf("lym drift compare with no compare declared = ok %v, %q; want a refusal naming lym config drift", env.OK, env.Error)
-		}
-		if _, err := os.Stat(paths.Runs); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("a refused compare wrote the run counter: stat err = %v", err)
-		}
-
-		writeDrift("true {baseline_dir}")
-		if err := driftengine.ResetRuns(paths, "head", false); err != nil {
-			t.Fatal(err)
-		}
-		for range 2 {
-			if _, err := driftengine.TakeRun(paths, 2); err != nil {
-				t.Fatal(err)
-			}
-		}
-		spent, err := os.ReadFile(paths.Runs)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		rows := []struct {
-			name   string
-			status shedengine.State
-			want   string
-		}{
-			{"the agent session", shedengine.StateRunning, "write what you found to verify-report.md and end your turn"},
-			{"a caller at a halt", shedengine.StateBlocked, "lym loom resume spawns a fresh agent with a fresh budget"},
-		}
-		for _, row := range rows {
-			writeStatus("Drift-Verify", row.status)
-			env := lymRun(t, bin, pair, "compare")
-			if env.OK || !strings.Contains(env.Error, row.want) {
-				t.Errorf("lym drift compare for %s = ok %v, %q; want a refusal naming %q", row.name, env.OK, env.Error, row.want)
-			}
-			after, err := os.ReadFile(paths.Runs)
-			if err != nil || string(after) != string(spent) {
-				t.Errorf("a refused compare for %s changed runs.json to %q (%v); want %q", row.name, after, err, spent)
-			}
-		}
 	})
 }

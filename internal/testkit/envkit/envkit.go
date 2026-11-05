@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/contracts/recipes"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -284,7 +285,6 @@ var fixedGateLists = map[string][]int{
 	"webster-fix":     {0, 1},
 	"darn-write":      {0, 1},
 	"code-burler-fix": {0, 1},
-	"drift-verify":    {0, 1},
 	"pr-review":       {0, 1},
 }
 
@@ -655,28 +655,61 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 func driftDeps(root string) driftengine.Deps {
 	table := func() (seatengine.Table, error) { return seatengine.Table{}, nil }
 	return driftengine.Deps{
-		Paths:         driftengine.NewPaths(root),
-		WorktreeRoot:  root,
-		Config:        func() (driftengine.Config, error) { return driftengine.Config{}, nil },
-		Status:        func() (shedengine.Status, error) { return shedengine.Status{}, nil },
-		Head:          func() (string, error) { return "head", nil },
-		BranchPoint:   func() (string, error) { return "branch-point", nil },
-		DirtyPaths:    func() ([]string, error) { return nil, nil },
-		Commit:        func([]string) error { return nil },
-		BaselineTable: func(string) (seatengine.Table, error) { return table() },
-		StartCapture:  func() error { return nil },
+		Paths:        driftengine.NewPaths(root),
+		WorktreeRoot: root,
+		Config:       func() (driftengine.Config, error) { return driftengine.Config{}, nil },
+		Status:       func() (shedengine.Status, error) { return shedengine.Status{}, nil },
+		Rows:         darnRowNames(),
+		Head:         func() (string, error) { return "head", nil },
+		BranchPoint:  func() (string, error) { return "branch-point", nil },
+		DirtyPaths:   func() ([]string, error) { return nil, nil },
+		Commit:       func([]string) error { return nil },
+		CommitWithTrailers: func([]string, []fabricengine.Trailer) error {
+			return nil
+		},
+		TrailerCommit: func(string, bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.TrailerCommit{}, false, nil
+		},
+		FileAt:       func(string, string) ([]byte, bool, error) { return nil, false, nil },
+		CommitsSince: func(string) ([]string, error) { return nil, nil },
+		ExpectTable:  func(string) (seatengine.Table, error) { return table() },
+		StartCapture: func() error { return nil },
 		RunCapture: func(context.Context) (driftengine.CaptureRecord, error) {
 			return driftengine.CaptureRecord{}, nil
 		},
-		Sleep:       func(context.Context, time.Duration) error { return nil },
-		VerifyTable: func(driftengine.VerifyTold) (seatengine.Table, error) { return table() },
+		CaptureCurrent: func(context.Context) (driftengine.CurrentCapture, error) {
+			return driftengine.CurrentCapture{Passed: true}, nil
+		},
+		Sleep: func(context.Context, time.Duration) error { return nil },
 		Compare: func(context.Context) (driftengine.CompareResult, error) {
 			return driftengine.CompareResult{Passed: true}, nil
 		},
-		CompareAccepted: func(context.Context) (driftengine.CompareResult, error) {
-			return driftengine.CompareResult{Passed: true}, nil
+		JudgeTable: func(string) (seatengine.Table, error) { return table() },
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+			return fabricengine.CheckoutState{}, fabricengine.CheckoutState{}, nil
 		},
+		RecordsChangedSince: func(string) ([]string, error) { return nil, nil },
+		EndRoles:            func([]string) error { return nil },
+		JudgeSnapshotDir:    filepath.Join(root, "judge-snapshot"),
 	}
+}
+
+// darnRowNames returns the darn recipe's row names in file order, read from the embedded recipe so the order cannot go stale.
+// The darn recipe holds no block row, so its top-level producers are its rows.
+func darnRowNames() []string {
+	var recipe struct {
+		Producers []struct {
+			Name string `yaml:"name"`
+		} `yaml:"producers"`
+	}
+	if err := yaml.Unmarshal(recipes.DarnRecipe, &recipe); err != nil {
+		panic(fmt.Sprintf("envkit: parse the embedded darn recipe: %v", err))
+	}
+	names := make([]string, 0, len(recipe.Producers))
+	for _, producer := range recipe.Producers {
+		names = append(names, producer.Name)
+	}
+	return names
 }
 
 // fullEnvSegment returns a review segment's settings with empty models and the given bounce budget, resolved from review_max_bounces in configFile.

@@ -2,6 +2,19 @@
 
 Each on-disk format has one parser; consumers read only its model.
 
+## Formats and their sole parsers
+
+- The plan: `internal/planparser`.
+- The parts file: `internal/partsparser`.
+- The discussion: `internal/discussionparser`.
+- The summary: `internal/summaryparser`.
+- The recipe: `internal/shedbuild`.
+- The halt note: `internal/haltnote`.
+- The drift expectation and judgement: `internal/driftengine`.
+- The raddle proposal: `internal/raddleparser`.
+
+A format another task adds joins this list with its sole parser.
+
 ## Plan format (`internal/planparser`)
 
 `internal/planparser` is the sole production parser and writer of the on-disk plan format (`_lym/plan/`).
@@ -46,6 +59,12 @@ It imports the standard library only.
 ## Recipe format (`internal/shedbuild`)
 
 `internal/shedbuild` is the sole parser of the recipe file format, and declares no on-disk location for recipe files.
+
+## Drift expectation and judgement (`internal/driftengine`)
+
+`ParseExpectation` and `ParseJudgement` are the only readers of `_lym/drift/expected.yaml` and `_lym/drift/judgement.yaml`.
+Consumers read the `Expectation` and `Judgement` models they return.
+Both files are agent-written, so both parsers are strict and refuse an unknown key.
 
 ## Raddle proposal (`internal/raddleparser`)
 

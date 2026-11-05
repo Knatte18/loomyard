@@ -53,7 +53,7 @@ func driftSubject(entry string, row RowIdentity, cfg Config) (string, error) {
 
 // driftBaselineEntry is the Constructor for the "DriftBaseline" registry row.
 // The row's required "subject" is decision-record or board-entry.
-// It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner and clock from Env.
+// The producer spawns no agent, so it checks only the Env.Drift seams it reads.
 func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftBaseline"
 	if err := configRejectUnknown(cfg, "subject"); err != nil {
@@ -61,9 +61,6 @@ func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 	}
 	subject, err := driftSubject(entry, row, cfg)
 	if err != nil {
-		return nil, err
-	}
-	if err := requireSeam(entry, "Seats", env.Seats); err != nil {
 		return nil, err
 	}
 	d := env.Drift
@@ -74,7 +71,10 @@ func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 		{"Drift.BranchPoint", d.BranchPoint},
 		{"Drift.DirtyPaths", d.DirtyPaths},
 		{"Drift.Commit", d.Commit},
-		{"Drift.BaselineTable", d.BaselineTable},
+		{"Drift.CommitWithTrailers", d.CommitWithTrailers},
+		{"Drift.TrailerCommit", d.TrailerCommit},
+		{"Drift.FileAt", d.FileAt},
+		{"Drift.EndRoles", d.EndRoles},
 		{"Drift.StartCapture", d.StartCapture},
 		{"Drift.RunCapture", d.RunCapture},
 	})
@@ -82,6 +82,46 @@ func driftBaselineEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedPr
 		return nil, err
 	}
 	return driftengine.NewDriftBaseline(row.Name, driftengine.Row{Subject: subject}, driftDepsFrom(env)), nil
+}
+
+// driftExpectEntry is the Constructor for the "DriftExpect" registry row.
+// The row's required "subject" is decision-record or board-entry, and its required "gates" holds exactly one entry, named expectation, which the agent's table runs at each turn end.
+// It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner, clock and gate findings file from Env.
+func driftExpectEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
+	const entry = "DriftExpect"
+	if err := configRejectUnknown(cfg, "subject", "gates"); err != nil {
+		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, driftKeyWayForward)
+	}
+	subject, err := driftSubject(entry, row, cfg)
+	if err != nil {
+		return nil, err
+	}
+	gates, err := resolveRowGateSpec(entry, row.Name, cfg, env)
+	if err != nil {
+		return nil, err
+	}
+	if len(gates) != 1 || gates[0].Name != "expectation" {
+		return nil, fmt.Errorf("shedrecipe: %s: row %q: config key %q must hold exactly one entry, named %q; way forward: set gates to a list of one entry named expectation", entry, row.Name, "gates", "expectation")
+	}
+	if err := requireSeam(entry, "Seats", env.Seats); err != nil {
+		return nil, err
+	}
+	d := env.Drift
+	err = requireDriftSeams(entry, driftSeams{
+		{"Drift.Config", d.Config},
+		{"Drift.Head", d.Head},
+		{"Drift.CommitsSince", d.CommitsSince},
+		{"Drift.CommitWithTrailers", d.CommitWithTrailers},
+		{"Drift.TrailerCommit", d.TrailerCommit},
+		{"Drift.FileAt", d.FileAt},
+		{"Drift.ExpectTable", d.ExpectTable},
+	})
+	if err != nil {
+		return nil, err
+	}
+	deps := driftDepsFrom(env)
+	deps.GateFindingsFile = env.gateFindingsPath(row.Name)
+	return driftengine.NewDriftExpect(row.Name, driftengine.Row{Subject: subject}, gates[0], deps), nil
 }
 
 // driftAwaitEntry is the Constructor for the "DriftAwait" registry row.
@@ -105,12 +145,12 @@ func driftAwaitEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProdu
 	return driftengine.NewDriftAwait(row.Name, driftDepsFrom(env)), nil
 }
 
-// driftVerifyEntry is the Constructor for the "DriftVerify" registry row.
-// The row's required "subject" is decision-record or board-entry, and its required "gates" holds exactly one entry, named verify, which the agent's table runs once the session committed code.
+// driftVerifyEntry is the Constructor for the "DriftVerify" registry row, which the Drift-Verify and Drift-Recheck rows both build.
+// The row's required "subject" is decision-record or board-entry, and its required "gates" holds exactly one entry, named judgement, which the judge's table runs at each turn end; "gate_key" and every other key is refused.
 // It checks Env.Seats and the Env.Drift seams the producer reads, and fills the producer's seat runner, clock and gate findings file from Env.
 func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "DriftVerify"
-	if err := configRejectUnknown(cfg, "subject", "gates", "gate_key"); err != nil {
+	if err := configRejectUnknown(cfg, "subject", "gates"); err != nil {
 		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, driftKeyWayForward)
 	}
 	subject, err := driftSubject(entry, row, cfg)
@@ -121,8 +161,8 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	if err != nil {
 		return nil, err
 	}
-	if len(gates) != 1 || gates[0].Name != "verify" {
-		return nil, fmt.Errorf("shedrecipe: %s: row %q: config key %q must hold exactly one entry, named %q; way forward: set gates to a list of one entry named verify", entry, row.Name, "gates", "verify")
+	if len(gates) != 1 || gates[0].Name != "judgement" {
+		return nil, fmt.Errorf("shedrecipe: %s: row %q: config key %q must hold exactly one entry, named %q; way forward: set gates to a list of one entry named judgement", entry, row.Name, "gates", "judgement")
 	}
 	if err := requireSeam(entry, "Seats", env.Seats); err != nil {
 		return nil, err
@@ -132,11 +172,15 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		{"Drift.Config", d.Config},
 		{"Drift.Status", d.Status},
 		{"Drift.Head", d.Head},
-		{"Drift.DirtyPaths", d.DirtyPaths},
-		{"Drift.Commit", d.Commit},
-		{"Drift.VerifyTable", d.VerifyTable},
+		{"Drift.CommitWithTrailers", d.CommitWithTrailers},
+		{"Drift.TrailerCommit", d.TrailerCommit},
+		{"Drift.FileAt", d.FileAt},
+		{"Drift.CaptureCurrent", d.CaptureCurrent},
+		{"Drift.JudgeTable", d.JudgeTable},
+		{"Drift.Checkouts", d.Checkouts},
+		{"Drift.RecordsChangedSince", d.RecordsChangedSince},
+		{"Drift.EndRoles", d.EndRoles},
 		{"Drift.Compare", d.Compare},
-		{"Drift.CompareAccepted", d.CompareAccepted},
 	})
 	if err != nil {
 		return nil, err
@@ -144,26 +188,4 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 	deps := driftDepsFrom(env)
 	deps.GateFindingsFile = env.gateFindingsPath(row.Name)
 	return driftengine.NewDriftVerify(row.Name, driftengine.Row{Subject: subject}, gates[0], deps), nil
-}
-
-// driftRecheckEntry is the Constructor for the "DriftRecheck" registry row.
-// The row takes no config key and spawns nothing, so it checks only the Env.Drift seams the producer reads.
-func driftRecheckEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
-	const entry = "DriftRecheck"
-	if err := configRejectUnknown(cfg); err != nil {
-		return nil, fmt.Errorf("%w; row %q: %s", err, row.Name, driftKeyWayForward)
-	}
-	d := env.Drift
-	err := requireDriftSeams(entry, driftSeams{
-		{"Drift.Config", d.Config},
-		{"Drift.Head", d.Head},
-		{"Drift.DirtyPaths", d.DirtyPaths},
-		{"Drift.Commit", d.Commit},
-		{"Drift.Compare", d.Compare},
-		{"Drift.CompareAccepted", d.CompareAccepted},
-	})
-	if err != nil {
-		return nil, err
-	}
-	return driftengine.NewDriftRecheck(row.Name, driftDepsFrom(env)), nil
 }

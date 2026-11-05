@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/driftengine"
@@ -22,7 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestDrift_RunsInTheAnchoredDirectory covers the main capture's child, the compare and the side capture of a hub anchored at a subdirectory:
+// TestDrift_RunsInTheAnchoredDirectory covers the main capture's child and the check's current capture of a hub anchored at a subdirectory:
 // each declared command records its working directory, and every one must be the anchored directory.
 // A capture child started anywhere but the anchored directory cannot resolve its worktree, never records its start, and marks its error as lasting.
 func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
@@ -51,13 +52,7 @@ func TestDrift_RunsInTheAnchoredDirectory(t *testing.T) {
   env:
     DRIFT_OWN: from-step
   timeout_min: 1
-compare:
-  command: 'pwd >> %q; echo "$DRIFT_MODULE $DRIFT_OWN" >> %q; : {baseline_dir}'
-  env:
-    DRIFT_OWN: from-step
-  timeout_min: 1
-verify_max_runs: 3
-`, cwds, envs, cwds, envs)
+`, cwds, envs)
 	driftFile := configengine.ConfigFile(h.BoardDir(), "drift")
 	if err := os.MkdirAll(filepath.Dir(driftFile), 0o755); err != nil {
 		t.Fatal(err)
@@ -91,11 +86,17 @@ verify_max_runs: 3
 	}
 	waitFor(t, "the capture record to read passed", func() bool { return captureState(statusBody(t, bin, anchor)) == driftengine.CapturePassed })
 
+	// The check reaches its capture past Drift-Expect, with a counted baseline and no seal.
 	writeStatus("Drift-Verify", shedengine.StateRunning)
-	for _, args := range [][]string{{"compare"}, {"capture", "--side"}} {
-		if env := lymRun(t, bin, anchor, args...); !env.OK {
-			t.Fatalf("lym drift %v: %s", args, env.Error)
-		}
+	err = driftengine.UpdateScope(driftengine.NewPaths(loc.AnchorPath()), func(cur driftengine.ScopeRecord, _ bool) (driftengine.ScopeRecord, error) {
+		cur.Scope, cur.Diff, cur.AwaitedAt = driftengine.ScopeFull, driftengine.DiffLines, time.Now().UTC().Format(time.RFC3339)
+		return cur, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env := lymRun(t, bin, anchor, "check"); !env.OK {
+		t.Fatalf("lym drift check: %s", env.Error)
 	}
 
 	want, err := filepath.EvalSymlinks(anchor)
@@ -107,8 +108,8 @@ verify_max_runs: 3
 		t.Fatal(err)
 	}
 	got := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(got) != 3 {
-		t.Fatalf("recorded working directories = %q; want one each from the main capture, the compare and the side capture", got)
+	if len(got) != 2 {
+		t.Fatalf("recorded working directories = %q; want one each from the main capture and the check's current capture", got)
 	}
 	for i, dir := range got {
 		if dir != want {
@@ -121,8 +122,8 @@ verify_max_runs: 3
 		t.Fatal(err)
 	}
 	gotEnvs := strings.Split(strings.TrimSpace(string(envData)), "\n")
-	if len(gotEnvs) != 3 {
-		t.Fatalf("recorded environments = %q; want one each from the main capture, the compare and the side capture", gotEnvs)
+	if len(gotEnvs) != 2 {
+		t.Fatalf("recorded environments = %q; want one each from the main capture and the check's current capture", gotEnvs)
 	}
 	for i, line := range gotEnvs {
 		if line != "from-env-module from-step" {

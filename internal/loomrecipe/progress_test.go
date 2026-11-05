@@ -64,7 +64,7 @@ func TestRouting_ProgressAt(t *testing.T) {
 			{loomshed.NameParentAlign, loomshed.NameDriftVerify, "", ""},
 			{loomshed.NameDriftVerify, loomshed.NameCodeBouncer, "", ""},
 			{loomshed.NameCodeBouncer, loomshed.NameDriftRecheck, loomshed.NameCodeBurlerReview, ""},
-			{loomshed.NameDriftRecheck, loomshed.NameDescribe, loomshed.NameDriftVerify, ""},
+			{loomshed.NameDriftRecheck, loomshed.NameDescribe, "", ""},
 			{loomshed.NameDescribe, loomshed.NamePRReview, "", ""},
 			{loomshed.NamePRReview, loomshed.NameFinalize, "", ""},
 			{loomshed.NameFinalize, loomshed.NameFrictionReflect, "", ""},
@@ -76,6 +76,22 @@ func TestRouting_ProgressAt(t *testing.T) {
 			}
 			if got.done != want.done || got.stuck != want.stuck || got.reroute != want.reroute {
 				t.Errorf("%s OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/%q/%q", want.row, got.done, got.stuck, got.reroute, want.done, want.stuck, want.reroute)
+			}
+		}
+	})
+
+	t.Run("Drift-Await hands to Drift-Expect, which hands to Webster", func(t *testing.T) {
+		t.Parallel()
+		onDone := map[string]string{}
+		for _, def := range routing.Producers {
+			onDone[def.Name] = def.OnDone
+		}
+		for _, want := range []struct{ row, done string }{
+			{loomshed.NameDriftAwait, loomshed.NameDriftExpect},
+			{loomshed.NameDriftExpect, loomshed.NameWebster},
+		} {
+			if got := onDone[want.row]; got != want.done {
+				t.Errorf("%s OnDone = %q; want %q", want.row, got, want.done)
 			}
 		}
 	})

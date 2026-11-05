@@ -1,4 +1,4 @@
-// driftwiring.go builds the seams the Drift rows are told: the run status, the git facts, the records commit, the two agents' tables and the capture and compare runs.
+// driftwiring.go builds the seams the Drift rows are told: the run status, the git facts, the records commit, the expect and judge agents' tables and the capture and compare runs.
 // Every seam opens the fabric or reads a file on demand, since wire also runs for status and pause.
 
 package loomcli
@@ -8,16 +8,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -32,10 +39,8 @@ const (
 	driftCompareLockRetry = 2 * time.Second
 )
 
-// driftTables carries the values the two Drift agents' tables are built from, which wire resolves once.
+// driftTables carries the values the expect and judge agents' tables are built from, which wire resolves once.
 type driftTables struct {
-	// stencilsDir is the directory the agents' stencils are read from.
-	stencilsDir string
 	// registry resolves the agents' model-specs.
 	registry modelspec.Registry
 	// subject is driftengine.SubjectDecisionRecord or driftengine.SubjectBoardEntry.
@@ -44,8 +49,27 @@ type driftTables struct {
 	slug string
 	// decisionRecordPath is the absolute path of the task's decision record.
 	decisionRecordPath string
-	// languageSkills are the hub's language skills the verify agent loads.
-	languageSkills []string
+	// planDir is the absolute path of the task's plan directory, which the expect agent reads, and empty for a run that has no plan.
+	planDir string
+	// rows is the run's recipe row order, which the seal check reads against the status row.
+	rows []string
+	// runID is the run's id, whose shed directory loom writes during a row.
+	runID string
+	// endRoles ends this worktree's live strands of the told roles, which a run of Drift-Baseline and Drift-Verify tells the roles of the removed drift agents.
+	endRoles func(roles []string) error
+}
+
+// driftRecordsDeps builds the drift Deps whose seams read the committed drift records over location's worktree, which is all the verdict reads.
+func driftRecordsDeps(location *lymcwd.Location) driftengine.Deps {
+	return driftengine.Deps{
+		Paths: driftengine.NewPaths(location.AnchorPath()),
+		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.FindTrailerCommit(location, key, newest)
+		},
+		FileAt: func(rev, relPath string) ([]byte, bool, error) {
+			return fabricengine.AnchoredFileAt(location, rev, relPath)
+		},
+	}
 }
 
 // driftDeps builds the seams the Drift rows read over location's worktree.
@@ -111,6 +135,7 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 		WorktreeRoot: location.WorktreePath(),
 		Config:       config,
 		Status:       status,
+		Rows:         tables.rows,
 		Head:         head,
 		BranchPoint:  branchPoint,
 		DirtyPaths:   dirtyPaths,
@@ -118,21 +143,66 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			_, _, err := fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, relPaths, fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName)), fabricengine.EnvSyncOptions())
 			return err
 		},
-		BaselineTable: func(scopeNote string) (seatengine.Table, error) {
+		CommitWithTrailers: func(relPaths []string, trailers []fabricengine.Trailer) error {
+			message := fmt.Sprintf("loom: drift records for %s", seedSlug(location.WorktreeName))
+			_, _, err := fabricengine.CommitAnchoredPathsWithTrailers(fabricengine.NewMutations(""), location, relPaths, message, trailers, fabricengine.EnvSyncOptions())
+			return err
+		},
+		TrailerCommit: func(key string, newest bool) (fabricengine.TrailerCommit, bool, error) {
+			return fabricengine.FindTrailerCommit(location, key, newest)
+		},
+		FileAt: func(rev, relPath string) ([]byte, bool, error) {
+			return fabricengine.AnchoredFileAt(location, rev, relPath)
+		},
+		CommitsSince: func(base string) ([]string, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return nil, err
+			}
+			return fabric.CommitLog(base, "HEAD")
+		},
+		ExpectTable: func(listing string) (seatengine.Table, error) {
 			cfg, err := config()
 			if err != nil {
 				return seatengine.Table{}, err
 			}
-			return driftengine.BaselineTable(driftengine.BaselineInputs{
-				StencilsDir:        tables.stencilsDir,
-				WorktreeRoot:       location.WorktreePath(),
-				AnchorDir:          location.AnchorPath(),
+			scope, _, err := driftengine.ReadScope(paths)
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			mode := scope.Diff
+			if mode == "" {
+				mode = cfg.Diff
+			}
+			return driftengine.ExpectTable(driftengine.ExpectInputs{
 				Subject:            tables.subject,
 				Slug:               tables.slug,
 				DecisionRecordPath: tables.decisionRecordPath,
-				BaselineReportPath: paths.BaselineReport,
-				ScopeNote:          scopeNote,
+				PlanDir:            tables.planDir,
+				BaselineDir:        paths.BaselineDir,
+				ListingPath:        listing,
+				ExpectedPath:       paths.Expected,
+				DiffMode:           mode,
 			}, cfg, tables.registry)
+		},
+		JudgeTable: func(request string) (seatengine.Table, error) {
+			cfg, err := config()
+			if err != nil {
+				return seatengine.Table{}, err
+			}
+			return driftengine.JudgeTable(driftengine.JudgeInputs{
+				Subject:            tables.subject,
+				Slug:               tables.slug,
+				DecisionRecordPath: tables.decisionRecordPath,
+				RequestPath:        request,
+				JudgementPath:      paths.Judgement,
+			}, cfg, tables.registry)
+		},
+		Checkouts: func() (fabricengine.CheckoutState, fabricengine.CheckoutState, error) {
+			return fabricengine.CheckoutStates(location)
+		},
+		RecordsChangedSince: func(rev string) ([]string, error) {
+			return fabricengine.RecordsPathsChangedSince(location, rev)
 		},
 		StartCapture: func() error {
 			executable, err := os.Executable()
@@ -147,84 +217,90 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			if err != nil {
 				return driftengine.CaptureRecord{}, err
 			}
-			scope, _, err := driftengine.ReadScope(paths)
-			if err != nil {
-				return driftengine.CaptureRecord{}, err
-			}
 			request := driftCaptureRequest(location, paths, pool, waitDir, step)
-			request.Skip = scope.Skip
 			request.Check = checkMain
 			request.LockRetry = driftCaptureLockRetry
 			return driftengine.RunCapture(ctx, request)
 		},
-		Sleep: sleepContext,
-		VerifyTable: func(told driftengine.VerifyTold) (seatengine.Table, error) {
-			cfg, err := config()
+		CaptureCurrent: func(ctx context.Context) (driftengine.CurrentCapture, error) {
+			step, err := stepOf("capture")
 			if err != nil {
-				return seatengine.Table{}, err
+				return driftengine.CurrentCapture{}, err
 			}
-			return driftengine.VerifyTable(driftengine.VerifyInputs{
-				StencilsDir:        tables.stencilsDir,
-				WorktreeRoot:       location.WorktreePath(),
-				Subject:            tables.subject,
-				Slug:               tables.slug,
-				DecisionRecordPath: tables.decisionRecordPath,
-				ScopePath:          paths.Scope,
-				BaselineReportPath: paths.BaselineReport,
-				VerifyReportPath:   paths.VerifyReport,
-				CompareLog:         told.CompareLog,
-				BaselineHead:       told.BaselineHead,
-				LanguageSkills:     tables.languageSkills,
-			}, cfg, tables.registry)
+			request := driftCaptureRequest(location, paths, pool, waitDir, step)
+			return driftengine.CaptureCurrent(ctx, request)
 		},
+		Sleep: sleepContext,
 		Compare: func(ctx context.Context) (driftengine.CompareResult, error) {
 			step, err := stepOf("compare")
 			if err != nil {
 				return driftengine.CompareResult{}, err
 			}
-			scope, _, err := driftengine.ReadScope(paths)
-			if err != nil {
-				return driftengine.CompareResult{}, err
-			}
 			request := driftCompareRequest(location, paths, pool, waitDir, step)
-			request.Skip = driftengine.SkipList(scope)
 			request.LockRetry = driftCompareLockRetry
 			return driftengine.RunCompare(ctx, request)
 		},
-		CompareAccepted: func(ctx context.Context) (driftengine.CompareResult, error) {
-			step, err := stepOf("compare")
-			if err != nil {
-				return driftengine.CompareResult{}, err
-			}
-			scope, _, err := driftengine.ReadScope(paths)
-			if err != nil {
-				return driftengine.CompareResult{}, err
-			}
-			request := driftCompareRequest(location, paths, pool, waitDir, step)
-			request.Skip = scope.Skip
-			request.ProfileDir = paths.AcceptedDir
-			request.LockRetry = driftCompareLockRetry
-			return driftengine.RunCompare(ctx, request)
-		},
+		JudgeSnapshotDir: filepath.Join(fabricengine.HubScratchDir(location.HubPath), lymdirs.DriftJudgeDirName, seedSlug(location.WorktreeName)),
+		LoomRecordsDirs:  loomRecordsDirs(location, tables.runID),
+		EndRoles:         tables.endRoles,
 	}
 }
 
-// driftCaptureRequest describes a capture of step over location's worktree, which the caller completes with its skip list, precondition and lock bound.
+// strandRoleStopper returns the seam that ends the chairs of the told roles, built over two seams so a test needs no tmux:
+// status reads reed's strand table, which is this worktree's own, and stop ends one strand by guid.
+// The table is read at call time, and every non-retiring strand whose role is exactly one of the told roles, a numbered form of it excluded, is stopped when it is live or an own-window strand whose pane is present.
+// The first stop that fails ends the pass and is returned, naming the strand.
+func strandRoleStopper(
+	status func() (reedengine.StatusResult, error),
+	stop func(guid string) error,
+) func(roles []string) error {
+	return func(roles []string) error {
+		result, err := status()
+		if err != nil {
+			return err
+		}
+		for _, strand := range result.Strands {
+			if !(strand.Live || strand.OwnWindow && strand.Present) || strand.Retiring {
+				continue
+			}
+			name, err := agentname.Parse(strand.Name)
+			if err != nil || !slices.Contains(roles, name.Role) {
+				continue
+			}
+			if err := stop(strand.GUID); err != nil {
+				return fmt.Errorf("loomcli: stop the strand %s: %w", strand.GUID, err)
+			}
+		}
+		return nil
+	}
+}
+
+// loomRecordsDirs returns the records paths loom itself writes during a row, relative to the records checkout's root and slash-separated:
+// the run's shed directory, loom's friction directory and the prefix of its timestamped archive siblings, each under the location's anchor.
+func loomRecordsDirs(location *lymcwd.Location, runID string) []string {
+	underAnchor := func(rel string) string { return filepath.ToSlash(filepath.Join(location.AnchorRel, rel)) }
+	friction := underAnchor(loomengine.LoomFrictionDirRel())
+	return []string{underAnchor(shedrun.RunDirRel(location, runID)), friction, friction + "-"}
+}
+
+// driftCaptureRequest describes a capture of step over location's worktree, which the caller completes with its precondition and lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
+// InheritedSlot is the slot a gate this process runs inside holds, read from the process environment because the engine never reads it.
 func driftCaptureRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CaptureRequest {
 	return driftengine.CaptureRequest{
-		Paths:       paths,
-		WorktreeDir: location.WorktreePath(),
-		AnchorDir:   location.AnchorPath(),
-		Step:        step,
-		Pool:        pool,
-		WaitDir:     waitDir,
-		Timeout:     time.Duration(step.TimeoutMin) * time.Minute,
-		Now:         time.Now,
+		Paths:         paths,
+		WorktreeDir:   location.WorktreePath(),
+		AnchorDir:     location.AnchorPath(),
+		Step:          step,
+		Pool:          pool,
+		WaitDir:       waitDir,
+		InheritedSlot: os.Getenv(gateslot.InheritEnv),
+		Timeout:       time.Duration(step.TimeoutMin) * time.Minute,
+		Now:           time.Now,
 	}
 }
 
-// driftCompareRequest describes a compare of step over location's worktree, which the caller completes with its skip list and lock bound.
+// driftCompareRequest describes a compare of step over location's worktree, which the caller completes with its lock bound.
 // A relative step dir is joined onto the worktree root, and a step with no dir runs in the anchored directory.
 func driftCompareRequest(location *lymcwd.Location, paths driftengine.Paths, pool *gateslot.Pool, waitDir string, step driftengine.CommandStep) driftengine.CompareRequest {
 	return driftengine.CompareRequest{

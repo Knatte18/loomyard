@@ -240,6 +240,11 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantDocs: map[string]string{"loom": "code_max_bounces: 2\n"},
 		},
 		{
+			name:     "a task's retired drift skip and verify_max_runs seed, and the load drops them",
+			settings: map[string]any{"drift": map[string]any{"skip": []any{"t"}, "verify_max_runs": float64(3)}},
+			wantDocs: map[string]string{"drift": "skip:\n    - t\nverify_max_runs: 3\n"},
+		},
+		{
 			name:             "a loom driver_kind is retired and refused with the shed way forward",
 			settings:         map[string]any{"loom": map[string]any{"driver_kind": "go"}},
 			wantRefusal:      "driver_kind",
@@ -254,6 +259,25 @@ func TestPrepareRunSettings(t *testing.T) {
 			wantModule:       "darn",
 			wantInvalid:      true,
 			wantWayForwardOf: "arbiter",
+		},
+		{
+			name:        "a drift diff is refused naming the hub's drift.yaml",
+			settings:    map[string]any{"drift": map[string]any{"diff": "command"}},
+			wantRefusal: "key \"diff\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantModule:  "drift",
+			wantInvalid: true,
+		},
+		{
+			name:        "a drift key_patterns is refused naming the hub's drift.yaml",
+			settings:    map[string]any{"drift": map[string]any{"key_patterns": []any{}}},
+			wantRefusal: "key \"key_patterns\" of module \"drift\" is set only in the hub's config; way forward: set it in the hub's drift.yaml",
+			wantModule:  "drift",
+			wantInvalid: true,
+		},
+		{
+			name:     "a retired drift verify_model is renamed to judge_model by drift's Migrate",
+			settings: map[string]any{"drift": map[string]any{"verify_model": "opus"}},
+			wantDocs: map[string]string{"drift": "judge_model: opus # model-spec for the judge, which rules on each expected value against its old and new value (see contracts/specs/llm-model-spec.md)\n"},
 		},
 		{
 			name:     "shed's driver_kind go is open to run settings",

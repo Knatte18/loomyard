@@ -12,7 +12,7 @@ fixer_timeout_min: 30  # minutes a cold gate fixer may run before the call that 
 tiers: {}
 
 # Gate key to the tiers that site runs and the scope it runs them over, written {tiers: [<n>...], scope: card|diff|all}.
-# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix, drift-verify and pr-review (scope diff, the diff from the merge base).
+# The keys lym reads: card and batch (scope card, the card's own packages), webster, parent-align, finalize and adopt (scope all, the whole tree), and webster-fix, darn-write, code-burler-fix and pr-review (scope diff, the diff from the merge base).
 # The scope card is only for the card and batch keys.
 # A key may also hold lints, the lint steps its call runs after the tiers against HEAD: comments (fixed-column-wrapped breaks in // comments) and pattern (PATTERN.md grown past its headroom line).
 # The card key alone may also hold fixer, a model-spec such as sonnet[medium]: the cold fixer an agent's red lym gate test --gate card call hands its failures to; "" turns it off.
@@ -27,7 +27,6 @@ gates:
   webster-fix: {tiers: [0], scope: diff}
   darn-write: {tiers: [0], scope: diff}
   code-burler-fix: {tiers: [0], scope: diff}
-  drift-verify: {tiers: [0], scope: diff}
   pr-review: {tiers: [0], scope: diff}
 
 # How a computed, base or card scope maps to {targets}: go derives the impacted Go packages per module, dotnet derives the impacted C# test projects and classes from the type-name closure over test classes, none runs every tier whole.

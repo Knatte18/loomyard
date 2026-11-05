@@ -1,63 +1,51 @@
-// verdict.go renders a task's regression check from its scope record, as the markdown section a landing carries in its pull request and landing commit.
+// verdict.go renders a task's regression check from its committed drift records, as the markdown section a landing carries in its pull request and landing commit.
 
 package driftengine
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"strings"
 )
 
 // verdictHeading opens the section Verdict renders.
 const verdictHeading = "## Regression check"
 
-// acceptedByText names who made an acceptance, keyed by Acceptance.By.
-var acceptedByText = map[string]string{
-	AcceptedByAgent:    "the Drift-Verify agent",
-	AcceptedByCaller:   "the run's parent",
-	AcceptedByOperator: "the operator",
-}
-
-// Verdict renders the task's regression check as a markdown section:
-// the scope with its skipped tests, the commit the baseline was captured at, the last compare's result or the waiver, and each accepted drifted test with who accepted it and why.
-// It returns "" when no scope record exists, so a task no Drift row recorded a scope for carries no section.
-func Verdict(p Paths) (string, error) {
-	// The file is stat'ed first because ReadScope creates the ephemeral drift directory for its lock, which a run of a recipe with no Drift rows never needs.
-	if _, err := os.Stat(p.Scope); errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	} else if err != nil {
-		return "", fmt.Errorf("drift: stat the scope record %s: %w", p.Scope, err)
-	}
-	scope, found, err := ReadScope(p)
-	if err != nil || !found {
+// Verdict renders the task's regression check as a markdown section from the records ReadRecords returns, so a hand edit of a record never reaches the landing, and it runs no capture.
+// The section names the scope, the last check's counts, the expectation entries no cell used, the open ranges the judge looked into and the parent's amendments.
+// It returns "" when no scope record exists, so a task no Drift row recorded a scope for carries no section, and it creates no directory.
+func Verdict(d Deps) (string, error) {
+	records, err := ReadRecords(d)
+	if err != nil {
 		return "", err
 	}
-	return renderVerdict(scope), nil
+	if !records.ScopeFound {
+		return "", nil
+	}
+	return renderVerdict(records), nil
 }
 
-// renderVerdict renders scope as Verdict's section.
-func renderVerdict(scope ScopeRecord) string {
+// renderVerdict renders rec as Verdict's section.
+func renderVerdict(rec Records) string {
+	scope := rec.Scope
 	lines := []string{verdictHeading, "", "- Scope: " + scopeText(scope)}
 	if scope.Scope == ScopeOff {
 		return strings.Join(lines, "\n")
 	}
-	if scope.BaselineHead != "" {
-		lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", scope.BaselineHead))
-	}
-	lines = append(lines, "- Compare: "+compareText(scope))
-	if len(scope.Accepted) == 0 {
-		return strings.Join(append(lines, "- Accepted drift: none."), "\n")
-	}
-	lines = append(lines, "- Accepted drift:")
-	for _, acceptance := range scope.Accepted {
-		line := fmt.Sprintf("  - `%s`, accepted by %s: %s", acceptance.Test, acceptedByText[acceptance.By], acceptance.Reason)
-		if acceptance.Ruling == RulingUnruled {
-			line += " (not yet ruled on by the run's parent)"
+	switch {
+	case scope.Deferred:
+		lines = append(lines, "- Capture: deferred, so no compare ran.")
+	case scope.LastCheck.At != "" || scope.LastCheck.Head != "":
+		mode := scope.LastCheck.Mode
+		if mode == "" {
+			mode = scope.Diff
 		}
-		lines = append(lines, line)
+		lines = append(lines, "- Diff: "+diffText(mode))
+		lines = append(lines, checkLines(scope.LastCheck)...)
+	default:
+		lines = append(lines, oldCheckLines(scope)...)
 	}
+	lines = append(lines, rangeLines(rec.Judged.Ranges)...)
+	lines = append(lines, amendmentLines(scope.Amendments)...)
 	return strings.Join(lines, "\n")
 }
 
@@ -65,18 +53,107 @@ func renderVerdict(scope ScopeRecord) string {
 func scopeText(scope ScopeRecord) string {
 	switch scope.Scope {
 	case ScopeOff:
+		if scope.ScopeSource != "" {
+			return fmt.Sprintf("off, set by `%s`; the task is not regression-checked.", scope.ScopeSource)
+		}
 		return "off; the task is not regression-checked."
 	case ScopePartial:
 		quoted := make([]string, len(scope.Skip))
 		for i, test := range scope.Skip {
 			quoted[i] = "`" + test + "`"
 		}
-		return "partial, skipping " + strings.Join(quoted, ", ") + "."
+		return "partial, an old scope that left out the cases " + strings.Join(quoted, ", ") + "."
 	}
 	return "full."
 }
 
-// compareText renders the compare line's value.
+// diffText renders the diff line's value.
+func diffText(mode string) string {
+	if mode == DiffCommand {
+		return "command; containment was the judge's, which ruled each failing case of the compare."
+	}
+	return "lines."
+}
+
+// checkLines renders the last check's lines: its outcome and counts, then each expectation entry that covered no cell.
+func checkLines(check CheckResult) []string {
+	outcome := "did not pass"
+	if check.Passed {
+		outcome = "passed"
+	}
+	line := fmt.Sprintf("- Last check: %s at `%s`.", outcome, check.Head)
+	if check.Mode == DiffCommand {
+		return []string{line + fmt.Sprintf(" The compare exited %d.", check.CompareExit)}
+	}
+	line += fmt.Sprintf(" %d changed cells, %d expected, %d judged as matching, %d reused from stored rulings, %d unexpected.",
+		check.Changed, check.Expected, check.Matched, check.Reused, check.Unexpected)
+	lines := []string{line}
+	if len(check.UncoveredEntries) > 0 {
+		lines = append(lines, "- Expectation entries that covered no cell:")
+		for _, entry := range check.UncoveredEntries {
+			lines = append(lines, fmt.Sprintf("  - `%s`", entry))
+		}
+	}
+	return lines
+}
+
+// rangeLines renders each open range with the covering entry's why and the judge's sentence on what it checked under it.
+func rangeLines(ranges []JudgedRange) []string {
+	if len(ranges) == 0 {
+		return nil
+	}
+	lines := []string{"- Open ranges:"}
+	for _, r := range ranges {
+		lines = append(lines, fmt.Sprintf("  - `%s` of `%s`: why: %s; checked: %s", r.Range, r.Case, r.Why, r.Checked))
+	}
+	return lines
+}
+
+// amendmentLines renders each amendment with who made it and, for an `entries` amendment, the entries it added.
+func amendmentLines(amendments []Amendment) []string {
+	if len(amendments) == 0 {
+		return nil
+	}
+	lines := []string{"- Amendments by the run's parent:"}
+	for _, amendment := range amendments {
+		if amendment.Entries == "" {
+			lines = append(lines, fmt.Sprintf("  - `%s` by %s", amendment.Kind, amendment.By))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("  - `%s` by %s:", amendment.Kind, amendment.By), "    ```yaml")
+		for _, entryLine := range strings.Split(strings.TrimRight(amendment.Entries, "\n"), "\n") {
+			lines = append(lines, "    "+entryLine)
+		}
+		lines = append(lines, "    ```")
+	}
+	return lines
+}
+
+// oldCheckLines renders a record no check was recorded in: the old compare, waiver and acceptance fields under a line saying the check ran under the old Drift, or that none ran.
+func oldCheckLines(scope ScopeRecord) []string {
+	if scope.ComparedAt == "" && scope.WaivedAt == "" && len(scope.Accepted) == 0 {
+		return []string{"- Check: not run."}
+	}
+	lines := []string{"- The check ran under the old Drift, which compared whole profiles."}
+	if scope.BaselineHead != "" {
+		lines = append(lines, fmt.Sprintf("- Baseline: captured at `%s`, the task's branch point.", scope.BaselineHead))
+	}
+	lines = append(lines, "- Compare: "+compareText(scope))
+	if len(scope.Accepted) == 0 {
+		return append(lines, "- Accepted drift: none.")
+	}
+	lines = append(lines, "- Accepted drift:")
+	for _, acceptance := range scope.Accepted {
+		line := fmt.Sprintf("  - `%s`, accepted by %s: %s", acceptance.Test, acceptance.By, acceptance.Reason)
+		if acceptance.Ruling == RulingUnruled {
+			line += " (not yet ruled on by the run's parent)"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// compareText renders the old compare line's value.
 func compareText(scope ScopeRecord) string {
 	switch {
 	case scope.WaivedAt != "":

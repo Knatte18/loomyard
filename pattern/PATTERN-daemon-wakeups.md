@@ -19,6 +19,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - the parent lock wait in `internal/parentlock/acquire.go`, which polls from one second and doubles to thirty seconds, and on an `internal/fswatch` event on the branch's lock record, still a second after its last attempt began,
 - the hibernate request's trigger wait in `internal/hibernateengine/watch.go`, run in the prime's dobby, which polls from one second and doubles to thirty seconds while its reading is unchanged,
 - the capture wait in `internal/driftengine/wait.go`, which polls the capture lock from one second and doubles to thirty seconds while the lock stays held,
+- the current capture's lock wait in `internal/driftengine/capture.go`, which polls the capture lock from one second, takes it once free and doubles to thirty seconds while the lock stays held,
 - the pause hold in `internal/pauserecord/hold.go`, which polls from one second and doubles to five seconds while the covering entry is unchanged,
 - shuttle's `Wait`,
 - webster's long poll,

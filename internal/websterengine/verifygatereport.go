@@ -14,6 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Knatte18/loomyard/internal/gateslot"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
 
 // verifyGateReportFileName is the verify-gate report's file name inside the reports dir.
@@ -54,6 +55,10 @@ type VerifyGateReport struct {
 	FixCommits []string `yaml:"fix_commits,omitempty"`
 	// Fixer names the fixer this failure goes to, FixerFork or FixerCold.
 	Fixer string `yaml:"fixer,omitempty"`
+	// Entry names the run-level gate entry other than the verify entry whose failure this report records, and is empty for a verify failure.
+	Entry string `yaml:"entry,omitempty"`
+	// Findings is the failed Entry's own findings text, and is empty for a verify failure.
+	Findings string `yaml:"findings,omitempty"`
 }
 
 // The fixers a verify-gate failure goes to.
@@ -164,8 +169,38 @@ func verifyGateReprompt(fixPromptPath string, notes *VerifyGateNotes) func(findi
 	}
 }
 
+// wrapRunLevelEntry returns entry with a gate that records a failed result as a verify-gate report at reportPath before returning it, and with the re-prompt the verify entry has.
+// The report carries the entry's name, its findings and the count of its failures, and the returned findings are the rendered report, so Merriam reads the way forward to the fixer beside them.
+// A passing, pending, terminal or erroring result is returned as it came, and writes nothing.
+// The wrap changes how a failure is reported, never whether the entry passes.
+func wrapRunLevelEntry(entry shuttleengine.GateEntry, reportPath, fixPromptPath string, notes *VerifyGateNotes) shuttleengine.GateEntry {
+	inner := entry.Gate
+	failures := 0
+	entry.Gate = func() (shuttleengine.GateResult, error) {
+		result, err := inner()
+		if err != nil || result.Passed || result.Pending || result.Terminal {
+			return result, err
+		}
+		failures++
+		report := VerifyGateReport{
+			Attempt:  failures,
+			Cap:      entry.Attempts,
+			Fixer:    notes.Fixer(),
+			Entry:    entry.Name,
+			Findings: result.Findings,
+		}
+		if err := WriteVerifyGateReport(reportPath, report); err != nil {
+			return shuttleengine.GateResult{}, err
+		}
+		result.Findings = renderVerifyGateFindings(report, fixPromptPath)
+		return result, nil
+	}
+	entry.Reprompt = verifyGateReprompt(fixPromptPath, notes)
+	return entry
+}
+
 // renderVerifyGateFindings returns the findings text the gate returns to Merriam:
-// the way forward to the report's fixer, the attempt and the cap, then the dirty paths, the timeout sentence, a hang or the failing identities.
+// the way forward to the report's fixer, the attempt and the cap, then the named entry's findings, the dirty paths, the timeout sentence, a hang or the failing identities.
 // A timeout carries the log path and tail, and a hang its matched marker, identities, log path and tail.
 // Identities carry their output tail, the full log path and the hint.
 // A timeout or hang says the step was not re-run, and a watchdog quit also names the window and the operator's way forward.
@@ -173,6 +208,11 @@ func renderVerifyGateFindings(r VerifyGateReport, fixPromptPath string) string {
 	var b strings.Builder
 	b.WriteString(verifyGateWayForward(r.Fixer, fixPromptPath) + "\n")
 	fmt.Fprintf(&b, "Verify gate failed (attempt %d of %d).\n", r.Attempt, r.Cap)
+
+	if r.Entry != "" {
+		fmt.Fprintf(&b, "The run-level %q entry failed:\n%s\n", r.Entry, r.Findings)
+		return b.String()
+	}
 
 	if len(r.Dirty) > 0 {
 		b.WriteString("The worktree is not clean, so no verify ran. Commit or remove these paths:\n")

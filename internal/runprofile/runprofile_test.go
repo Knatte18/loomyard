@@ -188,7 +188,7 @@ func TestTemplateLadder(t *testing.T) {
 	}
 }
 
-// TestTemplateDocsProfile pins the template's darn-only docs profile: a Sonnet medium writer, one Code round with its hard cap, and no loom block.
+// TestTemplateDocsProfile pins the template's darn-only docs profile: a Sonnet medium writer, one Code round with its hard cap, and drift scope off, since a docs task changes no captured value.
 func TestTemplateDocsProfile(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -201,8 +201,9 @@ func TestTemplateDocsProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{
-		"darn": map[string]any{"writer": "sonnet[medium]"},
-		"loom": map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": ""},
+		"darn":  map[string]any{"writer": "sonnet[medium]"},
+		"drift": map[string]any{"scope": "off"},
+		"loom":  map[string]any{"code_max_bounces": 1, "code_hard_max_bounces": 2, "code_reviewer_fan": ""},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Settings(docs, darn) = %v; want %v", got, want)

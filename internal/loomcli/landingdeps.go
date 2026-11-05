@@ -252,8 +252,8 @@ func landingDeps(
 		VerifyHold:     verifytree.NewPauseHold(runner.PauseGeometry(), holdsParentLock(lock.Store, l.WorktreeName)),
 		Shuttle:        runner,
 		EnginesRun:     runner.EnginesRun,
-		// DriftVerdict reads the scope record at call time, so it renders the compare a Drift-Verify after bootstrap recorded.
-		DriftVerdict: func() (string, error) { return driftengine.Verdict(driftengine.NewPaths(l.AnchorPath())) },
+		// DriftVerdict reads the committed drift records at call time, so it renders the check a Drift-Verify after bootstrap recorded.
+		DriftVerdict: func() (string, error) { return driftengine.Verdict(driftRecordsDeps(l)) },
 		Registry:     registry,
 		Config:       cfg,
 		Lock:         lock,

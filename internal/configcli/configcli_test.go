@@ -986,11 +986,11 @@ func TestDispatchHubWideBoard(t *testing.T) {
 			module: "drift",
 			seed:   driftWithCaptureDir("dotnet"),
 			editor: func(fx hubFixture) configengine.EditorFunc {
-				return fakeEditor(strings.Replace(driftWithCaptureDir("dotnet"), "verify_max_runs: 8", "verify_max_runs: 9", 1), nil)
+				return fakeEditor(strings.Replace(driftWithCaptureDir("dotnet"), "judge_model: opus[high]", "judge_model: opus[medium]", 1), nil)
 			},
 			wantCommits: 1,
 			check: func(t *testing.T, fx hubFixture, hubFile, out string) {
-				if want := strings.Replace(driftWithCaptureDir("dotnet"), "verify_max_runs: 8", "verify_max_runs: 9", 1); hubFile != want {
+				if want := strings.Replace(driftWithCaptureDir("dotnet"), "judge_model: opus[high]", "judge_model: opus[medium]", 1); hubFile != want {
 					t.Errorf("hub file = %q; want the saved bytes %q", hubFile, want)
 				}
 				if _, err := os.Stat(configengine.StagingFile(fx.worktree, "drift")); !os.IsNotExist(err) {

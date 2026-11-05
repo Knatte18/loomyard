@@ -13,6 +13,10 @@ It names the failing identities with their output tails, the full verify log, an
 The hint is a pointer only;
 the cause may lie elsewhere.
 A report that lists dirty paths instead of failures means the worktree held uncommitted changes: commit or remove exactly those paths.
+A report that names an entry and its findings records the failure of a run-level entry other than the verify entry, such as the `drift` entry's changed values outside the sealed expectation.
+You never edit `_lym/drift/expected.yaml`.
+A value the task's decision record or the plan shows the change meant to move is intended: leave it as it is and say so in your reply, so the entry stays failing, Webster stops, and the run's parent amends the expectation with `lym drift amend` at that Stuck.
+Fix any other value in code, as you fix a failing test.
 A report that lists fix commits names the commits earlier fixers made above the pre-fix head: they did not clear the failure, so check them before you build on them.
 
 ## The rules

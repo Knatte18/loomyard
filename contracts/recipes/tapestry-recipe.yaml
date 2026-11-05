@@ -6,7 +6,7 @@
 # The recipe declares contract: loom, so Shed checks the loom contract when it builds it.
 #
 # The main line is Preflight, the Motif block, which runs motif-recipe.yaml's Discussion-Write and Discussion-Review ring inline,
-# Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write, the Plan-Review ring, Drift-Await, Webster, Parent-Align, the
+# Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write, the Plan-Review ring, Drift-Await, Drift-Expect, Webster, Parent-Align, the
 # Drift-Verify, the Code-Review ring, Drift-Recheck, Describe, PR-Review, Finalize and Friction-Reflect.
 # The Drift rows carry entry_gate: drift.enabled, so a hub that leaves regression off records
 # each of them Skipped and spawns or runs nothing for them.
@@ -27,7 +27,7 @@
 # Those are not the whole escalate-to-a-human set, and the difference matters when auditing
 # routing from this header.
 # These PRODUCER rows also carry no on_stuck -- the Motif block's Discussion-Write, Drift-Baseline, Parts-Write, Parts-Plan-Write, Plan-Write,
-# Drift-Await, Webster, Drift-Verify, Describe and PR-Review -- and their Stuck halts the whole run just
+# Drift-Await, Drift-Expect, Webster, Drift-Verify, Drift-Recheck, Describe and PR-Review -- and their Stuck halts the whole run just
 # as a gate's does.
 # PR-Review carries no entry_gate either: whether it opens a pull request reads the parent's anchor, a
 # board field and the origin, which the row decides in its own call.
@@ -50,14 +50,16 @@
 # lock, then hands to the Code-Review perch.
 # Finalize takes the parent lock first and is the only row that lands on the parent.
 #
-# Drift-Verify compares the code after Parent-Align, before the Code-Review perch, with the baseline
-# Drift-Baseline captured on the branch point, and spawns one agent to judge, accept and fix drift,
-# so the review sees Drift-Verify's fixes.
-# Drift-Recheck follows the perch and compares again the code its fixes committed; its Stuck routes to
-# Drift-Verify, which judges the drift again before the perch reviews that row's fixes in turn.
-# A run in flight parked on Drift-Verify after its review runs the perch once more, and one inside the
-# perch exits to Drift-Recheck, which sends it back to Drift-Verify while no compare is recorded.
-# Drift-Await holds Webster until the baseline capture passed or the parent deferred it.
+# Drift-Verify checks the code after Parent-Align, before the Code-Review perch, against the baseline
+# Drift-Baseline captured on the branch point and the expectation Drift-Expect sealed, and spawns one judge
+# on the expected changes no stored ruling covers; a change nothing expects, and one the judge rules
+# does not match, is a Stuck for the parent.
+# Drift-Recheck follows the perch and runs the same engine over the code its fixes committed; it carries
+# no on_stuck, so its Stuck halts the run as Drift-Verify's does.
+# Drift-Await holds the run until the baseline capture passed or the parent deferred it.
+# Drift-Expect has an agent write the expectation of the task's changes against the counted capture's real cases, and seals it before Webster starts.
+# A run parked before Drift-Expect reaches it, and one already past it has no seal and is checked against an empty expectation.
+# A run parked at a Drift-Verify halt from before this change goes on with lym loom resume, which checks it under the new Drift.
 #
 # An in-flight run parked on a row this recipe removed or renamed -- Webster-Bouncer and its
 # Burler rows, Merge-Bouncer and its Burler rows, Publish, PR-Align, PR-Gate or PR-Rework -- or on a
@@ -122,7 +124,7 @@ producers:
     block_gate: undiscussed
     on_done: Drift-Baseline
 
-  # Drift-Baseline has an agent record the task's regression scope and takes the baseline capture
+  # Drift-Baseline records the task's regression scope from drift.yaml, with no agent, and takes the baseline capture
   # while the plan is written. Its Stuck halts the run, with the ways forward in its reason.
   - name: Drift-Baseline
     engine: DriftBaseline
@@ -311,7 +313,20 @@ producers:
   - name: Drift-Await
     engine: DriftAwait
     entry_gate: drift.enabled
+    on_done: Drift-Expect
+
+  # Drift-Expect has an agent write expected.yaml: the changes the task is expected to make to the captured values,
+  # written against the counted capture's real cases and identities. Go seals the file when the agent's gate passes,
+  # before Webster starts. Its Stuck halts the run, with the ways forward in its reason.
+  - name: Drift-Expect
+    engine: DriftExpect
+    entry_gate: drift.enabled
     on_done: Webster
+    config:
+      subject: decision-record
+      gates:
+        - name: expectation
+          attempts: 3
 
   # Webster is the implementer row: its Implementer engine builds the row with the implementer
   # tapestry.implementer names, and batching the plan is that implementer's own business. Every
@@ -322,6 +337,12 @@ producers:
     on_reroute: Plan-Burler-Review
     config:
       implementer_setting: tapestry.implementer
+      # gates holds Merriam's run-level gate entries beside the plan-level verify gate Webster adds itself.
+      # The drift entry runs the drift check at Merriam's turn ends and fails on a change nothing expects
+      # or a current capture that did not pass; Drift-Verify repeats the check as the guarantee.
+      gates:
+        - name: drift
+          attempts: 3
 
   # Parent-Align brings the parent's upstream tip into the task branch with no parent lock and runs the
   # merge fixer on a conflict or a failing merged tree, so the Code-Review perch below reviews code
@@ -330,18 +351,18 @@ producers:
     engine: ParentAlign
     on_done: Drift-Verify
 
-  # Drift-Verify compares the code after Parent-Align with the baseline and, when it drifted, spawns one
-  # agent that accepts the intended drift and fixes the rest. The verify gate runs the hub's
-  # drift-verify key once the agent committed code.
+  # Drift-Verify checks the code after Parent-Align against the sealed expectation by code and spawns one
+  # judge on the expected changes whose exact old and new value no stored ruling covers. The judge edits
+  # no code, expectation or record; a change nothing expects is a Stuck whose way forward is the parent's
+  # amendment or a fix through Webster, whose run-level drift entry meets the cells.
   - name: Drift-Verify
     engine: DriftVerify
     entry_gate: drift.enabled
     on_done: Code-Bouncer
     config:
       subject: decision-record
-      gate_key: drift-verify
       gates:
-        - name: verify
+        - name: judgement
           attempts: 3
 
   - name: Code-Bouncer
@@ -470,14 +491,18 @@ producers:
         # The round fixes code, so its seat loads the hub's language skills after its own.
         language-skills: true
 
-  # Drift-Recheck is mechanical and spawns nothing: once the perch approved, it compares again the code
-  # committed since Drift-Verify's last compare, against the accepted profile while tests are accepted.
-  # Its Stuck, on drift or a tree it cannot compare, routes to Drift-Verify, under the shed's bounce budget.
+  # Drift-Recheck runs the Drift-Verify engine again once the perch approved, over the code its fixes
+  # committed since the last passing check. It carries no on_stuck: its Stuck goes through the stop
+  # chain to the parent, with the ways forward in its reason.
   - name: Drift-Recheck
-    engine: DriftRecheck
+    engine: DriftVerify
     entry_gate: drift.enabled
-    on_stuck: Drift-Verify
     on_done: Describe
+    config:
+      subject: decision-record
+      gates:
+        - name: judgement
+          attempts: 3
 
   - name: Describe
     engine: Describe

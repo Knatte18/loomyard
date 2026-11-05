@@ -106,14 +106,19 @@
 //
 // # The Drift rows
 //
-// The DriftBaseline, DriftAwait, DriftVerify and DriftRecheck entries build the regression rows of the tapestry and darn recipes.
-// Each reads Env.Drift, a whole-struct passthrough to the producers, and fills its Seats and Now from Env.Seats and Env.Now, and DriftVerify its GateFindingsFile from Env.GateFindingsFile for the row, so a caller leaves those three unset.
-// Each checks the Env.Drift seams its producer reads, and Env.Seats for the two agent rows, and refuses a nil one naming the field.
+// The DriftBaseline, DriftAwait, DriftExpect and DriftVerify entries build the regression rows of the tapestry and darn recipes.
+// Each reads Env.Drift, a whole-struct passthrough to the producers, and fills its Seats and Now from Env.Seats and Env.Now, and DriftExpect and DriftVerify their GateFindingsFile from Env.GateFindingsFile for the row, so a caller leaves those three unset.
+// Each checks the Env.Drift seams its producer reads, and Env.Seats for the agent rows, and refuses a nil one naming the field.
 // None has a switch of its own: the recipe leaves a row out through its `entry_gate: drift.enabled`, and each producer reads `drift.enabled` again at every pass, so a resume passes a row already entered once the switch went off.
 // DriftBaseline takes a required "subject", `decision-record` or `board-entry`.
-// DriftAwait and DriftRecheck take no key.
-// DriftVerify takes a required "subject", the optional "gate_key" and a "gates" list of exactly one entry, named `verify`, which the agent's table runs once the session committed code.
+// DriftAwait takes no key.
+// DriftVerify takes a required "subject" and a "gates" list of exactly one entry, named `judgement`, which the judge's table runs at each turn end, and refuses "gate_key"; the Drift-Verify and Drift-Recheck rows both build it.
+// DriftExpect takes a required "subject" and a "gates" list of exactly one entry, named `expectation`, which the agent's table runs at each turn end.
 // An unknown key, a missing or unknown subject and a gates list of another shape are refused naming the way forward.
+// The gate vocabulary gains `drift`, which any gated row may list: it runs the drift check over Env.Drift and requires its Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare seams, refusing a nil one naming the field.
+// It also gains `expectation`, which DriftExpect's row lists: it checks expected.yaml over Env.Drift and requires its Config, TrailerCommit and FileAt seams.
+// It also gains `judgement`, which the judge's table runs: it checks judgement.yaml against the judge request over Env.Drift's Paths and requires no seam.
+// The shipped darn recipe lists it on Darn-Write after `verify`, and the tapestry recipe on Webster, whose run-level gate carries it.
 //
 // # The gate fixer element
 //

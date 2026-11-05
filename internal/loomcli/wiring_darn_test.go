@@ -143,12 +143,12 @@ func TestWire_DarnRecipe(t *testing.T) {
 			}
 		}
 		// The Drift agents read the task from the decision record, never the board entry, in a darn run.
-		baseline, err := c.env.Drift.BaselineTable("")
+		expect, err := c.env.Drift.ExpectTable(filepath.Join(t.TempDir(), "listing.yaml"))
 		if err != nil {
-			t.Fatalf("c.env.Drift.BaselineTable() = _, %v; want nil", err)
+			t.Fatalf("c.env.Drift.ExpectTable() = _, %v; want nil", err)
 		}
-		if reading := baseline.Values["subject_reading"]; !strings.Contains(reading, loomengine.DiscussionDecisionRecord(loc)) || strings.Contains(reading, "lym board get") {
-			t.Errorf("Drift baseline subject reading = %q; want the decision record and no board entry read", reading)
+		if reading := expect.Values["subject_reading"]; !strings.Contains(reading, loomengine.DiscussionDecisionRecord(loc)) || strings.Contains(reading, "lym board get") {
+			t.Errorf("Drift expect subject reading = %q; want the decision record and no board entry read", reading)
 		}
 		if c.env.DarnVerifyAttempts != 5 {
 			t.Errorf("c.env.DarnVerifyAttempts = %d; want 5", c.env.DarnVerifyAttempts)

@@ -59,9 +59,10 @@ var InterruptPolicies = map[string]string{
 	// Record-Write writes its files only when missing and commits the pair, so a re-invocation completes whatever a crash left.
 	NameRecordWrite: shedverbs.InterruptPolicyReinvoke,
 
-	// The two agent rows probe for a live chair and reattach to it, and Drift-Await and Drift-Recheck spawn nothing.
+	// The three agent rows probe for a live chair and reattach to it, and Drift-Await and Drift-Recheck spawn nothing.
 	NameDriftBaseline: shedverbs.InterruptPolicyReinvoke,
 	NameDriftAwait:    shedverbs.InterruptPolicyReinvoke,
+	NameDriftExpect:   shedverbs.InterruptPolicyReinvoke,
 	NameDriftVerify:   shedverbs.InterruptPolicyReinvoke,
 	NameDriftRecheck:  shedverbs.InterruptPolicyReinvoke,
 

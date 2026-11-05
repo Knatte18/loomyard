@@ -24,12 +24,13 @@ var wantDarnProducerTable = []wantProducerRow{
 	{loomshed.NameRecordWrite, "RecordWrite", reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{}))},
 	{loomshed.NameDriftBaseline, "DriftBaseline", driftBaselineType},
 	{loomshed.NameDriftAwait, "DriftAwait", driftAwaitType},
+	{loomshed.NameDriftExpect, "DriftExpect", driftExpectType},
 	{loomshed.NameDarnWrite, "DarnWrite", reflect.TypeOf(loomshed.NewDarnWrite("", nil, loomshed.DarnDeps{}))},
 	{loomshed.NameDriftVerify, "DriftVerify", driftVerifyType},
 	{loomshed.NameCodeBouncer, "Bouncer", bouncerType},
 	{loomshed.NameCodeBurlerReview, "BurlerReview", burlerReviewType},
 	{loomshed.NameCodeBurlerFix, "BurlerFix", burlerFixType},
-	{loomshed.NameDriftRecheck, "DriftRecheck", driftRecheckType},
+	{loomshed.NameDriftRecheck, "DriftVerify", driftVerifyType},
 	{loomshed.NameDescribe, "Describe", reflect.TypeOf(loomshed.NewDiscussionWrite("", nil, nil))},
 	{loomshed.NamePRReview, "PRReview", reflect.TypeOf(&landingshed.PRReview{})},
 	{loomshed.NameFinalize, "Finalize", reflect.TypeOf(&landingshed.Finalize{})},
@@ -149,7 +150,7 @@ func TestNewDarn_Routing(t *testing.T) {
 		return rows
 	}
 
-	t.Run("Drift-Baseline follows Preflight and Drift-Await follows it, Darn-Write follows Drift-Await, Drift-Verify and the perch follow Darn-Write, and Finalize declares no reroute", func(t *testing.T) {
+	t.Run("Drift-Baseline follows Preflight and Drift-Await follows it, Drift-Expect follows Drift-Await, Darn-Write follows Drift-Expect, Drift-Verify and the perch follow Darn-Write, and Finalize declares no reroute", func(t *testing.T) {
 		rows := build(t, 4)
 		if preflight := rows[loomshed.NamePreflight]; preflight.OnDone != loomshed.NameRecordWrite {
 			t.Errorf("Preflight OnDone = %q; want %q", preflight.OnDone, loomshed.NameRecordWrite)
@@ -160,8 +161,11 @@ func TestNewDarn_Routing(t *testing.T) {
 		if baseline := rows[loomshed.NameDriftBaseline]; baseline.OnDone != loomshed.NameDriftAwait || baseline.OnStuck != "" || baseline.Segment != "" {
 			t.Errorf("Drift-Baseline OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", baseline.OnDone, baseline.OnStuck, baseline.Segment, loomshed.NameDriftAwait)
 		}
-		if await := rows[loomshed.NameDriftAwait]; await.OnDone != loomshed.NameDarnWrite || await.OnStuck != "" || await.Segment != "" {
-			t.Errorf("Drift-Await OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", await.OnDone, await.OnStuck, await.Segment, loomshed.NameDarnWrite)
+		if await := rows[loomshed.NameDriftAwait]; await.OnDone != loomshed.NameDriftExpect || await.OnStuck != "" || await.Segment != "" {
+			t.Errorf("Drift-Await OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", await.OnDone, await.OnStuck, await.Segment, loomshed.NameDriftExpect)
+		}
+		if expect := rows[loomshed.NameDriftExpect]; expect.OnDone != loomshed.NameDarnWrite || expect.OnStuck != "" || expect.Segment != "" {
+			t.Errorf("Drift-Expect OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", expect.OnDone, expect.OnStuck, expect.Segment, loomshed.NameDarnWrite)
 		}
 		darn := rows[loomshed.NameDarnWrite]
 		if darn.OnDone != loomshed.NameDriftVerify || darn.OnStuck != "" || darn.OnReroute != "" || darn.Segment != "" {
@@ -174,8 +178,8 @@ func TestNewDarn_Routing(t *testing.T) {
 		if bouncer.OnDone != loomshed.NameDriftRecheck || bouncer.OnStuck != loomshed.NameCodeBurlerReview || review.OnStuck != loomshed.NameCodeBurlerFix || fix.OnStuck != loomshed.NameCodeBouncer {
 			t.Errorf("Code-Bouncer OnDone/OnStuck = %q/%q, review OnStuck = %q, fix OnStuck = %q; want %q/%q, %q, %q", bouncer.OnDone, bouncer.OnStuck, review.OnStuck, fix.OnStuck, loomshed.NameDriftRecheck, loomshed.NameCodeBurlerReview, loomshed.NameCodeBurlerFix, loomshed.NameCodeBouncer)
 		}
-		if recheck := rows[loomshed.NameDriftRecheck]; recheck.OnDone != loomshed.NameDescribe || recheck.OnStuck != loomshed.NameDriftVerify || recheck.Segment != "" {
-			t.Errorf("Drift-Recheck OnDone/OnStuck/Segment = %q/%q/%q; want %q/%q/empty", recheck.OnDone, recheck.OnStuck, recheck.Segment, loomshed.NameDescribe, loomshed.NameDriftVerify)
+		if recheck := rows[loomshed.NameDriftRecheck]; recheck.OnDone != loomshed.NameDescribe || recheck.OnStuck != "" || recheck.Segment != "" {
+			t.Errorf("Drift-Recheck OnDone/OnStuck/Segment = %q/%q/%q; want %q/empty/empty", recheck.OnDone, recheck.OnStuck, recheck.Segment, loomshed.NameDescribe)
 		}
 		describe := rows[loomshed.NameDescribe]
 		if describe.OnDone != loomshed.NamePRReview || describe.OnStuck != "" {
@@ -204,10 +208,10 @@ func TestNewDarn_Routing(t *testing.T) {
 		}
 	})
 
-	t.Run("on_done from Record-Write walks Drift-Baseline, Drift-Await and Darn-Write, the route a goto back to Record-Write takes", func(t *testing.T) {
+	t.Run("on_done from Record-Write walks Drift-Baseline, Drift-Await, Drift-Expect and Darn-Write, the route a goto back to Record-Write takes", func(t *testing.T) {
 		rows := build(t, 4)
 		row := loomshed.NameRecordWrite
-		for _, want := range []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDarnWrite} {
+		for _, want := range []string{loomshed.NameDriftBaseline, loomshed.NameDriftAwait, loomshed.NameDriftExpect, loomshed.NameDarnWrite} {
 			row = rows[row].OnDone
 			if row != want {
 				t.Fatalf("on_done walk from Record-Write reached %q; want %q", row, want)
@@ -292,7 +296,7 @@ func TestDarnVerifyBudget(t *testing.T) {
 			}
 		}
 		want := map[string]map[any]any{
-			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "description": 3},
+			loomshed.NameDarnWrite:     {"clean": 3, "verify": 7, "drift": 3, "description": 3},
 			loomshed.NameCodeBurlerFix: {"clean": 3, "verify": 7},
 			loomshed.NameDescribe:      {"description": 3},
 		}

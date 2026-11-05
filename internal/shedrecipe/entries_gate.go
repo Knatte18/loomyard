@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
@@ -31,10 +32,14 @@ var gateEntryKeys = []string{"name", "attempts", "pass_on_cap"}
 // when env.RecordEngine is DiscussionWrite, "discussion" also requires env.RelevantPath and env.WorktreeRoot to pass requireAbsRoot and a non-nil env.PlanIndex, and passes them to the gate with the citation checks on, which read the worktree and the index;
 // "plan" requires env.AnchorPath, env.WorktreeRoot and a non-nil env.PlanIndex and returns loomshed.NewPlanGate over them;
 // "parts" requires env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath and a non-nil env.Setting and returns loomshed.NewPartsGate over them, capped by the tapestry.parts_max setting;
+// "raddle" requires the absolute env.RaddleWrite.Check.ProposalPath and env.RaddleWrite.Check.RecordPath and the non-nil env.RaddleWrite.Check.Board and env.RaddleWrite.Deps.StoreCold, and returns loomshed.NewRaddleGate over them;
 // "description" requires env.DescriptionPath to pass requireAbsRoot and returns landingshed.NewDescriptionGate over it;
 // "verify" requires the absolute env.WorktreeRoot and env.VerifyDir and a non-nil env.VerifyCommand, takes the optional env.VerifyMergeBase and env.VerifyTreeScope, and returns loomshed.NewVerifyGate over them, with the site label "<row name> gate";
 // the gate's told command is env.VerifyCommand read for the row's gate key, and its tree scope is env.VerifyTreeScope read for that key, so the row runs its own key of the hub's gate.yaml;
 // env.VerifyTreeScope alone selects the darn form, which requires env.VerifyMergeBase, the base of both lints in that form, and otherwise env.VerifyMergeBase is the base of the headroom lint;
+// "drift" requires the env.Drift seams Config, Status, CaptureCurrent, TrailerCommit, FileAt and Compare and returns driftengine.NewDriftGate over them;
+// "expectation" requires the env.Drift seams Config, TrailerCommit and FileAt and returns driftengine.NewExpectationGate over them;
+// "judgement" returns driftengine.NewJudgementGate over env.Drift, which reads only its Paths and requires no seam;
 // any other value is an error naming the key and every legal value.
 // A name may appear once per list.
 //
@@ -245,7 +250,34 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 			treeScope = func() (string, bool, error) { return env.VerifyTreeScope(gateKey) }
 		}
 		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold), nil
+	case "drift":
+		d := env.Drift
+		err := requireDriftSeams(entry, driftSeams{
+			{"Drift.Config", d.Config},
+			{"Drift.Status", d.Status},
+			{"Drift.CaptureCurrent", d.CaptureCurrent},
+			{"Drift.TrailerCommit", d.TrailerCommit},
+			{"Drift.FileAt", d.FileAt},
+			{"Drift.Compare", d.Compare},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return driftengine.NewDriftGate(driftDepsFrom(env)), nil
+	case "expectation":
+		d := env.Drift
+		err := requireDriftSeams(entry, driftSeams{
+			{"Drift.Config", d.Config},
+			{"Drift.TrailerCommit", d.TrailerCommit},
+			{"Drift.FileAt", d.FileAt},
+		})
+		if err != nil {
+			return nil, err
+		}
+		return driftengine.NewExpectationGate(driftDepsFrom(env)), nil
+	case "judgement":
+		return driftengine.NewJudgementGate(driftDepsFrom(env)), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", "drift", "expectation", "judgement", name)
 	}
 }

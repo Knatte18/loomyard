@@ -33,7 +33,7 @@
 - `PATTERN-run-records` — Writing a run's friction note, usage record or project record: only its one writer, `internal/friction`, shed's usage writer or `lym loom decision add`. (test) — [background](pattern/PATTERN-run-records.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running or clearing a gate: in held `internal/gateslot` slots, verify via `verifytree.Verify`; a cold fixer only via `gatefixer`, judged by Go's re-run. (test) — [background](pattern/PATTERN-gate-slot.md)
-- `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe, halt note or raddle proposal, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
+- `PATTERN-sole-parsers` — Parsing an on-disk format its background lists, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 
 ## Agents and prompts
 
