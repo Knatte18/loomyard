@@ -75,7 +75,7 @@ func TestLoadConfig_TemplateDefaults(t *testing.T) {
 	if want := "LoomYard https://github.com/Knatte18/loomyard"; cfg.CreditLoomYard != want {
 		t.Errorf("cfg.CreditLoomYard = %q; want %q", cfg.CreditLoomYard, want)
 	}
-	if want := map[string]string{"claude": "Claude <noreply@anthropic.com>", "codex": "Codex https://github.com/openai/codex"}; !maps.Equal(cfg.CreditEngines, want) {
+	if want := map[string]string{"claude": "Claude Code <noreply@anthropic.com>", "codex": "Codex https://github.com/openai/codex"}; !maps.Equal(cfg.CreditEngines, want) {
 		t.Errorf("cfg.CreditEngines = %v; want %v", cfg.CreditEngines, want)
 	}
 	if cfg.Deploy != "" {
@@ -284,7 +284,7 @@ func TestLoadConfig_InvalidKeys(t *testing.T) {
 
 	const wellFormed = "deploy_branches: [\"main\"]\nsquash: true\nconflict: opus[high]\nconflict_timeout_min: 60\n" +
 		"describe: sonnet[medium]\ndescribe_timeout_min: 30\npr_reviewer: opus[high]\nfixer: opus[high]\nfixer_timeout_min: 60\nparent_align_fix_attempts: 2\n" +
-		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude <noreply@anthropic.com>\"\n"
+		"finalize_fix_attempts: 2\nfinalize_fix_max_lines: 40\nfinalize_fix_review_rounds: 3\ncredit_engines:\n  claude: \"Claude Code <noreply@anthropic.com>\"\n"
 	cases := []struct {
 		name, valid, invalid, key string
 	}{
