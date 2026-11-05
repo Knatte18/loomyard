@@ -1,6 +1,7 @@
 // command.go composes the pane-shell lines Prepare and OpenLaunch hand back as a Launch, and the `-c` hook settings the launch line carries.
-// The launch line starts the Codex TUI under the lym home with its first turn as the positional argument, then exits the pane's shell, so a Codex exit leaves a dead pane.
-// An opened session's line is the Codex command alone, with no hooks, no first turn and no exit.
+// The launch line starts the Codex TUI under the lym home with its first turn as the positional argument, then appends the exit record to the run's events file and exits the pane's shell,
+// so a Codex exit reads as a process-ending session end and leaves a dead pane.
+// An opened session's line is the Codex command alone, with no hooks, no first turn, no exit record and no exit.
 // The resume line exits the pane's shell alone and starts no Codex.
 // Every hook is a plain POSIX sh command that appends a stamp line and its payload to the run's events file, touches the run's activity stamp, or guards a shell command.
 // Argument quoting and statement chaining are pane-shell mechanics owned by internal/shell.
@@ -23,6 +24,18 @@ const codexHomeEnvKey = "CODEX_HOME"
 // instructionFallbackFile is the file Codex loads as project instructions in a directory with no AGENTS.md.
 const instructionFallbackFile = "CLAUDE.md"
 
+// sandboxNetworkAccess is the `-c` setting that lets the workspace-write sandbox open sockets.
+// Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included, so a session could not reach the creel daemon.
+const sandboxNetworkAccess = "sandbox_workspace_write.network_access=true"
+
+// The exit record is the line the launch line appends to the events file once Codex exits, since Codex fires no hook on its own exit.
+// It reads as a process-ending session end with reason exitRecordReason; it has no stamp line, so it carries no time.
+const (
+	exitRecordEvent  = "LymExit"
+	exitRecordReason = "codex-exit"
+	exitRecordLine   = `{"hook_event_name":"` + exitRecordEvent + `"}`
+)
+
 // launchPointer returns the first turn of a session that loads no skills: a pointer to the prompt file at promptPath.
 func launchPointer(promptPath string) string {
 	return "Read " + promptPath + " in full first; it is your complete, authoritative instructions."
@@ -44,20 +57,23 @@ type launchLine struct {
 	hooks []string
 	// firstTurn is the session's first turn, typed as the positional prompt; empty for an opened session, which waits at its composer.
 	firstTurn string
+	// eventsPath is the run's events file, which the launch line appends the exit record to; unused by an opened session's command.
+	eventsPath string
 }
 
-// buildLaunchCmd composes the pane-shell line that starts a Codex session and exits the pane's shell when Codex exits.
+// buildLaunchCmd composes the pane-shell line that starts a Codex session and, when Codex exits, appends the exit record to the events file and exits the pane's shell.
 func buildLaunchCmd(sh shell.Shell, line launchLine) string {
-	return sh.Chain(codexCommand(sh, line), sh.Exit())
+	return sh.Chain(codexCommand(sh, line), sh.AppendLine(line.eventsPath, exitRecordLine), sh.Exit())
 }
 
 // codexCommand composes the command that starts a Codex session under the lym home.
 // It runs `-a never -s workspace-write`, so no approval prompt shows and the sandbox bounds writes to the workspace, the writable roots and the temporary folders.
+// It turns on the sandbox's network access, so the session's shell commands reach the creel daemon's socket.
 // It passes every hook setting with `--dangerously-bypass-hook-trust`, since a hook given by `-c` otherwise waits on a review prompt, and the first turn when there is one,
 // and it loads CLAUDE.md as the project instructions of a directory with no AGENTS.md.
 // CODEX_HOME names the lym home as a command-scoped assignment.
 func codexCommand(sh shell.Shell, line launchLine) string {
-	cmd := sh.Invoke(line.bin) + " --no-alt-screen -a never -s workspace-write"
+	cmd := sh.Invoke(line.bin) + " --no-alt-screen -a never -s workspace-write -c " + sh.Quote(sandboxNetworkAccess)
 	if len(line.writableRoots) > 0 {
 		cmd += " -c " + sh.Quote("sandbox_workspace_write.writable_roots="+tomlArray(line.writableRoots))
 	}

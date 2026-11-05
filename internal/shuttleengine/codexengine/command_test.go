@@ -10,8 +10,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBuildLaunchCmd pins the POSIX launch line: CODEX_HOME leading, every flag of the spike's line with the writable root, model and effort when set, each hook setting, the bypass flag, the first turn, and the shell exit.
-// It also pins an opened session's command: no hook bypass, no first turn and no exit when the line has no hooks and no first turn.
+// TestBuildLaunchCmd pins the POSIX launch line: CODEX_HOME leading, every flag of the spike's line with the network access, the writable root, model and effort when set, each hook setting, the bypass flag, the first turn, the exit record appended to the events file, and the shell exit.
+// It also pins an opened session's command: the network access, and no hook bypass, no first turn, no exit record and no exit when the line has no hooks and no first turn.
 func TestBuildLaunchCmd(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -23,13 +23,13 @@ func TestBuildLaunchCmd(t *testing.T) {
 	}{
 		{
 			name: "EveryInput",
-			line: launchLine{bin: "codex", home: "/h", writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it"},
-			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; exit`,
+			line: launchLine{bin: "codex", home: "/h", writableRoots: []string{"/links"}, model: "gpt-6-luna", effort: "low", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "Read it", eventsPath: "/run/events.jsonl"},
+			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'sandbox_workspace_write.writable_roots=["/links"]' -m 'gpt-6-luna' -c 'model_reasoning_effort="low"' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'Read it'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/run/events.jsonl'; exit`,
 		},
 		{
 			name: "NoWritableRootModelOrEffort",
-			line: launchLine{bin: "codex", home: "/h", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "it's"},
-			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'it'\''s'; exit`,
+			line: launchLine{bin: "codex", home: "/h", hooks: []string{`hooks.Stop=[{hooks=[]}]`}, firstTurn: "it's", eventsPath: "/e"},
+			want: `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -c 'project_doc_fallback_filenames=["CLAUDE.md"]' -c 'hooks.Stop=[{hooks=[]}]' --dangerously-bypass-hook-trust 'it'\''s'; printf '%s\n' '{"hook_event_name":"LymExit"}' >> '/e'; exit`,
 		},
 	}
 	for _, tt := range tests {
@@ -44,7 +44,7 @@ func TestBuildLaunchCmd(t *testing.T) {
 		t.Errorf("buildResumeCmd() = %q; want exit", got)
 	}
 	opened := launchLine{bin: "codex", home: "/h", model: "gpt-6-luna"}
-	if got, want := codexCommand(shell.Posix(), opened), `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -m 'gpt-6-luna' -c 'project_doc_fallback_filenames=["CLAUDE.md"]'`; got != want {
+	if got, want := codexCommand(shell.Posix(), opened), `CODEX_HOME='/h' 'codex' --no-alt-screen -a never -s workspace-write -c 'sandbox_workspace_write.network_access=true' -m 'gpt-6-luna' -c 'project_doc_fallback_filenames=["CLAUDE.md"]'`; got != want {
 		t.Errorf("codexCommand(%+v) = %s; want %s", opened, got, want)
 	}
 }

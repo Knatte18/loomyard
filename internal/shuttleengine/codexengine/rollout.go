@@ -80,7 +80,7 @@ func payloadField(raw []byte, key string) string {
 	return value
 }
 
-// ProcessLiveness reads every session unproven: Codex keeps no registry of its live sessions, so a Codex exit is caught as the dead pane the launch line leaves.
+// ProcessLiveness reads every session unproven: Codex keeps no registry of its live sessions, so a Codex exit is caught by the exit record and the dead pane the launch line leaves.
 func (c *Codex) ProcessLiveness(string) shuttleengine.Liveness {
 	return shuttleengine.LivenessUnproven
 }

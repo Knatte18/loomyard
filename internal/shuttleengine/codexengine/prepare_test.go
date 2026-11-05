@@ -92,6 +92,7 @@ func TestPrepare_Launch(t *testing.T) {
 					effort:        "medium",
 					hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
 					firstTurn:     launchPointer(promptPath),
+					eventsPath:    filepath.Join(runDir, "events.jsonl"),
 				}),
 				ResumeCmd:            sh.Exit(),
 				RecordsSessionStarts: true,
@@ -163,10 +164,11 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 			}
 			guards := installedGuards(tt.wantRefuse, tt.wantInputs)
 			wantCmd := buildLaunchCmd(shell.ForGOOS(), launchLine{
-				bin:       "codex",
-				home:      repo.lymHome,
-				hooks:     hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
-				firstTurn: launchPointer(promptPath),
+				bin:        "codex",
+				home:       repo.lymHome,
+				hooks:      hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
+				firstTurn:  launchPointer(promptPath),
+				eventsPath: filepath.Join(runDir, "events.jsonl"),
 			})
 			if launch.Cmd != wantCmd {
 				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, wantCmd)

@@ -228,6 +228,28 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 	}
 }
 
+// TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider pins that a strand with no run record is probed through the engine its live provider names, never the set's default.
+func TestRunner_SessionIdle_RecordlessStrandReadsThroughProvider(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	reed := &fakeReed{StatusQueue: liveStrandStatus(true), CaptureQueue: []string{"composer"}}
+	reed.StatusQueue[0].Strands[0].Provider = "second"
+	first := &cyclerEngine{}
+	second := &cyclerEngine{idle: true}
+	fx := newFixture(t, reed, first, withEngines(NewEngineSet("first", map[string]Engine{"first": first, "second": second})))
+
+	got, err := fx.Runner.SessionIdle("strand-1")
+	if err != nil {
+		t.Fatalf("SessionIdle() error = %v; want nil", err)
+	}
+	if !got.Idle {
+		t.Errorf("SessionIdle() = %+v; want Idle, read by the provider's engine", got)
+	}
+	if len(first.captures) != 0 {
+		t.Errorf("the default engine read captures %v; want only the provider's engine consulted", first.captures)
+	}
+}
+
 // TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader, or, for a guarded row, the box reader and the running-turn check.
 // Each row is a series of probes of one strand on one runner, each appending events and moving the clock before it reads one pane capture:
 // a ready, held or unknown readiness reading and its fallback to the pane, a prompt offset past the events a run already wrote, whose last turn end the reading then takes, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.

@@ -31,6 +31,11 @@ func (p posixShell) Touch(path string) string {
 	return ": > " + p.Quote(path)
 }
 
+// AppendLine returns the POSIX `printf '%s\n' <quoted line> >> <quoted path>` statement, which writes line verbatim, never reading it as a format.
+func (p posixShell) AppendLine(path, line string) string {
+	return `printf '%s\n' ` + p.Quote(line) + " >> " + p.Quote(path)
+}
+
 // ExportEnv returns a POSIX `export key=<quoted value>` statement, session-scoped.
 func (p posixShell) ExportEnv(key, value string) string {
 	return "export " + key + "=" + p.Quote(value)

@@ -41,7 +41,7 @@ func TestParseEvents(t *testing.T) {
 	}
 }
 
-// TestParseSessionSignals pins the four hooks' signals with each payload's stamp time and session id.
+// TestParseSessionSignals pins the four hooks' signals with each payload's stamp time and session id, and the exit record read as a process-ending session end with no time.
 // It also pins a slash command read as no instruction and a fork's source read as none.
 // It pins consumed stopping before a trailing stamp with no payload yet.
 func TestParseSessionSignals(t *testing.T) {
@@ -62,7 +62,7 @@ func TestParseSessionSignals(t *testing.T) {
 		stampLine(hookEventUserPromptSubmit, "2026-10-24T11:55:30Z"), userPromptSubmitPayload,
 		stampLine(hookEventStop, "2026-10-24T11:55:31Z"), stopPayload,
 		stampLine(hookEventPermissionRequest, ""), permissionRequestPayload,
-		preToolUsePayload, slashPrompt, forkStart,
+		preToolUsePayload, slashPrompt, forkStart, exitRecordLine,
 	}
 	complete := ""
 	for _, line := range lines {
@@ -81,6 +81,7 @@ func TestParseSessionSignals(t *testing.T) {
 		{Kind: shuttleengine.SessionSignalAsk, SessionID: "01a16d5d", Raw: []byte(permissionRequestPayload)},
 		{Kind: shuttleengine.SessionSignalTurnStart, SessionID: "s", Raw: []byte(slashPrompt)},
 		{Kind: shuttleengine.SessionSignalSessionStart, SessionID: "s", Raw: []byte(forkStart)},
+		{Kind: shuttleengine.SessionSignalSessionEnd, Reason: exitRecordReason, EndsProcess: true, Raw: []byte(exitRecordLine)},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ParseSessionSignals() =\n%+v\nwant\n%+v", got, want)

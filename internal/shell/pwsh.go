@@ -39,6 +39,11 @@ func (p pwshShell) Touch(path string) string {
 	return "New-Item -ItemType File -Force -Path " + p.Quote(path) + " | Out-Null"
 }
 
+// AppendLine returns the `Add-Content -LiteralPath <quoted path> -Value <quoted line>` statement; Add-Content ends the line and creates an absent file.
+func (p pwshShell) AppendLine(path, line string) string {
+	return "Add-Content -LiteralPath " + p.Quote(path) + " -Value " + p.Quote(line)
+}
+
 // ExportEnv returns a pwsh `$env:key = <quoted value>` statement, session-scoped.
 func (p pwshShell) ExportEnv(key, value string) string {
 	return "$env:" + key + " = " + p.Quote(value)

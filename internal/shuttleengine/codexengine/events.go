@@ -48,7 +48,8 @@ type pendingStamp struct {
 }
 
 // ParseSessionSignals parses events file bytes into session signals, in file order.
-// SessionStart reads as a session start, UserPromptSubmit as a turn start, Stop as a turn end and PermissionRequest as an ask.
+// SessionStart reads as a session start, UserPromptSubmit as a turn start, Stop as a turn end and PermissionRequest as an ask,
+// and the launch line's exit record as a session end that ends the process.
 // A payload line takes its time from the nearest preceding untaken stamp naming its hook, and reads a zero time when there is none or the stamp's time is empty or malformed.
 // consumed ends at the last newline-terminated line, except that it stops before the earliest line of the trailing run of stamp lines, which have no payload line after them yet.
 // It is lenient: malformed lines, stamp lines and unknown hooks yield no signal.
@@ -134,6 +135,8 @@ func signalFromPayload(hookName string, fields map[string]any) (shuttleengine.Se
 	case hookEventSessionStart:
 		source, _ := fields["source"].(string)
 		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionStart, Source: sessionStartSource(source)}, true
+	case exitRecordEvent:
+		return shuttleengine.SessionSignal{Kind: shuttleengine.SessionSignalSessionEnd, Reason: exitRecordReason, EndsProcess: true}, true
 	}
 	return shuttleengine.SessionSignal{}, false
 }

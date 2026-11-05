@@ -4,6 +4,7 @@
 package shuttleengine
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -231,7 +232,8 @@ func (r *Runner) UsageLimit(guid string, turnEnd Event) (UsageLimit, error) {
 // a ready reading is idle and a held one is not idle with its Reason, and the runner keeps one turn-start hold per strand across calls.
 // A ready reading beside a pane that does not show the provider idle still answers idle, and logs the disagreement with the pane's last lines at Debug.
 // An unknown reading, and a strand with no run record, fall back to the pane probe, which logs the cause at Debug.
-// The engine is the one the run's record names, the set's default for a strand with no record.
+// The engine is the one the run's record names, or for a strand with no run record the live strand's provider, so an opened session is read by its own engine.
+// A guid that no run record names and reed does not track as a live strand fails.
 // TooShort, Draft and NoInputBox are filled only for an answer that is not idle, on the pane fallback as on the readiness reading.
 // NoTurn and TurnEndedAt are filled for a ready or held readiness reading that finds no turn, the operator-activity hold included;
 // on the pane fallback NoTurn is the pane's idle answer or, for an engine with InterruptGuard, true when the box was found, the pane is not too short and no running turn shows, and TurnEndedAt stays zero.
@@ -242,6 +244,13 @@ func (r *Runner) SessionIdle(guid string) (IdleProbe, error) {
 	state, runDir, findErr := FindRun(r.cfg, r.anchorPath, guid)
 	if findErr != nil {
 		state = RunState{}
+	}
+	if errors.Is(findErr, ErrNoRunRecord) {
+		strand, liveErr := liveStrand(r.reed, guid)
+		if liveErr != nil {
+			return IdleProbe{}, notShuttleOrLiveStrandError(guid, liveErr)
+		}
+		state.Engine = strand.Provider
 	}
 	engine, _, err := r.engineFor(state)
 	if err != nil {

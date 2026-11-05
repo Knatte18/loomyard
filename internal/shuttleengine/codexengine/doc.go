@@ -10,15 +10,21 @@
 //
 // The launch line runs `-a never -s workspace-write`, so no approval prompt shows, and adds the records checkout it is told through its Dirs as a writable root, symlink-resolved as the trusted roots are and kept as told, with a Warn, when it cannot be resolved,
 // so the session writes under the anchor's `.lym` as a Claude seat does; outside a hub it is told none and adds none.
+// The line also sets `sandbox_workspace_write.network_access`, the one opening the sandbox gets beyond writes:
+// Codex's Linux sandbox refuses every socket connect without it, a Unix socket's included, so a session could not run `lym creel read` or `post --reply` against the creel daemon.
+// Codex has no setting that opens Unix sockets alone; its network proxy forwards a Unix socket only for HTTP requests, which creel's protocol is not.
+// So the session's shell commands have the network a Claude seat's have, and writes stay bound to the workspace, the writable roots and the temporary folders.
+// The Bolt checkout's `.lym` stays read-only, so a client in the session that finds no daemon cannot start one; the daemon that delivers the session's mail is already up.
 // A `.codex/rules` folder in the worktree refuses the launch, since an allow rule there lifts the sandbox; a `.codex/config.toml` there is named in a Warn, since its hooks run unreviewed.
 // Both are read on disk, tracked by git or not, since Codex reads them either way.
-// The first turn is the positional prompt pointer, and the pane's shell exits after Codex, so a Codex exit reads as a dead pane;
+// The first turn is the positional prompt pointer, and after Codex exits the line appends an exit record to the run's events file and exits the pane's shell, so a Codex exit reads as a dead pane;
 // the resume line starts no Codex, since Codex mints its session id at the first turn.
 //
 // Hooks given by `-c` append a stamp line and the payload of SessionStart, UserPromptSubmit, Stop and PermissionRequest to the run's events file, and PostToolUse touches the activity stamp.
 // A Stop is the turn end and carries the reply; an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
 // The rollout's newest token_count gives the context size.
-// Codex keeps no session registry, so liveness reads unproven, and the session state follows the hook signals and the interrupt marker alone.
+// Codex keeps no session registry, so liveness reads unproven, and the session state follows the hook signals, the exit record and the interrupt marker alone.
+// Codex fires no hook on its own exit, so the exit record stands in: it reads as a process-ending session end with reason `codex-exit`, and a run whose Codex exited reads dead as a Claude run does.
 //
 // The pane readings follow the spike's table: the `›` composer, the `Working (… esc to interrupt)` busy line and the folder-trust prompt, whose accept presses nothing unless the option sits by the caret.
 // A send pastes the text and leaves the Enter to shuttle's guarded send, since Codex drops an Enter typed inside a burst of characters.
@@ -31,6 +37,7 @@
 //
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`: it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
+// The line keeps the network access, so an opened session reaches creel too, and appends no exit record, since an opened session has no events file.
 // Its resume line is empty, so a revive starts no Codex and Runner.Open's chain ends the strand.
 //
 // The engine has no fork audit, no transcript reading and no creel hooks.

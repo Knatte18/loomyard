@@ -1,4 +1,4 @@
-// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, the sourced-script file extension, and the key that discards an unsubmitted input line, output discard, zero exit, the command-line flag, and a directory change to an already-quoted word) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
+// shell.go defines the Shell interface — pane-shell mechanics (argument quoting, the call operator, a line appended to a file, session-scoped env export, live-PATH prepend, single-line statement chaining, script sourcing, the sourced-script file extension, and the key that discards an unsubmitted input line, output discard, zero exit, the command-line flag, and a directory change to an already-quoted word) that every provider engine composes its launch/resume command strings from — and the ForGOOS/Pwsh/Posix constructors that select or directly expose an implementation.
 
 package shell
 
@@ -21,6 +21,8 @@ type Shell interface {
 	// Touch returns the shell syntax that creates path as an empty file, truncating it if it
 	// already exists.
 	Touch(path string) string
+	// AppendLine returns a standalone statement that appends line and a line ending to the file at path, creating the file when it is absent.
+	AppendLine(path, line string) string
 	// ExportEnv returns a standalone statement that exports key with value into the shell session.
 	// Session-scoped in both dialects.
 	// This differs deliberately from WithEnv, which is command-scoped on POSIX and therefore

@@ -251,7 +251,7 @@ func TestPrepare_SkillsLoadFirst(t *testing.T) {
 		t.Errorf("Launch.PromptLine = %q; want the pointer %q", launch.PromptLine, pointer)
 	}
 	loadLine := engine.SkillLoadMessage([]string{"scribe:prose"})
-	if !strings.HasSuffix(launch.Cmd, "--dangerously-bypass-hook-trust '"+loadLine+"'; exit") || strings.Contains(launch.Cmd, pointer) {
+	if !strings.Contains(launch.Cmd, "--dangerously-bypass-hook-trust '"+loadLine+"'; ") || strings.Contains(launch.Cmd, pointer) {
 		t.Errorf("Launch.Cmd = %q; want the load line %q as its first turn and no pointer", launch.Cmd, loadLine)
 	}
 }

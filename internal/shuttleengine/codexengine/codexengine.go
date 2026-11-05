@@ -84,6 +84,7 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // The prompt file opens with the deny notice announcing each installed shell guard row and the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
 // The launch line carries a PreToolUse hook per installed row, and its writable root is the records checkout the engine is told through its Dirs, symlink-resolved and kept as told with a Warn when it cannot be resolved, so the session writes its report through the anchor's `.lym` and `_lym` links; outside a hub it is empty and the line adds none.
 // A spec that names skills launches with the skill-load line as its first turn and returns the prompt pointer as Launch.PromptLine, for shuttle to send after the skills load.
+// The launch line turns on the sandbox's network access, so the session reaches the creel daemon's socket, and appends the exit record to the run's events file once Codex exits.
 // The launch records session starts, carries no creel hooks and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	codex, err := loadConfigOrRefuse(c.dirs)
@@ -121,6 +122,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 	}
 
 	sh := shell.ForGOOS()
+	eventsPath := filepath.Join(absRunDir, "events.jsonl")
 	return shuttleengine.Launch{
 		Cmd: buildLaunchCmd(sh, launchLine{
 			bin:           codexBinary(codex),
@@ -128,8 +130,9 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
-			hooks:         hookSettings(filepath.Join(absRunDir, "events.jsonl"), guards),
+			hooks:         hookSettings(eventsPath, guards),
 			firstTurn:     firstTurn,
+			eventsPath:    eventsPath,
 		}),
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
@@ -140,6 +143,7 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 // OpenLaunch returns the launch of a named interactive Codex session with no prompt.
 // It validates the model choice and the permission mode and readies the lym home as Prepare does, refusing under Codex rules before anything is written.
 // Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer, and the pane's shell goes on to Runner.Open's chain when Codex exits.
+// The line turns on the sandbox's network access as a run's does, so an opened session reaches the creel daemon's socket too.
 // It writes nothing into dir, carries no creel hooks and names no session id.
 // Its resume line is empty: Codex mints the session id at the first turn, so a revive starts no Codex and the chain after it ends the strand.
 func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengine.Config) (shuttleengine.Launch, error) {

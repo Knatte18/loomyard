@@ -1,4 +1,4 @@
-// shell_test.go table-tests both pane-shell implementations: argument quoting across plain, space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/ PrependPathEntry/Chain/Source/EnvRef/Touch/ScriptExt output each impl composes.
+// shell_test.go table-tests both pane-shell implementations: argument quoting across plain, space-containing, and quote-containing inputs, and the exact Invoke/WithEnv/ExportEnv/ PrependPathEntry/Chain/Source/EnvRef/Touch/AppendLine/ScriptExt output each impl composes.
 // One test per Shell method; each table holds both dialects' rows, named "<dialect>/<case>".
 // The pwsh quoting cases are migrated verbatim from claudeengine's former TestPwshSingleQuote so the coverage moves with the logic it tests.
 
@@ -112,6 +112,31 @@ func TestShell_Touch(t *testing.T) {
 			t.Parallel()
 			if got := tt.sh.Touch(tt.in); got != tt.want {
 				t.Errorf("%s Touch(%q) = %q; want %q", tt.name, tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShell_AppendLine(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	tests := []struct {
+		name string
+		sh   Shell
+		path string
+		line string
+		want string
+	}{
+		{"pwsh/plain", Pwsh(), `C:\a\events.jsonl`, `{"k":"v"}`, `Add-Content -LiteralPath 'C:\a\events.jsonl' -Value '{"k":"v"}'`},
+		{"pwsh/single_quote", Pwsh(), `C:\a'b\events.jsonl`, "it's", `Add-Content -LiteralPath 'C:\a''b\events.jsonl' -Value 'it''s'`},
+		{"posix/plain", Posix(), "/a/events.jsonl", `{"k":"v"}`, `printf '%s\n' '{"k":"v"}' >> '/a/events.jsonl'`},
+		{"posix/format_and_quote", Posix(), "/a'b/events.jsonl", "100% it's", `printf '%s\n' '100% it'\''s' >> '/a'\''b/events.jsonl'`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := tt.sh.AppendLine(tt.path, tt.line); got != tt.want {
+				t.Errorf("%s AppendLine(%q, %q) = %q; want %q", tt.name, tt.path, tt.line, got, tt.want)
 			}
 		})
 	}
