@@ -1076,33 +1076,27 @@ func TestRenderSlugCellLinksTheDecisionRecord(t *testing.T) {
 	}
 }
 
-// TestRenderDiscussedSection pins how a task a Discussion-only run finished renders: under a Discussed subsection before Draft, its title led by a `discussed` code span.
-func TestRenderDiscussedSection(t *testing.T) {
+// TestRenderSketchSection pins that Sketches render under their own Sketches subsection, the first of the Notes subsections and ahead of Research, each row a note row with its Sketch link and its module labels.
+func TestRenderSketchSection(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tasks := []boardengine.Task{
-		{ID: 1, Handle: "T1", Slug: "sketched", Title: "Sketched", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.StatusDiscussed), Discussed: true},
-		{ID: 2, Handle: "T2", Slug: "unreleased", Title: "Unreleased", Kind: boardengine.KindTask, Labels: []string{"bug"}, Status: stringPtr(boardengine.StatusDraft)},
+		{ID: 1, Handle: "R1", Slug: "measure", Title: "Measure", Kind: boardengine.KindNote, Labels: []string{"research"}},
+		{ID: 2, Handle: "S1", Slug: "sketched", Title: "Sketched", Kind: boardengine.KindNote, Labels: []string{boardengine.SketchType, "board"}, Discussed: true},
 	}
-	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: readmeTypes, DefaultRecipe: "darn"}, renderTime)
+	types := append([]string{boardengine.SketchType}, readmeTypes...)
+	result, err := boardengine.Render(tasks, "", boardengine.Outputs{Readme: "README.md", DesignPrefix: "design-", Types: types, DefaultRecipe: "darn"}, renderTime)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	readme := result["README.md"]
-	discussed := strings.Index(readme, " Discussed (1)\n\nDiscussion approved and its decision record stored; nothing starts it until its status is cleared.\n")
-	draft := strings.Index(readme, " Draft (1)\n")
-	if discussed < 0 || draft < 0 || discussed > draft {
-		t.Errorf("README Discussed section at %d, Draft at %d; want both, Discussed first:\n%s", discussed, draft, readme)
+	sketches := strings.Index(readme, " Sketches (1)\n")
+	research := strings.Index(readme, " Research (1)\n")
+	if sketches < 0 || research < 0 || sketches > research {
+		t.Errorf("README Sketches section at %d, Research at %d; want both, Sketches first:\n%s", sketches, research, readme)
 	}
-	if want := "| T1 | `discussed` **Sketched** |"; !strings.Contains(readme, want) {
-		t.Errorf("README lacks row opening %q:\n%s", want, readme)
-	}
-	if discussed >= 0 && draft > discussed {
-		for _, column := range []string{"Recipe", "After"} {
-			if !strings.Contains(readme[discussed:draft], column) {
-				t.Errorf("README Discussed section lacks the %s column:\n%s", column, readme[discussed:draft])
-			}
-		}
+	if want := "| S1 |  | **Sketched** | `sketched`<br>[Sketch](decision-sketched.md) |  | board |"; !strings.Contains(readme, want) {
+		t.Errorf("README lacks row %q:\n%s", want, readme)
 	}
 }
 

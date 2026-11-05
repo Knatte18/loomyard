@@ -81,8 +81,8 @@ type commitStatusDeps struct {
 	// SetBoardStatus writes status onto the run's board entry, leaving an entry that is absent or already done untouched.
 	// Nil writes nothing.
 	SetBoardStatus func(status string) error
-	// FinishedStatus is the board status a finished run writes, empty to write none.
-	FinishedStatus string
+	// Finish writes the board change a finished run leaves on its entry; nil writes none.
+	Finish func() error
 }
 
 // statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel() and loomengine.LoomDurableDirRel() when its directory holds at least one non-directory entry anywhere beneath it, then shedrun.DriverRecordsRel(location, runID), plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
@@ -204,36 +204,45 @@ func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, ru
 	}
 }
 
-// boardStatus is the board entry status for a run transition: the shed state and the producer it stands at, so the README shows where each run is.
-// A finished run writes finished, and nothing when finished is empty.
-func boardStatus(producer, state, finished string) (string, bool) {
-	if state == string(shedengine.StateDone) {
-		return finished, finished != ""
-	}
-	return boardengine.RunStatus(state, producer), true
+// finishesAsSketch reports whether a finished run of recipe makes its board entry a Sketch.
+// A recipe with a Finalize row does not, since its landing marks the entry done.
+// One with none lands nothing, its run ending at the Discussion approval with the decision record stored, so its entry becomes a Sketch:
+// a note that leaves the run lock, never runs and waits for the operator's triage.
+func finishesAsSketch(recipe string) bool {
+	return !recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine)
 }
 
-// finishedBoardStatus returns the board status a finished run of recipe writes.
-// A recipe with a Finalize row writes none, since its landing marks the entry done.
-// One with none lands nothing, its run ending at the Discussion approval, and writes the discussed status:
-// that releases the entry from its run lock without dobby starting it again, and shows it on the board as finished.
-func finishedBoardStatus(recipe string) string {
-	if recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) {
-		return ""
-	}
-	return boardengine.StatusDiscussed
-}
-
-// commitStatusDeps returns loomCommitStatusDeps over location and the run, with the finished status of the run's recipe.
+// commitStatusDeps returns loomCommitStatusDeps over location and the run, with the Finish of the run's recipe.
 func (c *loomCLI) commitStatusDeps(location *lymcwd.Location) commitStatusDeps {
 	deps := loomCommitStatusDeps(location, c.runID)
-	deps.FinishedStatus = finishedBoardStatus(c.recipe)
+	if finishesAsSketch(c.recipe) {
+		deps.Finish = sketchFinish(location, c.runID)
+	}
 	return deps
 }
 
+// sketchFinish returns the Finish that makes the board entry of the run at location a Sketch.
+// When the board refuses the Sketch, as it does while another entry depends on the entry, it warns naming the refusal and leaves the entry draft instead, so the run still lets go of the entry and nothing starts it.
+// Any other error is returned, so the seam's next finished transition retries the write.
+func sketchFinish(location *lymcwd.Location, runID string) func() error {
+	return func() error {
+		board, err := boardengine.OpenHub(location.HubPath)
+		if err != nil {
+			return err
+		}
+		slug := shedrun.ResolveRunID(location, runID)
+		err = board.MakeSketch(slug)
+		if errors.Is(err, boardengine.ErrSketchRefused) {
+			logger.Warn("loomcli: the board refused to make the finished run's entry a Sketch; leaving it draft", "slug", slug, "error", err)
+			return board.SetRunStatus(slug, boardengine.StatusDraft)
+		}
+		return err
+	}
+}
+
 // newCommitStatusSeam builds the shedengine.Shed.CommitStatus closure from deps.
-// It first writes the run's board status when that status changed, and a failed board write only warns:
-// the board is the hub's overview, never the run's own bookkeeping.
+// It first writes the run's board status, `<state> · <producer>`, when that status changed, and on the run's finish calls Finish until it succeeds once;
+// a failed board write only warns and the next transition retries it, since the board is the hub's overview, never the run's own bookkeeping.
 // It then calls the shared statuscommit core, which owns the skip-while-mid-merge, commit-hard-errors and spawn-warns dispositions, with loom's own commit and log prefixes and no after-commit callback.
 // A commit the pre-push check stopped reads as no commit made, so the core starts no push and the transition goes on.
 func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) error {
@@ -249,13 +258,24 @@ func newCommitStatusSeam(deps commitStatusDeps) func(producer, state string) err
 		},
 		Spawn: deps.Spawn,
 	}, "loom", "loomcli", nil)
-	lastBoardStatus := ""
+	lastBoardStatus, finished := "", false
 	return func(producer, state string) error {
-		if status, ok := boardStatus(producer, state, deps.FinishedStatus); ok && deps.SetBoardStatus != nil && status != lastBoardStatus {
-			if err := deps.SetBoardStatus(status); err != nil {
-				logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
-			} else {
-				lastBoardStatus = status
+		switch {
+		case state == string(shedengine.StateDone):
+			if deps.Finish != nil && !finished {
+				if err := deps.Finish(); err != nil {
+					logger.Warn("loomcli: the finished run's board write failed, next transition retries", "error", err)
+				} else {
+					finished = true
+				}
+			}
+		case deps.SetBoardStatus != nil:
+			if status := boardengine.RunStatus(state, producer); status != lastBoardStatus {
+				if err := deps.SetBoardStatus(status); err != nil {
+					logger.Warn("loomcli: board status write failed, next transition retries", "status", status, "error", err)
+				} else {
+					lastBoardStatus = status
+				}
 			}
 		}
 		return core(producer, state)

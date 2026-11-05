@@ -638,13 +638,12 @@ Example:
 		Short:       "set the status of a task, or release it with null",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Set the lifecycle status of a task. A new task is "draft"; null releases it, leaving it with no status, and an empty string on a task gives "draft" again.
-A task a finished Discussion-only run leaves is "discussed", and null releases it the same way.
 
 Fields:
   "slug"   string      — task slug (one of slug, id or handle)
   "id"     integer     — numeric task ID (one of slug, id or handle)
   "handle" string      — task handle, such as T4 (one of slug, id or handle)
-  "status" string|null — new status value; null releases a draft or discussed task
+  "status" string|null — new status value; null releases a draft task, or a task an older binary left discussed
 
 Examples:
   lym board set-status '{"slug":"my-task","status":"active"}'
@@ -877,7 +876,7 @@ Fields:
     "slug"   string      — task slug (one of slug, id or handle)
     "id"     integer     — numeric task ID (one of slug, id or handle)
     "handle" string      — task handle, such as T4 (one of slug, id or handle)
-    "status" string|null — new status; null releases a draft or discussed task
+    "status" string|null — new status; null releases a draft task, or a task an older binary left discussed
 
 A task the merge creates is "draft", and a "set_status" of null releases it.
 

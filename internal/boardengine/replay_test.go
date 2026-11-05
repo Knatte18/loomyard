@@ -236,6 +236,19 @@ func TestFabricReplay(t *testing.T) {
 			},
 		},
 		{
+			name:        "HeldTaskBecomingASketchIsNotRefused",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a", withStatus(runLocked))},
+			parent:      []Task{replayEntry("a", withStatus(runLocked))},
+			commit:      []Task{replayEntry("a", withLabels("sketch"), asNote)},
+			wantEntries: map[string]string{"a": "a"},
+			check: func(t *testing.T, _ string, got map[string]Task) {
+				if got["a"].Kind != KindNote || got["a"].Status != nil {
+					t.Errorf("a kind, status = %q, %v; want note, none", got["a"].Kind, got["a"].Status)
+				}
+			},
+		},
+		{
 			name:        "DependsOnAnEntryARefusedChangeAddedIsRefusedToo",
 			base:        []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},
 			origin:      []Task{replayEntry("a"), replayEntry("b", withTitle("B"))},

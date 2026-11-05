@@ -22,7 +22,8 @@
 // `decision add` copies the committed record onto the board entry after its commit once the run is past that approval, reporting a failed copy as `record_store_error` and never failing the verb, and `decision store` makes the same copy by hand, admitting the unnamed shell, the run's arbiter and its parent orch.
 // Each status transition writes `<state> · <producer>` on the run's board entry, the run's start write included, so the entry names the first row while it runs.
 // A finished run of a recipe with a Finalize row writes nothing, its landing having marked the entry done.
-// A finished run of a recipe with no Finalize row, a motif run, writes the discussed status, so the entry leaves its run lock, shows as finished and waits for the operator with its record stored.
+// A finished run of a recipe with no Finalize row, a motif run, makes its entry a Sketch, a note of the built-in type `sketch` that leaves its run lock, never runs and waits for the operator's triage with its record stored;
+// when the board refuses that, as while another entry depends on the entry, the run warns and leaves the entry draft, and any other failure of the write is retried at the run's next finished transition.
 //
 // `wire` fills `Env.GateFixer` for every recipe through `gateFixerSeam`, which wraps the gate of a Darn-Write, Plan-Write or Discussion-Write row whose `fixer` element names a model-spec, so a failure at the writer's idle boundary goes to a cold fixer before the writer hears of it.
 // The seam returns the spec unchanged on the prime and outside a hub, where no pair owns a fixer.

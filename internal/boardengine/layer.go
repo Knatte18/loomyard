@@ -1,6 +1,6 @@
 // layer.go — derived task fields.
 //
-// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer, Independent, Discussed or Draft, and RenderOrder orders tasks for output.
+// ComputeLayers assigns each task its README subsection: Running, Ready, a dependency layer, Independent or Draft, and RenderOrder orders tasks for output.
 // All computed at read time;
 // never stored.
 
@@ -11,22 +11,21 @@ import (
 	"sort"
 )
 
-// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task, a task whose Discussion-only run finished, an unreleased task, an open project and a done entry.
+// The non-letter layers: a running task, an open task waiting on nothing open, an isolated task, an unreleased task, an open project and a done entry.
 const (
-	runningLayer   = "Running"
-	readyLayer     = "Ready"
-	isolatedLayer  = "Z"
-	discussedLayer = "Discussed"
-	draftLayer     = "Draft"
-	projectLayer   = "Project"
-	doneLayer      = "__done__"
+	runningLayer  = "Running"
+	readyLayer    = "Ready"
+	isolatedLayer = "Z"
+	draftLayer    = "Draft"
+	projectLayer  = "Project"
+	doneLayer     = "__done__"
 )
 
 // ComputeLayers assigns each task a bucket based on topological depth.
 // A task a run holds is runningLayer, by RunHolds as the run lock decides it.
 // An open project a run does not hold, a beam whose pawl run has not reached Parent-Align included, is projectLayer, never Ready or a letter.
-// An open draft task a run does not hold is draftLayer, and one carrying StatusDiscussed is discussedLayer, whatever its dependencies or isolation, since nothing starts either until it is released;
-// a dependency on either weighs as one on a ready task.
+// An open draft task a run does not hold is draftLayer, whatever its dependencies or isolation, since nothing starts it until it is released;
+// a dependency on one weighs as one on a ready task.
 // An open task that is not a draft and has no open dependency is readyLayer, and every other task is the letter of its depth:
 // A waits only on running, ready or draft tasks, B on something in A, and so on.
 // A met dependency adds no depth, while one on a running task counts as one on a ready task, and cycle detection still follows running tasks.
@@ -45,8 +44,6 @@ func ComputeLayers(tasks []Task) (map[string]string, error) {
 			layerMap[t.Slug] = projectLayer
 		} else if isDraft(t) {
 			layerMap[t.Slug] = draftLayer
-		} else if isDiscussedStatus(t) {
-			layerMap[t.Slug] = discussedLayer
 		} else if t.Isolated {
 			layerMap[t.Slug] = isolatedLayer
 		}
@@ -210,8 +207,8 @@ func RenderOrder(tasks []Task) ([]TaskWithLayer, error) {
 		})
 	}
 
-	// Running, then ready, then the letters A..Y, isolated, discussed, draft and done.
-	bucketOrder := map[string]int{runningLayer: 0, readyLayer: 1, isolatedLayer: 27, discussedLayer: 28, draftLayer: 29, doneLayer: 30}
+	// Running, then ready, then the letters A..Y, isolated, draft and done.
+	bucketOrder := map[string]int{runningLayer: 0, readyLayer: 1, isolatedLayer: 27, draftLayer: 28, doneLayer: 29}
 	for letter := 'A'; letter <= 'Y'; letter++ {
 		bucketOrder[string(letter)] = 2 + int(letter-'A')
 	}

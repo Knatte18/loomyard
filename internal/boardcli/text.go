@@ -13,7 +13,11 @@ import (
 // columnGap separates the listing's columns.
 const columnGap = "  "
 
+// sketchesHeading is the line the listing puts over its Sketches.
+const sketchesHeading = "sketches:"
+
 // RenderCompact returns one line per entry, in the order given: handle, kind, priority, age, time since last revision, slug, title and the labels joined by commas, each padded to the widest value in its column, then "[<status>]" when the entry's status is set.
+// The Sketches follow every other entry, in the order given, under a sketches: line.
 // The handle column is left out when no entry has a handle.
 // The priority column holds high or low and is blank for a normal entry, and it is left out when every entry is normal.
 // The ages are as of now, blank for an unknown date, and each age column is left out when no entry has that date.
@@ -31,7 +35,7 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 		labelsWidth = max(labelsWidth, utf8.RuneCountInString(strings.Join(t.Labels, ",")))
 	}
 
-	var sb strings.Builder
+	var sb, sketches strings.Builder
 	for _, t := range tasks {
 		line := ""
 		if handleWidth > 0 {
@@ -53,8 +57,16 @@ func RenderCompact(tasks []boardengine.BriefTask, now time.Time) string {
 		if t.Status != nil && *t.Status != "" {
 			line += columnGap + "[" + *t.Status + "]"
 		}
-		sb.WriteString(strings.TrimRight(line, " "))
-		sb.WriteByte('\n')
+		target := &sb
+		if boardengine.IsSketch(t.Kind, t.Labels) {
+			target = &sketches
+		}
+		target.WriteString(strings.TrimRight(line, " "))
+		target.WriteByte('\n')
+	}
+	if sketches.Len() > 0 {
+		sb.WriteString(sketchesHeading + "\n")
+		sb.WriteString(sketches.String())
 	}
 	return sb.String()
 }

@@ -84,6 +84,15 @@ func TestRenderCompact(t *testing.T) {
 			want: "note  z  Z  bug\ntask  a  A  bug\n",
 		},
 		{
+			name: "sketches follow every other entry under their heading",
+			in: []boardengine.BriefTask{
+				{Handle: "S1", Kind: "note", Labels: []string{"sketch", "board"}, Slug: "s", Title: "Sketched"},
+				{Handle: "T1", Kind: "task", Labels: []string{"bug"}, Slug: "t", Title: "Task"},
+				{Handle: "B1", Kind: "note", Labels: []string{"bug"}, Slug: "b", Title: "Bug"},
+			},
+			want: "T1  task  t  Task      bug\nB1  note  b  Bug       bug\nsketches:\nS1  note  s  Sketched  sketch,board\n",
+		},
+		{
 			name: "empty input prints nothing",
 			in:   nil,
 			want: "",

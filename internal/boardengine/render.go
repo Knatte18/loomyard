@@ -5,7 +5,7 @@
 // with no open sub-project the own entries sit one level down, and with any they sit under an Own entries heading at the sub-projects' level, two levels down;
 // the root's projects stand beside it rather than under it, so its section holds its own entries alone.
 // README.md holds every top-level project's section under its header and the root's last, and a project file holds its project's sub-projects and own entries under its header.
-// A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent, Discussed and Draft, Notes with one subsection per type label, research first, then Done.
+// A project's own entries split into Tasks, by Running, Ready, dependency layers, Independent and Draft, Notes with one subsection per type label, Sketches first and research next, then Done.
 // Each subsection holds one markdown table in RenderOrder's order, each row opening with the entry's handle, and a Notes table adds the priority as H or L after it, under Prio;
 // README.md opens with the time it was rendered and the machine that owns the hub's prime, and a project file with the time, a link up to its parent's file, the project's brief, for a beam its owner, and the project's body with its headings shifted below the file's own;
 // the rows show the bold title with the brief, the run profile and each run setting as a bullet under it, the linked slug with a Sketch link to the decision record under it for a discussed entry, the entry's age above its time since its last revision as of that time, and the labels that are not type labels;
@@ -142,11 +142,14 @@ var (
 // otherNotesHeading is the Notes subsection for a note whose type label is no longer configured.
 const otherNotesHeading = "Other"
 
-// researchType is the type label whose Notes subsection leads the others, headed without a plural s.
+// researchType is the type label of a measurement, bench or study, whose Notes subsection follows the Sketches.
 const researchType = "research"
 
-// researchHeading is the Notes subsection heading of researchType.
-const researchHeading = "Research"
+// leadingNoteTypes are the type labels whose Notes subsections lead the others, in this order: Sketches wait for the operator's triage, and research follows them.
+var leadingNoteTypes = []string{SketchType, researchType}
+
+// typeHeadings are the Notes subsection headings of the type labels whose heading is not the label capitalised with an s appended.
+var typeHeadings = map[string]string{researchType: "Research", SketchType: "Sketches"}
 
 // projectFilePrefix starts the file name of a project's own board file, which its slug and .md complete.
 // The board's Bolt replayer recognises the same prefix as its own.
@@ -223,10 +226,10 @@ func kindName(kind string) string {
 	return "Note"
 }
 
-// typeHeading is the Notes subsection heading of a type label: Research for research, else the name capitalised, with an s appended.
+// typeHeading is the Notes subsection heading of a type label: its typeHeadings entry, else the name capitalised, with an s appended.
 func typeHeading(typeLabel string) string {
-	if typeLabel == researchType {
-		return researchHeading
+	if heading, irregular := typeHeadings[typeLabel]; irregular {
+		return heading
 	}
 	if typeLabel == "" {
 		return "s"
@@ -234,14 +237,16 @@ func typeHeading(typeLabel string) string {
 	return strings.ToUpper(typeLabel[:1]) + typeLabel[1:] + "s"
 }
 
-// notesTypeOrder is the order of the Notes subsections: research first when it is configured, then the other types in configured order, then "" for Other.
+// notesTypeOrder is the order of the Notes subsections: the configured leadingNoteTypes in their order, then the other types in configured order, then "" for Other.
 func notesTypeOrder(types []string) []string {
 	var order []string
-	if slices.Contains(types, researchType) {
-		order = append(order, researchType)
+	for _, lead := range leadingNoteTypes {
+		if slices.Contains(types, lead) {
+			order = append(order, lead)
+		}
 	}
 	for _, typeLabel := range types {
-		if typeLabel != researchType {
+		if !slices.Contains(leadingNoteTypes, typeLabel) {
 			order = append(order, typeLabel)
 		}
 	}
@@ -535,7 +540,7 @@ func (b boardView) table(entries []TaskWithLayer, table readmeTable) []string {
 	return append(lines, "")
 }
 
-// entrySections builds the Tasks, Notes and Done sections of project, rootProject naming the root, with level the heading level of their headings and their subsections one level down: Tasks split into Running, Ready, dependency layers, Independent, Discussed and Draft, Notes split by type label, then Done when any of its entries is done.
+// entrySections builds the Tasks, Notes and Done sections of project, rootProject naming the root, with level the heading level of their headings and their subsections one level down: Tasks split into Running, Ready, dependency layers, Independent and Draft, Notes split by type label, then Done when any of its entries is done.
 // Every section holds only the entries whose project is project, while layers, After cells and owners read the whole board.
 func (b boardView) entrySections(project Task, level int) []string {
 	sublevel := level + 1
@@ -579,7 +584,7 @@ func (b boardView) entrySections(project Task, level int) []string {
 	} else {
 		lines = append(lines, emptySectionLine, "")
 	}
-	// RenderOrder sorts tasks by layer, so each dependency layer, Independent, Discussed and Draft is a contiguous run.
+	// RenderOrder sorts tasks by layer, so each dependency layer, Independent and Draft is a contiguous run.
 	for start := 0; start < len(tasks); {
 		end := start
 		for end < len(tasks) && tasks[end].Layer == tasks[start].Layer {
@@ -697,8 +702,6 @@ func layerSection(layer string) readmeSection {
 		return readmeSection{"Layer A", "Waits only on Running, Ready or Draft entries."}
 	case isolatedLayer:
 		return readmeSection{"Independent", "Depends on nothing and nothing depends on it, by design."}
-	case discussedLayer:
-		return readmeSection{"Discussed", "Discussion approved and its decision record stored; nothing starts it until its status is cleared."}
 	case draftLayer:
 		return readmeSection{"Draft", "Not released; nothing starts it until its status is cleared."}
 	default:
@@ -757,14 +760,11 @@ func ageCell(t Task, now time.Time) string {
 	return age + cellBreak + revised
 }
 
-// entryCell is the bold title, led by a `draft` or `discussed` code span for a task carrying that status, with the brief as one bullet under it when there is one, then one code-span bullet per run setting.
+// entryCell is the bold title, led by a `draft` code span for a draft task, with the brief as one bullet under it when there is one, then one code-span bullet per run setting.
 func entryCell(t Task) string {
 	cell := "**" + cellText(t.Title) + "**"
-	switch {
-	case isDraft(t):
+	if isDraft(t) {
 		cell = codeSpan(StatusDraft) + " " + cell
-	case isDiscussedStatus(t):
-		cell = codeSpan(StatusDiscussed) + " " + cell
 	}
 	if t.Brief != "" {
 		cell += cellBullet + cellText(t.Brief)

@@ -131,12 +131,13 @@ func TestNewCommitStatusSeam_BoardStatus(t *testing.T) {
 	}
 }
 
-// TestNewCommitStatusSeam_FinishedStatus asserts a finished run writes the seam's finished status to the board, after the run status it last wrote.
-func TestNewCommitStatusSeam_FinishedStatus(t *testing.T) {
+// TestNewCommitStatusSeam_Finish asserts a finished run calls the seam's Finish after the run status it last wrote, retries a failed Finish at the next finished transition and calls it no more once it succeeded.
+func TestNewCommitStatusSeam_Finish(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	var written []string
+	failNext := true
 	seam := newCommitStatusSeam(commitStatusDeps{
 		MergeActive: func() (bool, error) { return false, nil },
 		Commit:      func(string) (bool, error) { return false, nil },
@@ -145,15 +146,23 @@ func TestNewCommitStatusSeam_FinishedStatus(t *testing.T) {
 			written = append(written, status)
 			return nil
 		},
-		FinishedStatus: "draft",
+		Finish: func() error {
+			if failNext {
+				failNext = false
+				written = append(written, "finish failed")
+				return errors.New("board locked")
+			}
+			written = append(written, "finish")
+			return nil
+		},
 	})
-	for _, state := range []string{"running", "done"} {
+	for _, state := range []string{"running", "done", "done", "done"} {
 		if err := seam("Discussion-Bouncer", state); err != nil {
 			t.Fatalf("seam(Discussion-Bouncer, %q) = %v; want nil", state, err)
 		}
 	}
 
-	want := []string{"running · Discussion-Bouncer", "draft"}
+	want := []string{"running · Discussion-Bouncer", "finish failed", "finish"}
 	if !reflect.DeepEqual(written, want) {
 		t.Errorf("board writes = %q; want %q", written, want)
 	}

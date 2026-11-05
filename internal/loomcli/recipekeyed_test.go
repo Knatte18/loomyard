@@ -1,5 +1,5 @@
 // recipekeyed_test.go pins the loomcli wiring branches that read the run's recipe rows and keys, per recipe name:
-// the verify source, the merge fixer's plan directory, the arbiter's recipe description, the landing failure tracer and the board status a finished run writes.
+// the verify source, the merge fixer's plan directory, the arbiter's recipe description, the landing failure tracer and whether a finished run makes its entry a Sketch.
 
 package loomcli
 
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -38,13 +37,13 @@ func TestRecipeKeyedWiring(t *testing.T) {
 		treeScope    bool
 		hasPlan      bool
 		wantFragment string
-		wantFinished string
+		wantSketch   bool
 	}{
-		{"Tapestry", shedrun.RecipeTapestry, false, true, "a tapestry run, a task driven from discussion to landing", ""},
-		{"Motif", shedrun.RecipeMotif, false, false, "a motif run, a task's Discussion", boardengine.StatusDiscussed},
-		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session", ""},
-		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", ""},
-		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", ""},
+		{"Tapestry", shedrun.RecipeTapestry, false, true, "a tapestry run, a task driven from discussion to landing", false},
+		{"Motif", shedrun.RecipeMotif, false, false, "a motif run, a task's Discussion", true},
+		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session", false},
+		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", false},
+		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -67,11 +66,11 @@ func TestRecipeKeyedWiring(t *testing.T) {
 				t.Errorf("arbiterRecipeDescription(%s) = %q; want it to contain %q", tt.recipe, got, tt.wantFragment)
 			}
 
-			if got := finishedBoardStatus(tt.recipe); got != tt.wantFinished {
-				t.Errorf("finishedBoardStatus(%s) = %q; want %q", tt.recipe, got, tt.wantFinished)
+			if got := finishesAsSketch(tt.recipe); got != tt.wantSketch {
+				t.Errorf("finishesAsSketch(%s) = %t; want %t", tt.recipe, got, tt.wantSketch)
 			}
-			if got := c.commitStatusDeps(loc).FinishedStatus; got != tt.wantFinished {
-				t.Errorf("commitStatusDeps(%s).FinishedStatus = %q; want %q", tt.recipe, got, tt.wantFinished)
+			if got := c.commitStatusDeps(loc).Finish != nil; got != tt.wantSketch {
+				t.Errorf("commitStatusDeps(%s).Finish set = %t; want %t", tt.recipe, got, tt.wantSketch)
 			}
 
 			deps := landingDeps(loc, tt.recipe, websterengine.Geometry{}, "task", "main",

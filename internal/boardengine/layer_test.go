@@ -56,15 +56,6 @@ func TestComputeLayers(t *testing.T) {
 			want: map[string]string{"run": "Running", "x": "A", "y": "B", "free": "Ready", "word": "Ready"},
 		},
 		{
-			name: "a discussed task sits under Discussed whatever its dependencies, and weighs on a dependent as a ready one",
-			tasks: []boardengine.Task{
-				{ID: 1, Slug: "sketched", Title: "Sketched", DependsOn: []string{"base"}, Status: stringPtr(boardengine.StatusDiscussed), Discussed: true},
-				{ID: 2, Slug: "base", Title: "Base"},
-				{ID: 3, Slug: "after", Title: "After", DependsOn: []string{"sketched"}},
-			},
-			want: map[string]string{"sketched": "Discussed", "base": "Ready", "after": "A"},
-		},
-		{
 			name: "a draft task carrying the discussed flag stays Draft, the layer following the status",
 			tasks: []boardengine.Task{
 				{ID: 1, Slug: "released-again", Title: "Released again", Status: stringPtr(boardengine.StatusDraft), Discussed: true},

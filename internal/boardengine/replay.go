@@ -531,7 +531,7 @@ func (r *replayRun) changeEntry(before, commit Task) {
 	}
 	after := cloneTasks(r.store.tasks)
 	after[index] = incoming
-	if err := checkRunLocks(r.origin, after); err != nil {
+	if err := checkRunLocks(r.origin, after, *r.store.vocab); err != nil {
 		r.refuse(commit.Slug, label, err)
 		return
 	}
@@ -557,7 +557,7 @@ func (r *replayRun) removeEntry(before Task) {
 		}
 	}
 	after := slices.Delete(cloneTasks(r.store.tasks), index, index+1)
-	if err := checkRunLocks(r.origin, after); err != nil {
+	if err := checkRunLocks(r.origin, after, *r.store.vocab); err != nil {
 		r.refuse(before.Slug, "", err)
 		return
 	}

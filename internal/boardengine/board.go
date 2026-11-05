@@ -66,7 +66,7 @@ type noWrite struct{ result any }
 type promoted struct{ task Task }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, migrates a board that has not been marked draft, calls fn to mutate it, gives a new task the draft status, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, migrates a board that has not been marked draft and every task left discussed, calls fn to mutate it, gives a new task the draft status, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
 // fn returning a RenameResult judges the dates and the run lock against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
 // The record step's error, a *DecisionRecordError, does not stop the render or the sync; it is returned last, with the write saved and the mutation's result.
@@ -105,6 +105,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 
 	// Migrated before fn mutates, so a write that releases a task to an empty status is not re-drafted by the migration.
 	migrateDraftStatus(store)
+	migrateDiscussedStatus(store)
 	loaded := cloneTasks(store.Tasks())
 
 	result, err := fn(store)
@@ -142,7 +143,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		result = r
 	}
 
-	if err := checkRunLocks(loaded, store.Tasks()); err != nil {
+	if err := checkRunLocks(loaded, store.Tasks(), b.vocab); err != nil {
 		return nil, err
 	}
 	if err := checkProjectRules(loaded, store.Tasks(), store.pairExists); err != nil {

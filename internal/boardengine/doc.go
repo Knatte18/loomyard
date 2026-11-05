@@ -57,6 +57,7 @@
 // and the older shape, a list of names, still loads read-only with empty descriptions.
 // ConfigOpenMaps names the two keys as open maps,
 // so configengine carries a repository's own entries whole through reconcile and --set.
+// The sketch type label (SketchType) is built in: LoadConfig puts it ahead of board.yaml's types unless the file lists it, since lym itself writes it.
 // Vocabulary answers both questions, and Board copies it from its Config and sets it on every store it builds.
 // A write that carries a label in neither list is refused, naming the entry, the label and board.yaml.
 // A Board built from a bare path has no outputs configured, cannot write, and validates no label.
@@ -64,8 +65,8 @@
 // # Handles
 //
 // Every entry carries a handle, a letter and a number such as T4, B2 or E7, stored in board.json as the handle key, so the operator can name an entry without its slug.
-// The letter is T for a task, P for a project, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters;
-// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, or whose letter is T or P.
+// The letter is T for a task, P for a project, and for a note the upper-cased first letter of its type label, so the hub's board.yaml types decide the note letters and a Sketch takes S;
+// LoadConfig refuses type labels that do not begin with a letter, that share a first letter, the built-in sketch type label's included, or whose letter is T or P.
 // The board alone assigns handles, and an upsert payload carrying one is refused.
 // One assigner runs over the whole entry list on load, in the write critical section after the mutation and in the replay before its save:
 // an entry keeps a stored handle of its own letter that no entry of lower id holds, and every other entry, in id order, takes the lowest number of its letter not in use.
@@ -170,6 +171,7 @@
 // A board without the top-level `draft_status` key is marked once: the next write sets `draft` on every open task whose status is empty and writes the key `draft_status: true` in the same save, and a board holding the key is never migrated again.
 // The store's on-disk version stays 1, an older binary keeps the key as an unknown one, and a replayed commit that set it sets it on origin's board, so a replay cannot leave origin to migrate released tasks again.
 // The accepted bound: a task an older binary creates after the migration has no status and starts without a release until every machine runs the new binary.
+// A task an older binary's Discussion-only run left in status `discussed` becomes a Sketch at the start of the next write, unless the write would refuse it as one, such as while another entry depends on it, when it keeps the status as a hand-set word.
 //
 // # README
 //
@@ -193,15 +195,14 @@
 // An open project under a done project counts as under the root, since a done project has no section.
 // README.md holds a `##` section per open project under the root, by handle, so every open project shows there with its own Running, Ready, Tasks, Notes and Done, and the root's `##` section comes last.
 // A project file's header stands as its project's heading: after it come the project's sub-projects at `##`, then its own entries at `##`, or under `## Own entries` at `###` when it has open sub-projects.
-// A project's own entries are a Tasks section, a Notes section grouped by type label, research first under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
+// A project's own entries are a Tasks section, a Notes section grouped by type label, Sketches first under the heading `Sketches`, research next under the heading `Research`, then the other types in the order of the types list and the remainder under Other, and a Done section.
 // An open project is in none of the Tasks layers: ComputeLayers puts it in its own Project layer, a run-held one in Running and a done one in the done layer, and RenderOrder places open projects by handle between open tasks and open notes, and a done project between done tasks and done notes.
 // No project is a row of Tasks or Notes; a done project is a row of its parent file's Done table, its title linked to its file.
 // Every section heading but Own entries ends in the number of entries listed under it in parentheses, such as `## Tasks (10)` or `### Ready (0)` in a project file, never the highest handle number, since handles have gaps.
-// Tasks splits into Running, Ready, the dependency layers A, B and on, Independent for an isolated task, Discussed for a task whose Discussion-only run finished, and Draft for an unreleased one.
+// Tasks splits into Running, Ready, the dependency layers A, B and on, Independent for an isolated task, and Draft for an unreleased one.
 // A task a run holds, by RunHolds as the run lock decides it, goes under Running and in no layer; Running is omitted when no task runs.
 // An open draft task a run does not hold goes under Draft, whatever its dependencies or isolation, since nothing starts it until it is released;
 // Draft follows Independent and is omitted when no task is draft, and a draft title cell opens with a `draft` code span before the bold title.
-// A task carrying `discussed` (StatusDiscussed) goes under Discussed the same way, between Independent and Draft, its title cell opening with a `discussed` code span.
 // Ready holds the open, released tasks with no open dependency, and is always written, as `_None._` when empty.
 // A dependency on a done task does not count, and one on a running task does, so a task waiting on a run is not Ready.
 // A dependency on a project that is not done counts too, and weighs as one on its deepest open landing member, so a task waiting on a project sits one layer below that member, in Layer A when the project's open members are all running, ready or draft, or it has none.
@@ -209,9 +210,9 @@
 // Each subsection, Done included, is one markdown table in RenderOrder's order: a task subsection and a Notes type subsection by handle, and Done its tasks before its notes, each by handle, so `lym board list` and `find` follow the same order.
 // A row opens with the entry's handle, and a Notes row adds the Prio column after it, H for a high priority, L for a low one and blank for normal.
 // The row then holds the bold title, with the brief as a `• ` bullet under it in the same cell, and then one `• ` bullet per run setting, a code span such as `loom: code_max_bounces 1` with a nested key as its dotted path, sorted, so the settings stack in height and add no column, the slug linked to its design doc when the entry has a body, with a `Sketch` link to its decision record file under it, in the same cell, when the entry carries the discussed flag, the one `Age<br>Revised` cell, the entry's age above the time since its last revision, blank for an unknown date, and the labels that are not type labels.
-// The Running, Ready, layer, Discussed and Draft tables add a Recipe column after the slug, the recipe the task runs, the board's `default_recipe` (`darn` in the template) when its recipe field is empty, followed by ` · ` and the run profile when the task names one, such as `tapestry · light`; a task naming no profile takes its recipe's default profile and shows the recipe alone.
+// The Running, Ready, layer and Draft tables add a Recipe column after the slug, the recipe the task runs, the board's `default_recipe` (`darn` in the template) when its recipe field is empty, followed by ` · ` and the run profile when the task names one, such as `tapestry · light`; a task naming no profile takes its recipe's default profile and shows the recipe alone.
 // The Notes and Done tables have no Recipe column.
-// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's effective owner machine, blank when none is recorded, and Ready, the layers, Discussed and Draft add an After column, the handles of the entries named in depends_on that are not done, a project as Dependencies judges it, one per line, an entry with no handle or no longer on the board named by its slug.
+// Running adds an At column, the run status without the state when the state is `running`, and an Owner column, the entry's effective owner machine, blank when none is recorded, and Ready, the layers and Draft add an After column, the handles of the entries named in depends_on that are not done, a project as Dependencies judges it, one per line, an entry with no handle or no longer on the board named by its slug.
 // A pipe in a cell is escaped and a line break becomes a space, so an entry is always one row.
 //
 // # Intake
@@ -241,12 +242,14 @@
 // # Run lock
 //
 // A run holds a board entry while the entry's status has the run-status form "<state> · <producer>", which RunStatus composes and IsRunStatus recognizes.
-// Nil, empty, "draft", "discussed", "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
+// Nil, empty, "draft", "done", "abandoned" and a hand-set word are not run statuses, and lock nothing.
 // A held entry is the scope its run executes, so the write critical section refuses, before the save, any write whose net change on it removes it or touches a field other than status.
 // The net change runs from the entries as loaded under the board file lock to the entries after the whole mutation,
 // so a batch or merge that clears the status early and then edits the entry is still refused, and nothing reaches disk.
 // A status-only net change passes: set-status, a merge's set_status and an upsert that differs only in status.
 // The discussed flag is no scope either, so a held entry takes it, and only StoreDecisionRecord writes it.
+// A held task whose net change is becoming a Sketch with no status and no other scope change passes, since that change ends its Discussion-only run; MakeSketch writes it, and a hand write making the same change passes too, as set-status does.
+// The same write that also changes the entry's title, body or any other scope field, or that makes it a note without the sketch label, is refused.
 // set-status is itself unguarded, so a live run's status can be cleared by hand.
 // Prune passes, since a held entry's dependency on a done entry that the same write removes is not a change; every other depends_on change is refused.
 // The refusal is a *RunLockedError that matches ErrRunLocked through errors.Is.
@@ -270,7 +273,6 @@
 // So a create of any verb, a batch or merge create, a note or project upserted to a task and a promoted note are `draft` even when the payload sets `status` to null.
 // An entry that was a task before the write keeps an empty status the write left untouched, so an edit of a released task leaves it released.
 // A task is released by a null status: `lym board set-status '{"slug":"<slug>","status":null}'`, an upsert setting `status` to null on a task, or a merge whose `set_status` sets null.
-// A `discussed` task, which a finished Discussion-only run leaves, is released the same way.
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
 // The owner write and the replay of a local commit run no draft rule: the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
@@ -306,6 +308,15 @@
 // Board.DecisionRecord reads without the lock and answers found only when the entry exists, carries the flag and the file exists; an absent entry, an unflagged one and a flagged one with no file each answer not found.
 // A merge that removes a flagged slug and upserts it again keeps the flag.
 // LoadConfig refuses a design_prefix that would render a design file onto a record file's name, a prefix of `decision-` or one starting with it, the empty prefix included.
+//
+// # Sketch
+//
+// An entry whose Discussion-only run, a motif run, ended with its decision record approved and stored is a Sketch: a note of the built-in type `sketch`, handle letter S, which never runs.
+// It is the stage before triage, which breaks it down into tasks, each with its own type and recipe, or into a project.
+// Board.MakeSketch makes an entry one in one write: a note whose labels are `sketch` followed by the entry's labels that are not type labels, with no status, depends_on, isolated, recipe, profile, run_settings, pull_request or notify_on_land;
+// its title, brief, body, project, issues, Created date and discussed flag stay, and the write stamps Revised like any scope change.
+// It writes nothing for an absent, done or already sketched entry, and refuses while another entry depends on the entry, since a note cannot be depended on.
+// The README lists Sketches under their own `Sketches` heading, the first Notes subsection, and `lym board list --text` lists them after every other entry under a `sketches:` line.
 //
 // # Siblings
 //

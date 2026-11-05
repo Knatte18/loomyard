@@ -34,6 +34,7 @@
 // Every verb prints JSON through `internal/output`, one object per line, errors included.
 // `list` and `find` take `--text` to print the compact one-line-per-entry listing instead;
 // errors stay JSON.
+// The listing puts the Sketches after every other entry, under a `sketches:` line.
 // The listing opens with the entry's handle, a column left out only when no listed entry has one.
 // It carries a priority column after the kind, `high`, `low` or blank, only when some listed entry is not normal.
 // Two age columns follow, the entry's age and the time since its last revision, computed as of the listing from the stored dates and blank for an unknown one;

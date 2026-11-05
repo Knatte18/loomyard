@@ -51,8 +51,8 @@ func TestLoadConfig_ScalarKeysAndTemplateDefaults(t *testing.T) {
 			if cfg.DesignPrefix != "proposal-" {
 				t.Errorf("expected DesignPrefix %q, got %q", "proposal-", cfg.DesignPrefix)
 			}
-			if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{"bug", "enhancement"}) {
-				t.Errorf("type names = %v; want [bug enhancement]", got)
+			if got := cfg.Outputs().Types; !reflect.DeepEqual(got, []string{boardengine.SketchType, "bug", "enhancement"}) {
+				t.Errorf("type names = %v; want [sketch bug enhancement]", got)
 			}
 			for _, l := range cfg.Types {
 				if l.Description == "" {
@@ -199,7 +199,7 @@ labels:
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	wantTypes := []boardengine.Label{{Name: "idea", Description: "A thing to try"}, {Name: "bug", Description: "Broken"}}
+	wantTypes := []boardengine.Label{sketchLabel(t, cfg.Types), {Name: "idea", Description: "A thing to try"}, {Name: "bug", Description: "Broken"}}
 	if !reflect.DeepEqual(cfg.Types, wantTypes) {
 		t.Errorf("Types = %v; want %v", cfg.Types, wantTypes)
 	}
@@ -222,7 +222,7 @@ labels: [urgent, later]
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	wantTypes := []boardengine.Label{{Name: "bug"}, {Name: "idea"}}
+	wantTypes := []boardengine.Label{sketchLabel(t, cfg.Types), {Name: "bug"}, {Name: "idea"}}
 	if !reflect.DeepEqual(cfg.Types, wantTypes) {
 		t.Errorf("Types = %v; want %v", cfg.Types, wantTypes)
 	}
@@ -246,6 +246,7 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 		{"a type on the task letter", "types:\n  todo: x\n", `"todo"`},
 		{"a type on the project letter", "types:\n  plan: x\n", `"plan"`},
 		{"a type not beginning with a letter", "types:\n  '1st': x\n", `"1st"`},
+		{"a type on the sketch letter", "types:\n  spike: x\n", `"spike"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -280,6 +281,29 @@ func TestLoadConfig_LabelsRefused(t *testing.T) {
 			}
 		}
 	})
+}
+
+// sketchLabel returns the first of types, failing t unless it is the built-in sketch type label with a description, which LoadConfig puts ahead of board.yaml's types.
+func sketchLabel(t *testing.T, types []boardengine.Label) boardengine.Label {
+	t.Helper()
+	if len(types) == 0 || types[0].Name != boardengine.SketchType || types[0].Description == "" {
+		t.Fatalf("Types = %v; want the described sketch type label first", types)
+	}
+	return types[0]
+}
+
+// TestLoadConfig_SketchListedInBoardYAML asserts a board.yaml listing the sketch type label keeps its own position and description, and gains no second sketch label.
+func TestLoadConfig_SketchListedInBoardYAML(t *testing.T) {
+	tiergate.Require(t, 0)
+	dir := writeBoardConfig(t, "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  bug: Broken\n  sketch: Approved, awaiting triage\n")
+	cfg, err := boardengine.LoadConfig(configengine.Dirs{Board: dir}, "board")
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v; want nil", err)
+	}
+	want := []boardengine.Label{{Name: "bug", Description: "Broken"}, {Name: boardengine.SketchType, Description: "Approved, awaiting triage"}}
+	if !reflect.DeepEqual(cfg.Types, want) {
+		t.Errorf("Types = %v; want %v", cfg.Types, want)
+	}
 }
 
 // TestVocabulary asserts IsType and Known for a type, a plain label, an unknown label and the empty vocabulary of a path-only Config.

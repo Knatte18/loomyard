@@ -1,8 +1,9 @@
-// commitstatus_integration_test.go drives the commit-status seam each wiring entry point installs against a real hub pair and its hub board, to pin the finished status it writes per recipe.
+// commitstatus_integration_test.go drives the commit-status seam each wiring entry point installs against a real hub pair and its hub board, to pin the board entry a finished run leaves per recipe.
 
 package loomcli
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -12,10 +13,11 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestWiredCommitStatus_WritesFinishedStatus drives the seam each of wireLightweight and wire installs through a run's last transition and asserts the board status it leaves:
-// a recipe with no Finalize row marks the entry discussed, and one with a Finalize row leaves the status of the last running transition.
+// TestWiredCommitStatus_FinishedRunEntry drives the seam each of wireLightweight and wire installs through a run's last transition and asserts the board entry it leaves:
+// a recipe with no Finalize row makes the run-held task a Sketch with no status, unless another entry depends on it, which leaves the task draft;
+// one with a Finalize row leaves the task with the status of the last running transition.
 // It is serial because it sets the board skip variable, which is process-global.
-func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
+func TestWiredCommitStatus_FinishedRunEntry(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Setenv("BOARD_SKIP_GIT", "1")
 	hub := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
@@ -38,10 +40,16 @@ func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
 		name   string
 		slug   string
 		recipe string
-		want   string
+		// wantKind and wantLabels are the entry's kind and labels after the finish, and wantStatus its status, "" for none.
+		wantKind   string
+		wantLabels []string
+		wantStatus string
+		// dependedOn makes another entry depend on the run's entry, so the board refuses to make it a Sketch.
+		dependedOn bool
 	}{
-		{"FinalizeLessRunMarksTheEntryDiscussed", "motifrun", shedrun.RecipeMotif, boardengine.StatusDiscussed},
-		{"FinalizingRunLeavesTheLastRunningStatus", "tapestryrun", shedrun.RecipeTapestry, running},
+		{"FinalizeLessRunMakesTheEntryASketch", "motifrun", shedrun.RecipeMotif, boardengine.KindNote, []string{boardengine.SketchType}, "", false},
+		{"FinalizingRunLeavesTheLastRunningStatus", "tapestryrun", shedrun.RecipeTapestry, boardengine.KindTask, []string{"bug"}, running, false},
+		{"RefusedSketchLeavesTheEntryDraft", "dependedrun", shedrun.RecipeMotif, boardengine.KindTask, []string{"bug"}, boardengine.StatusDraft, true},
 	}
 	for _, w := range wirings {
 		for _, tt := range tests {
@@ -59,6 +67,11 @@ func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
 				if _, err := board.UpsertTask(map[string]any{"slug": slug, "title": "Finish", "kind": "task", "labels": []string{"bug"}}); err != nil {
 					t.Fatalf("UpsertTask() error = %v; want nil", err)
 				}
+				if tt.dependedOn {
+					if _, err := board.UpsertTask(map[string]any{"slug": slug + "-after", "title": "After", "kind": "task", "labels": []string{"bug"}, "depends_on": []string{slug}}); err != nil {
+						t.Fatalf("UpsertTask() error = %v; want nil", err)
+					}
+				}
 				if err := board.SetRunStatus(slug, running); err != nil {
 					t.Fatalf("SetRunStatus() error = %v; want nil", err)
 				}
@@ -74,8 +87,15 @@ func TestWiredCommitStatus_WritesFinishedStatus(t *testing.T) {
 				if err != nil || !found {
 					t.Fatalf("GetTask(%q) = %v, %v; want the entry", slug, found, err)
 				}
-				if task.Status == nil || *task.Status != tt.want {
-					t.Errorf("board status = %v; want %q", task.Status, tt.want)
+				if task.Kind != tt.wantKind || !slices.Equal(task.Labels, tt.wantLabels) {
+					t.Errorf("board entry kind, labels = %q, %v; want %q, %v", task.Kind, task.Labels, tt.wantKind, tt.wantLabels)
+				}
+				status := ""
+				if task.Status != nil {
+					status = *task.Status
+				}
+				if status != tt.wantStatus {
+					t.Errorf("board status = %q; want %q", status, tt.wantStatus)
 				}
 			})
 		}

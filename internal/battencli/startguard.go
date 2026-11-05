@@ -40,7 +40,7 @@ type startGuard struct {
 	Project func() (project, beam bool, err error)
 	// PairMark reads the origin record of the slug's local pair: found is false when the pair has no readable record, and marked says whether it carries the beam mark.
 	PairMark func() (marked, found bool, err error)
-	// Unreleased reads the board status of the slug when it is a task no run starts, boardengine.StatusDraft or boardengine.StatusDiscussed, and "" for any other entry.
+	// Unreleased reads the board status of the slug when it is a task no run starts, boardengine.StatusDraft or boardengine.LegacyStatusDiscussed, and "" for any other entry.
 	// A nil Unreleased reads every entry as released.
 	Unreleased func() (string, error)
 }
@@ -96,7 +96,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 				if task.Slug != slug || task.Status == nil {
 					continue
 				}
-				if *task.Status == boardengine.StatusDraft || *task.Status == boardengine.StatusDiscussed {
+				if *task.Status == boardengine.StatusDraft || *task.Status == boardengine.LegacyStatusDiscussed {
 					return *task.Status, nil
 				}
 			}

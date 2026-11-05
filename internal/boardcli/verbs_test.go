@@ -323,33 +323,17 @@ func stepListAndFindText(t *testing.T, f *cliFixture) {
 	}
 }
 
-// stepListShowsADiscussedEntry asserts a task carrying the discussed status lists under the Discussed layer, and its --text line ends with the status.
-func stepListShowsADiscussedEntry(t *testing.T, f *cliFixture) {
-	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"task","labels":["bug"]}`)
-	runJSON(t, 0, "set-status", `{"slug":"sketched","status":"discussed"}`)
-
-	var layer any
-	for _, entry := range runJSON(t, 0, "list")["tasks"].([]any) {
-		if row := entry.(map[string]any); row["slug"] == "sketched" {
-			layer = row["layer"]
-		}
-	}
-	if layer != "Discussed" {
-		t.Errorf("list: layer of the discussed entry = %v; want Discussed", layer)
-	}
+// stepListShowsASketch asserts the hub's board takes a note of the built-in sketch type, whatever its board.yaml lists, and that list --text lists it last under the sketches: line with handle S1.
+func stepListShowsASketch(t *testing.T, f *cliFixture) {
+	mustUpsert(t, `{"slug":"sketched","title":"Sketched thing","kind":"note","labels":["sketch"]}`)
 
 	exitCode, stdout := runCLI(t, "list", "--text")
 	if exitCode != 0 {
 		t.Fatalf("list --text: exit %d, stdout %q", exitCode, stdout)
 	}
-	var line string
-	for _, candidate := range strings.Split(stdout, "\n") {
-		if strings.Contains(candidate, "sketched") {
-			line = candidate
-		}
-	}
-	if !strings.HasSuffix(line, "[discussed]") {
-		t.Errorf("list --text line of the discussed entry = %q; want it to end with [discussed]", line)
+	lines := strings.Split(strings.TrimRight(stdout, "\n"), "\n")
+	if len(lines) < 2 || lines[len(lines)-2] != "sketches:" || !strings.HasPrefix(lines[len(lines)-1], "S1 ") || !strings.Contains(lines[len(lines)-1], "sketched") {
+		t.Errorf("list --text = %q; want it to end with a sketches: line and the S1 sketched line", stdout)
 	}
 }
 
@@ -806,13 +790,23 @@ func labelPairs(t *testing.T, result map[string]any, key string) [][2]string {
 	return pairs
 }
 
+// sketchPair returns the first type label the labels verb printed, failing t unless it is the built-in sketch type label with a description, which leads every board's types.
+func sketchPair(t *testing.T, result map[string]any) [2]string {
+	t.Helper()
+	pairs := labelPairs(t, result, "types")
+	if len(pairs) == 0 || pairs[0][0] != "sketch" || pairs[0][1] == "" {
+		t.Fatalf("types = %v; want the described sketch type label first", pairs)
+	}
+	return pairs[0]
+}
+
 func stepLabelsMapShapedPrintsFileOrderWithDescriptions(t *testing.T, f *cliFixture) {
 	cwd := f.cwd
 	content := "readme: Home.md\ndesign_prefix: proposal-\ntypes:\n  enhancement: A new capability\n  bug: Something broken\nlabels:\n  quarry: The code index\n  board: The task board\n"
 	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 
 	result := runJSON(t, 0, "labels")
-	wantTypes := [][2]string{{"enhancement", "A new capability"}, {"bug", "Something broken"}}
+	wantTypes := [][2]string{sketchPair(t, result), {"enhancement", "A new capability"}, {"bug", "Something broken"}}
 	wantLabels := [][2]string{{"quarry", "The code index"}, {"board", "The task board"}}
 	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
 		t.Fatalf("types = %v, want %v", got, wantTypes)
@@ -828,7 +822,7 @@ func stepLabelsListShapedPrintsNamesWithEmptyDescriptions(t *testing.T, f *cliFi
 	seedHubBoardConfig(t, filepath.Dir(cwd), content)
 
 	result := runJSON(t, 0, "labels")
-	wantTypes := [][2]string{{"bug", ""}, {"enhancement", ""}}
+	wantTypes := [][2]string{sketchPair(t, result), {"bug", ""}, {"enhancement", ""}}
 	wantLabels := [][2]string{{"quarry", ""}}
 	if got := labelPairs(t, result, "types"); !slices.Equal(got, wantTypes) {
 		t.Fatalf("types = %v, want %v", got, wantTypes)

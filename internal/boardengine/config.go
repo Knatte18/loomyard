@@ -150,7 +150,8 @@ func ConfigSpec() configengine.Spec {
 
 // LoadConfig loads and unmarshals the board module configuration strictly through the hub-wide layer stack under dirs.
 // An absent `_lym/` under the hub's board dir and an absent board.yaml under a present one both refuse naming the file and the `lym fabric reconcile` way forward.
-// Type labels that would share a handle letter, with each other or with tasks, refuse naming the label to rename.
+// The built-in sketch type label leads the types unless board.yaml lists it.
+// Type labels that would share a handle letter, with each other, with the sketch type label or with tasks, refuse naming the label to rename.
 func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	spec := ConfigSpec()
 	spec.Name = module
@@ -187,6 +188,7 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 	if cfg.Labels, err = decodeLabels("labels", &raw.Labels); err != nil {
 		return Config{}, err
 	}
+	cfg.Types = withSketchType(cfg.Types)
 	if err := validateTypeLetters(cfg.Types); err != nil {
 		return Config{}, err
 	}

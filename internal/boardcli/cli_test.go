@@ -119,7 +119,7 @@ func TestCLI(t *testing.T) {
 		{"ListAndFindLabelFilter", stepListAndFindLabelFilter},
 		{"Find_NoArgumentRefused", stepFind_NoArgumentRefused},
 		{"ListAndFindText", stepListAndFindText},
-		{"ListShowsADiscussedEntry", stepListShowsADiscussedEntry},
+		{"ListShowsASketch", stepListShowsASketch},
 		{"RetireLegacy", stepRetireLegacy},
 		{"GetAndRemoveByID", stepGetAndRemoveByID},
 		{"Owners", stepOwners},

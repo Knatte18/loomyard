@@ -131,11 +131,12 @@ func (e *ProjectRecordLockedError) Is(target error) bool {
 
 // checkRunLocks judges each run-status entry of loaded by its net change to after.
 // An entry RunHolds accepts is refused when it is absent from after, or when any field but Status differs; Unknown is never compared, since this binary cannot change a kept key.
+// A held task whose net change is becoming a Sketch with no status and no other scope change, as vocab's type labels judge it, passes, since that change ends its Discussion-only run; a title, body or other scope change alongside it is refused.
 // A beam project whose run holds nothing is refused only when it is absent from after, or its project, kind, recipe or beam differs, with a BeamRunLockedError.
 // Its body change is refused with a ProjectRecordLockedError once ProjectRecordHeld accepts it.
 // A dependency on a done entry that the same write removes does not count as a change, so prune passes.
 // It returns the first refusal in loaded order.
-func checkRunLocks(loaded, after []Task) error {
+func checkRunLocks(loaded, after []Task, vocab Vocabulary) error {
 	afterBySlug := make(map[string]Task, len(after))
 	for _, task := range after {
 		afterBySlug[task.Slug] = task
@@ -148,6 +149,9 @@ func checkRunLocks(loaded, after []Task) error {
 		}
 		now, kept := afterBySlug[before.Slug]
 		if RunHolds(before) {
+			if kept && endsAsSketch(before, now, vocab, removedDone) {
+				continue
+			}
 			if !kept || scopeChanged(before, now, removedDone) {
 				return &RunLockedError{Slug: before.Slug, Status: *before.Status}
 			}

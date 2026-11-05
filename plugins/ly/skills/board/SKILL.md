@@ -43,14 +43,14 @@ A new task is `draft`; a null status on a task releases it rather than clearing 
 
 Every entry carries `labels`, validated against two maps in the hub's `board.yaml`, each from label to description:
 
-- `types`: the type labels, such as `bug` and `enhancement`. A note carries exactly one, and a task one or more.
+- `types`: the type labels, such as `bug` and `enhancement`. A note carries exactly one, and a task one or more. Every board also has the built-in type `sketch`, which only lym writes.
 - `labels`: every other label, such as an area.
 
 Run `lym board labels` before choosing labels: it prints both maps in file order with their descriptions.
 Beside its type label, every entry carries a label for each lym module it touches; an entry that spans the whole tool takes the modules its work would change first.
 A label in neither map is refused; add it with `lym config board --set labels.<name>=<description>`, or edit the maps in the `lym config board` editor.
 A recipe name goes in `recipe`, never in a label: `tapestry`, `darn` or `motif`, empty meaning the hub's `default_recipe` in `board.yaml`, which is `darn` unless the hub changed it.
-A `motif` task runs Discussion alone: it stores the approved decision record on the entry, flags it `discussed`, lands no code and leaves the entry in status `discussed`, which nothing starts until a null status releases it.
+A `motif` task runs Discussion alone: it stores the approved decision record on the entry, flags it `discussed`, lands no code and makes the entry a Sketch, a note of the built-in type `sketch` (handle `S`) that keeps its module labels and never runs; triage breaks a Sketch down into tasks or a project.
 A run profile goes in `profile`, never in `run_settings`: `lym board profiles` prints the hub's profiles with one settings block per recipe, and a task without one takes its recipe's default profile, listed under `defaults`.
 
 ## Verbs

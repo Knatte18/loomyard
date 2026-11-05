@@ -360,7 +360,7 @@ func TestRunLock_BeamKindAndBeamChange(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := boardengine.CheckRunLocks([]boardengine.Task{before}, []boardengine.Task{tt.after})
+			err := boardengine.CheckRunLocks([]boardengine.Task{before}, []boardengine.Task{tt.after}, boardengine.Vocabulary{})
 			var beamErr *boardengine.BeamRunLockedError
 			if !errors.As(err, &beamErr) || !errors.Is(err, boardengine.ErrRunLocked) || !strings.Contains(err.Error(), "lym batten cancel locked") {
 				t.Errorf("CheckRunLocks error = %v; want a *BeamRunLockedError matching ErrRunLocked and naming lym batten cancel locked", err)
