@@ -2,86 +2,52 @@
 
 ## Code
 
-- `PATTERN-doc-go-documentation` — Writing a package's `doc.go`: it documents the package; a rule other code must follow is a PATTERN entry, never a `doc.go` paragraph.
-- `PATTERN-named-constants` — Writing a name or path that can go stale: one named constant, declared once and referenced everywhere, never a repeated literal.
-- `PATTERN-no-hard-coded-choice` — Choosing a language, engine or branch: lym hard-codes none; it is read from config, the repository's git state or a table row keyed by name. — [background](pattern/PATTERN-no-hard-coded-choice.md)
+- `PATTERN-code-conventions` — Writing code: a package's `doc.go` documents only that package; a name or path that can go stale is one named constant; no language, engine or branch is hard-coded. — [background](pattern/PATTERN-code-conventions.md)
 
 ## Paths and geometry
 
 - `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the worktree's weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
-- `PATTERN-lym-temp-root` — Creating temp file or dir: under `internal/lymtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lym-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered files and `.heddle` at a warp worktree's anchor; only `lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
-- `PATTERN-tracked-file-locks` — Tracked-file lock: path via `lock`. (test) — [background](pattern/PATTERN-tracked-file-locks.md)
+- `PATTERN-lym-files` — Placing a file, temp dir, lock or link: tracked under `_lym`, never-tracked under `.lym`, named only by `lymdirs`; temp under `lymtemp`, lock paths via `lock`, links via `fslink`. (test) — [background](pattern/PATTERN-lym-files.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
-- `PATTERN-fs-links` — Creating a filesystem link: only `internal/fslink`'s `CreateDirLink` or `CreateFileLink`; no `os.Symlink` or `os.Link` outside `internal/fslink`. (test) — [background](pattern/PATTERN-fs-links.md)
 
 ## CLI and config
 
-- `PATTERN-cli-cobra` — Adding CLI module: a cobra subtree under one root in `cmd/lym/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
-- `PATTERN-cliwire-sole-wiring` — Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
-- `PATTERN-config-layers` — Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; only `lym config reconcile` prunes unknown base-layer keys. — [background](pattern/PATTERN-config-layers.md)
-- `PATTERN-sparse-hub-base` — Writing a hub base file, from any package: only the units the hub tuned, never a template fill; only `internal/hubreconcile`'s one-time strip drops a template-equal unit.
-- `PATTERN-config-reinterpretation` — Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch.
+- `PATTERN-cli-cobra` — Adding or wiring a CLI module: a cobra subtree under one root in `cmd/lym/main.go`; standalone wiring only through `internal/cliwire`. (test) — [background](pattern/PATTERN-cli-cobra.md)
+- `PATTERN-config-layers` — Loading, writing or changing the meaning of config: layers only through `configengine`; a hub base file holds only tuned units; a meaning change ships a reinterpretation `hubreconcile` applies. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward and a test reaches it; no refusal, stencil or spec names a step agents' settings deny. (test) — [background](pattern/PATTERN-refusal-way-forward.md)
 
 ## Fabric and git
 
-- `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric". (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
-- `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process; destroying only in its `destroy.go`, hub writes via a hub `os.Root`, store gc only in `housekeeping.go`. — [background](pattern/PATTERN-fabric-git.md)
-- `PATTERN-gitrepo-client-boundary` — Running git: `gitexec.Run`/`runChecked`, raw only at pinned `//gitexec:raw` sites; in `internal/gitrepo`, local reads via `readGoGit` and `dotgit`; transients via `.git/info/exclude`, never `git add -f`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
-- `PATTERN-remote-refs-lock` — Writing remote-tracking refs by fetch, pull or push: under the repository's remote-refs lock via `gitrepo`, waiting while held; the pause gate, writes that take none and judges that hold it per the background. (test) — [background](pattern/PATTERN-remote-refs-lock.md)
-- `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along; a push refused after retry leaves a failed-push record and creel notice. A teardown's push of a weft branch it archives and deletes goes alone and only logs a refusal. (test) — [background](pattern/PATTERN-push-both-sides.md)
-- `PATTERN-slug-remote-order` — Touching a slug's pair or origin branches: under its teardown lock, shared for a pair push outside a removal, else exclusive, held by a teardown's detached child to its last remote step; an origin weft delete leases the tip read.
-- `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`; a producer creating or destroying a task worktree never runs inside it. (test) — [background](pattern/PATTERN-pair-teardown.md)
-- `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch, or merging a run's pull request: only in a run's Finalize, under `internal/parentlock`'s lock for that parent.
-- `PATTERN-owner-machine` — Run start, resume, push or landing: only if no other machine owns its entry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume. — [background](pattern/PATTERN-owner-machine.md)
-- `PATTERN-pair-parent` — Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.
+- `PATTERN-fabric-boundary` — Changing fabric or running git on warp or weft: only `internal/fabricengine`, called "fabric", which learns nothing of IDEs, shuttle, the board or heddle. (test) — [background](pattern/PATTERN-fabric-boundary.md)
+- `PATTERN-gitrepo-client-boundary` — Running git or writing remote-tracking refs: through `gitexec` and `gitrepo`, raw only at pinned sites; fetch, pull and push under the remote-refs lock. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
+- `PATTERN-pair-remote` — Pushing run records or tearing down a pair: the code branch goes along; a pair's remote steps hold the slug's teardown lock; teardown only via `internal/pairteardown`. (test) — [background](pattern/PATTERN-pair-remote.md)
+- `PATTERN-owner-machine` — Starting, resuming, pushing or landing a run, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf`. — [background](pattern/PATTERN-owner-machine.md)
+- `PATTERN-landing` — Landing on a local parent branch or deciding on a pull request: only in a run's Finalize under `internal/parentlock`'s lock; landingshed's one resolver decides the pull request. — [background](pattern/PATTERN-landing.md)
 - `PATTERN-github-auth` — Calling GitHub: auth only via internal/githubclient; no other production package runs gh; only lym selfreport create files an issue; only PR-Review, Finalize, `lym beam pr` and pair teardown open, reopen, merge or close a pull request; `lym beam pr` never merges. (test)
-- `PATTERN-fabric-isolation` — Changing fabric: it learns nothing of IDEs, shuttle, the board or heddle; a module reaches fabric through a general seam, never one tailored to it. — [background](pattern/PATTERN-fabric-isolation.md)
 
 ## Shed and loom
 
-- `PATTERN-shed-recipe-registry` — Adding producer, recipe row or block gate: one `Constructor` or `BlockGates` map in `shedrecipe`, bar `Implementer`'s; row values by key, side actions as `Command` rows, off switches per the background. — [background](pattern/PATTERN-shed-recipe-registry.md)
-- `PATTERN-loom-contract` — Adding a loom recipe: it declares `contract: loom`, checked by Shed's recipe loader; `lym loom` verbs serve loom runs only; a verb for some loom recipes refuses on others by the recipe's rows, never its name.
-- `PATTERN-project-record` — Changing a beam project's scope once its pawl run passed Preflight: only `lym loom decision add <beam-slug>` on its project record, never a board body edit; a member reads the record from the beam's worktree, never writes it.
-- `PATTERN-pull-request-mode` — Deciding if a landing uses a pull request: only landingshed's one resolver, from the receiving `beam.pull_request`, the entry's `pull_request` or a beam's pull-request record, the parent's GitHub rules, origin and task commits; no run setting carries it; a yes merges on GitHub.
-- `PATTERN-shed-driver` — Driving a shed run: generic verb bodies only in `internal/shedverbs`, the step-until-stop loop only in `internal/sheddriver`, run paths, ids and `Seed` only in `internal/shedrun`. (test) — [background](pattern/PATTERN-shed-driver.md)
-- `PATTERN-shed-stop-chain` — A shed run's stop: rule table, tackler, arbiter, then parent, for every recipe; a stop the driver's arbiter seam marks as judged first, by row and reason, skips the tackler; arbiter keys in shed.yaml, batten's overridable in batten.yaml, a loom recipe's own via its profile block.
-- `PATTERN-dobby-starts-runs` — Starting or driving a board task's run: its parent's dobby, from an empty status, in batten passes; a hand `lym batten run` is one pass.
-- `PATTERN-dobby-orch-pair` — Starting a worktree's dobby: only with its orch, through `orchcli.BeamUp`, or `orchcli.BeamUpWorktree` or a `lym beam start` child from a verb that needs the dobby live; never `dobbyengine.EnsureLive` or `SpawnDetached` alone.
-- `PATTERN-front-task` — Only fronttask files a front task and writes `front` and `on_land`; while one is open (empty or run status) dobby starts no other task in its worktree, and runs its `on_land` action from fronttask's closed table, on the subject's owner only; its project, kind and slug are fixed.
-- `PATTERN-adopt-hold` — On a takeover, `lym adopt` holds it, and each unstarted released task of the subject bar a front task, with a `pauserecord` hold-caller entry; only the green adopt check of the subject lifts it, never dobby; by hand, `lym tender resume` or `lym batten cancel`.
-- `PATTERN-transient-stop` — Marking a failure transient: only `internal/shedengine`'s mark, translated by `internal/shedtransient` at a producer or step-bootstrap boundary; never on a gate verdict.
-- `PATTERN-friction-capture` — Halting or crash-resuming a run, or refusing in webster: Go writes a note via `internal/friction`; none is archived before a reflection covers it. (test)
+- `PATTERN-shed-recipe-registry` — Adding a producer, recipe row, block gate or loom recipe: one `shedrecipe` map, row values by key; a loom recipe declares `contract: loom`. — [background](pattern/PATTERN-shed-recipe-registry.md)
+- `PATTERN-shed-driver` — Driving or stopping a shed run: verbs in `shedverbs`, the loop in `sheddriver`, paths in `shedrun`, shared machinery in shed; one stop chain; transient marks only via `shedengine`. (test) — [background](pattern/PATTERN-shed-driver.md)
+- `PATTERN-dobby-runs` — Starting or holding a board task's run: only its parent's dobby, started with its orch; front tasks only via `fronttask`; an adopt hold lifts only on a green adopt check. — [background](pattern/PATTERN-dobby-runs.md)
+- `PATTERN-run-records` — Writing a run's friction note, usage record or project record: only its one writer, `internal/friction`, shed's usage writer or `lym loom decision add`. (test) — [background](pattern/PATTERN-run-records.md)
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
-- `PATTERN-gate-slot` — Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test) — [background](pattern/PATTERN-gate-slot.md)
-- `PATTERN-gate-fixer` — Clearing a failed gate with a cold agent: only `gatefixer`, one fixer per failed evaluation; Go's re-run of the gate judges, never the fixer; a fixer's own gate calls spawn none; a runner crash gets none.
+- `PATTERN-gate-slot` — Running or clearing a gate: in held `internal/gateslot` slots, verify via `verifytree.Verify`; a cold fixer only via `gatefixer`, judged by Go's re-run. (test) — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe, halt note or raddle proposal, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
-- `PATTERN-shed-shared-machinery` — Adding what every phase machine needs: once, in shed's packages, never in one recipe's or module's own package.
-- `PATTERN-run-usage-record` — Recording an agent session's tokens and cost per session under a run's `_lym/usage`: only shed's one usage writer, one file per session; a cost report reads token counts and session costs only from those files, never from a review round's usage record.
 
 ## Agents and prompts
 
-- `PATTERN-stencil-ownership` — Reading prompt or spec: at call time via `stencilstore`, never embedded, bar the orch role, fixed in `contracts/orchrole` with no board copy; an instruction file points at another producer's format contract, never restating it. — [background](pattern/PATTERN-stencil-ownership.md)
-- `PATTERN-engine-blocks` — Writing engine-specific text into a stencil more than one engine renders: in an engine block, read for the seat's engine by `internal/stencilstore`'s one resolver.
-- `PATTERN-parent-directive` — Writing a spawned role's stencil: it renders the parent and edit directives; its skills and color go on the launch spec, never asked of the agent. (test) — [background](pattern/PATTERN-parent-directive.md)
-- `PATTERN-agent-messaging` — Messaging another session from an agent: only through creel, never an engine's own tool, bar a fork addressed in-session under ForkSubagents. (test)
+- `PATTERN-stencil-ownership` — Reading or writing a prompt, spec or stencil: read at call time via `stencilstore`; engine text in engine blocks; a spawned role's stencil renders the parent and edit directives. (test) — [background](pattern/PATTERN-stencil-ownership.md)
+- `PATTERN-heddle-instructions` — Rendering or writing agent instructions: heddle entries only via `heddleengine`; lym's own instructions in its code, stencils, specs or heddle's shipped layer. — [background](pattern/PATTERN-heddle-instructions.md)
+- `PATTERN-reed-panes` — Spawning an agent or touching its pane: an interactive tmux session through reed, never headless; text typed only via guarded paths; the wait mark is display only. (test) — [background](pattern/PATTERN-reed-panes.md)
+- `PATTERN-agent-addressing` — Naming or messaging an agent: names only via `internal/agentname`; messages only through creel. (test) — [background](pattern/PATTERN-agent-addressing.md)
 - `PATTERN-shuttle-provider-seam` — Touching a provider or shuttle run: specifics only under `internal/shuttleengine/<engine>`, model-specs via `NewModelChoice`, a strand stopped via the stop verb, a negative finish after `allOutputFilesExist`. (test) — [background](pattern/PATTERN-shuttle-provider-seam.md)
-- `PATTERN-interactive-spawn` — Spawning an agent: an interactive tmux session driven through reed, never headless `claude` with `-p` or `--print`. (test) — [background](pattern/PATTERN-interactive-spawn.md)
-- `PATTERN-pane-text-injection` — Typing into an agent pane: reed's guarded paste-submit, an interrupt key only via shuttle's guards, the guarded picker close and dismissal included, a covered session held; the orch pane and creel journal only via creel. (test) — [background](pattern/PATTERN-pane-text-injection.md)
-- `PATTERN-agent-name` — Forming, parsing or matching an agent name: only `internal/agentname`, a strand's full name formed once by reed; a spawned role is its module's constant.
-- `PATTERN-wait-mark-display-only` — Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
 - `PATTERN-shell-guard-table` — Guarding a shell command or building a pane-shell string: only `internal/shellguard`'s table, every engine rendering every row, and `internal/shell`, importing only stdlib.
-- `PATTERN-heddle-instructions` — Rendering heddle entries into a file or prompt: only via `heddleengine`, from its shipped layer, Bolt's `heddle.json` and, under `lym_override`, lym overrides; `heddle.json` written only via `lym heddle` or its replayer; fabric names no heddle file. — [background](pattern/PATTERN-heddle-instructions.md)
-- `PATTERN-lym-instructions-in-code` — Writing lym's own instructions to agents: in lym's code, its stencils and specs, or an entry of heddle's shipped layer in `internal/heddleengine`; never in a hub's `heddle.json`, which holds only a repository's own instructions.
 
 ## Processes and waits
 
-- `PATTERN-spawn-observability` — Starting OS process from `lym`: log the spawn via `internal/logger`; logging in a loop or poll follows its Level policy. — [background](pattern/PATTERN-spawn-observability.md)
-- `PATTERN-run-process-owner` — A run's processes: registered in `internal/runproc`, ended only via `runproc`'s `End`, `EndSparing` or `EndRole`. — [background](pattern/PATTERN-run-process-owner.md)
-- `PATTERN-reap-children` — Starting a child process: its starter waits on it, by `cmd.Wait` or `proc.Reap`, never only releasing it; a process that re-execs itself calls `proc.ReapInheritedChildren` before it starts a child.
-- `PATTERN-daemon-wakeups` — Unbounded wait wakes at most once a second and backs off while idle. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
-- `PATTERN-keep-warm-cap` — Bounding a wait an agent blocks on: the cap from `shuttleengines`' one keep-warm resolver for the caller's role, never a constant bar its fallback; a long gate run goes on in a detached runner the same command joins.
+- `PATTERN-child-processes` — Starting or ending a process: log the spawn via `internal/logger`; its starter waits on it; a run's processes register in `internal/runproc` and end only through it. — [background](pattern/PATTERN-child-processes.md)
+- `PATTERN-daemon-wakeups` — Waiting: an unbounded wait wakes at most once a second and backs off while idle; a wait an agent blocks on takes its cap from the keep-warm resolver. (test) — [background](pattern/PATTERN-daemon-wakeups.md)
 
 ## Testing
 

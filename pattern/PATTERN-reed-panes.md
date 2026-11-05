@@ -1,4 +1,27 @@
-# PATTERN-pane-text-injection
+# PATTERN-reed-panes
+
+An agent is spawned as an interactive tmux session through reed, never headless; text reaches its pane only through guarded paths; the wait mark is display only.
+
+## Interactive spawn
+
+Rule: Spawning an agent: an interactive tmux session driven through reed, never headless `claude` with `-p` or `--print`. (test)
+
+Every agent lym spawns runs as an interactive session in a tmux pane, placed by reed and driven by shuttle, never as a headless `claude -p` or `claude --print` process.
+Interactive sessions keep subscription coverage, while headless use is moving to API billing, so the reason is economic rather than technical.
+
+- The scan in `cmd/lym/interactivespawn_test.go` parses every production Go file of the module, `tools/` included, and reports three shapes:
+  a call that takes a `-p`, `--print` or `--print=…` string literal and another argument naming claude, which is a string literal whose base name is `claude` or `claude.exe`, or an identifier, selector or call whose name holds `claude` in any case;
+  a string literal whose whitespace tokens, quote characters trimmed, name claude and then carry a print flag;
+  and any string literal under `internal/shuttleengine/claudeengine` carrying a print-flag token, since that engine builds claude's launch lines from flag fragments.
+- Comments are never read, so documentation naming the forbidden form passes.
+- The scan's allowlist is keyed by file and admits every finding in that file, with a reason naming why the flag there launches no agent.
+- Bound: the scan sees static shapes only, so a flag built at runtime, or a launch line assembled from fragments outside the claude engine's directory, passes.
+- Bound: test files are not scanned, so a test may hold the forbidden text as data.
+- An agent session's own shell is guarded too: `internal/shellguard`'s headless-claude row refuses a Bash launch of claude with a print flag in every run, and its steer names a subagent through the Agent tool as the way to hand work off, since a subagent runs inside the session and shows in its pane.
+
+## Pane text injection
+
+Rule: Typing into an agent pane: reed's guarded paste-submit, an interrupt key only via shuttle's guards, the guarded picker close and dismissal included, a covered session held; the orch pane and creel journal only via creel. (test)
 
 Text lym types into an agent pane never merges with, submits or wipes an operator's draft, and its picker dismissal holds while an operator was active in the pane within `operator_quiet_s`, which is what protects an operator's open menu.
 The bounded exception is a lone stray character in an idle box: the guard clears it once per send attempt, behind a full guard reading, and a character that survives is submitted at the head of the message.
@@ -27,7 +50,7 @@ The bounded exception is a lone stray character in an idle box: the guard clears
   Each names its keys itself and is not text for a draft box.
   `Runner.Interrupt` and `Runner.Inject` stay outside this rule as explicit key deliveries, but their interrupt key follows the guarded interrupt below.
 
-## Guarded interrupt
+### Guarded interrupt
 
 An interrupt key reaches an agent pane only through shuttle's guarded interrupt and its two guarded picker paths below, and every other path refuses it.
 
@@ -46,7 +69,7 @@ An interrupt key reaches an agent pane only through shuttle's guarded interrupt 
 - `Runner.InterruptRestoring` is a second entry point: its key goes only through the guarded interrupt, and its clear is the engine's restored-prompt clear of the box, never an interrupt key.
 - The tests that pin it: `TestRun_Interrupt_PlaysEscape`, `TestRunner_InterruptRestoring`, `TestGuardedPickerClose`, `TestGate_RepromptOverPicker`, `TestDismissPicker_Guards` and `TestRunner_Inject_RefusesAnyInterruptKey` in `internal/shuttleengine`.
 
-## A pause holds prompts
+### A pause holds prompts
 
 Typing a line into a session a pause covers: shuttle's send refuses with `ErrPaused` by the target's own slug, read after the idle wait, and a conditioned send's caller reads coverage itself; of the production runners that type a line, only the orch runner is told no pause geometry and reads uncovered, so `BeamUp`'s start lines are never held; the caller holds it until the resume or claims the session.
 
@@ -55,7 +78,7 @@ Typing a line into a session a pause covers: shuttle's send refuses with `ErrPau
   Keys stay outside it: an interrupt, an inject and the pause's own Esc are key deliveries under the rule above.
 - The tender and creel runners are told the hub's pause geometry with an empty slug, so each send judges its target by the target's own strand name; a prime name reads the empty slug, which only a hub entry covers.
 
-### What each caller does with `ErrPaused`
+#### What each caller does with `ErrPaused`
 
 - The gate loop holds its boundary and its re-prompt.
 - The run start and the deferred prompt wait out the pause and resend.
@@ -66,11 +89,11 @@ Typing a line into a session a pause covers: shuttle's send refuses with `ErrPau
 - The start's segment-color line is logged and dropped.
 - `lym loom resume` refuses with the pause's way forward.
 
-### Enforcement
+#### Enforcement
 
 Review discipline and the shuttle runner's send tests; no scan enforces it.
 
-## The orch pane
+### The orch pane
 
 Only creel types into the orch session from Go, through its `Delivery` seam.
 
@@ -78,22 +101,28 @@ Only creel types into the orch session from Go, through its `Delivery` seam.
 - Reed's `/rename` repair keeps its own guard.
 - Every other module posts a notice or injects text through creel.
 
-## The creel store
+### The creel store
 
 Only the creel daemon in `internal/creelengine` writes the creel journal, and that engine reaches an agent's pane only through its `Delivery` seam.
 
-### Journal
+#### Journal
 
 - The journal writer is unexported in `internal/creelengine`, and the daemon's `Run` is its only caller.
 - Checked by review.
 
-### Panes
+#### Panes
 
 - Every keystroke goes through the `Delivery` seam, which `internal/creelcli` implements over shuttle.
 - `internal/creelengine` imports neither `internal/reedengine` nor `internal/shuttleengine` or any package under it, checked by `TestCreelStore_DeliverySeamImports`.
 - `internal/creelengine` names no tmux command, checked by review like the journal writer.
 
-### Layering
+#### Layering
 
 Creel decides what is delivered and when, shuttle knows the provider, and reed does the keystrokes.
 Reed never imports creel.
+
+## Wait mark display only
+
+Rule: Marking a pane waiting: only reed's `SetWaitMark`; no Go decision reads `@lym_wait` or `@lym_wait_start`.
+
+Held by review alone; no test enforces it.

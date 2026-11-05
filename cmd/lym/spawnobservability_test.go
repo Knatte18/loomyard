@@ -1,4 +1,4 @@
-// spawnobservability_test.go enforces `PATTERN-spawn-observability`'s
+// spawnobservability_test.go enforces `PATTERN-child-processes`'s
 // mechanical half: a production (non-_test.go) .go file under internal/ or cmd/ that contains a real
 // exec.Command/exec.CommandContext call must either import internal/logger, or carry a written-reason
 // entry in spawnObservabilityAllowedSpawners.
@@ -142,7 +142,7 @@ func TestSpawnObservability_ProductionSpawnsAreLogged(t *testing.T) {
 
 	sort.Strings(failures)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-spawn-observability` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-child-processes` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

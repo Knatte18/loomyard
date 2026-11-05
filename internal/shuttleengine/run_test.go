@@ -827,7 +827,7 @@ func TestRunner_Start_AddStrandFailure_CleansRunDir(t *testing.T) {
 //
 // By then AddStrand has put a real pane and a real provider process on the substrate, so the
 // RemoveStrand that follows is a live-substrate teardown, and a RemoveStrand that ERRORS is
-// precisely "a teardown that did not confirm clean", which PATTERN-spawn-observability requires on
+// precisely "a teardown that did not confirm clean", which PATTERN-child-processes requires on
 // internal/logger at Warn. It used to go to the bare log package, which the durable Info+ trace sink
 // never captures, so the one record of a leaked live pane existed only on an ephemeral stderr with no
 // trace correlation id on it.

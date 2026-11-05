@@ -51,7 +51,7 @@
 // The mark is display only,
 // so reed stores nothing for it and the options die with the pane;
 // the status bar renders it on the strand's own button, as " ⏳<label> <elapsed>m" appended to the strand's name with tmux computing the elapsed minutes at each refresh,
-// and no Go decision reads it (PATTERN-wait-mark-display-only).
+// and no Go decision reads it (PATTERN-reed-panes).
 // The options are set only through SetWaitMark, by shuttleengine and the landing wait-mark callback, which marks the verify and the parent lock wait with the label `parent lock <branch>`.
 //
 // Engine.SetCheckMark marks the session with a check's progress: it sets the session user options @lym_check (the text), @lym_check_state (running, green or failed) and @lym_check_start (epoch seconds the step in flight started, unset for none), or unsets all three on an empty text.

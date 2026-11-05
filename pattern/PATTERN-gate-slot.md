@@ -1,5 +1,11 @@
 # PATTERN-gate-slot
 
+This cluster guards running and clearing a gate: in held `internal/gateslot` slots, verify via `verifytree.Verify`, and a cold fixer only via `gatefixer`, judged by Go's re-run.
+
+## Gate slot
+
+Rule: Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test)
+
 Running a gate build or test holds `internal/gateslot` slots, so the hub never runs more at once than its configured count.
 
 - A gate build or test runs only holding `internal/gateslot` slots, in one of two places.
@@ -11,19 +17,19 @@ Running a gate build or test holds `internal/gateslot` slots, so the hub never r
   Enforced by `cmd/lym/nocgo_test.go`.
 - The hub's shared build step runs once per `lym gate test` call, inside the slots of the first tier that opts into it.
 
-## Trimpath-safe root
+### Trimpath-safe root
 
 Code a gate run builds never locates the module root from a `runtime.Caller` path alone, because `-trimpath` strips the absolute path that call would return.
 
-## Gate carry
+### Gate carry
 
 A test tier is skipped as already green only on `lym gate test`'s own green record, and only over a clean tree.
 
-## Self-check parity
+### Self-check parity
 
 A mechanical gate's **closure** and its CLI self-check verb call the same package function for every mode.
 
-### Pairs
+#### Pairs
 
 - Discussion-Write's and Discussion-Burler-Fix's gates and `validate-discussion`: `loomshed.ValidateDiscussion` (`discussionparser.Validate`, `discussionparser.CheckDecisionIDs`, the history check `discussionparser.CheckAddedDecisionsKept`, and, for a Discussion-Write record, the citation check `citationFindings` over `discussionparser.Citations` and `discussionparser.CheckRelevant`).
 - Plan-Burler-Fix's gate, a Plan-Write run's gate whose record carries no fork authorization and `validate-plan`: `loomshed.ValidatePlan` (`planindex.Index.ValidateFormat`, implemented by `planglyph`, plus the done-card checks).
@@ -39,7 +45,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
   The Webster-Burler-Fix round gate (`loomshed.NewVerifyGate`) is the pair's third caller when it is told a merge base.
 - Every burler round's `review` gate and `lym burler validate-review`: `burlerengine.CheckReviewFile`, over `ParseReview`.
 
-### Rules
+#### Rules
 
 - Adding a mechanical gate means adding its verb and its parity check in the same task.
 - The verb's `--require-approved` mode, running the full check set, has no recipe counterpart by design.
@@ -47,7 +53,7 @@ A mechanical gate's **closure** and its CLI self-check verb call the same packag
   The flag's guarantee rests on that seam failing loudly, never on a row re-checking it.
 - Moving a gate from a standalone row into a producer's own closure changed *where* the call sits, never the property this section binds.
 
-## Verified tree
+### Verified tree
 
 Every verify site runs the call rendered from a gate of the hub's `gate.yaml` through `verifytree.Verify`: the `final` gate's at the webster gate and `lym webster verify`, the `round` gate's at the Webster-Burler-Fix round gate, and the `landing` gate's at Parent-Align, Finalize, Code-Burler-Fix and Darn-Write.
 
@@ -73,7 +79,13 @@ Every verify site runs the call rendered from a gate of the hub's `gate.yaml` th
 - `internal/cardverify/runner.go` reruns a card's own `**Verify:**` command through `verifyrun` directly and is no plan-verify site.
 - `internal/battencli/land.go` runs the landing config's `deploy` command through `verifyrun` directly and is no plan-verify site: it verifies no tree.
 
-### Enforcement
+#### Enforcement
 
 `cmd/lym/verifiedtree_test.go`, a tripwire rather than a completeness proof.
 Each site names `verifytree.Verify` and also names a `Hold` it passes, no other production file calls `verifyrun.Run`, and none names the retired `verify-pending` marker.
+
+## Gate fixer
+
+Rule: Clearing a failed gate with a cold agent: only `gatefixer`, one fixer per failed evaluation; Go's re-run of the gate judges, never the fixer; a fixer's own gate calls spawn none; a runner crash gets none.
+
+Held by review alone; no test enforces it.

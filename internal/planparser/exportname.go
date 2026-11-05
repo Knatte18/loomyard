@@ -39,7 +39,7 @@ func CheckExportName(handle string) []ValidationError {
 		findings = append(findings, ValidationError{
 			Check:  fabricVocabularyNameCheck,
 			Ref:    handle,
-			Detail: fmt.Sprintf("the export %q declares the member %q, which breaks PATTERN-fabric-vocabulary: it is %s; way forward: rename the member", handle, member, broken),
+			Detail: fmt.Sprintf("the export %q declares the member %q, which breaks PATTERN-fabric-boundary: it is %s; way forward: rename the member", handle, member, broken),
 		})
 	}
 	return findings

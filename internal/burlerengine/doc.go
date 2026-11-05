@@ -247,7 +247,7 @@
 // burlerengine never imports the fabric module and never constructs a _lym/...
 // path — the results return the review/fixer-report paths the caller supplied (resolved absolute).
 // Committing them is the loop owner's job (loom's Burler review and fix rows plus the Bouncer segments), via the fabric engine in-process.
-// See PATTERN-fabric-git.
+// See PATTERN-fabric-boundary.
 // The one exception an agent DOES commit is its own code under FixScopeSource — that is an ordinary repo commit, not a fabric operation.
 //
 // # Cluster fan-out (fork subagents)

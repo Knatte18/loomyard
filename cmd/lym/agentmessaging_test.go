@@ -1,4 +1,4 @@
-// agentmessaging_test.go pins PATTERN-agent-messaging: no stencil, prompt fixture or Go message text names Claude Code's SendMessage tool,
+// agentmessaging_test.go pins PATTERN-agent-addressing: no stencil, prompt fixture or Go message text names Claude Code's SendMessage tool,
 // so a role that has a parent can run on an engine without that tool.
 
 package main

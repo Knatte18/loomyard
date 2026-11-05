@@ -1,4 +1,4 @@
-// interactivespawn_test.go enforces `PATTERN-interactive-spawn`: no production Go file spawns claude headless, with `-p` or `--print`.
+// interactivespawn_test.go enforces `PATTERN-reed-panes`: no production Go file spawns claude headless, with `-p` or `--print`.
 // It parses each file, so a comment naming the forbidden form never counts.
 
 package main
@@ -20,7 +20,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedHeadlessSpawn is the `PATTERN-interactive-spawn` allowlist, keyed by module-relative file path.
+// allowedHeadlessSpawn is the `PATTERN-reed-panes` allowlist, keyed by module-relative file path.
 // An entry admits every finding in its file, and its reason names why the print flag there launches no agent.
 var allowedHeadlessSpawn = []scankit.Entry{}
 
@@ -156,7 +156,7 @@ func TestInteractiveSpawn_NoHeadlessClaude(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "interactive spawn scan")
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-interactive-spawn` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-reed-panes` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

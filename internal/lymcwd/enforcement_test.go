@@ -575,7 +575,7 @@ var weftnameImportOwners = map[string]bool{
 	"internal/gitkit":       true,
 	// internal/weftname's own external-package test imports the package it tests.
 	"internal/weftname": true,
-	// internal/hubforge is in the narrower weftname-import subset PATTERN-fabric-vocabulary
+	// internal/hubforge is in the narrower weftname-import subset PATTERN-fabric-boundary
 	// already names, alongside internal/fabricengine, internal/fabriccli
 	// and internal/gitkit -- this map is an allowlist of what may import weftname, not an
 	// assertion of what does, so this entry is correct even though hub.go imports no weftname

@@ -5,7 +5,7 @@
 // # Layering
 //
 // Creel decides what is delivered and when, shuttle knows the provider and its idle check and safe send, and reed knows the pane and does the keystrokes: creel → shuttle → reed → tmux.
-// The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-pane-text-injection` pins that with an import scan.
+// The engine imports neither reed nor shuttle, and every keystroke goes through the Delivery seam; `PATTERN-reed-panes` pins that with an import scan.
 // Delivery lists the hub's strands, asks whether a strand is idle, asks whether a pause covers it, claims a covered strand into its pause for the interrupt, types one line into its pane, runs one command of a closed set in its session and sends the guarded interrupt.
 // Each strand it lists carries `CreelHooks`, the mark shuttle's launch set when the session runs creel's hook delivery; every strand without it is a pane-mail strand, whatever its engine, so its posts keep the pane path.
 // Its idle answer also carries `NoTurn`, whether no turn is in progress whatever the input box holds, and `TurnEndedAt`, when the hook-derived reading behind it began, zero when the pane decided.

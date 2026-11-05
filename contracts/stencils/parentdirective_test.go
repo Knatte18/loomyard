@@ -1,4 +1,4 @@
-// parentdirective_test.go pins PATTERN-parent-directive: every spawned role's opening stencil
+// parentdirective_test.go pins PATTERN-stencil-ownership: every spawned role's opening stencil
 // renders the parent directive, and no stencil outside the orch family tells an agent to ask the
 // operator in its pane.
 // It also pins the entry's edit-directive clause: every opening stencil renders the edit directive, and no other stencil restates the rule.
@@ -109,7 +109,7 @@ func registeredBodies(t *testing.T) map[string]string {
 
 // TestStencils_OpeningStencilsRenderParentDirective fails when a role's opening stencil is unregistered or lacks the parent directive marker.
 //
-//testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -122,7 +122,7 @@ func TestStencils_OpeningStencilsRenderParentDirective(t *testing.T) {
 
 // TestStencils_OpeningStencilsRenderEditDirective fails when a role's opening stencil is unregistered or lacks the edit directive marker.
 //
-//testtiming:keep pins PATTERN-parent-directive's marker on every role's opening stencil, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-stencil-ownership's parent-directive marker on every role's opening stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_OpeningStencilsRenderEditDirective(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -154,7 +154,7 @@ func TestStencils_NoEditRuleRestatement(t *testing.T) {
 
 // TestStencils_NoUnboundedAskOperator fails for any registered stencil outside the orch family with an ask-the-operator sentence that carries no prohibition word.
 //
-//testtiming:keep pins PATTERN-parent-directive's ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on an unbounded ask-the-operator sentence in a spawned role's stencil, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoUnboundedAskOperator(t *testing.T) {
 	tiergate.Require(t, 0)

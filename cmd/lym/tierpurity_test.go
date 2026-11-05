@@ -42,7 +42,7 @@ var allowedSpawners = []scankit.Entry{
 	{Key: "internal/reedengine/socketfile_unix_test.go", Why: "references the kit's spawn-free BindStaleSocket, which binds and closes a datagram socket file and starts no server"},
 	{Key: "internal/shuttleengines/shuttleengines_test.go", Why: "references the kit's spawn-free ServerEnviron, a pure environment filter that starts no server"},
 	{Key: "cmd/lym/spawnobservability_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as its own scan data (Live-Substrate Spawn Observability guard)"},
-	{Key: "cmd/lym/interactivespawn_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as fixture source for the headless-spawn scan, which only parses it (`PATTERN-interactive-spawn` guard)"},
+	{Key: "cmd/lym/interactivespawn_test.go", Why: "contains the banned `exec.Command`/`exec.CommandContext` token strings as fixture source for the headless-spawn scan, which only parses it (`PATTERN-reed-panes` guard)"},
 }
 
 // allowedTmuxkitOutsideTmuxTier lists tier1 test files that reference a tmuxkit export, each with a reason they start no server.

@@ -1,6 +1,6 @@
 // baretemp_test.go enforces the Lym Temp Root Invariant: no Go file outside internal/lymtemp creates a temp file or directory directly in the bare system temp directory.
 // A creation goes through lymtemp.MkdirTemp or lymtemp.CreateTemp, so it lands in the process run directory and is removed with it.
-// Modelled on hermeticenv_test.go and tmuxisolation_test.go; see `PATTERN-lym-temp-root`.
+// Modelled on hermeticenv_test.go and tmuxisolation_test.go; see `PATTERN-lym-files`.
 
 package main
 
@@ -108,7 +108,7 @@ func TestBareTemp_NoCreationInTheBareSystemTempDirectory(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 1, "bare temp scan")
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-lym-temp-root` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-lym-files` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

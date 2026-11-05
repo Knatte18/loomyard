@@ -2,7 +2,7 @@
 // internal/websterengine's production source never constructs a raw
 // gitrepo handle or calls gitexec.Run directly, beyond the one grandfathered read-only exemption
 // this file names.
-// See `PATTERN-fabric-git` — the "Known gap, tracked" clause
+// See `PATTERN-fabric-boundary` — the "Known gap, tracked" clause
 // internal/websterengine's migration onto internal/fabricengine's code-side methods closes.
 //
 // The guard bans the two CONSTRUCTION/CALL tokens (gitrepo.New(, gitexec.Run() — not per-verb
@@ -73,7 +73,7 @@ func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 			for _, tok := range rawGitMutationBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains banned raw-git-mutation token %q — mutating git in this package must dispatch through internal/fabricengine's code-side methods (see `PATTERN-fabric-git`), or add a rawGitMutationAllowlist entry in cmd/lym/rawgitmutation_test.go with a reason if this is a new grandfathered read-only exemption",
+						"%s: contains banned raw-git-mutation token %q — mutating git in this package must dispatch through internal/fabricengine's code-side methods (see `PATTERN-fabric-boundary`), or add a rawGitMutationAllowlist entry in cmd/lym/rawgitmutation_test.go with a reason if this is a new grandfathered read-only exemption",
 						f.Rel, tok,
 					))
 				}
@@ -85,6 +85,6 @@ func TestNoRawGitMutation_WebsterProductionSource(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-fabric-git` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-boundary` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }

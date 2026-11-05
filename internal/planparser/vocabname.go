@@ -33,7 +33,7 @@ func CheckFabricVocabularyName(plan *Plan) []ValidationError {
 				Card:  cardID(card),
 				Ref:   handle,
 				Detail: fmt.Sprintf(
-					"card %s declares the member %q, which breaks PATTERN-fabric-vocabulary: it is %s; rename the member",
+					"card %s declares the member %q, which breaks PATTERN-fabric-boundary: it is %s; rename the member",
 					cardID(card), member, broken),
 			})
 		}

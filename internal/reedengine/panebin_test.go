@@ -1,5 +1,5 @@
 // panebin_test.go hermetically covers panebin.go's composition: paneBinPrelude and composePaneLaunchLine, driven directly against injected inputs with no tmux and no process spawned.
-// Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path, which PATTERN-spawn-observability bars re-exec'ing, so no case here reads it.
+// Every case passes a stub executable lookup: under go test the live os.Executable() value is the test binary's path, which PATTERN-child-processes bars re-exec'ing, so no case here reads it.
 // The stageLaunchScript cases at the end cover the per-strand launch script file.
 
 package reedengine

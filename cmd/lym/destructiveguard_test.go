@@ -2,7 +2,7 @@
 // internal/fabricengine's production source contains no destructive primitive call outside
 // destroy.go — the one file the Fabric Destruction Chokepoint Invariant names as permitted to
 // perform one.
-// See `PATTERN-fabric-git`.
+// See `PATTERN-fabric-boundary`.
 //
 // This guard clones cmd/lym/rawgitmutation_test.go's machinery wholesale: the module-relative scan-package list, the raw-substring banned-token slice, the per-file scankit allowlist keyed by module-relative slash-separated path with a reason as its value, and the minimum-scanned-files floor;
 // scankit supplies the module root and the production-file walk.
@@ -219,7 +219,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 			for _, tok := range destructiveGuardBannedTokens {
 				if strings.Contains(content, tok) {
 					failures = append(failures, fmt.Sprintf(
-						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see `PATTERN-fabric-git`), or add a destructiveGuardAllowlist entry in cmd/lym/destructiveguard_test.go with a reason if this is a new audited exemption",
+						"%s: contains banned destructive-bypass token %q — a destructive primitive must be reached only through internal/fabricengine/destroy.go's gate (see `PATTERN-fabric-boundary`), or add a destructiveGuardAllowlist entry in cmd/lym/destructiveguard_test.go with a reason if this is a new audited exemption",
 						f.Rel, tok,
 					))
 				}
@@ -231,7 +231,7 @@ func TestNoDestructiveBypass_FabricengineProductionSource(t *testing.T) {
 	allow.RequireNoStale(t)
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-fabric-git` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-boundary` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

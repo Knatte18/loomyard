@@ -1,5 +1,11 @@
 # PATTERN-owner-machine
 
+Starting, resuming, pushing or landing a run, or picking a pair's parent: only on the entry's owner machine, read through hubgeom's one `ParentOf`.
+
+## Owner machine
+
+Rule: Run start, resume, push or landing: only if no other machine owns its entry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume.
+
 Starting, resuming, pushing or landing a run, bar the rest of a Finalize already past its parent-side merge, or acting on an entry after a wake: only on a machine that does not read the entry as owned by another, where owners sit only on the root project and on beam projects, a beam project with no owner recorded reads as owned by its parent's owner, every other entry reads as owned by its parent's owner, and the root of a hub with no prime owner recorded reads as owned by no other machine; its owner written only by `boardengine`'s owner setter; the owner verdict that gates a resume, a wake, a push or a landing judged against origin inside `ReconcileOrigin`, a start's read from the Bolt it just pulled, the re-read after an owner write's push from the Bolt it just pushed, the landing's parent-owner read from the Bolt its reconcile left, and a resume with origin unreachable reading the local Bolt; this machine's name only from `internal/machinename`.
 
 - A start, a resume, a claim and a landing proceed only when the entry does not read as owned by another machine.
@@ -19,13 +25,13 @@ Starting, resuming, pushing or landing a run, bar the rest of a Finalize already
   A resume with origin unreachable reads the local Bolt.
 - This machine's name comes only from `internal/machinename`.
 
-## Origin reconcile first
+### Origin reconcile first
 
 Acting on a run or a hub after an absence starts with `fabricengine`'s origin reconcile, so every verdict above reads the state origin holds.
 A loom run's commit and push of its pair start with the run-scope origin reconcile too.
 The one exception is a resume at Worktree-Teardown whose task worktree is gone: it runs no origin reconcile, judges the owner on the local board alone and writes no origin-owed marker, since the teardown only finishes what is left of the pair.
 
-## Passes
+### Passes
 
 A run is driven in passes, one `lym batten run` each, and a pass is either full or a continue pass.
 
@@ -35,8 +41,12 @@ A run is driven in passes, one `lym batten run` each, and a pass is either full 
 - A resume that judged its owner without origin leaves the origin-owed marker, bar a Worktree-Teardown resume whose task worktree is gone, which writes none;
   the marker stays until a pass that reached origin exits 0, so the passes stay full until origin has been reached.
 
-## Enforcement
+### Enforcement
 
 - `internal/machinename`'s sole-source scan fails on a production file outside the package that reads the hostname.
 - The reconcile, batten, loom, `InnerRun` and Finalize tests reach each check: `ReconcileOrigin`'s owned-elsewhere outcome, batten's start, resume and claim refusals, loom's `owned_elsewhere` start refusal, `InnerRun`'s owner pause, Finalize's `owner check:` halts and loom's pre-push stops.
 - Review covers the rest: who writes an owner, and which Bolt each verdict reads.
+
+## Pair parent
+
+Rule: Picking a new pair's parent for a board entry or reading an entry's owner through its parent: only `ParentBeam` and hubgeom's one `ParentOf`, never the acting worktree.

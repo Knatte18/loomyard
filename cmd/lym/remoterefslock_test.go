@@ -1,4 +1,4 @@
-// remoterefslock_test.go enforces `PATTERN-remote-refs-lock` for internal/fabricengine: a fetch there that writes remote-tracking refs goes through gitrepo, which takes the repository's remote-refs lock.
+// remoterefslock_test.go enforces `PATTERN-gitrepo-client-boundary` for internal/fabricengine: a fetch there that writes remote-tracking refs goes through gitrepo, which takes the repository's remote-refs lock.
 // The scan finds every git argument list holding "fetch" and fails on one that neither carries "--refmap=", which writes no tracking ref, nor sits in a function the allowlist names.
 
 package main
@@ -43,7 +43,7 @@ func TestRemoteRefsLock_FabricengineFetchesWritingTrackingRefsGoThroughGitrepo(t
 				}
 				if !allowlist.Allowed(f.Rel) && !allowlist.Allowed(f.Rel+":"+fn.Name.Name) {
 					position := f.FileSet().Position(literal.Pos())
-					t.Errorf("`PATTERN-remote-refs-lock` violated: %s:%d runs a git fetch that writes tracking refs outside gitrepo; use gitrepo's FetchWithArgs, which takes the remote-refs lock", f.Rel, position.Line)
+					t.Errorf("`PATTERN-gitrepo-client-boundary` violated: %s:%d runs a git fetch that writes tracking refs outside gitrepo; use gitrepo's FetchWithArgs, which takes the remote-refs lock", f.Rel, position.Line)
 				}
 				return true
 			})

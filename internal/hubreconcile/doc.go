@@ -45,7 +45,7 @@
 //
 // A base file is a hub-wide module's hub file, a seed-only module's board file excepted, or a per-worktree module's repo default.
 // A seed-only module's board file takes each template change on every walk, against the template base kept beside it, and keeps every value the operator set.
-// Every write to one, by any package, holds only the units the hub tuned and never fills in a template value (PATTERN-sparse-hub-base);
+// Every write to one, by any package, holds only the units the hub tuned and never fills in a template value (PATTERN-config-layers);
 // only this walk's one-time strip drops a unit the template holds, behind the board marker.
 // lenses' template-equal entries are the one exception: a per-name entry equal to the template is dropped on every reconcile.
 //

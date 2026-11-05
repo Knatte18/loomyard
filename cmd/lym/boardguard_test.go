@@ -5,7 +5,7 @@
 // commit and push entry points for the records side instead (see the plan's "no import cycle from boardengine into
 // fabricengine" Shared Decision) — this guard is the mechanical enforcement that keeps a future
 // change from regressing that routing back into a raw git call.
-// See `PATTERN-fabric-git`.
+// See `PATTERN-fabric-boundary`.
 
 package main
 
@@ -67,14 +67,14 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 
 		if imp, bad := firstBannedBoardImport(f.AST(t, parser.ImportsOnly)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's commit and push entry points for the records side instead (see `PATTERN-fabric-git`)",
+				"%s: imports banned package %q -- route fabric-repo git operations through internal/fabricengine's commit and push entry points for the records side instead (see `PATTERN-fabric-boundary`)",
 				f.Rel, imp,
 			))
 		}
 
 		if token, bad := firstBannedGitSpawn(string(f.Data)); bad {
 			failures = append(failures, fmt.Sprintf(
-				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's commit and push entry points for the records side instead (see `PATTERN-fabric-git`)",
+				"%s: contains banned git shell-out token %q -- route fabric-repo git operations through internal/fabricengine's commit and push entry points for the records side instead (see `PATTERN-fabric-boundary`)",
 				f.Rel, token,
 			))
 		}
@@ -83,7 +83,7 @@ func TestBoardGuard_NoRawGitImportOrShellOut(t *testing.T) {
 	scankit.RequireFloor(t, scanned, boardGuardMinScannedFiles, "board guard")
 
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-fabric-git` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-fabric-boundary` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

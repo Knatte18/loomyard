@@ -1,9 +1,40 @@
-# PATTERN-fabric-git
+# PATTERN-fabric-boundary
+
+Changing fabric or running git on warp or weft goes only through `internal/fabricengine`, called "fabric", which learns nothing of IDEs, shuttle, the board or heddle.
+
+## Fabric vocabulary
+
+Rule: Naming the wired composite: "fabric". (test)
+
+**Fabric** names the wired composite.
+**warp** and **weft** name the two sides, used only where they must be told apart.
+"repo" alone never substitutes for warp.
+**`host` is retired** in the fabric sense, everywhere.
+
+- Owner set (bare weft and warp carve-out): `fabricengine`, `fabriccli`, `weftname`, `gitkit`, `hubforge`, `boardengine`, `configsync`, `fabricvocab`.
+- `internal/fabricvocab` is the home of the predicates the scan and the plan check share; neither declares its own.
+- Scope of the bare weft and warp rule outside the owner set:
+  - every `*_test.go` file anywhere in the module;
+  - every non-test `.go` file under `internal/` and the doc roots;
+  - every `.md` and `.yaml` file under `contracts/`, `docs/`, `plugins/`, `crucible/` and `cmd/`;
+  - every `.md` file under `internal/`;
+  - `README.md`, which may spell the public records repository's proper name `loomyard-weft` (`fabricvocab.BareTokenInRootDoc`) and no other side token.
+- Skipped: `_lym`, `.lym` and the repo-root `sandbox/` fixture tree, matched on the path's first segment, and the paths in `vocabScanAllowlist` in `internal/lymcwd/enforcement_test.go`.
+- `internal/configsync` keeps a narrower carve-out in its test files too: string literals and comments may name the sides, identifiers may not.
+- A non-owner file carries no side-named spelling, owner-set exports included.
+- `internal/weftname` is imported only from the owner set and from `internal/lymcwd`, which names a worktree's own anchor marker through `weftname.SiblingPath`.
+- Enforced by `TestEnforcement_FabricVocabulary`, which `internal/lymcwd/vocabscan_test.go` backs with fixtures.
+
+## Git through fabric
+
+Rule: Running git on warp or weft: only `internal/fabricengine`, in-process; destroying only in its `destroy.go`, hub writes via a hub `os.Root`, store gc only in `housekeeping.go`.
+
+Held by review alone; no test enforces it.
 
 Every git op lym's own code performs, on either weft or warp, goes through `internal/fabricengine` in Go, in-process — never raw git.
 The entry binds lym's own code only.
 
-## Scope
+### Scope
 
 - Weft-internal git and warp-to-weft topology both go through `fabricengine` only; read-only verbs (SHA, `status --porcelain`) are exempt.
 - The weft commit is Go calling the engine at a boundary the run controls.
@@ -12,19 +43,19 @@ The entry binds lym's own code only.
   Its one raw-git mutation is the stranded-branch exception: deleting a warp branch a failed step's trace proves was created (and, remotely, pushed).
   That makes no commit, so the commit clause above does not reach it.
 
-## Weft commits
+### Weft commits
 
 - **Board carve-out:** `boardengine`'s writes to `weft:main` may fire from any worktree or session, always through `Bolt`.
 - Every weft-commit caller passes a positive-only file list via `fabricengine.ScopedPathspec`.
 - `structuralNeverCommittedDirs` paths route to a third bucket in `classifyPaths`, and `Commit` hard-errors on a non-empty third bucket.
 
-## Excludes
+### Excludes
 
 - Junction exclusion is `.git/info/exclude` on both sides, mutated only via `fabricengine.mutateGitExclude`, never a tracked `.gitignore`.
 - The same holds for every warp-side writer: lym's own code never writes a `.gitignore` in a warp worktree, the prime included, and every ignore it needs there goes to `.git/info/exclude` through `fabricengine`.
 - The one weft-side `.gitignore` writer is `boardengine`'s render-manifest pattern in the Bolt checkout, the weft's `main` worktree; it removes the retired `*.lock` and `*.swaplock` lines.
 
-## Unwire and teardown
+### Unwire and teardown
 
 - `Unwire` removes warp junctions and exclude entries only; weft-side `_lym` and `.lym` content is always preserved.
 - Every teardown of an existing pair's weft branch (`Remove`, `Cleanup`) first tags the local weft tip `archive/<slug>/<tip>`, before it deletes the branch locally, and its detached child then pushes the tag to the weft origin before any delete on origin, so the run records stay reachable.
@@ -35,7 +66,7 @@ The entry binds lym's own code only.
 - `Remove` first commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the local archive tag holds them; `force` skips neither the commit nor the tag.
 - `Add` replaces a leftover remote weft branch only when an `archive/<slug>/*` tag covers its tip.
 
-## Destruction chokepoint
+### Destruction chokepoint
 
 `internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted a destructive primitive.
 
@@ -47,11 +78,11 @@ The entry binds lym's own code only.
 - A gate refusal is never silently discarded.
 - The `rec *Mutations` recorder is threaded into `destroy.go` only.
 
-## Write containment
+### Write containment
 
 `fabricengine` writes `_launchers` and the hub workspace file only through an `os.Root` opened on the hub.
 
-## Store housekeeping
+### Store housekeeping
 
 The hub's code store and records store never auto-gc, and `internal/fabricengine/housekeeping.go` is the only lym code that runs `gc` on them or writes their `gc.*` and `maintenance.*` keys.
 
@@ -59,7 +90,7 @@ The hub's code store and records store never auto-gc, and `internal/fabricengine
 - `Topology.Add` sets `gc.auto=0` and `maintenance.auto=false` in both stores' shared config once its pre-flight refusals pass.
   `maintenance.auto=false` stops git's post-command `git maintenance run --auto`, whose repack tasks under a `geometric` or `incremental` `maintenance.strategy` `gc.auto` does not govern.
 - `Topology.Remove` runs `housekeepStores` after a successful teardown: it sets the keys again, then runs a foreground, best-effort `git gc --auto` in each store.
-  A refused or failed Remove runs none of it, so the `PATTERN-pair-teardown` order is untouched.
+  A refused or failed Remove runs none of it, so the `PATTERN-pair-remote` order is untouched.
 - The gc is skipped, with the keys still written, while an in-flight probe reports another pair's live reed session or fails: a live step may hold objects no ref reaches yet.
   The probe rides on `Topology` through `SetInFlightProbe`, and `pairteardown`, the only production route to `Remove`, sets the real one; a nil probe reports none.
   A failure is a logged warning and never fails the caller.
@@ -69,3 +100,18 @@ The hub's code store and records store never auto-gc, and `internal/fabricengine
 - The keys disable git's automatic gc and maintenance for everyone using the store, the operator's manual git included.
   A manual `git gc` still works, and maintenance an operator registers with `git maintenance start` stays outside lym's control.
 - The gc threshold is git's default `gc.auto`; it is a variable only so a test can lower it, and is not operator configuration.
+
+## Fabric isolation
+
+Rule: Changing fabric: it learns nothing of IDEs, shuttle, the board or heddle; a module reaches fabric through a general seam, never one tailored to it.
+
+Held by review alone; no test enforces it.
+
+Fabric is `internal/fabricengine` and `internal/fabriccli`: the paired worktrees, their branches and their git.
+It serves every module the same way and knows none of them.
+
+- A seam fabric offers is general: a path, an event or a hook any module can take, never a call, field or type shaped for one consumer.
+  A seam only one module could use belongs in that module, which drives fabric through its general verbs.
+- Fabric learns nothing new of IDEs, shuttle, the board or heddle: it gains no import of their packages and no knowledge of their files or records.
+- An import fabric already holds of such a module is debt.
+  A change that touches it moves the knowledge out to the module, and never extends it.

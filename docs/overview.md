@@ -85,7 +85,7 @@ The ban is enforced at `go test` / CI time by `internal/lymcwd/enforcement_test.
 A second scan in the same file, `TestEnforcement_GeometryLiterals`, enforces the per-token ownership map itself: no policed geometry token may be constructed as a string literal outside its registered owner directory.
 A third scan, `TestEnforcement_FabricVocabulary`, enforces the separate Fabric Vocabulary Invariant: outside the owner set it names, the two side names may not appear in identifiers, string literals, or comments in production `.go` files, nor in the embedded agent prompt templates.
 The fabric-sense phrase form of `host` (e.g. `host repo`, `hostBranch` — never the bare word) is banned everywhere this test reaches, including inside the owner set — `host` is retired, not merely scoped.
-It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lymcwd`'s to own — see [PATTERN-fabric-vocabulary](../pattern/PATTERN-fabric-vocabulary.md).
+It shares this file's placement as a walk-helper convenience, not because the vocabulary rule is `lymcwd`'s to own — see [PATTERN-fabric-boundary](../pattern/PATTERN-fabric-boundary.md).
 
 See [PATTERN.md](../PATTERN.md) for details.
 
@@ -809,7 +809,7 @@ loom              phase machine: drive each phase through a Bouncer gate       [
 Regression sits beside this stack: the Drift rows are shed producers over seats, and the baseline capture is a detached registered process, not a gate tier (see [internal/driftengine](../internal/driftengine/doc.go)).
 
 The batten Shed nests loom's: it is its own recipe whose `Run-Shed` row seeds and drives a task's run, tapestry, motif, raddle, darn or sampler, as a child process and polls that run's own persisted status for the verdict, so there are two status files by design — the task's, committed on the task branch, and batten's own, durable under prime's own `_lym/shed/<slug>/` — each resuming independently.
-See [PATTERN-pair-teardown](../pattern/PATTERN-pair-teardown.md).
+See [PATTERN-pair-remote](../pattern/PATTERN-pair-remote.md).
 
 **Landing preconditions.** This task's relocation of run state requires no `lifecycle` or `loom` run in flight at landing: no migration reads or moves the old `.lym/lifecycle/<slug>/`/`_lym/loom/status.json` layouts, so a run left in flight under either old layout resumes nowhere afterward.
 It also requires deleting any already-deployed copy of `contracts/specs/loom-status-spec.md` by hand: `internal/stencilstore` never overwrites a hash-mismatched file, with no force-sync carve-out for specs, so a deployed copy predating this task's path rename never refreshes on its own — delete it, and the next run re-seeds it fresh.
@@ -833,7 +833,7 @@ See [PATTERN-cwd-resolution](../pattern/PATTERN-cwd-resolution.md) for the rule.
   See the `internal/beamcli` package documentation.
 - **skills and the parent directive** — a spawn's skills are named on the launch spec and delivered by the provider engine before the prompt, on the launch line or typed, never asked for by a stencil;
   every spawned role's opening stencil renders the parent directive, so a role escalates to its parent rather than the operator.
-  See [PATTERN-parent-directive](../PATTERN.md).
+  See [PATTERN-stencil-ownership](../PATTERN.md).
 - **provider-invariant** — `shuttle` runs Claude today through an **engine**;
   the verdict/output contract is provider-invariant, so a different model can be swapped in without touching the review machinery.
   Non-Claude is not a current priority.

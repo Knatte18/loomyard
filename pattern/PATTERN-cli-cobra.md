@@ -1,5 +1,11 @@
 # PATTERN-cli-cobra
 
+Adding or wiring a CLI module: a cobra subtree under one root in `cmd/lym/main.go`; standalone wiring only through `internal/cliwire`.
+
+## Cobra subtree
+
+Rule: Adding CLI module: a cobra subtree under one root in `cmd/lym/main.go`. (test)
+
 Every lym CLI module is a cobra subtree assembled under one root in `cmd/lym/main.go`.
 
 - Each module exposes `Command() *cobra.Command` and `RunCLI(out io.Writer, args []string) int`.
@@ -20,11 +26,11 @@ Every lym CLI module is a cobra subtree assembled under one root in `cmd/lym/mai
 - The global `--envelope` flag, declared by `clihelp.InstallReadableOutput`, keeps the full JSON envelope where an operator verb on a terminal prints its readable summary.
   A command's own local `--envelope` flag, such as `lym creel read`, shadows it.
 
-## Interactive-handoff exception
+### Interactive-handoff exception
 
 Narrow and per-command: `reedengine` `attach` and `watchdog`, `lym loom status --watch`, `lym shed status --watch`, `lym batten status --watch`, and the `status` verbs' terminal rendering.
 
-## Package naming
+### Package naming
 
 `<module>cli` imports `<module>engine`; an engine never imports cli or cobra.
 Deviations:
@@ -37,3 +43,14 @@ Deviations:
 - `cleanupcli` calls the cleanup functions of `battencli`, `boardengine`, `orchengine`, `logger` and `lymtemp`, with no engine package of its own.
 - `adoptcli` calls the functions of `fabricengine`, `pairteardown`, `boardengine`, `tenderengine`, `tendercli`, `battencli`, `battenshed`, `buildvcs` and `landingshed`, with no engine package of its own.
 - `beamcli` calls the functions of `fabricengine`, `boardengine`, `hubgeom` and `battencli`, with no engine package of its own.
+
+## Sole wiring
+
+Rule: Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test)
+
+`internal/cliwire` is the sole owner of standalone and hub CLI wiring resolution for the standalone-capable CLIs.
+
+- A `<module>cli` never re-implements `--target-dir` resolution, the repository-root lift, mode-derived state, plan and stencils resolution, the nested-geometry guard, or the durable-sink redirect.
+  It declares its own `cliwire.Module` descriptor and calls in.
+- `internal/cliwire` is the only production caller of `standalonestate.Derive`; test files may call it to build fixtures and to assert the real derivation.
+- Both halves are enforced by tests in `internal/cliwire`.

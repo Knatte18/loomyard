@@ -922,12 +922,12 @@
 // `tools/` and `sandbox/` are deliberately NOT in that owner set: the enforcement walk covers
 // `internal/` and `cmd/` only, so an owner entry for them would be a rule that never matches —
 // their vocabulary (naming the real `lym-test-weft`/`lym-fabric-test-weft` GitHub repos) is a
-// review obligation instead. See PATTERN-fabric-vocabulary for the authoritative
+// review obligation instead. See PATTERN-fabric-boundary for the authoritative
 // list.
 // `TestEnforcement_FabricVocabulary` (`internal/lymcwd/enforcement_test.go`) machine-checks
 // identifiers, string literals, and comments in every production `.go` file plus the embedded agent
 // prompt templates;
-// `PATTERN-fabric-vocabulary` records the rule in full, including the phrase-based
+// `PATTERN-fabric-boundary` records the rule in full, including the phrase-based
 // `warp` predicate and the review-only prose-doc split between a doc explaining fabric's own
 // mechanism (which keeps the vocabulary) and a doc describing a consumer module's behaviour (which
 // rewords).
@@ -940,7 +940,7 @@
 // There are two exceptions.
 // `removeWorktreeLeftover` keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
 // `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it: its caller proves ownership, as a run that created the pair at that path or as an operator who asked to remove the slug's pair, it refuses a registered linked worktree and a directory holding a `.git` entry, and neither `force` nor dirtiness applies.
-// See `PATTERN-fabric-git` for the rules;
+// See `PATTERN-fabric-boundary` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //
 // **The pair-scoped reset.** `ResetPairCode(rec, sha, parentBranch, ownPaths, opts)` resets a task pair's warp checkout through `resetHardTo`, beside `ResetHard`, which refuses on any tracked dirt and accepts the prime checkout.
@@ -1150,7 +1150,7 @@
 // `_launchers` is never legitimately a symlink), so any component escaping the hub is refused at write time.
 // `writeHubWorkspace` (hubworkspace_write.go) writes the hub workspace file the same way.
 // The remaining raw writes in the package are NOT this class — they target a git-owned `.git/…` path (hook.go, gitexclude.go) or a worktree/board directory a contained minter (`createExclusiveDir`/`containedWorktreeAdd`) brought into being in the same call (clone.go, codebinding.go, recordsgit.go, junction.go's weft-target materialisation), where only a post-creation same-UID race, never a static pre-plant, could redirect them — the same accepted residual class as the gate's dirtiness window — and each is an allowlisted, reasoned entry in the write-side guard rather than a routed write.
-// See PATTERN-fabric-git and `cmd/lym/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
+// See PATTERN-fabric-boundary and `cmd/lym/uncontainedwrite_test.go`'s `TestNoUncontainedWrite_FabricengineProductionSource` for the guard.
 //
 // **The launcher teardown path was the last corner still holding the old shape, because every prior
 // round fixed it from the outside and none audited it on its own terms.** R3 rerouted the gate's two
@@ -1707,7 +1707,7 @@
 // The minimum is the existing suite there (`go build`, `go vet`, `go test`, `go test -tags integration`);
 // beyond it, the scenarios worth driving by hand are a `--subpath` anchored hub (junction targets, `_lym` and `.lym` placement, the cwd gate refusing the warp root and its subdirectories),
 // `add`/`remove` slug hygiene, and the `prune` and `clone --reset` ownership refusals.
-// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and `PATTERN-fs-links` currently assert the opposite.
+// Deciding that Windows is not a goal is a valid resolution, but it must be written down, because `internal/fslink` and `PATTERN-lym-files` currently assert the opposite.
 //
 // **Test layout.**
 // A test builds its hub through `internal/hubforge` only, never a package-local fixture type.

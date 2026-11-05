@@ -1,4 +1,4 @@
-// fslinkonly_test.go enforces `PATTERN-fs-links`: no production Go file outside internal/fslink calls `os.Symlink` or `os.Link`.
+// fslinkonly_test.go enforces `PATTERN-lym-files`: no production Go file outside internal/fslink calls `os.Symlink` or `os.Link`.
 // A link is created through fslink.CreateDirLink.
 
 package main
@@ -17,7 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// allowedLinkCalls is the `PATTERN-fs-links` allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.Symlink`.
+// allowedLinkCalls is the `PATTERN-lym-files` allowlist, keyed `<file>:<call>`, for example `internal/x/y.go:os.Symlink`.
 // An entry admits one link call in one file, and its reason names the obstacle to creating the link through fslink.
 var allowedLinkCalls = []scankit.Entry{
 	{Key: "tools/deploy/main.go:os.Symlink", Why: "copies a plugin-tree symlink verbatim, keeping its raw target without reading whether it names a file or a directory, which fslink's primitives each need to know"},
@@ -79,7 +79,7 @@ func TestFslinkOnly_NoRawLinkCalls(t *testing.T) {
 	scankit.RequireFloor(t, scanned, 20, "fslink-only scan")
 	allow.RequireNoStale(t)
 	if len(failures) > 0 {
-		t.Errorf("`PATTERN-fs-links` violated:\n%s", strings.Join(failures, "\n"))
+		t.Errorf("`PATTERN-lym-files` violated:\n%s", strings.Join(failures, "\n"))
 	}
 }
 

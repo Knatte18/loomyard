@@ -1,4 +1,18 @@
-# PATTERN-no-hard-coded-choice
+# PATTERN-code-conventions
+
+Writing code: a package's `doc.go` documents only that package; a name or path that can go stale is one named constant; no language, engine or branch is hard-coded.
+
+## Go documentation
+
+Rule: Writing a package's `doc.go`: it documents the package; a rule other code must follow is a PATTERN entry, never a `doc.go` paragraph.
+
+## Named constants
+
+Rule: Writing a name or path that can go stale: one named constant, declared once and referenced everywhere, never a repeated literal.
+
+## No hard-coded choice
+
+Rule: Choosing a language, engine or branch: lym hard-codes none; it is read from config, the repository's git state or a table row keyed by name.
 
 lym runs on any repository, so no code path assumes one language, one agent engine or one branch.
 

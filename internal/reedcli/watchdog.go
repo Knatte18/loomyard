@@ -317,7 +317,7 @@ func planReapCycle(live []string, hubLive bool, gone map[string]bool, counters m
 func resolveWatchedSession(hub, sessionName string) (*lymcwd.Location, error) {
 	worktreeRoot := filepath.Join(hub, sessionName)
 	// The direct join is a git spawn inside a polling probe, so it is logged at Debug per
-	// PATTERN-spawn-observability.
+	// PATTERN-child-processes.
 	logger.Debug("reed: watchdog resolving worktree for session", "hub", hub, "session", sessionName)
 	return lymcwd.ResolveWorktree(worktreeRoot)
 }

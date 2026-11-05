@@ -179,7 +179,7 @@
 // (which resolves it from its own geometry) rather than resolved by this
 // package. Likewise treadleengine never touches fabric git; committing a
 // block's run-dir artifacts to fabric remains the loop OWNER's job, exactly
-// as PATTERN-fabric-git already requires one layer up.
+// as PATTERN-fabric-boundary already requires one layer up.
 //
 // # Everything else carried over unchanged from the original loop
 //

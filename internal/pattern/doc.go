@@ -69,6 +69,8 @@
 //
 // The name matches `PATTERN-[a-z0-9-]+` and is unique in the overview.
 // `(test)` marks a rule a test enforces, and is left out for a rule held by review alone.
+// On a cluster entry it means at least one member rule is test-enforced,
+// and the cluster's background file marks each member rule that is review-only.
 // The background link is optional.
 // When present it points at `pattern/<the entry's own name>.md`, and that file exists.
 // Every file under `pattern/` is named by exactly one entry.

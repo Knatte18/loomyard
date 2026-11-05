@@ -1,8 +1,14 @@
 # PATTERN-daemon-wakeups
 
+An unbounded wait wakes at most once a second and backs off while idle, and a wait an agent blocks on takes its cap from the keep-warm resolver.
+
+## Unbounded waits
+
+Rule: Unbounded wait wakes at most once a second and backs off while idle. (test)
+
 A process that waits without a bound wakes cheaply: at most once a second, backing off while nothing changes, and on a file event wherever its substrate offers one.
 
-## What counts
+### What counts
 
 An unbounded wait is a loop that lives as long as a run or a session and has no deadline of its own:
 
@@ -33,7 +39,7 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 
 A bounded wait that ends within a minute is outside the rule.
 
-## The rule
+### The rule
 
 - **One-second floor.** Any periodic wake is at least one second apart.
   A configured interval below the floor is floored with one Warn naming the key and the floor, and is never refused.
@@ -42,7 +48,7 @@ A bounded wait that ends within a minute is outside the rule.
   A tmux hook that touches a file is how tmux state becomes a file event.
 - **A test never waits out an interval.** A test that wants a fast loop injects a clock or a timing struct, never a sub-second configured value.
 
-## The guard
+### The guard
 
 `cmd/lym/daemonwakeups_test.go` holds the scan:
 
@@ -51,8 +57,14 @@ A bounded wait that ends within a minute is outside the rule.
 - Over every production file under `internal/` and `cmd/`, it fails on a `time.NewTicker` or `time.Tick` call outside the declared list.
   The way forward is to list the loop or explain it in the same commit.
 
-## Bound
+### Bound
 
 The scan sees literal shapes only.
 A computed sub-second period, or a `time.Sleep` loop in a file the list does not name, is caught by review.
 The annotation lets any sub-second literal through on the line that carries it, so the guard enforces announcement and not absence; the reason sits on the line itself, where review of the commit reads it.
+
+## Keep-warm cap
+
+Rule: Bounding a wait an agent blocks on: the cap from `shuttleengines`' one keep-warm resolver for the caller's role, never a constant bar its fallback; a long gate run goes on in a detached runner the same command joins.
+
+Held by review alone; no test enforces it.

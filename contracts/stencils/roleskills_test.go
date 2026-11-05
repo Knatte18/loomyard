@@ -1,4 +1,4 @@
-// roleskills_test.go pins PATTERN-parent-directive: a skill reaches a spawned session because the
+// roleskills_test.go pins PATTERN-stencil-ownership: a skill reaches a spawned session because the
 // spawning module names it on the launch spec and lym delivers it, so no stencil asks an agent to load
 // a skill.
 // The scan reads each shipped stencil's agent-facing body, the orch role's included, and flags an imperative load verb
@@ -48,7 +48,7 @@ func skillLoadViolations(body string) []string {
 
 // TestStencils_NoSkillLoadInstructions fails for every registered stencil whose agent-facing body tells an agent to load a skill or names the Skill tool.
 //
-//testtiming:keep pins PATTERN-parent-directive's ban on a stencil telling an agent to load a skill that lym delivers, or naming the Skill tool, a guard that fires which no other test asserts
+//testtiming:keep pins PATTERN-stencil-ownership's parent-directive ban on a stencil telling an agent to load a skill that lym delivers, or naming the Skill tool, a guard that fires which no other test asserts
 //lym:guard
 func TestStencils_NoSkillLoadInstructions(t *testing.T) {
 	tiergate.Require(t, 0)
