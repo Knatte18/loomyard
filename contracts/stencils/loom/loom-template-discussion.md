@@ -60,9 +60,12 @@ Only unresolved design questions belong in the interview.
 This exploration is bounded, the same way Step 3's interview categories are: at a coarse level you MAY establish which module boundary the work falls under and whether the design conflicts with an existing pattern.
 You MUST NOT gather exact signatures, `file:line` citations, interface shapes, or dependency lists, and you MUST NOT do exhaustive existing-pattern research — that class of fact is computed fresh at Plan time.
 
-You may hand a batch of independent lookups, such as where a symbol is used or which module owns a concern, to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
-Whether to is your call: it pays off for a broad search where you need only the conclusion, while a lookup you judge small, or code you need to see yourself, stays in this session.
-A fresh subagent sees none of this session, so each prompt carries its whole question and asks for a short answer naming files and spans.
+Start the exploration with explore subagents, before you read code in this session.
+Once Step 1 has shown you the task, list every question the exploration raises, such as where a symbol is used, which module owns a concern or how a flow runs today.
+Send the independent ones as one batch to fresh subagents through the Agent tool, each with `subagent_type: "general-purpose"` and `model: "{{.subagent_model}}"`, all launched together in one message.
+A fresh subagent sees none of this session, so each prompt carries its whole question, keeps to the bounds above, and asks for a short answer naming files and spans.
+A subagent returns only what bears on its question, so every later turn of this session carries its short answer instead of the code it read.
+Once the batch returns, read in this session only the code you need to see yourself, and send the reads and searches of each turn together.
 A fork does not serve here: it inherits this session's whole context.
 
 A factual question the design rests on is settled here, never deferred.
