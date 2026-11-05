@@ -101,7 +101,7 @@ type RunNoticeDeps struct {
 	ReadChild func(slug string) (child ChildReading, found bool, err error)
 	// DriverAlive reports whether the child has a live driver: a live driver strand, or a held driver, run or bootstrap lock.
 	DriverAlive func(ctx context.Context, slug string) (bool, error)
-	// Agents reads the child's agent runs, and whether a Go-side wait is live, such as a verify, a parent lock wait or a pull request's review.
+	// Agents reads the child's agent runs, and whether a Go-side wait is live, such as a verify, a gate run, a cold fixer's session, a parent lock wait or a pull request's review.
 	Agents func(ctx context.Context, slug string) (runs []AgentRun, waitLive bool, err error)
 	// NewestAgentEnd reads when the child's newest ended agent run ended, zero when none has; it is read only when Agents reads no run.
 	// A nil NewestAgentEnd reads none.

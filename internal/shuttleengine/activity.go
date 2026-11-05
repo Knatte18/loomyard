@@ -121,7 +121,8 @@ func ReadAgentActivity(cfg Config, anchorPath string, engines EngineSet) ([]Agen
 	return readings, nil
 }
 
-// ReadNewestRunEnd returns when the newest ended run under the run-directory root of anchorPath ended: the latest modification time of a run record whose outcome reads anything but running, since a run's finalize is its record's last write.
+// ReadNewestRunEnd returns when the newest ended run under the run-directory root of anchorPath ended:
+// the later of the root's run-end stamp, which every finalize sets before a done run's cleanup removes its directory, and the latest modification time of a run record whose outcome reads anything but running.
 // It lets a caller that finds no running run tell a session that has just ended, before its caller records the end, from a worktree whose agents have long been idle.
 // A directory that is not a run directory and a run with no record are skipped, and an undecodable record is skipped and logged once per episode.
 // It returns the zero time when no ended run is found, and no error for an absent root.
@@ -135,6 +136,9 @@ func ReadNewestRunEnd(cfg Config, anchorPath string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	var newest time.Time
+	if info, err := os.Stat(filepath.Join(root, runEndStampFileName)); err == nil {
+		newest = info.ModTime()
+	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue

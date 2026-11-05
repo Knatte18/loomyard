@@ -428,6 +428,16 @@ func TestRun_Wait_Classification(t *testing.T) {
 				t.Errorf("Outcome = %q; want %q", result.Outcome, tt.wantOutcome)
 			}
 
+			// A row that wants an error fails before finalize, so only a finalized run is stamped.
+			if tt.wantErr == nil {
+				stamp, statErr := os.Stat(filepath.Join(filepath.Dir(runDir), runEndStampFileName))
+				if statErr != nil {
+					t.Errorf("run-end stamp: %v; want every finalize to stamp", statErr)
+				} else if stamp.ModTime().Before(result.EndedAt.Add(-time.Second)) {
+					t.Errorf("run-end stamp modified %v; want it at or after the run's end %v", stamp.ModTime(), result.EndedAt)
+				}
+			}
+
 			switch tt.wantCleanup {
 			case cleanupPerformed:
 				foundRemove := false
@@ -441,6 +451,9 @@ func TestRun_Wait_Classification(t *testing.T) {
 				}
 				if _, err := os.Stat(runDir); !os.IsNotExist(err) {
 					t.Errorf("run dir still exists after cleanup, stat err = %v", err)
+				}
+				if ended, err := ReadNewestRunEnd(Config{RunDir: filepath.Dir(runDir)}, ""); err != nil || ended.Before(result.EndedAt.Add(-time.Second)) {
+					t.Errorf("ReadNewestRunEnd() after cleanup = %v, %v; want the run-end stamp at or after the run's end %v", ended, err, result.EndedAt)
 				}
 			case cleanupDiedCaptureKept:
 				if len(reed.RemoveStrandCalls) != 1 || reed.RemoveStrandCalls[0].GUID != "strand-1" || reed.RemoveStrandCalls[0].Recursive {

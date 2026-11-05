@@ -14,11 +14,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -399,7 +402,7 @@ func TestWire_MarkerAndReportSeamsRefuseAnAbsentTaskWorktree(t *testing.T) {
 	}
 }
 
-// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record or a child running at Beam-Await, PR-Review or Sampler-Session, ignoring a lock wait record whose writer is dead.
+// TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker asserts the Activity seam's reading maps a task worktree's live shuttle run onto dobbyengine's type, with the session state of its stamped turn end, skips a run whose record reads stopped, and reports a live wait marker, a live parent lock wait record, a child running at Beam-Await, PR-Review or Sampler-Session, or a live gate runner, or a fixer process younger than its timeout, registered under the pair's slug, ignoring a lock wait record whose writer is dead, a process of another role and a gate process of another slug.
 // It points HOME at a session registry through t.Setenv, so it does not run in parallel.
 func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -534,6 +537,46 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 		{"UnreadableStatusIsNoWait", `{"current_producer":`, false},
 	} {
 		if err := os.WriteFile(childStatusPath, []byte(step.status), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {
+			t.Errorf("readAgentActivity() waitLive = %v, error = %v for %s; want %v, nil", waitLive, err, step.name, step.wantLive)
+		}
+	}
+
+	runProcDir := fabricengine.RunProcDir(taskLocation.HubPath)
+	if err := runproc.Register(runProcDir, "another-slug", runproc.SelfRecord(runproc.RoleGate)); err != nil {
+		t.Fatal(err)
+	}
+	if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive {
+		t.Errorf("readAgentActivity() waitLive = %v, error = %v with a live gate process of another slug; want false, nil", waitLive, err)
+	}
+
+	gateConfigPath := gateslot.ConfigFiles(fabricengine.ConfigDirs(taskLocation))[0]
+	if err := os.MkdirAll(filepath.Dir(gateConfigPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(gateConfigPath, []byte(gateslot.ConfigTemplate()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Each registration of this process under the pair's slug replaces the one before, since the record file is keyed by pid and start time.
+	for _, step := range []struct {
+		name         string
+		role         string
+		registeredAt time.Time
+		wantLive     bool
+	}{
+		{"LoopIsNoWait", runproc.RoleLoop, time.Now(), false},
+		{"GateRunnerIsAWait", runproc.RoleGate, time.Now(), true},
+		{"GateFixerIsAWait", gatefixer.RoleGateFixer, time.Now(), true},
+		{"NumberedVerifyFixerIsAWait", gatefixer.RoleVerifyFixer + "-2", time.Now(), true},
+		{"GateFixerPastItsTimeoutIsNoWait", gatefixer.RoleGateFixer, time.Now().Add(-24 * time.Hour), false},
+		{"VerifyFixerPastItsTimeoutIsNoWait", gatefixer.RoleVerifyFixer, time.Now().Add(-24 * time.Hour), false},
+		{"GateRunnerOfAnyAgeIsAWait", runproc.RoleGate, time.Now().Add(-24 * time.Hour), true},
+	} {
+		record := runproc.SelfRecord(step.role)
+		record.RegisteredAt = step.registeredAt
+		if err := runproc.Register(runProcDir, taskLocation.WorktreeName, record); err != nil {
 			t.Fatal(err)
 		}
 		if _, waitLive, err := readAgentActivity(taskLocation); err != nil || waitLive != step.wantLive {

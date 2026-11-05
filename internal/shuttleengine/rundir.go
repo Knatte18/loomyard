@@ -23,6 +23,23 @@ import (
 // runStateFileName is the run.json file name inside a per-run directory.
 const runStateFileName = "run.json"
 
+// runEndStampFileName is the file at the run-directory root whose modification time is when a run there was last finalized.
+// It outlives the run directory a done run's cleanup removes, so the end of a removed run stays readable.
+const runEndStampFileName = "run-ended"
+
+// stampRunEnd sets the modification time of the run-end stamp under root to at, creating the file when it is absent.
+func stampRunEnd(root string, at time.Time) error {
+	path := filepath.Join(root, runEndStampFileName)
+	stamp, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	if err := stamp.Close(); err != nil {
+		return err
+	}
+	return os.Chtimes(path, at, at)
+}
+
 // ErrNoRunRecord marks a strand guid that no run record names: the run directory root is absent, or every run.json was read and none names the guid.
 // A run directory that could not be read does not wrap it, since that guid may name a recorded run whose run.json is damaged.
 var ErrNoRunRecord = errors.New("shuttle: no run record names the strand")

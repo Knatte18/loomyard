@@ -1923,6 +1923,10 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 	if saveErr != nil {
 		logger.Warn("shuttle: persist run outcome failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "outcome", recorded, "error", saveErr)
 	}
+	// Stamped before the cleanup below removes the run directory, so a reader that finds no running run still sees this one has just ended.
+	if err := stampRunEnd(filepath.Dir(run.runDir), run.clock.Now()); err != nil {
+		logger.Warn("shuttle: stamp the run end failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
+	}
 
 	if reader, ok := run.engine.(UsageReader); ok && outcome == OutcomeDone {
 		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)

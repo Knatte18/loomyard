@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/agentname"
 	"github.com/Knatte18/loomyard/internal/arbiterstop"
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
@@ -33,6 +34,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/gatefixer"
+	"github.com/Knatte18/loomyard/internal/gateslot"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/landingshed"
@@ -45,6 +48,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
@@ -57,6 +61,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/verifytree"
+	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
 // spawnPairPush launches the detached push of a task pair; tests replace it, since a detached push forks the running binary.
@@ -625,7 +630,7 @@ func readStopReport(taskLocation *lymcwd.Location) (path string, at time.Time, f
 }
 
 // readAgentActivity reads the running agent runs of the task worktree, those whose waiting process is gone included, through the shuttle config and its registered engines, mapped onto dobbyengine's neutral type,
-// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at a row of loomshed.OperatorWaitRows, or a shuttle wait that is not a held turn end.
+// and reports whether a Go-side wait is live: a running verify, a parent lock wait, a child running at a row of loomshed.OperatorWaitRows, a live gate runner or a fixer process of the pair younger than its timeout, or a shuttle wait that is not a held turn end.
 // A held run is idle at its turn end, so it does not suppress the quiet notice, and neither does a verify held by a pause.
 // A lock wait record whose writer is dead is ignored.
 // The waits are read from their marker and record files, never from the pane options that display them.
@@ -672,6 +677,13 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 	if childAtWaitingRow(taskLocation) {
 		return runs, true, nil
 	}
+	gateLive, err := gateProcessLive(taskLocation, time.Now())
+	if err != nil {
+		return nil, false, err
+	}
+	if gateLive {
+		return runs, true, nil
+	}
 	markers, err := shuttleengine.ReadWaitMarkers(cfg, anchor)
 	if err != nil {
 		return nil, false, err
@@ -682,6 +694,53 @@ func readAgentActivity(taskLocation *lymcwd.Location) (runs []dobbyengine.AgentR
 		}
 	}
 	return runs, false, nil
+}
+
+// gateProcessLive reports whether the pair of taskLocation has a live registered gate process: a detached `lym gate` runner, or the pane process of a cold fixer strand.
+// A fixer works in its own session while the writer's strand sits idle, and a gate run shows no agent activity at all, so either one is the run at work.
+// A fixer record counts only while it is younger than the fixer's own timeout at now, since a fixer that ended without its strand being removed leaves a pane process that outlives its work.
+func gateProcessLive(taskLocation *lymcwd.Location, now time.Time) (bool, error) {
+	records, err := runproc.List(fabricengine.RunProcDir(taskLocation.HubPath), taskLocation.WorktreeName)
+	if err != nil {
+		return false, err
+	}
+	for _, record := range records {
+		if record.Role == runproc.RoleGate {
+			return true, nil
+		}
+		if !gatefixer.IsFixerRole(record.Role) {
+			continue
+		}
+		bound, bounded, err := fixerTimeout(taskLocation, record.Role)
+		if err != nil {
+			return false, err
+		}
+		if !bounded || now.Sub(record.RegisteredAt) <= bound {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// fixerTimeout returns how long a fixer under role may run: webster's recovery timeout for a verify fixer, the gate config's fixer timeout for any other.
+// It reports bounded == false when the gate config is absent, which leaves a gate fixer with no known bound.
+func fixerTimeout(taskLocation *lymcwd.Location, role string) (timeout time.Duration, bounded bool, err error) {
+	dirs := fabricengine.ConfigDirs(taskLocation)
+	if agentname.MatchesRole(role, gatefixer.RoleVerifyFixer) {
+		cfg, err := websterengine.LoadConfig(dirs, "webster")
+		if err != nil {
+			return 0, false, err
+		}
+		return time.Duration(cfg.RecoveryTimeoutMin) * time.Minute, true, nil
+	}
+	cfg, err := gateslot.LoadConfig(dirs)
+	if errors.Is(err, gateslot.ErrConfigAbsent) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return cfg.FixerTimeout(), true, nil
 }
 
 // readNewestAgentEnd reads when the task worktree's newest ended shuttle run ended, through the shuttle config, zero when none has.

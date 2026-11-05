@@ -456,10 +456,29 @@ func TestReadNewestRunEnd(t *testing.T) {
 	tests := []struct {
 		name string
 		runs map[string]endedRun
-		want time.Time
+		// endStamp is the run-end stamp's modification time, zero for no stamp.
+		endStamp time.Time
+		want     time.Time
 	}{
 		{
 			name: "NoRunReadsZero",
+		},
+		{
+			name:     "TheEndStampOfARemovedRunCountsWithNoRecordLeft",
+			endStamp: created.Add(30 * time.Minute),
+			want:     created.Add(30 * time.Minute),
+		},
+		{
+			name:     "AnEndStampNewerThanEveryRecordWins",
+			runs:     map[string]endedRun{"run-a": {outcome: "done", recordAt: created.Add(10 * time.Minute)}},
+			endStamp: created.Add(30 * time.Minute),
+			want:     created.Add(30 * time.Minute),
+		},
+		{
+			name:     "ARecordNewerThanTheEndStampWins",
+			runs:     map[string]endedRun{"run-a": {outcome: "died", recordAt: created.Add(40 * time.Minute)}},
+			endStamp: created.Add(30 * time.Minute),
+			want:     created.Add(40 * time.Minute),
 		},
 		{
 			name: "OnlyARunningRunReadsZero",
@@ -513,6 +532,11 @@ func TestReadNewestRunEnd(t *testing.T) {
 					t.Fatal(err)
 				}
 				if err := os.Chtimes(recordPath, run.recordAt, run.recordAt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !tt.endStamp.IsZero() {
+				if err := stampRunEnd(root, tt.endStamp); err != nil {
 					t.Fatal(err)
 				}
 			}
