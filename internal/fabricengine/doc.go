@@ -68,7 +68,8 @@
 // Only the heads origin moved past the local tracking ref are then fetched, one fetch per repository.
 // A judge-only reconcile fetches their objects by SHA into no ref and writes no FETCH_HEAD, so it moves nothing.
 // The reconcile holds each repository's remote-refs lock (`gitrepo.Repo.HoldRemoteRefs`) from the ls-remote pair through the last branch verdict, the code repository's first,
-// so a push or fetch of either repository waits for the verdicts, and a push already in flight lands before origin is read and is never judged a rewind.
+// so a fetch, or a push's tracking-ref write, of either repository waits for the verdicts.
+// A push transfers outside the lock and writes its tracking ref only after the verdicts, so one that lands meanwhile is judged against the origin read before it and never a rewind.
 // A transport failure through the bound is `OriginReport.Unreachable`, with nothing judged and nothing moved, and a nil error.
 // Any other failure of the ls-remote pair, or a failed fetch after both answered, is the returned error.
 //

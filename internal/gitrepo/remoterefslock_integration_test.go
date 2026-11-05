@@ -1,4 +1,5 @@
-// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, the pause gate passed before it is taken, every fetch, pull and push method waiting on it, and concurrent fetches and pushes of one repository that all succeed under it.
+// remoterefslock_integration_test.go covers the remote-refs lock against real git repositories: one lock per repository, the pause gate passed before it is taken, and every fetch and pull method waiting on it.
+// It also covers every push method transferring outside the lock and writing its tracking ref only under it, and concurrent fetches and pushes of one repository that all succeed.
 
 package gitrepo_test
 
@@ -136,10 +137,9 @@ func TestHoldRemoteRefs_PassesThePauseGateBeforeTheLockAndStaysAdmittedUntilTheR
 // A call that ignored the lock finishes a local git operation well inside it; a blocked call can never fail the check, so the window only bounds how fast a missing lock is caught.
 const remoteRefsHeldWindow = 500 * time.Millisecond
 
-func TestRemoteRefsLock_EveryFetchPullAndPushMethodWaitsWhileTheLockIsHeld(t *testing.T) {
+func TestRemoteRefsLock_EveryFetchAndPullMethodWaitsWhileTheLockIsHeld(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
-	absentSHA := strings.Repeat("a", 40)
 	tests := []struct {
 		name string
 		call func(repo *gitrepo.Repo)
@@ -147,11 +147,6 @@ func TestRemoteRefsLock_EveryFetchPullAndPushMethodWaitsWhileTheLockIsHeld(t *te
 		{"Fetch", func(repo *gitrepo.Repo) { _ = repo.Fetch() }},
 		{"FetchWithArgs", func(repo *gitrepo.Repo) { _, _ = repo.FetchWithArgs("origin") }},
 		{"Pull", func(repo *gitrepo.Repo) { _ = repo.Pull() }},
-		{"Push", func(repo *gitrepo.Repo) { _ = repo.Push() }},
-		{"PushRebaseFree", func(repo *gitrepo.Repo) { _ = repo.PushRebaseFree() }},
-		{"DeleteRemoteBranch", func(repo *gitrepo.Repo) { _, _ = repo.DeleteRemoteBranch("origin", "absent") }},
-		{"DeleteRemoteBranchLeased", func(repo *gitrepo.Repo) { _ = repo.DeleteRemoteBranchLeased("origin", "absent", absentSHA) }},
-		{"UpdateRemoteBranchLeased", func(repo *gitrepo.Repo) { _ = repo.UpdateRemoteBranchLeased("origin", "absent", absentSHA, absentSHA) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -186,6 +181,170 @@ func TestRemoteRefsLock_EveryFetchPullAndPushMethodWaitsWhileTheLockIsHeld(t *te
 			}
 			<-done
 		})
+	}
+}
+
+// originLandedWithin is how long a push transfer may take to show on the bare remote while the remote-refs lock is held.
+const originLandedWithin = 30 * time.Second
+
+// originLandedTick is how often the bare remote is read while waiting for a push transfer to land.
+const originLandedTick = 20 * time.Millisecond
+
+// branchSHA returns the commit ref names in the repository at dir, or "" when the ref does not exist.
+func branchSHA(t *testing.T, dir, ref string) string {
+	t.Helper()
+	stdout, _, code, err := runGit(t, dir, "rev-parse", "--verify", "--quiet", ref)
+	if err != nil {
+		t.Fatalf("git rev-parse %s in %s error = %v", ref, dir, err)
+	}
+	if code != 0 {
+		return ""
+	}
+	return strings.TrimSpace(stdout)
+}
+
+// pushUnderHeldLock holds the clone's remote-refs lock, starts call, and waits until the bare remote's branch reads want, failing if call returns first.
+// It returns the function that releases the lock and then waits for call's error.
+func pushUnderHeldLock(t *testing.T, clone, bareRemote, branch, want string, call func() error) (releaseAndWait func() error) {
+	t.Helper()
+	release, err := gitrepo.New(clone).HoldRemoteRefs()
+	if err != nil {
+		t.Fatalf("HoldRemoteRefs() error = %v", err)
+	}
+	released := false
+	t.Cleanup(func() {
+		if !released {
+			_ = release()
+		}
+	})
+
+	var callErr error
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		callErr = call()
+	}()
+	deadline := time.Now().Add(originLandedWithin)
+	for branchSHA(t, bareRemote, "refs/heads/"+branch) != want {
+		select {
+		case <-done:
+			t.Fatalf("the push returned with error %v before origin's %s read %q; want its transfer to land while the lock is held", callErr, branch, want)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("origin's %s never read %q while the remote-refs lock was held; want the transfer to run outside the lock", branch, want)
+		}
+		time.Sleep(originLandedTick)
+	}
+	select {
+	case <-done:
+		t.Fatalf("the push returned with error %v while the remote-refs lock was held; want its tracking-ref write to wait for the lock", callErr)
+	case <-time.After(remoteRefsHeldWindow):
+	}
+
+	return func() error {
+		released = true
+		if err := release(); err != nil {
+			t.Fatalf("release() error = %v", err)
+		}
+		<-done
+		return callErr
+	}
+}
+
+func TestRemoteRefsLock_APushTransfersWhileTheLockIsHeldAndWritesItsTrackingRefOnceReleased(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	tests := []struct {
+		name   string
+		branch string
+		// prepare readies the clone and returns the push to run and the commit origin's branch and its tracking ref hold afterwards, empty for a deleted branch.
+		prepare      func(t *testing.T, clone string, repo *gitrepo.Repo) (call func() error, want string)
+		wantUpstream string
+	}{
+		{"PushRebaseFree of a first push, which also sets the upstream", "fresh", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
+			gitkit.Git(t, clone, "checkout", "-b", "fresh")
+			return repo.PushRebaseFree, gitkit.CommitFile(t, clone, "fresh.txt", "fresh", "fresh commit")
+		}, "origin/fresh"},
+		{"PushBranch", "main", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
+			want := gitkit.CommitFile(t, clone, "next.txt", "next", "next commit")
+			return func() error { return repo.PushBranch("origin", "main") }, want
+		}, "origin/main"},
+		{"UpdateRemoteBranchLeased", "main", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
+			first := gitkit.RevParse(t, clone, "HEAD")
+			second := gitkit.CommitFile(t, clone, "second.txt", "second", "second commit")
+			gitkit.Git(t, clone, "push", "origin", "main")
+			return func() error { return repo.UpdateRemoteBranchLeased("origin", "main", first, second) }, first
+		}, "origin/main"},
+		{"DeleteRemoteBranchLeased", "doomed", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
+			gitkit.Git(t, clone, "push", "origin", "main:doomed")
+			tip := gitkit.RevParse(t, clone, "HEAD")
+			return func() error { return repo.DeleteRemoteBranchLeased("origin", "doomed", tip) }, ""
+		}, ""},
+		{"DeleteRemoteBranch", "doomed", func(t *testing.T, clone string, repo *gitrepo.Repo) (func() error, string) {
+			gitkit.Git(t, clone, "push", "origin", "main:doomed")
+			return func() error {
+				deleted, err := repo.DeleteRemoteBranch("origin", "doomed")
+				if err == nil && !deleted {
+					return fmt.Errorf("DeleteRemoteBranch() deleted = false; want true")
+				}
+				return err
+			}, ""
+		}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			clone, bareRemote := publishedClone(t)
+			call, want := tt.prepare(t, clone, gitrepo.New(clone))
+			trackingRef := "refs/remotes/origin/" + tt.branch
+			trackingBefore := branchSHA(t, clone, trackingRef)
+			upstreamBefore := upstreamRef(t, clone)
+
+			releaseAndWait := pushUnderHeldLock(t, clone, bareRemote, tt.branch, want, call)
+			if got := branchSHA(t, clone, trackingRef); got != trackingBefore {
+				t.Errorf("%s while the remote-refs lock was held = %q; want it unchanged at %q", trackingRef, got, trackingBefore)
+			}
+			if got := upstreamRef(t, clone); got != upstreamBefore {
+				t.Errorf("upstream while the remote-refs lock was held = %q; want it unchanged at %q", got, upstreamBefore)
+			}
+
+			if err := releaseAndWait(); err != nil {
+				t.Fatalf("%s error = %v; want nil", tt.name, err)
+			}
+			if got := branchSHA(t, clone, trackingRef); got != want {
+				t.Errorf("%s after the release = %q; want %q", trackingRef, got, want)
+			}
+			if tt.wantUpstream != "" {
+				if got := upstreamRef(t, clone); got != tt.wantUpstream {
+					t.Errorf("upstream after the release = %q; want %q", got, tt.wantUpstream)
+				}
+			}
+		})
+	}
+}
+
+// TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere covers a fetch that read origin after the push's transfer and wrote the tracking ref before the push took the lock.
+func TestRemoteRefsLock_ATrackingRefAFetchMovedPastThePushedCommitStaysThere(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	clone, bareRemote := publishedClone(t)
+	repo := gitrepo.New(clone)
+	pushed := gitkit.CommitFile(t, clone, "pushed.txt", "pushed", "pushed commit")
+
+	releaseAndWait := pushUnderHeldLock(t, clone, bareRemote, "main", pushed, func() error { return repo.PushBranch("origin", "main") })
+	other := filepath.Join(t.TempDir(), "other")
+	gitkit.MustRun(t, filepath.Dir(other), "git", "clone", "-b", "main", bareRemote, other)
+	later := gitkit.CommitFile(t, other, "later.txt", "later", "later commit")
+	gitkit.Git(t, other, "push", "origin", "main")
+	// A raw fetch bypasses the held lock, standing in for a fetch that took the lock before the push did.
+	gitkit.Git(t, clone, "fetch", "origin")
+
+	if err := releaseAndWait(); err != nil {
+		t.Fatalf("PushBranch() error = %v; want nil", err)
+	}
+	if got := branchSHA(t, clone, "refs/remotes/origin/main"); got != later {
+		t.Errorf("origin/main after the push recorded = %q; want the later fetched commit %q, not the pushed %q", got, later, pushed)
 	}
 }
 

@@ -12,9 +12,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 )
 
-// pushReflogSubject is the reflog subject git writes for a remote-tracking ref this machine's own push updated.
-const pushReflogSubject = "update by push"
-
 // rewriteKind is how origin moved a branch past this machine's tip.
 type rewriteKind int
 
@@ -28,7 +25,7 @@ const (
 	rewriteRewritten
 )
 
-// trackingReflog returns the values of the remote-tracking ref trackingRef in repoDir, newest last, from the last entry this machine's own push wrote onward.
+// trackingReflog returns the values of the remote-tracking ref trackingRef in repoDir, newest last, from the last entry lym's own recorded push wrote onward.
 // A reflog holding no push entry, as for a branch this machine never pushed, returns every value it holds.
 // A ref with no reflog returns none.
 func trackingReflog(repoDir, trackingRef string) ([]string, error) {
@@ -51,7 +48,7 @@ func trackingReflog(repoDir, trackingRef string) ([]string, error) {
 			continue
 		}
 		values = append(values, sha)
-		if strings.HasPrefix(subject, pushReflogSubject) {
+		if strings.HasPrefix(subject, gitrepo.PushReflogSubject) {
 			break
 		}
 	}

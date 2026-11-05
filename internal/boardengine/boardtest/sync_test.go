@@ -25,7 +25,7 @@ import (
 // fresh hub's records primary carries a local-only "initialise records primary branch" commit with no
 // @{u} yet. This establishes tracking by pushing that commit against this hub's own per-test copy
 // of the bare (never the cached template) -- exactly what boardengine's own first real Sync would
-// otherwise do via push.autoSetupRemote, done once up front so "before" reflects a board that has
+// otherwise do when its push set the upstream, done once up front so "before" reflects a board that has
 // already been synced once, matching the old fixture's pre-established state.
 func newSyncRepo(t *testing.T) (work string, remoteCommits, localCommits func() int) {
 	t.Helper()

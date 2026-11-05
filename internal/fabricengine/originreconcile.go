@@ -711,7 +711,7 @@ func samePath(porcelain, built string) bool {
 }
 
 // ReconcileOrigin judges this machine's local branches against origin and returns the verdict on each, and on each entry whose pair has a batten run record.
-// It runs one ls-remote per repository and fetches only the heads origin moved, holding each repository's remote-refs lock from the ls-remote through the branch verdicts, so a push in flight is never judged a rewind.
+// It runs one ls-remote per repository and fetches only the heads origin moved, holding each repository's remote-refs lock from the ls-remote through the branch verdicts, so no push's tracking-ref write lands between them and a push in flight is never judged a rewind.
 // It reads the ended set, and tears down through the seam the local pair of each run origin has ended, before any branch moves; a judge-only scope reports those teardowns and runs none.
 // It also asks the owner seam, over origin's Bolt tip, which recorded entries another machine owns, and reports those owned_elsewhere.
 // A judge-only scope stops there.
@@ -781,9 +781,9 @@ func ReconcileOrigin(l *lymcwd.Location, scope ReconcileScope, seams OriginSeams
 
 // judgeAgainstOrigin reads origin's heads of both repositories, fetches the heads origin moved past their tracking refs and returns the verdict on each target.
 // It holds the remote-refs lock of the code repository and then of the records repository throughout,
-// so a push or fetch of either repository finishes before origin is read, or starts after every verdict, and never lands between the read and the verdict.
+// so a fetch, or the tracking-ref write that follows a push's transfer, of either repository finishes before origin is read, or starts after every verdict, and never lands between the read and the verdict.
 // The locks are held through the ls-remote retries and their sleeps, bounded by opts' RetryBound,
-// so an unreachable origin blocks every fetch and push of both repositories for that bound.
+// so an unreachable origin blocks every fetch and every push's tracking-ref write of both repositories for that bound.
 // A transport failure that outlasts the retry bound returns unreachable true with no verdict and a nil error.
 func judgeAgainstOrigin(targets []originTarget, warpDir, recordsDir string, judgeOnly bool, opts ReconcileOptions) (branches []BranchOutcome, unreachable bool, err error) {
 	for _, dir := range []string{warpDir, recordsDir} {

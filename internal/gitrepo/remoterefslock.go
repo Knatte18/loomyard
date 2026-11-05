@@ -1,4 +1,5 @@
 // remoterefslock.go holds the remote-refs lock: one lock per repository, in its common git dir, that every lym git call writing the repository's remote-tracking refs holds while git runs.
+// A push's transfer writes none and runs outside it; only the push's tracking-ref write that follows takes it.
 
 package gitrepo
 
@@ -20,7 +21,7 @@ const remoteRefsGateOp = "remote-refs"
 // HoldRemoteRefs takes the remote-refs lock of the repository this checkout belongs to, waiting while another holder has it, and returns its release.
 // It passes the process's pause gate before it takes the lock and stays admitted until the release,
 // so a pause never holds a git call made under the lock while other processes wait on it.
-// A holder that reads origin and then judges the tracking refs sees no push or fetch of the repository land in between.
+// A holder that reads origin and then judges the tracking refs sees no fetch and no push's tracking-ref write in between.
 // The lock is not reentrant: a holder runs no fetch, pull or push through this package, since each takes the lock itself.
 func (r *Repo) HoldRemoteRefs() (release func() error, err error) {
 	commonDir, err := r.CommonDir()

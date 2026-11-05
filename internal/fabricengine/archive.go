@@ -83,7 +83,7 @@ func ArchiveTagName(slug, tip string) string {
 //
 // With a branch on both sides it reads origin's tip and fetches it by SHA when it differs from the local tip, so both tips are present locally to compare.
 // With pushBranch set and origin lacking the local tip, because origin has no branch or its tip is neither the local tip nor a descendant of it, it pushes the local tip to the weft branch alone first:
-// rebase-free, the code branch not pushed, under the remote-refs lock, and with no local branch needed.
+// rebase-free, the code branch not pushed, its tracking ref written under the remote-refs lock, and with no local branch needed.
 // A refused branch push is logged at Warn and never fails the archive.
 // It then tags and pushes the local tip, and, when origin's tip after that push is neither the local tip nor an ancestor of it, tags and pushes that tip too.
 // The returned weftArchive names the tags and the origin tip a later delete is leased on.

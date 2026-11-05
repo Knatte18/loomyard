@@ -54,9 +54,11 @@
 //     fetch-without-merge sibling, refreshing remote-tracking refs without
 //     ever moving the local branch.
 //   - HoldRemoteRefs takes the repository's remote-refs lock, a file in the common git dir every worktree shares.
-//     Fetch, FetchWithArgs, Pull, every push method including PushBranch, and DropRemoteTracking, which deletes a branch's remote-tracking ref and upstream setting, run git under it, waiting while it is held,
+//     Fetch, FetchWithArgs, Pull and DropRemoteTracking, which deletes a branch's remote-tracking ref and upstream setting, run git under it, waiting while it is held,
 //     since a fetch and a push both write the shared remote-tracking refs and two concurrent writers of one ref make the loser fail.
-//     A caller that reads origin and then judges the tracking refs holds it across both.
+//     Every push method sends to the remote's push URL outside the lock, so git writes no tracking ref during the transfer, a slow or retried transfer included;
+//     once the transfer succeeded it takes the lock to move or delete the branch's tracking ref and, for a first push of the checked-out branch, to set its upstream.
+//     A caller that reads origin and then judges the tracking refs holds it across both, so no tracking-ref write lands between the read and the verdict.
 //     It passes the process's pause gate before it takes the lock and stays admitted until the release, so a pause never holds a lock holder that other processes wait on.
 //   - IsAncestor is the ancestry/reachability primitive: it answers "is sha
 //     an ancestor of ref" via `git merge-base --is-ancestor`, mapping git's
@@ -176,11 +178,11 @@
 // Push and PushCoalesced are both push-only — committing is always the
 // caller's separate, prior step, whether via StageAndCommit's explicit list
 // or board's StageAllAndCommit wildcard escape hatch; push itself never
-// stages anything. Every push goes through `git -c push.autoSetupRemote=true
-// push`, so a checkout's very first push (no upstream configured yet) still
-// succeeds and establishes tracking instead of failing outright — a
-// checkout with no upstream configured is always treated as having
-// something to push, so the first push is attempted rather than skipped.
+// stages anything.
+// Every push names its branch explicitly: the checked-out branch goes to the same-named branch of its push remote, its upstream remote or origin.
+// A branch with no upstream takes that remote branch as its upstream once the push succeeded, as git's push.autoSetupRemote would set it.
+// A checkout's very first push therefore establishes tracking instead of failing outright.
+// A checkout with no upstream configured is always treated as having something to push, so the first push is attempted rather than skipped.
 // Push runs a single git push and transparently recovers from exactly one
 // non-fast-forward-style rejection (stderr containing "non-fast-forward",
 // "rejected", or "fetch first") via one `pull --rebase` before retrying; the
