@@ -82,10 +82,13 @@ func (e *LaterTargetRemovedError) Unwrap() error { return ErrLaterTargetRemoved 
 
 // cardNotDoneError is the error the post-batch done-checks return: it unwraps to ErrCardNotDone and its message carries the findings' text.
 // deleteNotDone is set when a finding is a Delete target that still resolves, and glyphRejected when quarry rejected a card's target before resolving it.
+// createNotDone is set when a finding is a Create target that still does not resolve or a Rename pair that did not happen, and signatureMismatch when a target's member is declared only with another parameter list.
 type cardNotDoneError struct {
-	reasons       []string
-	deleteNotDone bool
-	glyphRejected bool
+	reasons           []string
+	deleteNotDone     bool
+	glyphRejected     bool
+	createNotDone     bool
+	signatureMismatch bool
 }
 
 func (e *cardNotDoneError) Error() string {
@@ -108,21 +111,53 @@ func unbegunCards(batches []batcher.Batch, st *State) []planparser.Card {
 }
 
 // deleteReferencedWayForward is the way forward for a batch whose Delete target an unbegun later card still references.
-// Recovery cannot change the plan, so the way forward edits it; a record recovery would refuse as uncheckable restarts the run instead.
-func deleteReferencedWayForward(number int, uncheckable bool) string {
+// Recovery cannot change the plan, so the way forward edits it; a record recovery would refuse as uncheckable restarts the run instead,
+// and a batch that has used its counted recoveries takes the steps for an exhausted batch, since a failed batch records no amendment.
+func deleteReferencedWayForward(number int, uncheckable, exhausted bool) string {
 	if uncheckable {
 		return freshRestartSteps(stepRun)
+	}
+	if exhausted {
+		return strings.TrimPrefix(exhaustedRecoveryWayForward(number), "way forward: ")
 	}
 	return fmt.Sprintf("move the delete to a card after the one that still references it, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
 }
 
 // glyphRejectedWayForward is the way forward for a batch whose card names a target quarry rejects before resolving it.
-// Recovery re-runs the same check on the same plan, so the way forward edits the card; a record recovery would refuse as uncheckable restarts the run instead.
-func glyphRejectedWayForward(number int, uncheckable bool) string {
+// Recovery re-runs the same check on the same plan, so the way forward edits the card; a record recovery would refuse as uncheckable restarts the run instead,
+// and a batch that has used its counted recoveries takes the steps for an exhausted batch, since a failed batch records no amendment.
+func glyphRejectedWayForward(number int, uncheckable, exhausted bool) string {
 	if uncheckable {
 		return freshRestartSteps(stepRun)
 	}
+	if exhausted {
+		return strings.TrimPrefix(exhaustedRecoveryWayForward(number), "way forward: ")
+	}
 	return fmt.Sprintf("amend the card's target to a spelling `lym quarry resolve` answers, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
+}
+
+// createTargetWayForward is the way forward for a batch whose card's Create target or Rename pair is not done, or names a member its unit declares only with another parameter list.
+// A recovery checks the same target again, so the way forward amends the target whenever the member may live under another unit or signature;
+// recover-batch leads it only when no recovery has tried the batch and no declared signature differs.
+// A batch whose counted recoveries are used up cannot be recovered after the amendment either, since a failed batch records no amendment, so it takes the steps for an exhausted batch.
+// A record recovery would refuse as uncheckable restarts the run instead.
+func createTargetWayForward(number int, uncheckable, recovered, signatureMismatch, exhausted bool) string {
+	if uncheckable {
+		return freshRestartSteps(stepRun)
+	}
+	if exhausted {
+		return strings.TrimPrefix(exhaustedRecoveryWayForward(number), "way forward: ")
+	}
+	amend := fmt.Sprintf("amend the card's Create target or Rename new side to the unit, owner or parameter list the finding names the member declared with, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch %02d`", number)
+	if recovered || signatureMismatch {
+		return amend
+	}
+	return fmt.Sprintf("lym webster recover-batch %02d to build the target as the card names it; or, when the member is declared where the finding names it, %s", number, amend)
+}
+
+// exhaustedRecoveryWayForward is the way forward for a batch that has used its counted recoveries: reset it to its start and recover it again, or restart the run.
+func exhaustedRecoveryWayForward(number int) string {
+	return fmt.Sprintf("%s; or %s", wayForwardSteps(resetVerb(ResetToBatchStart, number), fmt.Sprintf("lym webster recover-batch %d", number)), freshRestartSteps(stepRun))
 }
 
 // laterDeleteReferenceReasons returns one reason per blocking reference an unbegun card still has to a symbol the cards in own delete.
@@ -166,14 +201,19 @@ type cardNotDoneInputs struct {
 // When a finding is a Delete target that still resolves and an unbegun later card still references it, the reasons also name that reference,
 // and the way forward is the plan edit rather than recover-batch, which would only repeat the same failure.
 // A finding whose target quarry rejected before resolving it takes the card-amending plan edit as its way forward for the same reason.
+// A Create target that does not resolve, or a Rename pair that did not happen, offers the card amendment too.
+// The amendment comes alone once a recovery has tried the batch or when its member is declared with another parameter list.
+// Each of these three takes the exhausted-batch steps instead once the batch has used its counted recoveries and holds no amendment a recovery has yet to render.
 func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, error) {
 	var reasons []string
-	var deleteNotDone, glyphRejected bool
+	var deleteNotDone, glyphRejected, createNotDone, signatureMismatch bool
 	var notDone *cardNotDoneError
 	if errors.As(cause, &notDone) {
 		reasons = notDone.reasons
 		deleteNotDone = notDone.deleteNotDone
 		glyphRejected = notDone.glyphRejected
+		createNotDone = notDone.createNotDone
+		signatureMismatch = notDone.signatureMismatch
 	} else {
 		reasons = strings.Split(strings.TrimPrefix(cause.Error(), ErrCardNotDone.Error()+": "), "; ")
 	}
@@ -184,6 +224,7 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 	}
 	reasons = append([]string{fmt.Sprintf("batch %02d-%s holds cards %s", in.Number, in.Slug, strings.Join(cardIDs, ", "))}, reasons...)
 
+	exhausted := in.Batch.Recoveries >= maxRecoveries && !rendersNewAmendment(in.Batch)
 	var wayForward string
 	if deleteNotDone {
 		referenced, err := laterDeleteReferenceReasons(in.Plan, in.Batches, in.State, in.Cards, in.Geom)
@@ -192,11 +233,14 @@ func failCardNotDone(in cardNotDoneInputs, cause error) (*BatchFailedError, erro
 		}
 		if len(referenced) > 0 {
 			reasons = append(append([]string(nil), reasons...), referenced...)
-			wayForward = deleteReferencedWayForward(in.Number, len(in.Batch.Uncheckable) > 0)
+			wayForward = deleteReferencedWayForward(in.Number, len(in.Batch.Uncheckable) > 0, exhausted)
 		}
 	}
 	if wayForward == "" && glyphRejected {
-		wayForward = glyphRejectedWayForward(in.Number, len(in.Batch.Uncheckable) > 0)
+		wayForward = glyphRejectedWayForward(in.Number, len(in.Batch.Uncheckable) > 0, exhausted)
+	}
+	if wayForward == "" && (createNotDone || signatureMismatch) {
+		wayForward = createTargetWayForward(in.Number, len(in.Batch.Uncheckable) > 0, in.Verb == "recover-batch", signatureMismatch, exhausted)
 	}
 	return failBatch(failBatchInput{
 		State:      in.State,
@@ -878,6 +922,10 @@ func cardNotDoneFor(in postBatchInputs, findings []planindex.Finding) *cardNotDo
 			notDone.deleteNotDone = true
 		case "glyph-rejected":
 			notDone.glyphRejected = true
+		case "create-not-done", "rename-not-done":
+			notDone.createNotDone = true
+		case "signature-mismatch":
+			notDone.signatureMismatch = true
 		}
 	}
 	logBindOutcomes(in.Number, failedBindOutcomes(in.Cards, func(c planparser.Card) planindex.BindReason {

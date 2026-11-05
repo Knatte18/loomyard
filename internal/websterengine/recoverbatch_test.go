@@ -665,6 +665,7 @@ func TestRecoverBatch_SecondCall(t *testing.T) {
 //
 // Here the recovery reports done over a Create card whose target never appeared in the tree.
 // The mechanical pass must refuse it and take the batch terminal failed with its report archived, exactly as record-batch does, so the next recover-batch spawns a fresh strand.
+// Its way forward is the card amendment alone, since a recovery has already failed the same target.
 func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing.T) {
 	tiergate.Require(t, 0)
 	logs := captureLogs(t)
@@ -705,6 +706,9 @@ func TestRecoverBatch_TerminalRunsTheSamePostBatchChecksAsRecordBatch(t *testing
 	}
 	if bs.Digest == nil || len(bs.Digest.Reasons) == 0 {
 		t.Errorf("failed digest = %+v; want reasons naming the done-check finding", bs.Digest)
+	}
+	if !strings.Contains(err.Error(), "way forward: amend the card's Create target") || strings.Contains(err.Error(), "to build the target as the card names it") {
+		t.Errorf("RecoverBatch() second call error = %q; want the card amendment alone as its way forward", err)
 	}
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("stat(live report) = %v; want the report archived away", statErr)

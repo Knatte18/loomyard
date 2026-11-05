@@ -5,6 +5,7 @@ package planglyph
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -72,7 +73,7 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 		{Glyph: glyph.Glyph{Lang: glyph.Go, Unit: "internal/greet", Name: "Other"}, ID: "internal/greet#Other", File: "internal/greet/greet.go"},
 		{Glyph: glyph.Glyph{Lang: glyph.Go, Unit: "internal/other", Name: "Thing"}, ID: "internal/other#Thing", File: "internal/other/thing.go"},
 	}
-	const searched = "quarry searched the unit's files internal/greet/greet.go; Thing is declared as internal/other#Thing in internal/other/thing.go"
+	const searched = "quarry searched 1 file of unit internal/greet; Thing is declared as internal/other#Thing in internal/other/thing.go"
 
 	tests := []struct {
 		name string
@@ -156,6 +157,131 @@ func TestDoneCheckVerdicts_Rules(t *testing.T) {
 				if !strings.Contains(findings[0].Detail, want) {
 					t.Errorf("finding detail = %q; want it to contain %q", findings[0].Detail, want)
 				}
+			}
+		})
+	}
+}
+
+// TestDoneCheckVerdicts_NotFoundDetail pins the finding for a Create target quarry answered not_found, read against the worktree's declarations.
+// A member its unit declares only with another parameter list is a signature-mismatch finding that leads with the declared signature and its file, for a Create target and a Rename new side alike.
+// A target with no parameter list, or whose same-named member sits under another owner or unit, stays create-not-done, as does a Go target.
+// A name declared in many other units names the nearest few and counts the rest, and the unit's files are counted, never listed.
+func TestDoneCheckVerdicts_NotFoundDetail(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	symbol := func(g glyph.Glyph, file string) quarry.Symbol {
+		return quarry.Symbol{Glyph: g, ID: g.String(), File: file}
+	}
+	goSymbol := func(unit, name, file string) quarry.Symbol {
+		return symbol(glyph.Glyph{Lang: glyph.Go, Unit: unit, Name: name}, file)
+	}
+	csharpMethod := func(unit, owner, name string, params []string, file string) quarry.Symbol {
+		return symbol(glyph.Glyph{Lang: glyph.CSharp, Unit: unit, Owner: []string{owner}, Name: name, Params: params}, file)
+	}
+	createDetail := func(key, searched string) string {
+		return fmt.Sprintf("Create target %q still does not resolve: looked up %q, quarry answered not_found (the unit exists and the member is missing); %s", key, key, searched)
+	}
+
+	tests := []struct {
+		name     string
+		language string
+		// checkID is the done-check arm of the entry; empty means create-not-done.
+		checkID      string
+		key          string
+		declarations []quarry.Symbol
+		wantCheck    string
+		wantDetail   string
+	}{
+		{
+			name:         "SignatureMismatch",
+			language:     "csharp",
+			key:          "Shop#CartTests.Adds(int)",
+			declarations: []quarry.Symbol{csharpMethod("Shop", "CartTests", "Adds", []string{"string"}, "tests/CartTests.cs"), csharpMethod("Shop", "CartTests", "Other", []string{}, "tests/CartTests.cs")},
+			wantCheck:    "signature-mismatch",
+			wantDetail:   `declared as Shop#CartTests.Adds(string) in tests/CartTests.cs, not with the parameter list Create target "Shop#CartTests.Adds(int)" names`,
+		},
+		{
+			name:         "SignatureMismatchOnRenameNewSide",
+			language:     "csharp",
+			checkID:      "rename-not-done-new",
+			key:          "Shop#CartTests.Adds(int)",
+			declarations: []quarry.Symbol{csharpMethod("Shop", "CartTests", "Adds", []string{"string"}, "tests/CartTests.cs")},
+			wantCheck:    "signature-mismatch",
+			wantDetail:   `declared as Shop#CartTests.Adds(string) in tests/CartTests.cs, not with the parameter list Rename pair's new side "Shop#CartTests.Adds(int)" names`,
+		},
+		{
+			name:         "TargetWithoutParameterListIsNotAMismatch",
+			language:     "csharp",
+			key:          "Shop#CartTests.Adds",
+			declarations: []quarry.Symbol{csharpMethod("Shop", "CartTests", "Adds", []string{"string"}, "tests/CartTests.cs")},
+			wantCheck:    "create-not-done",
+			wantDetail:   createDetail("Shop#CartTests.Adds", "quarry searched 1 file of unit Shop; Adds is declared as Shop#CartTests.Adds(string) in tests/CartTests.cs"),
+		},
+		{
+			name:         "OtherOwnerIsNotAMismatch",
+			language:     "csharp",
+			key:          "Shop#CartTests.Adds(int)",
+			declarations: []quarry.Symbol{csharpMethod("Shop", "OtherTests", "Adds", []string{"string"}, "tests/OtherTests.cs")},
+			wantCheck:    "create-not-done",
+			wantDetail:   createDetail("Shop#CartTests.Adds(int)", "quarry searched 1 file of unit Shop; Adds is declared as Shop#OtherTests.Adds(string) in tests/OtherTests.cs"),
+		},
+		{
+			name:         "OtherUnitIsNotAMismatch",
+			language:     "csharp",
+			key:          "Shop#CartTests.Adds(int)",
+			declarations: []quarry.Symbol{csharpMethod("Billing", "CartTests", "Adds", []string{"string"}, "tests/BillingCartTests.cs")},
+			wantCheck:    "create-not-done",
+			wantDetail:   createDetail("Shop#CartTests.Adds(int)", "Adds is declared as Billing#CartTests.Adds(string) in tests/BillingCartTests.cs"),
+		},
+		{
+			name:         "GoTargetIsNotAMismatch",
+			language:     "go",
+			key:          "internal/greet#Thing",
+			declarations: []quarry.Symbol{goSymbol("internal/greet", "Other", "internal/greet/greet.go")},
+			wantCheck:    "create-not-done",
+			wantDetail:   createDetail("internal/greet#Thing", "quarry searched 1 file of unit internal/greet; no declaration named Thing exists anywhere in the worktree"),
+		},
+		{
+			name:     "DeclaringSitesCappedNearestFirst",
+			language: "go",
+			key:      "internal/a/b#Load",
+			declarations: []quarry.Symbol{
+				goSymbol("internal/a/b", "Other", "internal/a/b/one.go"),
+				goSymbol("internal/a/b", "More", "internal/a/b/two.go"),
+				goSymbol("pkg/y", "Load", "pkg/y/y.go"),
+				goSymbol("cmd/x", "Load", "cmd/x/x.go"),
+				goSymbol("internal/z", "Load", "internal/z/z.go"),
+				goSymbol("internal/a/c", "Load", "internal/a/c/c.go"),
+			},
+			wantCheck:  "create-not-done",
+			wantDetail: createDetail("internal/a/b#Load", "quarry searched 2 files of unit internal/a/b; Load is declared as internal/a/c#Load in internal/a/c/c.go, internal/z#Load in internal/z/z.go, cmd/x#Load in cmd/x/x.go and 1 more"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			checkID := tt.checkID
+			if checkID == "" {
+				checkID = "create-not-done"
+			}
+			entries := []doneCheckEntry{{card: planparser.Card{Number: 1, Slug: "card"}, checkID: checkID, key: tt.key, display: tt.key}}
+			index := map[string]quarry.ResolveResult{tt.key: {Target: tt.key, Status: quarry.StatusNotFound, Unit: quarry.StatusFound}}
+
+			findings, err := doneCheckVerdicts(&planparser.Plan{Language: tt.language}, t.TempDir(), entries, index, tt.declarations)
+			if err != nil {
+				t.Fatalf("doneCheckVerdicts() error = %v; want nil", err)
+			}
+			if len(findings) != 1 {
+				t.Fatalf("doneCheckVerdicts() = %v; want exactly one %s finding", findings, tt.wantCheck)
+			}
+			if findings[0].Check != tt.wantCheck || findings[0].Severity != SeverityBlocking {
+				t.Errorf("finding = %+v; want a blocking %s finding", findings[0], tt.wantCheck)
+			}
+			if findings[0].Detail != tt.wantDetail {
+				t.Errorf("finding detail = %q; want %q", findings[0].Detail, tt.wantDetail)
 			}
 		})
 	}

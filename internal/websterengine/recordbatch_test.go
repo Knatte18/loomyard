@@ -1503,8 +1503,102 @@ func TestRecordBatch_MissingSessionTranscriptArchivesReport(t *testing.T) {
 	}
 }
 
+// laterReferencesIndex is a planindex.Index whose only answer is the later-card references to a deleted symbol.
+type laterReferencesIndex struct {
+	planindex.Index
+	references []planindex.Finding
+}
+
+func (i laterReferencesIndex) LaterDeleteReferences(*planparser.Plan, []planparser.Card, []planparser.Card, string) ([]planindex.Finding, error) {
+	return i.references, nil
+}
+
+// TestFailCardNotDone_WayForward pins the way forward a batch failed on done-check findings names.
+// It covers each Create-target arm: a signature mismatch, a plain missing target, a Rename pair that did not happen, a target after a recovery, an uncheckable record, an exhausted batch,
+// and an exhausted batch whose record holds an amendment no recovery has rendered yet.
+// It also covers the precedence of the Delete reference, glyph-rejected and Create ways forward over one another.
+func TestFailCardNotDone_WayForward(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const (
+		amend        = "amend the card's Create target or Rename new side to the unit, owner or parameter list the finding names the member declared with, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
+		amendGlyph   = "amend the card's target to a spelling `lym quarry resolve` answers, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
+		moveDelete   = "move the delete to a card after the one that still references it, run `lym webster rebaseline --card NN` naming each card you edited, then `lym webster recover-batch 01`"
+		freshRestart = "1) lym webster reset --to start; 2) lym webster run"
+		exhausted    = "1) lym webster reset --to batch-start --batch 01; 2) lym webster recover-batch 1; or " + freshRestart
+	)
+	finding := func(check string) planindex.Finding {
+		return planindex.Finding{Check: check, Card: "1-json-flag", Detail: "the target is not done", Severity: planindex.SeverityBlocking}
+	}
+	signatureMismatch := finding("signature-mismatch")
+	createNotDone := finding("create-not-done")
+	glyphRejected := finding("glyph-rejected")
+	deleteNotDone := finding("delete-not-done")
+	renameNotDone := finding("rename-not-done")
+	stillReferenced := []planindex.Finding{{Check: "plan-references-deleted-symbol", Card: "2-later", Detail: "the card still references the deleted symbol", Severity: planindex.SeverityBlocking}}
+
+	tests := []struct {
+		name        string
+		findings    []planindex.Finding
+		verb        string
+		recoveries  int
+		uncheckable []string
+		references  []planindex.Finding
+		want        string
+		amended     []websterengine.AmendedCard
+	}{
+		{"SignatureMismatchAmendsAlone", []planindex.Finding{signatureMismatch}, "record-batch", 0, nil, nil, amend, nil},
+		{"CreateNotDoneOffersRecoverAndAmend", []planindex.Finding{createNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
+		{"RenameNotDoneOffersRecoverAndAmend", []planindex.Finding{renameNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
+		{"CreateNotDoneAfterARecoveryAmendsAlone", []planindex.Finding{createNotDone}, "recover-batch", 0, nil, nil, amend, nil},
+		{"UncheckableRestartsTheRun", []planindex.Finding{createNotDone}, "record-batch", 0, []string{"fabric-reference: Bash command references the fabric"}, nil, freshRestart, nil},
+		{"UncheckableSignatureMismatchRestartsTheRun", []planindex.Finding{signatureMismatch}, "record-batch", 0, []string{"fabric-reference: Bash command references the fabric"}, nil, freshRestart, nil},
+		{"ExhaustedRecoveriesTakeTheExhaustedSteps", []planindex.Finding{createNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
+		{"ExhaustedRecoveriesBeatRenameNotDone", []planindex.Finding{renameNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
+		{"ExhaustedBatchWithAnUnrenderedAmendmentAmendsAlone", []planindex.Finding{createNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, nil, amend,
+			[]websterengine.AmendedCard{{Card: "1-json-flag", Rendered: false}}},
+		{"ExhaustedRecoveriesBeatSignatureMismatch", []planindex.Finding{signatureMismatch}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
+		{"ExhaustedRecoveriesBeatGlyphRejected", []planindex.Finding{glyphRejected}, "recover-batch", websterengine.MaxRecoveries, nil, nil, exhausted, nil},
+		{"ExhaustedRecoveriesBeatReferencedDelete", []planindex.Finding{deleteNotDone}, "recover-batch", websterengine.MaxRecoveries, nil, stillReferenced, exhausted, nil},
+		{"GlyphRejectedBeatsCreateNotDone", []planindex.Finding{createNotDone, glyphRejected}, "record-batch", 0, nil, nil, amendGlyph, nil},
+		{"ReferencedDeleteBeatsCreateNotDone", []planindex.Finding{createNotDone, deleteNotDone}, "record-batch", 0, nil, stillReferenced, moveDelete, nil},
+		{"UnreferencedDeleteLeavesCreateNotDone", []planindex.Finding{deleteNotDone, createNotDone}, "record-batch", 0, nil, nil,
+			"lym webster recover-batch 01 to build the target as the card names it; or, when the member is declared where the finding names it, " + amend, nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			batch := &websterengine.BatchState{Recoveries: tt.recoveries, Uncheckable: tt.uncheckable, AmendedCards: tt.amended}
+			in := websterengine.CardNotDoneInputs{
+				Plan:   &planparser.Plan{},
+				State:  &websterengine.State{Batches: map[int]*websterengine.BatchState{1: batch}},
+				Batch:  batch,
+				Cards:  []planparser.Card{{Number: 1, Slug: "json-flag"}},
+				Number: 1,
+				Slug:   "json-flag",
+				Geom:   websterengine.Geometry{ReportsDir: t.TempDir(), Index: laterReferencesIndex{references: tt.references}},
+				Verb:   tt.verb,
+			}
+
+			failed, err := websterengine.FailCardNotDone(in, websterengine.CardNotDoneFor(tt.findings))
+			if err != nil {
+				t.Fatalf("FailCardNotDone() error = %v; want nil", err)
+			}
+			if failed.WayForward != tt.want {
+				t.Errorf("FailCardNotDone() way forward = %q; want %q", failed.WayForward, tt.want)
+			}
+		})
+	}
+}
+
 // TestRecordBatch_DoneChecksBlockOnUnresolvedCreate proves card 33's wiring as card 10 reshaped it:
-// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, and a target quarry rejects outright names the card amendment as the way forward.
+// a Create target that still does not resolve against the worktree's actual post-card tree fails the batch terminally with its findings as reasons and the report archived, with recover-batch and the card amendment as its way forward,
+// and a target quarry rejects outright names the card amendment alone.
 func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	tiergate.Require(t, 0)
 	fx := newRecordFixture(t, []shuttleengine.ForkAudit{
@@ -1531,6 +1625,11 @@ func TestRecordBatch_DoneChecksBlockOnUnresolvedCreate(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(fx.ReportsDir, websterengine.ReportFileName(1, "json-flag"))); !os.IsNotExist(statErr) {
 		t.Errorf("report still at its live path (stat err %v); want it archived", statErr)
+	}
+	for _, want := range []string{"way forward: lym webster recover-batch 01 to build the target as the card names it", "amend the card's Create target", "lym webster rebaseline --card NN"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("RecordBatch() error = %q; want it to contain %q", err.Error(), want)
+		}
 	}
 
 	t.Run("ReasonsOpenWithTheBatchAndItsCards", func(t *testing.T) {

@@ -507,8 +507,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		}
 	}
 	if prior != nil && prior.Recoveries >= maxRecoveries && !rendersNewAmendment(prior) && !waitsOnParent(prior) {
-		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s; or %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries,
-			wayForwardSteps(resetVerb(ResetToBatchStart, batchNumber), fmt.Sprintf("lym webster recover-batch %d", batchNumber)), freshRestartSteps(stepRun))
+		return nil, false, fmt.Errorf("%w: batch %02d has had %d recoveries; %s", ErrRecoveryExhausted, batchNumber, prior.Recoveries, exhaustedRecoveryWayForward(batchNumber))
 	}
 	if prior != nil && prior.Terminal && prior.Status == DigestStatusFailed && allReadOnlyFabricReferences(prior.Uncheckable, deps.ReadOnly) {
 		// An evidence failure returns the wrap unchanged: its way forward names this verb for the re-run.
@@ -558,7 +557,7 @@ func RecoverSpawnOrAttach(deps RecoverDeps, batchNumber int, clk Clock) (bs *Bat
 		return nil, false, fmt.Errorf("%w; way forward: transient, re-run `lym webster recover-batch %d`", err, batchNumber)
 	}
 	if len(referenced) > 0 {
-		return nil, false, fmt.Errorf("%w: batch %02d: %s; way forward: %s", ErrRecoveryDeleteReferenced, batchNumber, strings.Join(referenced, "; "), deleteReferencedWayForward(batchNumber, prior != nil && len(prior.Uncheckable) > 0))
+		return nil, false, fmt.Errorf("%w: batch %02d: %s; way forward: %s", ErrRecoveryDeleteReferenced, batchNumber, strings.Join(referenced, "; "), deleteReferencedWayForward(batchNumber, prior != nil && len(prior.Uncheckable) > 0, false))
 	}
 
 	prevDigest := predecessorDigestLine(deps.Batches, deps.State, batchNumber)

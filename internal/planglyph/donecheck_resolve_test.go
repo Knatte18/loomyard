@@ -52,7 +52,7 @@ func TestDoneChecks_Verdicts(t *testing.T) {
 			},
 			group:      planparser.TargetGroup{Type: planparser.CardTypeCreate, Refs: []string{"sub#Foo"}},
 			wantChecks: []string{"create-not-done"},
-			wantDetail: []string{"quarry searched the unit's files sub/a.go; Foo is declared as other#Foo in other/b.go"},
+			wantDetail: []string{"quarry searched 1 file of unit sub; Foo is declared as other#Foo in other/b.go"},
 		},
 		{
 			name: "Create test in external test package landed",

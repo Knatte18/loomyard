@@ -63,7 +63,8 @@ func resolveKeyFor(ref string) string {
 // A target still path-shaped is a path canonicalization could not spell as a glyph, such as one whose directory holds a space.
 // Quarry rejects it before resolution, so its worktree-relative path is checked on disk instead, existing for the Create direction and absent for the Delete direction.
 // Under a go plan, a Create target or Rename new side quarry answers not_found is done when its member is declared in its directory's other package, `<dir>_test` for `<dir>` and the reverse, since a plan cannot tell which package a new test file declares.
-// A Create target or Rename new side quarry answers not_found also names, in its detail, the files declaring the looked-up unit and every declaration elsewhere in the worktree carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
+// A Create target or Rename new side quarry answers not_found also names, in its detail, how many files declare the looked-up unit and the nearest few declarations elsewhere carrying the looked-up name, so a missing declaration reads apart from one written somewhere the card did not say.
+// One whose unit declares its member under the same name with only other parameter lists is the blocking finding signature-mismatch instead, which leads with each declared signature and its file.
 // An answer outside quarry's four-value status vocabulary — a pre-resolution rejection, or a status
 // this policy has not been taught — is the blocking finding glyph-rejected for that entry, failing
 // closed exactly as statusFindings and createFindings do (see doneCheckVerdicts).
@@ -179,7 +180,41 @@ func declaredInCounterpartPackage(plan *planparser.Plan, key string, declaration
 	return slices.ContainsFunc(declarations, func(s quarry.Symbol) bool { return s.ID == counterpart })
 }
 
-// searchedDescription names, for a key quarry answered not_found, the files among declarations that declare the key's unit and every declaration elsewhere whose own name is the key's member name, with its glyph and file.
+// maxListedDeclarations caps how many declarations one finding detail names, so a common name cannot bury the finding.
+const maxListedDeclarations = 3
+
+// signatureMismatches returns the declarations of key's member under key's own unit, owner chain and name whose parameter list differs from key's.
+// It returns none when key does not parse as a member glyph in the plan's alphabet or names no parameter list.
+func signatureMismatches(plan *planparser.Plan, key string, declarations []quarry.Symbol) []quarry.Symbol {
+	wanted, err := planparser.ParseRef(plan, key)
+	if err != nil || wanted.IsSelf() || wanted.Params == nil {
+		return nil
+	}
+	var mismatched []quarry.Symbol
+	for _, s := range declarations {
+		if s.Glyph.Unit == wanted.Unit && s.Glyph.Name == wanted.Name && slices.Equal(s.Glyph.Owner, wanted.Owner) && !slices.Equal(s.Glyph.Params, wanted.Params) {
+			mismatched = append(mismatched, s)
+		}
+	}
+	return mismatched
+}
+
+// signatureMismatchFinding is the blocking signature-mismatch finding for e, a Create target or Rename new side whose unit declares its member only with the parameter lists of mismatched.
+// Its detail leads with each declared signature and its file.
+func signatureMismatchFinding(e doneCheckEntry, mismatched []quarry.Symbol) Finding {
+	subject := "Create target"
+	if e.checkID == "rename-not-done-new" {
+		subject = "Rename pair's new side"
+	}
+	return Finding{
+		Check:    "signature-mismatch",
+		Card:     e.card.ID(),
+		Detail:   fmt.Sprintf("declared as %s, not with the parameter list %s %q names", declarationList(mismatched, mismatched[0].Glyph.Unit), subject, e.display),
+		Severity: SeverityBlocking,
+	}
+}
+
+// searchedDescription names, for a key quarry answered not_found, how many files among declarations declare the key's unit and the nearest declarations elsewhere whose own name is the key's member name.
 // It returns "" when the key does not parse as a member glyph in the plan's alphabet, since then there is no name to look for.
 func searchedDescription(plan *planparser.Plan, key string, declarations []quarry.Symbol) string {
 	wanted, err := planparser.ParseRef(plan, key)
@@ -187,29 +222,65 @@ func searchedDescription(plan *planparser.Plan, key string, declarations []quarr
 		return ""
 	}
 
-	var unitFiles []string
-	var elsewhere []string
+	unitFiles := map[string]bool{}
+	var elsewhere []quarry.Symbol
 	for _, s := range declarations {
-		if s.Glyph.Unit == wanted.Unit && !slices.Contains(unitFiles, s.File) {
-			unitFiles = append(unitFiles, s.File)
+		if s.Glyph.Unit == wanted.Unit {
+			unitFiles[s.File] = true
 		}
 		if s.Glyph.Name == wanted.Name && s.ID != key {
-			elsewhere = append(elsewhere, fmt.Sprintf("%s in %s", s.ID, s.File))
+			elsewhere = append(elsewhere, s)
 		}
 	}
-	sort.Strings(unitFiles)
-	sort.Strings(elsewhere)
 
 	var parts []string
-	if len(unitFiles) > 0 {
-		parts = append(parts, "quarry searched the unit's files "+strings.Join(unitFiles, ", "))
+	switch n := len(unitFiles); n {
+	case 0:
+	case 1:
+		parts = append(parts, "quarry searched 1 file of unit "+wanted.Unit)
+	default:
+		parts = append(parts, fmt.Sprintf("quarry searched %d files of unit %s", n, wanted.Unit))
 	}
 	if len(elsewhere) > 0 {
-		parts = append(parts, fmt.Sprintf("%s is declared as %s", wanted.Name, strings.Join(elsewhere, ", ")))
+		parts = append(parts, fmt.Sprintf("%s is declared as %s", wanted.Name, declarationList(elsewhere, wanted.Unit)))
 	} else {
 		parts = append(parts, fmt.Sprintf("no declaration named %s exists anywhere in the worktree", wanted.Name))
 	}
 	return strings.Join(parts, "; ")
+}
+
+// declarationList renders declarations as "<glyph> in <file>", nearest to unit first, naming at most maxListedDeclarations and counting the rest.
+// Nearness is how many leading unit segments, split at "/" and ".", a declaration's unit shares with unit; glyph order breaks a tie.
+func declarationList(declarations []quarry.Symbol, unit string) string {
+	sorted := slices.Clone(declarations)
+	slices.SortStableFunc(sorted, func(a, b quarry.Symbol) int {
+		if nearer := sharedUnitSegments(b.Glyph.Unit, unit) - sharedUnitSegments(a.Glyph.Unit, unit); nearer != 0 {
+			return nearer
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	named := make([]string, 0, maxListedDeclarations)
+	for _, s := range sorted[:min(len(sorted), maxListedDeclarations)] {
+		named = append(named, fmt.Sprintf("%s in %s", s.ID, s.File))
+	}
+	list := strings.Join(named, ", ")
+	if rest := len(sorted) - len(named); rest > 0 {
+		list += fmt.Sprintf(" and %d more", rest)
+	}
+	return list
+}
+
+// sharedUnitSegments counts the leading segments, split at "/" and ".", that units a and b share.
+func sharedUnitSegments(a, b string) int {
+	split := func(unit string) []string {
+		return strings.FieldsFunc(unit, func(r rune) bool { return r == '/' || r == '.' })
+	}
+	as, bs := split(a), split(b)
+	shared := 0
+	for shared < len(as) && shared < len(bs) && as[shared] == bs[shared] {
+		shared++
+	}
+	return shared
 }
 
 // diskLookup checks key, a worktree-relative path, on disk under worktreeRoot and reports whether anything exists there together with the lookup description a finding detail carries.
@@ -248,7 +319,8 @@ func lookupDescription(key string, status quarry.Status, unitFound bool, candida
 // answers keyed by target, reading ambiguous candidates' files and onDisk entries' paths under worktreeRoot.
 // Each finding's detail names the lookup: the resolve key, quarry's status, the unit status of a
 // missing member, and each candidate's file and build constraint for an ambiguous answer.
-// A Create or Rename new side answered not_found also names, from declarations, the worktree's listed declarations, its unit's files and every declaration of its name.
+// A Create or Rename new side answered not_found also names how many files declare its unit and the nearest declarations of its name, read from declarations, the worktree's listed declarations.
+// It is a signature-mismatch finding instead when its unit declares its member only with other parameter lists.
 //
 // It is split out from DoneChecks so the coverage guard below is reachable from a unit test: every
 // other path into it runs a real quarry.Repo, and the one condition worth pinning -- an answer set
@@ -321,6 +393,10 @@ func doneCheckVerdicts(plan *planparser.Plan, worktreeRoot string, entries []don
 		if r.Status == quarry.StatusNotFound && (e.checkID == "create-not-done" || e.checkID == "rename-not-done-new") {
 			// A Go test written into the external test package, or the reverse, is the card's work done in its directory's other package.
 			if declaredInCounterpartPackage(plan, e.key, declarations) {
+				continue
+			}
+			if mismatched := signatureMismatches(plan, e.key, declarations); len(mismatched) > 0 {
+				findings = append(findings, signatureMismatchFinding(e, mismatched))
 				continue
 			}
 			if searched := searchedDescription(plan, e.key, declarations); searched != "" {

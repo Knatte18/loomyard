@@ -140,7 +140,8 @@
 //     Its path must exist for a Create or Rename new side and must not for a Delete or Rename old side (planparser.IsDiskCheckedTarget).
 //     Each detail carries the lookup: the resolve key looked up beside the card's own spelling, quarry's status, for not_found whether the unit exists, and for ambiguous each candidate's file and build constraint.
 //     Under a go plan, a Create or Rename new side answered not_found is done when the worktree's glyphs listing holds its member in its directory's other package, since a plan cannot tell which package a new test file declares.
-//     A Create or Rename new side answered not_found also names the files declaring its unit and every declaration of its name elsewhere in the worktree, from one glyphs listing taken only when such a finding is due.
+//     A Create or Rename new side answered not_found also names how many files declare its unit and the nearest few declarations of its name elsewhere in the worktree, from one glyphs listing taken only when such a finding is due.
+//     signature-mismatch (blocking) replaces that finding when its unit declares the member under the same name with only other parameter lists, and leads with each declared signature and its file.
 //     An ambiguous answer whose candidates sit in files no single build environment selects together counts as resolved, so a Create or a Rename new side over such a member lands;
 //     the Delete direction and a Rename old side keep blocking on any surviving declaration.
 //     glyph-rejected is additionally DoneChecks' own
