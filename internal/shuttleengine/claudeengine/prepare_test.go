@@ -60,6 +60,7 @@ func templateConfig(t testing.TB) Config {
 }
 
 // engineWithAnchor returns an engine that loads its claude.yaml from the temp anchor it returns alongside.
+// Its Claude Code config directory is an empty temp directory, so the scope it writes names no plugin of the machine running the test.
 func engineWithAnchor(t testing.TB) (*Claude, string) {
 	t.Helper()
 	shuttleCfg, err := shuttleengine.LoadConfig(configengine.Dirs{Anchor: t.TempDir()}, "shuttle")
@@ -67,7 +68,9 @@ func engineWithAnchor(t testing.TB) (*Claude, string) {
 		t.Fatalf("load the shipped shuttle template: %v", err)
 	}
 	anchor := t.TempDir()
-	return NewFromConfig(shuttleCfg, configengine.Dirs{Anchor: anchor}), anchor
+	engine := NewFromConfig(shuttleCfg, configengine.Dirs{Anchor: anchor})
+	engine.claudeDir = t.TempDir()
+	return engine, anchor
 }
 
 // engineWith returns an engine whose claude.yaml is claude, written as the worktree layer of a temp anchor.

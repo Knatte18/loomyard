@@ -29,7 +29,7 @@ func recordingHookCommands(t *testing.T, eventsPath string) map[string]string {
 	t.Helper()
 	commands := map[string]string{}
 	for _, interactive := range []bool{false, true} {
-		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "")
+		data, err := buildSettings(eventsPath, interactive, shuttleengine.Config{}, Config{}, false, false, "", "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings() error: %v", err)
 		}

@@ -17,3 +17,19 @@ batching_nudge:  # the after-tool-call hook that adds one line to the calling ch
   edit_run: 2  # the number of consecutive edit-only messages that fires; at least 1
   slice_lines: 2000  # the line count under which a sliced Read of a file fires; at least 1
   max_nudges: 5  # the most nudges one run's session, and each of its subagents and forks, gets, so a session that ignores the line is not nagged on every turn; at least 1
+session_scope:  # what every Claude session lym launches loads besides lym's own text, written into the settings it passes with --settings, over the user's and the repository's settings; read when a session starts
+  enabled: true  # write the scope: an installed plugin is on only when the session preloads one of its skills, claude.ai connectors and bundled skills are off, a plugin that is on keeps only its preloaded skills but for the ly plugin, which keeps all of them, and every session but the orch's gets no auto-memory and no ListAgents tool; false leaves all of it to the other settings
+  skills_off:  # skills turned off in every session that does not preload them, named as Claude Code lists them; the operator's own list
+    - anthropic-skills:built-in-browser
+    - anthropic-skills:chrome-browser
+    - anthropic-skills:computer-use
+    - anthropic-skills:deep-research
+    - anthropic-skills:docs
+    - anthropic-skills:docx
+    - anthropic-skills:google-workspace
+    - anthropic-skills:import-memory
+    - anthropic-skills:morning
+    - anthropic-skills:pdf
+    - anthropic-skills:pptx
+    - anthropic-skills:skill-creator
+    - anthropic-skills:xlsx

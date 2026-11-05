@@ -19,6 +19,7 @@
 // The styled read is what lets a hand-added session's suggestion read as empty.
 // Every document, the run document and the creel-only one alike, sets Claude Code's `attribution` to empty commit and pull-request texts,
 // so no session lym launches credits itself in a commit or pull request it makes.
+// Every document also carries the session's scope (scope.go) as its last keys, none of them when the scope is off.
 
 package claudeengine
 
@@ -181,17 +182,18 @@ type attributionSettings struct {
 }
 
 // openSettingsDoc is the settings document OpenLaunch writes for a session opened in a hub.
-// It carries hooks and the attribution alone, so every other setting of the session stays the worktree's own.
+// It carries hooks, the attribution and the session's scope alone, so every other setting of the session stays the worktree's own.
 // Attribution has no omitempty and buildOpenSettings leaves it zero, so the document credits no session.
 type openSettingsDoc struct {
 	Hooks       openSettingsHooks   `json:"hooks"`
 	Attribution attributionSettings `json:"attribution"`
+	sessionScope
 }
 
 // buildOpenSettings marshals an opened session's settings document over the creel flag directory creelFlagDirPosix, a git-bash POSIX path:
-// the PostToolUse creel mail hook, and on Stop creel's turn-end delivery followed by the idle waiter.
+// the PostToolUse creel mail hook, on Stop creel's turn-end delivery followed by the idle waiter, and scope.
 // It records nothing, since an opened session has no events file.
-func buildOpenSettings(creelFlagDirPosix string) ([]byte, error) {
+func buildOpenSettings(creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedFlagDir := shQuote(creelFlagDirPosix)
 	doc := openSettingsDoc{Hooks: openSettingsHooks{
 		Stop: []hookEntry{
@@ -199,7 +201,7 @@ func buildOpenSettings(creelFlagDirPosix string) ([]byte, error) {
 			creelWaitHookEntry(),
 		},
 		PostToolUse: []hookEntry{{Hooks: []hookCommand{{Type: "command", Command: creelMailHookCommand(quotedFlagDir)}}}},
-	}}
+	}, sessionScope: scope}
 	data, err := json.Marshal(doc)
 	if err != nil {
 		return nil, fmt.Errorf("marshal open settings: %w", err)
@@ -211,10 +213,12 @@ func buildOpenSettings(creelFlagDirPosix string) ([]byte, error) {
 // PromptSuggestionEnabled has no omitempty and buildSettings leaves it false, so every document carries `"promptSuggestionEnabled": false`.
 // The styled read is what lets a hand-added session, which this document does not configure, have its suggestion read as an empty box.
 // Attribution has no omitempty and buildSettings leaves it zero, so the document credits no session.
+// The session's scope follows as the last keys.
 type settingsDoc struct {
 	Hooks                   settingsHooks       `json:"hooks"`
 	PromptSuggestionEnabled bool                `json:"promptSuggestionEnabled"`
 	Attribution             attributionSettings `json:"attribution"`
+	sessionScope
 }
 
 // shQuote wraps s in POSIX shell single quotes, escaping embedded quotes with the standard sh idiom (close, emit escaped quote, reopen).
@@ -375,7 +379,8 @@ func activityStampHook(eventsPathPosix string) []hookEntry {
 // A non-empty creelFlagDirPosix is a git-bash POSIX path like eventsPathPosix.
 // It adds the PostToolUse creel mail hook, after the stamp and the batching hook, testing the strand's flag in that directory, replaces the Stop recording with the command that merges it with creel's turn-end delivery, and adds creel's idle waiter as a second Stop entry.
 // Empty adds none of them and keeps the plain Stop recording.
-func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string) ([]byte, error) {
+// scope is the session's scope, carried as the document's last keys; the zero scope adds none.
+func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.Config, claude Config, forkSubagents, denyPublish bool, contextAfterCompaction, creelFlagDirPosix string, scope sessionScope) ([]byte, error) {
 	quotedEventsPath := shQuote(eventsPathPosix)
 	recordingHook := func(hookEventName string, alwaysSucceeds bool) []hookEntry {
 		command := recordingCommand(hookEventName, quotedEventsPath)
@@ -397,6 +402,7 @@ func buildSettings(eventsPathPosix string, interactive bool, cfg shuttleengine.C
 			PreCompact:        activityStampHook(eventsPathPosix),
 			PostCompact:       activityStampHook(eventsPathPosix),
 		},
+		sessionScope: scope,
 	}
 
 	if contextAfterCompaction == "" {

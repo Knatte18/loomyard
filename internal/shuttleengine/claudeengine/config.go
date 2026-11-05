@@ -19,7 +19,7 @@ func ConfigTemplate() string {
 	return configTemplate
 }
 
-// Config is the resolved claude.yaml: the Claude binary, the tool denies, the prompt-cache lifetimes, the keep-warm caps and the batching nudge.
+// Config is the resolved claude.yaml: the Claude binary, the tool denies, the prompt-cache lifetimes, the keep-warm caps, the batching nudge and the session scope.
 type Config struct {
 	// Binary is the path to the claude executable; empty falls back to "claude" on PATH.
 	Binary string `yaml:"binary"`
@@ -35,6 +35,8 @@ type Config struct {
 	KeepWarmCapRoles map[string]string `yaml:"keep_warm_cap_roles"`
 	// BatchingNudge switches and tunes the after-tool-call hook that nudges a session back to batching its calls; ValidateBatchingNudge checks it, not LoadConfig.
 	BatchingNudge BatchingNudgeConfig `yaml:"batching_nudge"`
+	// SessionScope switches the scope lym writes into every session's settings and names the skills it turns off.
+	SessionScope ScopeConfig `yaml:"session_scope"`
 }
 
 // ConfigOpenMaps returns the claude.yaml keys whose entries are the operator's own, which configengine carries whole through reconcile and --set.
@@ -62,6 +64,7 @@ func ConfigSpec() configengine.Spec {
 			"keep_warm_cap":          configengine.CategoryNone,
 			"keep_warm_cap_roles":    configengine.CategoryNone,
 			batchingNudgeKey:         configengine.CategoryNone,
+			sessionScopeKey:          configengine.CategoryNone,
 		},
 		RetiredKeys:       map[string]configengine.Category{retiredAgentDenyKey: configengine.CategoryGuard},
 		RetiredWayForward: map[string]string{retiredAgentDenyKey: retiredAgentDenyWayForward},

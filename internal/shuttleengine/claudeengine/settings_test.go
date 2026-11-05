@@ -56,7 +56,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, Config{}, tt.fork, false, "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -76,7 +76,7 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 func TestBuildSettings_CreditNoSessionInAHub(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
-	data, err := buildSettings("/c/run/events.jsonl", true, shuttleengine.Config{}, Config{}, false, false, "", "/c/hub/flags")
+	data, err := buildSettings("/c/run/events.jsonl", true, shuttleengine.Config{}, Config{}, false, false, "", "/c/hub/flags", sessionScope{})
 	if err != nil {
 		t.Fatalf("buildSettings() error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestBuildSettings_RecordingHooks(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "")
+			data, err := buildSettings(tt.eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -187,7 +187,7 @@ func TestBuildSettings_SessionStartHook(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "")
+			data, err := buildSettings("/c/run/events.jsonl", false, shuttleengine.Config{}, Config{}, false, false, tt.command, "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -284,7 +284,7 @@ func TestBuildSettings_CreelMailHook(t *testing.T) {
 		{"Standalone", "", []string{"touch '/c/run/activity-stamp'; true"}, []stopHook{{command: recordingCommand(hookEventStop, quotedEventsPath)}}},
 	}
 	for _, tt := range tests {
-		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir)
+		data, err := buildSettings(eventsPath, false, shuttleengine.Config{}, Config{}, false, false, "", tt.flagDir, sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s) error: %v", tt.name, err)
 		}
@@ -356,7 +356,7 @@ func TestBuildSettings_DenyToggleMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := shuttleengine.Config{DenyPython: tt.pythonDeny}
 			claude := Config{DenyAskUserQuestion: tt.askUserDeny}
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, cfg, claude, tt.fork, tt.denyPublish, "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -542,7 +542,7 @@ func TestBuildSettings_NoAgentHookAndForkGuard(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "")
+			data, err := buildSettings("/c/run/events.jsonl", tt.interactive, shuttleengine.Config{}, tt.claude, tt.fork, false, "", "", sessionScope{})
 			if err != nil {
 				t.Fatalf("buildSettings() error: %v", err)
 			}
@@ -908,7 +908,7 @@ func TestBuildDenyNotice_MatchesInstalledDenies(t *testing.T) {
 				for _, fork := range []bool{false, true} {
 					cfg := shuttleengine.Config{DenyPython: pythonDeny, RefuseRaw: sampleRefuseRaw}
 					claude := Config{DenyAskUserQuestion: askUserDeny}
-					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "")
+					data, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", sessionScope{})
 					if err != nil {
 						t.Fatalf("buildSettings() error: %v", err)
 					}
@@ -1008,7 +1008,7 @@ func TestBuildSettings_MatchesGolden(t *testing.T) {
 			t.Errorf("golden lacks %q", label)
 			continue
 		}
-		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "")
+		settings, err := buildSettings("/c/run/events.jsonl", interactive, cfg, claude, fork, false, "", "", sessionScope{})
 		if err != nil {
 			t.Fatalf("buildSettings(%s): %v", label, err)
 		}

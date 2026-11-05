@@ -67,7 +67,7 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: board
       ask: "Board agent name:"
       ask_default: board
-      run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill ly:board-policy --skill ly:board"
+      run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]' --skill scribe:prose --skill scribe:conversation --skill ly:board-policy --skill ly:board"
     - label: distill
       run: lym orch distill
       confirm: Distill the orch?

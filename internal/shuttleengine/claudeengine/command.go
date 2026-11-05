@@ -401,7 +401,7 @@ func buildOpenCmd(sh shell.Shell, bin, firstTurn, sessionID, model, effort, sett
 
 // OpenLaunch returns the launch of a named interactive session with no prompt.
 // It loads claude.yaml, validates the effort and the permission mode and resolves the model and version into a model id before anything else, mints a session id, and returns the fresh line as Cmd.
-// An engine told a hub board directory then creates dir and writes into it settings.json, holding creel's hook delivery and the empty attribution and nothing else, and the append-system-prompt file, holding the creel trust sentence alone;
+// An engine told a hub board directory then creates dir and writes into it settings.json, holding creel's hook delivery, the empty attribution and the session's scope for spec.Skills and nothing else, and the append-system-prompt file, holding the creel trust sentence alone;
 // both lines name the two files, and the launch is marked CreelHooks, so the session gets its mail through its hooks as a run session does.
 // A failure after it creates dir removes dir.
 // An engine told no board directory writes nothing, leaves dir uncreated and marks nothing.
@@ -449,7 +449,8 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	}
 	settingsPath, appendPromptPath := "", ""
 	if creelFlagDirForHook != "" {
-		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook)
+		scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
+		settingsPath, appendPromptPath, err = writeOpenFiles(dir, creelFlagDirForHook, scope)
 		if err != nil {
 			return shuttleengine.Launch{}, err
 		}
@@ -461,10 +462,10 @@ func (c *Claude) OpenLaunch(dir string, spec shuttleengine.OpenSpec, cfg shuttle
 	return shuttleengine.Launch{Cmd: fresh, ResumeCmd: sh.OrElse(resumeLine, fresh), SessionID: sessionID, CreelHooks: creelFlagDirForHook != ""}, nil
 }
 
-// writeOpenFiles creates dir and writes an opened session's settings.json, holding creel's hook delivery over the flag directory creelFlagDirPosix and the empty attribution, and its append-system-prompt file, holding the creel trust sentence.
+// writeOpenFiles creates dir and writes an opened session's settings.json, holding creel's hook delivery over the flag directory creelFlagDirPosix, the empty attribution and scope, and its append-system-prompt file, holding the creel trust sentence.
 // It returns the two files' absolute paths.
 // A failure after the directory is created removes it, so a failed launch leaves nothing behind.
-func writeOpenFiles(dir, creelFlagDirPosix string) (settingsPath, appendPromptPath string, err error) {
+func writeOpenFiles(dir, creelFlagDirPosix string, scope sessionScope) (settingsPath, appendPromptPath string, err error) {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve the open session directory: %w", err)
@@ -477,7 +478,7 @@ func writeOpenFiles(dir, creelFlagDirPosix string) (settingsPath, appendPromptPa
 			_ = os.RemoveAll(absDir)
 		}
 	}()
-	settingsJSON, err := buildOpenSettings(creelFlagDirPosix)
+	settingsJSON, err := buildOpenSettings(creelFlagDirPosix, scope)
 	if err != nil {
 		return "", "", fmt.Errorf("build open settings: %w", err)
 	}

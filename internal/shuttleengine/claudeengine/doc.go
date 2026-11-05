@@ -62,7 +62,7 @@
 // A color outside the palette answers no inputs.
 //
 // The engine owns a layered config module, `claude.yaml`, declared in config.go:
-// `binary`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap`, `keep_warm_cap_roles` and the `batching_nudge` block.
+// `binary`, `deny_ask_user_question`, `prompt_cache_ttl`, `prompt_cache_ttl_roles`, `keep_warm_cap`, `keep_warm_cap_roles` and the `batching_nudge` and `session_scope` blocks.
 // The retired `deny_agent_tool` key is read out of every layer, and a local override setting it is refused with the way forward of deleting it.
 // LoadConfig resolves it through the degrading loader, stacking the template, the repo default, the worktree file and the local override,
 // and a local override may set every key but the binary and the tool denies.
@@ -310,11 +310,22 @@
 // Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
 // An open naming skills puts their load message after the binary on the fresh line as the session's first turn; the resume line carries none.
 // An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.
-// An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery and the run document's empty `attribution` and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
+// An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery, the run document's empty `attribution` and the session scope below and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
 // The settings' PostToolUse mail hook and idle waiter are a run's; its Stop delivery is the merged command without the recording, since an opened session has no events file: it exits 0 whatever the delivery printed, so an echo reaches the operator.
 // Claude Code stacks `--settings` over the worktree's own settings, so every other setting stays the worktree's.
 // It carries `--dangerously-skip-permissions` unless the open's permission mode is `prompt`, on the fresh and the resume line alike, and an unknown mode refuses the open.
 // Its resume line falls back to a fresh start under the same id, because Claude Code keeps no transcript for a session that never took a turn and `--resume` then fails.
+//
+// The session scope (scope.go) decides what a session loads besides lym's own text, from `claude.yaml`'s `session_scope` block.
+// With `enabled` on, Prepare writes it into every run's settings, and OpenLaunch into an opened session's settings in a hub, as the documents' last keys;
+// Claude Code's `--settings` layer outranks the user's and the repository's settings, so the scope holds whatever those say.
+// Each plugin Claude Code's `plugins/installed_plugins.json` names, under `CLAUDE_CONFIG_DIR` or else `~/.claude`, is on in `enabledPlugins` exactly when the session preloads a skill listed under the plugin's name, and off otherwise.
+// `disableClaudeAiConnectors` and `disableBundledSkills` are true, and `skillOverrides` turns off each skill of `skills_off` the session does not preload.
+// Each plugin that is on also has every skill but the preloaded ones turned off, read from the `skills` directory of each install path, except the `ly` plugin, whose skills the operator types as slash commands and which keeps all of them.
+// A session whose strand role is the orch's alone keeps its auto-memory and the `ListAgents` tool; every other session, run or opened, has `autoMemoryEnabled` false and `ListAgents` in its `permissions.deny`.
+// A config directory or plugins file the engine cannot read is logged and names no plugin, so the session's other settings decide its plugins.
+// An opened session outside a hub writes no settings and gets no scope.
+// Bound: the setting names are Claude Code 2.1.318's, and no launch has yet shown that `skillOverrides` turns off a plugin's skill or a claude.ai skill.
 //
 // A replay corpus of real turn ends lives under testdata/corpus, one directory per case:
 // transcript.jsonl holds the source transcript's lines the parsers read, trimmed to the fields they read;

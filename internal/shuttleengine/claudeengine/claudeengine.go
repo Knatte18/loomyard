@@ -47,6 +47,8 @@ type Claude struct {
 	submitRedrawSettleMS int
 	// nameReads is a pointer so a copy of the struct shares one set; nil warns on every failure.
 	nameReads *nameReadWarnings
+	// claudeDir is Claude Code's config directory the installed plugins are read from; empty resolves it from the environment when a session starts.
+	claudeDir string
 }
 
 // New returns a Claude engine with the default submit settle.
@@ -106,6 +108,7 @@ func validateSessionID(id string) error {
 // A spec that names skills carries the skill-load message on the launch line instead and returns the pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // It loads claude.yaml and the hub's gate config, whose refuse_raw list the run's shell guard installs and whose failure to load refuses the spawn, then validates spec.Effort, spec.Model, spec.PermissionMode, spec.ResumeSessionID, the prompt-cache TTL config, the keep-warm caps and the batching nudge before writing any artifacts.
 // With the batching nudge on it also seeds the nudge's state file beside the settings.
+// The settings carry the session's scope, resolved from claude.yaml's session_scope, spec.Skills and spec.Role.
 func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	claude, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -205,7 +208,8 @@ func (c *Claude) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengi
 		return shuttleengine.Launch{}, err
 	}
 
-	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook)
+	scope := c.sessionScopeFor(claude.SessionScope, spec.Skills, spec.Role)
+	settingsJSON, err := buildSettings(eventsPathForHook, spec.Interactive, cfg, claude, spec.ForkSubagents, spec.DenyPublish, spec.ContextAfterCompaction, creelFlagDirForHook, scope)
 	if err != nil {
 		return shuttleengine.Launch{}, fmt.Errorf("build settings: %w", err)
 	}

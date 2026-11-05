@@ -58,6 +58,24 @@ func TestLoadConfig(t *testing.T) {
 				SliceLines:    2000,
 				MaxNudges:     5,
 			},
+			SessionScope: ScopeConfig{
+				Enabled: true,
+				SkillsOff: []string{
+					"anthropic-skills:built-in-browser",
+					"anthropic-skills:chrome-browser",
+					"anthropic-skills:computer-use",
+					"anthropic-skills:deep-research",
+					"anthropic-skills:docs",
+					"anthropic-skills:docx",
+					"anthropic-skills:google-workspace",
+					"anthropic-skills:import-memory",
+					"anthropic-skills:morning",
+					"anthropic-skills:pdf",
+					"anthropic-skills:pptx",
+					"anthropic-skills:skill-creator",
+					"anthropic-skills:xlsx",
+				},
+			},
 		}
 		if !reflect.DeepEqual(cfg, want) {
 			t.Errorf("LoadConfig() = %+v; want %+v", cfg, want)
