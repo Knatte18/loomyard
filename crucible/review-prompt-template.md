@@ -69,7 +69,7 @@ the most recent prior round is whichever `<module>-review-*` file is newest), EX
 
 ## What to read
 - Code: `<CODE PATHS — e.g. internal/<module>engine/**, internal/<module>cli/**, cmd/lym integration>`.
-- Docs: `<MODULE DOC — the package's doc.go>`, `docs/overview.md`, `PATTERN.md`, `README.md`, and any `docs/research/<module>-*.md`.
+- Docs: `<MODULE DOC — the package's doc.go>`, `docs/overview.md`, `PATTERN.md`, `README.md`, and any study of the module that the index `docs/research/README.md` lists.
 - If one already exists, `<tools/sandbox/SANDBOX-<MODULE>-SUITE.md>` — for SCENARIO IDEAS only.
   You run every scenario yourself, directly, with your own tool calls;
   you do NOT invoke its `sandbox-<module>-suite.cmd` launcher (that spawns a SEPARATE, context-free interactive `claude` session for a human operator's own dogfooding — meaningless for you to spawn on top of yourself;

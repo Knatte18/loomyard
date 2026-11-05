@@ -77,7 +77,7 @@ Historical network benchmarks (SyncGit, SyncGitNoPush) have been removed.
 
 First Linux measurement, recorded in parallel with the Windows block above.
 **Compare down each OS's column, not across** — the Windows box ran Cortex XDR (file I/O + AV throttling), the Linux box has no equivalent, so faster Linux numbers mostly measure the absent AV tax.
-See [linux-portability-survey.md](../research/linux-portability-survey.md) for the portability pass that made the suite runnable on Linux.
+See [linux-portability-survey.md](../research/platform/linux-portability-survey.md) for the portability pass that made the suite runnable on Linux.
 
 - Machine: AMD Ryzen AI 7 445 w/ Radeon 840M, Ubuntu 26.04 LTS, `linux/amd64`, 12 logical CPUs, Go 1.26.0, default GC
 

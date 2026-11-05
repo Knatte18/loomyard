@@ -603,6 +603,8 @@ type vocabScanAllowlistEntry struct {
 var vocabScanAllowlist = []vocabScanAllowlistEntry{
 	{"docs/benchmarks/", "measurement reports record one run and are not rewritten"},
 	{"docs/research/", "measurement reports record one run and are not rewritten"},
+	{"docs/logging-inventory.md", "an inventory of one day's trace logs names the record directories as they stood"},
+	{"docs/reference/weaving-glossary.md", "a weaving glossary names the weaving terms themselves"},
 	{"internal/lymcwd/enforcement_test.go", "this scan's own test file spells the tokens it bans"},
 	{"internal/lymcwd/vocabscan_test.go", "this scan's own test file spells the tokens it bans"},
 	{"internal/lymcwd/leaf_enforcement_test.go", "the import cap names the side-named package lymcwd imports, which this file does not"},

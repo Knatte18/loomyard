@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// Pane captures as the spike recorded them (docs/research/codex-spike-2026-10-24/report.md).
+// Pane captures as the spike recorded them (docs/research/codex/codex-spike-2026-10-24/report.md).
 const (
 	readyCapture = `  >_ OpenAI Codex (v0.164.0)
      /w

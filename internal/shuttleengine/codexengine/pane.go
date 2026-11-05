@@ -1,5 +1,5 @@
 // pane.go reads Codex's TUI from a plain pane capture and holds the key choreography sent into it.
-// The readings come from the pane table of docs/research/codex-spike-2026-10-24/report.md: the `›` composer, the `Working (… esc to interrupt)` busy line, the folder-trust prompt and the collapsed-paste placeholder.
+// The readings come from the pane table of docs/research/codex/codex-spike-2026-10-24/report.md: the `›` composer, the `Working (… esc to interrupt)` busy line, the folder-trust prompt and the collapsed-paste placeholder.
 // Every reading is pure over a capture string, and all Codex TUI shape knowledge stays in this package, per PATTERN-shuttle-provider-seam.
 
 package codexengine

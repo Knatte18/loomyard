@@ -2,7 +2,7 @@
 // fixed key-choreography sequences — InterruptSequence and ComposeSend — that
 // the run loop and long-lived callers send into a pane to interrupt a turn or resume one.
 // All are pure over a capture string / literal text — the classification heuristics were proven
-// live against a real claude TUI (docs/research/reed-hooks-exploration.md and reedcli's
+// live against a real claude TUI (docs/research/reed/reed-hooks-exploration.md and reedcli's
 // dismissTrust).
 
 package claudeengine

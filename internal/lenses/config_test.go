@@ -331,7 +331,7 @@ func TestLoad(t *testing.T) {
 }
 
 // TestConfigTemplate_DecodesAndIsSelfConsistent proves the embedded seed template is itself valid lenses.yaml content -- a load over dirs holding no lenses.yaml resolves it, so every template fan resolves -- and that its internal cross-references and lengths hold: every fan entry names a defined lens, and no lens carries hard-exclusion phrasing.
-// The spike (docs/research/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
+// The spike (docs/research/burler/session-fork-spike.md, Q2) found "ignore everything else" lenses measurably suppressed cross-category coverage, so every lens is emphasis-only by design.
 //
 // It extends the same checks to every shipped language layer: each loads under its own lens_set, its lenses and fans replace or extend the base's by name, and a layer fan keeps the base fan's entries first.
 //

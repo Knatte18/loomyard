@@ -11,7 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// Hook payloads as the spike recorded them (docs/research/codex-spike-2026-10-24/report.md, Hook payloads), with the transcript path made absolute.
+// Hook payloads as the spike recorded them (docs/research/codex/codex-spike-2026-10-24/report.md, Hook payloads), with the transcript path made absolute.
 const (
 	sessionStartPayload      = `{"session_id":"01a16d56","transcript_path":"/s/rollout.jsonl","cwd":"/w","hook_event_name":"SessionStart","model":"gpt-6-luna","permission_mode":"bypassPermissions","source":"startup"}`
 	userPromptSubmitPayload  = `{"session_id":"01a16d56","turn_id":"t1","transcript_path":"/s/rollout.jsonl","cwd":"/w","hook_event_name":"UserPromptSubmit","model":"gpt-6-luna","permission_mode":"bypassPermissions","prompt":"Reply with the single word ok."}`

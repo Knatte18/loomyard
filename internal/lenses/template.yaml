@@ -36,7 +36,7 @@
 # no list. The no-"ignore" rule holds
 # for every lens: none tells a fork to ignore anything, because hard "ignore
 # everything else" lenses measurably suppressed cross-category coverage in the
-# spike behind this design (docs/research/session-fork-spike.md, Q2). A fork
+# spike behind this design (docs/research/burler/session-fork-spike.md, Q2). A fork
 # keeps full tool access and its inherited context regardless of which lens it
 # carries.
 

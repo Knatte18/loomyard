@@ -912,7 +912,9 @@ See [sandbox-howto.md](sandbox-howto.md) for the step-by-step runbook and [sandb
 - The board's `hardener` note — **DRAFT/concept**: behavior-based hardening of a live-substrate module (post-loom, off-spine).
 - [benchmarks/](benchmarks/board-performance.md) — board performance, tracked across revisions.
 - [shared-libs/](shared-libs/README.md) — the shared infrastructure plumbing.
-- [research/](research/) — design exploration (reed research logs).
+- [research/](research/README.md) — measurement studies of LoomYard's own runs and tools, grouped by topic, with an index.
+- [reed-proposal.md](reed-proposal.md), [reed-exploration.md](reed-exploration.md), [logging-inventory.md](logging-inventory.md) and [quarry-holistic-fix-log.md](quarry-holistic-fix-log.md) — design notes and work logs kept from earlier design work.
+- [reference/weaving-glossary.md](reference/weaving-glossary.md) — weaving and textile terms that can serve as names in lym.
 - [reference/tmux_scripting.md](reference/tmux_scripting.md) — tmux command reference (vendored).
 - The board — tasks and notes, the single home for unscheduled ideas too (no separate long-term-ideas file).
 - [sandbox-howto.md](sandbox-howto.md) — operator runbook: deploy `lym`, build the Hub, run the suite agent (procedure).

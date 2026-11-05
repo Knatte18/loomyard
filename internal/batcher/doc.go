@@ -26,7 +26,7 @@
 // The template ships active: wide, so a fresh repo groups cards with the cost batchifier without configuring it;
 // across 14 measured runs, card batching cost about 60% less Webster weight per card than identity.
 // Its cautious profile is the same cost batchifier at a tighter budget, kept for a repo that chooses it;
-// in the 2026-11-01 budget trial, wide cost no more per card than cautious and showed no quality loss (docs/research/batch-budget-trial-2026-11-01).
+// in the 2026-11-01 budget trial, wide cost no more per card than cautious and showed no quality loss (docs/research/webster/batch-budget/batch-budget-trial-2026-11-01).
 // An operator who wants one card per batch sets active: to identity or to an empty value.
 //
 // The identity batcher (identity.go) — one card, one batch — is one library entry among future

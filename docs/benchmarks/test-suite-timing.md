@@ -94,7 +94,7 @@ Caveats that qualify specific rows.
   No Cortex on this machine, so the A→B delta is a single-variable Defender tax.
 - **Ryzen AI 7 445, Linux (2026-07-13 and 2026-08-01)** — the two rows differ because of code changes between them (new packages, re-tiered tests), not environment.
   Getting the suite green on Linux first needed a portability pass;
-  see [linux-portability-survey.md](../research/linux-portability-survey.md).
+  see [linux-portability-survey.md](../research/platform/linux-portability-survey.md).
 
 ## Trend log
 
@@ -824,4 +824,4 @@ A lead worth testing is the cost of the processes the tests start, such as each 
 
 ## fabric-test-speed-survey: where `internal/fabricengine`'s time goes
 
-The survey that follows the lead above is [fabric-test-speed-survey-2026-11-03.md](../research/fabric-test-speed-survey-2026-11-03.md): per test, per file and per fixture builder on neve, the git processes and files one run makes split between fixture setup and the code under test, what `hubforge`'s templates already cover, and a ranked list of cuts with their expected savings and the reasoning for OSL-1046.
+The survey that follows the lead above is [fabric-test-speed-survey-2026-11-03.md](../research/speed/fabric-test-speed-survey-2026-11-03.md): per test, per file and per fixture builder on neve, the git processes and files one run makes split between fixture setup and the code under test, what `hubforge`'s templates already cover, and a ranked list of cuts with their expected savings and the reasoning for OSL-1046.

@@ -1,5 +1,5 @@
 // docslink_test.go guards markdown link and anchor integrity under docs/: every inline markdown link's file part and #anchor must resolve somewhere in the repo.
-// The verbatim data under docs/research/*/data/ is outside the guard.
+// The verbatim data under a study's data/ directory in docs/research/ is outside the guard.
 // Its placement in internal/lymcwd is a file-layout convenience, not an ownership claim on markdown links by that package.
 
 package lymcwd
@@ -308,11 +308,12 @@ func TestDocsLinkHeadingAnchors(t *testing.T) {
 	}
 }
 
-// docsLinkIsResearchData reports whether relPath, slash-separated and relative to the repository root, lies under the data/ directory of a docs/research/<report>/ directory.
+// docsLinkIsResearchData reports whether relPath, slash-separated and relative to the repository root, lies under a data/ directory of a study in docs/research/.
+// A study sits in a topic folder, perhaps inside a series folder, so the data/ directory may lie at any depth below the topic folder's own level; a data/ folder directly under a topic belongs to no study and is scanned.
 // Such files are prompts and reviewer output captured verbatim, whose links are never rewritten to resolve from where the file sits.
 func docsLinkIsResearchData(relPath string) bool {
 	parts := strings.Split(relPath, "/")
-	return len(parts) > 4 && parts[0] == "docs" && parts[1] == "research" && parts[3] == "data"
+	return len(parts) > 5 && parts[0] == "docs" && parts[1] == "research" && slices.Contains(parts[4:len(parts)-1], "data")
 }
 
 // docsLinkKey is the allowlist key of one (file, target) link instance: the base-relative, slash-normalized path of the file the link was found in and the raw target string exactly as written in the source, joined by a space (a target never contains whitespace).
@@ -366,7 +367,7 @@ func docsLinkResolve(repoRoot, relPath string, data []byte, filePart, fragment s
 }
 
 // docsLinkScan walks every ".md" file under roots (base-relative, "." for the whole tree) via scankit, extracts every inline link, and resolves each one against the tree rooted at base.
-// A file under the data/ directory of a docs/research/<report>/ directory is visited but its links are never extracted.
+// A file under a data/ directory of a study in docs/research/ is visited but its links are never extracted.
 // The root restriction is source-side only: roots names which files are scanned for outgoing links
 // and never restricts where a target may point — every target is resolved wherever it lands in the
 // tree, including the #anchor of any ".md" target whether or not that target is itself inside roots.
@@ -414,7 +415,7 @@ var docsLinkAllowlist = []scankit.Entry{}
 // TestEnforcement_MarkdownLinks is the permanent guard behind the Markdown Link Integrity invariant:
 // every inline markdown link in a .md file under docs/ must resolve, both its file part
 // and its #anchor.
-// Files under the data/ directory of a docs/research/<report>/ directory are not scanned for outgoing links:
+// Files under a data/ directory of a study in docs/research/ are not scanned for outgoing links:
 // they hold verbatim captures whose links are never rewritten.
 //
 //lym:guard
@@ -561,16 +562,18 @@ func TestEnforcement_MarkdownLinks(t *testing.T) {
 		}
 	})
 
-	t.Run("research report data is skipped while the report itself is scanned", func(t *testing.T) {
+	t.Run("research study data at any depth is skipped while the report itself is scanned", func(t *testing.T) {
 		root := writeTree(t, map[string]string{
-			"docs/research/x/data/prompts/step.md": "[p](pattern/PATTERN-x.md)\n",
-			"docs/research/x/report.md":            "[p](pattern/PATTERN-x.md)\n",
-			"docs/other/data/x.md":                 "[p](pattern/PATTERN-x.md)\n",
-			"docs/research/x/sub/data/x.md":        "[p](pattern/PATTERN-x.md)\n",
+			"docs/research/topic/x/data/prompts/step.md":  "[p](pattern/PATTERN-x.md)\n",
+			"docs/research/topic/series/x/data/output.md": "[p](pattern/PATTERN-x.md)\n",
+			"docs/research/topic/x/report.md":             "[p](pattern/PATTERN-x.md)\n",
+			"docs/research/data/x.md":                     "[p](pattern/PATTERN-x.md)\n",
+			"docs/research/topic/data/x.md":               "[p](pattern/PATTERN-x.md)\n",
+			"docs/other/data/x.md":                        "[p](pattern/PATTERN-x.md)\n",
 		})
 		breaks, _, _ := docsLinkScan(t, root, []string{"docs"}, nil)
 		var want []docsLinkBreak
-		for _, file := range []string{"docs/other/data/x.md", "docs/research/x/report.md", "docs/research/x/sub/data/x.md"} {
+		for _, file := range []string{"docs/other/data/x.md", "docs/research/data/x.md", "docs/research/topic/data/x.md", "docs/research/topic/x/report.md"} {
 			want = append(want, docsLinkBreak{File: file, Line: 1, Target: "pattern/PATTERN-x.md", Reason: "missing file"})
 		}
 		if !slices.Equal(breaks, want) {
