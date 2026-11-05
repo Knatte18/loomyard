@@ -49,6 +49,12 @@ buttons:  # status-bar buttons in the groups task, beam and prime; an entry has 
     - label: refresh
       run: lym orch refresh
       confirm: Refresh the orch?
+    - label: merge-in
+      run: lym beam merge-parent {slug}
+      confirm: Merge the parent into {slug}?
+    - label: land
+      run: lym beam land {slug}
+      confirm: Land {slug}?
   prime:
     - label: code
       run: lym ide spawn {slug}

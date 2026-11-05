@@ -36,6 +36,10 @@ nothing else states it.
 Review `git diff {{.review_base}}..HEAD` — every commit the current branch introduces over the merge base the run's last merged parent tip leaves.
 Nothing else widens the range.
 
+When the amended board entry is a merge in from the parent, filed by `lym beam merge-parent`, the range narrows to the merge itself.
+Review each merge commit in the range through `git show --remerge-diff <commit>`, which shows how its conflicts were settled, and every commit in the range that is not a merge.
+The parent's own commits the merge brings in are no subject.
+
 The step is read-only.
 If the range above reads `git diff none..HEAD`, its base could not be read: raise a BLOCKING finding stating that the review range could not be determined, and review nothing.
 Silently reviewing a guessed range is a worse failure than an honest block.

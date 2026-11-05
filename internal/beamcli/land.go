@@ -11,6 +11,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
@@ -22,21 +23,25 @@ import (
 // Refusal is the landing's refusal of a beam with work remaining under it.
 // WriteRequest writes the land request into the beam worktree and returns its path, and WriteReopen the reopen request.
 // Unready removes the beam's ready record when it flags the beam, commits the landing directory either way and reports whether it removed one.
+// Tasks reads the board's entries, FileTask creates the task its fields describe and releases it, and CodeReviewCaps reads the hub's Code-Review budget; `merge-parent` alone calls them.
 type landDeps struct {
-	Machine      func() (string, error)
-	ReadOwners   func() (boardengine.Owners, error)
-	ParentOf     func(slug string) (string, error)
-	PairPresent  func(slug string) bool
-	OriginRecord func(slug string) (fabricengine.Origin, bool, error)
-	ChildStatus  func(slug string) (status shedengine.Status, found bool, err error)
-	RunID        func(slug string) (string, error)
-	Ready        func(slug string) (bool, error)
-	MarkReady    func(slug string, record pawlengine.ReadyRecord) (string, error)
-	Refusal      func(slug string) error
-	WriteRequest func(slug string, req pawlengine.LandRequest) (string, error)
-	WriteReopen  func(slug string, req pawlengine.ReopenRequest) (string, error)
-	Unready      func(slug string) (bool, error)
-	Now          func() time.Time
+	Machine        func() (string, error)
+	ReadOwners     func() (boardengine.Owners, error)
+	ParentOf       func(slug string) (string, error)
+	PairPresent    func(slug string) bool
+	OriginRecord   func(slug string) (fabricengine.Origin, bool, error)
+	ChildStatus    func(slug string) (status shedengine.Status, found bool, err error)
+	RunID          func(slug string) (string, error)
+	Ready          func(slug string) (bool, error)
+	MarkReady      func(slug string, record pawlengine.ReadyRecord) (string, error)
+	Refusal        func(slug string) error
+	WriteRequest   func(slug string, req pawlengine.LandRequest) (string, error)
+	WriteReopen    func(slug string, req pawlengine.ReopenRequest) (string, error)
+	Unready        func(slug string) (bool, error)
+	Now            func() time.Time
+	Tasks          func() ([]boardengine.Task, error)
+	FileTask       func(fields map[string]any) error
+	CodeReviewCaps func() (reviewbudget.Caps, error)
 }
 
 // reopenRows are the pawl rows a reopen sends a run back from: those past Beam-Await and before Finalize.

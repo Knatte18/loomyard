@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -42,9 +43,13 @@ type landWorld struct {
 	reopens      []pawlengine.ReopenRequest
 	unreadyCalls int
 	unreadyErr   error
+	// tasks is the board's entries, filed the fields of each task FileTask filed and caps the hub's Code-Review budget.
+	tasks []boardengine.Task
+	filed []map[string]any
+	caps  reviewbudget.Caps
 }
 
-// newLandWorld returns a hub owned by here with a beam "b" whose pair is here and marked and whose pawl run waits at Beam-Await, a task, a grouping project and a done beam.
+// newLandWorld returns a hub owned by here with a beam "b" forked from main whose pair is here and marked and whose pawl run waits at Beam-Await, a task, a grouping project and a done beam.
 func newLandWorld() *landWorld {
 	return &landWorld{
 		owners: boardengine.Owners{Prime: here, Entries: map[string]boardengine.OwnerEntry{
@@ -56,10 +61,14 @@ func newLandWorld() *landWorld {
 		}},
 		parents:  map[string]string{},
 		pairs:    map[string]bool{"b": true, "landed": true},
-		origins:  map[string]fabricengine.Origin{"b": {Beam: true}, "landed": {Beam: true}},
+		origins:  map[string]fabricengine.Origin{"b": {Beam: true, ParentBranch: "main"}, "landed": {Beam: true}},
 		children: map[string]shedengine.Status{"b": {State: shedengine.StateRunning, CurrentProducer: pawlengine.NameBeamAwait}},
 		runID:    "2026-02-28T08:00:00Z",
 		ready:    map[string]bool{"b": true},
+		tasks: []boardengine.Task{
+			{Slug: "b", Kind: boardengine.KindProject, Labels: []string{"enhancement", "reed"}},
+			{Slug: "task1", Kind: boardengine.KindTask, Project: "b"},
+		},
 	}
 }
 
@@ -110,7 +119,13 @@ func (w *landWorld) deps() landDeps {
 			delete(w.ready, slug)
 			return removed, nil
 		},
-		Now: func() time.Time { return landNow },
+		Now:   func() time.Time { return landNow },
+		Tasks: func() ([]boardengine.Task, error) { return w.tasks, nil },
+		FileTask: func(fields map[string]any) error {
+			w.filed = append(w.filed, fields)
+			return nil
+		},
+		CodeReviewCaps: func() (reviewbudget.Caps, error) { return w.caps, nil },
 	}
 }
 

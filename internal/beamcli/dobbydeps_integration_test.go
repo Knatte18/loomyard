@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -255,6 +256,52 @@ func TestHubLandDeps_UnreadyCommitsTheRemovalOfTheReadyRecordAndSucceedsAgain(t 
 	removed, err = deps.Unready("b")
 	if err != nil || removed {
 		t.Errorf("Unready(b) = %v, %v with no record left; want false, nil", removed, err)
+	}
+}
+
+func TestHubLandDeps_FileTaskReleasesTheTaskAndCodeReviewCapsReadTheHubConfig(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h, _ := landingHub(t)
+	deps := hubLandDeps(h.Location)
+	// Distinct values for the code perch, so a read of another perch or of another config source fails the caps assertion.
+	loomPath := filepath.Join(h.Location.AnchorPath(), lymdirs.LymDirName, "config", "loom.yaml")
+	if err := os.MkdirAll(filepath.Dir(loomPath), 0o755); err != nil {
+		t.Fatalf("create the anchor config directory: %v", err)
+	}
+	if err := os.WriteFile(loomPath, []byte("code_max_bounces: 7\ncode_hard_max_bounces: 9\n"), 0o644); err != nil {
+		t.Fatalf("write the anchor loom.yaml: %v", err)
+	}
+
+	err := deps.FileTask(map[string]any{"slug": "b-merge-in", "title": "Merge main into the beam b", "kind": boardengine.KindTask, "project": "b", "recipe": "darn", "labels": []string{"bug"}})
+	if err != nil {
+		t.Fatalf("FileTask(b-merge-in) = %v; want nil", err)
+	}
+
+	tasks, err := deps.Tasks()
+	if err != nil {
+		t.Fatalf("Tasks() = %v; want nil", err)
+	}
+	var filed *boardengine.Task
+	for i := range tasks {
+		if tasks[i].Slug == "b-merge-in" {
+			filed = &tasks[i]
+		}
+	}
+	if filed == nil {
+		t.Fatalf("Tasks() = %v; want the filed task b-merge-in", tasks)
+	}
+	if filed.Status != nil {
+		t.Errorf("b-merge-in status = %q; want it released (nil), not draft", *filed.Status)
+	}
+
+	caps, err := deps.CodeReviewCaps()
+	if err != nil {
+		t.Fatalf("CodeReviewCaps() = %v; want nil", err)
+	}
+	if caps.Soft != 7 || caps.Hard != 9 {
+		t.Errorf("CodeReviewCaps() = %+v; want soft 7 and hard 9, the code perch's caps", caps)
 	}
 }
 

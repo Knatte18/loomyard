@@ -105,6 +105,8 @@ func TestLoadConfig_TemplateDefaultsResolve(t *testing.T) {
 		{Label: "agent", Run: "cd {worktree} && lym shuttle open --role {answer} --model 'opus[high]'", Ask: "Agent name:", AskDefault: "agent"},
 		{Label: "distill", Run: "lym orch distill", Confirm: "Distill the orch?"},
 		{Label: "refresh", Run: "lym orch refresh", Confirm: "Refresh the orch?"},
+		{Label: "merge-in", Run: "lym beam merge-parent {slug}", Confirm: "Merge the parent into {slug}?"},
+		{Label: "land", Run: "lym beam land {slug}", Confirm: "Land {slug}?"},
 	}
 	// The prime alone carries the board button: a board agent opened in a beam carries the beam's slug, and the board refuses a task write from a slug-carrying session.
 	wantPrimeButtons := []buttonWant{

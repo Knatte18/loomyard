@@ -1,4 +1,4 @@
-// deps.go fills the verbs' deps over a real hub: the board reads and the owner write, the batten run's status and first pass, the ready record, the landing's refusal and land request, and the reopen request.
+// deps.go fills the verbs' deps over a real hub: the board reads, the owner write and the merge task's filing, the batten run's status and first pass, the ready record, the landing's refusal and land request, the reopen request and the hub's Code-Review budget.
 
 package beamcli
 
@@ -18,6 +18,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -180,6 +181,33 @@ func hubLandDeps(prime *lymcwd.Location) landDeps {
 			return removed, err
 		},
 		Now: time.Now,
+		Tasks: func() ([]boardengine.Task, error) {
+			return boardengine.ReadTasks(fabricengine.BoardDir(prime.HubPath))
+		},
+		// The board gives a new task the draft status, so the filing releases it with a second write.
+		// The writes carry no strand name, so the run-agent task guard does not judge them.
+		FileTask: func(fields map[string]any) error {
+			board, err := boardengine.OpenHub(prime.HubPath)
+			if err != nil {
+				return err
+			}
+			task, err := board.UpsertTask(fields)
+			if err != nil {
+				return err
+			}
+			if err := board.SetStatus(task.Slug, nil); err != nil {
+				return fmt.Errorf("the task %s was created but not released and stands as a draft with no run: remove it with `lym board remove %s` before filing again: %w", task.Slug, task.Slug, err)
+			}
+			return nil
+		},
+		// The budget is the prime's loom config, the hub's own, which no run profile reaches.
+		CodeReviewCaps: func() (reviewbudget.Caps, error) {
+			cfg, err := loomengine.LoadConfig(fabricengine.ConfigDirs(prime), "loom")
+			if err != nil {
+				return reviewbudget.Caps{}, err
+			}
+			return cfg.Caps(loomengine.PerchCode), nil
+		},
 	}
 }
 

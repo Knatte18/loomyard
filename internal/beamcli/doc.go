@@ -1,4 +1,4 @@
-// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam reopen <slug> [--close]`, the return of a beam's landing to Beam-Await, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
+// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam reopen <slug> [--close]`, the return of a beam's landing to Beam-Await, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam merge-parent <slug>`, the filing of a task that merges a beam's parent branch into it, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
 // The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
@@ -81,6 +81,15 @@
 // A marked beam pair passes the guard's dirty-source and left-pair checks, so the landing reaches Worktree-Create, which finds the pair complete and skips; a landing forks no pair, and Worktree-Create never calls `Add` for a project.
 //
 // Bound: a pair on another machine whose origin names the beam is not seen when its entry no longer names the beam, as for a pair made by hand there with `--parent <beam>` and no board entry.
+//
+// # merge-parent
+//
+// `merge-parent <slug>` files the beam's merge task: a released darn task in the beam's project whose run merges the beam's parent branch, the `ParentBranch` of the beam pair's origin record, into the task's branch, which its landing brings into the beam.
+// It runs anywhere in the hub, as `land` does, and refuses what `land`'s entry check refuses, a beam whose origin record names no parent branch, naming `lym fabric reconcile`, and a beam that holds an open merge task, naming `lym batten status` and `lym batten cancel --remove` of that task.
+// A merge task is found by its project and its slug's `-merge-in` suffix, with an optional number; the new one takes the first free slug of that shape, the beam's slug cut to fit the board's slug length.
+// It carries the beam's labels, so the board's type-label rule holds, and a body the decision record carries as the goal of both the darn writer and the Code-Review perch: the writer runs `lym fabric merge-in`, settles the conflicts, makes the gate pass and changes nothing else, and the perch reviews the merge alone.
+// Its `run_settings` turn the perch on: loom's `code_max_bounces` is the hub's resolved Code-Review budget, at least one round, and `code_hard_max_bounces` stays above it.
+// The beam's dobby starts it as any member, so it runs at any time; pawl neither starts one nor waits for one, and its Parent-Align brings the parent in at the landing either way.
 //
 // # start
 //

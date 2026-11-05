@@ -1,4 +1,4 @@
-// cli.go builds the beam cobra command with its create, ready, reopen, land, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the beam cobra command with its create, ready, reopen, land, merge-parent, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 
 package beamcli
 
@@ -32,18 +32,52 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, flag ready, reopen, land, start and stop beams, the long-lived pairs that group board work, and show their dobbies and orchs",
+		Short: "make, flag ready, reopen, land, start and stop beams, the long-lived pairs that group board work, file a beam's merge from its parent, and show their dobbies and orchs",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
 beam's own branch and land back into it, and it is one unit of two parts, its dobby
 and its orch, that run on the machine owning it. The dobby drives the runs of the
 beam's tasks, and the orch is the session that works the beam with the operator.
 "lym beam start" brings both up and "lym beam stop" takes both down. Create and
-status run from the hub's prime worktree and from any beam, ready, reopen and land
-from anywhere in the hub, and all act on the prime's location.`,
+status run from the hub's prime worktree and from any beam, ready, reopen, land and
+merge-parent from anywhere in the hub, and all act on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), readyCmd(), reopenCmd(), landCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
+	beam.AddCommand(createCmd(), readyCmd(), reopenCmd(), landCmd(), mergeParentCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
 	return beam
+}
+
+// mergeParentCmd returns the `beam merge-parent` verb.
+func mergeParentCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "merge-parent <slug>",
+		Short:       "file a task in a beam that merges the beam's parent branch into it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Files a darn task in the project of the beam <slug> whose run merges the beam's
+parent branch into the beam: its writer runs "lym fabric merge-in <parent branch>"
+in the task's own worktree, settles the conflicts and the gate failures, and its
+Code-Review perch, turned on through the task's run_settings, reviews the merge
+alone. The task's landing brings the merge into the beam. The beam's dobby starts
+it as any member, at any time; the beam's own landing brings the parent in at
+Parent-Align whether or not one ran.
+
+The task's slug is the beam's slug and "-merge-in", numbered from -2 when that slug
+is taken, and it carries the beam's labels.
+
+It runs anywhere in the hub and refuses, each naming its way forward, an entry
+that is not an open beam project with a pair here, a beam whose origin record
+names no parent branch, and a beam whose merge task stands open.
+
+Example:
+  lym beam merge-parent payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam merge-parent", func(deps landDeps) (map[string]any, error) { return mergeParent(deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
 }
 
 // statusResult is the envelope of `beam status`: one entry per local beam, the prime's first, and one adopt check item per subject the hub holds a record of.
@@ -653,7 +687,7 @@ Example:
 	return cmd
 }
 
-// onHubLandDeps runs verb, `beam land`, `beam ready` or `beam reopen`, over the land deps of the hub the command's cwd belongs to.
+// onHubLandDeps runs verb, `beam land`, `beam ready`, `beam reopen` or `beam merge-parent`, over the land deps of the hub the command's cwd belongs to.
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
 func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map[string]any, error)) (*map[string]any, error) {
