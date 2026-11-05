@@ -296,6 +296,90 @@ func TestLineChange_CountsLinesAndListsPaths(t *testing.T) {
 	}
 }
 
+// TestFabric_DiffSize asserts the added lines, deleted lines and changed files of a commit range, a binary file and a pure rename each counting as one file and no lines, and that an unknown ref is an error naming it.
+func TestFabric_DiffSize(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	commitAll := func(t *testing.T, warpPath, message string) string {
+		t.Helper()
+		gitkit.Git(t, warpPath, "add", "-A")
+		gitkit.Git(t, warpPath, "commit", "-m", message)
+		return fabricengine.CurrentSHAForTest(t, warpPath)
+	}
+	write := func(t *testing.T, warpPath, name string, content []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(warpPath, name), content, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T, warpPath string) (from, to string)
+		want    fabricengine.DiffSize
+		wantErr string
+	}{
+		{
+			name: "AddingAndDeletingLinesInTwoFiles",
+			setup: func(t *testing.T, warpPath string) (string, string) {
+				gitkit.CommitFile(t, warpPath, "a.txt", "a1\na2\na3\n", "a")
+				from := gitkit.CommitFile(t, warpPath, "b.txt", "b1\nb2\n", "b")
+				write(t, warpPath, "a.txt", []byte("a1\nn1\nn2\n"))
+				write(t, warpPath, "b.txt", []byte("b1\nb2\nb3\n"))
+				return from, commitAll(t, warpPath, "change")
+			},
+			want: fabricengine.DiffSize{LinesAdded: 3, LinesDeleted: 2, FilesChanged: 2},
+		},
+		{
+			name: "BinaryFile",
+			setup: func(t *testing.T, warpPath string) (string, string) {
+				from := fabricengine.CurrentSHAForTest(t, warpPath)
+				write(t, warpPath, "blob.bin", []byte{0, 1, 2, 0, 3})
+				return from, commitAll(t, warpPath, "binary")
+			},
+			want: fabricengine.DiffSize{FilesChanged: 1},
+		},
+		{
+			name: "PureRename",
+			setup: func(t *testing.T, warpPath string) (string, string) {
+				from := gitkit.CommitFile(t, warpPath, "keep.txt", "unchanged\n", "keep")
+				gitkit.Git(t, warpPath, "mv", "keep.txt", "moved.txt")
+				return from, commitAll(t, warpPath, "rename")
+			},
+			want: fabricengine.DiffSize{FilesChanged: 1},
+		},
+		{
+			name: "UnknownRef",
+			setup: func(t *testing.T, warpPath string) (string, string) {
+				return "no-such-ref", fabricengine.CurrentSHAForTest(t, warpPath)
+			},
+			wantErr: "no-such-ref",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f, warpPath, _, _, _, _, _ := buildReconcileFixture(t, t.TempDir(), 1)
+			from, to := tt.setup(t, warpPath)
+
+			got, err := f.DiffSize(from, to)
+
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("DiffSize(%s, %s) error = %v; want one naming %q", from, to, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("DiffSize(%s, %s) error = %v", from, to, err)
+			}
+			if got != tt.want {
+				t.Errorf("DiffSize(%s, %s) = %+v; want %+v", from, to, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestCommitLog_ListsTheRangeNewestFirst asserts the range's commits as a seven-character SHA prefix and subject, newest first, an empty result for an empty range and an error naming an unknown ref.
 func TestCommitLog_ListsTheRangeNewestFirst(t *testing.T) {
 	tiergate.Require(t, 1)

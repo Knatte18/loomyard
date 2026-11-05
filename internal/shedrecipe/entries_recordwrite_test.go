@@ -19,6 +19,7 @@ func TestRecordWriteEntry(t *testing.T) {
 		{"RelativeSupportLogPath", "RecordWrite.SupportLogPath", func(e *Env) { e.RecordWrite.SupportLogPath = "support-log.md" }},
 		{"RelativeDiscussionDir", "RecordWrite.DiscussionDir", func(e *Env) { e.RecordWrite.DiscussionDir = "discussion" }},
 		{"NilReadBody", "RecordWrite.ReadBody", func(e *Env) { e.RecordWrite.ReadBody = nil }},
+		{"NilReadStored", "RecordWrite.ReadStored", func(e *Env) { e.RecordWrite.ReadStored = nil }},
 		{"NilCommit", "RecordWrite.Commit", func(e *Env) { e.RecordWrite.Commit = nil }},
 	}
 	for _, tt := range tests {

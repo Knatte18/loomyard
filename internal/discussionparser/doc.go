@@ -11,6 +11,8 @@
 // It skips fenced blocks, `### Added after Discussion` entries, appended `## PATTERN changes` bullets and carry-over blocks, the parts no writer authors.
 // WriteCarryOver keeps one review segment's carry-over entry, the findings still open when the segment closed, in its `## Open risks` section.
 // IdentityText returns the record without the carry-over blocks and added-decision entries those two paths write, so a review segment's re-entry tells a changed record from one that only gained them.
+// SectionBullets returns the top-level bullets of one H2 section, each with its continuation lines, outside fenced blocks and carry-over blocks.
+// SplicePart cuts the record of one part out of the Sketch's record: the decisions the part builds with every added entry, the constraints and assumptions whole, the risks, criteria and PATTERN entries the part carries, and the goal and scope the caller renders.
 // CheckAddedDecisionsKept reports the added-decision entries and appended PATTERN change bullets a record dropped that any earlier version of it held, read from told bytes.
 // The record may carry an optional `## PATTERN changes` section listing the PATTERN entries the task adds, changes or removes.
 // Validate checks its bullets through ParsePatternChanges and refuses an `adds` or `changes` bullet whose rule text, the entry text without a trailing `(test)` or background link, would run past the PATTERN format checker's rule-text cap,

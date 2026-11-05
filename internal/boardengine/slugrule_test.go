@@ -3,9 +3,13 @@
 package boardengine_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -64,7 +68,7 @@ func TestSlugRule(t *testing.T) {
 			}
 			_, err := b.Promote(withRecordsSuffix("n"))
 			return err
-		}, []string{"ends in the records suffix", `use the slug "n"`}, false},
+		}, []string{"ends in the records suffix", "lym board rename", `"n"`}, false},
 		{"RenameToSuchASlug", func(b *boardengine.Board) error {
 			_, err := b.Rename("renamable", withRecordsSuffix("r"))
 			return err
@@ -132,15 +136,138 @@ func TestSlugRule(t *testing.T) {
 // It holds the task old with the records suffix as a slug a stored board can hold, the task renamable, and the task taken, which a suggestion can collide with.
 func newSlugRuleBoard(t *testing.T) *boardengine.Board {
 	t.Helper()
+	b, _ := newSlugRuleBoardWith(t, refusingSlugRule)
+	return b
+}
+
+// newSlugRuleBoardWith is newSlugRuleBoard with the seam validate, which may be nil, and also returns the board's directory.
+func newSlugRuleBoardWith(t *testing.T, validate func(slug string) error) (*boardengine.Board, string) {
+	t.Helper()
 	var boardPath string
 	b := newProjectBoard(t, func(cfg *boardengine.Config) {
 		boardPath = cfg.Path
-		cfg.ValidateSlug = refusingSlugRule
+		cfg.ValidateSlug = validate
 	})
 	seedBoardJSON(t, boardPath,
 		fmt.Sprintf(`{"id":0,"slug":%q,"title":"Old","kind":"task","labels":["bug"]}`, withRecordsSuffix("old")),
 		`{"id":1,"slug":"renamable","title":"Renamable","kind":"task","labels":["bug"]}`,
 		`{"id":2,"slug":"taken","title":"Taken","kind":"task","labels":["bug"]}`,
 	)
-	return b
+	return b, boardPath
+}
+
+// writeRaddleStore writes the store.json of the store directory sketch into the test board directory boardDir, for the rows that need a store before a filing write exists.
+func writeRaddleStore(t *testing.T, boardDir, sketch string, entry boardengine.RaddleStoreEntry) {
+	t.Helper()
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal store entry: %v", err)
+	}
+	dir := boardengine.RaddleStoreDir(boardDir, sketch)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir store directory: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "store.json"), data, 0o644); err != nil {
+		t.Fatalf("write store.json: %v", err)
+	}
+}
+
+// TestSlugRule_RaddleStore pins that the board refuses a made slug the raddle store holds, as a Sketch slug or a filed slug, with or without the pair slug seam.
+// It admits the live run's own Sketch, and refuses only a slug-making write while a store file is unreadable.
+func TestSlugRule_RaddleStore(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	// The board's fixed clock stamps every entry created in a row with this time, so a store entry recording it belongs to such an entry's own Sketch, and one recording an earlier time to a Sketch filed before.
+	boardClock := time.Date(2026, 10, 1, 8, 0, 0, 0, time.UTC)
+	held := boardengine.RaddleStoreEntry{Created: boardClock.Add(-24 * time.Hour), Hash: "h", Filed: []string{"part-a", "part-b", "plan-proj"}, Project: "plan-proj"}
+	own := held
+	own.Created = boardClock
+	discussedNote := func(b *boardengine.Board, slug string, labels []string) error {
+		if _, err := b.UpsertTask(map[string]any{"slug": slug, "kind": "note", "labels": labels}); err != nil {
+			return fmt.Errorf("seed note: %w", err)
+		}
+		return b.StoreDecisionRecord(slug, []byte("record\n"))
+	}
+	newTask := func(slug string) func(b *boardengine.Board) error {
+		return func(b *boardengine.Board) error {
+			_, err := b.UpsertTask(map[string]any{"slug": slug, "kind": "task", "labels": bugLabels})
+			return err
+		}
+	}
+
+	refused := []struct {
+		name     string
+		validate func(slug string) error
+		write    func(b *boardengine.Board) error
+		wantHas  []string
+	}{
+		{"NewTaskUnderAStoreHeldSketchSlug", refusingSlugRule, newTask("plan-me"), []string{`"plan-me"`, "Sketch", `use the slug "plan-me-task"`}},
+		{"NewTaskUnderAFiledSlug", refusingSlugRule, newTask("part-a"), []string{`"part-a"`, `Sketch "plan-me"`, `use the slug "part-a-task"`}},
+		{"NewProjectUnderAPrunedFiledProjectSlug", refusingSlugRule, func(b *boardengine.Board) error {
+			_, err := b.UpsertTask(map[string]any{"slug": "plan-proj", "kind": "project", "labels": bugLabels})
+			return err
+		}, []string{`"plan-proj"`, `Sketch "plan-me"`}},
+		{"RenameToAHeldSlug", refusingSlugRule, func(b *boardengine.Board) error {
+			_, err := b.Rename("renamable", "plan-me")
+			return err
+		}, []string{`"plan-me"`, "Sketch"}},
+		{"RaddlePromotionOfADiscussedNoteUnderAFiledSlug", refusingSlugRule, func(b *boardengine.Board) error {
+			if err := discussedNote(b, "part-b", []string{boardengine.SketchType}); err != nil {
+				return err
+			}
+			_, err := b.PromoteTo("part-b", "raddle")
+			return err
+		}, []string{`"part-b"`, `Sketch "plan-me"`, "lym board rename"}},
+		{"NilSeamAndAStoreHit", nil, newTask("part-a"), []string{`"part-a"`, `Sketch "plan-me"`}},
+	}
+	for _, tt := range refused {
+		t.Run("Refused_"+tt.name, func(t *testing.T) {
+			t.Parallel()
+			b, boardPath := newSlugRuleBoardWith(t, tt.validate)
+			writeRaddleStore(t, boardPath, "plan-me", held)
+			err := tt.write(b)
+			if err == nil {
+				t.Fatal("write error = nil; want a refusal")
+			}
+			for _, want := range tt.wantHas {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("write error = %q; want it to contain %q", err, want)
+				}
+			}
+		})
+	}
+
+	t.Run("Passes_TheLiveRunsOwnSketch", func(t *testing.T) {
+		t.Parallel()
+		b, boardPath := newSlugRuleBoardWith(t, refusingSlugRule)
+		if err := discussedNote(b, "plan-me", []string{boardengine.SketchType}); err != nil {
+			t.Fatal(err)
+		}
+		writeRaddleStore(t, boardPath, "plan-me", own)
+		if _, err := b.PromoteTo("plan-me", "raddle"); err != nil {
+			t.Errorf("PromoteTo() error = %v; want nil for the Sketch whose created stamp the store records", err)
+		}
+	})
+
+	t.Run("UnreadableStoreFile", func(t *testing.T) {
+		t.Parallel()
+		b, boardPath := newSlugRuleBoardWith(t, refusingSlugRule)
+		dir := boardengine.RaddleStoreDir(boardPath, "broken")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "store.json"), []byte("{not json"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		err := newTask("fresh")(b)
+		if err == nil || !strings.Contains(err.Error(), "store.json") || !strings.Contains(err.Error(), "checkout --") {
+			t.Errorf("slug-making write error = %v; want a refusal naming store.json and the checkout", err)
+		}
+		status := "done"
+		if err := b.SetStatus("renamable", &status); err != nil {
+			t.Errorf("SetStatus() error = %v; want nil, since a write that makes no slug goes on", err)
+		}
+	})
 }

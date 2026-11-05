@@ -28,6 +28,7 @@ var allowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/durfmt",
 	"github.com/Knatte18/loomyard/internal/creelengine",
 	"github.com/Knatte18/loomyard/internal/agentname",
+	"github.com/Knatte18/loomyard/internal/raddleparser",
 	"gopkg.in/yaml.v3",
 }
 

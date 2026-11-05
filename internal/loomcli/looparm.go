@@ -21,6 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -120,6 +121,7 @@ func (c *loomCLI) stopStepRuns(tie shuttleengine.StepTie) (shuttleengine.StepSto
 			return shuttleengine.StepStopReport{}, err
 		}
 		runner = shuttleengine.NewRunner(reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub()), engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
+		runner.SetSessionEnd(shedadapters.UsageRecorder(c.location, shuttleengines.RecordReaders()))
 	}
 	return runner.StopStepRuns(tie)
 }

@@ -1,0 +1,1 @@
+cost_min_runs: 5  # runs a cell of lym report cost needs before it shows its figures instead of "too few runs"

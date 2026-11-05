@@ -27,11 +27,15 @@
 // The tapestry recipe runs it as its Motif block, whose expansion reads none of motif's top-level keys.
 // The block's gate is the `undiscussed` check, so a run whose board entry is flagged discussed seeds the stored record and goes on at Drift-Baseline.
 //
+// The raddle recipe splits a Sketch into the board entries the operator approves: `Record-Write → Raddle-Write → Raddle-File`, with no review segment.
+// It takes the loom contract's record-only form: Record-Write writes the Sketch's stored decision record, Raddle-Write is one agent session gated by the `raddle` check, and Raddle-File, a Go row, files the approved proposal on the board and ends the run's entry, so the run lands no code.
+// Raddle-File's Stuck returns to Raddle-Write, and a third failing gate attempt of Raddle-Write halts the run for its parent.
+//
 // One table, embeddedRecipes, maps each recipe name to its embedded bytes, and it is the resolver every expansion is told.
 // Every accessor reads the expanded recipe: the rows of a block's sub-recipe follow its block row, each carrying its block path, so New, Routing, Rows, RowNames, AmendmentTarget, IsLoom, HasEngine, EngineRow and the rest all see the same rows.
 // A recipe holding no block row is read as it is.
 //
-// New and Routing take the recipe name and serve every embedded loom recipe, tapestry, darn, pawl, sampler and motif; New builds it and Routing projects its routing.
+// New and Routing take the recipe name and serve every embedded loom recipe, tapestry, darn, pawl, sampler, motif and raddle; New builds it and Routing projects its routing.
 // The darn recipe's verify budget is not declared in it: when a recipe's build row runs the DarnWrite engine, New stamps shedrecipe.Env.DarnVerifyAttempts, the `verify_attempts` of `darn.yaml`, onto the verify gates of that row and of the Code-Review segment's fix row at every build, each only where it declares a verify gate, and refuses a value below 1.
 // Nor is the bounce budget of the darn perch: New takes it from shedrecipe.Env.Segments["Code-Review"], whose budget is the Code-Review perch's resolved soft cap from `loom.yaml`, and Routing from a map keyed by segment, and both set it on the perch's rows and refuse a missing Code-Review entry and a value below 0.
 // A budget of 0 turns the perch off as loom's does: New stamps `zero_rounds` on Code-Bouncer, which settles approved at once on `Drift-Verify`'s Done, and every edge is kept.
@@ -47,7 +51,7 @@
 // Its `retired` map sends a run parked at Parent-Align, Beam-Describe or PR-Review, the rows of an earlier pawl recipe, back to Beam-Await.
 // A run at Finalize or any row after it holds its beam; before it the beam is free to start members.
 //
-// Rows and RowNames serve the tapestry, darn, batten, pawl, sampler and motif recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
+// Rows and RowNames serve the tapestry, darn, batten, pawl, sampler, motif and raddle recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.
 //
 // IsLoom, HasEngine, RecordEngine, VerifySource and RetiredRows answer a recipe's contract, engines, record engine, verify source and retired rows by recipe name, so a consumer reads the recipe's rows and keys instead of comparing its name.
@@ -62,7 +66,7 @@
 // CodePerchGate answers the entry gate of a recipe's Code-Review Bouncer row, built over a told Env, and nil for a recipe whose perch carries none (tapestry, darn, pawl):
 // a reader of whether the perch is off follows that gate as well as the budget.
 //
-// AmendmentTarget answers the optional `amendment_target` key of the tapestry, darn, batten, pawl, sampler or motif recipe: the row a plan amendment routes to, empty when the recipe sets none.
+// AmendmentTarget answers the optional `amendment_target` key of the tapestry, darn, batten, pawl, sampler, motif or raddle recipe: the row a plan amendment routes to, empty when the recipe sets none.
 //
 // Every review segment of the tapestry and darn recipes sets one `role_prefix` on its Bouncer, BurlerReview and BurlerFix rows, and no two segments share a value.
 // A test pins that beside the carry-over check, which pins that each Bouncer row's `carry_over` names the row's own segment.

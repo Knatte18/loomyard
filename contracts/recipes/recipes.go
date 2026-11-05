@@ -39,3 +39,8 @@ var MotifRecipe []byte
 //
 //go:embed batten-recipe.yaml
 var BattenRecipe []byte
+
+// RaddleRecipe is the raddle recipe's producer graph, the rows that split a Sketch into the board entries the operator approves and file them, in internal/shedbuild's recipe format.
+//
+//go:embed raddle-recipe.yaml
+var RaddleRecipe []byte

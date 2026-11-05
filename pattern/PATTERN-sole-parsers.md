@@ -47,6 +47,12 @@ It imports the standard library only.
 
 `internal/shedbuild` is the sole parser of the recipe file format, and declares no on-disk location for recipe files.
 
+## Raddle proposal (`internal/raddleparser`)
+
+`internal/raddleparser` is the sole parser of the raddle proposal, `_lym/raddle/proposal.yaml`, in the format `contracts/specs/raddle-proposal-spec.md` pins, and the sole home of the checks that judge it.
+It imports the standard library and `internal/discussionparser` only, and reads the Sketch's decision record through `internal/discussionparser` alone.
+Consumers read only the `raddleparser.Proposal` model and the findings its checks return.
+
 ## Fixer report format (`internal/landingshed`)
 
 `internal/landingshed`'s `ParseFixerReport` is the sole parser of the merge fixer's report format, which `contracts/specs/landing-fixer-report-spec.md` defines.

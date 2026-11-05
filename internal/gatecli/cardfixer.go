@@ -17,6 +17,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 	"github.com/Knatte18/loomyard/internal/state"
@@ -118,6 +119,7 @@ func newStrandRig(location *lymcwd.Location) (strandRig, error) {
 	reed := reedengine.New(reedCfg, reedGeom, shuttleengines.EnvScrub())
 	runner := shuttleengine.NewRunner(reed, engines, reedGeom.AnchorPath, reedGeom.WorktreeRoot, shuttleCfg)
 	runner.SetPause(pauseGeom)
+	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders()))
 	return strandRig{runner: runner, reed: reed, engines: engines, shuttleCfg: shuttleCfg, anchorRoot: reedGeom.AnchorPath}, nil
 }
 

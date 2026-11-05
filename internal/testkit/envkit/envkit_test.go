@@ -36,6 +36,9 @@ import (
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -43,6 +46,7 @@ import (
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
@@ -105,6 +109,9 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -112,6 +119,7 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
@@ -147,6 +155,9 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -154,6 +165,7 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
@@ -170,6 +182,7 @@ func TestNilSeams_SkipsNilLegalPaths(t *testing.T) {
 
 //lym:seam internal/loomshed#SamplerDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 func TestFullEnv_PathFieldsAbsoluteUnderOneRoot(t *testing.T) {
 	tiergate.Require(t, 0)
 	env := FullEnv(t)
@@ -444,6 +457,7 @@ func structNamesIn(dir string) (map[string]bool, error) {
 // TestSeamMarkers_ReflectiveTestsAreMarked proves every test that reflects over a struct's fields in the module carries a `//lym:seam` marker naming a struct.
 //
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:guard
 func TestSeamMarkers_ReflectiveTestsAreMarked(t *testing.T) {
 	tiergate.Require(t, 0)

@@ -8,9 +8,9 @@
 
 ## Paths and geometry
 
-- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `internal/lymcwd`, from the worktree's own weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
+- `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `lymcwd`, from the worktree's weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lym-temp-root` — Creating temp file or dir: under `internal/lymtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lym-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered files and `.heddle` at a warp worktree's anchor; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered files and `.heddle` at a warp worktree's anchor; only `lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
 - `PATTERN-tracked-file-locks` — Tracked-file lock: path via `lock`. (test) — [background](pattern/PATTERN-tracked-file-locks.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 - `PATTERN-fs-links` — Creating a filesystem link: only `internal/fslink`'s `CreateDirLink` or `CreateFileLink`; no `os.Symlink` or `os.Link` outside `internal/fslink`. (test) — [background](pattern/PATTERN-fs-links.md)
@@ -19,7 +19,7 @@
 
 - `PATTERN-cli-cobra` — Adding CLI module: a cobra subtree under one root in `cmd/lym/main.go`. (test) — [background](pattern/PATTERN-cli-cobra.md)
 - `PATTERN-cliwire-sole-wiring` — Wiring standalone CLI: `internal/cliwire` alone resolves target dir, repo root and state. (test) — [background](pattern/PATTERN-cliwire-sole-wiring.md)
-- `PATTERN-config-layers` — Loading config: only `configengine` reads, stacks, locates and judges layers against the template; a caller adopts `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; only `lym config reconcile` prunes unknown base-layer keys. — [background](pattern/PATTERN-config-layers.md)
+- `PATTERN-config-layers` — Loading config: only `configengine` reads, stacks, locates and judges layers against the template; callers use `Load` or `LoadOrTemplate`, bar `runprofile`; only `hubreconcile.Ensure` reconciles on a binary change; only `lym config reconcile` prunes unknown base-layer keys. — [background](pattern/PATTERN-config-layers.md)
 - `PATTERN-sparse-hub-base` — Writing a hub base file, from any package: only the units the hub tuned, never a template fill; only `internal/hubreconcile`'s one-time strip drops a template-equal unit.
 - `PATTERN-config-reinterpretation` — Changing a hub config value's meaning: a binary carries a `configreg.Reinterpretation` on its module that rewrites the value to its old meaning, or flags it with a way forward; only `hubreconcile`'s walk applies it, once per hub behind its board marker, and mails the prime orch.
 - `PATTERN-refusal-way-forward` — Adding webster, shed or loom refusal: message names the way forward and a test reaches it; no refusal, stencil or spec names a step agents' settings deny. (test) — [background](pattern/PATTERN-refusal-way-forward.md)
@@ -29,9 +29,9 @@
 - `PATTERN-fabric-vocabulary` — Naming the wired composite: "fabric". (test) — [background](pattern/PATTERN-fabric-vocabulary.md)
 - `PATTERN-fabric-git` — Running git on warp or weft: only `internal/fabricengine`, in-process; destroying only in its `destroy.go`, hub writes via a hub `os.Root`, store gc only in `housekeeping.go`. — [background](pattern/PATTERN-fabric-git.md)
 - `PATTERN-gitrepo-client-boundary` — Running git: `gitexec.Run`/`runChecked`, raw only at pinned `//gitexec:raw` sites; in `internal/gitrepo`, local reads via `readGoGit` and `dotgit`; transients via `.git/info/exclude`, never `git add -f`. (test) — [background](pattern/PATTERN-gitrepo-client-boundary.md)
-- `PATTERN-remote-refs-lock` — Writing remote-tracking refs by fetch, pull or push: under the repository's remote-refs lock via `gitrepo`, taken past the pause gate, waiting while held; a tag push, a `--refmap=` or probe-clone fetch writes none; a judge of origin against tracking refs holds it to its verdict. (test) — [background](pattern/PATTERN-remote-refs-lock.md)
+- `PATTERN-remote-refs-lock` — Writing remote-tracking refs by fetch, pull or push: under the repository's remote-refs lock via `gitrepo`, waiting while held; the pause gate, writes that take none and judges that hold it per the background. (test) — [background](pattern/PATTERN-remote-refs-lock.md)
 - `PATTERN-push-both-sides` — Pushing run records from Go: code branch goes along; a push refused after retry leaves a failed-push record and creel notice. A teardown's push of a weft branch it archives and deletes goes alone and only logs a refusal. (test) — [background](pattern/PATTERN-push-both-sides.md)
-- `PATTERN-slug-remote-order` — Touching a slug's pair or origin branches: under its teardown lock, shared by a pair push outside a removal, exclusive for Add, Remove, task-branch discard and cleanup sweep, held by a teardown's detached child to its last remote step; an origin weft delete leases the tip read.
+- `PATTERN-slug-remote-order` — Touching a slug's pair or origin branches: under its teardown lock, shared for a pair push outside a removal, else exclusive, held by a teardown's detached child to its last remote step; an origin weft delete leases the tip read.
 - `PATTERN-pair-teardown` — Tearing down a pair: only via `internal/pairteardown`; a producer creating or destroying a task worktree never runs inside it. (test) — [background](pattern/PATTERN-pair-teardown.md)
 - `PATTERN-parent-lock` — Moving, merging into or landing on a local parent branch, or merging a run's pull request: only in a run's Finalize, under `internal/parentlock`'s lock for that parent.
 - `PATTERN-owner-machine` — Run start, resume, push or landing: only if no other machine owns its entry; a loom push reconciles run-scope origin first; owners only on roots and beams, set only by `boardengine`'s setter; others read their `hubgeom.ParentOf` owner; a dobby continue is no resume. — [background](pattern/PATTERN-owner-machine.md)
@@ -41,7 +41,7 @@
 
 ## Shed and loom
 
-- `PATTERN-shed-recipe-registry` — Adding producer, recipe row or block gate: one `Constructor` or `BlockGates` map in `internal/shedrecipe`, bar `Implementer`'s; a row's value looked up by key, a side action a `Command` row, a row off by one config key its `entry_gate`, one whose off reads more its own call. — [background](pattern/PATTERN-shed-recipe-registry.md)
+- `PATTERN-shed-recipe-registry` — Adding producer, recipe row or block gate: one `Constructor` or `BlockGates` map in `shedrecipe`, bar `Implementer`'s; row values by key, side actions as `Command` rows, off switches per the background. — [background](pattern/PATTERN-shed-recipe-registry.md)
 - `PATTERN-loom-contract` — Adding a loom recipe: it declares `contract: loom`, checked by Shed's recipe loader; `lym loom` verbs serve loom runs only; a verb for some loom recipes refuses on others by the recipe's rows, never its name.
 - `PATTERN-project-record` — Changing a beam project's scope once its pawl run passed Preflight: only `lym loom decision add <beam-slug>` on its project record, never a board body edit; a member reads the record from the beam's worktree, never writes it.
 - `PATTERN-pull-request-mode` — Deciding if a landing uses a pull request: only landingshed's one resolver, from the receiving `beam.pull_request`, the entry's `pull_request` or a beam's pull-request record, the parent's GitHub rules, origin and task commits; no run setting carries it; a yes merges on GitHub.
@@ -56,12 +56,13 @@
 - `PATTERN-tolerant-records` — Go-written JSON records: never refuse an unknown key; rewrite via `internal/state`. (test) — [background](pattern/PATTERN-tolerant-records.md)
 - `PATTERN-gate-slot` — Running gate build, test or verify: in held `internal/gateslot` slots, verify via `verifytree.Verify`, a tier skipped only on `lym gate test`'s green record; a gate and its self-check call one function. (test) — [background](pattern/PATTERN-gate-slot.md)
 - `PATTERN-gate-fixer` — Clearing a failed gate with a cold agent: only `gatefixer`, one fixer per failed evaluation; Go's re-run of the gate judges, never the fixer; a fixer's own gate calls spawn none; a runner crash gets none.
-- `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe or halt note, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
+- `PATTERN-sole-parsers` — Parsing plan, parts file, discussion, summary, recipe, halt note or raddle proposal, or classifying a plan ref: only its sole parser. (test) — [background](pattern/PATTERN-sole-parsers.md)
 - `PATTERN-shed-shared-machinery` — Adding what every phase machine needs: once, in shed's packages, never in one recipe's or module's own package.
+- `PATTERN-run-usage-record` — Recording an agent session's tokens and cost per session under a run's `_lym/usage`: only shed's one usage writer, one file per session; a cost report reads token counts and session costs only from those files, never from a review round's usage record.
 
 ## Agents and prompts
 
-- `PATTERN-stencil-ownership` — Reading prompt or spec: at call time via `internal/stencilstore`, never embedded, bar the orch role, fixed for every repository in `contracts/orchrole` with no board copy; an instruction file points at another producer's format contract, never restating it. — [background](pattern/PATTERN-stencil-ownership.md)
+- `PATTERN-stencil-ownership` — Reading prompt or spec: at call time via `stencilstore`, never embedded, bar the orch role, fixed in `contracts/orchrole` with no board copy; an instruction file points at another producer's format contract, never restating it. — [background](pattern/PATTERN-stencil-ownership.md)
 - `PATTERN-engine-blocks` — Writing engine-specific text into a stencil more than one engine renders: in an engine block, read for the seat's engine by `internal/stencilstore`'s one resolver.
 - `PATTERN-parent-directive` — Writing a spawned role's stencil: it renders the parent and edit directives; its skills and color go on the launch spec, never asked of the agent. (test) — [background](pattern/PATTERN-parent-directive.md)
 - `PATTERN-agent-messaging` — Messaging another session from an agent: only through creel, never an engine's own tool, bar a fork addressed in-session under ForkSubagents. (test)
@@ -84,5 +85,5 @@
 
 ## Testing
 
-- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by gate key; one `tiergate.Require` tier, lowest that fits; it pins behavior no test covers; a skip never names the OS alone; injected clocks, `t.Parallel` by default; a test reflecting over a struct's fields carries `//lym:seam`. (test) — [background](pattern/PATTERN-test-speed.md)
+- `PATTERN-test-speed` — Writing or running a test: via `lym gate test` by gate key; one `tiergate.Require` tier, lowest that fits; it pins behavior no test covers; skips, clocks, `t.Parallel` and `//lym:seam` per the background. (test) — [background](pattern/PATTERN-test-speed.md)
 - `PATTERN-test-isolation` — Testing package: hermetic git and `tmuxkit.Main`; shared support in one `internal/testkit/<kit>/`; hub fixtures via `hubforge`. (test) — [background](pattern/PATTERN-test-isolation.md)

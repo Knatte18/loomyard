@@ -46,5 +46,12 @@ const CreelFlagDirName = "flags"
 // HeddleDirName is the directory under a worktree's DotLymDirName that holds heddle's render lock.
 const HeddleDirName = "heddle"
 
+// UsageDirName is the directory under a worktree's LymDirName that holds a run's usage records: one file per agent session, the run's identity and its landed diff size.
+const UsageDirName = "usage"
+
+// RaddleDirName is the directory under a worktree's LymDirName that holds a raddle run's files: the proposals, the approval, the run's state, the staged store and the part records.
+// internal/lymdirs is the only place `raddle` is named under LymDirName.
+const RaddleDirName = "raddle"
+
 // LocksDirName is the directory under a checkout's DotLymDirName that holds the lock files guarding the checkout's tracked files.
 const LocksDirName = "locks"

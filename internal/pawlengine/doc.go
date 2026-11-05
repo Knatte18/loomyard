@@ -6,7 +6,8 @@
 // Its records go through internal/state, so a key an older or newer binary wrote survives a rewrite and a request naming another run is read, never refused.
 //
 // Beam-Up marks the pair a beam, spawns its push, regenerates the hub workspace, removes a land request and the await marker a run before left, and runs the beam steps, each idempotent.
-// A failing step is a halting Stuck naming its cause and `lym loom resume`.
+// Once its steps have brought the beam's dobby and orch up, it hands the beam's Sketch and proposal to the orch through the told HandOff and Notify seams, once: the hand-off marker records that it is settled, and Beam-Up never removes it.
+// A failing step, a failing hand-off or a hand-off post that reached no orch is a halting Stuck naming its cause and `lym loom resume`.
 //
 // Beam-Await spawns no agent.
 // It holds the run until a land request naming this run passes the re-check, waking on a change in the request's directory and on a timer that starts at one second and doubles to one minute while idle.
@@ -22,7 +23,7 @@
 //
 // Beam-Down stops the beam's dobby and orch through the told Down seam; a failure is logged and the row is Done, since Worktree-Teardown ends what is left.
 //
-// The land request, the dobby-stop marker and the await marker are files under the beam worktree's `.lym/beam/`, whose paths the hub wiring composes and tells through Paths.
+// The land request, the dobby-stop marker, the await marker and the hand-off marker are files under the beam worktree's `.lym/beam/`, whose paths the hub wiring composes and tells through Paths.
 // Paths also names the file of a reopen request an older binary wrote, which no code reads.
 //
 // MoveOffRetired gives a run moved off a row its recipe retired the side effects an in-flight landing under the old rows needs, through RetiredMoveDeps.

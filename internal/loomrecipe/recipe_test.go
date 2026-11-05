@@ -183,14 +183,14 @@ func TestNew_ConstructionFailureNamesOffendingRow(t *testing.T) {
 }
 
 // TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet asserts RecipeEngines() reports exactly loom's
-// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession and the pawl recipe's BeamUp, BeamAwait and BeamDown, sorted and de-duplicated -- derived from wantProducerTable's own engine
+// own recipe's engine set plus the darn recipe's RecordWrite and DarnWrite, the sampler recipe's SamplerSession, the pawl recipe's BeamUp, BeamAwait and BeamDown and the raddle recipe's RaddleWrite and RaddleFile, sorted and de-duplicated -- derived from wantProducerTable's own engine
 // column rather than a second hand-written literal, for the same reason its battenrecipe twin
 // gets this test: a silently empty return would disable the cross-consumer coverage guard rather
 // than fail it.
 func TestRecipeEngines_ReportsExactlyLoomsOwnEngineSet(t *testing.T) {
 	tiergate.Require(t, 0)
 	// The darn recipe's record row and writer, the sampler recipe's session row and the pawl recipe's own rows are ones a loom row can reach, beside the tapestry recipe's; the motif recipe's rows are all tapestry's.
-	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDown"}
+	want := []string{"DarnWrite", "RecordWrite", "SamplerSession", "BeamUp", "BeamAwait", "BeamDown", "RaddleWrite", "RaddleFile"}
 	seen := map[string]bool{}
 	for _, engine := range want {
 		seen[engine] = true
@@ -230,6 +230,7 @@ func TestRowNames_FollowEachRecipesRowOrder(t *testing.T) {
 		{shedrun.RecipePawl, recipes.PawlRecipe},
 		{shedrun.RecipeSampler, recipes.SamplerRecipe},
 		{shedrun.RecipeMotif, recipes.MotifRecipe},
+		{shedrun.RecipeRaddle, recipes.RaddleRecipe},
 	} {
 		t.Run(tt.recipe, func(t *testing.T) {
 			parsed, err := shedbuild.Parse(tt.source)

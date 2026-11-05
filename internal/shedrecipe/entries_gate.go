@@ -210,6 +210,20 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 			return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: setting tapestry.parts_max holds %v, want an integer of 1 or more; way forward: set tapestry.parts_max in tapestry.yaml to the most parts a parts file may hold", entry, "gates", index, value)
 		}
 		return loomshed.NewPartsGate(env.AnchorPath, env.WorktreeRoot, env.DecisionRecordPath, max), nil
+	case "raddle":
+		if err := requireAbsRoot(entry, "RaddleWrite.Check.ProposalPath", env.RaddleWrite.Check.ProposalPath); err != nil {
+			return nil, err
+		}
+		if err := requireAbsRoot(entry, "RaddleWrite.Check.RecordPath", env.RaddleWrite.Check.RecordPath); err != nil {
+			return nil, err
+		}
+		if err := requireSeam(entry, "RaddleWrite.Check.Board", env.RaddleWrite.Check.Board); err != nil {
+			return nil, err
+		}
+		if err := requireSeam(entry, "RaddleWrite.Deps.StoreCold", env.RaddleWrite.Deps.StoreCold); err != nil {
+			return nil, err
+		}
+		return loomshed.NewRaddleGate(env.RaddleWrite.Check, env.RaddleWrite.Deps.StoreCold), nil
 	case "description":
 		if err := requireAbsRoot(entry, "DescriptionPath", env.DescriptionPath); err != nil {
 			return nil, err
@@ -232,6 +246,6 @@ func resolvePlainGateClosure(entry, row, gateKey string, index int, name string,
 		}
 		return loomshed.NewVerifyGate(env.WorktreeRoot, env.VerifyDir, row+" gate", command, env.VerifyMergeBase, treeScope, env.VerifyHold), nil
 	default:
-		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "description", "verify", name)
+		return nil, fmt.Errorf("shedrecipe: %s: config key %q element %d: config key %q must be %q, %q, %q, %q, %q, %q or %q, got %q", entry, "gates", index, "name", "clean", "discussion", "plan", "parts", "raddle", "description", "verify", name)
 	}
 }

@@ -21,6 +21,7 @@ const arbiterRepairVerbs = "Its repair verbs, run with `<slug>` the task named a
 
 // arbiterRecipeDescription returns the description of recipe the arbiter stencil's recipe marker carries: what the run is and the repair verbs the arbiter may run.
 // A loom recipe with a Sampler-Session row is described as a task's result made with the operator in one interactive session.
+// One with a Raddle-File row is described as a run that splits a Sketch's stored decision record into board entries the operator approves, landing no code; it is checked before the no-Finalize case, which it would otherwise match.
 // One with a Plan-Write row is described as a task driven from discussion to landing, labelled with the recipe's name.
 // One with no Finalize row is described as a task's Discussion that lands no code.
 // Any other is described as a task's code change driven from its decision record through one build session.
@@ -34,6 +35,9 @@ func arbiterRecipeDescription(recipe string) string {
 	if recipeHasEngine(recipe, planWriteEngine) {
 		label := recipeLabel(recipe)
 		return "This is " + indefiniteArticle(label) + " " + label + " run, a task driven from discussion to landing. " + arbiterRepairVerbs
+	}
+	if recipeHasEngine(recipe, raddleFileEngine) {
+		return "This is a " + recipeLabel(recipe) + " run that splits a Sketch's stored decision record into board entries the operator approves; the run lands no code. " + arbiterRepairVerbs
 	}
 	if !recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) {
 		return "This is a " + recipeLabel(recipe) + " run, a task's Discussion: its decision record is written, reviewed and stored on the board entry, and the run lands no code. " + arbiterRepairVerbs

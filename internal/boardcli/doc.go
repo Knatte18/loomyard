@@ -2,7 +2,7 @@
 //
 // The verb tree:
 //   - `upsert`, `upsert-batch`, `set-status`, `remove`, `get`, `list`, `list-full`, `merge` and `set-deps` come from `storeVerbs`.
-//   - `promote`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
+//   - `promote`, `raddle`, `rename`, `prune`, `find`, `labels`, `profiles` and `retire-legacy`, plus the `rerender` and `sync` maintenance verbs, are built in `Command`.
 //   - `intake` (list, import, close) comes from `intakeCommand`.
 //
 // `prune` and `retire-legacy` are read-only dry runs without `--apply`.
@@ -75,6 +75,8 @@
 // `set-deps`, `upsert`, `upsert-batch` and `merge` add the sibling warning to the success envelope's `notice`, joined after a run-settings notice, one line per pair, a batch pair once;
 // `set-deps` prints `notice` only then.
 // `promote` and `intake import` write no `depends_on` and stay unchanged.
+// `promote` takes `--recipe <name>`, which sets the promoted task's recipe in the same write.
+// A Sketch, or any discussed note whose decision record is stored, becomes a task only through `promote --recipe raddle`, which keeps its record and releases the task; any other promotion of it is refused, naming that command.
 //
 // `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings per recipe, and `"profiles":[]` when there is none.
 // `defaults` maps each recipe to the profile a task of that recipe takes when it names none.
@@ -96,6 +98,9 @@
 // `intake import` prints `{"slug":…,"issue":…,"labels":[…],"dropped":[…]}`, with the slug of the entry folded into for a fold.
 // A failed comment or close after the board write carries the same four fields and the `close` payload in the error envelope.
 // An already-recorded issue prints `recorded`.
+//
+// `raddle <slug>` takes a bare slug, not a payload, and prints the approved raddle proposal of the store directory that holds the slug, a Sketch's own or one its run filed, verbatim with no envelope.
+// It reads only, errors for a slug the raddle store does not hold naming `lym report raddle` as the way forward, and works after the run's landing pruned the Sketch, since the store outlives prune.
 //
 // `labels` takes no payload and prints `{"ok":true,"types":[{"label":…,"description":…}],"labels":[…]}`.
 // Each list is in `board.yaml` file order,

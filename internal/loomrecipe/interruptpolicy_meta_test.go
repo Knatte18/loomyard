@@ -15,14 +15,14 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn, sampler, motif and pawl recipes.
+// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn, sampler, motif, raddle and pawl recipes.
 // Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
 // and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	rowNames := map[string]bool{}
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipePawl} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipeRaddle, shedrun.RecipePawl} {
 		// Pawl is last, since its build has no review segment to budget and the others need theirs.
 		if name == shedrun.RecipePawl {
 			delete(env.Segments, codeReviewSegment)
@@ -41,7 +41,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 
 	for rowName := range loomshed.InterruptPolicies {
 		if !rowNames[rowName] {
-			t.Errorf("loomshed.InterruptPolicies names row %q, which none of tapestry, darn, sampler, motif and pawl has", rowName)
+			t.Errorf("loomshed.InterruptPolicies names row %q, which none of tapestry, darn, sampler, motif, raddle and pawl has", rowName)
 		}
 	}
 }

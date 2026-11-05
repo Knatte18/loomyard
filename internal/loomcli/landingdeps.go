@@ -219,6 +219,18 @@ func landingDeps(
 			}
 			return shedrun.WriteLandedCommit(prime, seedSlug(l.WorktreeName), commit)
 		},
+		// RecordLandedSize writes the size of the landed diff into the worktree's usage directory, so the landed record rides the run's last status commit.
+		RecordLandedSize: func(from, to string) error {
+			f, err := fabricengine.Open(l)
+			if err != nil {
+				return err
+			}
+			size, err := f.DiffSize(from, to)
+			if err != nil {
+				return err
+			}
+			return shedrun.WriteLandedSize(shedrun.UsageDir(l), shedrun.LandedSizeRecord{LinesAdded: size.LinesAdded, LinesDeleted: size.LinesDeleted, FilesChanged: size.FilesChanged})
+		},
 		// ConfigChanges reads the task's changes to its per-worktree config files since its fork point.
 		// A hub-wide module's file is never read: its worktree copy is not the one in force.
 		ConfigChanges: func() (fabricengine.ConfigChanges, error) {

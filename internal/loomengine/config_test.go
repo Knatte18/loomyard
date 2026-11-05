@@ -96,6 +96,8 @@ func templateConfig() Config {
 		Discussion:                    "opus[medium]",
 		DiscussionTimeoutMin:          480,
 		DiscussionInteractive:         false,
+		Raddle:                        "opus[high]",
+		RaddleAutoApprove:             false,
 		ReviewerModel:                 burlerengine.ModelSpecList{"opus[medium]"},
 		FixerModel:                    burlerengine.ModelSpecList{"opus[medium]"},
 		DiscussionLenses:              "twill-discussion",
@@ -168,6 +170,11 @@ review_timeout_min: 240
 			name:     "retired selfreport key ignored",
 			contents: ConfigTemplate() + "selfreport: false\n",
 			mutate:   func(*Config) {},
+		},
+		{
+			name:   "raddle keys overridden",
+			values: map[string]string{"raddle": "sonnet[high]", "raddle_auto_approve": "true"},
+			mutate: func(c *Config) { c.Raddle, c.RaddleAutoApprove = "sonnet[high]", true },
 		},
 		{
 			name:   "reviewer_model as a per-round list",
@@ -596,6 +603,7 @@ func TestLoadConfig_Refuses(t *testing.T) {
 		lensesYAML string
 	}{
 		{"malformed discussion spec", "discussion", `"opus[effort"`, nil, ""},
+		{"malformed raddle spec", "raddle", `"opus[effort"`, []string{`loom config key "raddle"`}, ""},
 		{"empty subagent_model", "subagent_model", `""`, []string{"must not be empty", "lym config loom --set subagent_model=sonnet"}, ""},
 		{"malformed reviewer_model spec", "reviewer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
 		{"malformed fixer_model spec", "fixer_model", `"opus[effort"`, []string{"entry 1", "a non-empty list of model-specs"}, ""},
@@ -1188,7 +1196,7 @@ func TestConfigTemplate_ImplementerDefaultsToWebsterAndAcceptsALocalValue(t *tes
 	}
 }
 
-// TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path and a path that only shares a records directory's name as a prefix.
+// TestPathsOutsideRunRecords pins that PathsOutsideRunRecords drops every path under the run directory, the loom durable directory and the reviews directory, and keeps a code path, a path that only shares a records directory's name as a prefix and every file of a raddle run, which sits under none of the three.
 func TestPathsOutsideRunRecords(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -1198,16 +1206,20 @@ func TestPathsOutsideRunRecords(t *testing.T) {
 	runDir := shedrun.RunDir(l, runID)
 	codePath := filepath.Join(l.AnchorPath(), "internal", "x.go")
 	prefixOnly := LoomDurableDir(l) + "-extra"
+	raddlePaths := []string{
+		RaddleProposal(l), RaddleColdProposal(l), RaddleReturnedProposal(l), RaddleApproval(l),
+		RaddleStatePath(l), RaddleStageDir(l), RaddlePartRecord(l, "part-a"),
+	}
 
-	got := PathsOutsideRunRecords(l, runID, []string{
+	got := PathsOutsideRunRecords(l, runID, append([]string{
 		filepath.Join(runDir, "status.json"),
 		filepath.Join(LoomDurableDir(l), "friction", "note.md"),
 		filepath.Join(LoomReviewsDir(l), "round.yaml"),
 		codePath,
 		prefixOnly,
-	})
+	}, raddlePaths...))
 
-	if want := []string{codePath, prefixOnly}; !reflect.DeepEqual(got, want) {
+	if want := append([]string{codePath, prefixOnly}, raddlePaths...); !reflect.DeepEqual(got, want) {
 		t.Errorf("PathsOutsideRunRecords() = %q; want %q", got, want)
 	}
 }

@@ -202,6 +202,10 @@ type Deps struct {
 	// RecordLanding records commit, the parent pair's head right after a parent-side merge that landed, as the run's landing commit, so the dobby driving the run can name it.
 	// Finalize calls it after MarkTaskDone and before the push, and only logs a failure, of the head read or of the record; nil records nothing.
 	RecordLanding func(commit string) error
+	// RecordLandedSize records the size of the diff the run landed, from the parent head Finalize merged into the task worktree to the landing commit.
+	// Finalize calls it after RecordLanding and before the push, and only logs a failure; nil records nothing.
+	// A Finalize that read no such parent head in its process, as one resumed past the merge, does not call it.
+	RecordLandedSize func(from, to string) error
 
 	// ConfigChanges returns the task's changes to its own per-worktree config files since its fork point.
 	// Finalize calls it before the catch-up merge-in, so before any parent-side mutation, and only reports the result through Notify:

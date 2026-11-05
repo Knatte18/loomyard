@@ -79,13 +79,16 @@ const (
 	// RecipeMotif names the motif recipe, the run that makes a sketch, the decision record, from a task and lands no code.
 	// The tapestry recipe also runs it as its Motif block.
 	RecipeMotif = "motif"
+	// RecipeRaddle names the raddle recipe, the run that splits a Sketch into the entries the operator approves and files them on the board.
+	// It is the one recipe whose task may carry a Sketch's decision record and its sketch type label.
+	RecipeRaddle = "raddle"
 )
 
 // RecipeNames returns the closed recipe-name vocabulary as a freshly allocated, sorted slice.
 // Callers must not rely on a fixed order beyond "sorted" and must not mutate the vocabulary through
 // the returned slice affecting any other caller, since each call allocates its own.
 func RecipeNames() []string {
-	return []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeSampler, RecipeTapestry}
+	return []string{RecipeBatten, RecipeDarn, RecipeMotif, RecipePawl, RecipeRaddle, RecipeSampler, RecipeTapestry}
 }
 
 // ValidateRecipe reports whether name is a legal Seed.Recipe value.

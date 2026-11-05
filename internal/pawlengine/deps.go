@@ -21,7 +21,7 @@ type Step struct {
 type Deps struct {
 	// Slug is the beam's slug, which names its landing and start in a notice.
 	Slug string
-	// Paths holds the run's land and reopen requests, dobby-stop marker and await marker.
+	// Paths holds the run's land and reopen requests, dobby-stop marker, await marker and hand-off marker.
 	Paths Paths
 	// RunID is the pawl run's seed id, which a land request names.
 	RunID string
@@ -50,12 +50,14 @@ type Deps struct {
 	DobbyLive func() (bool, error)
 	// Recheck returns the blockers the landing re-check finds, empty when it passes.
 	Recheck func() ([]string, error)
+	// HandOff returns the line that hands the beam's Sketch and proposal to its orch, with found false when the beam has none.
+	HandOff func() (line string, found bool, err error)
 	// ReadyStands reports whether the tracked ready record names this beam.
 	ReadyStands func() (bool, error)
 	// StampWake records that Beam-Await completed a wake at the given time.
 	StampWake func(at time.Time) error
-	// Notify posts one line to the beam's own orch.
-	Notify func(line string) error
+	// Notify posts one line to the beam's own orch and reports whether the post reached an orch.
+	Notify func(line string) (posted bool, err error)
 	// Down takes the beam's dobby and orch down.
 	Down func() error
 	// Watch delivers a value whenever the land request's directory changes; nil leaves the timer alone.
@@ -89,6 +91,7 @@ func (d Deps) pathsSeams() []seam {
 		{"Paths.ReopenRequest", d.Paths.ReopenRequest != ""},
 		{"Paths.DobbyStopMarker", d.Paths.DobbyStopMarker != ""},
 		{"Paths.AwaitMarker", d.Paths.AwaitMarker != ""},
+		{"Paths.HandOffMarker", d.Paths.HandOffMarker != ""},
 	}
 }
 

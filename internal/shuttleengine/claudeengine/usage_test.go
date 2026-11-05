@@ -270,7 +270,7 @@ func idlessLine(input, cacheRead int) string {
 	return fmt.Sprintf(`{"type":"assistant","isSidechain":false,"message":{"usage":{"input_tokens":%d,"cache_creation_input_tokens":0,"cache_read_input_tokens":%d,"output_tokens":1}}}`, input, cacheRead)
 }
 
-// TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, a session without a subagents directory has zero forks, and a missing transcript reads unknown.
+// TestSessionUsage_SumsParentAndForks covers the session-usage reading over fixture transcripts: a message repeated across lines counts once and sidechain and malformed lines are skipped, forks are summed into the totals and broken out, the four split counts are summed over parent and forks, a session without a subagents directory has zero forks, and an unreadable session reads unknown with the split unread.
 // It runs serially because it sets the process-global HOME.
 func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -305,7 +305,7 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 		{
 			name:   "repeated message lines count once",
 			parent: parentLines,
-			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29, CacheRead: 300},
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29, CacheRead: 300, SplitKnown: true, Input: 3, CacheWrite: 30, Output: 12},
 		},
 		{
 			name:   "two forks are summed and broken out",
@@ -314,6 +314,7 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 			want: shuttleengine.SessionUsage{
 				Known: true, Fresh: 16 + 29 + 5 + 7, CacheRead: 300 + 100,
 				Forks: 2, ForkFresh: 12, ForkCacheRead: 100,
+				SplitKnown: true, Input: 13, CacheWrite: 30, Output: 14,
 			},
 		},
 		{
@@ -324,20 +325,20 @@ func TestSessionUsage_SumsParentAndForks(t *testing.T) {
 		{
 			name:   "id-less parent lines without uuids all count",
 			parent: []string{idlessLine(1, 5), idlessLine(1, 5)},
-			want:   shuttleengine.SessionUsage{Known: true, Fresh: 4, CacheRead: 10},
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 4, CacheRead: 10, SplitKnown: true, Input: 2, Output: 2},
 		},
 		{
 			name:   "an id-less fork line without a uuid counts",
 			parent: []string{assistantLine("m1", false, 1, 10, 100, 5)},
 			forks:  map[string][]string{"a.jsonl": {idlessLine(2, 7)}},
-			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 3, CacheRead: 100 + 7, Forks: 1, ForkFresh: 3, ForkCacheRead: 7},
+			want:   shuttleengine.SessionUsage{Known: true, Fresh: 16 + 3, CacheRead: 100 + 7, Forks: 1, ForkFresh: 3, ForkCacheRead: 7, SplitKnown: true, Input: 3, CacheWrite: 10, Output: 6},
 		},
 		{
 			name:     "a directory named like a fork transcript is not a fork",
 			parent:   parentLines,
 			forks:    map[string][]string{"a.jsonl": forkLines("f1", 4, 40)},
 			forkDirs: []string{"b.jsonl"},
-			want:     shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29 + 5, CacheRead: 300 + 40, Forks: 1, ForkFresh: 5, ForkCacheRead: 40},
+			want:     shuttleengine.SessionUsage{Known: true, Fresh: 16 + 29 + 5, CacheRead: 300 + 40, Forks: 1, ForkFresh: 5, ForkCacheRead: 40, SplitKnown: true, Input: 7, CacheWrite: 30, Output: 13},
 		},
 		{
 			name:            "a subagents path that is a file reads unknown",

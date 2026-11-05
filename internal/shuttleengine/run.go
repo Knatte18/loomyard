@@ -55,6 +55,8 @@ type Runner struct {
 	clock Clock
 	// notifier receives the notice line of each held turn end of an autonomous run; nil, the default, holds silently.
 	notifier func(line string) error
+	// sessionEnd receives the report of each ended session; nil, the default, calls nothing.
+	sessionEnd func(SessionEnd)
 	// pause is the pause geometry the runner was told, the zero value when it was told none and reads no record.
 	pause pauserecord.Geometry
 	// step is the shed step the runner's process runs, nil when it was told none; start copies it into each run's record.
@@ -292,7 +294,7 @@ type Result struct {
 	// EndedAt is the run clock's time when the run was classified.
 	EndedAt time.Time
 	// Usage is the session's token reading, forks included.
-	// It is known only for an OutcomeDone run on an engine implementing UsageReader that could read the session.
+	// It is read at every terminal outcome, and is known only on an engine implementing UsageReader that could read the session.
 	Usage SessionUsage
 	// SessionStates is the states the wait's session fold recorded for the run, in order, one per change of state or cause.
 	// It is nil when the wait read none, as an engine that cannot parse session signals gives.
@@ -712,6 +714,8 @@ func (r *Runner) launch(spec Spec, gate GateSpec, engine Engine, engineName, res
 		ForkSubagents:        spec.ForkSubagents,
 		Engine:               engineName,
 		RoleKey:              roleKey(spec),
+		Role:                 spec.Role,
+		Model:                spec.Model,
 		CarriedInstructions:  carried,
 	}
 	if err := saveRunState(runDir, state); err != nil {

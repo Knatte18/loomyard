@@ -51,6 +51,13 @@ type world struct {
 	recheckErr, stopErr, startErr, notifyErr error
 	markErr, pushErr, workspaceErr           error
 
+	// handOffLine and handOffFound are what the HandOff seam answers; handOffErr is the error it fails with.
+	handOffLine  string
+	handOffFound bool
+	handOffErr   error
+	// notifyUnposted makes Notify report a post that reached no orch.
+	notifyUnposted bool
+
 	events  []string
 	notices []string
 	sleeps  []time.Duration
@@ -73,6 +80,7 @@ func newWorld(t *testing.T) *world {
 			ReopenRequest:   filepath.Join(dir, pawlengine.ReopenRequestFileName),
 			DobbyStopMarker: filepath.Join(dir, pawlengine.DobbyStopMarkerName),
 			AwaitMarker:     filepath.Join(dir, pawlengine.AwaitMarkerName),
+			HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
 		},
 		now:         time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		status:      "Beam-Up",
@@ -185,6 +193,10 @@ func (w *world) deps() pawlengine.Deps {
 			return w.dobbyLive, nil
 		},
 		Recheck: func() ([]string, error) { w.record("recheck"); return w.blockers, w.recheckErr },
+		HandOff: func() (string, bool, error) {
+			w.record("handoff")
+			return w.handOffLine, w.handOffFound, w.handOffErr
+		},
 		ReadyStands: func() (bool, error) {
 			w.mu.Lock()
 			defer w.mu.Unlock()
@@ -202,11 +214,11 @@ func (w *world) deps() pawlengine.Deps {
 			w.stamps = append(w.stamps, at)
 			return w.stampErr
 		},
-		Notify: func(line string) error {
+		Notify: func(line string) (bool, error) {
 			w.mu.Lock()
 			defer w.mu.Unlock()
 			w.notices = append(w.notices, line)
-			return w.notifyErr
+			return !w.notifyUnposted && w.notifyErr == nil, w.notifyErr
 		},
 		Down:  func() error { w.record("down"); return nil },
 		Watch: watchOf(w.watch),

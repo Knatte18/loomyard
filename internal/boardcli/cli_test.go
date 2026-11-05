@@ -111,6 +111,7 @@ func TestCLI(t *testing.T) {
 		{"BoardPathResolution", stepBoardPathResolution},
 		{"Promote", stepPromote},
 		{"Promote_Refusals", stepPromote_Refusals},
+		{"Raddle", stepRaddle},
 		{"TaskSessionFilesNotesOnly", stepTaskSessionFilesNotesOnly},
 		{"Rename", stepRename},
 		{"Prune", stepPrune},

@@ -4,11 +4,14 @@ package boardengine_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -183,5 +186,148 @@ func TestDiscussedTaskBecomesASketchOnTheNextWrite(t *testing.T) {
 	}
 	if kept := mustGetEntry(t, b, "needed"); kept.Kind != boardengine.KindTask || kept.Status == nil || *kept.Status != discussed {
 		t.Errorf("depended-on entry kind, status = %q, %v; want task, discussed", kept.Kind, kept.Status)
+	}
+}
+
+// newPromotionBoard returns a board whose vocabulary carries the sketch type label, and the board's directory.
+func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
+	t.Helper()
+	path := t.TempDir()
+	types := append([]boardengine.Label{{Name: boardengine.SketchType}}, testTypes...)
+	return boardengine.New(boardengine.Config{Path: path, Readme: "Home.md", DesignPrefix: "proposal-", Types: types, Labels: []boardengine.Label{{Name: "board"}}, SkipGit: true}), path
+}
+
+// TestDiscussedPromotion asserts a Sketch, or a discussed note a note write stripped of its label, becomes a task only through a promotion with recipe raddle, which releases it in the same write,
+// and that a note whose record file is missing or that was never discussed promotes as any note does.
+func TestDiscussedPromotion(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	sketch := func(t *testing.T, b *boardengine.Board, _ string) {
+		t.Helper()
+		mustUpsertEntry(t, b, map[string]any{"slug": "idea", "title": "Idea", "kind": "note", "labels": []string{boardengine.SketchType}})
+		if err := b.StoreDecisionRecord("idea", []byte("record\n")); err != nil {
+			t.Fatalf("StoreDecisionRecord() error = %v; want nil", err)
+		}
+	}
+	stripped := func(t *testing.T, b *boardengine.Board, boardPath string) {
+		t.Helper()
+		sketch(t, b, boardPath)
+		mustUpsertEntry(t, b, map[string]any{"slug": "idea", "labels": bugLabels})
+	}
+	promoteTo := func(recipe string) func(b *boardengine.Board) error {
+		return func(b *boardengine.Board) error {
+			_, err := b.PromoteTo("idea", recipe)
+			return err
+		}
+	}
+	wayForward := "lym board promote idea --recipe raddle"
+
+	tests := []struct {
+		name  string
+		setup func(t *testing.T, b *boardengine.Board, boardPath string)
+		act   func(b *boardengine.Board) error
+		// wantErr lists substrings of the refusal; nil means the write is admitted.
+		wantErr       []string
+		wantKind      string
+		wantRecipe    string
+		wantDraft     bool
+		wantSketch    bool
+		wantDiscussed bool
+		wantRecord    bool
+	}{
+		{
+			name: "RaddlePromoteOfASketch", setup: sketch, act: promoteTo(shedrun.RecipeRaddle),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "RaddlePromoteOfAStrippedNote", setup: stripped, act: promoteTo(shedrun.RecipeRaddle),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "PlainPromoteOfASketchIsRefusedByTheLabelRule", setup: sketch, act: promoteTo(""),
+			wantErr:  []string{wayForward},
+			wantKind: boardengine.KindNote, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "PlainPromoteOfAStrippedNoteIsRefused", setup: stripped, act: promoteTo(""),
+			wantErr:  []string{"discussed note with a stored decision record", wayForward},
+			wantKind: boardengine.KindNote, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "DarnPromoteOfAStrippedNoteIsRefused", setup: stripped, act: promoteTo("darn"),
+			wantErr:  []string{"discussed note with a stored decision record", wayForward},
+			wantKind: boardengine.KindNote, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "UpsertToADarnTaskOfASketchIsRefusedByTheLabelRule", setup: sketch,
+			act: func(b *boardengine.Board) error {
+				_, err := b.UpsertTask(map[string]any{"slug": "idea", "kind": "task", "recipe": "darn"})
+				return err
+			},
+			wantErr:  []string{wayForward},
+			wantKind: boardengine.KindNote, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "NoteWithAMissingRecordFileIsNotJudged",
+			setup: func(t *testing.T, b *boardengine.Board, boardPath string) {
+				t.Helper()
+				stripped(t, b, boardPath)
+				if err := os.Remove(filepath.Join(boardPath, boardengine.DecisionFileName("idea"))); err != nil {
+					t.Fatalf("remove record file: %v", err)
+				}
+			},
+			act:      promoteTo("darn"),
+			wantKind: boardengine.KindTask, wantRecipe: "darn", wantDraft: true, wantDiscussed: true,
+		},
+		{
+			name: "DarnPromoteOfAnUndiscussedNote",
+			setup: func(t *testing.T, b *boardengine.Board, _ string) {
+				t.Helper()
+				mustUpsertEntry(t, b, map[string]any{"slug": "idea", "title": "Idea", "kind": "note", "labels": bugLabels})
+			},
+			act:      promoteTo("darn"),
+			wantKind: boardengine.KindTask, wantRecipe: "darn", wantDraft: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			b, boardPath := newPromotionBoard(t)
+			tt.setup(t, b, boardPath)
+
+			err := tt.act(b)
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("write error = %v; want nil", err)
+			}
+			if tt.wantErr != nil && err == nil {
+				t.Fatalf("write error = nil; want a refusal containing %v", tt.wantErr)
+			}
+			for _, want := range tt.wantErr {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("write error = %q; want it to contain %q", err, want)
+				}
+			}
+
+			got := mustGetEntry(t, b, "idea")
+			if got.Kind != tt.wantKind || got.Recipe != tt.wantRecipe {
+				t.Errorf("entry kind, recipe = %q, %q; want %q, %q", got.Kind, got.Recipe, tt.wantKind, tt.wantRecipe)
+			}
+			if draft := got.Status != nil && *got.Status == boardengine.StatusDraft; draft != tt.wantDraft || (!tt.wantDraft && got.Status != nil) {
+				t.Errorf("entry status = %v; want draft = %t, otherwise none", got.Status, tt.wantDraft)
+			}
+			if sketched := slices.Contains(got.Labels, boardengine.SketchType); sketched != tt.wantSketch {
+				t.Errorf("entry labels = %v; want the sketch label = %t", got.Labels, tt.wantSketch)
+			}
+			if got.Discussed != tt.wantDiscussed {
+				t.Errorf("entry discussed = %t; want %t", got.Discussed, tt.wantDiscussed)
+			}
+			if _, held, err := b.DecisionRecord("idea"); err != nil || held != tt.wantRecord {
+				t.Errorf("DecisionRecord() held, error = %t, %v; want held = %t", held, err, tt.wantRecord)
+			}
+			if boardengine.IsSketch(got.Kind, got.Labels) != (tt.wantKind == boardengine.KindNote && tt.wantSketch) {
+				t.Errorf("IsSketch(%q, %v) = %t; want it true only for the Sketch note left as it was", got.Kind, got.Labels, !(tt.wantKind == boardengine.KindNote && tt.wantSketch))
+			}
+		})
 	}
 }

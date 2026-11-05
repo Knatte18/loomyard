@@ -1591,26 +1591,30 @@ func (e *usageEngine) SessionUsage(sessionID, workdir string) SessionUsage {
 	return e.reading
 }
 
-// TestRun_Finalize_ReportsUsageAndTimes covers finalize's usage and time reporting: a done run on a UsageReader engine carries the reading read at the session and pane cwd, a died run and an engine without the capability leave Usage unknown, and every run carries its record's creation time and the clock's end time.
+// TestRun_Finalize_ReportsUsageAndTimes covers finalize's usage and time reporting: a done run and a died run on a UsageReader engine each carry the reading, split counts included, read at the session and pane cwd, an engine without the capability leaves Usage unknown, every run carries its record's creation time and the clock's end time, and a run with a session reports one session end with its outcome, role, model, times and usage, a run that never started none.
 //
-//testtiming:keep pins finalize's UsageReader wiring, which the Classification table covering its blocks does not assert
+//testtiming:keep pins finalize's UsageReader wiring at every terminal outcome, which the Classification table covering its blocks does not assert
 func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	reading := SessionUsage{Known: true, Fresh: 100, CacheRead: 900, Forks: 2, ForkFresh: 60, ForkCacheRead: 500}
+	reading := SessionUsage{Known: true, Fresh: 100, CacheRead: 900, Forks: 2, ForkFresh: 60, ForkCacheRead: 500, SplitKnown: true, Input: 40, CacheWrite: 10, Output: 50}
 	started := time.Date(2026, 10, 8, 9, 0, 0, 0, time.UTC)
 	ended := started.Add(7 * time.Minute)
 
 	tests := []struct {
-		name      string
-		reader    bool
-		outcome   Outcome
+		name    string
+		reader  bool
+		outcome Outcome
+		// noSession is a run that never started, whose record names no session.
+		noSession bool
 		wantUsage SessionUsage
 	}{
 		{name: "done run on a reader engine carries the reading", reader: true, outcome: OutcomeDone, wantUsage: reading},
-		{name: "died run leaves usage unknown", reader: true, outcome: OutcomeDied},
+		{name: "timed-out run carries the reading", reader: true, outcome: OutcomeTimeout, wantUsage: reading},
+		{name: "died run carries the reading", reader: true, outcome: OutcomeDied, wantUsage: reading},
 		{name: "engine without the capability leaves usage unknown", outcome: OutcomeDone},
+		{name: "run that never started reports no session end", outcome: OutcomeDied, noSession: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1623,9 +1627,15 @@ func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {
 				engine = usage
 			}
 			fx := newFixture(t, reed, engine, withConfig(fastConfig))
-			run := fx.newRun(Spec{Timeout: time.Minute},
+			var sessionEnds []SessionEnd
+			fx.Runner.SetSessionEnd(func(end SessionEnd) { sessionEnds = append(sessionEnds, end) })
+			sessionID := "session-1"
+			if tt.noSession {
+				sessionID = ""
+			}
+			run := fx.newRun(Spec{Timeout: time.Minute, Role: "implementer", ModelChoice: ModelChoice{Model: "opus"}},
 				withRunDir(t.TempDir()),
-				withRunState(RunState{StrandGUID: "strand-1", SessionID: "session-1", CreatedAt: started.Format(time.RFC3339)}),
+				withRunState(RunState{StrandGUID: "strand-1", SessionID: sessionID, CreatedAt: started.Format(time.RFC3339)}),
 				withRunClock(newFakeClock(ended), ended.Add(time.Minute)))
 
 			result, err := run.finalize(tt.outcome)
@@ -1642,14 +1652,29 @@ func TestRun_Finalize_ReportsUsageAndTimes(t *testing.T) {
 			if !result.EndedAt.Equal(ended) {
 				t.Errorf("Result.EndedAt = %v; want %v", result.EndedAt, ended)
 			}
-			if tt.reader && tt.outcome == OutcomeDone {
+			if tt.reader {
 				want := []struct{ SessionID, Workdir string }{{"session-1", fx.Runner.paneCwd}}
 				if !reflect.DeepEqual(usage.calls, want) {
 					t.Errorf("SessionUsage calls = %v; want %v", usage.calls, want)
 				}
 			}
-			if tt.reader && tt.outcome != OutcomeDone && len(usage.calls) != 0 {
-				t.Errorf("SessionUsage calls = %v; want none for a %s run", usage.calls, tt.outcome)
+			if tt.noSession {
+				if len(sessionEnds) != 0 {
+					t.Errorf("session end calls = %+v; want none for a run that never started", sessionEnds)
+				}
+				return
+			}
+			if len(sessionEnds) != 1 {
+				t.Fatalf("session end calls = %+v; want one", sessionEnds)
+			}
+			got := sessionEnds[0]
+			if !got.StartedAt.Equal(started) || !got.EndedAt.Equal(ended) {
+				t.Errorf("session end times = %v to %v; want %v to %v", got.StartedAt, got.EndedAt, started, ended)
+			}
+			got.StartedAt, got.EndedAt = time.Time{}, time.Time{}
+			want := SessionEnd{SessionID: "session-1", Engine: "fake", Role: "implementer", Model: "opus", Worktree: fx.Runner.paneCwd, Outcome: tt.outcome, Usage: tt.wantUsage}
+			if got != want {
+				t.Errorf("session end = %+v; want %+v", got, want)
 			}
 		})
 	}

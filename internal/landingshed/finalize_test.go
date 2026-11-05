@@ -36,6 +36,8 @@ type recordingParentMerger struct {
 	// headSHA and headErr script HeadSHA's return.
 	headSHA string
 	headErr error
+	// preMergeHeadSHA, when non-nil, scripts HeadSHA's return before any parent-side merge has been attempted, the read Finalize makes of the parent head it merges into the task worktree.
+	preMergeHeadSHA *string
 	// order, when non-nil, receives "merge" and "push" as those calls happen, so a test can
 	// assert their order against other seams that append to the same slice.
 	order *[]string
@@ -87,7 +89,15 @@ func (m *recordingParentMerger) PushBranch(opts fabricengine.SyncOptions) (fabri
 	return fabricengine.PushResult{}, m.pushErr
 }
 
-func (m *recordingParentMerger) HeadSHA() (string, error) { return m.headSHA, m.headErr }
+func (m *recordingParentMerger) HeadSHA() (string, error) {
+	if len(m.calls) == 0 && m.preMergeHeadSHA != nil {
+		return *m.preMergeHeadSHA, nil
+	}
+	return m.headSHA, m.headErr
+}
+
+// stringPointer returns a pointer to s.
+func stringPointer(s string) *string { return &s }
 
 func (m *recordingParentMerger) MidMerge() (fabricengine.MidMergeState, error) {
 	if len(m.calls) == 0 {
@@ -490,6 +500,7 @@ func TestFinalize_MergeInRequiredRetry(t *testing.T) {
 }
 
 // TestFinalize_RecordsTheLandingCommitOnTheFirstTry pins that a parent-side merge landing at the first call records the parent pair's head after the board seam and before the push.
+// It then pins that Finalize records the landed size from the parent head read before the merge-in, which differs from the landing commit, to the landing commit.
 func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -498,36 +509,48 @@ func TestFinalize_RecordsTheLandingCommitOnTheFirstTry(t *testing.T) {
 	deps := newTestDeps(t)
 	deps.MarkTaskDone = func() error { order = append(order, "mark"); return nil }
 	deps.RecordLanding = func(commit string) error { order = append(order, "record "+commit); return nil }
-	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1"}
+	deps.RecordLandedSize = func(from, to string) error { order = append(order, "size "+from+".."+to); return nil }
+	merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, order: &order, headSHA: "landed1", preMergeHeadSHA: stringPointer("parent0")}
 	fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 	shedfake.RequireOutcome(t, fz, shedengine.Done)
-	if got, want := strings.Join(order, ","), "merge,mark,record landed1,push"; got != want {
+	if got, want := strings.Join(order, ","), "merge,mark,record landed1,size parent0..landed1,push"; got != want {
 		t.Errorf("call order = %q; want %q", got, want)
 	}
 }
 
-// TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read or landing record is only logged: the landing pushes and is Done.
+// TestFinalize_RecordLandingFailureKeepsDone pins that a failed head read, landing record or landed-size record is only logged: the landing pushes and is Done.
+// The landed size is recorded whatever RecordLanding returned, and not at all when no merged parent head is held.
 func TestFinalize_RecordLandingFailureKeepsDone(t *testing.T) {
 	tiergate.Require(t, 0)
 	tests := []struct {
-		name      string
-		headErr   error
-		recordErr error
+		name            string
+		headErr         error
+		recordErr       error
+		sizeErr         error
+		preMergeHeadSHA *string
+		wantSizeCalls   int
 	}{
-		{"HeadReadFails", errors.New("no head"), nil},
-		{"RecordFails", nil, errors.New("disk full")},
+		{"HeadReadFails", errors.New("no head"), nil, nil, stringPointer("parent0"), 0},
+		{"RecordFails", nil, errors.New("disk full"), nil, stringPointer("parent0"), 1},
+		{"LandedSizeFails", nil, nil, errors.New("no diff"), stringPointer("parent0"), 1},
+		{"NoMergedHeadHeld", nil, nil, nil, stringPointer(""), 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			sizeCalls := 0
 			deps := newTestDeps(t)
 			deps.RecordLanding = func(string) error { return tt.recordErr }
-			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr}
+			deps.RecordLandedSize = func(string, string) error { sizeCalls++; return tt.sizeErr }
+			merger := &recordingParentMerger{results: []mergeCallResult{{result: fabricengine.MergeResult{Committed: true}}}, headSHA: "landed1", headErr: tt.headErr, preMergeHeadSHA: tt.preMergeHeadSHA}
 			fz := &Finalize{deps: deps, resolver: &recordingResolver{result: mergeresolve.Result{Outcome: mergeresolve.OutcomeResolved}}, guard: newParentGuard(deps), parentOpener: func() (parentMerger, error) { return merger, nil }}
 
 			shedfake.RequireOutcome(t, fz, shedengine.Done)
 			if len(merger.pushCalls) != 1 {
 				t.Errorf("parent push calls = %d; want 1", len(merger.pushCalls))
+			}
+			if sizeCalls != tt.wantSizeCalls {
+				t.Errorf("RecordLandedSize calls = %d; want %d", sizeCalls, tt.wantSizeCalls)
 			}
 		})
 	}

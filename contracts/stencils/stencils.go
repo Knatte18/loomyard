@@ -184,6 +184,11 @@ var LoomRubricCodeReview []byte
 //go:embed loom/loom-template-prior-plan.md
 var LoomTemplatePriorPlan []byte
 
+// RaddleTemplateAgent is the raddle agent's shipped-default prompt: the whole instruction set of the session that proposes how a Sketch splits into the entries the operator approves.
+//
+//go:embed raddle/raddle-template-agent.md
+var RaddleTemplateAgent []byte
+
 // BurlerStep1Explore is burler's shipped-default step-1 (explore) instruction prompt.
 //
 //go:embed burler/burler-step-1-explore.md
@@ -638,6 +643,7 @@ var entries = []registryEntry{
 	{"darn-fragment-make-change", &DarnFragmentMakeChange},
 	{"darn-fragment-make-change-gated", &DarnFragmentMakeChangeGated},
 	{"sampler-template-agent", &SamplerTemplateAgent},
+	{"raddle-template-agent", &RaddleTemplateAgent},
 	{"drift-template-baseline", &DriftTemplateBaseline},
 	{"drift-template-verify", &DriftTemplateVerify},
 	{"loom-template-discussion", &LoomTemplateDiscussion},
@@ -781,6 +787,7 @@ var roleOpeningStencils = map[string][]string{
 	"describe":             {"landing-template-describe"},
 	"darn":                 {"darn-template-write"},
 	"sampler":              {"sampler-template-agent"},
+	"raddle":               {"raddle-template-agent"},
 	"drift-baseline":       {"drift-template-baseline"},
 	"drift-verify":         {"drift-template-verify"},
 	"board-tidy":           {"beam-template-board-tidy"},

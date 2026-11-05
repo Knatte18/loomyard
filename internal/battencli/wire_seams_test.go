@@ -51,6 +51,7 @@ var intentionallyNil = map[string]string{
 	"Pawl.StartDobby":                     "loom-only seam, batten runs no pawl row",
 	"Pawl.DobbyLive":                      "loom-only seam, batten runs no pawl row",
 	"Pawl.Recheck":                        "loom-only seam, batten runs no pawl row",
+	"Pawl.HandOff":                        "loom-only seam, batten runs no pawl row",
 	"Pawl.ReadyStands":                    "loom-only seam, batten runs no pawl row",
 	"Pawl.StampWake":                      "loom-only seam, batten runs no pawl row",
 	"Pawl.Notify":                         "loom-only seam, batten runs no pawl row",
@@ -134,7 +135,26 @@ var intentionallyNil = map[string]string{
 	"Darn.CommittedRecord":                "darn-only seam, batten has no darn segment",
 	"DiscussionHistory":                   "loom-only seam, batten wires no loom record",
 	"RecordWrite.ReadBody":                "loom-only seam, batten wires no loom record",
+	"RecordWrite.ReadStored":              "loom-only seam, batten wires no loom record",
 	"RecordWrite.Commit":                  "loom-only seam, batten wires no loom record",
+	"RaddleWrite.Deps.AutoApprove":        "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.FreshEntry":         "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.StoreCold":          "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Deps.Commit":             "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Table":                   "raddle-only seam, batten runs no raddle row",
+	"RaddleWrite.Check.Board":             "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.PartRecordPath":           "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Check":                    "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Recheck":                  "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Entry":                    "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.StoreDone":                "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.AlreadyFiled":             "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.File":                     "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.CreateBeam":               "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Release":                  "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Notify":                   "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.EndEntry":                 "raddle-only seam, batten runs no raddle row",
+	"RaddleFile.Commit":                   "raddle-only seam, batten runs no raddle row",
 	"Drift.Config":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Status":                        "loom- and darn-only seam, batten has no Drift row",
 	"Drift.Head":                          "loom- and darn-only seam, batten has no Drift row",
@@ -175,6 +195,9 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -182,6 +205,7 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry

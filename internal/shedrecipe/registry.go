@@ -55,6 +55,8 @@ var registry = map[string]Constructor{
 	"DriftAwait":       driftAwaitEntry,
 	"DriftVerify":      driftVerifyEntry,
 	"DriftRecheck":     driftRecheckEntry,
+	"RaddleWrite":      raddleWriteEntry,
+	"RaddleFile":       raddleFileEntry,
 }
 
 // LoomRecordEngines are the engines whose row is a loom recipe's record row, the row that writes the decision record before the build segment.

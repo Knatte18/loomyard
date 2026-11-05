@@ -3,9 +3,12 @@
 package battencli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
@@ -43,7 +46,18 @@ type startGuard struct {
 	// Unreleased reads the board status of the slug when it is a task no run starts, boardengine.StatusDraft or boardengine.LegacyStatusDiscussed, and "" for any other entry.
 	// A nil Unreleased reads every entry as released.
 	Unreleased func() (string, error)
+	// Raddle judges the start of a raddle entry: it returns a raddleRefusal when the entry cannot start, any other error for a failed probe, and nil for an entry of another recipe.
+	// A nil Raddle checks nothing.
+	Raddle func() error
 }
+
+// raddleRefusal is the refusal raddleStartRefusal returns, which the guard returns as it stands where a probe error is wrapped.
+type raddleRefusal struct {
+	message string
+}
+
+// Error returns the refusal's message.
+func (r raddleRefusal) Error() string { return r.message }
 
 // hubStartGuard builds the startGuard over the hub of location: the cancel marker, the prime's tracked dirty paths, the slug's pair parts and its beam, all local reads with no network call.
 func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
@@ -109,7 +123,66 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 			}
 			return fabricengine.NewTopology(cfg).PairParts(location, slug)
 		},
+		Raddle: func() error { return readRaddleStartRefusal(location, slug) },
 	}
+}
+
+// readRaddleStartRefusal reads the slug's board entry and, when its recipe is raddle, judges its start with raddleStartRefusal.
+// An absent entry and an entry of another recipe pass.
+func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
+	boardDir := fabricengine.BoardDir(location.HubPath)
+	tasks, err := boardengine.ReadTasks(boardDir)
+	if err != nil {
+		return err
+	}
+	index := slices.IndexFunc(tasks, func(task boardengine.Task) bool { return task.Slug == slug })
+	if index < 0 {
+		return nil
+	}
+	entry := tasks[index]
+	board, err := boardengine.OpenHub(location.HubPath)
+	if err != nil {
+		return err
+	}
+	if boardRecipe(board, entry) != shedrun.RecipeRaddle {
+		return nil
+	}
+	recordStored := false
+	if entry.Discussed {
+		_, statErr := os.Stat(filepath.Join(boardDir, boardengine.DecisionFileName(slug)))
+		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+			return statErr
+		}
+		recordStored = statErr == nil
+	}
+	store, err := boardengine.ReadRaddleStore(boardDir)
+	if err != nil {
+		return err
+	}
+	return raddleStartRefusal(entry, recordStored, store)
+}
+
+// raddleStartRefusal judges the start of a raddle entry, whose recordStored says whether it is flagged discussed with its decision record file in the board directory.
+// It refuses an entry with no stored record, which the raddle recipe has nothing to split.
+// It refuses an entry whose slug the store holds as another Sketch's, as its own under another created stamp, or as a slug a stored proposal filed, since the run's filing would collide with the store.
+// The entry that is the store's own Sketch under its own created stamp passes, so a fresh start after a filing that kept the store is not refused.
+func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boardengine.RaddleStore) error {
+	slug := entry.Slug
+	if !recordStored {
+		return raddleRefusal{fmt.Sprintf("%s runs the raddle recipe, which splits a Sketch's stored decision record, and it holds none; way forward: run its Discussion first with a motif run: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"motif\"}'`, release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`, and once the motif run has made it a Sketch, `lym board promote %s --recipe raddle`", slug, slug, slug, slug)}
+	}
+	held, isHeld := store.Holds(slug)
+	if !isHeld || (held.Sketch == slug && held.Created.Equal(entry.Created)) {
+		return nil
+	}
+	free := slug + "-2"
+	for suffix := 3; ; suffix++ {
+		if _, taken := store.Holds(free); !taken {
+			break
+		}
+		free = fmt.Sprintf("%s-%d", slug, suffix)
+	}
+	return raddleRefusal{fmt.Sprintf("the raddle store holds %s as a slug of the Sketch %s, so a run of %s would collide with what that Sketch filed; way forward: run `lym board rename %s %s`, then `lym batten run %s`", slug, held.Sketch, slug, slug, free, free)}
 }
 
 // refuse judges verb's start or resume of slug, in order.
@@ -119,6 +192,7 @@ func hubStartGuard(location *lymcwd.Location, slug string) startGuard {
 // A run or step with no status file, or one whose status is at Worktree-Create while the task worktree is absent, refuses on tracked dirty paths of the source worktree, unless the task forks from a beam, whose pair forks from the beam's last commit and not from the source worktree.
 // A run or step of a project entry is judged by refuseProject, which refuses a grouping project, passes a marked beam pair over the dirty-source and left-pair checks and a resume past Worktree-Create over all of them, and leaves a beam project with no marked pair here to the checks of a task.
 // A run or step with no status file of a task whose board status is draft or discussed refuses, naming that status and the release that makes it startable; a beam project skips that check, since a beam's cancel leaves its entry draft and `lym beam create` starts its run again from there.
+// A run or step with no status file of a raddle entry refuses when the entry holds no stored record or its slug collides with the raddle store.
 // A run or step with no status file refuses when a task worktree, records worktree or local records branch is left from an earlier run.
 // A probe error refuses naming the probe and the verb's re-run.
 // found and status describe the run's status file, and taskWorktreePresent whether the task worktree is there, which only a status at Worktree-Create reads.
@@ -172,6 +246,16 @@ func (g startGuard) refuse(slug, verb string, status shedengine.Status, found, t
 		}
 		if unreleased != "" {
 			return fmt.Errorf("%s is a %s task, which no run starts; way forward: run `%s` to release it, then `lym batten %s %s`", slug, unreleased, releaseCommandText(slug), verb, slug)
+		}
+	}
+
+	if !found && g.Raddle != nil {
+		if err := g.Raddle(); err != nil {
+			var refusal raddleRefusal
+			if errors.As(err, &refusal) {
+				return err
+			}
+			return probeRefusal("the raddle entry's start", slug, rerun, err)
 		}
 	}
 

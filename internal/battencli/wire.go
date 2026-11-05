@@ -553,13 +553,13 @@ func boardRecipe(board *boardengine.Board, task boardengine.Task) string {
 // childRecipeSupported reports whether recipe is one a task worktree's bootstrap verb can run as the child's own run:
 // the recipes `lym loom start` serves.
 func childRecipeSupported(recipe string) bool {
-	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler
+	return recipe == shedrun.RecipeTapestry || recipe == shedrun.RecipeMotif || recipe == shedrun.RecipeDarn || recipe == shedrun.RecipePawl || recipe == shedrun.RecipeSampler || recipe == shedrun.RecipeRaddle
 }
 
 // unsupportedChildRecipeRefusal is the refusal for a recipe childRecipeSupported rejects.
 // It wraps battenshed.ErrUnsupportedChildRecipe and names the admitted recipes.
 func unsupportedChildRecipeRefusal(recipe string) error {
-	return fmt.Errorf("%w: only %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipePawl, recipe)
+	return fmt.Errorf("%w: only %q, %q, %q, %q, %q and %q have a bootstrap verb Run-Shed can start in the task worktree, so a Board task's type must be %q, %q, %q, %q, %q or empty, and a project entry seeds %q; got %q", battenshed.ErrUnsupportedChildRecipe, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipePawl, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipeTapestry, shedrun.RecipeMotif, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeRaddle, shedrun.RecipePawl, recipe)
 }
 
 // childSeedParams returns the seed params recipe's own bootstrap verb will itself write, read from
@@ -567,7 +567,7 @@ func unsupportedChildRecipeRefusal(recipe string) error {
 //
 // shedrun.WriteSeed is idempotent only against a seed agreeing on recipe, driver and params, so a
 // child seeded without a param its own bootstrap writes makes that bootstrap refuse.
-// Params are per-recipe: tapestry, motif, darn, sampler and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
+// Params are per-recipe: tapestry, motif, darn, sampler, raddle and beam declare one each, params.parent, taken from the pair's recorded origin, which for a beam is the beam's parent branch.
 // An absent or empty recorded parent yields no param, leaving the bootstrap's own "pass --parent once" refusal as the one an operator sees.
 func childSeedParams(recipe string, childLocation *lymcwd.Location) (map[string]string, error) {
 	if !childRecipeSupported(recipe) {
@@ -1294,6 +1294,7 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 					return err
 				}
 				runner.SetPause(pauseGeom)
+				runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
 				if err := stopDeadArbiterStrands(rows, runner.StopStrand); err != nil {
 					logger.Warn("battencli: stopping the task worktree's dead arbiter strands failed", "slug", slug, "error", err)
 					return err

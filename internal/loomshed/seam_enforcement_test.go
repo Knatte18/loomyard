@@ -89,6 +89,12 @@ var loomshedAllowedImports = []string{
 	// gopkg.in/yaml.v3 decodes and encodes the amendment record, which is YAML.
 	// The package still resolves no geometry: the record's path is told.
 	"gopkg.in/yaml.v3",
+	// internal/raddleparser is the proposal parser and its finding type.
+	// It is handed bytes and resolves no geometry.
+	"github.com/Knatte18/loomyard/internal/raddleparser",
+	// internal/boardengine is the filing type and the re-check error Raddle-File's seams carry.
+	// No geometry is resolved through it.
+	"github.com/Knatte18/loomyard/internal/boardengine",
 }
 
 func TestToldGeometryInvariant_AllowlistOnly(t *testing.T) {

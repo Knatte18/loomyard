@@ -75,6 +75,11 @@ var InterruptPolicies = map[string]string{
 	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
 	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,
 
+	// Raddle-Write probes for a live session and resumes it rather than spawning a second one.
+	NameRaddleWrite: shedverbs.InterruptPolicyReinvoke,
+	// Every step of Raddle-File is idempotent, so a re-invocation finishes whatever a crash left.
+	NameRaddleFile: shedverbs.InterruptPolicyReinvoke,
+
 	// Each pawl row spawns no agent and is idempotent, so re-invoking an interrupted one repeats nothing.
 	pawlengine.NameBeamUp:    shedverbs.InterruptPolicyReinvoke,
 	pawlengine.NameBeamAwait: shedverbs.InterruptPolicyReinvoke,

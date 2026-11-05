@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -142,6 +143,9 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	// step-driven run composing note paths into a directory nothing had created.
 	ensureFrictionDirAfterSeed(c.frictionDir, seedErr)
 
+	// Step 2c: the run's identity record for its cost report is written on the first seed only, so a re-entry keeps the one already there.
+	wroteRunUsage := seedErr == nil && c.writeRunUsage(seedRecipe, slug)
+
 	// Step 3: commit the seed and the provenance record into the fabric, unconditionally on every
 	// invocation -- not gated on this invocation's own writeOrigin. The origin record's path is
 	// included every time for the same reason the status file's path always is: if a prior
@@ -173,6 +177,10 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 		}
 	}
 	commitPaths := bootstrapCommitPaths(c.location, withFriction)
+	if wroteRunUsage {
+		// The record is committed with the seed so the run's first precondition scan finds no untracked file; the status commits carry the usage directory after it.
+		commitPaths = append(commitPaths, shedrun.UsageDirRel())
+	}
 	commitRec := fabricengine.NewMutations("")
 	commitMsg := fmt.Sprintf("loom: seed session bootstrap for %s", slug)
 	if _, _, err := fabricengine.CommitAnchoredPaths(commitRec, c.location, commitPaths, commitMsg, syncOptions); err != nil {
@@ -180,6 +188,51 @@ func (c *loomCLI) seedAndCommitBootstrap(slug, parentFlag string) (string, strin
 	}
 
 	return parent, driver, bootstrapStageNone, nil
+}
+
+// writeRunUsage writes the run's identity record into its usage directory and reports whether it wrote one.
+// A failed read of the board entry or of the run profiles is logged at Warn and the record is written with what was read; a failed write is logged at Warn and reports false.
+func (c *loomCLI) writeRunUsage(recipe, slug string) bool {
+	var entry boardengine.Task
+	found := false
+	board, err := boardengine.OpenHub(c.location.HubPath)
+	if err == nil {
+		entry, found, err = board.GetTask(slug)
+	}
+	if err != nil {
+		logger.Warn("loom: could not read the run's board entry for its usage record; recording it without the entry", "slug", slug, "error", err)
+		entry, found = boardengine.Task{}, false
+	}
+	defaultProfile := ""
+	profiles, err := runprofile.Load(fabricengine.ConfigDirs(c.location))
+	if err == nil {
+		defaultProfile, err = profiles.Default(recipe)
+	}
+	if err != nil {
+		logger.Warn("loom: could not read the run profiles for its usage record; recording it without the default profile", "recipe", recipe, "error", err)
+		defaultProfile = ""
+	}
+	if err := shedrun.WriteRunUsage(shedrun.UsageDir(c.location), runUsageRecord(recipe, entry, found, defaultProfile)); err != nil {
+		logger.Warn("loom: could not write the run's usage record", "slug", slug, "error", err)
+		return false
+	}
+	return true
+}
+
+// runUsageRecord builds the run's identity record for its cost report.
+// The profile is the entry's own, else defaultProfile, the one the recipe takes when an entry names none; stored_record is true when the entry is flagged discussed, so the run starts from a stored record.
+// An absent entry records an empty profile and no stored record.
+func runUsageRecord(recipe string, entry boardengine.Task, found bool, defaultProfile string) shedrun.RunUsageRecord {
+	record := shedrun.RunUsageRecord{Recipe: recipe}
+	if !found {
+		return record
+	}
+	record.Profile = entry.Profile
+	if record.Profile == "" {
+		record.Profile = defaultProfile
+	}
+	record.StoredRecord = entry.Discussed
+	return record
 }
 
 // disagreeingSeedRefusal renders the refusal for an existing seed at seedPath whose recipe, driver or params differ from the seed the bootstrap writes for the recorded parent.

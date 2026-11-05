@@ -341,7 +341,7 @@ func TestResolveGateSpec_UnknownNameListsTheLegalValues(t *testing.T) {
 	for _, unknown := range []string{"bogus", "rework-plan", "parent-review"} {
 		t.Run(unknown, func(t *testing.T) {
 			_, err := resolveGateSpec("Row", gatesCfg(unknown, 1), newTestEnv(t))
-			for _, want := range []string{"clean", "discussion", "plan", "parts", "description", "verify"} {
+			for _, want := range []string{"clean", "discussion", "plan", "parts", "raddle", "description", "verify"} {
 				assertErrContains(t, err, want)
 			}
 		})

@@ -1,4 +1,4 @@
-// linechange.go implements LineChange, the read of how much one commit range changes the pair's code repository: its paths, its line count and the text of the lines it adds.
+// linechange.go implements LineChange and DiffSize, the reads of how much one commit range changes the pair's code repository: its paths, its line count and the text of the lines it adds, and its added lines, deleted lines and changed files.
 
 package fabricengine
 
@@ -41,6 +41,58 @@ func (f *Fabric) LineChange(from, to string) (LineChange, error) {
 		return LineChange{}, fmt.Errorf("fabricengine: line change from %s to %s: %w", from, to, err)
 	}
 	return LineChange{Paths: paths, Lines: lines, AddedLines: addedPatchLines(patch)}, nil
+}
+
+// DiffSize is the size of the tree difference between two commits of a pair's code repository.
+type DiffSize struct {
+	// LinesAdded and LinesDeleted are the added and deleted lines, a pure rename adding and deleting none.
+	LinesAdded   int
+	LinesDeleted int
+	// FilesChanged counts each changed file once, a renamed file and a binary file included; a binary file adds and deletes no line.
+	FilesChanged int
+}
+
+// DiffSize reads the size of the tree difference from from to to in the pair's code repository.
+// A failed read is an error naming both commits.
+func (f *Fabric) DiffSize(from, to string) (DiffSize, error) {
+	numstat, err := gitexec.Run([]string{"diff", "--numstat", "-M", from, to}, f.warpPath)
+	if err != nil {
+		return DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
+	}
+	size, err := diffSizeOfNumstat(numstat)
+	if err != nil {
+		return DiffSize{}, fmt.Errorf("fabricengine: diff size from %s to %s: %w", from, to, err)
+	}
+	return size, nil
+}
+
+// diffSizeOfNumstat totals `git diff --numstat` output: each line is one file, and a binary file's "-" pair adds no lines.
+func diffSizeOfNumstat(numstat string) (DiffSize, error) {
+	var size DiffSize
+	for _, line := range strings.Split(numstat, "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) != 3 {
+			return DiffSize{}, fmt.Errorf("numstat line %q has no counts", line)
+		}
+		size.FilesChanged++
+		if fields[0] == "-" && fields[1] == "-" {
+			continue
+		}
+		added, err := strconv.Atoi(fields[0])
+		if err != nil {
+			return DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
+		}
+		deleted, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return DiffSize{}, fmt.Errorf("numstat line %q: %w", line, err)
+		}
+		size.LinesAdded += added
+		size.LinesDeleted += deleted
+	}
+	return size, nil
 }
 
 // countNumstatLines sums the added and deleted counts of `git diff --numstat` output, counting a binary file's "-" pair as one line.

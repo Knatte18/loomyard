@@ -23,6 +23,8 @@ type RecordWriteDeps struct {
 	DiscussionDir string
 	// ReadBody returns the run's board entry body, with found false when the board holds no entry for the run.
 	ReadBody func() (body string, found bool, err error)
+	// ReadStored returns the run's board entry's stored decision record, with found true only when the entry is flagged discussed and its record file exists.
+	ReadStored func() (record []byte, found bool, err error)
 	// Commit commits the discussion directory.
 	// It is a no-op on a directory with no uncommitted change.
 	Commit func() error
@@ -112,6 +114,8 @@ func StoredRecordSupportLog() []byte {
 
 // Call implements shedengine.ShedProducer.
 // It removes the torn temp files a crash left in the discussion directory, writes whichever of the record and the support log is missing, commits the pair and reports Done with the record as its pointer.
+// A missing record is the board entry's stored decision record, written verbatim, when the entry has one; otherwise it is rendered from the entry's body.
+// A missing support log is the stored-record log when the entry has a stored record and the board-rendered log otherwise, whether or not the record was missing too.
 // A file that exists is never overwritten, so a resume keeps every entry added to the record after it was written.
 // The commit runs on every call, so a pair a crash left written but uncommitted is committed on resume.
 // A board with no entry for the run is Stuck, and a read, write or commit failure is a returned error.
@@ -133,23 +137,41 @@ func (p *recordWrite) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		return "", shedengine.OutputPointer{}, p.fail(ctx, "stat the support log", err)
 	}
 
-	if recordMissing {
-		body, found, err := p.deps.ReadBody()
+	var stored []byte
+	storedFound := false
+	if recordMissing || logMissing {
+		stored, storedFound, err = p.deps.ReadStored()
 		if err != nil {
-			return "", shedengine.OutputPointer{}, p.fail(ctx, "read the board entry", err)
+			return "", shedengine.OutputPointer{}, p.fail(ctx, "read the stored decision record", err)
 		}
-		if !found {
-			if err := cancelErr(ctx, p.name); err != nil {
-				return "", shedengine.OutputPointer{}, err
+	}
+	if recordMissing {
+		if storedFound {
+			if err := fsx.AtomicWriteBytes(p.deps.RecordPath, stored); err != nil {
+				return "", shedengine.OutputPointer{}, p.fail(ctx, "write the decision record", err)
 			}
-			return shedengine.Stuck, shedengine.OutputPointer{Reason: "the board holds no entry for this run; way forward: restore the entry with \"lym board upsert\", then \"lym loom resume\""}, nil
-		}
-		if err := fsx.AtomicWriteBytes(p.deps.RecordPath, BoardRecord(body)); err != nil {
-			return "", shedengine.OutputPointer{}, p.fail(ctx, "write the decision record", err)
+		} else {
+			body, found, err := p.deps.ReadBody()
+			if err != nil {
+				return "", shedengine.OutputPointer{}, p.fail(ctx, "read the board entry", err)
+			}
+			if !found {
+				if err := cancelErr(ctx, p.name); err != nil {
+					return "", shedengine.OutputPointer{}, err
+				}
+				return shedengine.Stuck, shedengine.OutputPointer{Reason: "the board holds no entry for this run; way forward: restore the entry with \"lym board upsert\", then \"lym loom resume\""}, nil
+			}
+			if err := fsx.AtomicWriteBytes(p.deps.RecordPath, BoardRecord(body)); err != nil {
+				return "", shedengine.OutputPointer{}, p.fail(ctx, "write the decision record", err)
+			}
 		}
 	}
 	if logMissing {
-		if err := fsx.AtomicWriteBytes(p.deps.SupportLogPath, boardSupportLog()); err != nil {
+		supportLog := boardSupportLog()
+		if storedFound {
+			supportLog = StoredRecordSupportLog()
+		}
+		if err := fsx.AtomicWriteBytes(p.deps.SupportLogPath, supportLog); err != nil {
 			return "", shedengine.OutputPointer{}, p.fail(ctx, "write the support log", err)
 		}
 	}

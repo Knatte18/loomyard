@@ -24,7 +24,9 @@
 //
 // Hooks given by `-c` append a stamp line and the payload of SessionStart, UserPromptSubmit, Stop and PermissionRequest to the run's events file, and PostToolUse touches the activity stamp.
 // A Stop is the turn end and carries the reply; an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
-// The rollout's newest token_count gives the context size.
+// The rollout's token_count events give the context size, from the newest event's latest call, and the session usage (UsageReader), from the newest event's running total.
+// The session usage splits input net of its cached part, cache-read, cache-write and output, with a total that names no cache-write reading it as zero; the reasoning tokens are already in the output.
+// Codex implements no MessagePricer, so its dollar cost stays unknown.
 // Codex keeps no session registry, so liveness reads unproven, and the session state follows the hook signals, the exit record and the interrupt marker alone.
 // Codex fires no hook on its own exit, so the exit record stands in: it reads as a process-ending session end with reason `codex-exit`, and a run whose Codex exited reads dead as a Claude run does.
 //

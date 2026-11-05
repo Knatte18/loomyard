@@ -30,6 +30,8 @@ func minimalEntries() map[string]minimalEntry {
 		"DarnWrite":       {darnTestEnv, emptyConfig},
 		"SamplerSession":  {newTestEnv, emptyConfig},
 		"RecordWrite":     {newTestEnv, emptyConfig},
+		"RaddleWrite":     {newTestEnv, func(*testing.T, Env) Config { return gatesCfg("raddle", 3) }},
+		"RaddleFile":      {newTestEnv, emptyConfig},
 		"Finalize":        {withLanding, emptyConfig},
 		"FrictionReflect": {newTestEnv, emptyConfig},
 		"Implementer":     {newImplementerTestEnv, implementerTestConfig},

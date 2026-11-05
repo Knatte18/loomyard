@@ -162,6 +162,7 @@ available subcommands without requiring a git repo.
 		return nil
 	}
 
+	var promoteRecipe string
 	promoteCmd := &cobra.Command{
 		Use:         "promote {slug|id|handle}",
 		Short:       "turn a note into a task once it is ready to be claimed",
@@ -169,6 +170,10 @@ available subcommands without requiring a git repo.
 		Long: `Turn a note into a task. A task is returned unchanged, and nothing is written.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
+--recipe <name> sets the task's recipe in the same write.
+A Sketch, or any discussed note whose decision record is stored, becomes a task only through
+--recipe raddle, which keeps its record and releases the task so its raddle run starts; any other
+promotion of it is refused, naming that command.
 Demotion goes through "lym board upsert" with "kind":"note".
 
 Fields (one of):
@@ -178,7 +183,8 @@ Fields (one of):
 
 Examples:
   lym board promote '{"slug":"my-note"}'
-  lym board promote B4` + slugLimitNote(),
+  lym board promote B4
+  lym board promote '{"slug":"my-sketch"}' --recipe raddle` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -187,13 +193,14 @@ Examples:
 			if err != nil {
 				return outputError(out, err.Error())
 			}
-			task, err := b.Promote(lookup)
+			task, err := b.PromoteTo(lookup, promoteRecipe)
 			if err != nil {
 				return outputError(out, err.Error())
 			}
 			return outputSuccessWithTask(out, task, "")
 		}),
 	}
+	promoteCmd.Flags().StringVar(&promoteRecipe, "recipe", "", "set the promoted task's recipe in the same write; a Sketch is promoted only with raddle")
 
 	renameCmd := &cobra.Command{
 		Use:         "rename {slug|id|handle, to}",
@@ -303,6 +310,34 @@ Examples:
 	}
 	findCmd.Flags().BoolVar(&findText, "text", false, "print the compact one-line-per-task listing instead of JSON")
 	findCmd.Flags().StringArrayVar(&findLabels, "label", nil, "keep only entries carrying this label; repeatable, all must match")
+
+	raddleCmd := &cobra.Command{
+		Use:         "raddle <slug>",
+		Short:       "print the approved raddle proposal that filed a Sketch or one of its entries",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Print the approved proposal.yaml of the raddle run that split a Sketch, verbatim, with no envelope.
+The slug is the Sketch's own or any slug its run filed, a project's included.
+The raddle store outlives prune, so the lookup works after the run's landing pruned the Sketch, and on another
+machine once its board pulled the store commit. It reads only.
+An error for a slug the store does not hold: "lym report raddle" lists every stored Sketch.
+
+Example:
+  lym board raddle my-sketch`,
+		Args: cobra.ExactArgs(1),
+		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
+			proposal, found, err := b.RaddleProposal(args[0])
+			if err != nil {
+				return outputError(out, err.Error())
+			}
+			if !found {
+				return outputError(out, fmt.Sprintf("the raddle store holds no Sketch or filed entry %q: `lym report raddle` lists every stored Sketch", args[0]))
+			}
+			if _, err := out.Write(proposal); err != nil {
+				return outputError(out, err.Error())
+			}
+			return 0
+		}),
+	}
 
 	var retireLegacyApply bool
 	retireLegacyCmd := &cobra.Command{
@@ -421,6 +456,7 @@ Example:
 		labelsCmd,
 		profilesCmd,
 		promoteCmd,
+		raddleCmd,
 		renameCmd,
 		pruneCmd,
 		findCmd,

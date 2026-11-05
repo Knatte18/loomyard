@@ -43,7 +43,7 @@ func TestLoad(t *testing.T) {
 		{
 			name:         "no file reads the template's ladder, docs and defaults",
 			wantNames:    []string{"docs", "light", "solid", "speed", "wide"},
-			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light"},
+			wantDefaults: map[string]string{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"},
 		},
 		{
 			name:         "a removed starting profile stays removed",

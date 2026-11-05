@@ -94,6 +94,7 @@
 //
 // The session-usage reading (UsageReader) sums a finished session's tokens from its parent transcript and the fork transcripts under its `subagents/` directory.
 // Fresh tokens are input plus cache-creation plus output, and cache-read tokens count separately;
+// the reading also carries the four counts apart, input, cache-creation, cache-read and output, summed over the session and its forks, and marks them read;
 // a message counts once however many transcript lines carry it, and the totals include the forks, which are also broken out.
 // A fork transcript's entries are all sidechain and count, except the parent's spawning message it replays as its first entry.
 // An unreadable transcript makes the whole reading unknown, and a missing `subagents/` directory is zero forks.

@@ -194,7 +194,23 @@ func TestStatusCommitPathspec(t *testing.T) {
 		wantArbiter bool
 		wantTackler bool
 		wantSettle  bool
+		wantUsage   bool
 	}{
+		{
+			name: "usage file",
+			setup: func(t *testing.T, loc *lymcwd.Location) {
+				writeFile(t, filepath.Join(shedrun.UsageDir(loc), "session-s1.json"), "{}\n")
+			},
+			wantUsage: true,
+		},
+		{
+			name: "empty usage directory",
+			setup: func(t *testing.T, loc *lymcwd.Location) {
+				if err := os.MkdirAll(shedrun.UsageDir(loc), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
 		{
 			name: "settle records",
 			setup: func(t *testing.T, loc *lymcwd.Location) {
@@ -335,6 +351,9 @@ func TestStatusCommitPathspec(t *testing.T) {
 			}
 			if tt.wantSettle {
 				want = append(want, shedrun.SettleRecordsRel(location, shedrun.SelfRunID))
+			}
+			if tt.wantUsage {
+				want = append(want, shedrun.UsageDirRel())
 			}
 			got := statusCommitPathspec(location, shedrun.SelfRunID)
 			if !reflect.DeepEqual(got, want) {

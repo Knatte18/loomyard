@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // SketchType is the built-in type label of a Sketch: a note whose Discussion was approved and whose decision record is stored, which never runs and waits for the triage that breaks it into tasks or a project.
@@ -85,6 +87,27 @@ func (b *Board) MakeSketch(slug string) error {
 		return nil, nil
 	}, nil)
 	return err
+}
+
+// checkDiscussedPromotion refuses a write that makes a task of a discussed note whose decision record is stored, unless the task carries recipe raddle, the discussed flag and the sketch label.
+// The rule keys on the flag and the stored record, never on the label, so a note a note write stripped of its sketch label is judged too.
+// loaded is the entries before the write, under any rename the write made, and after the entries the write leaves; recordStored reports whether an entry's record file exists.
+func checkDiscussedPromotion(loaded, after []Task, recordStored func(slug string) bool) error {
+	loadedBySlug := make(map[string]Task, len(loaded))
+	for _, task := range loaded {
+		loadedBySlug[task.Slug] = task
+	}
+	for _, task := range after {
+		before, existed := loadedBySlug[task.Slug]
+		if task.Kind != KindTask || !existed || before.Kind != KindNote || !before.Discussed || !recordStored(task.Slug) {
+			continue
+		}
+		if task.Recipe == shedrun.RecipeRaddle && task.Discussed && slices.Contains(task.Labels, SketchType) {
+			continue
+		}
+		return fmt.Errorf("entry %q is a discussed note with a stored decision record, which becomes tasks only through a raddle run; way forward: `lym board promote %s --recipe raddle`", task.Slug, task.Slug)
+	}
+	return nil
 }
 
 // migrateDiscussedStatus makes a Sketch of every open task of the store carrying LegacyStatusDiscussed, in place.

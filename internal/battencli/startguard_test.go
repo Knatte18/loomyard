@@ -3,9 +3,13 @@
 package battencli
 
 import (
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/boardengine"
@@ -54,6 +58,8 @@ func TestStartGuard_Refuse(t *testing.T) {
 		// unreleased is what the Unreleased seam reads: the board status of a task no run starts, empty for a released entry.
 		unreleased    string
 		unreleasedErr error
+		// raddle is the Raddle seam; nil leaves it unset.
+		raddle func() error
 		// noSeams leaves every seam nil.
 		noSeams bool
 		// wantExact is the refusal's whole text, "{verb}" standing for the verb under test.
@@ -350,6 +356,25 @@ func TestStartGuard_Refuse(t *testing.T) {
 			wantErrors: []string{"the board entry", "board unreadable", `run "lym batten {verb} some-slug" again`},
 		},
 		{
+			name:      "RaddleRefusalOfAFreshStartIsReturnedAsItStands",
+			verbs:     []string{"run", "step"},
+			raddle:    func() error { return raddleRefusal{"some-slug holds no record"} },
+			wantExact: "some-slug holds no record",
+		},
+		{
+			name:     "RaddleRefusalIsNotJudgedForAResume",
+			verbs:    []string{"run", "step"},
+			raddle:   func() error { return raddleRefusal{"some-slug holds no record"} },
+			found:    true,
+			producer: battenrecipe.NameRunShed,
+		},
+		{
+			name:       "RaddleProbeErrorRefusesNamingTheProbeAndTheRerun",
+			verbs:      []string{"run", "step"},
+			raddle:     func() error { return errors.New("store unreadable") },
+			wantErrors: []string{"the raddle entry's start", "store unreadable", `run "lym batten {verb} some-slug" again`},
+		},
+		{
 			name:    "NilSeamsCheckNothing",
 			verbs:   []string{"run", "step", "goto"},
 			noSeams: true,
@@ -379,6 +404,7 @@ func TestStartGuard_Refuse(t *testing.T) {
 						Project:    func() (bool, bool, error) { return tt.project, tt.beam, tt.projectErr },
 						PairMark:   func() (bool, bool, error) { return tt.marked, !tt.unreadable, nil },
 						Unreleased: func() (string, error) { return tt.unreleased, tt.unreleasedErr },
+						Raddle:     tt.raddle,
 					}
 				}
 
@@ -408,6 +434,101 @@ func TestStartGuard_Refuse(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestRaddleStartRefusal drives raddleStartRefusal over fixture entries and stores: an entry with no stored record, a slug the store holds as another Sketch's, as its own Sketch under another created stamp or as a filed slug, and the passes.
+func TestRaddleStartRefusal(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const slug = "some-slug"
+	created := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	other := created.Add(time.Hour)
+	tests := []struct {
+		name         string
+		recordStored bool
+		// stores maps a Sketch slug to its store.json record.
+		stores map[string]boardengine.RaddleStoreEntry
+		// wantErrors are substrings the refusal carries; none means the entry passes.
+		wantErrors []string
+	}{
+		{
+			name:       "NoStoredRecordRefusedNamingTheMotifUpsertAndTheRaddlePromote",
+			wantErrors: []string{"holds none", `lym board upsert '{"slug":"some-slug","recipe":"motif"}'`, "lym board promote some-slug --recipe raddle"},
+		},
+		{
+			name:         "SlugFiledByAnotherSketchRefusedNamingTheRename",
+			recordStored: true,
+			stores:       map[string]boardengine.RaddleStoreEntry{"older-sketch": {Created: created, Filed: []string{"older-sketch", slug}}},
+			wantErrors:   []string{"older-sketch", "lym board rename some-slug some-slug-2"},
+		},
+		{
+			name:         "SlugAsItsOwnSketchUnderAnotherCreatedStampRefusedNamingTheRename",
+			recordStored: true,
+			stores:       map[string]boardengine.RaddleStoreEntry{slug: {Created: other, Filed: []string{slug}}},
+			wantErrors:   []string{"lym board rename some-slug some-slug-2"},
+		},
+		{
+			name:         "RenameTargetSkipsASlugTheStoreHolds",
+			recordStored: true,
+			stores: map[string]boardengine.RaddleStoreEntry{
+				"older-sketch": {Created: created, Filed: []string{slug, slug + "-2"}},
+			},
+			wantErrors: []string{"lym board rename some-slug some-slug-3"},
+		},
+		{
+			name:         "SlugAsItsOwnSketchUnderItsOwnStampPasses",
+			recordStored: true,
+			stores:       map[string]boardengine.RaddleStoreEntry{slug: {Created: created, Filed: []string{slug}}},
+		},
+		{
+			name:         "StoreNotHoldingTheSlugPasses",
+			recordStored: true,
+			stores:       map[string]boardengine.RaddleStoreEntry{"unrelated": {Created: created, Filed: []string{"unrelated"}}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			boardDir := t.TempDir()
+			for sketch, record := range tt.stores {
+				directory := boardengine.RaddleStoreDir(boardDir, sketch)
+				if err := os.MkdirAll(directory, 0o755); err != nil {
+					t.Fatalf("create store directory: %v", err)
+				}
+				data, err := json.Marshal(record)
+				if err != nil {
+					t.Fatalf("encode store record: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(directory, "store.json"), data, 0o644); err != nil {
+					t.Fatalf("write store record: %v", err)
+				}
+			}
+			store, err := boardengine.ReadRaddleStore(boardDir)
+			if err != nil {
+				t.Fatalf("ReadRaddleStore: %v", err)
+			}
+			entry := boardengine.Task{Slug: slug, Created: created}
+
+			got := raddleStartRefusal(entry, tt.recordStored, store)
+
+			if len(tt.wantErrors) == 0 {
+				if got != nil {
+					t.Fatalf("raddleStartRefusal = %v; want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("raddleStartRefusal = nil; want a refusal carrying %q", tt.wantErrors)
+			}
+			for _, want := range tt.wantErrors {
+				if !strings.Contains(got.Error(), want) {
+					t.Errorf("raddleStartRefusal = %q; want it to carry %q", got.Error(), want)
+				}
+			}
+		})
 	}
 }
 

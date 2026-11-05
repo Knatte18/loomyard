@@ -99,6 +99,10 @@ func zeroEnvField(env Env, field string) Env {
 		env.Pawl.Paths.DobbyStopMarker = ""
 	case "Pawl.Paths.AwaitMarker":
 		env.Pawl.Paths.AwaitMarker = ""
+	case "Pawl.Paths.HandOffMarker":
+		env.Pawl.Paths.HandOffMarker = ""
+	case "Pawl.HandOff":
+		env.Pawl.HandOff = nil
 	case "Pawl.SetStatus":
 		env.Pawl.SetStatus = nil
 	case "Pawl.EntryProducer":
@@ -214,8 +218,8 @@ func simpleEntryCases() []simpleEntryCase {
 			registryKey:     "BeamUp",
 			entry:           beamUpEntry,
 			buildEnv:        newTestEnv,
-			validatedFields: []string{"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.MarkBeam", "Pawl.SpawnPush", "Pawl.RegenerateWorkspace"},
-			unreadField:     "Pawl.Notify",
+			validatedFields: []string{"Pawl.Paths.LandRequest", "Pawl.Paths.DobbyStopMarker", "Pawl.Paths.AwaitMarker", "Pawl.MarkBeam", "Pawl.SpawnPush", "Pawl.RegenerateWorkspace", "Pawl.HandOff", "Pawl.Notify", "Pawl.Paths.HandOffMarker"},
+			unreadField:     "Pawl.Down",
 		},
 		{
 			registryKey: "BeamAwait",

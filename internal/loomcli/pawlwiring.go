@@ -52,8 +52,9 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	}
 
 	prime := func() (*lymcwd.Location, error) { return primeOfHub(location) }
+	notifyPosted := func(line string) (bool, error) { return orchcli.NotifyOrchAt(location, pawlProgram, line) }
 	notify := func(line string) error {
-		_, err := orchcli.NotifyOrchAt(location, pawlProgram, line)
+		_, err := notifyPosted(line)
 		return err
 	}
 	return pawlengine.Deps{
@@ -146,13 +147,14 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return dobbyengine.Live(geometry)
 		},
 		Recheck: func() ([]string, error) { return pawlRecheck(location, slug) },
+		HandOff: func() (string, bool, error) { return raddleHandOff(location, slug) },
 		ReadyStands: func() (bool, error) {
 			return pawlengine.ReadyFor(loomengine.BeamReadyPath(location), loomengine.BeamReadyLockPath(location), slug)
 		},
 		StampWake: func(at time.Time) error {
 			return shedrun.WriteWakeStamp(shedrun.WakeRecord(location, shedrun.SelfRunID), pawlengine.NameBeamAwait, at)
 		},
-		Notify: notify,
+		Notify: notifyPosted,
 		Down: func() error {
 			_, err := orchcli.BeamDown(location)
 			return err
@@ -201,7 +203,10 @@ func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Dep
 		RemoveScratch: func() error { return pullrequest.RemoveRecord(recordPath, recordLock) },
 		Commit:        func() error { return commitLandingDirectory(location, slug) },
 		SetStatus:     pawl.SetStatus,
-		Notify:        pawl.Notify,
+		Notify: func(line string) error {
+			_, err := pawl.Notify(line)
+			return err
+		},
 	}
 	return func(from, to string, resumed bool) error {
 		return pawlengine.MoveOffRetired(deps, from, to, resumed)

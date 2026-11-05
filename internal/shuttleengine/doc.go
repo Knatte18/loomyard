@@ -285,8 +285,16 @@
 // Runner.ProbeGated is AttachGated's probe returning the reconstructed *Run unwaited, so a caller can hold two probed runs and wait on both concurrently.
 //
 // Session usage: the optional UsageReader capability reads a finished session's tokens, its forks included, as a provider-neutral SessionUsage.
-// Run.finalize fills Result.Usage from it for a done run, and Result.StartedAt and Result.EndedAt for every run;
+// Run.finalize fills Result.Usage from it at every terminal outcome, and Result.StartedAt and Result.EndedAt for every run;
 // an engine without the capability leaves Usage unknown, and nothing about the outcome changes.
+//
+// Session end: Runner.SetSessionEnd sets a hook called once for each ended session with a SessionEnd carrying its id, engine, role, model, pane cwd, times, outcome and usage.
+// Run.finalize calls it at every terminal outcome after the usage read.
+// Runner.StopStrand calls it when it moves a running record to stopped, with the usage the record's engine reads.
+// An unawaited session the stop verb ends is so reported too.
+// RunState records the spec's role and model at launch so the stop path can fill them.
+// A session with no session id is not reported, and a runner with no hook reports nothing.
+// The hook runs synchronously and its panics are not recovered, so it must never block and must report its own failures.
 //
 // Record reading: the optional TranscriptReader and MessagePricer capabilities, with InstructionFileLister, read an engine's finished records with no run and no shuttle config.
 // TranscriptReader locates a worktree's sessions and reads each, forks included, as provider-neutral TranscriptEntry values with a per-message MessageUsage.

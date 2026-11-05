@@ -1928,9 +1928,28 @@ func (run *Run) finalize(outcome Outcome) (Result, error) {
 		logger.Warn("shuttle: stamp the run end failed (non-fatal)", "runDir", run.runDir, "strandGUID", run.state.StrandGUID, "error", err)
 	}
 
-	if reader, ok := run.engine.(UsageReader); ok && outcome == OutcomeDone {
+	if reader, ok := run.engine.(UsageReader); ok {
 		result.Usage = reader.SessionUsage(run.state.SessionID, run.runner.paneCwd)
 	}
+	// An attached run's spec is rebuilt without its role and model, which its record still holds.
+	role, model := run.spec.Role, run.spec.Model
+	if role == "" {
+		role = run.state.Role
+	}
+	if model == "" {
+		model = run.state.Model
+	}
+	run.runner.reportSessionEnd(SessionEnd{
+		SessionID: result.SessionID,
+		Engine:    result.Engine,
+		Role:      role,
+		Model:     model,
+		Worktree:  run.runner.paneCwd,
+		StartedAt: result.StartedAt,
+		EndedAt:   result.EndedAt,
+		Outcome:   outcome,
+		Usage:     result.Usage,
+	})
 
 	if outcome == OutcomeDone && run.state.ForkSubagents {
 		auditor, ok := run.engine.(ForkAuditor)

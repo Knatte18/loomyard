@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/battenshed"
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/configreg"
 	"github.com/Knatte18/loomyard/internal/discussionparser"
@@ -32,6 +33,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/planindex"
 	"github.com/Knatte18/loomyard/internal/planparser"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
+	"github.com/Knatte18/loomyard/internal/raddleparser"
 	"github.com/Knatte18/loomyard/internal/seatengine"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
@@ -65,6 +67,7 @@ var nilLegal = map[string]bool{
 	"Landing.StopConflictSession":      true,
 	"Landing.MarkTaskDone":             true,
 	"Landing.RecordLanding":            true,
+	"Landing.RecordLandedSize":         true,
 	"Landing.ConfigChanges":            true,
 	"Landing.Notify":                   true,
 	"Landing.Reconcile":                true,
@@ -294,6 +297,67 @@ func fixedGateTiers(gate string) ([]int, error) {
 	return list, nil
 }
 
+// raddleWriteEnv returns the Raddle-Write row's seams with every path absolute under dir and every seam a no-op or an empty answer.
+func raddleWriteEnv(dir string) shedrecipe.RaddleWriteEnv {
+	raddleDir := filepath.Join(dir, "raddle")
+	proposalPath := filepath.Join(raddleDir, "proposal.yaml")
+	return shedrecipe.RaddleWriteEnv{
+		Deps: loomshed.RaddleWriteDeps{
+			StatePath:     filepath.Join(raddleDir, "state.json"),
+			StateLockPath: filepath.Join(raddleDir, "state.json.lock"),
+			ProposalPath:  proposalPath,
+			ReturnedPath:  filepath.Join(raddleDir, "returned-proposal.yaml"),
+			ColdPath:      filepath.Join(raddleDir, "cold-proposal.yaml"),
+			ApprovalPath:  filepath.Join(raddleDir, "approval.json"),
+			AutoApprove:   func() (bool, error) { return false, nil },
+			FreshEntry:    func() (bool, int, error) { return false, 0, nil },
+			StoreCold:     func() error { return nil },
+			Commit:        func() error { return nil },
+		},
+		Table: func(bool, string) (seatengine.Table, error) {
+			return seatengine.Table{
+				RolePrefix: "raddle",
+				Segment:    segmentcolor.Discussion,
+				Seats: []seatengine.Seat{{
+					Stencil: "raddle-template-agent",
+					Outputs: []string{proposalPath},
+				}},
+			}, nil
+		},
+		Check: loomshed.RaddleCheck{
+			ProposalPath: proposalPath,
+			RecordPath:   filepath.Join(dir, "decision-record.md"),
+			Board:        func(bool) (raddleparser.BoardContext, error) { return raddleparser.BoardContext{}, nil },
+		},
+	}
+}
+
+// raddleFileDeps returns the Raddle-File row's deps with every path absolute under dir and every seam a no-op or an empty answer.
+func raddleFileDeps(dir string) loomshed.RaddleFileDeps {
+	raddleDir := filepath.Join(dir, "raddle")
+	return loomshed.RaddleFileDeps{
+		ProposalPath:   filepath.Join(raddleDir, "proposal.yaml"),
+		ColdPath:       filepath.Join(raddleDir, "cold-proposal.yaml"),
+		RecordPath:     filepath.Join(dir, "decision-record.md"),
+		StageDir:       filepath.Join(raddleDir, "stage"),
+		RecordsDir:     filepath.Join(raddleDir, "records"),
+		PartRecordPath: func(slug string) string { return filepath.Join(raddleDir, "records", "decision-"+slug+".md") },
+		StatePath:      filepath.Join(raddleDir, "state.json"),
+		StateLockPath:  filepath.Join(raddleDir, "state.json.lock"),
+		Check:          func() ([]raddleparser.Finding, error) { return nil, nil },
+		Recheck:        func() (raddleparser.Recheck, error) { return raddleparser.Recheck{}, nil },
+		Entry:          func() (loomshed.RaddleRunEntry, error) { return loomshed.RaddleRunEntry{Slug: "demo"}, nil },
+		StoreDone:      func(time.Time, string) (bool, error) { return false, nil },
+		AlreadyFiled:   func(string, []string) (bool, error) { return false, nil },
+		File:           func(boardengine.RaddleFiling) error { return nil },
+		CreateBeam:     func(string) error { return nil },
+		Release:        func([]string) error { return nil },
+		Notify:         func(string) error { return nil },
+		EndEntry:       func() error { return nil },
+		Commit:         func() error { return nil },
+	}
+}
+
 // FullEnv returns a `shedrecipe.Env` with every path field an absolute path under one `t.TempDir()` and every seam any registered engine requires filled.
 // A seam added to the registry's requirements must be filled here, which NilSeams(FullEnv(t)) catches.
 func FullEnv(t testing.TB) shedrecipe.Env {
@@ -372,6 +436,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				ReopenRequest:   filepath.Join(dir, "reopen-request.json"),
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
+				HandOffMarker:   filepath.Join(dir, pawlengine.HandOffMarkerName),
 			},
 			RetiredRows:         []string{"Parent-Align"},
 			SetStatus:           func(string) error { return nil },
@@ -381,13 +446,14 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			SpawnPush:           func() error { return nil },
 			RegenerateWorkspace: func() error { return nil },
 			Steps:               []pawlengine.Step{{Name: "noop", Run: func() error { return nil }}},
+			HandOff:             func() (string, bool, error) { return "", false, nil },
 			StopDobby:           func() error { return nil },
 			StartDobby:          func() error { return nil },
 			DobbyLive:           func() (bool, error) { return false, nil },
 			Recheck:             func() ([]string, error) { return nil, nil },
 			ReadyStands:         func() (bool, error) { return false, nil },
 			StampWake:           func(time.Time) error { return nil },
-			Notify:              func(string) error { return nil },
+			Notify:              func(string) (bool, error) { return true, nil },
 			Down:                func() error { return nil },
 			Now:                 time.Now,
 			Sleep:               func(context.Context, time.Duration) error { return nil },
@@ -484,8 +550,12 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			SupportLogPath: filepath.Join(dir, "discussion", "support-log.md"),
 			DiscussionDir:  filepath.Join(dir, "discussion"),
 			ReadBody:       func() (string, bool, error) { return "", true, nil },
+			ReadStored:     func() ([]byte, bool, error) { return nil, false, nil },
 			Commit:         func() error { return nil },
 		},
+		RaddleWrite: raddleWriteEnv(dir),
+		RaddleFile:  raddleFileDeps(dir),
+
 		Drift:     driftDeps(mustMkdir(t, filepath.Join(dir, "drift"))),
 		PlanIndex: noFindingsIndex{},
 

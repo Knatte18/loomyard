@@ -37,6 +37,9 @@ import (
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -44,6 +47,7 @@ import (
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry

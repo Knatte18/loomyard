@@ -179,6 +179,16 @@ func TestFabricReplay(t *testing.T) {
 
 	runLocked := RunStatus("running", "Implementer")
 	ghostDependency := replayEntry("x", withDependsOn("ghost"))
+	// The raddle store directory a commit adds: store.json records the filed slugs p1 and p2, and proposal.yaml is a plain staged file.
+	const (
+		storeJSON         = `{"created":"2026-10-01T08:00:00Z","hash":"h","filed":["p1","p2"]}`
+		storeJSONPath     = "raddle/plan/store.json"
+		storeProposalPath = "raddle/plan/proposal.yaml"
+	)
+	storeFiles := []fabricengine.ReplayFile{
+		{Path: storeJSONPath, After: []byte(storeJSON)},
+		{Path: storeProposalPath, After: []byte("proposal")},
+	}
 	rows := []replayRow{
 		{
 			name:        "DifferentEntriesChangedOnTheTwoSidesBothLand",
@@ -615,6 +625,73 @@ func TestFabricReplay(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:        "RaddleStoreDirectoryAndItsFiledEntriesReplayTogether",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a"), replayEntry("p1"), replayEntry("p2")},
+			designs:     storeFiles,
+			wantEntries: map[string]string{"a": "a", "p1": "p1", "p2": "p2"},
+			check: func(t *testing.T, dir string, got map[string]Task) {
+				wantOriginFile(storeJSONPath, storeJSON)(t, dir, got)
+				wantOriginFile(storeProposalPath, "proposal")(t, dir, got)
+			},
+		},
+		{
+			name:        "RaddleStoreReplaysBesideAConcurrentWriteOnOrigin",
+			base:        []Task{replayEntry("a", withTitle("A"))},
+			origin:      []Task{replayEntry("a", withTitle("A2"))},
+			parent:      []Task{replayEntry("a", withTitle("A"))},
+			commit:      []Task{replayEntry("a", withTitle("A")), replayEntry("p1"), replayEntry("p2")},
+			designs:     storeFiles,
+			wantEntries: map[string]string{"a": "A2", "p1": "p1", "p2": "p2"},
+			check: func(t *testing.T, dir string, got map[string]Task) {
+				wantOriginFile(storeJSONPath, storeJSON)(t, dir, got)
+				wantOriginFile(storeProposalPath, "proposal")(t, dir, got)
+			},
+		},
+		{
+			name:    "RaddleStoreIsSetAsideWhenAFiledEntryOriginAlreadyHoldsUnderThatSlug",
+			base:    []Task{replayEntry("a")},
+			origin:  []Task{replayEntry("a"), replayEntry("p1", withTitle("other"))},
+			parent:  []Task{replayEntry("a")},
+			commit:  []Task{replayEntry("a"), replayEntry("p1"), replayEntry("p2")},
+			designs: storeFiles,
+			wantLost: []fabricengine.ReplayFinding{
+				{Entry: "p1", Field: "title", Reason: "origin added an entry with this slug too", Local: `"p1"`},
+			},
+			wantRefused: map[string]string{storeJSONPath: `Sketch "plan"`, storeProposalPath: "`_lym/raddle/`"},
+			wantEntries: map[string]string{"a": "a", "p1": "other", "p2": "p2"},
+			check: func(t *testing.T, dir string, got map[string]Task) {
+				wantOriginFile(storeJSONPath, "")(t, dir, got)
+				wantOriginFile(storeProposalPath, "")(t, dir, got)
+			},
+		},
+		{
+			name:        "RaddleStoreIsSetAsideWhenTheReplayRefusesAFiledEntry",
+			base:        []Task{replayEntry("a")},
+			origin:      []Task{replayEntry("a")},
+			parent:      []Task{replayEntry("a")},
+			commit:      []Task{replayEntry("a"), replayEntry("p1", withDependsOn("ghost")), replayEntry("p2")},
+			designs:     storeFiles,
+			wantRefused: map[string]string{"p1": "dangling dependency", storeJSONPath: `filed entry "p1" was refused`, storeProposalPath: "lym board upsert"},
+			wantEntries: map[string]string{"a": "a", "p1": "", "p2": "p2"},
+			check: func(t *testing.T, dir string, got map[string]Task) {
+				wantOriginFile(storeJSONPath, "")(t, dir, got)
+				wantOriginFile(storeProposalPath, "")(t, dir, got)
+			},
+		},
+		{
+			name:      "RaddleStorePathOneLevelDeeperIsNotClaimed",
+			base:      []Task{replayEntry("a")},
+			origin:    []Task{replayEntry("a")},
+			parent:    []Task{replayEntry("a")},
+			commit:    []Task{replayEntry("a")},
+			designs:   []fabricengine.ReplayFile{{Path: "raddle/plan/deeper/store.json", After: []byte(storeJSON)}},
+			wantEmpty: true,
+			check:     wantOriginFile("raddle/plan/deeper/store.json", ""),
+		},
 	}
 
 	for _, tt := range rows {
@@ -770,6 +847,10 @@ func TestFabricReplay_Ledger(t *testing.T) {
 			{"RecordFile", "decision-x.md", true},
 			{"RecordFileInSubdirectory", "sub/decision-x.md", false},
 			{"RecordFileEmptySlug", "decision-.md", false},
+			{"RaddleStoreFile", "raddle/x/store.json", true},
+			{"RaddleStoreFileOneLevelDeeper", "raddle/x/y/store.json", false},
+			{"RaddleStoreDirectory", "raddle/x", false},
+			{"RaddleStoreFileOfAnEmptySketch", "raddle//store.json", false},
 			{"NestedReadme", "dir/README.md", false},
 			{"SubdirectoryReadme", "sub/README.md", false},
 			{"OtherStore", "heddle.json", false},

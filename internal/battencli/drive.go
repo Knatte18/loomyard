@@ -31,6 +31,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/output"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedarbiter"
 	"github.com/Knatte18/loomyard/internal/sheddriver"
 	"github.com/Knatte18/loomyard/internal/shedengine"
@@ -465,6 +466,12 @@ func (c *battenCLI) primeShuttle(dirs configengine.Dirs) (sheddriver.AgentShuttl
 		_, err := notifyRunParent(location, c.slug, line)
 		return err
 	})
+	// The tackler and the arbiter work for the task's run, so their sessions count toward the task worktree's usage records.
+	if taskLocation, err := taskWorktreeLocation(location, c.slug); err != nil {
+		logger.Warn("battencli: locate the task worktree to record its tackler and arbiter sessions failed; they stay unrecorded", "slug", c.slug, "error", err)
+	} else {
+		runner.SetSessionEnd(shedadapters.UsageRecorder(taskLocation, shuttleengines.RecordReaders()))
+	}
 	return sheddriver.RunnerShuttle{Runner: runner}, nil
 }
 

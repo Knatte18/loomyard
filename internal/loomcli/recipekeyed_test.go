@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
 
-// TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, motif, darn, pawl and sampler as the recipe's rows and keys give.
+// TestRecipeKeyedWiring asserts each recipe-keyed branch picks the same answer for tapestry, motif, darn, pawl, sampler and raddle as the recipe's rows and keys give.
 func TestRecipeKeyedWiring(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -44,6 +44,7 @@ func TestRecipeKeyedWiring(t *testing.T) {
 		{"Darn", shedrun.RecipeDarn, true, false, "its decision record through one build session", false},
 		{"Pawl", shedrun.RecipePawl, false, false, "a beam's life", false},
 		{"Sampler", shedrun.RecipeSampler, true, false, "made with the operator in one interactive session", false},
+		{"Raddle", shedrun.RecipeRaddle, false, false, "splits a Sketch's stored decision record into board entries the operator approves", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

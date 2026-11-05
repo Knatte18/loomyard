@@ -2,7 +2,9 @@
 // Every convergence and timing figure comes from records lym already writes, each read from git objects through a tolerant parse in the package that owns its format.
 // A record a run lacks is reported absent, never as zero.
 // ComputeTiming is the second compute entry, over the same snapshot: where each run's time went, per phase and per day or week.
-// ComputeReplies is the third, over creel log entries instead of a snapshot.
+// ComputeCost is the third, over the same snapshot: what landed runs cost in dollars and hours, from the usage records each run keeps.
+// ComputeRaddle is the fourth, over the same snapshot: what each Sketch a raddle run filed was predicted to cost against what its filed parts cost.
+// ComputeReplies is the fifth, over creel log entries instead of a snapshot.
 //
 // # Told geometry
 //
@@ -177,6 +179,27 @@
 // TimingReport.Phases holds, per recipe, each phase a run of it can hold, which is the phases its table names plus setup, land, paused and other.
 // Each such phase's median is over the landed runs of that recipe holding it whose archive tag is committed in the window; the median of an even count is the mean of the two middle values rounded down, and a run in flight never enters one.
 //
+// # Cost
+//
+// ComputeCost is told its options, runs no process and reads no clock, and takes every archive tag committed on or after CostOptions.Since, whatever its recipe.
+// It reads each tag's usage files at the tag's commit through shedrun.ParseRunUsage, the one reader of those files, and never a review round's usage record.
+// A tag with no run record, or with a usage file that does not decode, is skipped and a Finding.
+// A run is landed when its usage holds a landed-size record, or, for a recipe with no Finalize row, when its status at the tag is done; a cancelled or torn-down run holds neither and is left out.
+// A run's dollars are the sum of its sessions' costs and are absent when it has no session or any session's cost is unknown, and a run with no dollar figure still enters the hours.
+// A run's hours are its active seconds from ComputeTiming, joined by tag, for a run the timing report times; any other run's hours are the union of its sessions' started-to-ended spans, overlaps counted once, and a run with neither has no hours.
+// Runs group into cells by recipe, profile and stored-record flag.
+// A cell reports its run count, the mean dollars and the mean hours over the runs holding each, and, over the runs holding a landed-size record, a least-squares fit of a fixed cost plus a cost per 100 changed lines, in dollars and in hours, each with its correlation.
+// A fit needs two sized runs of distinct sizes and is absent otherwise, and a cell with fewer runs than CostOptions.MinRuns carries the note "too few runs" and no figure.
+//
+// # Raddle
+//
+// ComputeRaddle lists the store directories of the board branch's tip, one per Sketch a raddle run filed, and reads each one's store.json through boardengine.ParseRaddleStoreEntry.
+// A Sketch's predicted cost is its approved proposal's expected cost, nil when the proposal states none, and its proposal is changed when the hash of the approved proposal differs from the cold proposal's.
+// A filed part is a filed slug other than the filed project, and its runs are the archive tags of that slug, each read through shedrun.ParseRunUsage.
+// A part with no archive tag is listed as unlanded.
+// The actual cost sums the session costs of the landed parts' runs and is partial when a run holds a session of unknown cost, no session or a usage directory that does not decode, and nil when no session cost is known.
+// A store directory without a store.json holds nothing, and a Sketch whose store files are missing or do not decode is skipped and a Finding that names it.
+//
 // # Replies
 //
 // ComputeReplies is pure over creel log entries and groups by the receiver's role: a strand's role, a program's upper-case name.
@@ -190,4 +213,6 @@
 // A nil figure renders as no data.
 // RenderTimingMarkdown renders a TimingReport as the selection and sleep note, then four tables: runs (recipe, state, span, active, each wait kind, sleep, each phase and the attempt counts with their time), phase medians per recipe, time per bucket, and stops per settler per bucket.
 // Every duration is spelled through durfmt.FormatSeconds, with seconds below a day and as 2d03h from a day on.
+// RenderCostMarkdown renders a CostReport as the selection and one table of cells, a figure the cell lacks rendering as no data.
+// RenderRaddleMarkdown renders a RaddleReport as the selection and one table of Sketches.
 package reportengine

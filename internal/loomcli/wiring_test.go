@@ -664,6 +664,8 @@ func TestVerbUsesLightweightWiring(t *testing.T) {
 		{"InsertCard", "insert-card", true},
 		{"RemoveCard", "remove-card", true},
 		{"RestoreRenumber", "restore-renumber", true},
+		{"RaddlePropose", "raddle-propose", true},
+		{"RaddleApprove", "raddle-approve", true},
 		{"Run", "run", false},
 		{"Start", "start", false},
 		{"Step", "step", false},

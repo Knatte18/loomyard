@@ -66,6 +66,12 @@ var LandingFixReviewSpec []byte
 //go:embed twill-lens-report-spec.md
 var TwillLensReportSpec []byte
 
+// RaddleProposalSpec is the raddle proposal format contract's shipped-default content.
+// The raddle agent writes its proposal against its format, and internal/raddleparser parses it.
+//
+//go:embed raddle-proposal-spec.md
+var RaddleProposalSpec []byte
+
 // registryEntry pairs one spec's registered name with the embedded default bytes behind it.
 type registryEntry struct {
 	name string
@@ -84,6 +90,7 @@ var entries = []registryEntry{
 	{"landing-fixer-report-spec", &LandingFixerReportSpec},
 	{"landing-fix-review-spec", &LandingFixReviewSpec},
 	{"twill-lens-report-spec", &TwillLensReportSpec},
+	{"raddle-proposal-spec", &RaddleProposalSpec},
 }
 
 // registry implements stencilstore.Registry over entries.

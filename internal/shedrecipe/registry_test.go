@@ -113,6 +113,8 @@ func TestNames(t *testing.T) {
 			"PartsWrite",
 			"PlanWrite",
 			"Preflight",
+			"RaddleFile",
+			"RaddleWrite",
 			"RecordWrite",
 			"SamplerSession",
 			"SeedChild",

@@ -4,6 +4,7 @@ package shuttleengine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/reedengine"
@@ -84,9 +85,37 @@ func (r *Runner) stopRecorded(runDir, guid string) error {
 			if err := saveRunState(runDir, rs); err != nil {
 				return fmt.Errorf("shuttle: stop strand %s: record the stop in %s: %w", guid, runDir, err)
 			}
+			r.reportStoppedSession(rs)
 		}
 	}
 	return removeStrandIfPresent(r.reed, guid)
+}
+
+// reportStoppedSession reports the session of rs, a record the stop verb just moved to stopped, to the session-end hook.
+// The usage is what the record's engine reads for the session, the unknown reading when the set no longer holds the engine or the engine has no UsageReader.
+func (r *Runner) reportStoppedSession(rs RunState) {
+	engine, engineName, err := r.engineFor(rs)
+	usage := SessionUsage{}
+	if err != nil {
+		engineName = rs.Engine
+	} else if reader, ok := engine.(UsageReader); ok {
+		usage = reader.SessionUsage(rs.SessionID, r.paneCwd)
+	}
+	var startedAt time.Time
+	if createdAt, err := time.Parse(time.RFC3339, rs.CreatedAt); err == nil {
+		startedAt = createdAt
+	}
+	r.reportSessionEnd(SessionEnd{
+		SessionID: rs.SessionID,
+		Engine:    engineName,
+		Role:      rs.Role,
+		Model:     rs.Model,
+		Worktree:  r.paneCwd,
+		StartedAt: startedAt,
+		EndedAt:   r.clock.Now(),
+		Outcome:   Outcome(runOutcomeStopped),
+		Usage:     usage,
+	})
 }
 
 // strandRemovable reports whether a stop removes strand: a live strand, or an own-window strand whose pane is present but not live, a dead pane or one showing only its shell.

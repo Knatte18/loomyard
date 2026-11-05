@@ -416,7 +416,7 @@ func (r *awaitRun) refuse(blockers []string) awaitWake {
 // notify posts line to the beam's orch and reports whether the post succeeded.
 // A failure is logged with the line and changes nothing else, since the request is already answered; with no live orch strand it reaches only the log and `lym batten status`.
 func (r *awaitRun) notify(line string) bool {
-	if err := r.deps.Notify(line); err != nil {
+	if _, err := r.deps.Notify(line); err != nil {
 		logger.Warn("pawlengine: the notice to the beam's orch failed", "producer", r.name, "error", err, "notice", line)
 		return false
 	}

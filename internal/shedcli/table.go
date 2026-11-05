@@ -12,6 +12,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/battencli"
 	"github.com/Knatte18/loomyard/internal/loomcli"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 )
 
@@ -74,6 +75,11 @@ var recipes = map[string]entry{
 		BootstrapVerb: loomcli.BootstrapVerb,
 	},
 	"sampler": {
+		Arm:           loomcli.ArmAt,
+		Verbs:         []string{"run", "step", "status", "pause", "goto"},
+		BootstrapVerb: loomcli.BootstrapVerb,
+	},
+	shedrun.RecipeRaddle: {
 		Arm:           loomcli.ArmAt,
 		Verbs:         []string{"run", "step", "status", "pause", "goto"},
 		BootstrapVerb: loomcli.BootstrapVerb,

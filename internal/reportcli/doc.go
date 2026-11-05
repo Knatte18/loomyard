@@ -1,4 +1,4 @@
-// Package reportcli is the report module: `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report, and `lym report replies`, the read-only count of creel's expected replies.
+// Package reportcli is the report module: `lym report convergence [--since <date>] [--fresh-days <n>] [--format json|markdown]`, the read-only convergence report, `lym report timing [--since <date>] [--by day|week] [--format json|markdown]`, the read-only timing report, `lym report cost [--since <date>] [--format json|markdown]`, the read-only cost report, `lym report raddle [--format json|markdown]`, the read-only predicted-against-actual cost of each filed Sketch, and `lym report replies`, the read-only count of creel's expected replies.
 // Each verb validates its flags, resolves the prime's geometry and hands it to internal/reportengine, which does the computing; the engine's package documentation describes every figure.
 //
 // # The verbs
@@ -17,6 +17,15 @@
 //   - `--since` takes a `YYYY-MM-DD` date in UTC and defaults to the UTC date seven days before today's; a date after today is accepted and gives an empty report.
 //   - `--by` is `day` (the default) or `week`, the bucket width.
 //   - `--format` is `json` (the default) or `markdown`.
+//
+// `cost` takes:
+//
+//   - `--since` takes a `YYYY-MM-DD` date in UTC and defaults to the UTC date seven days before today's, as `timing` does.
+//   - `--format` is `json` (the default) or `markdown`.
+//
+// It reads `cost_min_runs` from the hub's `report.yaml` through `internal/reportconfig`, the run count a cell needs before it shows its figures.
+//
+// `raddle` takes `--format`, `json` (the default) or `markdown`, and no date: it lists every Sketch of the raddle store on the board branch at its tip.
 //
 // `replies` takes no flags.
 // It reads the creel journal, which keeps seven days, as the `REPORT` program through creelcli.NewProgramClient, whose `Log` the package seam `creelLog` wraps, and prints one `{"ok":true}` envelope holding `roles`, the engine's counts per receiver role.
@@ -40,9 +49,9 @@
 //
 // # The output
 //
-// With `json` `convergence` prints one `{"ok":true}` envelope holding `selection`, `runs`, `partial`, `landings`, `weeks`, `absent` and `findings`, and `timing` one holding `selection`, `runs`, `phases`, `buckets`, `sleep_note` and `findings`.
+// With `json` `convergence` prints one `{"ok":true}` envelope holding `selection`, `runs`, `partial`, `landings`, `weeks`, `absent` and `findings`, `timing` one holding `selection`, `runs`, `phases`, `buckets`, `sleep_note` and `findings`, `cost` one holding `selection`, `cells` and `findings`, and `raddle` one holding `selection`, `rows` and `findings`.
 // With `markdown` each prints its rendered document instead.
-// The first two exit 0 whatever findings the report holds, since a record that does not decode is a finding and not a failure, and a hub with no archive tags prints an empty report.
+// The first four exit 0 whatever findings the report holds, since a record that does not decode is a finding and not a failure, and a hub with no archive tags prints an empty report.
 // An error from reading the repositories themselves is a JSON error with exit 1.
 // The verbs write nothing, take no lock and make no commit.
 package reportcli

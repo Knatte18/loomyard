@@ -9,7 +9,7 @@ import (
 )
 
 // recordWriteEntry is the Constructor for the "RecordWrite" registry row: it takes no Config key and returns loomshed.NewRecordWrite over Env.RecordWrite.
-// The record, support log and discussion directory paths must be absolute, and ReadBody and Commit must be non-nil; the refusal names the Env field.
+// The record, support log and discussion directory paths must be absolute, and ReadBody, ReadStored and Commit must be non-nil; the refusal names the Env field.
 func recordWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer, error) {
 	const entry = "RecordWrite"
 	if err := configRejectUnknown(cfg); err != nil {
@@ -30,6 +30,7 @@ func recordWriteEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		value any
 	}{
 		{"RecordWrite.ReadBody", deps.ReadBody},
+		{"RecordWrite.ReadStored", deps.ReadStored},
 		{"RecordWrite.Commit", deps.Commit},
 	} {
 		if err := requireSeam(entry, seam.field, seam.value); err != nil {

@@ -120,6 +120,23 @@
 // BoardRecord renders the record with the entry's body verbatim in one fenced block under `## Goal`, so no line of the body starts a section of the record.
 // It writes only the file that is missing, commits the pair on every call, and reports a board with no entry for the run as Stuck.
 //
+// A raddle run's state is RaddleState, the run's `state.json`: its mode, its Raddle-Write session count, the sessions of the last passing propose and waiting notice, the approval, the count and reason of Raddle-File's returns and its notice marker.
+// It is read and updated through internal/state under one lock, so a key it does not declare survives a rewrite.
+// CheckRaddleProposal is the one D6 check of a proposal on disk, run over a RaddleCheck whose Board builds the context from the board, the raddle store and the profiles, and RecheckRaddleBoard is the one D8 re-check.
+// A proposal that is missing or does not parse is the finding `proposal-unparsable`.
+// NewRaddleGate maps the check onto the gate contract and calls its onPass on a pass.
+// StoreColdProposal stores the run's first passing proposal as the cold proposal once and never overwrites it.
+//
+// The Raddle-Write row's producer (NewRaddleWrite) wraps the table-driven raddle session.
+// The run's first call records its mode from the `raddle_auto_approve` key, which every later call and Raddle-File read from the state, and every call raises the session count.
+// A fresh entry, a Raddle-File return or an operator goto, sets the last attempt's output aside once per history position: auto mode moves the proposal to the returned-proposal file, and interactive mode removes the approval record and clears the state's approval.
+// On Done it commits the raddle directory.
+//
+// The Raddle-File row's producer (NewRaddleFile) is a Go row with no agent.
+// It runs the proposal's checks, the approval match in interactive mode and the board re-check, unless the raddle store already holds the filing, and sends a proposal that fails one back to Raddle-Write by deleting its stage and part records and counting a return; the failure after two returns halts the run for its parent.
+// Its steps are staging the store files, writing the part records, filing the entries in one board write, making the project a beam and releasing its parts for the beam shape, notifying the parent once, and ending the run's entry.
+// A step whose outputs carry the hash of the proposal now approved is skipped, so a retry after a crash finishes the steps it missed, and a failure after the filing is Stuck with Halt naming the resume.
+//
 // A rework round a run recorded before PR-Rework went stays readable.
 // PlanReviewSkippable classifies the live plan generation from the committed round records, and answers false while the plan amendment record exists, so the amended plan is judged and its settle records a round start.
 // ArchivedWebsterDirs lists each round's archived webster run record.

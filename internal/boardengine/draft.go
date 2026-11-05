@@ -1,8 +1,10 @@
-// draft.go — the draft status every new task takes, and the rule that gives it at the write critical section.
+// draft.go — the draft status every new task takes bar the tasks a write releases, and the rule that gives it at the write critical section.
 
 package boardengine
 
-// StatusDraft is the status of a task that is not released: every new task takes it, and a draft entry holds no run lock.
+import "slices"
+
+// StatusDraft is the status of a task that is not released: every new task takes it, bar a task a write releases (the raddle promotion and a raddle filing's released parts), and a draft entry holds no run lock.
 const StatusDraft = "draft"
 
 // IsEmptyStatus reports whether status is nil or the empty string, the one meaning of an empty status in the start condition, the migration and the release paths.
@@ -37,13 +39,14 @@ func migrateDraftStatus(store *Store) bool {
 // applyDraftRule sets StatusDraft on each entry of kind task in after whose status is empty.
 // An entry that was a task in loaded keeps an empty status when the write left it untouched, the same empty value as loaded, or set it to nil, which is the release.
 // So a new task, a note or project made a task, and a task whose status the write emptied from a non-empty one all read draft.
-func applyDraftRule(loaded, after []Task) {
+// released lists the slugs of the tasks the write leaves with an empty status, which the rule skips: a released task is startable in the write that makes it.
+func applyDraftRule(loaded, after []Task, released []string) {
 	loadedBySlug := make(map[string]Task, len(loaded))
 	for _, task := range loaded {
 		loadedBySlug[task.Slug] = task
 	}
 	for i := range after {
-		if after[i].Kind != KindTask || !IsEmptyStatus(after[i].Status) {
+		if after[i].Kind != KindTask || !IsEmptyStatus(after[i].Status) || slices.Contains(released, after[i].Slug) {
 			continue
 		}
 		if before, wasTask := loadedBySlug[after[i].Slug]; wasTask && before.Kind == KindTask {

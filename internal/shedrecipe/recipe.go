@@ -309,6 +309,10 @@ type Env struct {
 	Sampler loomshed.SamplerDeps
 	// RecordWrite is a whole-struct passthrough to loomshed.NewRecordWrite, read by the RecordWrite entry only.
 	RecordWrite loomshed.RecordWriteDeps
+	// RaddleWrite is a whole-struct passthrough to the Raddle-Write producer and its gate, following Env.RecordWrite's precedent, read by the RaddleWrite entry only.
+	RaddleWrite RaddleWriteEnv
+	// RaddleFile is a whole-struct passthrough to loomshed.NewRaddleFile, following Env.RecordWrite's precedent, read by the RaddleFile entry only.
+	RaddleFile loomshed.RaddleFileDeps
 	// PlanIndex is the code index the "plan" gate resolves plan refs against, and the loom "discussion" gate resolves the symbols a decision record cites.
 	// It arrives as an interface so this package, and the recipe packages built on it, link no tree-sitter grammar.
 	PlanIndex planindex.Index

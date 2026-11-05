@@ -79,6 +79,9 @@ type Finalize struct {
 	guard parentGuard
 	// lockFreed reports that the current locked pass freed the parent lock for an agent session, so Call runs the pass again.
 	lockFreed bool
+	// parentHeadMerged is the parent pair's head read right before the parent branch was last merged into the task worktree, the base of the landed diff.
+	// It is empty when this process read none, as in a Finalize resumed past the merge.
+	parentHeadMerged string
 }
 
 var _ shedengine.ShedProducer = (*Finalize)(nil)
@@ -313,7 +316,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	}
 
 	// Steps 2 and 3: merge the parent branch into the task worktree and judge the merge, then gate the merged tree.
-	if outcome, out, err, done := fz.mergeAndGate(ctx); done {
+	if outcome, out, err, done := fz.mergeAndGate(ctx, parentHandle); done {
 		return end(outcome, out, err)
 	}
 	if fz.lockFreed {
@@ -355,7 +358,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	// Step 2 merges the parent again, so a code-side commit that arrived between the check and the parent-side merge is merged, gated and landed.
 	var mergeInRequired *fabricengine.ErrMergeInRequired
 	if errors.As(mergeErr, &mergeInRequired) {
-		if outcome, out, err, done := fz.mergeAndGate(ctx); done {
+		if outcome, out, err, done := fz.mergeAndGate(ctx, parentHandle); done {
 			return end(outcome, out, err)
 		}
 		if fz.lockFreed {
@@ -608,19 +611,49 @@ func (fz *Finalize) markTaskDone() {
 	}
 }
 
-// recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to Deps.RecordLanding.
+// recordLanding hands the parent pair's head, the commit the landing put on the parent branch, to Deps.RecordLanding, and then the landed diff's size to Deps.RecordLandedSize.
 // A failed head read or record is logged and never changes the verdict.
 func (fz *Finalize) recordLanding(parentHandle parentMerger) {
-	if fz.deps.RecordLanding == nil {
+	if fz.deps.RecordLanding == nil && fz.deps.RecordLandedSize == nil {
 		return
 	}
 	commit, err := parentHandle.HeadSHA()
-	if err == nil {
-		err = fz.deps.RecordLanding(commit)
-	}
 	if err != nil {
-		logger.Warn("landingshed: record the landing commit failed", "producer", finalizeName, "cause", err)
+		logger.Warn("landingshed: read the landing commit failed", "producer", finalizeName, "cause", err)
+		return
 	}
+	if fz.deps.RecordLanding != nil {
+		if err := fz.deps.RecordLanding(commit); err != nil {
+			logger.Warn("landingshed: record the landing commit failed", "producer", finalizeName, "cause", err)
+		}
+	}
+	fz.recordLandedSize(commit)
+}
+
+// recordLandedSize hands Deps.RecordLandedSize the parent head merged into the task worktree and the landing commit.
+// A Finalize that holds no such head records nothing, which is logged at Info; a failed record is logged at Warn and never changes the verdict.
+func (fz *Finalize) recordLandedSize(landing string) {
+	if fz.deps.RecordLandedSize == nil {
+		return
+	}
+	if fz.parentHeadMerged == "" {
+		logger.Info("landingshed: no merged parent head was read in this process, so the landed size is not recorded", "producer", finalizeName)
+		return
+	}
+	if err := fz.deps.RecordLandedSize(fz.parentHeadMerged, landing); err != nil {
+		logger.Warn("landingshed: record the landed size failed", "producer", finalizeName, "cause", err)
+	}
+}
+
+// keepParentHead reads the parent pair's head, which the parent branch's merge into the task worktree is about to bring in, and keeps it as the base of the landed diff.
+// A failed read is logged at Warn and keeps no head, so the landed size goes unrecorded.
+func (fz *Finalize) keepParentHead(parentHandle parentMerger) {
+	head, err := parentHandle.HeadSHA()
+	if err != nil {
+		logger.Warn("landingshed: read the parent head before the merge-in failed", "producer", finalizeName, "cause", err)
+		head = ""
+	}
+	fz.parentHeadMerged = head
 }
 
 // pushParent publishes the parent branch the merge just landed on to its upstream, so a landing
@@ -714,8 +747,8 @@ func (fz *Finalize) recheckLock(ctx context.Context) (shedengine.Outcome, sheden
 // done is false when the merged tree passed and Call proceeds to the parent-side merge; otherwise the other values are what Call returns at once.
 // Every pass, the first and the retry after the parent moved again, is committed and verified before the parent-side merge.
 // A halt, a gate failure or a dirty tree returns before the parent-side merge, the board update and the push.
-func (fz *Finalize) mergeAndGate(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	if outcome, out, err, done := fz.mergeParent(ctx); done {
+func (fz *Finalize) mergeAndGate(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	if outcome, out, err, done := fz.mergeParent(ctx, parentHandle); done {
 		return outcome, out, err, true
 	}
 	return fz.gateAndFix(ctx)
@@ -1012,13 +1045,14 @@ type parentMerge struct {
 // mergeParent merges the parent branch into the task worktree and judges the merge, which are Finalize's steps 2 and 3 under the parent lock it already holds.
 // It clears a parked merge-in, checks the tree clean and merges.
 // The merge goes through the resolver, which resolves a conflict with the conflict session under the lock.
+// Right before the merge it keeps the parent pair's head, the base of the landed diff.
 //
 // The merge is large when the parent's changes since the merged tip the merge record names touch a file the task changed.
 // A merge record that cannot be read is logged and read as absent, so the parent side is measured from the task's merge base; a parent already holding the task's work is never large.
 // The merge record is written with the new merged tip and the aligned tip as it was.
 // A large merge writes the merge record, with the overlap, and goes on to the gate like any other merge.
 // done is false when the merge settled and Call goes on to the gate; otherwise the other values are what Call returns at once.
-func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+func (fz *Finalize) mergeParent(ctx context.Context, parentHandle parentMerger) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	reason, err := fz.premerge.clear(finalizeName, fz.deps.ParentBranch)
 	if outcome, out, err, stop := fz.gateStop(ctx, reason, err); stop {
 		return outcome, out, err, true
@@ -1032,6 +1066,7 @@ func (fz *Finalize) mergeParent(ctx context.Context) (shedengine.Outcome, sheden
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err, true
 	}
+	fz.keepParentHead(parentHandle)
 	merge, reason, err := fz.mergeIntoTask(ctx)
 	if err != nil {
 		if cerr := cancelErr(ctx, finalizeName); cerr != nil {

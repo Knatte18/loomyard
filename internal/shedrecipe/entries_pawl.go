@@ -21,6 +21,8 @@ func requirePawl(entry string, deps pawlengine.Deps, fields ...string) error {
 		"Paths.LandRequest":     deps.Paths.LandRequest,
 		"Paths.DobbyStopMarker": deps.Paths.DobbyStopMarker,
 		"Paths.AwaitMarker":     deps.Paths.AwaitMarker,
+		"Paths.HandOffMarker":   deps.Paths.HandOffMarker,
+		"HandOff":               deps.HandOff,
 		"SetStatus":             deps.SetStatus,
 		"EntryProducer":         deps.EntryProducer,
 		"OwnedElsewhere":        deps.OwnedElsewhere,
@@ -61,7 +63,7 @@ func beamUpEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProducer,
 	if err := configRejectUnknown(cfg); err != nil {
 		return nil, err
 	}
-	if err := requirePawl("BeamUp", env.Pawl, append(append([]string{}, pawlPathFields...), "MarkBeam", "SpawnPush", "RegenerateWorkspace")...); err != nil {
+	if err := requirePawl("BeamUp", env.Pawl, append(append([]string{}, pawlPathFields...), "MarkBeam", "SpawnPush", "RegenerateWorkspace", "HandOff", "Notify", "Paths.HandOffMarker")...); err != nil {
 		return nil, err
 	}
 	producer, err := pawlengine.NewBeamUp(row.Name, env.Pawl)

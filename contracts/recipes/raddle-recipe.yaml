@@ -1,0 +1,40 @@
+# raddle-recipe.yaml is the recipe that splits a Sketch into the board entries the operator approves, and files them: Record-Write, Raddle-Write and Raddle-File.
+# Record-Write writes the Sketch's stored decision record into the run, as the darn and pawl recipes do for their records.
+# Raddle-Write is one agent session that proposes the split, the order, the recipes and the profiles, and ends on the operator's approval of the proposal, or on the finished proposal when the run is in auto mode.
+# Raddle-File is a Go row with no agent: it checks the approved proposal once more, files the entries on the board in one write and ends the run's own entry, so a raddle run lands no code.
+#
+# contract: loom takes the loom contract's record-only form: one record row, Record-Write, and neither a build row nor a Finalize row, so it needs no verify_source.
+# Neither new engine is a build or Finalize engine, so the loader accepts the recipe with no change to the contract.
+#
+# Raddle-Write carries no on_stuck: the third failing gate attempt halts the run for its parent, as Discussion-Write's does.
+# Raddle-Write and Raddle-File share segment Raddle, which holds no Bouncer row and so is no review segment; the shared segment is what lets Raddle-File's Stuck return to Raddle-Write.
+# Raddle-File's max_bounces stays above its own two-return halt, so the producer, not the budget, halts the third failure.
+# on_done is empty on Raddle-File, which ends the run.
+
+version: 1
+entry: Record-Write
+contract: loom
+terminals:
+  - Raddle-File
+
+producers:
+  - name: Record-Write
+    engine: RecordWrite
+    on_done: Raddle-Write
+
+  - name: Raddle-Write
+    engine: RaddleWrite
+    segment: Raddle
+    on_done: Raddle-File
+    config:
+      # gates holds this row's handoff until the proposal is mechanically valid: the raddle gate re-prompts the live session up to attempts times.
+      gates:
+        - name: raddle
+          attempts: 3
+
+  - name: Raddle-File
+    engine: RaddleFile
+    segment: Raddle
+    on_stuck: Raddle-Write
+    max_bounces: 3
+    on_done: ""

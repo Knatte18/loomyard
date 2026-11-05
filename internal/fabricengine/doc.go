@@ -676,6 +676,9 @@
 // It holds the sorted changed paths with a rename at both its paths, the added plus deleted lines from `git diff --numstat -M` (a pure rename counts none, a binary file counts one), and the text of every added line.
 // It is read-only, and a read failure is an error naming both commits.
 //
+// **Diff size.** `DiffSize(from, to)` (linechange.go) reads the same `git diff --numstat -M` as a `DiffSize`: the added lines, the deleted lines and the changed files, a rename and a binary file each one file, and a binary file or a pure rename no lines.
+// It is read-only, and a read failure is an error naming both commits.
+//
 // **Code identity reads.** Three read-only methods (taskpatch.go) give a code segment's identity what `Diff`'s changed paths cannot, and mutate nothing.
 // `ReadTaskPatch(base, skip)` returns a `TaskPatch`: the warp working tree's change against the told merge base, tracked files and uncommitted edits included, plus every untracked non-ignored file as a new-file diff, minus the untracked paths `skip` names and those under a `skip` entry ending in `/`.
 // It carries the HEAD it read, the full diff bytes, their SHA-256 and git's stable patch-id of the zero-context form, which a rebase that only moves context leaves unchanged.

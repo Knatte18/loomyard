@@ -31,6 +31,18 @@ type rolloutEvent struct {
 	context int
 	// hasContext is true for a token_count event that carries the latest model call's usage.
 	hasContext bool
+	total      rolloutTotal
+	// hasTotal is true for a token_count event that carries the session's running total usage.
+	hasTotal bool
+}
+
+// rolloutTotal is the total_token_usage of a token_count event: the session's running token counts.
+// CacheWrite is zero when the event carries no cache_write_input_tokens.
+type rolloutTotal struct {
+	Input      int64 `json:"input_tokens"`
+	CachedIn   int64 `json:"cached_input_tokens"`
+	Output     int64 `json:"output_tokens"`
+	CacheWrite int64 `json:"cache_write_input_tokens"`
 }
 
 // readRolloutEvents reads the event_msg lines of the rollout at path, in file order, skipping lines it cannot parse.
@@ -48,7 +60,8 @@ func readRolloutEvents(path string) ([]rolloutEvent, error) {
 				Type   string `json:"type"`
 				TurnID string `json:"turn_id"`
 				Info   *struct {
-					LastTokenUsage struct {
+					TotalTokenUsage *rolloutTotal `json:"total_token_usage"`
+					LastTokenUsage  struct {
 						TotalTokens int `json:"total_tokens"`
 					} `json:"last_token_usage"`
 				} `json:"info"`
@@ -64,6 +77,10 @@ func readRolloutEvents(path string) ([]rolloutEvent, error) {
 		if parsed.Payload.Info != nil {
 			event.context = parsed.Payload.Info.LastTokenUsage.TotalTokens
 			event.hasContext = true
+			if parsed.Payload.Info.TotalTokenUsage != nil {
+				event.total = *parsed.Payload.Info.TotalTokenUsage
+				event.hasTotal = true
+			}
 		}
 		events = append(events, event)
 	}

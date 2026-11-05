@@ -22,6 +22,8 @@ const (
 	DobbyStopMarkerName = "dobby-stop"
 	// AwaitMarkerName is the file name of the marker that says Beam-Await was entered before and whether its dobby-down notice was posted.
 	AwaitMarkerName = "await-entered"
+	// HandOffMarkerName is the file name of the marker that says Beam-Up settled the beam's hand-off, which it never removes.
+	HandOffMarkerName = "handoff-sent"
 )
 
 // Paths holds the absolute paths of the pawl run's files, which the hub wiring composes and tells.
@@ -34,6 +36,8 @@ type Paths struct {
 	DobbyStopMarker string
 	// AwaitMarker is the marker file Beam-Await writes on its first entry; it also carries the line recording a posted dobby-down notice.
 	AwaitMarker string
+	// HandOffMarker is the marker file Beam-Up writes once the beam's hand-off is settled, beside the land request; Beam-Up never removes it.
+	HandOffMarker string
 }
 
 // LandRequest asks the pawl run to land its beam.

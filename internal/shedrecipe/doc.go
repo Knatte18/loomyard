@@ -46,6 +46,14 @@
 // The RecordWrite entry builds a loom recipe's record row for a run whose task is a board entry: a Go producer that writes the decision record and support log with no agent.
 // It takes no Config key and reads Env.RecordWrite alone; the three paths must be absolute and both seams non-nil, or the row refuses when it is built.
 //
+// # The RaddleWrite and RaddleFile rows
+//
+// The RaddleWrite entry builds the raddle recipe's agent row: a seat-table producer behind loomshed.NewRaddleWrite, which takes the "gates" key alone and reads Env.RaddleWrite and Env.Seats.
+// Its table source reads the run's recorded mode and return reason from the raddle state at each Call and stamps the resolved gate onto the table.
+// The gate vocabulary gains `raddle`, which runs the raddle proposal checks and stores the cold proposal on a pass.
+// The RaddleFile entry builds the Go row that files the approved proposal on the board; it takes no Config key and reads Env.RaddleFile alone.
+// Each refuses a relative path and a nil seam of its Env field when it is built.
+//
 // # The BeamUp, BeamAwait and BeamDown rows
 //
 // The BeamUp, BeamAwait and BeamDown entries build the pawl recipe's Go producers that bring a beam up, hold its run until a land request passes the landing re-check, and take it down.

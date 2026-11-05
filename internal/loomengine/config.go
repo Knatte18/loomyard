@@ -428,6 +428,11 @@ type Config struct {
 	Plan                  string `yaml:"-"`
 	PlanTimeoutMin        int    `yaml:"-"`
 
+	// Raddle is the model-spec of the raddle agent, which proposes how a Sketch splits into tasks.
+	// RaddleAutoApprove makes a raddle run file its proposal once the proposal's gate passes, with no operator approval.
+	Raddle            string `yaml:"raddle"`
+	RaddleAutoApprove bool   `yaml:"raddle_auto_approve"`
+
 	// ReviewerModel and FixerModel are the shared reviewer and fixer model lists, the fallback of every review segment whose own key is empty.
 	// Each segment's own pair replaces them for that segment when set.
 	ReviewerModel           burlerengine.ModelSpecList `yaml:"reviewer_model"`
@@ -578,6 +583,7 @@ func ConfigOpenMaps() []string {
 // The budget, hard-cap and auto-accept keys come from reviewbudget: a budget of 0 is the per-run off switch and no guard, while the auto-accept keys are guards.
 // discussion_advisors and discussion_lenses are barred too, so no local override or task run_settings can start advisors, turn the lens forks off or change their fan.
 // code_reviewer_fan is the one reviewer fan key open to the local layer, since its value names only a fan the guarded lenses.yaml defines, or "" for a solo round, and the perch's round count, rubric and whole-diff read stay.
+// raddle_auto_approve is the one approval key open to the local layer: a run profile's raddle block sets it and batten writes that block into the pair's local config, and the key is the sanctioned way to file a raddle proposal with no operator approval, read once at Raddle-Write's first spawn in a run.
 func ConfigSpec() configengine.Spec {
 	none := configengine.CategoryNone
 	guard := configengine.CategoryGuard
@@ -589,6 +595,8 @@ func ConfigSpec() configengine.Spec {
 			"discussion":                none,
 			"discussion_timeout_min":    none,
 			"discussion_interactive":    none,
+			"raddle":                    none,
+			"raddle_auto_approve":       none,
 			"discussion_advisors":       guard,
 			"discussion_lenses":         guard,
 			"discussion_gate_fixer":     none,
@@ -1170,6 +1178,10 @@ func LoadConfig(dirs configengine.Dirs, module string) (Config, error) {
 
 	if _, err := modelspec.Parse(cfg.Discussion); err != nil {
 		return Config{}, fmt.Errorf("loom config key %q: %w", "discussion", err)
+	}
+
+	if _, err := modelspec.Parse(cfg.Raddle); err != nil {
+		return Config{}, fmt.Errorf("loom config key %q: %w", "raddle", err)
 	}
 
 	if cfg.SubagentModel == "" {

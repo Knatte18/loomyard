@@ -178,6 +178,11 @@ type RunState struct {
 	RoleKey string `json:"roleKey,omitempty"`
 	// CarriedInstructions are the operator instructions the run's prompt carried over from its predecessor, so a later re-spawn carries them again.
 	CarriedInstructions []string `json:"carriedInstructions,omitempty"`
+	// Role is the spawning Spec's role segment, recorded so a path holding only the record, the stop path, can report the ended session.
+	// A record an older binary wrote leaves it empty.
+	Role string `json:"role,omitempty"`
+	// Model is the spawning Spec's model, recorded for the same reason as Role; a record an older binary wrote leaves it empty.
+	Model string `json:"model,omitempty"`
 }
 
 // createRunDir mints a fresh run id, creates <root>/<runID>, and returns

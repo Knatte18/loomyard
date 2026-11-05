@@ -2,7 +2,7 @@
 // shedengine.Status.Product: the thin, loom-owned handoff pointers a spawn-time lym command
 // writes at t=0 and Shed round-trips verbatim thereafter, never inspecting or interpreting them.
 
-// Package loomengine holds loom's own engine pieces: its status product payload, the guard that refuses a status file inherited from another task, the loom and tapestry config modules, and the discussion, plan and review tables a loom run reads.
+// Package loomengine holds loom's own engine pieces: its status product payload, the guard that refuses a status file inherited from another task, the loom and tapestry config modules, and the discussion, raddle, plan and review tables a loom run reads.
 package loomengine
 
 // Status is loom's product payload, carried verbatim inside shedengine.Status.Product per

@@ -274,6 +274,7 @@
 // An entry that was a task before the write keeps an empty status the write left untouched, so an edit of a released task leaves it released.
 // A task is released by a null status: `lym board set-status '{"slug":"<slug>","status":null}'`, an upsert setting `status` to null on a task, or a merge whose `set_status` sets null.
 // An empty string written to a task whose loaded status differs is `draft`, not a release.
+// A write may release the tasks it makes: the draft rule skips the slugs it is told, which are the promoted task of a promotion with recipe `raddle` and the released parts of a raddle filing.
 // The owner write and the replay of a local commit run no draft rule: the first never makes a task, and the second copies entries a critical-section write already normalised.
 //
 // # Run agents file notes, never tasks
@@ -317,6 +318,38 @@
 // its title, brief, body, project, issues, Created date and discussed flag stay, and the write stamps Revised like any scope change.
 // It writes nothing for an absent, done or already sketched entry, and refuses while another entry depends on the entry, since a note cannot be depended on.
 // The README lists Sketches under their own `Sketches` heading, the first Notes subsection, and `lym board list --text` lists them after every other entry under a `sketches:` line.
+//
+// A Sketch becomes a task only as a raddle run's entry: Board.PromoteTo with recipe `raddle` makes the task in one write, keeps the decision record, the discussed flag and the sketch label, restores the label when a note write dropped it, and releases the task, so its parent's dobby starts the run.
+// Board.Promote is PromoteTo with no recipe.
+// Two write rules close every other way.
+// A discussed note whose record file exists that a write makes a task must carry recipe `raddle`, the discussed flag and the sketch label, else the write is refused with `lym board promote <slug> --recipe raddle` as the way forward; the rule keys on the flag and the stored record, never on the label.
+// The sketch label on a task whose recipe is not `raddle`, or on a project, is refused too, judged only for a write that adds the label, makes the entry a task or project, or changes its recipe, so a legacy task that already carries the label keeps taking writes that leave all three alone.
+// The label rule cannot see the record file, so a discussed note whose record file is missing is led to the raddle promote as well.
+// The Bolt replayer admits an entry through the run lock and the kind and label checks only, never the promotion rule, so a promotion in a board commit from another machine can land on origin.
+//
+// # Raddle store
+//
+// A raddle run that files a Sketch's entries keeps a store on the Bolt beside board.json: the directory `raddle/<sketch slug>/` (RaddleStoreDir) holds `proposal.yaml`, the approved proposal, `cold-proposal.yaml`, `decision-record.md`, the Sketch's record, and `store.json`.
+// store.json records `created`, the Sketch's created stamp, `hash`, the approved proposal's hash, `filed`, every filed slug with the project's included, and for a project or beam shape `project`, which is also in `filed`.
+// Prune never touches the store, which reads only board.json entries and decision files, so the store outlives the entries it filed.
+// ReadRaddleStore reads every store.json under the store root, an absent root holding none, and RaddleStore.Holds answers the entry of the Sketch slug, or of the Sketch whose `filed` holds the slug.
+// The write critical section reads the store once under the lock, before the mutation, so the slug rule judges the store as it stood before the write.
+// It then refuses a write that makes a slug the store holds, whether or not the pair slug seam is set, bar the made entry whose slug is a store entry's Sketch slug and whose created stamp is that entry's recorded one, so a live raddle run's own Sketch is never refused.
+// A store file that cannot be read refuses only a write that makes a slug, naming the file and `git -C <bolt> checkout -- <path>` as the way forward; a write that makes no slug goes on.
+// A refusal names a slug both the seam and the store admit; for a note made a task or project, which keeps its slug, it names `lym board rename` of the note to such a slug before the promotion.
+// The input that reaches a refusal: `lym board upsert` creating a task or project under a filed slug, `lym board rename` to a Sketch slug the store holds, and `lym board promote --recipe raddle` of a note under a filed slug.
+// The Bolt replayer adds an entry through the run lock and the kind and label checks only, never this rule, so a board commit from a machine that had not yet pulled the store can land an entry under a held slug on origin; only a raddle entry is caught, by batten's start guard.
+//
+// A raddle run writes the board through three Board methods, each one write under the board lock.
+// FileRaddle files a Sketch's approved entries: it writes nothing when the store already holds a directory for the Sketch slug with the filing's created stamp and hash, the done marker;
+// otherwise it runs the filing's re-check over the entries and the store as they stand, wrapping a refusal in ErrRaddleRecheck.
+// It then adds the project the shape files and the parts as discussed entries.
+// It writes each entry's decision record file before the save, and after the save writes the store directory with store.json last, so the write leaves its own done marker.
+// The filing's Project is the Sketch's own project field, so every filed entry's parent beam equals the Sketch's; the parts are members of the new project when the shape files one.
+// The parts are released in the write when the filing says so, through the draft rule's released list, and are draft otherwise; the run's own entry stays open.
+// A part's dependency on the run's entry, or on a slug no longer on the board, is dropped.
+// ReleaseTasks releases the named tasks that are still open and draft, and writes nothing when none is left, the done marker of that step.
+// EndRaddleEntry marks the run's entry done and clears its notify_on_land, which the run lock admits since neither is scope, and writes nothing for an absent or done entry.
 //
 // # Siblings
 //
@@ -372,11 +405,14 @@
 // # Replay
 //
 // FabricReplay is the board's Bolt replayer, named `board`, and the run ledger fabricengine reads the ended set and the owners through; the lym root pre-run registers it with `fabricengine.RegisterBoltReplayer`.
-// It claims `board.json`, `README.md`, the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's, and the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
+// It claims `board.json`, `README.md`, the `project-<slug>.md` files, of which `project-root.md` is the root project's and not a project's, the `design-<slug>.md` and `decision-<slug>.md` files at the Bolt root and the files directly in a raddle store directory, `raddle/<sketch>/<name>`, and its ledger file is `board.json`: `Runs` decodes the entries with `Ended` set for a `done` one, and `CommitRuns` names the entries a commit changes.
 // The by-entry merge of fields is `internal/entrymerge`'s, and its fields include the `discussed` flag.
 // Apply re-applies a local board commit, read out of the files the request holds by path, onto the board checked out at origin's tip, one change at a time: each added or removed entry, each changed entry's fields as one change, and each design file and decision record the commit touches.
 // A decision record goes after the entry changes: one the commit writes for an entry origin does not hold is reported lost and not written, and every other record file, a removal included, lands by the design-file rule, so a replayed removal or rename leaves no old record file on origin.
 // A change passes the board's own checks, the run lock included, against the board as the kept changes before it left it, and an added entry takes the next id of origin's board.json and a handle free there, never its local one.
+// A raddle store file lands after the entry changes, by the design-file rule: a file origin does not hold lands, so a concurrent board write from another machine, which writes no file of that Sketch's store, replays beside it, and a path of any other shape is refused.
+// A store directory's files are set aside, reported refused, when the commit's `store.json` records as filed an entry whose add the replay refused or lost, so origin never holds the done marker of a filing without the entries it marks;
+// the report names the Sketch and that its staged store and part records stay in the raddle run's own committed `_lym/raddle/` records, from which the operator re-files the parts that did not land with `lym board upsert` once the clash is settled, and the replay itself files nothing.
 // Where both sides changed the same field or design file since the merge base, or origin removed the entry, origin's side is kept and the local value is reported lost;
 // a change a check refuses is reported refused, and so is a later change depending on an entry a refused change added.
 // A commit that set `draft_status` sets it on origin's board too, and neither side ever clears it.

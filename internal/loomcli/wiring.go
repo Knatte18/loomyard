@@ -85,7 +85,7 @@ type commitStatusDeps struct {
 	Finish func() error
 }
 
-// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel() and loomengine.LoomDurableDirRel() when its directory holds at least one non-directory entry anywhere beneath it, then shedrun.DriverRecordsRel(location, runID), plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists.
+// statusCommitPathspec returns the fabric-sibling pathspec one status commit stages: shedrun.StatusRel(location, runID), plus each of loomengine.LoomReviewsDirRel() and loomengine.LoomDurableDirRel() when its directory holds at least one non-directory entry anywhere beneath it, then shedrun.DriverRecordsRel(location, runID), plus shedrun.SettleRecordsRel(location, runID) when the settle-records file exists, then shedrun.UsageDirRel() when the usage directory holds a file.
 // The arbiter directory carries each attempt's record, prompt, verdict and envelope, so they are committed with the run records.
 // The tackler directory, staged under the same rule, carries each tackler attempt's record, prompt, verdict and envelope.
 // The loom durable directory is staged whole rather than its friction directory alone:
@@ -110,6 +110,9 @@ func statusCommitPathspec(location *lymcwd.Location, runID string) []string {
 	paths = append(paths, shedrun.DriverRecordsRel(location, runID)...)
 	if _, err := os.Stat(shedrun.SettleRecords(location, runID)); err == nil {
 		paths = append(paths, shedrun.SettleRecordsRel(location, runID))
+	}
+	if shedrun.HoldsFile(shedrun.UsageDir(location)) {
+		paths = append(paths, shedrun.UsageDirRel())
 	}
 	return paths
 }
@@ -205,11 +208,11 @@ func commitStatusDepsGuardedBy(check prePushCheck, location *lymcwd.Location, ru
 }
 
 // finishesAsSketch reports whether a finished run of recipe makes its board entry a Sketch.
-// A recipe with a Finalize row does not, since its landing marks the entry done.
-// One with none lands nothing, its run ending at the Discussion approval with the decision record stored, so its entry becomes a Sketch:
+// A recipe with a Finalize row does not, since its landing marks the entry done, and neither does one with a RaddleFile row, whose own Raddle-File row ends the entry done.
+// One with neither lands nothing, its run ending at the Discussion approval with the decision record stored, so its entry becomes a Sketch:
 // a note that leaves the run lock, never runs and waits for the operator's triage.
 func finishesAsSketch(recipe string) bool {
-	return !recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine)
+	return !recipeHasEngine(recipe, shedrecipe.LoomFinalizeEngine) && !recipeHasEngine(recipe, raddleFileEngine)
 }
 
 // commitStatusDeps returns loomCommitStatusDeps over location and the run, with the Finish of the run's recipe.
@@ -402,7 +405,7 @@ func commitDescription(location *lymcwd.Location) error {
 	return err
 }
 
-// recordWriteDeps returns the Record-Write row's deps for location's worktree: record's paths, the run's board entry body, and record's commit.
+// recordWriteDeps returns the Record-Write row's deps for location's worktree: record's paths, the run's board entry body and stored decision record, and record's commit.
 // Building it opens nothing: the board is read on each call.
 func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteDeps {
 	return loomshed.RecordWriteDeps{
@@ -419,6 +422,17 @@ func recordWriteDeps(l *lymcwd.Location, record runRecord) loomshed.RecordWriteD
 				return "", false, fmt.Errorf("read the run's board entry: %w", err)
 			}
 			return task.Body, found, nil
+		},
+		ReadStored: func() ([]byte, bool, error) {
+			board, err := boardengine.OpenHub(l.HubPath)
+			if err != nil {
+				return nil, false, fmt.Errorf("open the board: %w", err)
+			}
+			stored, found, err := board.DecisionRecord(seedSlug(l.WorktreeName))
+			if err != nil {
+				return nil, false, fmt.Errorf("read the run's stored decision record: %w", err)
+			}
+			return stored, found, nil
 		},
 		Commit: func() error { return commitRunRecord(l, record) },
 	}
@@ -536,6 +550,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		_, err := orchcli.NotifyAsker(location, loomProgram, line)
 		return err
 	})
+	runner.SetSessionEnd(shedadapters.UsageRecorder(location, shuttleengines.RecordReaders()))
 
 	websterGeom := hubgeom.WebsterGeometry(location)
 	websterGeom.Index = planglyph.NewSlottedIndex(fabricengine.NewReferenceRule(), websterGeom.GateSlots, websterGeom.GateWaitDir)
@@ -652,6 +667,8 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		pairSlug = ""
 	}
 	planDir := planparser.PlanDir(anchorPath)
+	// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
+	settingLookup := configreg.SettingLookup(fabricengine.ConfigDirs(location))
 
 	c.env = shedrecipe.Env{
 		PreflightBatcher: preflightBatcher,
@@ -779,6 +796,9 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		RecordEngine:      recordEngine,
 		// RecordWrite is filled for every recipe: only a recipe with a RecordWrite row reads it, and it opens the board on a call, never at wire time.
 		RecordWrite: recordWriteDeps(location, record),
+		// RaddleWrite and RaddleFile are filled for every recipe: only a recipe with a raddle row reads them, and every closure reads the board, the status or the setting on a call, never at wire time.
+		RaddleWrite: raddleWriteEnv(location, loomCfg, websterGeom.StencilsDir, websterGeom.SpecsDir, registry, seedSlug(location.WorktreeName), settingLookup),
+		RaddleFile:  raddleFileDeps(location, seedSlug(location.WorktreeName)),
 		// DescriptionPath is the change description Describe writes and its gate and the landing
 		// rows read.
 		DescriptionPath: summaryparser.Path(loomengine.LandingDir(location)),
@@ -930,8 +950,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		}),
 
 		Segments: loomSegmentSettings(loomCfg, reviewSettings, judgeSettings, assistBounds),
-		// Setting is one lookup per wiring, so every row of a recipe build reads one snapshot of each module's stack.
-		Setting: configreg.SettingLookup(fabricengine.ConfigDirs(location)),
+		Setting:  settingLookup,
 		// SettingKnown and Resume serve a recipe row's entry gate: its operands are checked at build and its evaluation errors name the resume command.
 		SettingKnown: configreg.CheckSettingKey,
 		Resume:       "lym loom resume",

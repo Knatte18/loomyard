@@ -11,6 +11,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // Board is the high-level facade over a board directory.
@@ -66,7 +67,7 @@ type noWrite struct{ result any }
 type promoted struct{ task Task }
 
 // boardCriticalSection runs the locked write scaffolding shared by every mutating Board method:
-// it acquires the lock, loads the store, migrates a board that has not been marked draft and every task left discussed, calls fn to mutate it, gives a new task the draft status, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
+// it acquires the lock, loads the store, migrates a board that has not been marked draft and every task left discussed, calls fn to mutate it, gives a new task the draft status bar a promoted raddle task, stamps the entry dates, assigns the handles the mutation left missing or of another letter, refuses a net change to a run-held entry's scope and a run agent's new task, saves board.json, runs afterSave when non-nil, moves or removes the decision record files of the entries the write renamed or removed, renders outputs, and spawns a detached sync.
 // fn returning a RenameResult judges the dates and the run lock against the loaded entries with that rename applied.
 // afterSave runs under the lock after the save and before the render.
 // The record step's error, a *DecisionRecordError, does not stop the render or the sync; it is returned last, with the write saved and the mutation's result.
@@ -107,6 +108,8 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	migrateDraftStatus(store)
 	migrateDiscussedStatus(store)
 	loaded := cloneTasks(store.Tasks())
+	// Read before fn mutates, so the slug rule judges the raddle store as it stood before the write.
+	raddleStore, raddleStoreErr := ReadRaddleStore(b.boardPath)
 
 	result, err := fn(store)
 	if err != nil {
@@ -118,9 +121,19 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 
 	now := b.now()
 	promotedSlug := ""
+	var released []string
 	if p, ok := result.(promoted); ok {
 		promotedSlug = p.task.Slug
+		// A Sketch promoted to a raddle run's entry is released in its own write, so its parent's dobby starts the run.
+		if p.task.Recipe == shedrun.RecipeRaddle {
+			released = []string{p.task.Slug}
+		}
 		result = p.task
+	}
+	// A filing's released parts are released in the filing's own write; the filing returns no result.
+	if filed, ok := result.(raddleFiled); ok {
+		released = filed.released
+		result = nil
 	}
 	// A renamed slug is the same entry, so the loaded entries are judged under the new slug.
 	renamedFrom, renamedTo := "", ""
@@ -128,7 +141,7 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		renameSlug(loaded, r.From, r.Task.Slug)
 		renamedFrom, renamedTo = r.From, r.Task.Slug
 	}
-	applyDraftRule(loaded, store.tasks)
+	applyDraftRule(loaded, store.tasks, released)
 	stampDates(loaded, store.tasks, now, promotedSlug)
 	assignHandles(store.tasks, store.vocab)
 	// A returned entry was copied before the stamp, so it is read again to carry its dates and handle.
@@ -149,7 +162,10 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 	if err := checkProjectRules(loaded, store.Tasks(), store.pairExists); err != nil {
 		return nil, err
 	}
-	if err := checkNewSlugs(loaded, store.Tasks(), renamedTo, b.validateSlug); err != nil {
+	if err := checkDiscussedPromotion(loaded, store.Tasks(), b.recordStored); err != nil {
+		return nil, err
+	}
+	if err := checkNewSlugs(loaded, store.Tasks(), renamedTo, b.validateSlug, raddleStore, raddleStoreErr); err != nil {
 		return nil, err
 	}
 	if err := checkTaskCreation(b.strandName, loaded, store.Tasks()); err != nil {
@@ -391,8 +407,16 @@ func (b *Board) ListTasksFull() ([]Task, error) {
 // Promote makes the entry identified by idOrSlug a task under the write lock.
 // An entry that is already a task is returned unchanged without a write.
 func (b *Board) Promote(idOrSlug any) (Task, error) {
+	return b.PromoteTo(idOrSlug, "")
+}
+
+// PromoteTo makes the entry identified by idOrSlug a task under the write lock, setting its recipe to recipe in the same write when recipe is not empty.
+// An entry that is already a task is returned unchanged without a write.
+// Promoting a discussed note whose decision record is stored with the raddle recipe keeps the record and the flag, restores the sketch label a note write dropped, and releases the task in the same write.
+// A Sketch becomes a task only through that promotion; any other promotion of it is refused, naming `lym board promote <slug> --recipe raddle`.
+func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
-		task, changed, err := store.Promote(idOrSlug)
+		task, changed, err := store.promoteTo(idOrSlug, recipe, b.recordStored)
 		if err != nil {
 			return nil, err
 		}

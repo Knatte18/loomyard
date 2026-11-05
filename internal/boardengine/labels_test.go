@@ -6,18 +6,52 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
 func TestValidateLabels(t *testing.T) {
 	tiergate.Require(t, 0)
-	vocab := Vocabulary{Types: []string{"bug", "enhancement"}, Labels: []string{"undecided", "area"}}
+	vocab := Vocabulary{Types: []string{"bug", "enhancement", SketchType}, Labels: []string{"undecided", "area"}}
 
 	tests := []struct {
 		name    string
 		task    Task
+		prior   *Task    // the snapshot's entry of the same slug; nil for a new entry
 		wantErr []string // substrings the message must contain; nil means valid
 	}{
+		{
+			name: "sketch label on a raddle task",
+			task: Task{Slug: "t", Kind: KindTask, Recipe: shedrun.RecipeRaddle, Labels: []string{SketchType}},
+		},
+		{
+			name:    "sketch label on a darn task promoted from a discussed note",
+			task:    Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{SketchType}},
+			prior:   &Task{Slug: "t", Kind: KindNote, Discussed: true, Labels: []string{SketchType}},
+			wantErr: []string{`"t"`, "lym board promote t --recipe raddle"},
+		},
+		{
+			name:    "sketch label added to a darn task",
+			task:    Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{"bug", SketchType}},
+			prior:   &Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{"bug"}},
+			wantErr: []string{`"t"`, "lym board upsert"},
+		},
+		{
+			name:    "sketch label on a project",
+			task:    Task{Slug: "p", Kind: KindProject, Labels: []string{SketchType}},
+			wantErr: []string{`"p"`, "lym board upsert"},
+		},
+		{
+			name:  "legacy darn task keeps taking writes that leave its label, kind and recipe alone",
+			task:  Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{SketchType}, Brief: "edited"},
+			prior: &Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{SketchType}},
+		},
+		{
+			name:    "legacy darn task whose recipe changes",
+			task:    Task{Slug: "t", Kind: KindTask, Recipe: "tapestry", Labels: []string{SketchType}},
+			prior:   &Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{SketchType}},
+			wantErr: []string{`"t"`, "lym board upsert"},
+		},
 		{
 			name: "valid note",
 			task: Task{Slug: "n", Kind: KindNote, Labels: []string{"bug", "undecided"}},
@@ -54,7 +88,7 @@ func TestValidateLabels(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateLabels(tt.task, vocab)
+			err := validateLabels(tt.task, tt.prior, vocab)
 			if tt.wantErr == nil {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)

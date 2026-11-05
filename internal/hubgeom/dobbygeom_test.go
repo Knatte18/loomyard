@@ -109,7 +109,7 @@ func TestDobbyGeometry(t *testing.T) {
 					t.Fatalf("NamedWorktree(%q) = %v; want nil", tt.worktree, err)
 				}
 				paths := PawlPaths(beam)
-				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "ReopenRequest": paths.ReopenRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker} {
+				for name, path := range map[string]string{"LandRequest": paths.LandRequest, "ReopenRequest": paths.ReopenRequest, "DobbyStopMarker": paths.DobbyStopMarker, "AwaitMarker": paths.AwaitMarker, "HandOffMarker": paths.HandOffMarker} {
 					if filepath.Dir(path) != beamDir {
 						t.Errorf("PawlPaths(%q).%s = %q; want it directly under the dobby's directory %q", tt.worktree, name, path, beamDir)
 					}

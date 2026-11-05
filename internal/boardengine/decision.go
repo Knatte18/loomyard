@@ -62,6 +62,12 @@ func (b *Board) StoreDecisionRecord(slug string, record []byte) error {
 	return err
 }
 
+// recordStored reports whether the decision record file of the entry slug exists in the board directory.
+func (b *Board) recordStored(slug string) bool {
+	_, err := os.Stat(filepath.Join(b.boardPath, DecisionFileName(slug)))
+	return err == nil
+}
+
 // DecisionRecord returns the decision record of the entry selector names, a slug string, a numeric id or a Handle, reading without the lock.
 // found is true only when the entry exists, carries the discussed flag and its record file exists;
 // an absent entry, an unflagged one and a flagged one with no file each answer false.

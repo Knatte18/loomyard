@@ -17,10 +17,18 @@ type SessionUsage struct {
 	ForkFresh int64
 	// ForkCacheRead is the part of CacheRead the forks account for.
 	ForkCacheRead int64
+	// SplitKnown is true when the provider read the four counts apart, Input, CacheWrite, CacheRead and Output, forks included; those four are zero otherwise.
+	SplitKnown bool
+	// Input is the uncached input tokens of the session and its forks.
+	Input int64
+	// CacheWrite is the cache-creation tokens of the session and its forks.
+	CacheWrite int64
+	// Output is the output tokens of the session and its forks.
+	Output int64
 }
 
 // UsageReader is an optional capability beside Engine: the provider's reading of a finished session's tokens.
-// Run.finalize reads it for a done run, and an Engine without it leaves Result.Usage unknown.
+// Run.finalize reads it at every terminal outcome, and an Engine without it leaves Result.Usage unknown.
 type UsageReader interface {
 	// SessionUsage returns the token reading of session sessionID, recorded under the pane cwd workdir, forks included.
 	// It never errors: a session it cannot read yields the unknown reading.

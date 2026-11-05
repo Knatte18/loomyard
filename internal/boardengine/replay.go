@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -40,7 +41,7 @@ type FabricReplay struct{}
 // Name returns the replayer's registry name.
 func (FabricReplay) Name() string { return "board" }
 
-// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board: the entry store, a rendered overview file, a design file or a decision record.
+// Claims reports whether path, a Bolt-root-relative slash path, is a file of the board: the entry store, a rendered overview file, a design file, a decision record or a file of a raddle store directory.
 func (FabricReplay) Claims(path string) bool {
 	if path == boardFile || isBoardOverview(path) {
 		return true
@@ -48,8 +49,24 @@ func (FabricReplay) Claims(path string) bool {
 	if _, design := boardDesignSlug(path); design {
 		return true
 	}
-	_, record := boardRecordSlug(path)
-	return record
+	if _, record := boardRecordSlug(path); record {
+		return true
+	}
+	_, store := raddleStorePath(path)
+	return store
+}
+
+// raddleStorePath reports whether path, a Bolt-root-relative slash path, is a file directly in a raddle store directory, `raddle/<sketch>/<name>` with no deeper segment, and returns the Sketch slug.
+func raddleStorePath(path string) (sketch string, ok bool) {
+	rest, found := strings.CutPrefix(path, raddleStoreDirName+"/")
+	if !found {
+		return "", false
+	}
+	sketch, name, found := strings.Cut(rest, "/")
+	if !found || sketch == "" || name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+	return sketch, true
 }
 
 // File returns the Bolt file holding the board's entries, the run ledger's file.
@@ -281,12 +298,16 @@ type replayRun struct {
 	origin      []Task
 	base        map[string]Task
 	refusedAdds map[string]bool
-	result      fabricengine.ReplayResult
-	applied     bool
+	// lostAdds holds the slugs of the added entries origin already held under a different entry, whose add was reported lost.
+	lostAdds map[string]bool
+	result   fabricengine.ReplayResult
+	applied  bool
 }
 
-// Apply re-applies the request's commit onto the board directory by entry, design file and decision record, reading the entry store, the design files and the decision records out of its files by path, and reports what it kept and what it set aside.
+// Apply re-applies the request's commit onto the board directory by entry, design file, decision record and raddle store file, reading the entry store, the design files, the decision records and the store files out of its files by path, and reports what it kept and what it set aside.
 // A decision record the commit writes for an entry origin does not hold is reported lost and not written; every other record file lands by the design-file rule.
+// A raddle store file lands by the same rule, unless the commit's store.json of its directory records as filed an entry whose add was refused or lost:
+// the directory's files are then all set aside and reported refused, naming the Sketch and that its staged store and part records stay in the raddle run's own committed `_lym/raddle/` records, so origin never holds a done marker without the entries it marks.
 // It loads the board config from the request's directory and a store from origin's board.json there, and applies each change of the commit against its parent on its own, against the board as the kept changes before it left it.
 // The hub's prime_owner record replays like an entry field, reported lost under the entry name prime.
 // Where both sides changed the same field of an entry or the same design file since the merge base, or the change touches an entry origin removed, origin's side is kept for that change and it is reported lost.
@@ -303,6 +324,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 
 	var baseJSON, parentJSON, commitJSON []byte
 	var designFiles, recordFiles []fabricengine.ReplayFile
+	storeFiles := map[string][]fabricengine.ReplayFile{}
 	for _, file := range req.Files {
 		if file.Path == boardFile {
 			baseJSON, parentJSON, commitJSON = file.Base, file.Before, file.After
@@ -310,6 +332,8 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 			designFiles = append(designFiles, file)
 		} else if _, record := boardRecordSlug(file.Path); record {
 			recordFiles = append(recordFiles, file)
+		} else if sketch, store := raddleStorePath(file.Path); store {
+			storeFiles[sketch] = append(storeFiles[sketch], file)
 		}
 	}
 
@@ -349,7 +373,7 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 	if err := store.Load(); err != nil {
 		return fabricengine.ReplayResult{}, err
 	}
-	run := &replayRun{store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}}
+	run := &replayRun{store: store, origin: cloneTasks(store.Tasks()), base: base, refusedAdds: map[string]bool{}, lostAdds: map[string]bool{}}
 
 	inCommit := make(map[string]bool, len(commitTasks))
 	for _, commit := range commitTasks {
@@ -393,6 +417,23 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		}
 		designsApplied = designsApplied || applied
 	}
+	// Store files go last, since whether a directory lands depends on how the adds of the entries it records went.
+	for _, sketch := range slices.Sorted(maps.Keys(storeFiles)) {
+		files := storeFiles[sketch]
+		if reason, setAside := run.storeSetAsideReason(files); setAside {
+			for _, file := range files {
+				run.refuse(file.Path, "raddle store", fmt.Errorf("%s, so the raddle store of Sketch %q is set aside: its staged store and part records stay in the raddle run's own committed `_lym/raddle/` records, from which `lym board upsert` re-files the parts that did not land once the clash is settled", reason, sketch))
+			}
+			continue
+		}
+		for _, file := range files {
+			applied, err := run.applyDesignFile(req.Dir, "raddle store file", file)
+			if err != nil {
+				return fabricengine.ReplayResult{}, err
+			}
+			designsApplied = designsApplied || applied
+		}
+	}
 
 	run.result.Empty = !run.applied && !designsApplied
 	if run.result.Empty {
@@ -408,6 +449,30 @@ func (FabricReplay) Apply(req fabricengine.ReplayRequest) (fabricengine.ReplayRe
 		return fabricengine.ReplayResult{}, fmt.Errorf("render: %w", err)
 	}
 	return run.result, nil
+}
+
+// storeSetAsideReason reports whether the files of one raddle store directory are set aside, with the reason.
+// They are when the commit's store.json among them records as filed an entry whose add was refused or lost, since the store is the done marker of the entries it names.
+// A store.json that cannot be decoded sets them aside too, since origin would then refuse every slug-making write.
+func (r *replayRun) storeSetAsideReason(files []fabricengine.ReplayFile) (string, bool) {
+	for _, file := range files {
+		if filepath.Base(file.Path) != raddleStoreFileName || file.After == nil {
+			continue
+		}
+		var record RaddleStoreEntry
+		if err := json.Unmarshal(file.After, &record); err != nil {
+			return fmt.Sprintf("its store.json cannot be decoded: %v", err), true
+		}
+		for _, slug := range record.Filed {
+			switch {
+			case r.refusedAdds[slug]:
+				return fmt.Sprintf("the add of filed entry %q was refused", slug), true
+			case r.lostAdds[slug]:
+				return fmt.Sprintf("the add of filed entry %q was lost to the entry origin holds", slug), true
+			}
+		}
+	}
+	return "", false
 }
 
 func (r *replayRun) lost(entry, field, reason, local string) {
@@ -443,6 +508,7 @@ func (r *replayRun) refusedDependency(entry Task) (string, bool) {
 func (r *replayRun) addEntry(commit Task) {
 	if origin, _, held := r.originEntry(commit.Slug); held {
 		for _, clash := range replayFields.AddClash(origin, commit) {
+			r.lostAdds[commit.Slug] = true
 			r.lost(clash.Entry, clash.Field, clash.Reason, clash.Local)
 		}
 		return
@@ -565,11 +631,13 @@ func (r *replayRun) removeEntry(before Task) {
 	r.applied = true
 }
 
-// applyDesignFile writes the commit's side of one design file or decision record into boardDir when origin's file is still as the merge base or the commit's parent had it, and reports whether it wrote.
-// It serves both kinds of file; label, "design file" or "decision record", is the kind a refusal, a loss or an error names.
+// applyDesignFile writes the commit's side of one design file, decision record or raddle store file into boardDir when origin's file is still as the merge base or the commit's parent had it, and reports whether it wrote.
+// It serves the three kinds of file; label, "design file", "decision record" or "raddle store file", is the kind a refusal, a loss or an error names.
+// A design file or decision record is a plain file name, and a store file a path directly in a store directory; a path of any other shape is refused.
 // A file origin changed too stays as origin holds it and is reported lost.
 func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.ReplayFile) (bool, error) {
-	if file.Path == "" || file.Path != filepath.Base(file.Path) {
+	_, inStore := raddleStorePath(file.Path)
+	if file.Path == "" || (!inStore && file.Path != filepath.Base(file.Path)) {
 		r.refuse(file.Path, label, fmt.Errorf("%s name %q is not a plain file name", label, file.Path))
 		return false, nil
 	}
@@ -591,6 +659,10 @@ func (r *replayRun) applyDesignFile(boardDir, label string, file fabricengine.Re
 	if file.After == nil {
 		if err := os.Remove(path); err != nil {
 			return false, fmt.Errorf("remove %s: %w", label, err)
+		}
+		if inStore {
+			// Fails while the store directory still holds a file, which then stays.
+			_ = os.Remove(filepath.Dir(path))
 		}
 		return true, nil
 	}

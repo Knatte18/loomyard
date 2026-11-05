@@ -44,6 +44,9 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -51,6 +54,7 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry
@@ -59,7 +63,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "RecordWrite.ReadBody", "RecordWrite.Commit"}
+	darnSeams := []string{"DarnTable", "Darn.Commit", "Darn.LatestOutcome", "Darn.CommittedRecord", "RecordWrite.ReadBody", "RecordWrite.ReadStored", "RecordWrite.Commit"}
 
 	t.Run("a darn seed fills the darn seams, the verify source and the attempts", func(t *testing.T) {
 		t.Parallel()
@@ -388,6 +392,9 @@ func TestWire_DarnRecipe(t *testing.T) {
 //lym:seam internal/landingshed#ParentLockDeps
 //lym:seam internal/landingshed#PullRequestDeps
 //lym:seam internal/loomshed#DarnDeps
+//lym:seam internal/loomshed#RaddleCheck
+//lym:seam internal/loomshed#RaddleFileDeps
+//lym:seam internal/loomshed#RaddleWriteDeps
 //lym:seam internal/loomshed#RecordWriteDeps
 //lym:seam internal/loomshed#PRReworkDeps
 //lym:seam internal/loomshed#SamplerDeps
@@ -395,6 +402,7 @@ func TestWire_DarnRecipe(t *testing.T) {
 //lym:seam internal/pawlengine#Paths
 //lym:seam internal/shedadapters#CommandDeps
 //lym:seam internal/shedrecipe#Env
+//lym:seam internal/shedrecipe#RaddleWriteEnv
 //lym:seam internal/shuttleengine#Config
 //lym:seam internal/websterengine#Config
 //lym:seam internal/websterengine#Geometry

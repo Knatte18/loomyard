@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -207,6 +208,33 @@ func TestBootstrapCommitPaths(t *testing.T) {
 			t.Parallel()
 			if got := bootstrapCommitPaths(loc, tt.withFriction); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("bootstrapCommitPaths(loc, %v) = %v; want %v", tt.withFriction, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRunUsageRecord asserts the identity record of a run: the entry's own profile, the recipe's default for an entry naming none, a discussed entry starting from a stored record, and an absent entry recording neither profile nor stored record.
+func TestRunUsageRecord(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		entry          boardengine.Task
+		found          bool
+		defaultProfile string
+		want           shedrun.RunUsageRecord
+	}{
+		{"EntryWithItsOwnProfile", boardengine.Task{Profile: "fast"}, true, "careful", shedrun.RunUsageRecord{Recipe: "tapestry", Profile: "fast"}},
+		{"EntryWithNoProfileTakesTheDefault", boardengine.Task{}, true, "careful", shedrun.RunUsageRecord{Recipe: "tapestry", Profile: "careful"}},
+		{"DiscussedEntryStartsFromAStoredRecord", boardengine.Task{Discussed: true}, true, "", shedrun.RunUsageRecord{Recipe: "tapestry", StoredRecord: true}},
+		{"AbsentEntryRecordsNoProfile", boardengine.Task{Profile: "fast", Discussed: true}, false, "careful", shedrun.RunUsageRecord{Recipe: "tapestry"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := runUsageRecord("tapestry", tt.entry, tt.found, tt.defaultProfile); got != tt.want {
+				t.Errorf("runUsageRecord(%+v, %v, %q) = %+v; want %+v", tt.entry, tt.found, tt.defaultProfile, got, tt.want)
 			}
 		})
 	}

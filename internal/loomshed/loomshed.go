@@ -46,6 +46,11 @@ const (
 	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"
 
+	// NameRaddleWrite is the raddle recipe's row of the agent session that proposes the split of a Sketch.
+	NameRaddleWrite = "Raddle-Write"
+	// NameRaddleFile is the raddle recipe's Go row that files the approved proposal on the board.
+	NameRaddleFile = "Raddle-File"
+
 	NameDriftBaseline = "Drift-Baseline"
 	NameDriftAwait    = "Drift-Await"
 	NameDriftVerify   = "Drift-Verify"

@@ -76,6 +76,13 @@ func stepPromote(t *testing.T, f *cliFixture) {
 		t.Fatalf("promote by id: task = %v, want q as a task", task)
 	}
 
+	// --recipe sets the recipe in the promoting write.
+	mustUpsert(t, `{"slug":"r","title":"R","labels":["bug"]}`)
+	task = runJSON(t, 0, "promote", `{"slug":"r"}`, "--recipe", "darn")["task"].(map[string]any)
+	if task["kind"] != "task" || task["recipe"] != "darn" {
+		t.Fatalf("promote --recipe darn: task = %v, want r as a darn task", task)
+	}
+
 	// Demotion goes through upsert.
 	task = runJSON(t, 0, "upsert", `{"slug":"p","kind":"note"}`)["task"].(map[string]any)
 	if task["kind"] != "note" {
@@ -104,6 +111,30 @@ func stepPromote_Refusals(t *testing.T, f *cliFixture) {
 
 	if exitCode, _ := runCLI(t, "promote"); exitCode != 1 {
 		t.Fatalf("promote with no payload: exit %d, want 1", exitCode)
+	}
+}
+
+// stepRaddle pins that raddle prints the stored proposal of a Sketch or a filed slug verbatim, and errors for a slug the raddle store does not hold, naming lym report raddle.
+func stepRaddle(t *testing.T, f *cliFixture) {
+	storeDir := boardengine.RaddleStoreDir(fabricengine.BoardDir(filepath.Dir(f.cwd)), "plan")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		t.Fatalf("create store directory: %v", err)
+	}
+	for name, content := range map[string]string{"store.json": `{"hash":"h","filed":["part"]}`, "proposal.yaml": "proposal: approved\n"} {
+		if err := os.WriteFile(filepath.Join(storeDir, name), []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	for _, slug := range []string{"plan", "part"} {
+		if exitCode, stdout := runCLI(t, "raddle", slug); exitCode != 0 || stdout != "proposal: approved\n" {
+			t.Errorf("raddle %s = exit %d, %q; want exit 0 and the stored proposal verbatim", slug, exitCode, stdout)
+		}
+	}
+
+	result := runJSON(t, 1, "raddle", "unheld")
+	if message, _ := result["error"].(string); !strings.Contains(message, "lym report raddle") {
+		t.Errorf("raddle unheld = %v; want an error naming lym report raddle", result)
 	}
 }
 
@@ -848,7 +879,7 @@ func stepProfiles(t *testing.T, f *cliFixture) {
 	if want := []string{"docs", "light", "solid", "speed", "wide"}; !slices.Equal(names, want) {
 		t.Errorf("profile names = %v, want %v", names, want)
 	}
-	if want := map[string]any{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light"}; !reflect.DeepEqual(result["defaults"], want) {
+	if want := map[string]any{"tapestry": "solid", "motif": "solid", "darn": "light", "pawl": "light", "raddle": "light"}; !reflect.DeepEqual(result["defaults"], want) {
 		t.Errorf("defaults = %v, want %v", result["defaults"], want)
 	}
 

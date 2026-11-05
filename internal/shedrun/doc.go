@@ -2,7 +2,7 @@
 // vocabulary (including the reserved literal "self"), and of the seed.json contract: the file that
 // records a run's chosen recipe, driver, and parameters at seed time.
 //
-// The recipe names a seed may hold are batten, darn, motif, pawl, sampler and tapestry (RecipeNames).
+// The recipe names a seed may hold are batten, darn, motif, pawl, raddle, sampler and tapestry (RecipeNames).
 // Motif, the recipe that makes a sketch, the decision record, runs alone and is also the tapestry recipe's Motif block.
 //
 // "Seed" here names one thing only -- the run-identity artefact this package reads and writes via
@@ -58,6 +58,14 @@
 //
 // TreeRunFileRels names a run's seed.json and status.json as slash-separated paths relative to a git tree, with no alias and no legacy fallback.
 // ParseSeed decodes seed bytes a caller read elsewhere, as ReadSeed does.
+//
+// The usage directory is declared here too.
+// UsageDirRel names the anchor-relative durable directory _lym/usage, and UsageDir its absolute form.
+// It holds three kinds of record file: session-<session id>.json, a SessionUsageRecord per agent session that WriteSessionUsage writes and a later write of the same id replaces;
+// run.json, a RunUsageRecord holding the run's recipe, profile and stored-record flag, which WriteRunUsage writes;
+// and landed.json, a LandedSizeRecord holding the landed diff's size, which WriteLandedSize writes.
+// ParseRunUsage is the one reader of the directory's files, given as a name-to-bytes map.
+// Every record is written through internal/state and read tolerantly, so an unknown key is kept and never refused.
 //
 // Every constructor that returns an absolute path joins onto a told *lymcwd.Location's AnchorPath(), per the Cwd Resolution Invariant;
 // the *Rel constructors and TreeRunFileRels return relative paths, and no constructor resolves a cwd or spawns git.

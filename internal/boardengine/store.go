@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
+	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
@@ -424,7 +425,7 @@ func (s *Store) validateWrite(snapshot []Task, incoming Task) error {
 	}
 
 	if s.vocab != nil {
-		return validateLabels(incoming, *s.vocab)
+		return validateLabels(incoming, snapshotIndex[incoming.Slug], *s.vocab)
 	}
 	return nil
 }
@@ -757,6 +758,13 @@ func (s *Store) ListTasksBrief(labels []string) []BriefTask {
 // A project is refused, since only a task is claimable bar a beam's landing.
 // The promoted entry passes validateWrite, so a missing type label refuses it.
 func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
+	return s.promoteTo(idOrSlug, "", nil)
+}
+
+// promoteTo is Promote with the recipe set in the same write when recipe is not empty.
+// With recipe raddle, a discussed note whose decision record recordStored reports stored keeps its record and flag and gets the sketch label back when a note write dropped it.
+// A nil recordStored reports no record stored.
+func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug string) bool) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
 		return Task{}, false, fmt.Errorf("task not found: %v", idOrSlug)
@@ -771,6 +779,12 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 	incoming := current
 	incoming.Kind = KindTask
 	incoming.Priority = ""
+	if recipe != "" {
+		incoming.Recipe = recipe
+	}
+	if recipe == shedrun.RecipeRaddle && current.Discussed && recordStored != nil && recordStored(current.Slug) && !slices.Contains(incoming.Labels, SketchType) {
+		incoming.Labels = append([]string{SketchType}, incoming.Labels...)
+	}
 	if err := s.validateWrite(s.tasks, incoming); err != nil {
 		return Task{}, false, err
 	}

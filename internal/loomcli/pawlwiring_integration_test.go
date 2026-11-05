@@ -97,9 +97,9 @@ func TestPawlRetiredMove_CarriesTheScratchPullRequestIntoTheLandingRecord(t *tes
 			statuses = append(statuses, producer)
 			return nil
 		},
-		Notify: func(line string) error {
+		Notify: func(line string) (bool, error) {
 			notices = append(notices, line)
-			return nil
+			return true, nil
 		},
 	}
 	records := fabricengine.RecordsWorktree(beam)

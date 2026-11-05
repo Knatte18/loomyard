@@ -35,6 +35,9 @@ func TestReportVerbs_RefuseBadFlags(t *testing.T) {
 		{"timing: a since date with no such month", "timing", []string{"--since", "2026-13-01"}, []string{"--since", "2026-13-01", "YYYY-MM-DD"}},
 		{"timing: a bucket that is neither day nor week", "timing", []string{"--by", "month"}, []string{"--by", "month", "day", "week"}},
 		{"timing: a format that is neither json nor markdown", "timing", []string{"--format", "yaml"}, []string{"--format", "yaml", "json", "markdown"}},
+		{"cost: a since date with no such month", "cost", []string{"--since", "2026-13-01"}, []string{"--since", "2026-13-01", "YYYY-MM-DD"}},
+		{"cost: a format that is neither json nor markdown", "cost", []string{"--format", "yaml"}, []string{"--format", "yaml", "json", "markdown"}},
+		{"raddle: a format that is neither json nor markdown", "raddle", []string{"--format", "yaml"}, []string{"--format", "yaml", "json", "markdown"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

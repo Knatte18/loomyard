@@ -292,7 +292,17 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 	}
 
 	parentFresh, parentCacheRead := parent.tokens()
-	reading := shuttleengine.SessionUsage{Known: true, Fresh: int64(parentFresh), CacheRead: int64(parentCacheRead)}
+	reading := shuttleengine.SessionUsage{Known: true, SplitKnown: true, Fresh: int64(parentFresh), CacheRead: int64(parentCacheRead)}
+	addSplit := func(transcript parsedTranscript) {
+		for _, message := range transcript.entries {
+			if message.Usage != nil {
+				reading.Input += int64(message.Usage.Input)
+				reading.CacheWrite += int64(message.Usage.CacheWrite)
+				reading.Output += int64(message.Usage.Output)
+			}
+		}
+	}
+	addSplit(parent)
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
 			continue
@@ -302,6 +312,7 @@ func (c *Claude) SessionUsage(sessionID, workdir string) shuttleengine.SessionUs
 			return shuttleengine.SessionUsage{}
 		}
 		forkFresh, forkCacheRead := fork.tokens()
+		addSplit(fork)
 		reading.Forks++
 		reading.ForkFresh += int64(forkFresh)
 		reading.ForkCacheRead += int64(forkCacheRead)
