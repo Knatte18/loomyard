@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/spf13/cobra"
 )
@@ -114,6 +115,9 @@ type orchCLI struct {
 	// startDobby starts this worktree's dobby when it is not live and reports its outcome; nil starts none, as in a hand-built harness.
 	// Its failure never stops the bring-up: it becomes a warning.
 	startDobby func() (dobbyengine.StartEntry, error)
+	// startRelay starts the hub's Slack relay when it is down and reports the outcome; nil, for a beam and in a hand-built harness, starts none.
+	// Its failure never stops the bring-up: it becomes a warning.
+	startRelay func() (slackengine.StartOutcome, error)
 	// dobbyLive reports whether this worktree's dobby holds its lock; nil leaves the dobby alone on a bring-down.
 	dobbyLive func() (bool, error)
 	// endDobby ends this worktree's dobby and the processes below it, and no other process of the beam.
@@ -248,6 +252,7 @@ func wireCLI(c *orchCLI, location *lymcwd.Location) error {
 	c.claimPrime = func() (string, string, error) { return claimPrimeFor(location) }
 	c.pauseOwned = installedOwnerPause()
 	c.startDobby = func() (dobbyengine.StartEntry, error) { return ensureDobbies(location) }
+	c.startRelay = relayStarter(location, beam)
 	c.dobbyLive = func() (bool, error) {
 		prime, err := resolvePrime(location)
 		if err != nil {

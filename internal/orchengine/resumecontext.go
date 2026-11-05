@@ -10,8 +10,8 @@ import (
 )
 
 // ResumeContext renders the one-line pointer the session-start hook delivers after a compaction, from the persisted state, and writes the delivery mark with now and the text.
-// A resuming phase with a pending pointer returns it verbatim;
-// a compacting phase renders the resume prompt naming the cycle's note, and every other phase the reload prompt naming the role alone.
+// A resuming phase with a pending pointer returns it verbatim, since the watcher stored it with the presence line already;
+// a compacting phase renders the resume prompt naming the cycle's note, and every other phase the reload prompt naming the role alone, each with the presence line while the presence is slack.
 // Every case but the verbatim one renders the role file first, with index as its command index, so the file the pointer names is current when the session reads it.
 // A missing state file, or a render failure, returns an error and writes no mark.
 func ResumeContext(p Paths, stencilsDir, index string, now time.Time) (string, error) {
@@ -35,6 +35,7 @@ func ResumeContext(p Paths, stencilsDir, index string, now time.Time) (string, e
 		if err != nil {
 			return "", err
 		}
+		text = WithPresence(p, text)
 	}
 	if err := WriteResumeMark(p, ResumeMark{At: now, Text: text}); err != nil {
 		return "", err

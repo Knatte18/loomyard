@@ -33,6 +33,7 @@
 // # Start prompt order
 //
 // A start resumes the session State.SessionID records, with the reload pointer, the one-line stencil that tells the session to read the role file and continue.
+// Every rendered pointer, the reload and resume pointers and a fresh launch's prompt alike, may carry the presence line appended to it while the hub's presence is slack, which `WithPresence` adds.
 // Only a launch with no session recorded, or whose resume failed to start, picks a fresh prompt, in a fixed order:
 //
 //  1. The resume stencil pointed at State.LastHandoff, when that file still exists.

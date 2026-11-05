@@ -1607,6 +1607,75 @@ func TestCreelCLI(t *testing.T) {
 		}
 	})
 
+	t.Run("a program client's ReadWait blocks until a post arrives, hands it to handle and acknowledges it", func(t *testing.T) {
+		r, orch, location := orchRig(t)
+		program, err := NewProgramClient(location, "BATTEN")
+		if err != nil {
+			t.Fatalf("NewProgramClient() = %v", err)
+		}
+		// A program's mailbox is known once it has read.
+		if err := program.ReadAll(func([]creelengine.Message) error { return nil }); err != nil {
+			t.Fatalf("first ReadAll() = %v", err)
+		}
+		var read []creelengine.Message
+		done := make(chan error, 1)
+		go func() {
+			done <- program.ReadWait(time.Minute, func(messages []creelengine.Message) error {
+				read = messages
+				return nil
+			})
+		}()
+		strand, err := NewStrandClient(location, orch)
+		if err != nil {
+			t.Fatalf("NewStrandClient() = %v", err)
+		}
+		if _, err := strand.Post(r.short+":BATTEN", "wake up"); err != nil {
+			t.Fatalf("Post() = %v", err)
+		}
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("ReadWait() = %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("ReadWait did not return after a post")
+		}
+		if len(read) != 1 || read[0].Body != "wake up" {
+			t.Errorf("ReadWait handed %+v; want the one posted message", read)
+		}
+		if err := program.ReadAll(func(messages []creelengine.Message) error {
+			if len(messages) > 0 {
+				t.Errorf("ReadAll after ReadWait handed %+v; want nothing unread", messages)
+			}
+			return nil
+		}); err != nil {
+			t.Fatalf("second ReadAll() = %v", err)
+		}
+	})
+
+	// The refusal rests on the daemon's Linux peer walk, so the row exists on Linux only.
+	if runtime.GOOS == "linux" {
+		t.Run("a program client in a non-orch strand's pane is refused with an error matching ErrProgramClaimInStrandPane", func(t *testing.T) {
+			r := newRig(t)
+			strand := creelfake.LiveStrand(r.name("alpha:driver"))
+			strand.PanePID = os.Getpid()
+			r.delivery.SetStrands(strand)
+			r.startDaemon(t)
+			location, err := lymcwd.Resolve(r.cwd)
+			if err != nil {
+				t.Fatalf("Resolve(%q) = %v", r.cwd, err)
+			}
+			program, err := NewProgramClient(location, "BATTEN")
+			if err != nil {
+				t.Fatalf("NewProgramClient() = %v", err)
+			}
+			err = program.ReadAll(func([]creelengine.Message) error { return nil })
+			if !errors.Is(err, creelengine.ErrProgramClaimInStrandPane) {
+				t.Errorf("ReadAll() from a non-orch strand's pane = %v; want an error matching ErrProgramClaimInStrandPane", err)
+			}
+		})
+	}
+
 	t.Run("a program client's withdraw removes its queued inject and the log names the reason", func(t *testing.T) {
 		r, orch, location := orchRig(t)
 		r.delivery.SetIdle(orch, false)

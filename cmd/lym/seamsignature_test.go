@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reportcli"
 	"github.com/Knatte18/loomyard/internal/selfreportcli"
 	"github.com/Knatte18/loomyard/internal/shuttlecli"
+	"github.com/Knatte18/loomyard/internal/slackcli"
 	"github.com/Knatte18/loomyard/internal/stencilcli"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/webstercli"
@@ -47,6 +48,7 @@ var _ = []func(io.Writer, []string) int{
 	reportcli.RunCLI,
 	selfreportcli.RunCLI,
 	shuttlecli.RunCLI,
+	slackcli.RunCLI,
 	stencilcli.RunCLI,
 	webstercli.RunCLI,
 }
@@ -73,6 +75,7 @@ var _ = []func(string, io.Writer, []string) int{
 	reedcli.RunCLIIn,
 	reportcli.RunCLIIn,
 	shuttlecli.RunCLIIn,
+	slackcli.RunCLIIn,
 	stencilcli.RunCLIIn,
 	webstercli.RunCLIIn,
 }

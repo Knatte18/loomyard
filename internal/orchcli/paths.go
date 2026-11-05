@@ -4,6 +4,7 @@
 package orchcli
 
 import (
+	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/orchroute"
@@ -17,7 +18,12 @@ func PrimePaths(location *lymcwd.Location) orchengine.Paths {
 	return orchPaths(location)
 }
 
-// orchPaths returns every path orch operates on, rooted at location's anchor.
+// orchPaths returns every path orch operates on, rooted at location's anchor, and the hub's presence record the rendered pointers read.
+// A hub whose Slack geometry cannot be built leaves the presence path empty, which reads as no presence line.
 func orchPaths(location *lymcwd.Location) orchengine.Paths {
-	return orchroute.Paths(location)
+	paths := orchroute.Paths(location)
+	if geometry, err := hubgeom.SlackGeometry(location.HubPath); err == nil {
+		paths.SlackPresencePath = geometry.PresencePath
+	}
+	return paths
 }

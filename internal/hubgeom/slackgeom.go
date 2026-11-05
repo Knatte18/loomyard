@@ -1,0 +1,49 @@
+// slackgeom.go builds the geometry the Slack engine is told for one hub.
+
+package hubgeom
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/lymdirs"
+	"github.com/Knatte18/loomyard/internal/slackengine"
+)
+
+// SlackGeometry builds the slackengine.Geometry of the hub at hubPath.
+// A hub with no recorded shortname is the error CreelGeometry returns for it.
+// The token path lies in the per-user credential directory, and a machine where none resolves is an error naming the environment variables that decide it.
+func SlackGeometry(hubPath string) (slackengine.Geometry, error) {
+	creel, err := CreelGeometry(hubPath, "")
+	if err != nil {
+		return slackengine.Geometry{}, err
+	}
+	credentialDir, ok := githubclient.CredentialDir()
+	if !ok {
+		return slackengine.Geometry{}, errors.New("slack: no per-user directory for the token file; way forward: set HOME, XDG_CONFIG_HOME or LOCALAPPDATA")
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return slackengine.Geometry{}, fmt.Errorf("slack: find the running lym binary: %w", err)
+	}
+	dir := filepath.Join(fabricengine.HubScratchDir(hubPath), lymdirs.SlackDirName)
+	return slackengine.Geometry{
+		HubPath:        hubPath,
+		Shortname:      creel.Shortname,
+		Dir:            dir,
+		TokenPath:      filepath.Join(credentialDir, slackengine.TokenFileName),
+		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
+		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
+		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),
+		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
+		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
+		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
+		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
+		RunProcDir:     fabricengine.RunProcDir(hubPath),
+		LymExecutable:  executable,
+	}, nil
+}

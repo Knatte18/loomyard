@@ -62,6 +62,10 @@ var excludedModules = []scankit.Entry{
 		Key: "heddle",
 		Why: "set and remove start the board's detached Bolt sync and render writes into a worktree root; exercised by internal/heddlecli's own hubforge tests instead",
 	},
+	{
+		Key: "slack",
+		Why: "its relay calls the live Slack Web API with the machine's bot token, which no sandbox scenario may reach; exercised by internal/slackcli's and internal/slackengine's own tests instead",
+	},
 }
 
 // TestSandboxCoverage_AllModulesCoveredOrExcluded asserts every module is covered or excluded.

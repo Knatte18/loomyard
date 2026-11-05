@@ -1,6 +1,6 @@
 # PATTERN-child-processes
 
-A started process is logged at its spawn, waited on by its starter, and, when it belongs to a run, registered in `internal/runproc` and ended only through it.
+A started process is logged at its spawn, waited on by its starter, bar a double fork's intermediate, which exits at once, and, when it belongs to a run, registered in `internal/runproc` and ended only through it.
 
 ## Spawn observability
 
@@ -25,7 +25,7 @@ Rule: A run's processes: registered in `internal/runproc`, ended only via `runpr
 
 Every detached or long-lived process lym starts for a run joins one owner record, and a run's processes are ended only through `runproc`'s `End`, `EndSparing` or `EndRole`.
 
-- The record lives in `internal/runproc`, one file per process under the run's slug, or under `runproc.HubOwner` for a process that belongs to the hub: a detached board sync.
+- The record lives in `internal/runproc`, one file per process under the run's slug, or under `runproc.HubOwner` for a process that belongs to the hub: a detached board sync or the Slack relay.
 - A spawner registers a child it starts with `runproc.ChildRecord`; a process that runs for a run registers itself with `runproc.SelfRecord`, under a role the package names.
 - `End`, `EndSparing` and `EndRole` alone end the processes an owner holds, and every verb that ends or tears down a run calls one with the caller's own pid, so the caller and its ancestors are spared.
   `EndSparing` leaves named roles alone, and `EndRole` ends one role's records under an owner with `End`'s sequence, so the rest of the owner's processes go on.
@@ -40,4 +40,8 @@ Every detached or long-lived process lym starts for a run joins one owner record
 
 ## Reap children
 
-Rule: Starting a child process: its starter waits on it, by `cmd.Wait` or `proc.Reap`, never only releasing it; a process that re-execs itself calls `proc.ReapInheritedChildren` before it starts a child.
+Rule: Starting a child process: its starter waits on it, by `cmd.Wait` or `proc.Reap`, never only releasing it, bar a double fork's intermediate, which exits at once; a process that re-execs itself calls `proc.ReapInheritedChildren` before it starts a child.
+
+The exception lets the intermediate of a double fork start the real process in a new session and exit without waiting on it, so the process is reparented out of the starter's tree (the Slack relay, D3).
+The starter still waits on the intermediate.
+The released process is reaped by whatever it is reparented to, which rests on no lym process being a child subreaper.

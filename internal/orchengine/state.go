@@ -37,6 +37,9 @@ type Paths struct {
 	RolePath         string // Role file rendered from the orch role before every delivery.
 	NoteTemplatePath string // Note template file rendered before every note request.
 	PrimeRoot        string // The prime's worktree root, which a relative note path resolves against.
+
+	// SlackPresencePath is the hub's presence record, which every rendered pointer reads; empty means no presence line.
+	SlackPresencePath string
 }
 
 // PendingStep is one post or inject the watcher persisted before sending it to creel.

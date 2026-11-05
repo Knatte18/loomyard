@@ -1,0 +1,1 @@
+remind_after_min: 30  # minutes between the orch's reminders while presence is slack; the channel, the operator and the token are never config, since `lym slack setup` and `lym slack login` write them

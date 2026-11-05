@@ -38,6 +38,9 @@ const (
 // CodeStrandClaimOutsidePane is the Response.Code of the refusal of a strand claim that names a listed strand from a process in no strand pane.
 const CodeStrandClaimOutsidePane = "strand-claim-outside-pane"
 
+// CodeProgramClaimInStrandPane is the Response.Code of the refusal of a program claim from the pane of a strand that is no orch's.
+const CodeProgramClaimInStrandPane = "program-claim-in-strand-pane"
+
 // maxRequestBytes bounds one request line: a 64 KiB body whose every byte is escaped fits.
 const maxRequestBytes = 1 << 20
 

@@ -41,6 +41,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shedbuild"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/tendercli"
 	"github.com/Knatte18/loomyard/internal/tenderengine"
 )
@@ -197,7 +198,10 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		if err != nil {
 			return dobbyengine.Deps{}, err
 		}
-		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) { return false, carrier.Tick() }
+		var relayEpisodes logger.EpisodeSet
+		deps.Tick = func(context.Context, dobbyengine.TickInput) (bool, error) {
+			return false, errors.Join(carrier.Tick(), ensureSlackRelay(prime, &relayEpisodes))
+		}
 		deps.CheckBinary = holdReexec(carrier.HoldsReexec, deps.CheckBinary)
 	}
 	if geom.Slug != "" {
@@ -283,6 +287,29 @@ func holdReexec(holds func() bool, check func(beforeExec func(), failed func(err
 		}
 		check(beforeExec, failed)
 	}
+}
+
+// slackRelayGaveUpEpisode is the episode key of a start of the Slack relay that gave up.
+const slackRelayGaveUpEpisode = "slack-relay-gave-up"
+
+// ensureSlackRelay brings the hub's Slack relay back on a tick of the prime's dobby, while the operator is away.
+// It starts nothing for a hub with no Slack setup and nothing while the presence is terminal.
+// A start that gave up, because the relay died young five starts in a row, is logged at Warn once per episode through episodes and is no error, so the tick goes on.
+func ensureSlackRelay(prime *lymcwd.Location, episodes *logger.EpisodeSet) error {
+	geometry, err := hubgeom.SlackGeometry(prime.HubPath)
+	if err != nil {
+		return err
+	}
+	outcome, err := slackengine.EnsureRelayWhileAway(geometry, prime.WorktreeName)
+	if err != nil {
+		return err
+	}
+	if outcome != slackengine.OutcomeGaveUp {
+		episodes.Recover(slackRelayGaveUpEpisode, "beamcli: the Slack relay start no longer gives up")
+		return nil
+	}
+	episodes.Fail(slackRelayGaveUpEpisode, "beamcli: the Slack relay start gave up after the relay died young five starts in a row; way forward: read the relay log, then run `lym slack start`", "log", geometry.LogPath)
+	return nil
 }
 
 // beamLandReading reads whether the beam slug can land, which it can once it is flagged ready and nothing works under it, and, for a beam that can, which other machine owns its parent and what `lym adopt` takes to move it.

@@ -26,6 +26,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -99,6 +100,73 @@ func TestHubDobbyDeps_PrimeTidyShuttle(t *testing.T) {
 		if got, want := notices.MarkerPath("task1"), shedrun.NoticeEpisodeFile(prime, "task1"); got != want {
 			t.Errorf("%s RunNotices.MarkerPath(task1) = %q; want %q", name, got, want)
 		}
+	}
+}
+
+// TestHubDobbyDeps_PrimeTickEnsuresRelay pins that the prime's tick starts the Slack relay while the presence is slack and the relay is down, and starts nothing in the states `lym slack stop` and a gave-up relay leave.
+// It redirects the credential directory with t.Setenv, which is process-global state, so it does not run in parallel.
+func TestHubDobbyDeps_PrimeTickEnsuresRelay(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPair(t, h, "task1")
+	prime := h.Location
+	geom, err := hubgeom.SlackGeometry(prime.HubPath)
+	if err != nil {
+		t.Fatalf("SlackGeometry = %v; want nil", err)
+	}
+	if err := slackengine.WriteToken(geom.TokenPath, "xoxb-test"); err != nil {
+		t.Fatalf("WriteToken = %v", err)
+	}
+	if err := slackengine.WriteSetup(geom.SetupPath, slackengine.Setup{ChannelID: "C1", OperatorID: "U1"}); err != nil {
+		t.Fatalf("WriteSetup = %v", err)
+	}
+	setPresence := func(presence slackengine.Presence) {
+		t.Helper()
+		if _, err := slackengine.WritePresence(geom.PresencePath, presence, time.Now()); err != nil {
+			t.Fatalf("WritePresence(%s) = %v", presence, err)
+		}
+	}
+
+	primeGeom, err := hubgeom.DobbyGeometry(prime, prime.WorktreeName)
+	if err != nil {
+		t.Fatalf("DobbyGeometry(prime) = %v; want nil", err)
+	}
+	primeDeps, err := hubDobbyDeps(prime, primeGeom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(prime) = %v; want nil", err)
+	}
+
+	setPresence(slackengine.PresenceSlack)
+	if inFlight, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); inFlight || !errors.Is(err, slackengine.ErrSpawnUnderTest) {
+		t.Errorf("prime Tick() with presence slack and no relay = %v, %v; want false and an error matching ErrSpawnUnderTest, which shows the tick reached the spawn", inFlight, err)
+	}
+
+	// A relay that died young five starts in a row is not started again, and that is no error of the tick.
+	if err := os.WriteFile(geom.RelayStatePath, []byte(`{"start_failures":5}`), 0o600); err != nil {
+		t.Fatalf("WriteFile(relay state) = %v", err)
+	}
+	if inFlight, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); inFlight || err != nil {
+		t.Errorf("prime Tick() with a relay that gave up = %v, %v; want false, nil", inFlight, err)
+	}
+
+	setPresence(slackengine.PresenceTerminal)
+	if inFlight, err := primeDeps.Tick(t.Context(), dobbyengine.TickInput{}); inFlight || err != nil {
+		t.Errorf("prime Tick() with presence terminal = %v, %v; want false, nil", inFlight, err)
+	}
+
+	beamGeom, err := hubgeom.DobbyGeometry(prime, "task1")
+	if err != nil {
+		t.Fatalf("DobbyGeometry(task1) = %v; want nil", err)
+	}
+	beamDeps, err := hubDobbyDeps(prime, beamGeom)
+	if err != nil {
+		t.Fatalf("hubDobbyDeps(beam) = %v; want nil", err)
+	}
+	if beamDeps.Tick != nil {
+		t.Error("beam Tick is set; want nil, since no beam's dobby starts the relay")
 	}
 }
 

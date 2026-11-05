@@ -29,7 +29,7 @@ An engine is handed the absolute paths it operates on and derives none of its ow
 
 ### Bound packages
 
-`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`.
+`internal/pattern`, `buildinfo`, `standalonestate`, `shedengine`, `sheddriver`, `shedarbiter`, `treadleengine`, `loomshed`, `landingshed`, `mergeresolve`, `shedrecipe`, `shedbuild`, `loomrecipe`, `planparser`, `planglyph`, `configengine`, `shuttleengine`, `shuttleengines`, `reedengine`, `burlerengine`, `websterengine`, `verifytree`, `cliwire`, `battenshed`, `battenrecipe`, `orchengine`, `parentlock`, `hubreconcile`, `reportengine`, `creelengine`, `dobbyengine`, `slackengine`.
 
 ### Detached runners
 

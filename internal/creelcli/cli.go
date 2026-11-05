@@ -34,7 +34,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/preflight"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
-	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
 // Exit codes beyond 0 for success and 1 for a refusal: the ways a waiting verb ends without the outcome the caller asked for.
@@ -960,10 +959,9 @@ func serveDaemon(ctx context.Context, hubPath string) error {
 	}
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	delivery := newHubDelivery(hubPath, shuttleengines.New)
 	return creelengine.Run(ctx, creelengine.Options{
 		Geometry:  geometry,
-		Delivery:  delivery,
+		Delivery:  newProductionHubDelivery(hubPath),
 		Clock:     realClock{},
 		ParentPID: proc.ParentPID,
 		GOOS:      runtime.GOOS,

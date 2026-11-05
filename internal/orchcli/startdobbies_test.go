@@ -13,6 +13,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/orchengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -32,6 +33,9 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 		wantFirst string
 		// wantWarning is the text the report's warnings name, empty for no warning.
 		wantWarning []string
+		// relay, when true, wires the relay seam, which answers relayErr; when false the start has no relay seam.
+		relay    bool
+		relayErr error
 	}{
 		{name: "a successful dobby start runs before the strand is launched", seam: true, entry: dobbyengine.StartEntry{Worktree: "main", Outcome: dobbyengine.OutcomeStarted}, wantFirst: "dobby"},
 		{
@@ -47,6 +51,15 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 		},
 		{name: "a resume start calls the seam first too", recorded: recordedTestSessionID, seam: true, entry: dobbyengine.StartEntry{Outcome: dobbyengine.OutcomeLive}, wantFirst: "dobby"},
 		{name: "a nil seam starts nothing"},
+		{
+			name: "a relay start runs once, after the dobby and before the strand", seam: true, relay: true,
+			entry: dobbyengine.StartEntry{Outcome: dobbyengine.OutcomeLive}, wantFirst: "dobby",
+		},
+		{
+			name: "a failing relay start warns naming lym slack start and still launches the strand", seam: true, relay: true,
+			entry: dobbyengine.StartEntry{Outcome: dobbyengine.OutcomeLive}, relayErr: errors.New("no per-user directory for the token file"), wantFirst: "dobby",
+			wantWarning: []string{"no per-user directory for the token file", "lym slack start"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -60,6 +73,12 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 				h.cli.startDobby = func() (dobbyengine.StartEntry, error) {
 					h.calls = append(h.calls, "dobby")
 					return tt.entry, tt.seamErr
+				}
+			}
+			if tt.relay {
+				h.cli.startRelay = func() (slackengine.StartOutcome, error) {
+					h.calls = append(h.calls, "relay")
+					return slackengine.OutcomeStarted, tt.relayErr
 				}
 			}
 
@@ -77,6 +96,18 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 			if count := slices.Index(h.calls, "dobby"); tt.seam && (count != 0 || slices.Contains(h.calls[1:], "dobby")) {
 				t.Errorf("calls = %v; want the dobby started once, before the window and the orch", h.calls)
 			}
+			wantOrder := []string{}
+			if tt.seam {
+				wantOrder = append(wantOrder, "dobby")
+			}
+			if tt.relay {
+				wantOrder = append(wantOrder, "relay")
+			}
+			wantOrder = append(wantOrder, "start")
+			stepsOfStart := slices.DeleteFunc(slices.Clone(h.calls), func(call string) bool { return !slices.Contains([]string{"dobby", "relay", "start"}, call) })
+			if !slices.Equal(stepsOfStart, wantOrder) {
+				t.Errorf("start steps = %v; want %v, so the relay runs once, after the dobby and before the strand, and a nil seam calls nothing", stepsOfStart, wantOrder)
+			}
 			if got, _ := env["dobby"].(string); got != tt.entry.Outcome {
 				t.Errorf("report dobby = %q; want %q", got, tt.entry.Outcome)
 			}
@@ -91,6 +122,17 @@ func TestStart_StartsTheDobbiesFirst(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("relayStarter answers nil for a beam and a starter for the prime", func(t *testing.T) {
+		t.Parallel()
+		location := &lymcwd.Location{HubPath: filepath.Join("hubs", "app.hub"), WorktreeName: "main", AnchorRel: "."}
+		if starter := relayStarter(location, true); starter != nil {
+			t.Error("relayStarter(beam) is not nil; want none, since a beam's bring-up never starts the hub's relay")
+		}
+		if starter := relayStarter(location, false); starter == nil {
+			t.Error("relayStarter(prime) is nil; want a starter")
+		}
+	})
 }
 
 // TestBringUpLocation pins that the prime's name brings up the prime without resolving anything, and that any other name brings up the location resolved from that worktree's directory.

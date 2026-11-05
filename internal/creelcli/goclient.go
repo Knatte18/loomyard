@@ -14,7 +14,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymtemp"
 )
 
-// goCallTimeout bounds every request a GoClient makes, so a caller under a lock waits at most this long per call.
+// goCallTimeout bounds every request a GoClient makes but a wait for mail, so a caller under a lock waits at most this long per call.
 const goCallTimeout = 30 * time.Second
 
 // GoClient calls the creel daemon of one hub as a program or as a strand.
@@ -97,6 +97,22 @@ func (c *GoClient) ReadAll(handle func([]creelengine.Message) error) error {
 		return handle(resp.Messages)
 	})
 	return err
+}
+
+// ReadWait blocks until the caller has unread mail, hands it to handle and acknowledges it only when handle returns nil, returning nil once the daemon confirmed the acknowledgement.
+// Its timeout, which the caller tells, bounds the wait for mail, the handler and the confirmation together, so an ErrWaitTimeout can follow a handler that ran.
+// A connection lost before or after the handler ran sends the read again, up to creelengine.MaxReconnects, so the handler can run a second time for mail it already saw.
+// A refused confirmation, the timeout and exhausted reconnects return their error; a handle error releases the read unacknowledged and is returned as is.
+func (c *GoClient) ReadWait(timeout time.Duration, handle func([]creelengine.Message) error) error {
+	_, err := c.client.Call(creelengine.Request{Verb: creelengine.VerbRead, Wait: true}, timeout, func(resp creelengine.Response) error {
+		return handle(resp.Messages)
+	})
+	return err
+}
+
+// HubStrands lists the strands of the hub at hubPath, live or not, the way the creel daemon lists them, so a caller reads the same strand set creel does.
+func HubStrands(hubPath string) ([]creelengine.Strand, error) {
+	return newProductionHubDelivery(hubPath).Strands()
 }
 
 // Inject queues text to be typed into receiver's pane at its next idle and returns the inject's id; a zero ttl takes the default.

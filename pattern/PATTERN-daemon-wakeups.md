@@ -36,7 +36,8 @@ An unbounded wait is a loop that lives as long as a run or a session and has no 
 - creel's removed-holder sweep in `internal/creelengine/sweep.go`, which runs while a strand holds unread mail, a queued inject or a read, marked, unanswered message, from 30 seconds doubling to 50 seconds while the strand-name set is unchanged, with a 10-second confirm after a first miss,
 - creel's chase timer in `internal/creelengine/chase.go`, which waits one `agedPersistInterval` while the holder's clock runs and doubles to `chaseProbeCeiling` while it is stopped, returning to the base on a running tick or a wake of the holder, and ends when the holder holds nothing chaseable,
 - creel's daemon poll in `internal/creelengine/server.go`, which asks once a second whether its binary was replaced and whether the UTC day changed,
-- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait`), which wait on their connection and reconnect from one second; the client's connect wait after a spawn also ends on the exit of the daemon it started, other than a lost start race.
+- creel's waiting verbs in `internal/creelengine/client.go` and `server.go` (`post --wait-reply`, `inject --wait`, `read --wait` and `hook-wait`), which wait on their connection and reconnect from one second; the client's connect wait after a spawn also ends on the exit of the daemon it started, other than a lost start race,
+- the Slack relay's loops in `internal/slackengine/relay.go`, the inbound poll and the outbound read, which each wait from five seconds and double to sixty while a pass finds nothing, returning to five on activity.
 
 A bounded wait that ends within a minute is outside the rule.
 

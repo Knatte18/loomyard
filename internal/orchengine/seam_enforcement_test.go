@@ -22,6 +22,7 @@ var orchengineAllowedImports = []string{
 	"github.com/Knatte18/loomyard/internal/fsx",
 	"github.com/Knatte18/loomyard/internal/pauserecord",
 	"github.com/Knatte18/loomyard/internal/shuttleengine",
+	"github.com/Knatte18/loomyard/internal/slackengine",
 	"github.com/Knatte18/loomyard/internal/state",
 	"github.com/Knatte18/loomyard/internal/lock",
 	"github.com/Knatte18/loomyard/internal/logger",

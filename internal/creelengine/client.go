@@ -245,8 +245,11 @@ func (c *Client) exchange(conn net.Conn, req Request, timer <-chan time.Time, st
 				return Response{}, fmt.Errorf("creel: the daemon on %s answers for the hub %s, not %s", c.geom.SocketPath, resp.HubPath, c.geom.HubPath)
 			}
 			if !resp.OK {
-				if resp.Code == CodeStrandClaimOutsidePane {
+				switch resp.Code {
+				case CodeStrandClaimOutsidePane:
 					return Response{}, &codedRefusal{message: resp.Error, sentinel: ErrStrandClaimOutsidePane}
+				case CodeProgramClaimInStrandPane:
+					return Response{}, &codedRefusal{message: resp.Error, sentinel: ErrProgramClaimInStrandPane}
 				}
 				return Response{}, errors.New(resp.Error)
 			}

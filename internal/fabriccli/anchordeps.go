@@ -34,6 +34,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 )
 
 // hibernateRequestFileName is the hibernate request file in the hub's hibernate directory.
@@ -267,6 +268,14 @@ func hubAnchorDeps(acting *lymcwd.Location) (anchorDeps, error) {
 				return err
 			}
 			return startDobbiesThroughBeamStart(primeLocation.WorktreeName, worktrees, beamStartChild(primeLocation))
+		},
+		StartRelay: func() error {
+			geometry, err := hubgeom.SlackGeometry(acting.HubPath)
+			if err != nil {
+				return err
+			}
+			_, err = slackengine.EnsureRelay(geometry, primeName)
+			return err
 		},
 		Begin: func(location *lymcwd.Location, target string) (anchorChange, error) {
 			cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))

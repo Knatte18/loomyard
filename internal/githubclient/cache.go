@@ -55,6 +55,12 @@ func cacheDir() (string, bool) {
 	return "", false
 }
 
+// CredentialDir returns the per-user lym directory the GitHub token cache lives in, where the Slack token file sits beside it.
+// It returns ("", false) when no usable environment variable is set.
+func CredentialDir() (string, bool) {
+	return cacheDir()
+}
+
 // credentialFilePath resolves the full path to the cache file, or ("", false)
 // when cacheDir itself cannot be resolved.
 func credentialFilePath() (string, bool) {

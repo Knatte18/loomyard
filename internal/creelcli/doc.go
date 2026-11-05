@@ -44,9 +44,14 @@
 // GoClient is the one Go-side caller of creel, so no other module builds a creel request by hand.
 // NewProgramClient signs as `<shortname>:<PROGRAM>` and claims no strand, whatever `$LYM_STRAND_NAME` holds, and NewStrandClient claims a strand and no program; the daemon's identity rules still decide who the caller is.
 // Both refuse a location outside a hub with the way forward, start the daemon through the spawn seam when none answers, and connect on the first call.
-// Every call passes a 30-second timeout, so a caller under a lock waits at most that long per call.
+// Every call but ReadWait passes a 30-second timeout, so a caller under a lock waits at most that long per call.
 // Post, Inject, InjectCommand, Hold, Release and Withdraw send the matching verb; withdraw has no CLI verb.
 // ReadAll reads every unread message without waiting and hands them to its handler before the client acknowledges them, so a handler error leaves them unread, and Log answers the journal entries matching a filter.
+// ReadWait blocks until the caller has unread mail, hands it to its handler and acknowledges it only when the handler returns nil, returning nil once the daemon confirmed the acknowledgement.
+// Its timeout, which the caller tells, bounds the wait for mail, the handler and the confirmation together, so an `ErrWaitTimeout` can follow a handler that ran.
+// A connection lost before or after the handler ran sends the read again, up to `creelengine.MaxReconnects`, so the handler can run a second time for mail it already saw.
+// A refused confirmation, the timeout and exhausted reconnects return their error; a handler error releases the read unacknowledged and is returned as is.
+// HubStrands lists a hub's strands the way the daemon does, so a caller reads the same strand set creel does.
 // The refusal of a strand claim from a process in no strand pane reaches a Go caller as an error matching `creelengine.ErrStrandClaimOutsidePane`, while the CLI prints it as any refusal.
 // The hub delivery in this package implements the engine's delivery seam over the hub's worktrees, reed's persisted state and shuttle.
 // Its Command operation runs a command inject through the worktree's shuttle runner: clear, compact with the argument as focus, reload-plugins, color with the argument as segment color, and load-skills with the argument's space-separated skills.

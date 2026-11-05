@@ -1,4 +1,4 @@
-// dirs.go declares the lym directory-name tokens: the two worktree-level directories, the Bolt checkout directory, the beam directory under a worktree's .lym and the pause directory under the board-level .lym.
+// dirs.go declares the lym directory-name tokens: the two worktree-level directories, the Bolt checkout directory, the beam directory under a worktree's .lym, the pause directory under the board-level .lym and the Slack directory under it.
 // internal/lymdirs is the sole declarer of each worktree-level literal and of the Bolt checkout's, enforced by TestEnforcement_GeometryLiterals in internal/lymcwd/enforcement_test.go.
 
 package lymdirs
@@ -24,6 +24,9 @@ const HibernateDirName = "hibernate"
 
 // CreelDirName is the directory under the hub's board-level DotLymDirName that holds creel's journal and the daemon lock.
 const CreelDirName = "creel"
+
+// SlackDirName is the directory under the hub's board-level DotLymDirName that holds the hub's Slack setup file, presence, cursor, outbound record, relay state, relay lock and relay log.
+const SlackDirName = "slack"
 
 // FailedPushDirName is the directory under the hub's board-level DotLymDirName that holds one failed-push record per repository side and branch.
 const FailedPushDirName = "failed-push"

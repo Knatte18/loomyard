@@ -28,6 +28,9 @@ const anchorPassPoll = 2 * time.Second
 // beamStartWayForward is the verb that starts the dobby a finished change could not.
 const beamStartWayForward = "lym beam start"
 
+// relayStartWayForward is the verb that starts the Slack relay a finished or failed prime move could not.
+const relayStartWayForward = "lym slack start"
+
 // anchorRequest is one call of the verb.
 type anchorRequest struct {
 	// Slug names the worktree, the prime by its worktree name; empty means the acting worktree.
@@ -52,6 +55,8 @@ type anchorResult struct {
 	PushError string
 	// DobbyStartError is the failure to start the worktree's dobby after a finished change, whose way forward is `lym beam start`.
 	DobbyStartError string
+	// RelayStartError is the failure to start the hub's Slack relay again after a finished prime move, which names `lym slack start`.
+	RelayStartError string
 	// Mutations is the record of what the call changed.
 	Mutations fabricengine.Mutations
 }
@@ -71,6 +76,9 @@ func (r anchorResult) fields() map[string]any {
 	if r.DobbyStartError != "" {
 		fields["dobby_start_error"] = r.DobbyStartError
 		fields["way_forward"] = beamStartWayForward
+	}
+	if r.RelayStartError != "" {
+		fields["relay_start_error"] = r.RelayStartError
 	}
 	return fields
 }
@@ -139,6 +147,8 @@ type anchorDeps struct {
 	EndDobbies func(worktrees []string, spare ...string) (ended []string, err error)
 	// EnsureDobbies brings up each worktree named, its dobby with its orch, as `lym beam start` does, and returns every refusal and failure.
 	EnsureDobbies func(worktrees []string) error
+	// StartRelay starts the hub's Slack relay when it is down, which the end of the prime's dobbies may have ended; a hub with no Slack setup starts none and is no error.
+	StartRelay func() error
 	// Begin begins the change of the worktree's anchor in the engine.
 	Begin func(location *lymcwd.Location, target string) (anchorChange, error)
 	// ReopenLog moves the process's trace sink to dir.
@@ -150,6 +160,7 @@ type anchorDeps struct {
 // The engine's own refusals follow, and a worktree already at the anchor is reported as such.
 // Otherwise it waits out the passes in flight, takes the parent lock, ends the dobbies, moves the worktree and starts the dobby again.
 // A failure before the record the engine wrote lands leaves nothing standing and restarts the dobbies; a failure with the record standing names the re-run of the same --set and starts none.
+// A move of the prime also starts the Slack relay again, which ending the dobbies ends too, on every path once the dobbies were ended, whatever dobbies it starts.
 func changeAnchor(ctx context.Context, deps anchorDeps, req anchorRequest) (anchorResult, error) {
 	slug := req.Slug
 	if slug == "" {
@@ -367,7 +378,19 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 
 	var releaseParentLock func()
 	var ended []string
-	// fail ends the verb on cause: it releases the parent lock, closes the change, and decides by the record that is left whether the dobbies it ended start again.
+	// relayMayBeEnded is set once the prime's move has called EndDobbies, which ends the hub's Slack relay with the dobbies and may do so before it fails.
+	relayMayBeEnded := false
+	// restartRelay starts the Slack relay again when this move may have ended it, and words a failure with the way forward.
+	restartRelay := func() error {
+		if !relayMayBeEnded {
+			return nil
+		}
+		if err := deps.StartRelay(); err != nil {
+			return fmt.Errorf("start the Slack relay again: %w; run `%s`", err, relayStartWayForward)
+		}
+		return nil
+	}
+	// fail ends the verb on cause: it releases the parent lock, closes the change, decides by the record that is left whether the dobbies it ended start again, and starts the Slack relay again when the move may have ended it.
 	fail := func(cause error) (anchorResult, error) {
 		if releaseParentLock != nil {
 			releaseParentLock()
@@ -377,16 +400,21 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 		result.Mutations = rec.Snapshot()
 		_, standing, readErr := deps.MoveRecord(location)
 		rerun := fmt.Sprintf("`lym fabric anchor %s --set %s`", slug, target)
+		failure := cause
 		switch {
 		case readErr != nil:
-			return result, fmt.Errorf("%w; whether the change record stands could not be read (%v), so no dobby is started: run %s again", cause, readErr, rerun)
+			failure = fmt.Errorf("%w; whether the change record stands could not be read (%v), so no dobby is started: run %s again", cause, readErr, rerun)
 		case standing:
-			return result, fmt.Errorf("%w; the change record stands, so no dobby is started: run %s again, which recovers it and starts the dobby", cause, rerun)
+			failure = fmt.Errorf("%w; the change record stands, so no dobby is started: run %s again, which recovers it and starts the dobby", cause, rerun)
+		default:
+			if startErr := startDobbies(deps, ended); startErr != nil {
+				failure = errors.Join(cause, fmt.Errorf("start the dobby again: %w; run `%s`", startErr, beamStartWayForward))
+			}
 		}
-		if startErr := startDobbies(deps, ended); startErr != nil {
-			return result, errors.Join(cause, fmt.Errorf("start the dobby again: %w; run `%s`", startErr, beamStartWayForward))
+		if relayErr := restartRelay(); relayErr != nil {
+			failure = errors.Join(failure, relayErr)
 		}
-		return result, cause
+		return result, failure
 	}
 
 	for {
@@ -408,6 +436,7 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 	}
 	releaseParentLock = release
 	if len(dobbies) > 0 {
+		relayMayBeEnded = slug == deps.Prime
 		ended, err = deps.EndDobbies(dobbies, runproc.RolePush, runproc.RoleSync)
 		if err != nil {
 			return fail(err)
@@ -446,6 +475,9 @@ func moveAnchor(ctx context.Context, deps anchorDeps, location *lymcwd.Location,
 	change.Close()
 	if startErr := startDobbies(deps, dobbies); startErr != nil {
 		result.DobbyStartError = startErr.Error()
+	}
+	if relayErr := restartRelay(); relayErr != nil {
+		result.RelayStartError = relayErr.Error()
 	}
 	result.Mutations = rec.Snapshot()
 	return result, nil
@@ -528,7 +560,8 @@ hibernate request is pending in the prime's dobby. It waits out the passes of th
 dobbies it ends, takes the parent lock of the worktree's branch, ends the worktree's
 dobby, or every dobby of this machine for the prime, and starts it again afterwards,
 reporting a start that failed as dobby_start_error with the way forward
-"lym beam start".
+"lym beam start". The prime's move starts the Slack relay again too, which ending
+the dobbies ends, reporting a failed start as relay_start_error.
 
 Start no session, hand pass or "lym beam dobby" in the worktree while it runs, and for
 the prime none in the hub: the verb holds no lock against them.

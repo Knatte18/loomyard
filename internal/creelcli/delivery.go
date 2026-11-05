@@ -62,6 +62,11 @@ func newHubDelivery(hubPath string, enginesFor func(shuttleengine.Config, config
 	}
 }
 
+// newProductionHubDelivery returns the Delivery of the hub at hubPath over every registered shuttle engine, the one the creel daemon runs.
+func newProductionHubDelivery(hubPath string) *hubDelivery {
+	return newHubDelivery(hubPath, shuttleengines.New)
+}
+
 // shuttleOps is a worktree's reed engine and the shuttle runner over it.
 type shuttleOps struct {
 	reed   *reedengine.Engine

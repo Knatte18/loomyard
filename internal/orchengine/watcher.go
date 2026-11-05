@@ -1204,7 +1204,7 @@ func (w *Watcher) startClearing(st State, now time.Time) error {
 		return w.toIdle(st, fmt.Sprintf("resume stencil %s failed to render: %v", resumeStencilName, err))
 	}
 	st.LastHandoff = st.PendingHandoff
-	st.PendingResume = resume
+	st.PendingResume = WithPresence(w.paths, resume)
 	_, err = w.enter(st, PhaseClearing, now)
 	return err
 }
@@ -1272,7 +1272,7 @@ func (w *Watcher) startAutoReload(st State, now time.Time) error {
 	}
 	st.PointerMarkSince = st.CompactionBaseline
 	st.CompactionBaseline = w.compactedAt
-	st.PendingResume = pointer
+	st.PendingResume = WithPresence(w.paths, pointer)
 	w.compactedAt = time.Time{}
 	return w.startReload(st, now, true)
 }
@@ -1511,7 +1511,7 @@ func (w *Watcher) reloadAfterCompaction(st State, now time.Time) error {
 	if err != nil {
 		return w.toIdle(st, fmt.Sprintf("resume stencil %s failed to render: %v", resumeStencilName, err))
 	}
-	st.PendingResume = resume
+	st.PendingResume = WithPresence(w.paths, resume)
 	return w.startReload(st, now, true)
 }
 

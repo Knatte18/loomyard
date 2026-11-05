@@ -47,6 +47,9 @@
 // Go's permission bits -- see cache_windows.go). That is a real, accepted
 // cost of the non-blocking property below, not an oversight.
 //
+// The package also names that directory, through CredentialDir, for the Slack credential file.
+// internal/slackengine alone reads and writes that file; this package resolves no Slack token itself.
+//
 // # Why WithAuthToken is banned
 //
 // Exactly one layer owns the Authorization header: authRT (transport.go),

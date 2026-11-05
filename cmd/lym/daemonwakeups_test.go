@@ -49,6 +49,7 @@ var unboundedWaitFiles = []string{
 	"internal/creelengine/chase.go",
 	"internal/creelengine/server.go",
 	"internal/creelengine/client.go",
+	"internal/slackengine/relay.go",
 }
 
 // oneShotMarker opens the comment that lets a sub-second literal through on its own line, followed by the reason.

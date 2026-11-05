@@ -8,6 +8,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -97,25 +98,51 @@ func TestCompact_PersistsCompactingBeforeTyping(t *testing.T) {
 
 func TestCompact_RequestedCycleClearsRequestAndCompactsAfterNote(t *testing.T) {
 	tiergate.Require(t, 0)
-	e := newCompactEnv(t)
-	e.s.usage["a"] = 10
-	e.s.events = []shuttleengine.Event{stop("a")}
-	requestedAt := e.clock.now
-	if err := RequestCycle(e.paths, CycleCompact, requestedAt); err != nil {
-		t.Fatal(err)
+	t.Parallel()
+
+	for _, slack := range []bool{false, true} {
+		name := "NoPresence"
+		if slack {
+			name = "PresenceSlack"
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e := newCompactEnv(t)
+			if slack {
+				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
+				e.w = e.newWatcher()
+			}
+			e.s.usage["a"] = 10
+			e.s.events = []shuttleengine.Event{stop("a")}
+			requestedAt := e.clock.now
+			if err := RequestCycle(e.paths, CycleCompact, requestedAt); err != nil {
+				t.Fatal(err)
+			}
+			e.tick()
+			e.clock.advance(11 * time.Second)
+			e.tick()
+			e.assertCompactCalls(0)
+			if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested || st.CycleMode != CycleCompact || !st.CycleRequestedAt.Equal(requestedAt) {
+				t.Fatalf("state = %+v, want a requested compact note request", st)
+			}
+			if _, requested, _ := CycleRequested(e.paths); requested {
+				t.Error("cycle request was not cleared")
+			}
+			e.finishNote()
+			e.assertCompactCalls(1)
+			if !slack {
+				return
+			}
+			e.landBoundary(e.state().PhaseEnteredAt.Add(time.Second), 150)
+			e.tick() // boundary read: the color queued
+			e.tick() // the color typed, the plugins queued
+			e.tick() // the plugins typed, the pointer queued
+			e.endTurn("resumed")
+			if last := e.s.calls[len(e.s.calls)-1]; !strings.HasPrefix(last, "send:") || strings.Count(last, presenceLine) != 1 {
+				t.Errorf("last call = %q, want the resume pointer with the presence line once", last)
+			}
+		})
 	}
-	e.tick()
-	e.clock.advance(11 * time.Second)
-	e.tick()
-	e.assertCompactCalls(0)
-	if st := e.state(); st.Phase != PhaseHandoffRequested || st.CycleTrigger != TriggerRequested || st.CycleMode != CycleCompact || !st.CycleRequestedAt.Equal(requestedAt) {
-		t.Fatalf("state = %+v, want a requested compact note request", st)
-	}
-	if _, requested, _ := CycleRequested(e.paths); requested {
-		t.Error("cycle request was not cleared")
-	}
-	e.finishNote()
-	e.assertCompactCalls(1)
 }
 
 func TestCompact_RenderFailureAfterNoteChangesNothing(t *testing.T) {

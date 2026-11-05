@@ -12,6 +12,7 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -654,45 +655,61 @@ func TestWatcher_HandoffCompleteClearsThenResumes(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	e := newWatchEnv(t)
-	e.reachClearing()
-	handoff := e.state().PendingHandoff
-	if e.s.count("clear") != 1 {
-		t.Fatalf("calls = %v", e.s.calls)
-	}
-	if st := e.state(); !st.RequestReadAt.IsZero() {
-		t.Errorf("RequestReadAt = %v, want the note request's read cleared on entering clearing", st.RequestReadAt)
-	}
-	if got := e.c.count("hold:"); got < 2 || e.c.count("release:") != 0 {
-		t.Fatalf("holds = %d releases = %d, want the hold taken at the cycle start and renewed since", got, e.c.count("release:"))
-	}
-	holds := e.c.count("hold:")
-	e.tick()
-	st := e.state()
-	if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastHandoff != handoff {
-		t.Fatalf("state = %+v", st)
-	}
-	if e.s.colors != 2 || e.s.count(reloadPluginsCall) != 0 {
-		t.Fatalf("colors = %d calls = %v, want the color queued and no plugins reload yet", e.s.colors, e.s.calls)
-	}
-	e.tick()
-	if last := e.s.calls[len(e.s.calls)-1]; last != reloadPluginsCall {
-		t.Fatalf("last call = %q, want the plugins reload after the color", last)
-	}
-	e.tick()
-	last := e.s.calls[len(e.s.calls)-1]
-	if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) {
-		t.Errorf("resume prompt = %q, want one naming %s", last, handoff)
-	}
-	if got := e.c.count("hold:"); got != holds+3 || e.c.count("release:") != 0 {
-		t.Errorf("holds = %d releases = %d, want the hold renewed on each of the three ticks and still kept", got, e.c.count("release:"))
-	}
-	e.endTurn("resumed")
-	if st := e.state(); st.Phase != PhaseIdle {
-		t.Fatalf("phase = %s, want idle", st.Phase)
-	}
-	if got := e.c.count("release:"); got != 1 {
-		t.Errorf("releases = %d, want the hold released once when the pointer's turn end ended the phase", got)
+	for _, slack := range []bool{false, true} {
+		name, wantLines := "NoPresence", 0
+		if slack {
+			name, wantLines = "PresenceSlack", 1
+		}
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			e := newWatchEnv(t)
+			if slack {
+				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
+				e.w = e.newWatcher()
+			}
+			e.reachClearing()
+			handoff := e.state().PendingHandoff
+			if pending := e.state().PendingResume; strings.Count(pending, presenceLine) != wantLines {
+				t.Errorf("stored resume pointer = %q, want the presence line %d times", pending, wantLines)
+			}
+			if e.s.count("clear") != 1 {
+				t.Fatalf("calls = %v", e.s.calls)
+			}
+			if st := e.state(); !st.RequestReadAt.IsZero() {
+				t.Errorf("RequestReadAt = %v, want the note request's read cleared on entering clearing", st.RequestReadAt)
+			}
+			if got := e.c.count("hold:"); got < 2 || e.c.count("release:") != 0 {
+				t.Fatalf("holds = %d releases = %d, want the hold taken at the cycle start and renewed since", got, e.c.count("release:"))
+			}
+			holds := e.c.count("hold:")
+			e.tick()
+			st := e.state()
+			if st.Phase != PhaseResuming || st.CycleCount != 1 || st.LastHandoff != handoff {
+				t.Fatalf("state = %+v", st)
+			}
+			if e.s.colors != 2 || e.s.count(reloadPluginsCall) != 0 {
+				t.Fatalf("colors = %d calls = %v, want the color queued and no plugins reload yet", e.s.colors, e.s.calls)
+			}
+			e.tick()
+			if last := e.s.calls[len(e.s.calls)-1]; last != reloadPluginsCall {
+				t.Fatalf("last call = %q, want the plugins reload after the color", last)
+			}
+			e.tick()
+			last := e.s.calls[len(e.s.calls)-1]
+			if !strings.HasPrefix(last, "send:") || !strings.Contains(last, handoff) || strings.Count(last, presenceLine) != wantLines {
+				t.Errorf("resume prompt = %q, want one naming %s with the presence line %d times", last, handoff, wantLines)
+			}
+			if got := e.c.count("hold:"); got != holds+3 || e.c.count("release:") != 0 {
+				t.Errorf("holds = %d releases = %d, want the hold renewed on each of the three ticks and still kept", got, e.c.count("release:"))
+			}
+			e.endTurn("resumed")
+			if st := e.state(); st.Phase != PhaseIdle {
+				t.Fatalf("phase = %s, want idle", st.Phase)
+			}
+			if got := e.c.count("release:"); got != 1 {
+				t.Errorf("releases = %d, want the hold released once when the pointer's turn end ended the phase", got)
+			}
+		})
 	}
 }
 
@@ -1502,26 +1519,32 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 		// mark returns the mark written before the reload starts, and false for none.
 		mark      func(baseline, boundary time.Time, pointer string) (ResumeMark, bool)
 		wantTyped bool
+		// slack sets the hub's presence to slack, so the rendered pointer carries the presence line.
+		slack bool
 	}{
 		{"a mark after the boundary holding the pointer skips it", func(_, boundary time.Time, pointer string) (ResumeMark, bool) {
 			return ResumeMark{At: boundary.Add(time.Second), Text: pointer}, true
-		}, false},
+		}, false, false},
 		{"a mark the hook stamped before the boundary was written skips it", func(_, boundary time.Time, pointer string) (ResumeMark, bool) {
 			return ResumeMark{At: boundary.Add(-30 * time.Millisecond), Text: pointer}, true
-		}, false},
-		{"no mark types the pointer", func(time.Time, time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true},
+		}, false, false},
+		{"no mark types the pointer", func(time.Time, time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true, false},
 		{"a mark older than the previous baseline types the pointer", func(baseline, _ time.Time, pointer string) (ResumeMark, bool) {
 			return ResumeMark{At: baseline.Add(-time.Second), Text: pointer}, true
-		}, true},
+		}, true, false},
 		{"a mark with other text types the pointer", func(_, boundary time.Time, _ string) (ResumeMark, bool) {
 			return ResumeMark{At: boundary.Add(time.Second), Text: "something else"}, true
-		}, true},
+		}, true, false},
+		{"presence slack types the rendered pointer with the presence line", func(time.Time, time.Time, string) (ResumeMark, bool) { return ResumeMark{}, false }, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			e := newWatchEnv(t)
 			e.withSkills()
+			if tt.slack {
+				e.paths.SlackPresencePath = presenceFileIn(t, slackengine.PresenceSlack)
+			}
 			baseline := e.clock.now.Add(-time.Minute)
 			e.setState(func(st *State) { st.CompactionBaseline = baseline })
 			e.w = e.newWatcher()
@@ -1531,6 +1554,9 @@ func TestWatcher_HookDeliveredPointerIsSkippedAndAnythingElseIsTyped(t *testing.
 			pointer, err := RenderReloadPrompt(e.stDir, e.paths.RolePath)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if tt.slack {
+				pointer += presenceLine
 			}
 			if mark, ok := tt.mark(baseline, boundary, pointer); ok {
 				if err := WriteResumeMark(e.paths, mark); err != nil {

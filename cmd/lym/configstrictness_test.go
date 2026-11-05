@@ -62,6 +62,7 @@ var configStrictnessDegradingSet = map[string]bool{
 	"internal/envconfig":                  true,
 	"internal/ideconfig":                  true,
 	"internal/reportconfig":               true,
+	"internal/slackengine":                true,
 }
 
 // configStrictnessStrictSet is the pinned set of module-relative, slash-separated package directories that call configengine.Load -- the strict loading policy, where an absent _lym/ directory or absent config file is an error.

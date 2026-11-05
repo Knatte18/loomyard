@@ -6,6 +6,7 @@
 // Every other render is injected as one creel text line or handed to shuttle as its launch pointer, and a creel text inject is one line,
 // so each of those must render to one line;
 // an operator override that breaks that fails here, naming the stencil to fix.
+// WithPresence appends the presence line to a rendered pointer while the hub's presence is slack.
 
 package orchengine
 
@@ -18,9 +19,32 @@ import (
 
 	"github.com/Knatte18/loomyard/contracts/orchrole"
 	"github.com/Knatte18/loomyard/internal/fsx"
+	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/stencil"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
 )
+
+// presenceLine is what a pointer gains, joined to its own line, while the hub's presence is slack.
+const presenceLine = " Presence is slack: also post every message meant for the operator to the hub's SLACK program, as the orch role's Slack rules say."
+
+// WithPresence returns pointer with the presence line appended while the hub's presence, read from p.SlackPresencePath, is slack, and pointer unchanged otherwise.
+// The line joins the pointer's own line, since a typed pointer is one creel text line.
+// An empty path, a hub with no presence record and a record that cannot be read all leave the pointer as it is; a failed read is logged at Debug.
+func WithPresence(p Paths, pointer string) string {
+	if p.SlackPresencePath == "" {
+		return pointer
+	}
+	presence, err := slackengine.ReadPresence(p.SlackPresencePath)
+	if err != nil {
+		logger.Debug("orch: the presence could not be read; the pointer carries no presence line", "path", p.SlackPresencePath, "error", err)
+		return pointer
+	}
+	if presence != slackengine.PresenceSlack {
+		return pointer
+	}
+	return pointer + presenceLine
+}
 
 const (
 	// roleName names the orch role in a render error.

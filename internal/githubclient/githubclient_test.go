@@ -236,6 +236,11 @@ func TestCacheDirRedirection_HonoursOverride(t *testing.T) {
 	if tok, ok := readCachedToken(); ok {
 		t.Errorf("readCachedToken() = (%q, true) for an empty redirected cache dir; want a miss", tok)
 	}
+
+	credDir, credOK := CredentialDir()
+	if credDir != gotDir || credOK != ok {
+		t.Errorf("CredentialDir() = (%q, %v); want the cache directory (%q, %v)", credDir, credOK, gotDir, ok)
+	}
 }
 
 // isUnder reports whether candidate is base itself or a path beneath it.

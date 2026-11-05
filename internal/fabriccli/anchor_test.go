@@ -68,6 +68,8 @@ type anchorFake struct {
 	// finishRemovesRecord removes the record before Finish fails.
 	finishRemovesRecord bool
 	startErr            error
+	// relayErr is what the Slack relay start answers.
+	relayErr error
 
 	reopens int
 	polls   int
@@ -213,6 +215,10 @@ func (f *anchorFake) deps() anchorDeps {
 		EnsureDobbies: func(worktrees []string) error {
 			f.log("ensure-dobbies %s", strings.Join(worktrees, ","))
 			return f.startErr
+		},
+		StartRelay: func() error {
+			f.log("start-relay")
+			return f.relayErr
 		},
 		Begin: func(l *lymcwd.Location, target string) (anchorChange, error) {
 			f.log("begin %s", target)
@@ -763,6 +769,84 @@ func TestChangeAnchor(t *testing.T) {
 					t.Errorf("calls = %v; want %q", f.calls, tt.want)
 				}
 			})
+		}
+	})
+
+	t.Run("A prime move starts the Slack relay again on every path after its dobbies were ended, and a beam move or an earlier failure starts none", func(t *testing.T) {
+		t.Parallel()
+		tests := []struct {
+			name   string
+			slug   string
+			mutate func(f *anchorFake)
+			// wantErr is a text the returned error carries, empty when the move succeeds.
+			wantErr string
+			// wantRelay says the relay is started again, wantAfterDobbies that it follows the dobby start, and wantNoDobbies that no dobby start follows.
+			wantRelay, wantAfterDobbies, wantNoDobbies bool
+		}{
+			{name: "TheMoveLands", slug: "prime", wantRelay: true, wantAfterDobbies: true},
+			{
+				name: "ApplyFails", slug: "prime", wantErr: "commit failed", wantRelay: true, wantAfterDobbies: true,
+				mutate: func(f *anchorFake) { f.applyErr = errors.New("commit failed") },
+			},
+			{
+				name: "TheChangeRecordStands", slug: "prime", wantErr: "the change record stands", wantRelay: true, wantNoDobbies: true,
+				mutate: func(f *anchorFake) { f.applyErr, f.applyKeepsRecord = errors.New("wiring failed"), true },
+			},
+			{
+				name: "TheDobbyEndFails", slug: "prime", wantErr: "survivor", wantRelay: true,
+				mutate: func(f *anchorFake) { f.endErr = errors.New("survivor") },
+			},
+			{
+				name: "TheRelayDoesNotStartAfterAFailedMove", slug: "prime", wantErr: "start the Slack relay again: no token store; run `lym slack start`", wantRelay: true,
+				mutate: func(f *anchorFake) {
+					f.applyErr, f.relayErr = errors.New("commit failed"), errors.New("no token store")
+				},
+			},
+			{
+				name: "TheParentLockFailsBeforeTheDobbiesEnd", slug: "prime", wantErr: "lock unavailable",
+				mutate: func(f *anchorFake) { f.lockErr = errors.New("lock unavailable") },
+			},
+			{name: "ABeamMove", slug: "beam1"},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				f := newAnchorFake()
+				if tt.mutate != nil {
+					tt.mutate(f)
+				}
+
+				_, err := runAnchorFake(t, f, anchorRequest{Slug: tt.slug, Set: "sub"})
+
+				if tt.wantErr == "" && err != nil || tt.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tt.wantErr)) {
+					t.Fatalf("changeAnchor() error = %v; want %q", err, tt.wantErr)
+				}
+				relay := slices.Index(f.calls, "start-relay")
+				if (relay >= 0) != tt.wantRelay {
+					t.Fatalf("calls = %v; want the relay started again = %v", f.calls, tt.wantRelay)
+				}
+				if dobbies := slices.IndexFunc(f.calls, func(call string) bool { return strings.HasPrefix(call, "ensure-dobbies") }); tt.wantAfterDobbies && relay < dobbies {
+					t.Errorf("calls = %v; want the relay started after the dobby restart", f.calls)
+				}
+				if tt.wantNoDobbies && f.did("ensure-dobbies") {
+					t.Errorf("calls = %v; want no dobby started while the record stands", f.calls)
+				}
+			})
+		}
+	})
+
+	t.Run("A relay start that fails after a landed move is reported with lym slack start and fails nothing", func(t *testing.T) {
+		t.Parallel()
+		f := newAnchorFake()
+		f.relayErr = errors.New("no token store")
+
+		result, err := runAnchorFake(t, f, anchorRequest{Slug: "prime", Set: "sub"})
+
+		if err != nil || !result.Changed || !strings.Contains(result.RelayStartError, "no token store") || !strings.Contains(result.RelayStartError, "lym slack start") {
+			t.Errorf("changeAnchor() = (%+v, %v); want the start failure reported naming `lym slack start` and no error", result, err)
+		}
+		if fields := result.fields(); fields["relay_start_error"] != result.RelayStartError {
+			t.Errorf("fields = %v; want relay_start_error beside the start failure", fields)
 		}
 	})
 

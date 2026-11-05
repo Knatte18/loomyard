@@ -22,6 +22,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -463,6 +464,72 @@ func TestCreelGeometry(t *testing.T) {
 	_, err = CreelGeometry(bare, tempRoot)
 	if err == nil || !strings.Contains(err.Error(), fabricengine.ShortnameFileName) || !strings.Contains(err.Error(), bare) {
 		t.Errorf("CreelGeometry(no shortname) error = %v; want one naming %s and the hub", err, fabricengine.ShortnameFileName)
+	}
+}
+
+// TestSlackGeometry pins every Slack geometry field, that the token path lies in the credential directory while every other path lies under the hub's Slack directory, that a hub with no shortname record is refused as CreelGeometry refuses it, and that a machine with no credential directory is refused naming the environment variables that decide it.
+// It redirects the credential directory through t.Setenv, which is process-global state, so it does not run in parallel.
+func TestSlackGeometry(t *testing.T) {
+	tiergate.Require(t, 0)
+	credentialRoot := t.TempDir()
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+		t.Setenv(name, credentialRoot)
+	}
+	newHub := func(name, shortname string) string {
+		hub := filepath.Join(t.TempDir(), name)
+		mkdir(t, fabricengine.BoardDir(hub))
+		if shortname != "" {
+			writeFile(t, filepath.Join(fabricengine.BoardDir(hub), fabricengine.ShortnameFileName), shortname+"\n")
+		}
+		return hub
+	}
+
+	hub := newHub("a-LYMHUB", "abc")
+	got, err := SlackGeometry(hub)
+	if err != nil {
+		t.Fatalf("SlackGeometry(%q) = %v", hub, err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() = %v", err)
+	}
+	dir := filepath.Join(fabricengine.HubScratchDir(hub), lymdirs.SlackDirName)
+	want := slackengine.Geometry{
+		HubPath:        hub,
+		Shortname:      "abc",
+		Dir:            dir,
+		TokenPath:      filepath.Join(credentialRoot, "lym", slackengine.TokenFileName),
+		SetupPath:      filepath.Join(dir, slackengine.SetupFileName),
+		PresencePath:   filepath.Join(dir, slackengine.PresenceFileName),
+		CursorPath:     filepath.Join(dir, slackengine.CursorFileName),
+		OutboxPath:     filepath.Join(dir, slackengine.OutboxFileName),
+		RelayStatePath: filepath.Join(dir, slackengine.RelayStateFileName),
+		LockPath:       filepath.Join(dir, slackengine.RelayLockFileName),
+		LogPath:        filepath.Join(dir, slackengine.RelayLogFileName),
+		RunProcDir:     fabricengine.RunProcDir(hub),
+		LymExecutable:  executable,
+	}
+	if got != want {
+		t.Errorf("SlackGeometry(%q) = %+v; want %+v", hub, got, want)
+	}
+
+	bare := newHub("b-LYMHUB", "")
+	_, wantErr := CreelGeometry(bare, "")
+	if _, err := SlackGeometry(bare); err == nil || wantErr == nil || err.Error() != wantErr.Error() {
+		t.Errorf("SlackGeometry(no shortname) error = %v; want CreelGeometry's %v", err, wantErr)
+	}
+
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+		t.Setenv(name, "")
+	}
+	_, err = SlackGeometry(hub)
+	if err == nil {
+		t.Fatal("SlackGeometry with no credential directory = nil error; want a refusal")
+	}
+	for _, name := range []string{"HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("SlackGeometry with no credential directory error = %v; want it to name %s", err, name)
+		}
 	}
 }
 

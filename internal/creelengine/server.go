@@ -241,6 +241,8 @@ func (d *daemon) fail(conn net.Conn, err error) {
 	resp := Response{OK: false, Error: err.Error()}
 	if errors.Is(err, ErrStrandClaimOutsidePane) {
 		resp.Code = CodeStrandClaimOutsidePane
+	} else if errors.Is(err, ErrProgramClaimInStrandPane) {
+		resp.Code = CodeProgramClaimInStrandPane
 	}
 	_ = d.write(conn, resp)
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shell"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 	"github.com/Knatte18/loomyard/internal/statuspane"
 	"github.com/Knatte18/loomyard/internal/testkit/locationkit"
 	"github.com/Knatte18/loomyard/internal/testkit/stencilkit"
@@ -1335,6 +1336,8 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 		stopping bool
 		// stopFirst runs the stop verb, then reports no strand as reed does after the removal.
 		stopFirst bool
+		// presence sets the hub's presence to slack, so the pointer the launch carries ends with the presence line.
+		presence bool
 
 		wantStarts    int
 		wantResumeID  string
@@ -1369,6 +1372,14 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			name: "a resume that fails with no note falls back to the start stencil", recorded: "old-id", resumeErr: errors.New("pane never came up"),
 			wantStarts: 2, wantResumeID: "old-id", wantSource: orchengine.SourceFresh, wantSaved: "minted-id", wantAbandoned: "old-id",
 		},
+		{
+			name: "presence slack: a recorded id is resumed with the reload pointer and the presence line", strands: corpse, recorded: recordedTestSessionID, presence: true,
+			wantStarts: 1, wantResumeID: recordedTestSessionID, wantSource: orchengine.SourceResume, wantSaved: recordedTestSessionID, wantSessionID: recordedTestSessionID,
+		},
+		{
+			name: "presence slack: a launch from the last note carries the presence line", note: true, presence: true,
+			wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id",
+		},
 		{name: "no id recorded and a last note launches from the note", note: true, wantStarts: 1, wantSource: orchengine.SourceLastHandoff, wantSaved: "minted-id"},
 		{name: "no id recorded and no note launches the start stencil", wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: "minted-id"},
 		{name: "a launch naming no id records none", noSessionID: true, wantStarts: 1, wantSource: orchengine.SourceFresh, wantSaved: ""},
@@ -1388,6 +1399,12 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 				h.starter.sessionID = ""
 			}
 			h.cli.cfg.PermissionMode = "bypass"
+			if c.presence {
+				h.cli.paths.SlackPresencePath = filepath.Join(t.TempDir(), "presence.json")
+				if _, err := slackengine.WritePresence(h.cli.paths.SlackPresencePath, slackengine.PresenceSlack, time.Now()); err != nil {
+					t.Fatal(err)
+				}
+			}
 			seed := orchengine.State{Phase: orchengine.PhaseIdle, Strand: c.seedStrand, LastHandoff: "/keep/me.md", SessionID: c.recorded, WatcherStopping: c.stopping}
 			if c.note {
 				seed.LastHandoff = filepath.Join(t.TempDir(), "handoff.md")
@@ -1433,16 +1450,22 @@ func TestStart_ResumesTheRecordedSession(t *testing.T) {
 			launched := h.starter.specs[len(h.starter.specs)-1]
 			switch c.wantSource {
 			case orchengine.SourceResume:
-				wantPrompt, err := orchengine.RenderReloadPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)
+				reload, err := orchengine.RenderReloadPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if launched.Prompt != wantPrompt {
-					t.Errorf("prompt = %q; want the reload pointer %q", launched.Prompt, wantPrompt)
+				wantPrompt := orchengine.WithPresence(h.cli.paths, reload)
+				if launched.Prompt != wantPrompt || (c.presence && wantPrompt == reload) {
+					t.Errorf("prompt = %q; want the reload pointer %q, with the presence line when presence is slack", launched.Prompt, wantPrompt)
 				}
 			case orchengine.SourceLastHandoff:
-				if !strings.Contains(launched.Prompt, seed.LastHandoff) || launched.ResumeSessionID != "" {
-					t.Errorf("fresh spec = %+v; want the note %s named and no resume id", launched, seed.LastHandoff)
+				resume, err := orchengine.RenderResumePrompt(h.cli.stencilsDir, h.cli.paths.RolePath, seed.LastHandoff)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantPrompt := orchengine.WithPresence(h.cli.paths, resume)
+				if !strings.HasPrefix(launched.Prompt, wantPrompt) || (c.presence && wantPrompt == resume) || launched.ResumeSessionID != "" {
+					t.Errorf("fresh spec = %+v; want the note %s named by %q, with the presence line when presence is slack, and no resume id", launched, seed.LastHandoff, wantPrompt)
 				}
 			case orchengine.SourceFresh:
 				wantPrompt, err := orchengine.RenderStartPrompt(h.cli.stencilsDir, h.cli.paths.RolePath)

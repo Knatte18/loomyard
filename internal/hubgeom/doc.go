@@ -12,6 +12,8 @@
 // PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lym` and the pair's slug, empty for the prime.
 // DobbyGeometry converts a worktree's name into the dobbyengine.Geometry its dobby is told: its lock, state, log, output and announced-head files and its tidy directory under the worktree's own `.lym/beam/`, the batten runs directory under the prime, and the anchor-move records that stop it.
 //
+// SlackGeometry converts a hub path into the slackengine.Geometry the Slack engine is told: the hub's Slack directory and its files under the board-level `.lym`, the token file in the per-user credential directory, the process-owner directory and the running `lym` binary.
+//
 // ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
 //
 // ReedGeometry also tells reed the hub's spawn order (spawnorder.go), as a lazy closure over the Location that does nothing until a revival is due:

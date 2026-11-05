@@ -278,6 +278,26 @@ func TestHubDelivery(t *testing.T) {
 		}
 	})
 
+	t.Run("HubStrands lists the strands of every worktree the hub delivery lists, over the production wiring", func(t *testing.T) {
+		t.Parallel()
+		hub, prime, pair := newHub(t)
+		seedReedState(t, prime, map[string]string{"ly:orch": "guid-orch"})
+		seedReedState(t, pair, map[string]string{"ly:pair:impl": "guid-impl"})
+
+		got, err := HubStrands(hub.Path)
+		if err != nil {
+			t.Fatalf("HubStrands() = %v", err)
+		}
+		want := []creelengine.Strand{
+			{Name: "ly:orch", GUID: "guid-orch", Worktree: prime},
+			{Name: "ly:pair:impl", GUID: "guid-impl", Worktree: pair, Slug: pairSlug},
+		}
+		sortStrands(got)
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("HubStrands() mismatch (-want +got):\n%s", diff)
+		}
+	})
+
 	t.Run("Strands carries each strand's CreelHooks mark whatever its provider, so an unmarked Claude strand keeps the pane path", func(t *testing.T) {
 		t.Parallel()
 		hub, prime, _ := newHub(t)

@@ -467,10 +467,8 @@ func buildConfigLong() string {
 		"hub's board dir and committed in " + fabricengine.BoltDirName + ". With no argument it lists the known\n" +
 		"modules and verbs; with a module\n" +
 		"name it edits that module directly; `lym config menu` is the interactive\n" +
-		"picker. The editor is\n" +
-		"resolved from $VISUAL or $EDITOR;\n" +
-		"with neither set it uses `code --wait` when code is on PATH, else\n" +
-		"notepad on Windows, or nano and then vi elsewhere.\n\n" +
+		"picker. The editor is $VISUAL, then $EDITOR, then `code --wait` when code is\n" +
+		"on PATH, then notepad on Windows or nano and vi elsewhere.\n\n" +
 		"Use --print to print the on-disk YAML without launching the editor.\n\n" +
 		"Use --set key=value (repeatable) to write config values with no editor, e.g.\n" +
 		"  lym config board --set design_prefix=foo- --set readme=Home.md\n" +

@@ -43,6 +43,7 @@
 // A sender is a strand, a program with an upper-case name such as ly:BATTEN, or EXTERNAL.
 // On Linux the daemon reads the connecting process from SO_PEERCRED and walks its ancestry; a process inside a live strand's pane process tree is that strand, whatever its environment says.
 // A $LYM_STRAND_NAME that names another strand is refused, and a claim never raises a pane's privilege: a program name is accepted from an orch strand's pane only.
+// PaneOf is the exported ancestry walk, answering which live strand's pane a process sits in or what keeps that unknown, and IsOrchStrand tells an orch strand's name by the rule the program-claim check uses, so a caller outside the daemon decides a pane as the daemon does.
 // A process in no known pane is EXTERNAL, shown with the envelope its client claimed: its terminal, its parent process and its directory.
 // A process in no known pane is refused when a live strand's pane process is unknown, since it could be that strand.
 // Off Linux identity is the environment alone: the strand name when it names a strand of this hub, else the program claim, else EXTERNAL.
@@ -225,9 +226,10 @@
 //
 // # Refusal code
 //
-// The refusal of a strand claim that names a strand creel lists, from a process in no strand pane, is the only refusal that carries a code: the response's `code` is `strand-claim-outside-pane`.
-// The Go client returns such a refusal as an error with the daemon's message as its text that `errors.Is` matches against `ErrStrandClaimOutsidePane`.
-// A claim from another strand's pane, a program claim from a non-orch pane and the refusal while a pane process is unknown carry no code.
+// Two refusals carry a code in the response's `code`.
+// The refusal of a strand claim that names a strand creel lists, from a process in no strand pane, carries `strand-claim-outside-pane`, and the refusal of a program claim from the pane of a strand that is no orch's carries `program-claim-in-strand-pane`.
+// The Go client returns each as an error with the daemon's message as its text that `errors.Is` matches against `ErrStrandClaimOutsidePane` and `ErrProgramClaimInStrandPane` respectively.
+// A claim from another strand's pane and the refusal while a pane process is unknown carry no code.
 //
 // # Call timeout
 //

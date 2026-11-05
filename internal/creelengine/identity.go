@@ -16,6 +16,10 @@ const maxAncestryDepth = 256
 // The Go client returns it for a refusal carrying CodeStrandClaimOutsidePane, with the daemon's message as its text.
 var ErrStrandClaimOutsidePane = errors.New("creel: the strand claim comes from a process in no strand pane")
 
+// ErrProgramClaimInStrandPane is what a refusal of a program claim from the pane of a strand that is no orch's matches under errors.Is.
+// The Go client returns it for a refusal carrying CodeProgramClaimInStrandPane, with the daemon's message as its text.
+var ErrProgramClaimInStrandPane = errors.New("creel: a program claim comes from a strand pane that is no orch's")
+
 // codedRefusal is a refusal whose text is the daemon's message and that matches the sentinel its code stands for.
 type codedRefusal struct {
 	message  string
@@ -43,7 +47,7 @@ type Claim struct {
 // peerPID is the connecting process, 0 when the platform cannot tell; strands and strandsErr are Delivery.Strands' answer; parentPID reads a process's parent.
 // On Linux a peer inside a live strand's pane process tree is that strand, whatever its environment says, and a claim never raises a pane's privilege.
 // Elsewhere identity is the environment alone.
-// The refusal of a strand claim naming a listed strand from a process in no pane wraps ErrStrandClaimOutsidePane; no other refusal does.
+// The refusal of a strand claim naming a listed strand from a process in no pane wraps ErrStrandClaimOutsidePane, and the refusal of a program claim from the pane of a strand that is no orch's wraps ErrProgramClaimInStrandPane; no other refusal wraps a sentinel.
 func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand, strandsErr error, parentPID func(int) (int, bool), goos string) (Sender, error) {
 	program, err := checkProgramClaim(claim, shortname)
 	if err != nil {
@@ -61,7 +65,10 @@ func resolveSender(peerPID int, claim Claim, shortname string, strands []Strand,
 			return StrandSender(pane.Name), nil
 		}
 		if !isOrchName(pane.Name) {
-			return Sender{}, fmt.Errorf("creel: %s may not sign as the program %s: only an orch strand's pane may claim a program name", pane.Name, program)
+			return Sender{}, &codedRefusal{
+				message:  fmt.Sprintf("creel: %s may not sign as the program %s: only an orch strand's pane may claim a program name", pane.Name, program),
+				sentinel: ErrProgramClaimInStrandPane,
+			}
 		}
 		return ProgramSender(program), nil
 	}
@@ -112,6 +119,18 @@ func resolveFromEnvironment(claim Claim, shortname, program string) (Sender, err
 
 func externalFromClaim(claim Claim, shortname string) (Sender, error) {
 	return ExternalSender(shortname, claim.Terminal, claim.ParentProcess, claim.WorkingDir)
+}
+
+// PaneOf answers which live strand's pane the process pid sits in, walking its ancestry, the process itself first.
+// The unreadable string says what keeps a process in no known pane from being told from a strand, and is empty when every live strand's pane process is known.
+// strands and strandsErr are a Delivery's strand listing, and parentPID reads a process's parent.
+func PaneOf(pid int, strands []Strand, strandsErr error, parentPID func(int) (int, bool)) (*Strand, string) {
+	return paneOfPeer(pid, strands, strandsErr, parentPID)
+}
+
+// IsOrchStrand reports whether full names an orch strand, a role that matches orch or orch-N.
+func IsOrchStrand(full string) bool {
+	return isOrchName(full)
 }
 
 // paneOfPeer walks the peer's ancestry, the peer itself first, and returns the live strand whose pane process it meets.

@@ -43,6 +43,8 @@ const (
 	RoleGate = "gate"
 	// RoleTeardown is the detached child that holds a pair's teardown lock to run the remote steps of its teardown.
 	RoleTeardown = "teardown"
+	// RoleSlackRelay is the hub's Slack relay, registered under HubOwner.
+	RoleSlackRelay = "slack-relay"
 )
 
 // Record is one registered process of a run.

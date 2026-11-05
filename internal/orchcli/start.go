@@ -27,6 +27,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/reedengine/render"
 	"github.com/Knatte18/loomyard/internal/segmentcolor"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
+	"github.com/Knatte18/loomyard/internal/slackengine"
 )
 
 // orchStrandName is the role the orchestrator strand is added and addressed by in the prime's reed session.
@@ -484,6 +485,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 	} else {
 		c.startDobbyStep(&report)
 	}
+	c.startRelayStep(&report)
 
 	if err := c.reedUp(); err != nil {
 		return report, err
@@ -526,6 +528,31 @@ func (c *orchCLI) startDobbyStep(report *BeamUpReport) {
 		return
 	}
 	report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started (%s); way forward: fix the cause it names, then run `lym beam start`", cause))
+}
+
+// startRelayStep starts the hub's Slack relay when it is down, and records on report only a failure.
+// A relay that was started, was live or has no Slack setup to start from adds nothing; one that did not start only warns, naming `lym slack start`, since the relay is no part of the orch.
+func (c *orchCLI) startRelayStep(report *BeamUpReport) {
+	if c.startRelay == nil {
+		return
+	}
+	if _, err := c.startRelay(); err != nil {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("the Slack relay was not started (%v); way forward: run `lym slack start`", err))
+	}
+}
+
+// relayStarter returns the relay start of the worktree at location, which ensures the hub's relay with the worktree as its prime, and nil for a beam, whose bring-up never starts the hub's relay.
+func relayStarter(location *lymcwd.Location, beam bool) func() (slackengine.StartOutcome, error) {
+	if beam {
+		return nil
+	}
+	return func() (slackengine.StartOutcome, error) {
+		geometry, err := hubgeom.SlackGeometry(location.HubPath)
+		if err != nil {
+			return "", err
+		}
+		return slackengine.EnsureRelay(geometry, location.WorktreeName)
+	}
 }
 
 // startOrch leaves one live orchestrator strand and one watcher bound to it, and reports the orch's part of the bring-up.
@@ -642,7 +669,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedS
 		if err != nil {
 			return startedSession{}, "", "", err
 		}
-		spec := c.orchSpec(reload, time.Now())
+		spec := c.orchSpec(orchengine.WithPresence(c.paths, reload), time.Now())
 		spec.ResumeSessionID = st.SessionID
 		started, err := c.starter.StartSession(spec)
 		if err == nil {
@@ -655,6 +682,7 @@ func (c *orchCLI) launchOrch(st orchengine.State, note string) (started startedS
 	if err != nil {
 		return startedSession{}, "", abandoned, err
 	}
+	prompt = orchengine.WithPresence(c.paths, prompt)
 	if note != "" {
 		prompt += "\n\n" + note
 	}
