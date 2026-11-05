@@ -297,7 +297,7 @@ that escalated a round, because its judge found the rounds circling (a circling
 escalation), because a design-wrong finding is still open at the perch's hard
 cap (a hard-cap escalation), or because the review budget was spent and the
 soft-cap rule could not settle the round (a budget escalation), or because a
-review finding only the run's parent can settle is open (a decision escalation).
+review finding the review cannot settle itself is open (a decision escalation).
 
 Each verb takes an optional slug naming the task worktree. A task worktree
 addresses itself; from the prime the slug is required. A verb records the

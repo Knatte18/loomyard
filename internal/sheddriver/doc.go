@@ -72,6 +72,8 @@
 //
 // A stop a removed row would have caught meets the later rows unchanged, so it ends in the tackler under its spawn budget, a re-step under the repair cap, or a hand-back.
 // No unwired seam adds a resume path: a tackler escalation with no arbiter hands back, naming the tackler's case brief.
+// An arbiter `resume` at an awaiting stop sends the parent one outcome line naming the run and the verdict file through `HandBackDeps.Notify`, when an orch strand is recorded and once the step has consumed the resume;
+// it asks nothing and parks nothing, and a resume the step refuses hands back with no outcome line.
 // Loom's, darn's and batten's drivers all wire the arbiter after the tackler, batten's with `batten.yaml`'s arbiter overrides of `shed.yaml`.
 // The loom CLI's wiring, which tapestry, darn and sampler share, marks two kinds of blocked stop the arbiter judges first: the Webster row, whose blocked stop is Merriam's stuck outcome, and a tapestry, darn or sampler landing escalate, a merge fixer's halt that opens with the escalate prefix.
 //

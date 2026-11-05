@@ -159,13 +159,20 @@ type TamperSeam struct {
 }
 
 // goDriver settles one run's stops over its seams.
-// rules and attempts are what the stop report quotes for the stop in hand, pendingAttempt is the arbiter attempt the next step consumes, and exit is how the run ended.
+// rules and attempts are what the stop report quotes for the stop in hand, pendingAttempt is the arbiter attempt the next step consumes, pendingNotice is the outcome line held until that step has consumed it, and exit is how the run ended.
 type goDriver struct {
 	deps           Deps
 	rules          []string
 	attempts       []driveAttemptNote
 	pendingAttempt string
+	pendingNotice  *arbiterSettledNotice
 	exit           Exit
+}
+
+// arbiterSettledNotice is what the parent hears once the arbiter's resume is consumed: the awaiting stop the arbiter settled and the path of its verdict.
+type arbiterSettledNotice struct {
+	stop        Stop
+	verdictPath string
 }
 
 // Run steps the run and settles each stop until the run is done, another holder has it or a hand-back ends the driver, and returns how it ended.
@@ -205,6 +212,11 @@ func (d *goDriver) run(ctx context.Context) error {
 			if err != nil {
 				return d.handBackFailure(err)
 			}
+			attemptHeld := attempt != "" && stop.Kind != shedverbs.KindBusy
+			attemptRefused := attemptHeld && arbiterAttemptRefused(raw)
+			if attemptHeld && !attemptRefused {
+				d.noticeArbiterSettled()
+			}
 			// A yield decides nothing: no envelope, rule row, report, repair or budget applies, and the pass ends with the run as it was.
 			// A run waiting at a row yields on every pass, so a saved envelope would be one more file per pass for the whole wait.
 			if stop.OK && stop.LoopState == string(shedengine.StateRunning) && stop.Outcome == string(shedengine.Yield) {
@@ -217,7 +229,7 @@ func (d *goDriver) run(ctx context.Context) error {
 				return d.handBackFailure(fmt.Errorf("saving the stop envelope: %w", err))
 			}
 			stop.EnvelopePath = path
-			if attempt != "" && stop.Kind != shedverbs.KindBusy && arbiterAttemptRefused(raw) {
+			if attemptRefused {
 				d.rules = append(d.rules, "the step refused the arbiter's attempt")
 				return d.handBackAs(stop, driveHandBack{}, "the step refused the arbiter attempt")
 			}
@@ -510,7 +522,7 @@ func (d *goDriver) tackle(ctx context.Context, stop Stop) (next Stop, exit bool,
 }
 
 // arbitrate asks the arbiter to judge stop and acts on its verdict, holding any pause first.
-// A resume leaves the attempt the next step consumes; a refusal or a hand-on hands back, and at an awaiting stop relays its parent notice.
+// A resume leaves the attempt the next step consumes, and at an awaiting stop the outcome notice that step sends once it has consumed the attempt; a refusal or a hand-on hands back, and at an awaiting stop relays its parent notice.
 // With no arbiter wired it hands back at once, relaying the same notice.
 // The moved-run and spawn-record rules are the tackler's.
 func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath string) (next Stop, exit bool, err error) {
@@ -551,12 +563,35 @@ func (d *goDriver) arbitrate(ctx context.Context, stop Stop, caseBriefPath strin
 
 	if outcome.Resume {
 		d.settle(stop, shedrun.SettlerArbiter, shedrun.SettleRestep, "arbiter resume", outcome.Goto)
+		if stop.Key().State == string(shedengine.StateAwaiting) {
+			d.pendingNotice = &arbiterSettledNotice{stop: stop, verdictPath: outcome.VerdictPath}
+		}
 		d.pendingAttempt = strconv.Itoa(outcome.Attempt)
 		stop.Restep = true
 		return stop, false, nil
 	}
 	h := driveHandBack{Question: outcome.Question, Relay: relay, Rules: []string{"the arbiter handed the stop on: " + outcome.Reason}}
 	return Stop{}, true, d.handBackAs(stop, h, "the arbiter handed the stop on")
+}
+
+// noticeArbiterSettled tells the run's parent that the arbiter settled the review escalation and resumed the run, so the parent hears the outcome and is asked nothing.
+// It is called once a step has consumed the arbiter's resume, and does nothing when no outcome is pending; a refused resume hands back and sends no outcome line.
+// With no orch strand recorded the line is logged and posted nowhere, and a failed send is logged; neither stops the driver.
+func (d *goDriver) noticeArbiterSettled() {
+	pending := d.pendingNotice
+	if pending == nil {
+		return
+	}
+	d.pendingNotice = nil
+	line := fmt.Sprintf("Run %s: the arbiter settled the review escalation at %s and resumed the run; verdict %s. Nothing to answer.", d.deps.RunID, pending.stop.CurrentProducer, pending.verdictPath)
+	recorded, err := d.deps.HandBack.OrchRecorded()
+	if err != nil || !recorded {
+		logger.Info("sheddriver: drive: no orch strand recorded; outcome notice posted nowhere", "run", d.deps.RunID, "notice", line, "error", err)
+		return
+	}
+	if _, err := d.deps.HandBack.Notify(pending.stop, line); err != nil {
+		logger.Warn("sheddriver: drive: outcome notice send failed", "run", d.deps.RunID, "error", err)
+	}
 }
 
 // recheckAfterVerdict re-reads the run after an agent's verdict, and when the run moved while the agent worked, notes the discarded verdict in the stop report at reportPath.

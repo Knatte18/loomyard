@@ -15,7 +15,7 @@ import (
 
 // EscalationCause names why a Bouncer escalated a round to the parent.
 // `hard-cap` is a round at or past its perch's hard cap with a design-wrong finding open, or a recorded continue there.
-// `decision` is a round whose accepted review holds a finding only the run's parent can settle.
+// `decision` is a round whose accepted review holds a finding the review cannot settle itself, a call for the arbiter and, when it hands on, the run's parent.
 type EscalationCause string
 
 // The four legal EscalationCause spellings.

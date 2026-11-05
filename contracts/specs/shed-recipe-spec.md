@@ -58,7 +58,7 @@ A `Bouncer` row's optional `subject` key takes one of exactly two literal values
 Every kind also tells the Bouncer `Env.ReviewInput`, which stays optional, and the segment's `AmendMaxBounces` as the amendment allowance.
 It follows the same two rules as `commit_seam`: absent tells no subject and keeps the Bouncer on its clear-and-reseed path, and a present key naming a seam the `Env` does not carry is a construction error naming that seam.
 An unknown value is a construction error naming the key, the value and the two legal ones.
-A `Bouncer` row's optional boolean `escalate_decisions` key (default false) makes a judged round whose review holds a `decision`-class finding escalate to the run's parent with cause `decision`.
+A `Bouncer` row's optional boolean `escalate_decisions` key (default false) makes a judged round whose review holds a `decision`-class finding escalate with cause `decision`, which the arbiter settles where the board entry and the decision record answer it and the run's parent settles otherwise.
 A `BurlerFix` row's optional boolean `decisions_escalated` key (default false) says its segment's Bouncer does so: the fixer is given no `decision` finding and the row posts no parent notice of its own.
 Loom's recipe sets both keys on its Discussion-Review rows and on no other row.
 

@@ -190,6 +190,9 @@ func TestGoDriver_Settle(t *testing.T) {
 		judgesFirstReason string
 		pauseCovered      []bool
 		orchRecorded      bool
+		// orchRecordedErr is the error OrchRecorded answers with, and notifyErr the one Notify answers with.
+		orchRecordedErr error
+		notifyErr       error
 
 		// The agent seams: what Tackler and Arbiter return, and what ConsumeTackler refuses with.
 		tacklerReturns TacklerEnvelope
@@ -230,8 +233,11 @@ func TestGoDriver_Settle(t *testing.T) {
 		wantNoEnvelope bool
 		wantParked     bool
 		wantNotifies   int
-		wantHandBack   bool
-		wantExit       Exit
+		// wantNotice is a line Notify must have received, and wantNoNotice a substring none of its lines may hold.
+		wantNotice   string
+		wantNoNotice string
+		wantHandBack bool
+		wantExit     Exit
 		// wantOrder, when set, is the order of the parent notice, the lock release and the successor spawn.
 		wantOrder []string
 		// wantBuild, when set, is the build the last settle record names.
@@ -450,6 +456,51 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantReports: 2, wantParked: true, wantNotifies: 2, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
+			name:  "an awaiting stop the arbiter settles with a resume tells the parent the outcome once and relays no notice",
+			steps: []func(*testing.T) []byte{awaiting("review is ready"), done}, escalation: true, orchRecorded: true, arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantNotifies: 1, wantExit: ExitDone,
+			wantNotice: "Run run-1: the arbiter settled the review escalation at Review and resumed the run; verdict arbiter/1/verdict.yaml. Nothing to answer.",
+		},
+		{
+			name:  "an arbiter resume at an awaiting stop with no orch recorded sends no outcome line and the run finishes",
+			steps: []func(*testing.T) []byte{awaiting("review is ready"), done}, escalation: true, arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantNotifies: 0, wantExit: ExitDone,
+		},
+		{
+			name:  "an arbiter resume at an awaiting stop whose orch lookup fails sends no outcome line and the run finishes",
+			steps: []func(*testing.T) []byte{awaiting("review is ready"), done}, escalation: true, orchRecorded: true, orchRecordedErr: errors.New("orch record unreadable"), arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantNotifies: 0, wantExit: ExitDone,
+		},
+		{
+			name:  "an arbiter resume at an awaiting stop whose outcome send fails still finishes the run",
+			steps: []func(*testing.T) []byte{awaiting("review is ready"), done}, escalation: true, orchRecorded: true, notifyErr: errors.New("creel unreachable"), arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantNotifies: 1, wantExit: ExitDone,
+		},
+		{
+			name:  "an arbiter resume at a blocked stop sends no outcome line",
+			steps: []func(*testing.T) []byte{blocked, done}, judgesFirst: "Build", orchRecorded: true, arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:   []string{"step", "arbiter:", "step:1", "commit-records"},
+			wantActions: []string{shedrun.SettleSpawn, shedrun.SettleRestep}, wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter},
+			wantReports: 1, wantNotifies: 0, wantExit: ExitDone,
+		},
+		{
+			name:  "an arbiter resume the step refuses hands back and sends no outcome line",
+			steps: []func(*testing.T) []byte{awaiting("review is ready"), guardRefusedStep}, escalation: true, orchRecorded: true, arbiterReturns: arbiterOutcome("resume", 1),
+			wantCalls:    []string{"step", "arbiter:", "step:1"},
+			wantActions:  []string{shedrun.SettleSpawn, shedrun.SettleRestep, shedrun.SettleHandBack},
+			wantSettlers: []string{shedrun.SettlerArbiter, shedrun.SettlerArbiter, shedrun.SettlerParent},
+			wantReports:  2, wantParked: true, wantNotifies: 1, wantNoNotice: "Nothing to answer.", wantHandBack: true, wantExit: ExitHandBack,
+			wantReportHas: map[int][]string{2: {guardRefusal}},
+		},
+		{
 			name:  "a halted run with an open tackler attempt calls the tackler before any step and writes no spawn record for it",
 			steps: []func(*testing.T) []byte{}, initialStatus: &blockedStatus, restartAttempt: true, openKey: &blockedKey, openTackler: "tackler/1",
 			tacklerReturns: func() TacklerEnvelope {
@@ -649,7 +700,7 @@ func TestGoDriver_Settle(t *testing.T) {
 				}
 			}
 			markerPath := filepath.Join(root, "scratch", "driver-parked")
-			var calls, order []string
+			var calls, order, lines []string
 			var notified int
 			stepsTaken := 0
 			statusReads := 0
@@ -740,12 +791,13 @@ func TestGoDriver_Settle(t *testing.T) {
 					return filepath.Join(root, "drive-reports", fmt.Sprintf("report-%d.md", reports))
 				},
 				HandBack: HandBackDeps{
-					Notify: func(Stop, string) (bool, error) {
+					Notify: func(_ Stop, line string) (bool, error) {
 						notified++
+						lines = append(lines, line)
 						order = append(order, "notify")
-						return true, nil
+						return tt.notifyErr == nil, tt.notifyErr
 					},
-					OrchRecorded: func() (bool, error) { return tt.orchRecorded, nil },
+					OrchRecorded: func() (bool, error) { return tt.orchRecorded, tt.orchRecordedErr },
 					Park: func(reportPath string) error {
 						if err := os.MkdirAll(filepath.Dir(markerPath), 0o755); err != nil {
 							return err
@@ -939,6 +991,16 @@ func TestGoDriver_Settle(t *testing.T) {
 			}
 			if notified != tt.wantNotifies {
 				t.Errorf("Notify reached %d times; want %d", notified, tt.wantNotifies)
+			}
+			if tt.wantNotice != "" && !slices.Contains(lines, tt.wantNotice) {
+				t.Errorf("Notify lines = %q; want one equal to %q", lines, tt.wantNotice)
+			}
+			if tt.wantNoNotice != "" {
+				for _, line := range lines {
+					if strings.Contains(line, tt.wantNoNotice) {
+						t.Errorf("Notify line %q holds %q; want no such line", line, tt.wantNoNotice)
+					}
+				}
 			}
 		})
 	}

@@ -119,6 +119,7 @@ A landing that succeeds sends nothing, bar one records-stop line when the prime'
 The driver, webster or a review loop that cannot go on escalates to you, its parent.
 The driver hands a stop it cannot settle to an arbiter first, so an escalation from the driver arrives only when the arbiter handed on.
 Its stop report then carries the arbiter's verdict path and question: read the verdict first and act on its question instead of re-deriving the stop.
+A review escalation the arbiter settled itself, its calls recorded with `--by arbiter`, reaches you as one line naming the run and the verdict file; it asks nothing, so take no action on it.
 
 You settle every run-level call yourself and record it with `lym loom decision add <slug> --by parent`.
 A run-level call decides how a run goes on within its board entry's scope: an arbiter's hand-on question, a `decision` escalation, a review finding, a hard-cap accept, a landing stop or a false premise in the entry.
@@ -127,7 +128,7 @@ Only a design question goes to the operator: what to build, a change of a task's
 - A review escalation whose stop report names an arbiter attempt whose `envelope.json`, in the attempt directory beside the verdict file the stop report names, carries verdict `hand-on` and an empty `cause` is the arbiter agent's own hand-on.
   Read only the envelope's `question` and settle it yourself, never in a fork; record your answer and resume by the escalation brief's steps.
   A design question among them goes to the operator in plain words instead: a repeat notice for the slug asks nothing again while it is with the operator, and the slug is named in the orch note until the operator answers.
-- A review escalation of cause `decision` carries a question the review could not settle.
+- A review escalation of cause `decision` carries a question the review could not settle, and goes to the arbiter as `hard-cap` and `circling` do, so it reaches you only as the arbiter's hand-on.
   Settle it as a hand-on question, and record the answer with `lym loom decision add <slug> --by parent` before the escalation brief's circling verb and resume.
 - A review loop that ran out of rounds: `lym loom circling continue <slug>` grants one more round only below the perch's hard cap.
   At or past it, or at a `hard-cap` escalation, the way forward is `lym loom circling accept <slug>` to take the work as it stands, or raising the hard cap by the command the refusal names for the layer its value comes from.

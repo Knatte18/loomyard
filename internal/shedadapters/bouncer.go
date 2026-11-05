@@ -155,7 +155,7 @@ type BouncerConfig struct {
 	// BlockingEscalates sends a spent budget to the soft-cap rule, instead of auto-accepting, when the round's ledger holds an open BLOCKING entry or cannot be read.
 	// It only turns some auto-accepts into rule runs: it never accepts what the rule would not, and it has no effect while AutoAccept is false.
 	BlockingEscalates bool
-	// EscalateDecisions makes a judged round whose accepted review holds a finding of class decision escalate to the run's parent with cause decision, whatever the judge ruled.
+	// EscalateDecisions makes a judged round whose accepted review holds a finding of class decision escalate with cause decision, whatever the judge ruled; the arbiter settles it where the board entry and the decision record answer it, and the run's parent settles it otherwise.
 	// The parent's recorded accept passes the round over those findings and carries them into the carry-over;
 	// a recorded continue runs another round.
 	// False is the default and leaves every path behaving exactly as before.

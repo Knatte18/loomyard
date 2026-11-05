@@ -66,8 +66,8 @@ func HandsBack(producer, reason string) bool {
 // Eligibility returns nil when the arbiter may settle stop and a refusal otherwise.
 // For a tapestry, darn or sampler stop, eligible are an error stop of kind producer or bootstrap, of kind interrupted under the reinvoke policy or with a non-empty transient class.
 // Eligible too is a halted blocked stop, bar a landing halt or a decision halt.
-// Eligible too is a halted awaiting stop with a pending escalation of cause `hard-cap` or `circling`.
-// Every other stop is refused, a landing halt, a decision halt and a `decision` escalation included, since only the run's parent lifts them, and the refusal ends with HandBackWayForward.
+// Eligible too is a halted awaiting stop with a pending escalation of cause `hard-cap`, `circling` or `decision`.
+// Every other stop is refused, a landing halt, a decision halt and a `budget` escalation included, since only the run's parent lifts them, and the refusal ends with HandBackWayForward.
 // For a batten stop every stop is eligible, error stops of any kind and blocked stops included, bar a spent bounce budget, an unmet precondition and a pause-honoured Land stop;
 // those three are refused with a refusal ending in BattenHandBackWayForward.
 func Eligibility(stop Stop) error {
@@ -104,7 +104,7 @@ func Eligibility(stop Stop) error {
 			return refuse(fmt.Sprintf("the review escalation at %q is unreadable: %v", stop.Producer, stop.EscalationErr))
 		case !stop.EscalationPending:
 			return refuse(fmt.Sprintf("the run awaits at %q with no pending review escalation", stop.Producer))
-		case stop.EscalationCause == shedadapters.EscalationHardCap, stop.EscalationCause == shedadapters.EscalationCircling:
+		case stop.EscalationCause == shedadapters.EscalationHardCap, stop.EscalationCause == shedadapters.EscalationCircling, stop.EscalationCause == shedadapters.EscalationDecision:
 			return nil
 		default:
 			return refuse(fmt.Sprintf("the review escalation at %q has cause %q, which goes to the run's parent", stop.Producer, stop.EscalationCause))
