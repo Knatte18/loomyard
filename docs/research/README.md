@@ -36,6 +36,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [codex-engine-trial-hooks-guards-skills-2026-11-03.md](codex/engine-trial/codex-engine-trial-hooks-guards-skills-2026-11-03.md) — hooks, shell guards and skills.
 - [codex-engine-trial-pane-load-2026-11-03.md](codex/engine-trial/codex-engine-trial-pane-load-2026-11-03.md) — pane, sends, creel by the pane path, and load.
 - [codex-engine-trial-darn-e2e-2026-11-05.md](codex/engine-trial/codex-engine-trial-darn-e2e-2026-11-05.md) — a darn run with a Codex writer.
+- [codex-creel-trial-2026-11-05.md](codex/engine-trial/codex-creel-trial-2026-11-05.md) — creel mail reaching Codex sessions through the new hooks.
 
 ### astra — Codex Astra as a plan reviewer
 
