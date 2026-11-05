@@ -175,8 +175,9 @@ func TestHubDobbyDeps_LandsOnlyAFlaggedBeam(t *testing.T) {
 		t.Errorf("land request after a refused Land: stat = %v; want none written", statErr)
 	}
 
-	if _, err := markReady(hubLandDeps(h.Location), "b"); err != nil {
-		t.Fatalf("markReady(b) = %v; want nil", err)
+	// The fixture's beam is not at a judged Beam-Await, so the record is written below `markReady`'s judgment.
+	if _, err := hubLandDeps(h.Location).MarkReady("b", pawlengine.ReadyRecord{Slug: "b", SetAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("MarkReady(b) = %v; want nil", err)
 	}
 	reading, err = deps.CanLand()
 	if err != nil || !reading.Passes || reading.ParentOwner != "" {
@@ -220,42 +221,6 @@ func TestHubLandDeps_MarkReadyCommitsAnUncommittedFlaggedRecord(t *testing.T) {
 	record, found, err := state.ReadJSON[pawlengine.ReadyRecord](path, lockPath)
 	if err != nil || !found || !record.SetAt.Equal(flaggedAt) {
 		t.Errorf("ready record = %+v, %v, %v; want the original, not rewritten", record, found, err)
-	}
-}
-
-func TestHubLandDeps_UnreadyCommitsTheRemovalOfTheReadyRecordAndSucceedsAgain(t *testing.T) {
-	tiergate.Require(t, 1)
-	t.Parallel()
-
-	h, _ := landingHub(t)
-	beam, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(h.Location, "b"))
-	if err != nil {
-		t.Fatalf("resolve the beam worktree: %v", err)
-	}
-	path := loomengine.BeamReadyPath(beam)
-	deps := hubLandDeps(h.Location)
-	if _, err := markReady(deps, "b"); err != nil {
-		t.Fatalf("markReady(b) = %v; want the record written and committed", err)
-	}
-
-	removed, err := deps.Unready("b")
-	if err != nil || !removed {
-		t.Fatalf("Unready(b) = %v, %v for a flagged beam; want true, nil", removed, err)
-	}
-	if _, statErr := os.Stat(path); !errors.Is(statErr, fs.ErrNotExist) {
-		t.Errorf("ready record after Unready: stat = %v; want it removed", statErr)
-	}
-	dirty, err := exec.Command("git", "-C", filepath.Dir(path), "status", "--porcelain", "--", ".").CombinedOutput()
-	if err != nil {
-		t.Fatalf("git status of the landing directory: %v: %s", err, dirty)
-	}
-	if len(strings.TrimSpace(string(dirty))) != 0 {
-		t.Errorf("git status of the landing directory = %q; want the removal committed", dirty)
-	}
-
-	removed, err = deps.Unready("b")
-	if err != nil || removed {
-		t.Errorf("Unready(b) = %v, %v with no record left; want false, nil", removed, err)
 	}
 }
 

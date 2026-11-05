@@ -28,7 +28,6 @@ const (
 // A no closes any pull request the run recorded and passes, except that a failed read of GitHub's rules with a pull request recorded is Stuck and closes nothing.
 // A yes the resolver marks MergeAtOnce passes at once, since Finalize opens and merges that pull request with no review; any other yes pushes the task branch, finds or opens the pull request, sets its title from the change description and its body from the description's body, the regression check and the credit block, records it, keeps one interactive session for the operator to discuss it in, and waits on it.
 // The wait gates and pushes the agent's commits, sets the title and body again when the text yielded from the change description, the regression check and the credit block changes, and ends when the pull request is merged or approved, or closed or continued by the operator.
-// A reopen request, read on entry and at every wake, ends the row first: it sends the run back through the row's reroute edge, the pull request kept open as a draft or closed.
 // It takes no parent lock.
 type PRReview struct {
 	name string
@@ -67,12 +66,9 @@ func (p *PRReview) Call(ctx context.Context) (shedengine.Outcome, shedengine.Out
 	return outcome, pointer, err
 }
 
-// decide answers a standing reopen request first; otherwise it resolves whether the landing goes through a pull request and runs the row's side of the answer.
+// decide resolves whether the landing goes through a pull request and runs the row's side of the answer.
 func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	pr := p.deps.PullRequest
-	if outcome, pointer, err, answered := p.answerReopen(ctx); answered {
-		return outcome, pointer, err
-	}
 
 	mode, worktree, err := pr.ParentMode()
 	if err != nil {
@@ -95,7 +91,7 @@ func (p *PRReview) decide(ctx context.Context) (shedengine.Outcome, shedengine.O
 	if err != nil {
 		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err)
 	}
-	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, origin, hasCommits, recordFound)
+	decision, err := resolveWithParentRule(ctx, p.name, p.deps, mode, field, NotABeam, origin, hasCommits, recordFound)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
@@ -255,7 +251,7 @@ func (p *PRReview) openPullRequest(ctx context.Context, origin Origin) (shedengi
 			return p.githubFailure(ctx, "read the pull request's status", err)
 		}
 		entryStatus = &status
-		// A reopen left the pull request a draft, which GitHub refuses to merge, so the review starts by marking it ready.
+		// GitHub refuses to merge a draft pull request, so the review starts by marking a found draft ready.
 		if status.State == pullrequest.StateOpen && status.Draft {
 			if err := api.SetDraft(ctx, rec.Number, false); err != nil {
 				return p.githubFailure(ctx, "mark the pull request ready for review", err)
@@ -520,9 +516,6 @@ func (p *PRReview) wake(ctx context.Context, api pullrequest.API, state *prWaitS
 	}
 	if err := p.holdWhileCovered(ctx); err != nil {
 		return end("", shedengine.OutputPointer{}, err)
-	}
-	if outcome, pointer, err, answered := p.answerReopen(ctx); answered {
-		return end(outcome, pointer, err)
 	}
 
 	head, dirty, err := p.readTree()
@@ -802,101 +795,6 @@ func (p *PRReview) endReview(rec pullrequest.Record) (shedengine.Outcome, sheden
 // dirtyEndReason is the Stuck reason for a review that ended with uncommitted changes in the task worktree.
 func (p *PRReview) dirtyEndReason(number int, dirty []string) string {
 	return fmt.Sprintf("pull request #%d ended the review, but the task worktree has uncommitted changes: %s; way forward: discard them in the task worktree, after filing any worth keeping as a board note, then run lym loom resume", number, listShown(dirty))
-}
-
-const (
-	// reopenDraftComment is the comment a reopen posts on the pull request it keeps open as a draft.
-	reopenDraftComment = "lym reopened this landing for more work: the pull request stays open as a draft, and lym refreshes its description and marks it ready for review when the landing goes on."
-	// reopenCloseComment is the comment a reopen posts on the pull request it closes.
-	reopenCloseComment = "lym closed this pull request: the landing was reopened for more work, and its next pull request is a new one."
-)
-
-// answerReopen sends the run back through the row's reroute edge when the Reopen seam reads a request, and reports whether it answered one.
-// It stops the session, then keeps an open recorded pull request open as a draft with a comment saying so, or closes it with a comment when the request asks.
-// A record it keeps loses the continue flag, the operator's ending, the mailed head and the session, so the next entry starts a fresh review of the same pull request; a pull request it closes, or that GitHub reports closed or merged, loses its record.
-// The verdict is Stuck with Reroute and a reason naming what became of the pull request.
-// The request stays for the reroute's target to remove, so a run the reroute cap halts here answers it again when resumed.
-// A failed read or record write is an error, and a GitHub failure is judged as githubFailure judges one.
-func (p *PRReview) answerReopen(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-	pr := p.deps.PullRequest
-	if pr.Reopen == nil {
-		return "", shedengine.OutputPointer{}, nil, false
-	}
-	answered := func(outcome shedengine.Outcome, pointer shedengine.OutputPointer, err error) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-		return outcome, pointer, err, true
-	}
-	req, found, err := pr.Reopen()
-	if err != nil {
-		return answered("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the reopen request: %w", p.name, err))
-	}
-	if !found {
-		return "", shedengine.OutputPointer{}, nil, false
-	}
-	reroute := func(fate string) (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
-		reason := "the landing was reopened for more work; " + fate
-		logger.Info("landingshed: a reopen request sends the run back", "row", p.name, "reason", reason)
-		return answered(shedengine.Stuck, shedengine.OutputPointer{Reroute: true, Reason: reason}, nil)
-	}
-
-	rec, recorded, err := pullrequest.ReadRecord(pr.RecordPath, pr.RecordLockPath)
-	if err != nil {
-		return answered("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the pull request record: %w", p.name, err))
-	}
-	if !recorded {
-		return reroute("the run has no pull request")
-	}
-	if _, err := p.stopLiveSession(rec); err != nil {
-		return answered("", shedengine.OutputPointer{}, err)
-	}
-	origin, err := pr.Origin()
-	if err != nil {
-		return answered("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: read the origin: %w", p.name, err))
-	}
-	api, err := pr.API(origin.URL)
-	if err != nil {
-		return answered(p.githubFailure(ctx, "open the GitHub client", err))
-	}
-	status, err := api.Status(ctx, rec.Number)
-	if err != nil {
-		return answered(p.githubFailure(ctx, "read the pull request's status", err))
-	}
-
-	fate := fmt.Sprintf("pull request #%d is %s", rec.Number, status.State)
-	switch {
-	case status.State == pullrequest.StateOpen && req.Close:
-		if err := api.Close(ctx, rec.Number, reopenCloseComment); err != nil {
-			return answered(p.githubFailure(ctx, "close the pull request", err))
-		}
-		fate = fmt.Sprintf("pull request #%d is closed", rec.Number)
-	case status.State == pullrequest.StateOpen:
-		if !status.Draft {
-			if err := api.SetDraft(ctx, rec.Number, true); err != nil {
-				return answered(p.githubFailure(ctx, "turn the pull request into a draft", err))
-			}
-		}
-		if err := api.Comment(ctx, rec.Number, reopenDraftComment); err != nil {
-			return answered(p.githubFailure(ctx, "comment on the pull request", err))
-		}
-		fate = fmt.Sprintf("pull request #%d stays open as a draft", rec.Number)
-	case status.State == pullrequest.StateMerged:
-		fate = fmt.Sprintf("pull request #%d is already merged", rec.Number)
-	}
-
-	// A merged pull request already carries work to the parent, so keeping its record would let the next landing judge the reopened work as landed.
-	if req.Close || status.State == pullrequest.StateClosed || status.State == pullrequest.StateMerged {
-		if err := pullrequest.RemoveRecord(pr.RecordPath, pr.RecordLockPath); err != nil {
-			return answered("", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %w", p.name, err))
-		}
-		return reroute(fate)
-	}
-	err = p.updateRecord(func(r *pullrequest.Record) {
-		r.Continue, r.ReviewEnded, r.MailedHead = false, false, ""
-		r.StrandGUID, r.StrandName, r.SessionID, r.Engine = "", "", "", ""
-	})
-	if err != nil {
-		return answered("", shedengine.OutputPointer{}, err)
-	}
-	return reroute(fate)
 }
 
 // githubFailure judges a failed GitHub call named by action.

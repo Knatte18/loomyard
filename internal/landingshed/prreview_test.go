@@ -116,6 +116,12 @@ func (f *fakePullRequestAPI) RequiresPullRequest(_ context.Context, branch strin
 	return s.found, s.err
 }
 
+// RequiredChecks records the call and answers no checks.
+func (f *fakePullRequestAPI) RequiredChecks(_ context.Context, base, head string) ([]pullrequest.Check, error) {
+	f.next("RequiredChecks", base+" "+head)
+	return nil, nil
+}
+
 func TestPRReview_Call(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -555,143 +561,6 @@ func TestPRReview_Call(t *testing.T) {
 			t.Errorf("Call() = %q, %v; want an empty outcome and an error wrapping context.Canceled", outcome, err)
 		}
 	})
-}
-
-// TestPRReview_Reopen asserts a reopen request, read on entry or at a wake of the wait, stops the live pr-reviewer and sends the run back through the reroute edge:
-// an open pull request is kept as a draft with a comment and its record's review state reset, or closed with a comment and its record removed when the request asks, one GitHub reports closed or merged loses its record with no further call, and a run with no pull request makes no GitHub call.
-// A stop that fails is an error that leaves the record as it was.
-func TestPRReview_Reopen(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const url7 = "https://github.com/acme/widgets/pull/7"
-	open := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen}}
-	reviewed := &pullrequest.Record{Number: 7, URL: url7, GatedHead: "head-new", MailedHead: "head-old", StrandGUID: "g7", StrandName: "pr-reviewer", SessionID: "s7", Engine: "claude", Continue: true, ReviewEnded: true}
-	reset := &pullrequest.Record{Number: 7, URL: url7, GatedHead: "head-new"}
-	tests := []struct {
-		name   string
-		record *pullrequest.Record
-		req    ReopenRequest
-		// reopenAt is the Reopen read that first finds the request: 1 on entry, 2 at the wait's first wake.
-		reopenAt int
-		scripts  map[string][]scriptedCall
-		// stopErr is what stopping the live pr-reviewer fails with.
-		stopErr error
-
-		// wantStops is how many times the pr-reviewer's strand was stopped.
-		// A Call that returns an error ends its session, which stops a live strand once more.
-		wantStops    int
-		wantErr      bool
-		wantReason   string
-		wantCalls    []string
-		wantRecord   *pullrequest.Record
-		wantNoRecord bool
-	}{
-		{
-			name: "AnOpenPullRequestBecomesADraftWithACommentAndItsReviewStateIsReset", record: reviewed, reopenAt: 1, wantStops: 1,
-			scripts:    map[string][]scriptedCall{"Status": {open}},
-			wantReason: "pull request #7 stays open as a draft",
-			wantCalls:  []string{"Status 7", "SetDraft 7 true", "Comment 7 " + reopenDraftComment},
-			wantRecord: reset,
-		},
-		{
-			name: "ADraftIsOnlyCommentedOn", record: reviewed, reopenAt: 1, wantStops: 1,
-			scripts:    map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateOpen, Draft: true}}}},
-			wantReason: "stays open as a draft",
-			wantCalls:  []string{"Status 7", "Comment 7 " + reopenDraftComment},
-			wantRecord: reset,
-		},
-		{
-			name: "CloseClosesThePullRequestWithACommentAndRemovesTheRecord", record: reviewed, req: ReopenRequest{Close: true}, reopenAt: 1, wantStops: 1,
-			scripts:      map[string][]scriptedCall{"Status": {open}},
-			wantReason:   "pull request #7 is closed",
-			wantCalls:    []string{"Status 7", "Close 7 " + reopenCloseComment},
-			wantNoRecord: true,
-		},
-		{
-			name: "APullRequestClosedOnGitHubLosesItsRecord", record: reviewed, reopenAt: 1, wantStops: 1,
-			scripts:      map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateClosed}}}},
-			wantReason:   "pull request #7 is closed",
-			wantCalls:    []string{"Status 7"},
-			wantNoRecord: true,
-		},
-		{
-			name: "APullRequestMergedOnGitHubLosesItsRecordSoTheReopenedWorkGetsANewOne", record: reviewed, reopenAt: 1, wantStops: 1,
-			scripts:      map[string][]scriptedCall{"Status": {{status: pullrequest.Status{State: pullrequest.StateMerged}}}},
-			wantReason:   "pull request #7 is already merged",
-			wantCalls:    []string{"Status 7"},
-			wantNoRecord: true,
-		},
-		{
-			name: "AFailedStopOfThePRReviewerIsAnErrorBeforeAnyGitHubCallAndLeavesTheRecord", record: reviewed, reopenAt: 1, wantStops: 2,
-			stopErr:    errors.New("the strand would not stop"),
-			wantErr:    true,
-			wantRecord: reviewed,
-		},
-		{
-			name: "ARunWithNoPullRequestReroutesWithNoGitHubCall", reopenAt: 1,
-			wantReason:   "the run has no pull request",
-			wantNoRecord: true,
-		},
-		{
-			name: "ARequestSeenAtAWakeEndsTheWait", record: &pullrequest.Record{Number: 7, URL: url7, GatedHead: "head-new"}, reopenAt: 2, wantStops: 1,
-			scripts:    map[string][]scriptedCall{"Status": {open}},
-			wantReason: "stays open as a draft",
-			wantCalls:  []string{"Status 7", "Edit 7|Change title|" + wantPRBody, "Status 7", "SetDraft 7 true", "Comment 7 " + reopenDraftComment},
-			wantRecord: &pullrequest.Record{Number: 7, URL: url7, Base: "main", Head: "task", GatedHead: "head-new"},
-		},
-		{
-			name: "ATransientGitHubFailureIsAnError", record: reviewed, reopenAt: 1, wantStops: 1,
-			scripts:   map[string][]scriptedCall{"Status": {{err: context.DeadlineExceeded}}},
-			wantErr:   true,
-			wantCalls: []string{"Status 7"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			fx := newPRReviewFixture(t, "on", nil, "", Origin{URL: "https://github.com/acme/widgets.git", Upstream: true}, tt.record, tt.scripts, nil)
-			sessions := sessionsOf(fx.deps)
-			if tt.record != nil && tt.record.StrandGUID != "" {
-				sessions.live[tt.record.StrandGUID] = true
-			}
-			sessions.stopErr = tt.stopErr
-			reads := 0
-			fx.deps.PullRequest.Reopen = func() (ReopenRequest, bool, error) {
-				reads++
-				return tt.req, reads >= tt.reopenAt, nil
-			}
-
-			outcome, pointer, err := NewPRReview("PR-Review", fx.deps).Call(context.Background())
-
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("Call() error = %v; want error %v", err, tt.wantErr)
-			}
-			if len(sessions.stops) != tt.wantStops {
-				t.Errorf("Call() stopped the strands %v; want %d stops", sessions.stops, tt.wantStops)
-			}
-			if !tt.wantErr && (outcome != shedengine.Stuck || !pointer.Reroute || pointer.Halt || !strings.Contains(pointer.Reason, tt.wantReason)) {
-				t.Errorf("Call() = %q, reroute %v, halt %v, reason %q; want a Stuck reroute whose reason holds %q", outcome, pointer.Reroute, pointer.Halt, pointer.Reason, tt.wantReason)
-			}
-			if diff := cmp.Diff(tt.wantCalls, fx.api.calls); diff != "" {
-				t.Errorf("GitHub calls mismatch (-want +got):\n%s", diff)
-			}
-			got, found, rerr := pullrequest.ReadRecord(fx.deps.PullRequest.RecordPath, fx.deps.PullRequest.RecordLockPath)
-			if rerr != nil {
-				t.Fatalf("ReadRecord() error = %v", rerr)
-			}
-			switch {
-			case tt.wantNoRecord && found:
-				t.Errorf("Call() left the record %+v; want none", got)
-			case tt.wantRecord != nil && !found:
-				t.Errorf("Call() left no record; want %+v", *tt.wantRecord)
-			case tt.wantRecord != nil:
-				if diff := cmp.Diff(*tt.wantRecord, got); diff != "" {
-					t.Errorf("record mismatch (-want +got):\n%s", diff)
-				}
-			}
-		})
-	}
 }
 
 // emptyBranchReason is the resolver's reason for an on parent whose task branch holds no commit beyond it.

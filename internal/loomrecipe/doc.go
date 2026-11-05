@@ -37,13 +37,15 @@
 // A budget of 0 turns the perch off as loom's does: New stamps `zero_rounds` on Code-Bouncer, which settles approved at once on `Drift-Verify`'s Done, and every edge is kept.
 // The `Describe` row carries the entry gate `budget.Code-Review`, so a budget of 0 skips it and the writer's own change description stands.
 // RetiredRows keeps each recipe's retired row names as that recipe's data: the writer row's former name, `Darn`, maps onto `Darn-Write`, and the landing row's former name, `Merge-In`, onto `Parent-Align`, with the entry row's former names, `Loom-Preflight` and `Tapestry-Preflight`, onto `Preflight`.
-// The caller carries a run parked under an old name across with shedengine.RenameProducers.
+// The caller carries a run parked under an old name across with shedengine.RenameProducers, at arm and with no side effect.
+// A row a recipe dropped is declared apart, in the recipe's own `retired` map, whose keys RetiredRowNames returns; it reads that map and never RetiredRows.
+// The shed moves a run parked at one of them to the row the map names and pauses it, since no row of the recipe carries the name on.
 //
 // The pawl recipe, a beam's life, is a loom recipe New builds like the others.
-// It reads `Preflight → Record-Write → Beam-Up → Beam-Await → Parent-Align → Beam-Describe → PR-Review → Finalize → Beam-Down`, with no review segment:
-// Record-Write writes the project record, Beam-Await is its build row, held while the members' runs work in the beam, and a merge Finalize cannot land halts the run for the orch.
-// Its one reroute edge takes PR-Review back to Beam-Await, which PR-Review follows when `lym beam reopen` asked for the beam to take more work.
-// A run at Parent-Align or any row after it holds its beam; before it the beam is free to start members.
+// It reads `Preflight → Record-Write → Beam-Up → Beam-Await → Finalize → Beam-Down`, with no review segment and no reroute edge:
+// Record-Write writes the project record, Beam-Await is its build row, held while the members' runs work in the beam and while the beam's orch writes the description and handles the pull request, and a merge Finalize cannot land halts the run for the orch.
+// Its `retired` map sends a run parked at Parent-Align, Beam-Describe or PR-Review, the rows of an earlier pawl recipe, back to Beam-Await.
+// A run at Finalize or any row after it holds its beam; before it the beam is free to start members.
 //
 // Rows and RowNames serve the tapestry, darn, batten, pawl, sampler and motif recipes, and EntryNumbers numbers any recipe's rows for the panes that draw them:
 // a review segment is one entry and every other row its own, so a recipe added to Rows is numbered with no change to its readers.

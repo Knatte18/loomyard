@@ -10,6 +10,7 @@
 // Later waves add their own siblings here rather than spawning per-engine packages or re-deriving the
 // construction inline at each call site.
 // PauseGeometry converts a Location into the pauserecord.Geometry every reader of a pause is told: the record under the board-level `.lym` and the pair's slug, empty for the prime.
+// DobbyGeometry converts a worktree's name into the dobbyengine.Geometry its dobby is told: its lock, state, log, output and announced-head files and its tidy directory under the worktree's own `.lym/beam/`, the batten runs directory under the prime, and the anchor-move records that stop it.
 //
 // ReedGeometry tells reed the hub-level discover signal file in DiscoverSignalPath, beside LogsDir: reedengine.DiscoverSignalFileName under fabricengine.HubScratchDir.
 //

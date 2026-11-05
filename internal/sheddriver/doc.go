@@ -50,6 +50,9 @@
 // The settle records at `shedrun.SettleRecords` hold one line per action taken at a stop.
 // The record format and its tolerant decoder are declared in `internal/shedrun`; this package appends and reads the file, and `SettleRecord` and `StopKey` are aliases of the types declared there.
 // The repair cap, the one hand-over per build and the open tackler attempt are counted from them, so a restarted driver keeps every cap.
+// A recipe's told `CompletedWake` restarts the repair count of a stop key: when the stop's row has a completed-wake stamp at least `wakeRestartGap` later than the key's last re-step, the count is zero again.
+// A row that waits for long, as a pawl run's Beam-Await does, is then re-stepped after each loop that lived through a wake, while a loop that dies soon after each re-step still reaches the tackler;
+// a younger stamp, an absent one and a failed read leave the count as the records give it, and a nil `CompletedWake` reads none.
 // `RestepRecorded` reads a record list for a re-step of the stop a status names, so a reader outside the driver tells a re-stepped stop from one still open.
 //
 // # Seams a recipe fills

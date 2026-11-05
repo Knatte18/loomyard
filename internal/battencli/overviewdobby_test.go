@@ -88,6 +88,15 @@ func TestDobbyLines(t *testing.T) {
 			},
 		},
 		{
+			name: "AReadyBeamHoldsAWaitingTaskAndNamesTheCancel",
+			view: dobbyengine.View{Alive: true, MaxRuns: 2, LandNotice: dobbyengine.LandNoticeOff, Waiting: []dobbyengine.WaitingTask{{Slug: "held", ReadyHold: true}}},
+			want: []string{
+				"dobby prime: alive, max_runs 2, land_notice off",
+				"  no runs driven",
+				"  held  waits on the beam is flagged ready: lym batten cancel held --remove",
+			},
+		},
+		{
 			name: "NoRunsSaysSo",
 			view: dobbyengine.View{Alive: true, MaxRuns: 3, LandNotice: dobbyengine.LandNoticeOff},
 			want: []string{"dobby prime: alive, max_runs 3, land_notice off", "  no runs driven"},

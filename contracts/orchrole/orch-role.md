@@ -77,6 +77,27 @@ so the beam's orch appears only after Beam-Up, and the operator attaches to it l
 A task run has the same batten rows, but its inner run is tapestry, arras, darn or sampler, which has no Beam-Up, so its worktree never becomes a beam.
 `lym beam start <slug>` brings an existing beam's dobby and orch back up; it refuses a task worktree and never makes a beam.
 
+## Landing a beam
+
+The orch of a beam works the beam's landing at Beam-Await with the operator.
+When the operator says so, run:
+
+- `lym beam describe <slug>`, which writes the beam's change description from the entry's title and brief, the beam's landings and the decisions of its project record.
+  Change the description only through the entry's title and brief with `lym board upsert`, then run `lym beam describe <slug>` again, and never edit `summary.md` by hand.
+- `lym beam pr open <slug>`, `lym beam pr update <slug>`, `lym beam pr status <slug>` and `lym beam pr close <slug>` for the beam's pull request into its parent.
+  `status` reads whether it can merge now and what stops it, and changes nothing.
+- `lym beam merge-parent <slug>`, which brings the parent in.
+
+On a dobby notice naming landings into the beam, run `lym beam describe <slug>`, then `lym beam pr update <slug>`.
+
+Never merge a pull request, and never close one to add work, since work lands into the beam while the pull request stays open.
+Close one only when the operator chooses to land without it.
+
+Run `lym beam ready <slug>` only when the operator is satisfied.
+It is final: no verb takes the beam back to Beam-Await, and a member filed after it never starts.
+It refuses what you can still fix, each refusal naming its way forward.
+A halted Finalize is followed with `lym beam start <slug>`, which brings your orch back and leaves the dobby down, and with `lym loom resume` in the beam's worktree after the fix the halt names.
+
 A project that runs as a task run is no beam, and no repair of its worktree makes it one.
 When the operator reports that a project ran as a task run, or a stop shows it, tell the two apart.
 `lym batten status <slug>` reports the batten run's own rows, Worktree-Create through Run-Shed, the same for a task run and a beam, so it cannot separate them.
@@ -174,9 +195,9 @@ A brief for a non-fork agent that runs `lym gate test` carries a copy of the gat
 
 ## Landing halts
 
-A run lands with no orch turn: Parent-Align and Finalize fix their own merge and test failures with the merge fixer, and no pull request waits for an approval.
-Finalize takes the parent lock first, syncs the task branch with main, squashes it onto main, marks the board task done and pushes main.
-A parent that moved since Parent-Align, a conflict or a large merge no longer sends the run back: Finalize merges the parent in place, resolves a conflict under the lock and gates the merged tree.
+A task run lands with no orch turn: Parent-Align and Finalize fix their own merge and test failures with the merge fixer, and no pull request waits for an approval.
+A task run's Finalize takes the parent lock first, syncs the task branch with main, squashes it onto main, marks the board task done and pushes main.
+On a task run, a parent that moved since Parent-Align, a conflict or a large merge no longer sends the run back: Finalize merges the parent in place, resolves a conflict under the lock and gates the merged tree.
 A landing halt reaches you with the status marked `hand_back`, and no driver, batten or arbiter routes it to another row.
 - A landing-stop halt at Parent-Align or Finalize means the fixer spent its cap, failed, made an over-cap change at Parent-Align, on a pawl run escalated a decision, or found its attempt record undecodable, or Finalize's fix reviews ran out of rounds without approving the fixer's change.
   The halt's reason says which, and names the commits the fixer kept.
@@ -184,6 +205,8 @@ A landing halt reaches you with the status marked `hand_back`, and no driver, ba
   Read the commits, decide what the run needs, record it with `lym loom decision add <slug> --by parent`, then `lym loom resume` in the task worktree.
 - When Finalize's fix reviews ran out of rounds, the reason names the open findings: either accept the change as it stands with `lym loom circling accept <slug>`, which writes those findings into the change description, or have them fixed on the task branch by the run's agents; then `lym loom resume`, which without an acceptance runs the fix reviews afresh.
 - On a tapestry, darn or sampler run a fixer that escalated a decision halts with the landing-escalate prefix instead, and the arbiter judges it first, so it reaches you only as the arbiter's hand-on; record the deciding decision with `lym loom decision add`, then `lym loom resume`.
+- A beam has no Parent-Align, and its Finalize merges the beam's pull request on GitHub, so it halts when GitHub refuses it: a pending check, a dismissed review, a refused merge method or a pull request closed on GitHub.
+  Read the pull request with `lym beam pr status <slug>`, settle on GitHub what the halt's message names, which for a closed one is the operator reopening it, then run `lym loom resume` in the beam's worktree, and never `lym batten cancel <slug>`.
 After a run lands, amend the board entries it superseded.
 
 ## After landing

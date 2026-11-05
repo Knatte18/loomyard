@@ -9,8 +9,10 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/pairteardown"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
@@ -37,7 +39,15 @@ func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(bea
 	if err != nil {
 		return "", err
 	}
-	if err := beamForkPrecondition(slug, beam, beamEntry, beamFound, pairPresent, func() (bool, error) { return branchOnOrigin(beam) }); err != nil {
+	// The ready record sits in the beam's pair, so it is read only once the pair is present.
+	ready := func() (bool, error) {
+		beamLocation, err := lymcwd.ResolveWorktree(fabricengine.WorktreePath(prime, beam))
+		if err != nil {
+			return false, err
+		}
+		return pawlengine.ReadyFor(loomengine.BeamReadyPath(beamLocation), loomengine.BeamReadyLockPath(beamLocation), beam)
+	}
+	if err := beamForkPrecondition(slug, beam, beamEntry, beamFound, pairPresent, func() (bool, error) { return branchOnOrigin(beam) }, ready); err != nil {
 		return "", err
 	}
 	return beam, nil
@@ -45,9 +55,11 @@ func beamForkParent(prime *lymcwd.Location, slug string, branchOnOrigin func(bea
 
 // beamForkPrecondition stops the create of slug's pair with a *battenshed.PreconditionError when its beam cannot take the member.
 // A beam whose pair is absent here names the beam and the command that brings it: the beam's create when branchOnOrigin reports its branch off origin, its adopt when on origin.
-// A beam whose board entry beamEntry is held by its own landing run, from Parent-Align on, names the landing and the cancel of slug that lets the landing go on.
+// A beam whose board entry beamEntry is held by its own landing run, from Finalize on and not from Parent-Align, names the landing and the cancel of slug that lets the landing go on.
+// A beam whose ready record ready reads as flagged takes no member, since ready is final and the member could not land into the beam: the refusal names the cancel that removes slug.
+// A ready read that fails refuses too, naming the error and the same cancel once it is fixed.
 // An error from branchOnOrigin is returned as is.
-func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFound, pairPresent bool, branchOnOrigin func() (bool, error)) error {
+func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFound, pairPresent bool, branchOnOrigin func() (bool, error), ready func() (bool, error)) error {
 	if !pairPresent {
 		onOrigin, err := branchOnOrigin()
 		if err != nil {
@@ -66,6 +78,20 @@ func beamForkPrecondition(slug, beam string, beamEntry boardengine.Task, beamFou
 		return &battenshed.PreconditionError{
 			Unmet:      fmt.Sprintf("%s belongs to beam %s, which its own landing holds (%s)", slug, beam, *beamEntry.Status),
 			WayForward: fmt.Sprintf("read the landing with %q; it stops on this open member, so run %q to end this member's run and let the landing go on", "lym batten status "+beam, "lym batten cancel "+slug),
+		}
+	}
+	cancelRemove := "lym batten cancel " + slug + " --remove"
+	flagged, err := ready()
+	if err != nil {
+		return &battenshed.PreconditionError{
+			Unmet:      fmt.Sprintf("%s belongs to beam %s, whose ready record does not read: %v", slug, beam, err),
+			WayForward: fmt.Sprintf("fix the read and run %q again; when the beam is flagged ready to land, run %q instead", "lym batten run "+slug, cancelRemove),
+		}
+	}
+	if flagged {
+		return &battenshed.PreconditionError{
+			Unmet:      fmt.Sprintf("%s belongs to beam %s, which is flagged ready to land, so no member starts in it", slug, beam),
+			WayForward: fmt.Sprintf("ready is final and %s cannot land into this beam; run %q to end %s and remove its pair", slug, cancelRemove, slug),
 		}
 	}
 	return nil

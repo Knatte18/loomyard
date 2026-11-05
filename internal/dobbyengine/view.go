@@ -59,11 +59,13 @@ type WaitingTask struct {
 	NotifyOnLand bool `json:"notify_on_land,omitempty"`
 	// FrontFirst is the slug of the open front task of the worktree that holds this released task back: no other task starts while one stands.
 	FrontFirst string `json:"front_first,omitempty"`
+	// ReadyHold reports whether the beam is flagged ready, which holds every start of the worktree back.
+	ReadyHold bool `json:"ready_hold,omitempty"`
 }
 
 // Ready reports whether nothing holds the task back, so the dobby starts it on its next tick.
 func (w WaitingTask) Ready() bool {
-	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns && w.FrontFirst == ""
+	return len(w.Dependencies) == 0 && !w.OwnedElsewhere && !w.Paused && w.StartRefusal == "" && w.NextTry.IsZero() && !w.AtMaxRuns && w.FrontFirst == "" && !w.ReadyHold
 }
 
 // ViewInput is everything BuildView reads.
@@ -85,6 +87,7 @@ type ViewInput struct {
 // BuildView returns the View of the dobby in.
 // The runs are the listed ones that are not done, and a done run takes a slot only while its driver lock is held; a task waits while it is released to the worktree and not started, and its reasons are the conditions the dobby's start step checks, in the start step's own order for max_runs.
 // An open front task of the worktree holds every other waiting task back and takes no slot under max_runs.
+// While the record carries the ready hold, every waiting task is held and none takes a slot.
 func BuildView(in ViewInput) View {
 	view := View{Alive: in.Alive, MaxRuns: in.Config.MaxRuns, LandNotice: in.Config.LandNotice, Runs: []ViewRun{}, Waiting: []WaitingTask{}}
 	requested := make(map[string]bool, len(in.Tasks))
@@ -114,7 +117,7 @@ func BuildView(in ViewInput) View {
 			continue
 		}
 		covered := in.Covers(task.Slug)
-		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand}
+		waiting := WaitingTask{Slug: task.Slug, Dependencies: task.PendingDependencies, OwnedElsewhere: task.OwnedElsewhere, Paused: covered, StartRefusal: task.StartRefusal, NotifyOnLand: task.NotifyOnLand, ReadyHold: in.Record.ReadyHold != nil}
 		if frontOpen && task.Slug != front.Slug {
 			waiting.FrontFirst = front.Slug
 		}
@@ -125,7 +128,7 @@ func BuildView(in ViewInput) View {
 			}
 		}
 		isFront := frontOpen && task.Slug == front.Slug
-		if !heldByEntry(task, covered) && waiting.NextTry.IsZero() && waiting.FrontFirst == "" && !isFront {
+		if !heldByEntry(task, covered) && waiting.NextTry.IsZero() && waiting.FrontFirst == "" && !isFront && !waiting.ReadyHold {
 			waiting.AtMaxRuns = slots <= 0
 			slots--
 		}

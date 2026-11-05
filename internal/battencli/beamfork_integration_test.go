@@ -9,12 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/hubforge"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -213,6 +216,19 @@ func TestWorktreeCreate_ForksFromTheBeam(t *testing.T) {
 		}
 		if got := parentOf(t, "grouped"); got != primeName {
 			t.Errorf("origin of grouped names parent worktree %q; want the prime %q", got, primeName)
+		}
+	})
+
+	t.Run("MemberOfABeamFlaggedReadyIsRefused", func(t *testing.T) {
+		beam := resolvePair(t, h, "b")
+		record := pawlengine.ReadyRecord{Slug: "b", SetAt: time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)}
+		if err := pawlengine.WriteReady(loomengine.BeamReadyPath(beam), loomengine.BeamReadyLockPath(beam), record); err != nil {
+			t.Fatalf("WriteReady(b): %v", err)
+		}
+		c := wireForHub(t, h, "left", nil)
+		err := c.env.CreateWorktree(context.Background(), holdNothing)
+		if err == nil || !strings.Contains(err.Error(), "lym batten cancel left --remove") {
+			t.Fatalf("CreateWorktree(left) = %v; want a refusal naming `lym batten cancel left --remove`", err)
 		}
 	})
 }

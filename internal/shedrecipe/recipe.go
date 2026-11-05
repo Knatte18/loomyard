@@ -232,9 +232,6 @@ type Env struct {
 	// CommitDescription is the injected closure that commits the change description's directory,
 	// invoked by the Describe entry's commit decorator on a Done outcome.
 	CommitDescription func() error
-	// BeamDescribe is a whole-struct passthrough to landingshed.NewBeamDescribe, following Env.Landing's precedent, read by the BeamDescribe entry only.
-	// Every field of it is required.
-	BeamDescribe landingshed.BeamDescribeDeps
 	// Pawl is a whole-struct passthrough to the pawl producers' constructors, read by the BeamUp, BeamAwait and BeamDown entries only.
 	// Each entry requires the fields its producer uses, and Watch alone may be nil.
 	Pawl pawlengine.Deps

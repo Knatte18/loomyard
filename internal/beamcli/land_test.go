@@ -1,8 +1,9 @@
-// land_test.go drives the land, ready and reopen sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, the ready record written once, and the reopen request written for a landing past Beam-Await with its ready record removed.
+// land_test.go drives the land and ready sequences over fake deps: the entries that are not a landable beam, the pawl run, owner and ready refusals, the work-remaining refusal passed through, the land request written for a beam waiting at Beam-Await, and the ready record written once.
 
 package beamcli
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"strings"
@@ -11,9 +12,13 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/reviewbudget"
 	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/testkit/prkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -39,14 +44,45 @@ type landWorld struct {
 	refusal    error
 	refusedFor []string
 	requests   []pawlengine.LandRequest
-	// reopens holds the reopen requests written, unreadyCalls the Unready calls and unreadyErr what that seam fails with.
-	reopens      []pawlengine.ReopenRequest
-	unreadyCalls int
-	unreadyErr   error
 	// tasks is the board's entries, filed the fields of each task FileTask filed and caps the hub's Code-Review budget.
 	tasks []boardengine.Task
 	filed []map[string]any
 	caps  reviewbudget.Caps
+	// described holds the slug of each Describe call, and describeErr is what the Describe seam fails with.
+	described   []string
+	describeErr error
+	// api is the fake GitHub every pull request side holds, and origin and sideErr the facts and the failure PullRequestSide answers with.
+	api     *prkit.API
+	origin  landingshed.Origin
+	sideErr error
+	// pushed counts the PushBeam calls, which answer pushHead or pushErr.
+	pushed   int
+	pushHead string
+	pushErr  error
+	// hasCommits and commitsErr are what BeamHasCommits answers.
+	hasCommits bool
+	commitsErr error
+	// beamHead is what BeamHead answers.
+	beamHead string
+	// mode, rulesRequired and modeErr are what PullRequestMode answers.
+	mode          string
+	rulesRequired bool
+	modeErr       error
+	// slept is the time the fake clock has advanced by Sleep, which every read of the merge state waits through.
+	slept time.Duration
+	// parentUnmerged is what ParentUnmerged answers, findings what DescriptionFindings answers and mergedLacks what MergedLacks answers.
+	parentUnmerged bool
+	findings       []string
+	mergedLacks    []string
+	// apiErr, when set, leaves the pull request side with no API and this as the reason.
+	apiErr error
+	// landing holds each beam's landing record, and writes counts the WriteLanding calls, which fail with writeErr.
+	landing  map[string]pawlengine.LandingRecord
+	writes   int
+	writeErr error
+	// title and body are the change description Description reads.
+	title string
+	body  string
 }
 
 // newLandWorld returns a hub owned by here with a beam "b" forked from main whose pair is here and marked and whose pawl run waits at Beam-Await, a task, a grouping project and a done beam.
@@ -69,6 +105,15 @@ func newLandWorld() *landWorld {
 			{Slug: "b", Kind: boardengine.KindProject, Labels: []string{"enhancement", "reed"}},
 			{Slug: "task1", Kind: boardengine.KindTask, Project: "b"},
 		},
+		api:        &prkit.API{},
+		origin:     landingshed.Origin{URL: "https://github.com/o/r.git", Upstream: true},
+		pushHead:   "head1",
+		hasCommits: true,
+		beamHead:   "head1",
+		mode:       "off",
+		landing:    map[string]pawlengine.LandingRecord{"b": {Slug: "b", DescribedAt: landNow}},
+		title:      "Ship the beam",
+		body:       "Groups the work.",
 	}
 }
 
@@ -106,142 +151,61 @@ func (w *landWorld) deps() landDeps {
 			w.requests = append(w.requests, req)
 			return "/hub/" + slug + "/.lym/beam/land-request.json", nil
 		},
-		WriteReopen: func(slug string, req pawlengine.ReopenRequest) (string, error) {
-			w.reopens = append(w.reopens, req)
-			return "/hub/" + slug + "/.lym/beam/reopen-request.json", nil
-		},
-		Unready: func(slug string) (bool, error) {
-			w.unreadyCalls++
-			if w.unreadyErr != nil {
-				return false, w.unreadyErr
-			}
-			removed := w.ready[slug]
-			delete(w.ready, slug)
-			return removed, nil
-		},
-		Now:   func() time.Time { return landNow },
+		Now:   func() time.Time { return landNow.Add(w.slept) },
 		Tasks: func() ([]boardengine.Task, error) { return w.tasks, nil },
 		FileTask: func(fields map[string]any) error {
 			w.filed = append(w.filed, fields)
 			return nil
 		},
 		CodeReviewCaps: func() (reviewbudget.Caps, error) { return w.caps, nil },
-	}
-}
-
-func TestReopen(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	at := func(state shedengine.State, row string) func(w *landWorld) {
-		return func(w *landWorld) { w.children["b"] = shedengine.Status{State: state, CurrentProducer: row} }
-	}
-	tests := []struct {
-		name    string
-		slug    string
-		closePR bool
-		setup   func(w *landWorld)
-		// wantErr is empty for a reopen that writes its request, else every substring the refusal names.
-		wantErr []string
-		// wantWayForward is a substring of a written request's way forward.
-		wantWayForward string
-		// wantReopens is how many reopen requests were written, wantUnready how many times the ready record's removal ran.
-		wantReopens int
-		wantUnready int
-	}{
-		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym beam reopen:", "lym batten run task1"}},
-		{name: "DoneBeamRefused", slug: "landed", wantErr: []string{"lym beam reopen:", "already landed"}},
-		{
-			name: "BeamOwnedElsewhereRefusedNamingAdopt", slug: "b",
-			setup: func(w *landWorld) {
-				w.owners.Entries["b"] = boardengine.OwnerEntry{IsProject: true, Beam: true, Owner: there}
-				at(shedengine.StateRunning, "PR-Review")(w)
-			},
-			wantErr: []string{"owned by machine there", "lym adopt b"},
-		},
-		{
-			name: "BeamWithNoPawlRunRefusedNamingCreate", slug: "b",
-			setup:   func(w *landWorld) { delete(w.children, "b") },
-			wantErr: []string{"no pawl run", "lym beam create b"},
-		},
-		{
-			name: "RunWaitingAtBeamAwaitRefusedAsTakingMembersAlready", slug: "b",
-			wantErr: []string{"Beam-Await", "takes new members already", "lym batten status b"},
-		},
-		{
-			name: "RunAtFinalizeRefused", slug: "b", setup: at(shedengine.StateRunning, "Finalize"),
-			wantErr: []string{"running at Finalize", "lym batten status b"},
-		},
-		{
-			name: "DoneRunRefused", slug: "b", setup: at(shedengine.StateDone, "PR-Review"),
-			wantErr: []string{"done at PR-Review"},
-		},
-		{
-			name: "RunAtPRReviewWritesTheRequestAndRemovesTheFlag", slug: "b", setup: at(shedengine.StateRunning, "PR-Review"),
-			wantWayForward: "lym batten status b", wantReopens: 1, wantUnready: 1,
-		},
-		{
-			name: "CloseRidesTheRequest", slug: "b", closePR: true, setup: at(shedengine.StateRunning, "PR-Review"),
-			wantWayForward: "lym beam ready b", wantReopens: 1, wantUnready: 1,
-		},
-		{
-			name: "RunAtParentAlignIsSentBack", slug: "b", setup: at(shedengine.StateRunning, "Parent-Align"),
-			wantWayForward: "Beam-Await", wantReopens: 1, wantUnready: 1,
-		},
-		{
-			name: "RunAtBeamDescribeIsSentBack", slug: "b", setup: at(shedengine.StateRunning, "Beam-Describe"),
-			wantWayForward: "Beam-Await", wantReopens: 1, wantUnready: 1,
-		},
-		{
-			name: "HaltedRunNamesLoomResume", slug: "b", setup: at(shedengine.StateBlocked, "PR-Review"),
-			wantWayForward: "lym loom resume", wantReopens: 1, wantUnready: 1,
-		},
-		{
-			name: "FailedReadyRemovalNamesReopenAgain", slug: "b",
-			setup: func(w *landWorld) {
-				at(shedengine.StateRunning, "PR-Review")(w)
-				w.unreadyErr = errors.New("the commit failed")
-			},
-			wantErr:     []string{"the commit failed", "lym beam reopen b"},
-			wantReopens: 1, wantUnready: 1,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			w := newLandWorld()
-			if tt.setup != nil {
-				tt.setup(w)
+		Describe: func(slug string, _ time.Time) (string, error) {
+			w.described = append(w.described, slug)
+			if w.describeErr != nil {
+				return "", w.describeErr
 			}
-			flagged := w.ready[tt.slug]
-
-			got, err := reopen(w.deps(), tt.slug, tt.closePR)
-
-			if len(w.reopens) != tt.wantReopens || w.unreadyCalls != tt.wantUnready {
-				t.Errorf("reopen(%q) wrote %d requests and ran Unready %d times; want %d and %d", tt.slug, len(w.reopens), w.unreadyCalls, tt.wantReopens, tt.wantUnready)
+			return "/hub/" + slug + "/_lym/landing/summary.md", nil
+		},
+		PullRequestSide: func(string) (beamPullRequestSide, error) {
+			side := beamPullRequestSide{API: w.api, Origin: w.origin, Branch: "b", ParentBranch: "main"}
+			if w.apiErr != nil {
+				side.API, side.APIErr = nil, w.apiErr
 			}
-			if len(tt.wantErr) > 0 {
-				if err == nil {
-					t.Fatalf("reopen(%q) = %v, nil; want a refusal naming %v", tt.slug, got, tt.wantErr)
-				}
-				for _, want := range tt.wantErr {
-					if !strings.Contains(err.Error(), want) {
-						t.Errorf("reopen(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
-					}
-				}
-				return
+			return side, w.sideErr
+		},
+		PushBeam: func(string) (string, error) {
+			w.pushed++
+			return w.pushHead, w.pushErr
+		},
+		BeamHasCommits:  func(string) (bool, error) { return w.hasCommits, w.commitsErr },
+		BeamHead:        func(string) (string, error) { return w.beamHead, nil },
+		PullRequestMode: func(string) (string, bool, error) { return w.mode, w.rulesRequired, w.modeErr },
+		Sleep: func(_ context.Context, d time.Duration) error {
+			w.slept += d
+			return nil
+		},
+		ParentUnmerged:      func(string) (bool, error) { return w.parentUnmerged, nil },
+		DescriptionFindings: func(string) ([]string, error) { return w.findings, nil },
+		MergedLacks:         func(string, string) ([]string, error) { return w.mergedLacks, nil },
+		Landing: func(slug string) (pawlengine.LandingRecord, bool, error) {
+			record, found := w.landing[slug]
+			return record, found, nil
+		},
+		WriteLanding: func(slug string, mutate func(rec *pawlengine.LandingRecord) error) error {
+			w.writes++
+			if w.writeErr != nil {
+				return w.writeErr
 			}
-			if err != nil {
-				t.Fatalf("reopen(%q) = %v; want the request written", tt.slug, err)
+			record, found := w.landing[slug]
+			if !found {
+				record = pawlengine.LandingRecord{Slug: slug}
 			}
-			want := pawlengine.ReopenRequest{RunID: w.runID, Close: tt.closePR, RequestedAt: landNow}
-			if w.reopens[0] != want {
-				t.Errorf("reopen(%q) wrote %+v; want %+v", tt.slug, w.reopens[0], want)
+			if err := mutate(&record); err != nil {
+				return err
 			}
-			if got["request"] != "/hub/b/.lym/beam/reopen-request.json" || got["close"] != tt.closePR || got["ready_removed"] != flagged || !strings.Contains(got["way_forward"].(string), tt.wantWayForward) {
-				t.Errorf("reopen(%q) = %v; want the request's path, close %v, ready_removed %v and a way forward naming %q", tt.slug, got, tt.closePR, flagged, tt.wantWayForward)
-			}
-		})
+			w.landing[slug] = record
+			return nil
+		},
+		Description: func(string) (string, string, error) { return w.title, w.body, nil },
 	}
 }
 
@@ -434,16 +398,26 @@ func TestMarkReady(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
+	// unflagged runs setup on a beam whose ready record does not stand.
+	unflagged := func(setup func(w *landWorld)) func(w *landWorld) {
+		return func(w *landWorld) {
+			delete(w.ready, "b")
+			setup(w)
+		}
+	}
 	tests := []struct {
 		name  string
 		slug  string
 		setup func(w *landWorld)
-		// wantErr is empty for a ready that succeeds, else every substring the refusal names.
-		wantErr []string
+		// wantErr is empty for a ready that succeeds, else every substring the refusal names, and wantNoErr every one it must not name.
+		wantErr   []string
+		wantNoErr []string
 		// wantAlready says the beam read as flagged before the call, so nothing is written.
 		wantAlready bool
 		// wantMarkCalls is how many times the MarkReady seam, which writes an absent record and commits it, ran.
 		wantMarkCalls int
+		// stripDeps removes seams from the deps, so a call to one panics.
+		stripDeps func(d *landDeps)
 	}{
 		{name: "TaskRefusedNamingItsOwnLanding", slug: "task1", wantErr: []string{"lym beam ready:", "lym batten run task1"}},
 		{name: "GroupingProjectRefusedNamingCreate", slug: "group", wantErr: []string{"lym beam ready:", "lym beam create group"}},
@@ -463,7 +437,206 @@ func TestMarkReady(t *testing.T) {
 			},
 			wantMarkCalls: 1,
 		},
-		{name: "FlaggedBeamWritesNothingAndStillCommits", slug: "b", wantAlready: true, wantMarkCalls: 1},
+		{
+			name:          "FlaggedBeamWritesNothingAndStillCommitsWithNoJudgingSeam",
+			slug:          "b",
+			wantAlready:   true,
+			wantMarkCalls: 1,
+			stripDeps: func(d *landDeps) {
+				d.ChildStatus, d.Refusal, d.ParentUnmerged, d.Landing, d.DescriptionFindings = nil, nil, nil, nil, nil
+				d.PullRequestMode, d.BeamHasCommits, d.PullRequestSide, d.BeamHead, d.MergedLacks, d.Tasks = nil, nil, nil, nil, nil, nil
+			},
+		},
+		{
+			name: "RunAtFinalizeRefusedNamingStatus",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.children["b"] = shedengine.Status{State: shedengine.StateRunning, CurrentProducer: "Finalize"}
+			}),
+			wantErr: []string{"Finalize", "lym batten status b"},
+		},
+		{
+			name:    "OpenMemberRefused",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.refusal = errors.New("the open entry m is a member of the beam") }),
+			wantErr: []string{"the open entry m is a member of the beam"},
+		},
+		{
+			name:    "ParentTipNotAnAncestorRefusedNamingMergeParent",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.parentUnmerged = true }),
+			wantErr: []string{"lym beam merge-parent b"},
+		},
+		{
+			name: "ParentTipNotAnAncestorWithAnOpenMergeTaskNamesTheTask",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.parentUnmerged = true
+				w.tasks = append(w.tasks, boardengine.Task{Slug: "b-merge-in", Kind: boardengine.KindTask, Project: "b"})
+			}),
+			wantErr:   []string{"lym batten status b-merge-in"},
+			wantNoErr: []string{"lym beam merge-parent"},
+		},
+		{
+			name:    "NoDescriptionStampedRefusedNamingDescribe",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.landing["b"] = pawlengine.LandingRecord{Slug: "b"} }),
+			wantErr: []string{"lym beam describe b"},
+		},
+		{
+			name:    "DescriptionFindingRefusedNamingItAndDescribe",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.findings = []string{"empty-body: body is empty"} }),
+			wantErr: []string{"empty-body: body is empty", "lym beam describe b"},
+		},
+		{
+			name:    "RequiredParentWithNoneRecordedRefusedNamingOpen",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.mode = "required" }),
+			wantErr: []string{"lym beam pr open b"},
+		},
+		{
+			name: "RulesRequiredOnParentWithNoneRecordedRefusedNamingOpen",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.mode = "on"
+				w.rulesRequired = true
+			}),
+			wantErr: []string{"lym beam pr open b"},
+		},
+		{
+			name: "RequiredParentWithNoUpstreamRefusedNamingTheFactAndReady",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.mode = "required"
+				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
+			}),
+			wantErr:   []string{"no upstream", "lym beam ready b"},
+			wantNoErr: []string{"lym loom resume"},
+		},
+		{
+			name: "MergeParentWithTheSameMissingFactRefused",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.mode = "merge"
+				w.origin = landingshed.Origin{URL: "https://github.com/o/r.git"}
+			}),
+			wantErr:   []string{"no upstream", "lym beam ready b"},
+			wantNoErr: []string{"lym loom resume"},
+		},
+		{
+			name:    "FailingPullRequestModeRefusedNamingTheCauseAndReady",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.modeErr = errors.New("beam.yaml is unreadable") }),
+			wantErr: []string{"beam.yaml is unreadable", "lym beam ready b"},
+		},
+		{
+			name:    "FailingBeamHasCommitsRefusedNamingTheCauseAndReady",
+			slug:    "b",
+			setup:   unflagged(func(w *landWorld) { w.commitsErr = errors.New("the pair is unreadable") }),
+			wantErr: []string{"the pair is unreadable", "lym beam ready b"},
+		},
+		{
+			name: "RecordedPullRequestWhoseStatusFailsRefusedNamingTheCauseAndReady",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Err: errors.New("GitHub is down")})
+			}),
+			wantErr: []string{"GitHub is down", "lym beam ready b"},
+		},
+		{
+			name: "RecordedHeadOtherThanTheBeamsRefusedNamingUpdate",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				other := openPullRequestAtBeamHead
+				other.HeadSHA = "other"
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: other})
+			}),
+			wantErr: []string{"lym beam pr update b"},
+		},
+		{
+			name: "BehindRefusedNamingMergeParentAndStatus",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				behind := openPullRequestAtBeamHead
+				behind.MergeableState = "behind"
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: behind})
+			}),
+			wantErr: []string{"lym beam merge-parent b", "lym beam pr status b"},
+		},
+		{
+			name: "BlockedRefusedNamingTheOwedCheck",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				blocked := openPullRequestAtBeamHead
+				blocked.MergeableState = "blocked"
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: blocked})
+				w.api.Script(prkit.MethodRequiredChecks, prkit.Answer{Checks: []pullrequest.Check{{Name: "ci"}}})
+			}),
+			wantErr: []string{"required check ci", "lym beam pr status b"},
+		},
+		{
+			name: "ClosedRefusedNamingOpenAndClose",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: pullrequest.Status{State: pullrequest.StateClosed, HeadSHA: "head1"}})
+			}),
+			wantErr: []string{"lym beam pr open b", "lym beam pr close b"},
+		},
+		{
+			name: "MergedLackingABeamCommitRefusedNamingItAndClose",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "old"}})
+				w.mergedLacks = []string{"abc1234 add widget"}
+			}),
+			wantErr: []string{"abc1234 add widget", "lym beam pr close b"},
+		},
+		{
+			name: "MergedAtTheBeamsHeadWritesTheRecord",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "head1"}})
+			}),
+			wantMarkCalls: 1,
+		},
+		{
+			name: "OpenCleanPullRequestWritesTheRecord",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				recordPullRequest(w)
+				w.api.Script(prkit.MethodStatus, prkit.Answer{Status: openPullRequestAtBeamHead})
+			}),
+			wantMarkCalls: 1,
+		},
+		{
+			name:          "MergeParentWithNoneRecordedWritesTheRecord",
+			slug:          "b",
+			setup:         unflagged(func(w *landWorld) { w.mode = "merge" }),
+			wantMarkCalls: 1,
+		},
+		{
+			name: "RequiredParentWithNoCommitsBeyondItsParentWritesTheRecord",
+			slug: "b",
+			setup: unflagged(func(w *landWorld) {
+				w.mode = "required"
+				w.hasCommits = false
+			}),
+			wantMarkCalls: 1,
+		},
+		{
+			name:          "UnusableTokenWithNoneRecordedWritesTheRecord",
+			slug:          "b",
+			setup:         unflagged(func(w *landWorld) { w.apiErr = githubclient.ErrTokenUnresolvable }),
+			wantMarkCalls: 1,
+		},
 		{
 			name: "UnreadableReadyRecordRefusedNamingReady",
 			slug: "b",
@@ -491,7 +664,11 @@ func TestMarkReady(t *testing.T) {
 				tt.setup(w)
 			}
 
-			got, err := markReady(w.deps(), tt.slug)
+			deps := w.deps()
+			if tt.stripDeps != nil {
+				tt.stripDeps(&deps)
+			}
+			got, err := markReady(deps, tt.slug)
 
 			if len(tt.wantErr) > 0 {
 				if err == nil {
@@ -500,6 +677,11 @@ func TestMarkReady(t *testing.T) {
 				for _, want := range tt.wantErr {
 					if !strings.Contains(err.Error(), want) {
 						t.Errorf("markReady(%q) error = %q; want it to name %q", tt.slug, err.Error(), want)
+					}
+				}
+				for _, unwanted := range tt.wantNoErr {
+					if strings.Contains(err.Error(), unwanted) {
+						t.Errorf("markReady(%q) error = %q; want it not to name %q", tt.slug, err.Error(), unwanted)
 					}
 				}
 				if len(w.marked) != 0 {

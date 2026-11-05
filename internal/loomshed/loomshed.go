@@ -42,8 +42,6 @@ const (
 	NameCodeBurlerReview = "Code-Burler-Review"
 	NameCodeBurlerFix    = "Code-Burler-Fix"
 	NamePRReview         = "PR-Review"
-	// NameBeamDescribe is the pawl recipe's Describe row, which writes a beam's change description with no agent.
-	NameBeamDescribe = "Beam-Describe"
 
 	// NameMotif is the block row of the tapestry recipe that runs the motif recipe.
 	NameMotif = "Motif"

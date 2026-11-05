@@ -313,6 +313,12 @@ func (c *loomCLI) goDriverDepsFor(release func() error) (sheddriver.Deps, error)
 		StartCheck: c.finalizeGuard(),
 		HandsBack:  arbiterstop.HandsBack,
 	}
+	// A beam run's Beam-Await stamps each wake it completes, which restarts the repair count of an interrupted stop at the row.
+	if c.recipe == shedrun.RecipePawl {
+		deps.CompletedWake = func(row string) (time.Time, bool, error) {
+			return shedrun.ReadWakeStamp(shedrun.WakeRecord(location, c.runID), row)
+		}
+	}
 	return deps, nil
 }
 

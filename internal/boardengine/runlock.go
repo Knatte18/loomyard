@@ -37,7 +37,7 @@ func RunStatusProducer(status *string) (string, bool) {
 	return producer, true
 }
 
-// holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry: batten's claim row and the pawl run's rows before Parent-Align.
+// holdFreeProducers are the producer rows at which a beam project's run holds nothing of its entry: batten's claim row and the pawl run's rows before Finalize.
 // A halt at any of them holds nothing either, since the hold is judged from the producer half of the status alone.
 var holdFreeProducers = []string{"Worktree-Create", "Preflight", "Record-Write", "Beam-Up", "Beam-Await"}
 
@@ -46,7 +46,7 @@ var recordFreeProducers = []string{"Worktree-Create", "Preflight"}
 
 // RunHolds reports whether the run behind task's status holds the entry: whether the entry's members may not join, fork from or run inside it, and its scope fields take no edit.
 // It is true for every entry whose status IsRunStatus accepts, except a beam project whose producer half is one of the hold-free rows.
-// The pawl run stands at those rows from Worktree-Create through Beam-Await, and holds its beam from Parent-Align on.
+// The pawl run stands at those rows from Worktree-Create through Beam-Await, and holds its beam from Finalize on.
 // The readers that ask whether a run is in flight, rather than whether it holds its entry, use IsRunStatus.
 // `battenrecipe`'s claim row and the pawl recipe's rows are pinned against the hold-free names by the recipe's own test, since this package imports no recipe package.
 func RunHolds(task Task) bool {

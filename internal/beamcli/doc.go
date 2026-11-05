@@ -1,4 +1,4 @@
-// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam reopen <slug> [--close]`, the return of a beam's landing to Beam-Await, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam merge-parent <slug>`, the filing of a task that merges a beam's parent branch into it, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
+// Package beamcli is the beam module: `lym beam create <slug>`, the making of a beam from a board project entry, `lym beam describe <slug>`, the writing of the beam's change description, `lym beam pr open <slug>`, `update`, `status` and `close`, the opening, updating, reading and closing of its pull request, `lym beam ready <slug>`, the flag that a beam is ready to merge, `lym beam land <slug>`, the landing of a beam into its parent, `lym beam merge-parent <slug>`, the filing of a task that merges a beam's parent branch into it, `lym beam start [slug] [--all]`, the bring-up of a beam's dobby and orch, `lym beam stop [slug]`, their bring-down, `lym beam status`, the view of every local dobby and orch, and the hidden `lym beam dobby`, the dobby process itself.
 // The verbs only call each owning module's function in-process, so no module learns another's state; the daemon's engine is `internal/dobbyengine`, and this package wires its seams over the hub.
 //
 // # The verbs
@@ -38,20 +38,59 @@
 //
 // # ready
 //
-// `ready <slug>` flags the beam ready to be merged into its parent: it writes a `pawlengine.ReadyRecord` naming the beam at `loomengine.BeamReadyPath` of the beam's pair, beside the change description, and commits the landing directory through `fabricengine.CommitAnchoredPaths`.
+// `ready <slug>` flags the beam ready to be merged into its parent and is final: it writes a `pawlengine.ReadyRecord` naming the beam at `loomengine.BeamReadyPath` of the beam's pair, beside the change description, and commits the landing directory through `fabricengine.CommitAnchoredPaths`.
+// No verb removes the record; Finalize's landing, Beam-Down and the retired-row move end it.
 // The flag does not say the project is finished; once it stands and nothing works under the beam, the beam's dobby writes the land request itself.
-// It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses, and reports a beam already flagged without writing.
+// It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses, and reports a beam already flagged without judging or rewriting it, though a record left uncommitted is committed.
+// For a beam not yet flagged, `judgeReadyLanding` refuses, in order, each naming its way forward:
+//  1. a run not at Beam-Await, in any state;
+//  2. open members and child pairs, as `landDeps.Refusal` words them;
+//  3. a parent that holds commits the beam lacks (`ParentUnmerged`), naming `lym beam merge-parent <slug>`, or `lym batten status` of the merge-in task already open;
+//  4. a landing record with no `DescribedAt`, or a description that fails validation (`DescriptionFindings`), naming `lym beam describe <slug>`;
+//  5. with no pull request recorded, `landingshed.ResolvePullRequest` over the parent's mode and GitHub's rules (`PullRequestMode`): a missing origin fact the decision demands a pull request over, naming the fact, and a yes for a `required` parent or GitHub's rules, naming `lym beam pr open <slug>`;
+//  6. with one recorded, `pullrequest.ReadMergeState` at the beam's head: a closed pull request, one open at another head, one that cannot merge now with each cause's action, and one merged without every beam commit (`MergedLacks`), each naming `lym beam pr` verbs.
+//
+// A `merge` parent passes with none recorded, since Finalize opens its own, and so does a beam with no commits beyond its parent, since Finalize lands it with no pull request.
+// The parent's tips are read after a fetch under the remote-refs lock when the parent has an upstream and the hub's push skip is unset, and the local tip alone otherwise.
 // The record names its beam because a pair forked from the beam inherits the beam's `_lym` records: `pawlengine.ReadyFor` reads a record naming another slug as no flag.
 // The beam's orch or the operator runs it; dobby never does.
 //
-// # reopen
+// # describe
 //
-// `reopen <slug> [--close]` sends the landing of a beam back to Beam-Await, so the beam takes new members.
-// It runs anywhere in the hub, as `land` does, refuses what `land`'s entry check refuses and a beam another machine owns, naming `lym adopt <slug>`, and refuses a beam with no pawl run, naming `lym beam create <slug>`, and a run that is done or at any row but Parent-Align, Beam-Describe and PR-Review, naming `lym batten status <slug>`.
-// It writes a `pawlengine.ReopenRequest` naming the run by its child seed's `started_at`, with `--close` as its Close, through `pawlengine.WriteReopenRequest` under the beam worktree's `.lym/beam/` directory.
-// It then removes the ready record through `pawlengine.RemoveReady` and commits the landing directory whether or not a record was removed, unless the directory holds nothing to commit, so a rerun after a failed commit commits the removal, and a standing flag cannot make the dobby land the beam again.
-// The run's PR-Review row answers the request: it stops the pr-reviewer, keeps the pull request open as a draft with a comment, or closes it under `--close`, and reroutes the run to Beam-Await, which removes the request and restarts the beam's dobby.
-// The envelope names the request's path, the run id, the close flag, whether a ready record was removed, and the way forward: `lym batten status <slug>` for a running run, and `lym loom resume` in the beam's worktree for a halted one.
+// `describe <slug>` writes the beam's change description and returns its path.
+// It runs anywhere in the hub, refuses what `land`'s entry check refuses, and refuses a beam with no pawl run (naming `lym beam create <slug>`), a beam whose run is not at Beam-Await (naming `lym batten status <slug>`), whatever its state, and a beam whose ready record stands, since `ready` is final.
+// A run at Beam-Await passes in every state, so a halted run is served: Beam-Await halts by an error stop the status records as failed.
+// `judgeAwaitingRun` and `judgeNotReady` are those two refusals, which every orch verb of the landing reuses.
+// The description is `landingshed.WriteBeamDescription`'s: it owns `summary.md` in the beam's landing directory and writes it whole each run from the entry's title and brief, the beam's line from `fabricengine.BeamLineCommits` without its records-only commits, and the project record's added decisions.
+// The stamp of `pawlengine.LandingRecord.DescribedAt` and the commit of the landing directory share one commit with the description, made after the description validated, so a refused description stamps nothing.
+// A finding is refused naming `lym board upsert` for the entry's title or brief.
+// The envelope names the description's path and `lym beam pr open <slug>`, or `lym beam pr update <slug>` when a pull request is recorded.
+//
+// # pr
+//
+// `pr open <slug>` and `pr update <slug>` are thin verbs over `internal/pullrequest` that act only on the pull request from the beam's own branch into its parent.
+// They open, edit and reopen it, read a token only through `internal/githubclient`, never merge, and change nothing once the ready record stands.
+// `judgePullRequestVerb` runs, in order, the entry check (an open beam with a pair here), the owner check (`judgeLandOwners`, which takes the verb so its refusals name it), `judgeAwaitingRun` and `judgeNotReady`.
+// A step that fails is refused naming its cause and the way forward of fixing it and running the same verb again.
+//
+// `open` refuses a landing record with no `DescribedAt` for the beam (naming `lym beam describe <slug>`), a beam with no commit beyond its parent (naming landing a member into the beam first, or `lym beam ready <slug>` to land without a pull request) and an origin that `landingshed.OriginMissing` finds a fact missing from.
+// A recorded pull request that GitHub reports open answers `already` and commits the landing directory, one reported closed is reopened and answered `reopened`, and one reported merged changes nothing and names `lym beam ready <slug>`, after which Finalize lands it.
+// With none recorded it pushes the beam branch through `fabricengine.PushPairAnchored`, finds an open pull request from the branch into the parent or creates one with the description's title and body, marks a draft it found ready for review and leaves its text, and records `Number`, `URL` and the pushed head as both `PushedHead` and `AnnounceHead`.
+// A record write that fails after a pull request stands is refused naming its URL and `lym beam pr open <slug>`, which finds it open and records it.
+//
+// `update` refuses a beam with no pull request recorded, naming `lym beam pr open <slug>`; it pushes the branch, sets the title and body from the description, marks a draft ready for review and records the pushed head as `PushedHead`.
+//
+// `status <slug>` is read-only and answers at any row up to Beam-Down: it runs the entry check alone and, with no pull request recorded, answers `recorded: false` naming `lym beam pr open <slug>` at Beam-Await and Finalize's decision at a later row.
+// With one recorded it prints `pullrequest.ReadMergeState`'s reading of it at the beam's head: state, draft, head, mergeable state, approval, each required check with its conclusion, `mergeable_now` and, when false, each cause.
+//
+// `close <slug>` runs `judgePullRequestVerb`, refuses a beam with no pull request recorded (naming `lym beam pr open <slug>`), closes an open recorded pull request with one comment and drops it from the landing record, committing the landing directory; a pull request GitHub reports closed or merged is only dropped.
+// The comment and the answer come from `landingshed.ResolvePullRequest` for the beam with none recorded: a no comments that the operator chose to land without a pull request, a yes comments only the close and answers that a `merge` parent's Finalize still lands through a pull request, or that `lym beam ready <slug>` refuses until `lym beam pr open <slug>` records one again.
+// A failed read of the parent's mode or of the beam's commits still closes and drops, with the close-only comment, and the answer reports the read's error.
+// The orch closes a pull request only to land without one, never to add work, since work lands into the beam while it stays open.
+//
+// The seams the verbs share are `landDeps`' `PullRequestSide`, `PushBeam`, `BeamHasCommits`, `Landing`, `WriteLanding`, `Description`, `BeamHead`, `PullRequestMode` and `Sleep`; `hubLandDeps` fills them over the beam's pair.
+// `BeamHasCommits` is whether the pair's HEAD holds a commit the local parent branch lacks, the read Finalize makes of a task pair, so every verb that judges an empty beam judges it alike.
+// `PullRequestMode` is the parent's beam.yaml `pull_request`, read from the parent pair the beam's origin record names, with whether GitHub's rules for the parent branch require a pull request, which `parentRuleRequired` reads only when the origin allows a pull request and reads as no rule when the token is unusable or the call fails for a reason that is not transient.
 //
 // # land
 //
@@ -67,7 +106,7 @@
 //   - a beam whose ready record does not flag it, naming `lym beam ready <slug>`;
 //   - `battencli.BeamLandRefusal`.
 //
-// The request is only a file: Beam-Await accepts only one naming its own run, writes the landing hold first, stops the dobby and re-runs every check above but the run-at-Beam-Await one before anything lands.
+// The request is only a file: Beam-Await accepts only one naming its own run, writes the landing hold, a status naming Finalize, first, stops the dobby and re-runs every check above but the run-at-Beam-Await one before anything lands.
 //
 // `BeamLandRefusal` judges members and member pairs alone, each refused with its way forward:
 //   - any open entry whose `hubgeom.ParentOf` is the beam, through any depth of grouping projects, naming landing it, `lym batten cancel <slug> --remove`, or, for an entry with no pair, moving its `project` off the beam;
@@ -89,7 +128,8 @@
 // A merge task is found by its project and its slug's `-merge-in` suffix, with an optional number; the new one takes the first free slug of that shape, the beam's slug cut to fit the board's slug length.
 // It carries the beam's labels, so the board's type-label rule holds, and a body the decision record carries as the goal of both the darn writer and the Code-Review perch: the writer runs `lym fabric merge-in`, settles the conflicts, makes the gate pass and changes nothing else, and the perch reviews the merge alone.
 // Its `run_settings` turn the perch on: loom's `code_max_bounces` is the hub's resolved Code-Review budget, at least one round, and `code_hard_max_bounces` stays above it.
-// The beam's dobby starts it as any member, so it runs at any time; pawl neither starts one nor waits for one, and its Parent-Align brings the parent in at the landing either way.
+// The beam's dobby starts it as any member, so it runs at any time; pawl neither starts one nor waits for one.
+// The orch runs it before `ready`, which refuses while the parent holds commits the beam lacks, and Finalize brings the parent in again at the landing.
 //
 // # start
 //
@@ -105,7 +145,8 @@
 // `--all` names the prime and every local beam this machine owns, from `dobbyengine.OwnedWorktrees` over `hubgeom.DobbyStart`, and `startBeams` runs `BeamUp` for each, the first with `Prepare` set so the hub's origin reconcile, failed-push read, prime claim and owner pauses run once.
 // The envelope holds one entry per beam: the dobby's outcome and detail, the orch's action, prompt source and abandoned session, the warnings and the error, and for the prepared beam the reconcile, failed pushes, owner pauses and mutations.
 // A beam that fails to come up records its error on its entry, the others still start, and the verb exits non-zero naming each.
-// Every `BeamUp` refusal, an owner's another machine or a landing hold among them, applies to the beam it acts on.
+// Every `BeamUp` refusal, an owner's another machine or a hold of a run other than the beam's own landing among them, applies to the beam it acts on.
+// A beam held by its own pawl run's landing, a halted Finalize for one, gets its orch back and its dobby stays down; `lym beam start` never starts the dobby of a held beam.
 // The verb is idempotent.
 //
 // # stop
@@ -155,6 +196,8 @@
 //   - `battencli.DobbyRuns` also marks each run `NoSlot` through the run's board entry, so a pawl run without its landing hold takes no slot under `max_runs`;
 //   - `battencli.DobbyRuns` also reads each run's place against its Land row through `battenrecipe.LandOutcomeOf`, with the landing commit through `shedrun.ReadLandedCommit`, and for a paused run whether its work already reached its parent by the judgment `lym batten cancel` refuses on, and `ClearNotifyOnLand` clears a landed entry's request through `boardengine`;
 //   - the landing step of a beam's dobby: `CanLand` through `beamLandReading`, where the beam's ready record says whether it is flagged ready, `battencli.ReadBeamLandBlockers` whether nothing works under it, and the parent through `hubgeom.ParentOf` with `Owners.Effective` and `Owners.AdoptSubject` says which other machine owns it and what `lym adopt` takes, and `Land`, the `land` sequence of `lym beam land` itself; the prime's dobby is given neither;
+//   - the start hold of a beam's dobby: `BeamReady`, the beam's ready record read through the same `hubLandDeps(prime).Ready` as `CanLand`, under which the dobby starts no member; the prime's dobby is given none;
+//   - the member landing announcement of a beam's dobby: `LandingPullRequest`, the landing record's pull request announce head read through `pawlengine.ReadLanding`, and `BeamLandingsSince`, the beam pair's HEAD with the landings of `fabricengine.BeamLineCommits` past a head, records-only commits dropped and a head not on the line listing the whole line; the prime's dobby is given neither;
 //   - the board and the owners through `boardengine`, and the pause record through `pauserecord`;
 //   - the file watch through `internal/fswatch`, one watcher per directory merged into the loop's one channel;
 //   - the pass spawn of `lym batten run`, started in the prime's anchor;

@@ -14,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/orchengine"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
 	"github.com/Knatte18/loomyard/internal/stencilstore"
@@ -176,20 +178,23 @@ func TestBeamUpRefusal(t *testing.T) {
 		owner string
 		move  string
 		held  bool
+		own   bool
 		want  []string
 	}{
-		{"No owner, no move and no hold passes", "b", "", "", false, nil},
-		{"This machine's own beam passes", "b", "desktop", "", false, nil},
-		{"The prime of no other machine passes", "", "", "", false, nil},
-		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, []string{`"laptop"`, "lym adopt b", "lym beam start"}},
-		{"The prime another machine owns names the root takeover", "", "laptop", "", false, []string{`"laptop"`, "lym adopt root"}},
-		{"A standing anchor change names its way forward", "b", "", move, false, []string{move}},
-		{"A beam its landing holds names the landing", "b", "", "", true, []string{"landing", "lym batten status b"}},
+		{"No owner, no move and no hold passes", "b", "", "", false, false, nil},
+		{"This machine's own beam passes", "b", "desktop", "", false, false, nil},
+		{"The prime of no other machine passes", "", "", "", false, false, nil},
+		{"Another machine's beam names the owner and the takeover", "b", "laptop", "", false, false, []string{`"laptop"`, "lym adopt b", "lym beam start"}},
+		{"The prime another machine owns names the root takeover", "", "laptop", "", false, false, []string{`"laptop"`, "lym adopt root"}},
+		{"A standing anchor change names its way forward", "b", "", move, false, false, []string{move}},
+		{"A beam held by something else than its own landing names the landing", "b", "", "", true, false, []string{"landing", "lym batten status b"}},
+		{"A beam held by its own landing passes", "b", "", "", true, true, nil},
+		{"A beam held by its own landing still names the owner of another machine", "b", "laptop", "", true, true, []string{`"laptop"`, "lym adopt b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := beamUpRefusal(tt.slug, "desktop", tt.owner, tt.move, tt.held, "running · Land")
+			err := beamUpRefusal(tt.slug, "desktop", tt.owner, tt.move, tt.held, tt.own, "running · Land")
 			if tt.want == nil {
 				if err != nil {
 					t.Errorf("beamUpRefusal(%q) = %v; want nil", tt.slug, err)
@@ -203,6 +208,41 @@ func TestBeamUpRefusal(t *testing.T) {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("beamUpRefusal(%q) = %q; missing %q", tt.slug, err, want)
 				}
+			}
+		})
+	}
+}
+
+func TestOwnLandingHold(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	status := func(producer string) *string {
+		text := boardengine.RunStatus("running", producer)
+		return &text
+	}
+	at := func(state shedengine.State, producer string) shedengine.Status {
+		return shedengine.Status{State: state, CurrentProducer: producer}
+	}
+	tests := []struct {
+		name  string
+		board *string
+		run   shedengine.Status
+		found bool
+		want  bool
+	}{
+		{"A board status at Finalize with the run there is its own", status("Finalize"), at(shedengine.StateRunning, "Finalize"), true, true},
+		{"A board status at Beam-Down with the run there is its own", status("Beam-Down"), at(shedengine.StateRunning, "Beam-Down"), true, true},
+		{"A board status at Finalize with the run done is not its own", status("Finalize"), at(shedengine.StateDone, "Finalize"), true, false},
+		{"A board status at Finalize with no run is not its own", status("Finalize"), shedengine.Status{}, false, false},
+		{"A board status naming a row the run does not stand at is not its own", status("Finalize"), at(shedengine.StateRunning, "Beam-Await"), true, false},
+		{"A status that is no run status is not its own", nil, at(shedengine.StateRunning, "Finalize"), true, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ownLandingHold(tt.board, tt.run, tt.found); got != tt.want {
+				t.Errorf("ownLandingHold(%v, %+v, %t) = %t; want %t", tt.board, tt.run, tt.found, got, tt.want)
 			}
 		})
 	}

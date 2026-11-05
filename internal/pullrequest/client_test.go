@@ -78,7 +78,7 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 	case "POST /repos/owner/repo/issues/5/comments":
 		reply(201, `{}`)
 	case "GET " + pullsPath + "/6":
-		reply(200, `{"state": "open", "draft": true, "node_id": "PR_node6", "head": {"sha": "h6"}}`)
+		reply(200, `{"state": "open", "draft": true, "mergeable_state": "draft", "node_id": "PR_node6", "head": {"sha": "h6"}}`)
 	case "GET " + pullsPath + "/6/reviews":
 		reply(200, `[]`)
 	case "POST /graphql":
@@ -88,7 +88,7 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		reply(200, `{"data": {}}`)
 	case "GET " + pullsPath + "/1":
-		reply(200, `{"state": "open", "head": {"sha": "h1"}}`)
+		reply(200, `{"state": "open", "mergeable_state": "clean", "head": {"sha": "h1"}}`)
 	case "GET " + pullsPath + "/2":
 		reply(200, `{"state": "closed", "merged": true, "head": {"sha": "h2"}}`)
 	case "GET " + pullsPath + "/3":
@@ -123,6 +123,17 @@ func (s *scriptedServer) handle(w http.ResponseWriter, r *http.Request) {
 		reply(200, `[{"type": "required_linear_history", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1}]`)
 	case "GET " + rulesPath + "/bare":
 		reply(200, `[]`)
+	case "GET " + rulesPath + "/gated":
+		reply(200, `[{"type": "required_status_checks", "ruleset_source_type": "Repository", "ruleset_source": "owner/repo", "ruleset_id": 1, "parameters": {"required_status_checks": [{"context": "build"}, {"context": "lint"}, {"context": "deploy"}, {"context": "ci/status"}, {"context": "ci/slow"}], "strict_required_status_checks_policy": false}}]`)
+	case "GET /repos/owner/repo/commits/h9/check-runs":
+		if r.URL.Query().Get("page") == "2" {
+			reply(200, `{"total_count": 2, "check_runs": [{"name": "lint", "status": "completed", "conclusion": "failure"}]}`)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/owner/repo/commits/h9/check-runs?page=2>; rel="next"`, s.URL))
+		reply(200, `{"total_count": 2, "check_runs": [{"name": "build", "status": "completed", "conclusion": "success"}]}`)
+	case "GET /repos/owner/repo/commits/h9/status":
+		reply(200, `{"state": "pending", "statuses": [{"context": "ci/status", "state": "success"}, {"context": "ci/slow", "state": "pending"}]}`)
 	default:
 		reply(404, `{"message": "Not Found"}`)
 	}
@@ -268,15 +279,40 @@ func TestClient_Calls(t *testing.T) {
 		}
 	})
 
+	t.Run("RequiredChecks", func(t *testing.T) {
+		got, err := client.RequiredChecks(ctx, "gated", "h9")
+		want := []pullrequest.Check{
+			{Name: "build", Conclusion: "success"},
+			{Name: "lint", Conclusion: "failure"},
+			{Name: "deploy", Conclusion: pullrequest.CheckMissing},
+			{Name: "ci/status", Conclusion: "success"},
+			{Name: "ci/slow", Conclusion: ""},
+		}
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("RequiredChecks(gated, h9) = %+v, %v; want %+v, nil", got, err, want)
+		}
+
+		before := len(server.all())
+		if got, err := client.RequiredChecks(ctx, "bare", "h9"); err != nil || got != nil {
+			t.Errorf("RequiredChecks(bare, h9) = %+v, %v; want none", got, err)
+		}
+		if sent := server.all()[before:]; len(sent) != 1 || sent[0].path != rulesPath+"/bare" {
+			t.Errorf("RequiredChecks(bare, h9) sent %d requests; want only the rules read", len(sent))
+		}
+		if _, err := client.RequiredChecks(ctx, "unknown", "h9"); err == nil {
+			t.Error("RequiredChecks(unknown, h9) error = nil; want the failure of the rules read")
+		}
+	})
+
 	t.Run("Status", func(t *testing.T) {
 		tests := []struct {
 			number int
 			want   pullrequest.Status
 		}{
-			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true}},
+			{1, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h1", Approved: true, ChangesRequested: true, MergeableState: "clean"}},
 			{2, pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: "h2"}},
 			{3, pullrequest.Status{State: pullrequest.StateClosed, HeadSHA: "h3"}},
-			{6, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h6", Draft: true}},
+			{6, pullrequest.Status{State: pullrequest.StateOpen, HeadSHA: "h6", Draft: true, MergeableState: "draft"}},
 		}
 		for _, tt := range tests {
 			got, err := client.Status(ctx, tt.number)

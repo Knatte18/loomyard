@@ -44,19 +44,45 @@ type PullRequestDecision struct {
 	Halt string
 }
 
+// BeamRecord is what a beam's landing record says about the beam's pull request, which the landing decision reads when the landing is a beam's.
+type BeamRecord int
+
+const (
+	// NotABeam marks a landing that is no beam's, which is decided from the entry's field and the parent's mode.
+	NotABeam BeamRecord = iota
+	// BeamWithoutPullRequest marks a beam whose landing record holds no pull request.
+	BeamWithoutPullRequest BeamRecord = 1
+	// BeamWithPullRequest marks a beam whose landing record holds a pull request.
+	BeamWithPullRequest BeamRecord = 2
+)
+
+// BeamPullRequest is the pull request a beam's landing record holds.
+type BeamPullRequest struct {
+	// Number is the pull request's number.
+	Number int
+	// URL is the pull request's web address.
+	URL string
+}
+
 // ResolvePullRequest decides whether a landing goes through a pull request.
 // parentMode is the receiving branch's beam.yaml pull_request (on, off, required or merge) and entryField the landing entry's pull_request (empty, on or off); slug is the landing run's slug.
 // parentRuleRequired reports whether GitHub's rules for the parent branch require a pull request, and counts as a required parent whatever beam.yaml says, since GitHub refuses the direct push a landing with no pull request ends in.
 // A required or merge parent wants one whatever the field says, an on parent wants one unless the field is off, and an off parent wants one only when the field is on.
 // A merge parent's yes is marked MergeAtOnce.
 // A field off under a required or merge parent logs one Warn and still wants one.
+// A beam, any beam other than NotABeam, never reads the entry's field: it wants a pull request when its landing record holds one, when the parent is required or merge, or when GitHub's rules require one, and an on or off parent with none recorded wants none.
+// Every beam yes is marked MergeAtOnce, since a beam always lands by squash on GitHub with no review.
 // A wanted pull request needs, in this order, an origin on github.com, an origin ParseOwnerRepo accepts, an upstream for the parent and no push skip.
-// A missing fact is a Halt when the parent is required or the field is on, and an origin on github.com that ParseOwnerRepo refuses is always a Halt; any other missing fact under an on parent alone is no pull request, naming the fact.
+// A missing fact is a Halt when the parent is required, the field is on or the beam's record holds a pull request, and an origin on github.com that ParseOwnerRepo refuses is always a Halt; any other missing fact under an on parent alone is no pull request, naming the fact.
 // A wanted pull request on a task branch with no commit beyond its parent, taskHasCommits false, is no pull request before any origin fact is judged, since GitHub opens none on an empty branch.
-// It reads no file: the caller reads the parent's beam.yaml, the entry, the parent branch's rules and the task branch and tells the values.
-func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
-	mergeAtOnce := parentMode == pullRequestMerge
-	required := parentMode == pullRequestRequired || mergeAtOnce || parentRuleRequired
+// It reads no file: the caller reads the parent's beam.yaml, the entry, the beam's landing record, the parent branch's rules and the task branch and tells the values.
+func ResolvePullRequest(slug, parentMode, entryField string, beam BeamRecord, parentRuleRequired bool, origin Origin, taskHasCommits bool) PullRequestDecision {
+	isBeam := beam != NotABeam
+	if isBeam {
+		entryField = ""
+	}
+	mergeAtOnce := parentMode == pullRequestMerge || isBeam
+	required := parentMode == pullRequestRequired || parentMode == pullRequestMerge || parentRuleRequired
 	if required && entryField == pullRequestOff {
 		logger.Warn("landingshed: the entry's pull_request is off but the parent's beam.yaml pull_request is required or merge, or GitHub's rules for the parent branch require a pull request, so a pull request is still required", "slug", slug)
 	}
@@ -65,20 +91,29 @@ func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired 
 	if field == "" {
 		field = "empty"
 	}
+	entryClause := fmt.Sprintf("the entry's pull_request is %s", field)
+	switch beam {
+	case BeamWithPullRequest:
+		entryClause = "the beam's landing record holds a pull request"
+	case BeamWithoutPullRequest:
+		entryClause = "the beam's landing record holds no pull request"
+	}
 	wanted := false
 	demand := ""
 	switch {
-	case parentMode == pullRequestRequired, mergeAtOnce:
+	case beam == BeamWithPullRequest:
+		wanted, demand = true, "the beam's landing record holds a pull request"
+	case parentMode == pullRequestRequired, parentMode == pullRequestMerge:
 		wanted, demand = true, fmt.Sprintf("the parent's beam.yaml pull_request is %s", parentMode)
 	case parentRuleRequired:
 		wanted, demand = true, "GitHub's rules for the parent branch require a pull request"
 	case entryField == pullRequestOn:
 		wanted, demand = true, "the entry's pull_request is on"
-	case parentMode == pullRequestOn && entryField != pullRequestOff:
+	case parentMode == pullRequestOn && entryField != pullRequestOff && !isBeam:
 		wanted, demand = true, "the parent's beam.yaml pull_request is on"
 	}
 	if !wanted {
-		return PullRequestDecision{Reason: fmt.Sprintf("pull request off: the parent's beam.yaml pull_request is %s and the entry's pull_request is %s", parentMode, field)}
+		return PullRequestDecision{Reason: fmt.Sprintf("pull request off: the parent's beam.yaml pull_request is %s and %s", parentMode, entryClause)}
 	}
 	if !taskHasCommits {
 		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: %s, but the task branch has no commits beyond its parent, so the landing is empty", demand)}
@@ -90,10 +125,10 @@ func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired 
 		if parentRuleRequired {
 			rule = ", GitHub's rules for the parent branch require one"
 		}
-		return PullRequestDecision{Open: true, MergeAtOnce: mergeAtOnce, Reason: fmt.Sprintf("pull request on: the parent's beam.yaml pull_request is %s%s, the entry's pull_request is %s and the origin is %s/%s", parentMode, rule, field, owner, repo)}
+		return PullRequestDecision{Open: true, MergeAtOnce: mergeAtOnce, Reason: fmt.Sprintf("pull request on: the parent's beam.yaml pull_request is %s%s, %s and the origin is %s/%s", parentMode, rule, entryClause, owner, repo)}
 	}
 
-	demanded := required || entryField == pullRequestOn
+	demanded := required || entryField == pullRequestOn || beam == BeamWithPullRequest
 	if !demanded && !alwaysHalt {
 		return PullRequestDecision{Reason: fmt.Sprintf("no pull request: the parent's beam.yaml pull_request is on and %s", missing)}
 	}
@@ -107,11 +142,12 @@ func ResolvePullRequest(slug, parentMode, entryField string, parentRuleRequired 
 // resolveWithParentRule asks ResolvePullRequest for the run deps tells, and asks it again with GitHub's rules for the parent branch when its answer is a no that would land a non-empty task by direct push to an origin a pull request could be opened on.
 // The rules are read only then, so a landing beam.yaml or the entry already sends through a pull request, and one that never reaches GitHub, makes no extra call.
 // A cancelled context and a transient failure of the read are errors the driver re-steps.
+// beam is what the beam's landing record holds, NotABeam for a landing that is no beam's.
 // recordFound reports whether the run already holds a pull request record, which shows the rule applied when the pull request was opened.
 // Then any other failure of the read except an unusable token is a Halt, since reading it as no rule would close the recorded pull request and land by a direct push GitHub refuses.
 // Otherwise any failure of the read, an unusable token included, logs one Warn and reads as no rule, so the landing goes as beam.yaml and the entry say.
-func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMode, entryField string, origin Origin, taskHasCommits, recordFound bool) (PullRequestDecision, error) {
-	decision := ResolvePullRequest(deps.Slug, parentMode, entryField, false, origin, taskHasCommits)
+func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMode, entryField string, beam BeamRecord, origin Origin, taskHasCommits, recordFound bool) (PullRequestDecision, error) {
+	decision := ResolvePullRequest(deps.Slug, parentMode, entryField, beam, false, origin, taskHasCommits)
 	if decision.Open || decision.Halt != "" || !taskHasCommits {
 		return decision, nil
 	}
@@ -135,7 +171,7 @@ func resolveWithParentRule(ctx context.Context, name string, deps Deps, parentMo
 	if !required {
 		return decision, nil
 	}
-	return ResolvePullRequest(deps.Slug, parentMode, entryField, true, origin, taskHasCommits), nil
+	return ResolvePullRequest(deps.Slug, parentMode, entryField, beam, true, origin, taskHasCommits), nil
 }
 
 // readParentRule reports whether GitHub's rules for deps.ParentBranch, on the repository originURL names, require a pull request.
@@ -145,6 +181,13 @@ func readParentRule(ctx context.Context, deps Deps, originURL string) (bool, err
 		return false, err
 	}
 	return api.RequiresPullRequest(ctx, deps.ParentBranch)
+}
+
+// OriginMissing returns the first fact origin lacks for a pull request, in the order ResolvePullRequest judges them, and "" when none is missing.
+// A caller that opens a pull request itself refuses an origin this names, as the resolver does.
+func OriginMissing(origin Origin) string {
+	_, _, missing, _ := checkOrigin(origin)
+	return missing
 }
 
 // checkOrigin returns the origin's owner and repository, or the first missing fact in the order a pull request needs them, or "" when none is missing.

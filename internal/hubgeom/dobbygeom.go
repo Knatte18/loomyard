@@ -18,7 +18,7 @@ import (
 )
 
 // DobbyGeometry tells dobbyengine its paths for the worktree named worktree, the prime's name or a beam's slug.
-// The lock, state, log and output paths and the tidy directory lie under that worktree's `.lym/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
+// The lock, state, log and output paths, the announced-head file and the tidy directory lie under that worktree's `.lym/beam/` directory at the worktree's own anchor, and the batten runs directory under the prime.
 // The slug is empty for the prime.
 // MoveRecords holds the anchor-move record paths of the worktree's own records worktree and of the prime's, the prime's once when the worktree is the prime.
 // A worktree with no directory in the hub is an error naming it, and so is a lym executable that cannot be located or an anchor that cannot be read.
@@ -56,6 +56,7 @@ func DobbyGeometry(prime *lymcwd.Location, worktree string) (dobbyengine.Geometr
 		StatePath:     filepath.Join(beamDir, dobbyengine.StateFileName),
 		LogPath:       filepath.Join(beamDir, dobbyengine.LogFileName),
 		OutPath:       filepath.Join(beamDir, dobbyengine.OutFileName),
+		AnnouncePath:  filepath.Join(beamDir, dobbyengine.AnnounceFileName),
 		PrimeLogPath:  filepath.Join(DobbyBeamDir(prime), dobbyengine.LogFileName),
 		TidyDir:       filepath.Join(beamDir, dobbyengine.TidyDirName),
 		PrimeRunsDir:  shedrun.RunsRoot(prime),
@@ -69,7 +70,7 @@ func DobbyBeamDir(worktree *lymcwd.Location) string {
 	return filepath.Join(worktree.HubPath, worktree.WorktreeName, worktree.AnchorRel, lymdirs.DotLymDirName, lymdirs.BeamDirName)
 }
 
-// PawlPaths tells the pawl producers the land request, reopen request, dobby-stop marker and await marker paths of the beam whose pair is at beam.
+// PawlPaths tells the pawl producers the land request, dobby-stop marker and await marker paths of the beam whose pair is at beam, and the path of a reopen request an older binary wrote.
 // All four lie directly under the beam worktree's `.lym/beam/` directory at the worktree's own anchor, where DobbyGeometry puts the dobby's files, so the dobby, `lym beam land` and Beam-Await read one directory.
 func PawlPaths(beam *lymcwd.Location) pawlengine.Paths {
 	beamDir := filepath.Join(beam.AnchorPath(), lymdirs.DotLymDirName, lymdirs.BeamDirName)

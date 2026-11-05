@@ -31,7 +31,6 @@ import (
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
@@ -101,7 +100,6 @@ func TestFullEnv_FillsEverySeam(t *testing.T) {
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
@@ -144,7 +142,6 @@ func TestNilSeams_ReportsExactPaths(t *testing.T) {
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps

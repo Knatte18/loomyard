@@ -977,6 +977,36 @@ func TestStart_Refusals(t *testing.T) {
 	}
 }
 
+func TestStart_OwnLandingStartsTheOrchAlone(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	h := newStartHarness(t)
+	h.cli.cfg.PermissionMode = "bypass"
+	h.cli.readBeamFacts = func() (beamFacts, error) {
+		return beamFacts{slug: "b", here: "desktop", held: true, ownLanding: true, status: boardengine.RunStatus("running", "Finalize")}, nil
+	}
+	h.cli.startDobby = func() (dobbyengine.StartEntry, error) {
+		h.calls = append(h.calls, "dobby")
+		return dobbyengine.StartEntry{}, nil
+	}
+
+	code, env := h.run(t)
+
+	if code != 0 || env["ok"] != true {
+		t.Fatalf("start = exit %d, %v; want a success for a beam held by its own landing", code, env)
+	}
+	if slices.Contains(h.calls, "dobby") {
+		t.Errorf("calls = %v; want no dobby start for a beam in its own landing", h.calls)
+	}
+	if len(h.starter.specs) != 1 {
+		t.Errorf("starts = %d; want the orch started once", len(h.starter.specs))
+	}
+	if warnings := warningText(env); !strings.Contains(warnings, "dobby stays down") || !strings.Contains(warnings, "lym batten status b") {
+		t.Errorf("warnings = %q; want the dobby-stays-down warning naming `lym batten status b`", warnings)
+	}
+}
+
 // saveSeedState saves st as the state file start finds.
 func saveSeedState(t *testing.T, h *startHarness, st orchengine.State) {
 	t.Helper()

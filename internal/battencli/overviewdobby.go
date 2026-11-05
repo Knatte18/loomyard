@@ -121,6 +121,9 @@ func dobbyTaskWait(task dobbyengine.WaitingTask, maxRuns int, now time.Time) str
 		return "ready to start"
 	}
 	var reasons []string
+	if task.ReadyHold {
+		reasons = append(reasons, "the beam is flagged ready: lym batten cancel "+task.Slug+" --remove")
+	}
 	if task.FrontFirst != "" {
 		reasons = append(reasons, "front task "+task.FrontFirst+" runs first")
 	}

@@ -19,7 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestBeamForkPrecondition asserts a beam member's create is stopped with a precondition naming the beam's create or adopt when the beam's pair is absent here, and the landing and the cancel of the member when the beam's entry is run-held, and passes otherwise.
+// TestBeamForkPrecondition asserts a beam member's create is stopped with a precondition naming the beam's create or adopt when the beam's pair is absent here, the landing and the cancel of the member when the beam's entry is run-held, and the cancel with remove when the beam is flagged ready or its ready record does not read, and passes otherwise.
 // A failed origin probe is returned as is.
 func TestBeamForkPrecondition(t *testing.T) {
 	tiergate.Require(t, 0)
@@ -36,6 +36,8 @@ func TestBeamForkPrecondition(t *testing.T) {
 		pairPresent bool
 		onOrigin    bool
 		probeErr    error
+		ready       bool
+		readyErr    error
 		// wantUnmet and wantWayForward are substrings of the precondition's two fields; both empty want a pass.
 		wantUnmet      []string
 		wantWayForward []string
@@ -69,10 +71,29 @@ func TestBeamForkPrecondition(t *testing.T) {
 			wantWayForward: []string{`"lym batten status b"`, `"lym batten cancel m"`},
 		},
 		{
-			name:        "BeamAtBeamAwaitPasses",
+			name:        "BeamAtBeamAwaitNotFlaggedReadyPasses",
 			entry:       boardengine.Task{Slug: "b", Kind: boardengine.KindProject, Beam: true, Status: &awaiting},
 			entryFound:  true,
 			pairPresent: true,
+			ready:       false,
+		},
+		{
+			name:           "BeamFlaggedReadyNamesTheMembersCancelWithRemove",
+			entry:          boardengine.Task{Slug: "b", Kind: boardengine.KindProject, Beam: true, Status: &awaiting},
+			entryFound:     true,
+			pairPresent:    true,
+			ready:          true,
+			wantUnmet:      []string{"m belongs to beam b", "flagged ready to land", "no member starts"},
+			wantWayForward: []string{`"lym batten cancel m --remove"`},
+		},
+		{
+			name:           "ReadyReadErrorNamesTheErrorAndTheCancelWithRemove",
+			entry:          boardengine.Task{Slug: "b", Kind: boardengine.KindProject, Beam: true, Status: &awaiting},
+			entryFound:     true,
+			pairPresent:    true,
+			readyErr:       errors.New("ready record unreadable"),
+			wantUnmet:      []string{"m belongs to beam b", "ready record unreadable"},
+			wantWayForward: []string{`"lym batten cancel m --remove"`, `"lym batten run m"`},
 		},
 		{
 			name:           "BeamAtParentAlignNamesTheLandingAndTheMembersCancel",
@@ -97,7 +118,7 @@ func TestBeamForkPrecondition(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := beamForkPrecondition("m", "b", tt.entry, tt.entryFound, tt.pairPresent, func() (bool, error) { return tt.onOrigin, tt.probeErr })
+			err := beamForkPrecondition("m", "b", tt.entry, tt.entryFound, tt.pairPresent, func() (bool, error) { return tt.onOrigin, tt.probeErr }, func() (bool, error) { return tt.ready, tt.readyErr })
 
 			if tt.wantProbeErr {
 				var precondition *battenshed.PreconditionError

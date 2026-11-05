@@ -39,7 +39,6 @@ const wantDarnLandingCall = "lym gate test --wait --gate finalize"
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
@@ -384,7 +383,6 @@ func TestWire_DarnRecipe(t *testing.T) {
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
@@ -623,7 +621,7 @@ func TestRecipeRouting(t *testing.T) {
 		{shedrun.RecipeTapestry, loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{"", loomshed.NameParentAlign, loomshed.NameDarnWrite},
 		{shedrun.RecipeDarn, loomshed.NameDarnWrite, loomshed.NameParentAlign},
-		{shedrun.RecipePawl, "Beam-Describe", loomshed.NameCodeBouncer},
+		{shedrun.RecipePawl, loomshed.NameFinalize, loomshed.NameCodeBouncer},
 	}
 	for _, tt := range tests {
 		t.Run("recipe "+tt.recipe, func(t *testing.T) {

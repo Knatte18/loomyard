@@ -28,11 +28,13 @@ import (
 	"github.com/Knatte18/loomyard/internal/hibernatecli"
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/logger"
+	"github.com/Knatte18/loomyard/internal/loomengine"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/selfexec"
@@ -206,6 +208,17 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 			_, err := land(hubLandDeps(prime), geom.Slug)
 			return err
 		}
+		deps.BeamReady = func() (bool, error) { return hubLandDeps(prime).Ready(geom.Slug) }
+		deps.LandingPullRequest = func() (string, bool, error) {
+			record, found, err := pawlengine.ReadLanding(loomengine.BeamLandingPath(worktree), loomengine.BeamLandingLockPath(worktree), geom.Slug)
+			if err != nil || !found || record.PullRequest == nil {
+				return "", false, err
+			}
+			return record.PullRequest.AnnounceHead, true, nil
+		}
+		deps.BeamLandingsSince = func(from string) (string, []string, error) {
+			return beamLandingsSince(prime, worktree, geom.Slug, from)
+		}
 	}
 	if choice, err := resolveTidyModel(dirs); err != nil {
 		logger.Warn("beamcli: the board-tidy model does not resolve; the board tidy is off", "spec", tidyModelSpec, "error", err)
@@ -214,6 +227,52 @@ func hubDobbyDeps(prime *lymcwd.Location, geom dobbyengine.Geometry) (dobbyengin
 		deps.TidyShuttle = &runnerTidyShuttle{worktree: worktree}
 	}
 	return deps, nil
+}
+
+// beamLandingsSince reads the head of the beam pair at beam and the landings on its first-parent line past from.
+// The line is measured from the parent branch the pair's origin record names.
+func beamLandingsSince(prime, beam *lymcwd.Location, slug, from string) (string, []string, error) {
+	origin, found, err := fabricengine.ReadOriginFor(prime, slug)
+	if err != nil {
+		return "", nil, err
+	}
+	if !found {
+		return "", nil, fmt.Errorf("the pair of the beam %s has no readable origin record", slug)
+	}
+	line, err := fabricengine.BeamLineCommits(beam, origin.ParentBranch)
+	if err != nil {
+		return "", nil, err
+	}
+	pair, err := fabricengine.Open(beam)
+	if err != nil {
+		return "", nil, err
+	}
+	head, err := pair.HeadSHA()
+	if err != nil {
+		return "", nil, err
+	}
+	return head, landingsPast(line, from), nil
+}
+
+// landingsPast lists the commits of line after the one named from, each as a short object name and subject, and leaves out every commit that only records lym's own state.
+// A from not on the line lists the whole line.
+func landingsPast(line []fabricengine.LineCommit, from string) []string {
+	start := 0
+	for i, commit := range line {
+		if commit.SHA == from {
+			start = i + 1
+			break
+		}
+	}
+	var landed []string
+	for _, commit := range line[start:] {
+		if commit.RecordsOnly {
+			continue
+		}
+		subject, _, _ := strings.Cut(commit.Message, "\n")
+		landed = append(landed, fmt.Sprintf("%.7s %s", commit.SHA, subject))
+	}
+	return landed
 }
 
 // holdReexec returns a binary check that runs check only while holds reports false, so a re-exec never cuts what holds guards.

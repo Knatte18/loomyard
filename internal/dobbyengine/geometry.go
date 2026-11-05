@@ -18,6 +18,8 @@ const (
 	StateFileName = "state.json"
 	// TidyDirName is the directory of the board-tidy reports in the worktree's `.lym/beam/` directory.
 	TidyDirName = "tidy"
+	// AnnounceFileName is the file in the worktree's `.lym/beam/` directory that holds the last beam head whose landings the dobby announced.
+	AnnounceFileName = "announced-head"
 )
 
 // Geometry is every path and name dobby needs, absolute and told by the hub wiring.
@@ -43,6 +45,8 @@ type Geometry struct {
 	LogPath string
 	// OutPath is the file under the worktree's `.lym/beam/` directory that the detached dobby's raw standard output and error go to.
 	OutPath string
+	// AnnouncePath is the never-tracked file under the worktree's `.lym/beam/` directory holding the last beam head the dobby announced landings up to.
+	AnnouncePath string
 	// PrimeLogPath is the prime's dobby log file, which a beam dobby's worktree-gone line is written to.
 	PrimeLogPath string
 	// TidyDir is the directory of the board-tidy reports under the worktree's `.lym/beam/` directory, each named by its UTC timestamp.

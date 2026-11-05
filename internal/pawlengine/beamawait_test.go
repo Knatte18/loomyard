@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -28,20 +26,6 @@ func cancelAfter(w *world, n int) {
 	}
 }
 
-// readOnlyBeamDir makes the directory of the world's pawl files read-only for the rest of the test, so removing a file there is refused.
-// It skips the test where a directory mode refuses no removal: for root, and on Windows.
-func readOnlyBeamDir(t *testing.T, w *world) {
-	t.Helper()
-	if os.Geteuid() == 0 || runtime.GOOS == "windows" {
-		t.Skip("only a non-root user on a POSIX filesystem is refused a removal from a read-only directory")
-	}
-	dir := filepath.Dir(w.paths.ReopenRequest)
-	if err := os.Chmod(dir, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
-}
-
 // TestBeamAwait asserts the row's behavior over each state a run can enter it in and each answer to a land request:
 // what it writes in order, which notices it posts, which files stand afterwards, and how long it waits.
 func TestBeamAwait(t *testing.T) {
@@ -49,9 +33,9 @@ func TestBeamAwait(t *testing.T) {
 	t.Parallel()
 
 	const (
-		beamAwait   = "status:Beam-Await"
-		parentAlign = "status:Parent-Align"
-		stopped     = "stop marker=true"
+		beamAwait = "status:Beam-Await"
+		finalize  = "status:Finalize"
+		stopped   = "stop marker=true"
 	)
 	failOnce := func(producer string, call int) func(string, int) error {
 		return func(got string, n int) error {
@@ -61,8 +45,12 @@ func TestBeamAwait(t *testing.T) {
 			return nil
 		}
 	}
-	passing := []string{beamAwait, parentAlign, stopped, "recheck"}
-	refused := []string{beamAwait, parentAlign, stopped, "recheck", beamAwait, "start"}
+	passing := []string{beamAwait, finalize, stopped, "recheck"}
+	// landed is a landing the entry re-checks itself, which never writes the status naming Beam-Await.
+	landed := []string{finalize, stopped, "recheck"}
+	// lifted is that landing refused: the hold lifted and the dobby restarted.
+	lifted := []string{finalize, stopped, "recheck", beamAwait, "start"}
+	refused := []string{beamAwait, finalize, stopped, "recheck", beamAwait, "start"}
 	seconds := func(ns ...int) []time.Duration {
 		out := make([]time.Duration, len(ns))
 		for i, n := range ns {
@@ -80,9 +68,11 @@ func TestBeamAwait(t *testing.T) {
 		wantEvents    []string
 		// wantNotices holds, per posted notice in order, the substrings it carries.
 		wantNotices [][]string
-		// wantFiles maps request, reopen, stop and await to whether that file stands afterwards, and record to whether the await marker carries the posted dobby-down notice.
+		// wantFiles maps request, stop and await to whether that file stands afterwards, and record to whether the await marker carries the posted dobby-down notice.
 		wantFiles      map[string]bool
 		wantDobbyReads int
+		// wantStamps is the number of stamped wakes, checked when non-zero.
+		wantStamps int
 		// wantSleeps is checked when non-nil.
 		wantSleeps []time.Duration
 	}{
@@ -151,27 +141,165 @@ func TestBeamAwait(t *testing.T) {
 			wantFiles:   map[string]bool{"record": true},
 		},
 		{
-			name: "FailingParentAlignWriteKeepsTheRequestForTheNextWake",
+			name: "FailingFinalizeWriteKeepsTheRequestForTheNextWake",
 			setup: func(t *testing.T, w *world) {
-				w.statusFail = failOnce("Parent-Align", 1)
+				w.statusFail = failOnce("Finalize", 1)
 				w.request(t, testRunID)
 			},
 			wantOutcome: shedengine.Done,
-			wantEvents:  []string{beamAwait, parentAlign + "(failed)", parentAlign, stopped, "recheck"},
+			wantEvents:  []string{beamAwait, finalize + "(failed)", finalize, stopped, "recheck"},
 			wantFiles:   map[string]bool{"request": false, "stop": false, "await": false},
 			wantSleeps:  seconds(1),
 		},
 		{
-			name: "ReentryAtParentAlignWithNoRequestLiftsTheHoldAndPostsOneInterruptedNotice",
+			name: "ReentryAtFinalizeWithNoRequestAndNoReadyRecordLiftsTheHoldRestartsTheDobbyAndPostsOneInterruptedNotice",
 			setup: func(t *testing.T, w *world) {
-				w.status = "Parent-Align"
+				w.status = "Finalize"
 				touch(t, w.paths.DobbyStopMarker)
 				touch(t, w.paths.AwaitMarker)
 				cancelAfter(w, 1)
 			},
-			wantCancelled: true, wantEvents: []string{beamAwait},
-			wantNotices: [][]string{{"interrupted", "lym beam start my-beam", "lym beam land my-beam"}},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
+			wantNotices: [][]string{{"interrupted", "lym beam ready my-beam"}},
 			wantFiles:   map[string]bool{"stop": false, "await": true},
+		},
+		{
+			name: "ReentryAtARetiredRowWithNoRequestAndNoReadyRecordLiftsTheHoldAndRestartsTheDobby",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Parent-Align"
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
+			wantNotices: [][]string{{"interrupted", "lym beam ready my-beam"}},
+			wantFiles:   map[string]bool{"stop": false, "await": true},
+		},
+		{
+			name: "LiftedHoldWhoseDobbyWillNotStartNamesBeamStart",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Finalize"
+				w.startErr = errors.New("dobby will not start")
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
+			wantNotices: [][]string{{"interrupted", "dobby will not start", "lym beam start my-beam", "lym beam ready my-beam"}},
+		},
+		{
+			name: "HoldAtFinalizeWithReadyStandingRechecksAndLandsWithNoRequest",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Finalize"
+				w.ready = true
+				touch(t, w.paths.AwaitMarker)
+			},
+			wantOutcome: shedengine.Done, wantEvents: landed,
+			wantFiles: map[string]bool{"request": false, "stop": false, "await": false},
+		},
+		{
+			name: "HoldAtARetiredRowWithReadyStandingLandsLikeFinalize",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Parent-Align"
+				w.ready = true
+				touch(t, w.paths.AwaitMarker)
+			},
+			wantOutcome: shedengine.Done, wantEvents: landed,
+			wantFiles: map[string]bool{"stop": false, "await": false},
+		},
+		{
+			name: "FailingRecheckOfAStandingLandingLiftsTheHoldRestartsTheDobbyAndPostsTheBlockers",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Finalize"
+				w.ready = true
+				w.blockers = []string{"member a is open"}
+				touch(t, w.paths.AwaitMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: lifted,
+			wantNotices: [][]string{{"member a is open", "lym beam land my-beam"}},
+			wantFiles:   map[string]bool{"stop": false, "await": true},
+			wantSleeps:  seconds(1),
+		},
+		{
+			name: "CrashBetweenTheAcceptsRemovalsLeavesTheRequestAndTheNextWakeAcceptsIt",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Finalize"
+				w.ready = true
+				w.request(t, testRunID)
+			},
+			wantOutcome: shedengine.Done, wantEvents: passing,
+			wantFiles: map[string]bool{"request": false, "stop": false, "await": false},
+		},
+		{
+			name: "GotoReturnWithReadyStandingAndNoAwaitMarkerLandsWithNoRequest",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.ready = true
+			},
+			wantOutcome: shedengine.Done, wantEvents: landed,
+			wantFiles: map[string]bool{"stop": false, "await": false},
+		},
+		{
+			name: "ResumeOfARunHaltedInTheRecheckWithReadyStandingLandsWithNoRequest",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.ready = true
+				touch(t, w.paths.AwaitMarker)
+				touch(t, w.paths.DobbyStopMarker)
+			},
+			wantOutcome: shedengine.Done, wantEvents: landed,
+			wantFiles: map[string]bool{"stop": false, "await": false},
+		},
+		{
+			name: "ResumeOfARunHaltedInTheRecheckWithNoReadyRecordLiftsTheHoldAndRestartsTheDobby",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				touch(t, w.paths.AwaitMarker)
+				touch(t, w.paths.DobbyStopMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
+			wantNotices: [][]string{{"interrupted", "lym beam ready my-beam"}},
+			wantFiles:   map[string]bool{"stop": false, "await": true},
+		},
+		{
+			name: "ReentryWithTheAwaitMarkerStandingAndReadyStandingDoesNotRecheck",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Beam-Await"
+				w.ready = true
+				touch(t, w.paths.AwaitMarker)
+				cancelAfter(w, 1)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
+			wantFiles: map[string]bool{"await": true},
+		},
+		{
+			name: "AFailedReadyReadDecidesNothingAndTheNextWakeRetries",
+			setup: func(t *testing.T, w *world) {
+				w.status = "Finalize"
+				w.readyFail = func(call int) error {
+					if call == 1 {
+						return errors.New("ready record unreadable")
+					}
+					return nil
+				}
+				cancelAfter(w, 2)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait, "start"},
+			wantNotices: [][]string{{"interrupted", "lym beam ready my-beam"}},
+			wantSleeps:  seconds(1, 2),
+		},
+		{
+			name:          "EachCompletedWakeIsStamped",
+			setup:         func(t *testing.T, w *world) { cancelAfter(w, 3) },
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantStamps: 3, wantSleeps: seconds(1, 2, 4),
+		},
+		{
+			name: "AFailingStampChangesNothing",
+			setup: func(t *testing.T, w *world) {
+				w.stampErr = errors.New("wake record unwritable")
+				cancelAfter(w, 3)
+			},
+			wantCancelled: true, wantEvents: []string{beamAwait},
+			wantStamps: 3, wantSleeps: seconds(1, 2, 4),
 		},
 		{
 			name: "ReentryWithNoRequestAndALiveDobbyPostsNothing",
@@ -266,8 +394,8 @@ func TestBeamAwait(t *testing.T) {
 			},
 			wantCancelled: true,
 			wantEvents: []string{
-				beamAwait, parentAlign, stopped, "recheck", beamAwait + "(failed)",
-				parentAlign, stopped, "recheck", beamAwait, "start",
+				beamAwait, finalize, stopped, "recheck", beamAwait + "(failed)",
+				finalize, stopped, "recheck", beamAwait, "start",
 			},
 			wantSleeps:  seconds(1, 1),
 			wantNotices: [][]string{{"member a is open", "lym beam land my-beam"}},
@@ -291,7 +419,7 @@ func TestBeamAwait(t *testing.T) {
 				w.request(t, testRunID)
 				cancelAfter(w, 1)
 			},
-			wantCancelled: true, wantEvents: []string{beamAwait, parentAlign, stopped, beamAwait, "start"},
+			wantCancelled: true, wantEvents: []string{beamAwait, finalize, stopped, beamAwait, "start"},
 			wantNotices: [][]string{{"no such process", "lym beam land my-beam"}},
 			wantFiles:   map[string]bool{"request": false, "stop": false},
 		},
@@ -307,71 +435,6 @@ func TestBeamAwait(t *testing.T) {
 			wantNotices: [][]string{{"member a is open"}},
 			wantFiles:   map[string]bool{"request": false},
 			wantSleeps:  seconds(1),
-		},
-		{
-			name: "ReopenRequestIsRemovedTheDownDobbyStartedAndTheReopenPosted",
-			setup: func(t *testing.T, w *world) {
-				w.dobbyLive = false
-				w.reopen(t, testRunID)
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait, "start"}, wantDobbyReads: 1,
-			wantNotices: [][]string{{"my-beam is reopened", "lym beam ready my-beam"}},
-			wantFiles:   map[string]bool{"reopen": false, "await": true},
-		},
-		{
-			name: "ReopenWithALiveDobbyStartsNothing",
-			setup: func(t *testing.T, w *world) {
-				w.reopen(t, testRunID)
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait}, wantDobbyReads: 1,
-			wantNotices: [][]string{{"my-beam is reopened"}},
-			wantFiles:   map[string]bool{"reopen": false},
-		},
-		{
-			name: "ReopenWhoseDobbyStartFailsNamesBeamStart",
-			setup: func(t *testing.T, w *world) {
-				w.dobbyLive = false
-				w.startErr = errors.New("dobby will not start")
-				w.reopen(t, testRunID)
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait, "start"}, wantDobbyReads: 1,
-			wantNotices: [][]string{{"my-beam is reopened", "dobby will not start", "lym beam start my-beam"}},
-			wantFiles:   map[string]bool{"reopen": false},
-		},
-		{
-			name: "ReopenRequestOfAnotherRunIsRemovedAlone",
-			setup: func(t *testing.T, w *world) {
-				w.dobbyLive = false
-				w.reopen(t, "an-earlier-run")
-				cancelAfter(w, 1)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait},
-			wantFiles: map[string]bool{"reopen": false},
-		},
-		{
-			name: "ReopenRequestOfThisRunThatCannotBeRemovedPostsOneNoticeStartsNothingAndRetriesTheEntry",
-			setup: func(t *testing.T, w *world) {
-				w.dobbyLive = false
-				w.reopen(t, testRunID)
-				readOnlyBeamDir(t, w)
-				cancelAfter(w, 2)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait, beamAwait},
-			wantNotices: [][]string{{"my-beam is reopened", "reopen-request.json", "could not be removed"}},
-			wantFiles:   map[string]bool{"reopen": true},
-		},
-		{
-			name: "ReopenRequestOfAnotherRunThatCannotBeRemovedDoesNotHoldTheEntry",
-			setup: func(t *testing.T, w *world) {
-				w.reopen(t, "an-earlier-run")
-				readOnlyBeamDir(t, w)
-				cancelAfter(w, 2)
-			},
-			wantCancelled: true, wantEvents: []string{beamAwait},
-			wantFiles: map[string]bool{"reopen": true},
 		},
 		{
 			name:          "IdleTimerDoublesToTheCeilingWithNoWatch",
@@ -413,7 +476,7 @@ func TestBeamAwait(t *testing.T) {
 					}
 				}
 			}
-			paths := map[string]string{"request": w.paths.LandRequest, "reopen": w.paths.ReopenRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker}
+			paths := map[string]string{"request": w.paths.LandRequest, "stop": w.paths.DobbyStopMarker, "await": w.paths.AwaitMarker}
 			for key, want := range tt.wantFiles {
 				got := exists(paths[key])
 				if key == "record" {
@@ -426,6 +489,9 @@ func TestBeamAwait(t *testing.T) {
 			}
 			if w.dobbyReads != tt.wantDobbyReads {
 				t.Errorf("DobbyLive read %d times; want %d", w.dobbyReads, tt.wantDobbyReads)
+			}
+			if got := len(w.snapshotStamps()); tt.wantStamps != 0 && got != tt.wantStamps {
+				t.Errorf("stamped %d wakes; want %d", got, tt.wantStamps)
 			}
 			if tt.wantSleeps != nil {
 				if diff := cmp.Diff(tt.wantSleeps, w.snapshotSleeps()); diff != "" {

@@ -1332,6 +1332,11 @@ func (a *closeRecordingAPI) RequiresPullRequest(context.Context, string) (bool, 
 	panic("closeOpenPullRequest called RequiresPullRequest")
 }
 
+// RequiredChecks answers no checks.
+func (a *closeRecordingAPI) RequiredChecks(context.Context, string, string) ([]pullrequest.Check, error) {
+	return nil, nil
+}
+
 // TestCloseOpenPullRequest asserts a torn-down pair's open pull request is closed with the comment, a merged or closed one and an absent record are left alone, and every failure warns and returns.
 // It captures the process-global logger, so it is not parallel.
 func TestCloseOpenPullRequest(t *testing.T) {

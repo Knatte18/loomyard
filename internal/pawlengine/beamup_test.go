@@ -190,6 +190,8 @@ func TestNewProducers_RefuseAnUnsetSeam(t *testing.T) {
 		{"BeamAwait", "StartDobby", func(d *pawlengine.Deps) { d.StartDobby = nil }},
 		{"BeamAwait", "DobbyLive", func(d *pawlengine.Deps) { d.DobbyLive = nil }},
 		{"BeamAwait", "Recheck", func(d *pawlengine.Deps) { d.Recheck = nil }},
+		{"BeamAwait", "ReadyStands", func(d *pawlengine.Deps) { d.ReadyStands = nil }},
+		{"BeamAwait", "StampWake", func(d *pawlengine.Deps) { d.StampWake = nil }},
 		{"BeamAwait", "Notify", func(d *pawlengine.Deps) { d.Notify = nil }},
 		{"BeamAwait", "Now", func(d *pawlengine.Deps) { d.Now = nil }},
 		{"BeamAwait", "Sleep", func(d *pawlengine.Deps) { d.Sleep = nil }},

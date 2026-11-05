@@ -41,10 +41,6 @@ var intentionallyNil = map[string]string{
 	"GateFindingsFile":                    "loom-only seam, batten has no gated row that keeps findings",
 	"Shuttle":                             "loom-only seam, batten drives no agent itself",
 	"Burler":                              "loom-only seam, batten runs no review round",
-	"BeamDescribe.Entry":                  "loom-only seam, batten runs no beam description row",
-	"BeamDescribe.Commits":                "loom-only seam, batten runs no beam description row",
-	"BeamDescribe.Commit":                 "loom-only seam, batten runs no beam description row",
-	"BeamDescribe.ProjectDecisions":       "loom-only seam, batten runs no beam description row",
 	"Pawl.SetStatus":                      "loom-only seam, batten runs no pawl row",
 	"Pawl.EntryProducer":                  "loom-only seam, batten runs no pawl row",
 	"Pawl.OwnedElsewhere":                 "loom-only seam, batten runs no pawl row",
@@ -55,6 +51,8 @@ var intentionallyNil = map[string]string{
 	"Pawl.StartDobby":                     "loom-only seam, batten runs no pawl row",
 	"Pawl.DobbyLive":                      "loom-only seam, batten runs no pawl row",
 	"Pawl.Recheck":                        "loom-only seam, batten runs no pawl row",
+	"Pawl.ReadyStands":                    "loom-only seam, batten runs no pawl row",
+	"Pawl.StampWake":                      "loom-only seam, batten runs no pawl row",
 	"Pawl.Notify":                         "loom-only seam, batten runs no pawl row",
 	"Pawl.Down":                           "loom-only seam, batten runs no pawl row",
 	"Pawl.Now":                            "loom-only seam, batten runs no pawl row",
@@ -111,7 +109,8 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.Sessions":        "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.SessionLive":     "loom-only seam, batten lands no branch",
 	"Landing.PullRequest.RegisterSession": "loom-only seam, batten lands no branch",
-	"Landing.PullRequest.Reopen":          "loom-only seam, batten lands no branch",
+	"Landing.PullRequest.BeamRecord":      "beam-only seam, batten lands no branch",
+	"Landing.PullRequest.DropBeamRecord":  "beam-only seam, batten lands no branch",
 	"DiscussionTable":                     "loom-only seam, batten has no discussion segment",
 	"CommitDiscussion":                    "loom-only seam, batten has no discussion segment",
 	"DescribeTable":                       "loom-only seam, batten has no describe segment",
@@ -171,7 +170,6 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps

@@ -40,6 +40,11 @@ func TestFinalize_PullRequest(t *testing.T) {
 	open := scriptedCall{status: pullrequest.Status{State: pullrequest.StateOpen}}
 	closed := scriptedCall{status: pullrequest.Status{State: pullrequest.StateClosed}}
 	merged := scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged}}
+	mergedAt := func(head string) scriptedCall {
+		return scriptedCall{status: pullrequest.Status{State: pullrequest.StateMerged, HeadSHA: head}}
+	}
+	// recordedBeam is the pull request a beam's landing record holds.
+	recordedBeam := &BeamPullRequest{Number: 7, URL: recordedURL}
 	recorded := func(mutate ...func(*pullrequest.Record)) *pullrequest.Record {
 		rec := &pullrequest.Record{Number: 7, URL: recordedURL}
 		for _, m := range mutate {
@@ -85,6 +90,14 @@ func TestFinalize_PullRequest(t *testing.T) {
 		wantRecord *pullrequest.Record
 		// wantOwnerHalt makes the halt reason open with OwnerHaltPrefix instead of LandingStopPrefix.
 		wantOwnerHalt bool
+		// beam makes the run a beam's: its landing record is read, the entry's field never is, and a spent record is dropped after the landing.
+		beam bool
+		// beamPR is the pull request the beam's landing record holds; nil leaves none.
+		beamPR *BeamPullRequest
+		// beamReadErr makes the read of the beam's landing record fail.
+		beamReadErr error
+		// commitsMissing is what CommitsMissing lists as the task commits the merged pull request lacks.
+		commitsMissing []string
 
 		wantOutcome shedengine.Outcome
 		wantHalt    bool
@@ -305,6 +318,109 @@ func TestFinalize_PullRequest(t *testing.T) {
 			name: "AFailingFastForwardAfterTheMergeHaltsNamingLoomResume", parentMode: "on", record: recorded(), scripts: mergeScript(open, scriptedCall{}), ffErr: errors.New("not fast-forward"),
 			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"merged on GitHub", "not fast-forward", "lym loom resume"}, wantOrder: "task-push,fast-forward", wantCalls: []string{"Status 7", wantGitHubMerge},
 		},
+		{
+			name: "ABeamsRecordedOpenPullRequestIsSquashMergedOnGitHubWithNoEditAndTheRecordDropsAfterTheParentPush", parentMode: "off", squashOff: true,
+			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, scriptedCall{}),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "task-push,fast-forward,merge,mark,push,drop-record",
+			wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "ACrashReentryFindingTheBeamsPullRequestMergedAtTheTaskHeadLandsThroughTheAlreadyLandedPathAndDropsTheRecord", parentMode: "off",
+			beam: true, beamPR: recordedBeam, scripts: statusScript(mergedAt("task-head")),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "merge,mark,push,drop-record", wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AMergeAtAnotherHeadLackingNoTaskCommitLandsThroughTheAlreadyLandedPathAndDropsTheRecord", parentMode: "off",
+			beam: true, beamPR: recordedBeam, scripts: statusScript(mergedAt("older-head")),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "commits-missing,merge,mark,push,drop-record", wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "AMergeAtAnotherHeadLackingATaskCommitUnderRequiredOpensANewPullRequestMergesItAndDropsTheRecord", parentMode: "required",
+			beam: true, beamPR: recordedBeam, commitsMissing: []string{"abc1234 a late commit"},
+			scripts:     map[string][]scriptedCall{"Status": {mergedAt("older-head")}, "Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord,
+			wantOrder: "commits-missing,task-push,fast-forward,merge,mark,push,drop-record",
+			wantCalls: []string{"Status 7", "FindOpen task-branch main", wantCreate, wantGitHubMerge},
+		},
+		{
+			name: "AMergeAtAnotherHeadLackingATaskCommitUnderOnLandsLocallyAndDropsTheRecord", parentMode: "on",
+			beam: true, beamPR: recordedBeam, commitsMissing: []string{"abc1234 a late commit"}, scripts: statusScript(mergedAt("older-head")),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "commits-missing,merge,mark,push,drop-record",
+			wantCalls: []string{"Status 7", "RequiresPullRequest main"},
+		},
+		{
+			name: "ABeamsClosedPullRequestHaltsNamingTheOperatorReopeningItAndLoomResume", parentMode: "on",
+			beam: true, beamPR: recordedBeam, scripts: statusScript(closed),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"reopens it on GitHub", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel", "lym loom goto PR-Review"}, wantCalls: []string{"Status 7"},
+		},
+		{
+			name: "ABeamsPendingRefusalForOverAMinuteHaltsNamingTheStatusVerbAndNotACancel", parentMode: "on",
+			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, refusal(pullrequest.RefusalPending, "Base branch was modified")),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Base branch was modified", "lym beam pr status me", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel"},
+			wantCalls:       append([]string{"Status 7"}, slices.Repeat([]string{wantGitHubMerge}, 7)...),
+		},
+		{
+			name: "ABeamsOtherRefusalHaltsNamingTheStatusVerbAndNotACancel", parentMode: "on",
+			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, refusal(pullrequest.RefusalOther, "Required status check is expected")),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Required status check is expected", "lym beam pr status me", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "ABeamsMethodRefusalNamesTheRepositorySettingsTheStatusVerbAndNotACancel", parentMode: "on",
+			beam: true, beamPR: recordedBeam, scripts: mergeScript(open, refusal(pullrequest.RefusalMethod, "Squash merges are not allowed")),
+			wantOutcome: shedengine.Stuck, wantHalt: true, wantReason: []string{"Squash merges are not allowed", "allow squash merging", "lym beam pr status me", "lym loom resume"},
+			wantNotInReason: []string{"lym batten cancel", "lym config landing"}, wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "AFailingBeamRecordReadIsAnErrorStopWithNoGitHubCall", parentMode: "on",
+			beam: true, beamReadErr: errors.New("landing record unreadable"),
+			wantErr: true, wantErrText: "read the beam landing record",
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestAndAnOpenOneInTheRunsRecordMergesItWithNoEdit", parentMode: "off", record: recorded(),
+			beam: true, scripts: mergeScript(open, scriptedCall{}),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantSquashedMerges: true, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantCalls: []string{"Status 7", wantGitHubMerge},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderOffDropsAClosedOneInTheRunsRecordAndLandsLocallyWithNoReopen", parentMode: "off", record: recorded(),
+			beam: true, scripts: statusScript(closed),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantNoRecord: true, wantOrder: "merge,mark,push",
+			wantCalls: []string{"Status 7", "RequiresPullRequest main", "Status 7"},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredLeavesAClosedOneInTheRunsRecordToTheResolverWhichReopensAndMergesIt", parentMode: "required", record: recorded(),
+			beam: true, scripts: map[string][]scriptedCall{"Status": {closed}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "task-push,reopen,fast-forward,merge,mark,push",
+			wantCalls: []string{"Status 7", "Status 7", "Reopen 7", wantGitHubMerge},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredLandsAMergedOneInTheRunsRecordThroughTheAlreadyLandedPath", parentMode: "required", record: recorded(),
+			beam: true, scripts: statusScript(merged),
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push",
+			wantCalls: []string{"Status 7", "Status 7"},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredFindsTheOpenOneAndMergesItWithNoEdit", parentMode: "required",
+			beam:        true,
+			scripts:     map[string][]scriptedCall{"FindOpen": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}, found: true}}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantCalls: []string{"FindOpen task-branch main", wantGitHubMerge},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderRequiredOpensOneFromTheDescriptionAndMergesIt", parentMode: "required",
+			beam:        true,
+			scripts:     map[string][]scriptedCall{"Create": {{ref: pullrequest.Ref{Number: 7, URL: recordedURL}}}, "Merge": {{}}},
+			wantOutcome: shedengine.Done, wantMerges: 1, wantRecordKept: true, wantRecord: openedRecord, wantOrder: "task-push,fast-forward,merge,mark,push",
+			wantCalls: []string{"FindOpen task-branch main", wantCreate, wantGitHubMerge},
+		},
+		{
+			name: "ABeamWithNoRecordedPullRequestUnderOnLandsLocallyWithNoGitHubCall", parentMode: "on", origin: &Origin{URL: "/srv/hub.git", Upstream: true},
+			beam:        true,
+			wantOutcome: shedengine.Done, wantMerges: 1, wantOrder: "merge,mark,push",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -337,6 +453,7 @@ func TestFinalize_PullRequest(t *testing.T) {
 				origin = *tt.origin
 			}
 			lockHeldAtMode := false
+			entryFieldCalls := 0
 			deps.PullRequest = PullRequestDeps{
 				RecordPath:     filepath.Join(dir, "pull-request.json"),
 				RecordLockPath: filepath.Join(dir, "pull-request.lock"),
@@ -345,7 +462,14 @@ func TestFinalize_PullRequest(t *testing.T) {
 					lockHeldAtMode = found && rec.Owner.Slug == "me"
 					return mode, "wt-parent", tt.parentErr
 				},
-				EntryField:     func() (string, error) { return "", nil },
+				EntryField: func() (string, error) {
+					entryFieldCalls++
+					return "", nil
+				},
+				CommitsMissing: func(string, string) ([]string, error) {
+					order = append(order, "commits-missing")
+					return tt.commitsMissing, nil
+				},
 				Origin:         func() (Origin, error) { return origin, nil },
 				TaskHasCommits: func() (bool, error) { return !tt.taskEmpty, tt.taskErr },
 				API:            func(string) (pullrequest.API, error) { return api, nil },
@@ -358,6 +482,18 @@ func TestFinalize_PullRequest(t *testing.T) {
 					now = now.Add(d)
 					return nil
 				},
+			}
+			if tt.beam {
+				deps.PullRequest.BeamRecord = func() (BeamPullRequest, bool, error) {
+					if tt.beamReadErr != nil || tt.beamPR == nil {
+						return BeamPullRequest{}, false, tt.beamReadErr
+					}
+					return *tt.beamPR, true, nil
+				}
+				deps.PullRequest.DropBeamRecord = func() error {
+					order = append(order, "drop-record")
+					return nil
+				}
 			}
 			if tt.record != nil {
 				if err := pullrequest.WriteRecord(deps.PullRequest.RecordPath, deps.PullRequest.RecordLockPath, *tt.record); err != nil {
@@ -426,6 +562,9 @@ func TestFinalize_PullRequest(t *testing.T) {
 				if rerr != nil || !found || key(got) != key(*tt.wantRecord) {
 					t.Errorf("ReadRecord() = %q, found %v, error %v; want %q", key(got), found, rerr, key(*tt.wantRecord))
 				}
+			}
+			if tt.beam && entryFieldCalls != 0 {
+				t.Errorf("the entry's pull_request was read %d times for a beam; want none", entryFieldCalls)
 			}
 			if !lockHeldAtMode {
 				t.Error("the parent lock was not held when the pull-request mode was read; want the decision made under the lock")

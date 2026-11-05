@@ -124,6 +124,9 @@
 // PlanReviewSkippable classifies the live plan generation from the committed round records, and answers false while the plan amendment record exists, so the amended plan is judged and its settle records a round start.
 // ArchivedWebsterDirs lists each round's archived webster run record.
 //
+// InterruptPolicies also names the pawl recipe's Beam-Up, Beam-Await and Beam-Down rows as reinvoke:
+// each spawns no agent and is idempotent, so the driver re-steps an interrupted one with no hand-back, and the arbiter admits one past the repair cap through InterruptPolicyFor.
+//
 // It declares its own unexported cancellation helpers (entryErr/cancelErr in ctx.go) rather than
 // reusing internal/shedadapters' identically-shaped, unexported ones: shedadapters' versions are
 // unexported and Scope forbids changing that package, so every real producer written here honours

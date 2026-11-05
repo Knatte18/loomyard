@@ -50,7 +50,8 @@ var intentionallyNil = map[string]string{
 	"Landing.PullRequest.Sessions":        "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.SessionLive":     "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
 	"Landing.PullRequest.RegisterSession": "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
-	"Landing.PullRequest.Reopen":          "Env.Landing is assembled in run.go, because its constructors open the fabric pair eagerly",
+	"Landing.PullRequest.BeamRecord":      "beam-only seam, filled by run.go for a recipe with a Beam-Await row",
+	"Landing.PullRequest.DropBeamRecord":  "beam-only seam, filled by run.go for a recipe with a Beam-Await row",
 	"DarnTable":                           "darn-only seam, filled by wire for a darn seed",
 	"Darn.Commit":                         "darn-only seam, filled by wire for a darn seed",
 	"Darn.LatestOutcome":                  "darn-only seam, filled by wire for a darn seed",
@@ -94,10 +95,6 @@ var intentionallyNil = map[string]string{
 	"Land.Pull":                           "batten-only seam, filled by battencli",
 	"Land.Landing":                        "batten-only seam, filled by battencli",
 	"Land.RunDeploy":                      "batten-only seam, filled by battencli",
-	"BeamDescribe.Entry":                  "beam-only seam, filled by wire for a beam seed",
-	"BeamDescribe.Commits":                "beam-only seam, filled by wire for a beam seed",
-	"BeamDescribe.Commit":                 "beam-only seam, filled by wire for a beam seed",
-	"BeamDescribe.ProjectDecisions":       "beam-only seam, filled by wire for a beam seed",
 	"Pawl.SetStatus":                      "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.EntryProducer":                  "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.OwnedElsewhere":                 "pawl-only seam, filled by wire for a pawl seed",
@@ -108,6 +105,8 @@ var intentionallyNil = map[string]string{
 	"Pawl.StartDobby":                     "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.DobbyLive":                      "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Recheck":                        "pawl-only seam, filled by wire for a pawl seed",
+	"Pawl.ReadyStands":                    "pawl-only seam, filled by wire for a pawl seed",
+	"Pawl.StampWake":                      "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Notify":                         "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Down":                           "pawl-only seam, filled by wire for a pawl seed",
 	"Pawl.Now":                            "pawl-only seam, filled by wire for a pawl seed",
@@ -143,7 +142,6 @@ var intentionallyNil = map[string]string{
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps

@@ -111,12 +111,14 @@ var issueEditAllowlist = []scankit.Entry{
 	{Key: "internal/hubissues/", Why: "closes a taken-in hub issue"},
 }
 
-// pullRequestImportAllowlist names the package directories permitted to import internal/pullrequest: the two producers that hold its API, the CLI that wires their seams and the `pr-continue` verb, and the kit whose landing stub names the API in a func literal.
+// pullRequestImportAllowlist names the package directories permitted to import internal/pullrequest: the two producers that hold its API, the CLI that wires their seams and the `pr-continue` verb, the CLI of the `beam pr` verbs, the kit whose landing stub names the API in a func literal, and the kit that fakes the API.
 var pullRequestImportAllowlist = []scankit.Entry{
 	{Key: "internal/landingshed/", Why: "PR-Review and Finalize hold the API"},
 	{Key: "internal/pairteardown/", Why: "a teardown closes the run's open pull request"},
 	{Key: "internal/loomcli/", Why: "wires the producers' seams and owns the pr-continue verb"},
+	{Key: "internal/beamcli/", Why: "`lym beam pr` opens, edits and reopens a beam's pull request and never merges one"},
 	{Key: "internal/testkit/envkit/", Why: "its LandingDeps stub names pullrequest.API in the API seam's func literal"},
+	{Key: "internal/testkit/prkit/", Why: "the shared fake of pullrequest.API"},
 }
 
 // pullRequestImportLine is the import line of internal/pullrequest.

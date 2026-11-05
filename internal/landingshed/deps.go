@@ -340,7 +340,7 @@ type Deps struct {
 }
 
 // PullRequestDeps carries the told seams the PR-Review row decides and opens the run's pull request through.
-// The row treats every field as required and returns an error naming the first one left unset.
+// The row treats every field but BeamRecord and DropBeamRecord as required and returns an error naming the first one left unset.
 type PullRequestDeps struct {
 	// RecordPath is the run's pull-request record file, and RecordLockPath the advisory lock that guards it.
 	RecordPath     string
@@ -378,15 +378,11 @@ type PullRequestDeps struct {
 	SessionLive func(guid string) (bool, error)
 	// RegisterSession registers the process of the session's pane under the run, so a teardown ends it.
 	RegisterSession func(guid string) error
-	// Reopen reads whether a request stands to send the run back, through the row's reroute edge, to take more work before it lands.
-	// Nil reads as never: only a beam's run is told one.
-	Reopen func() (req ReopenRequest, found bool, err error)
-}
-
-// ReopenRequest asks the PR-Review row to send its run back through the row's reroute edge.
-type ReopenRequest struct {
-	// Close asks for the run's pull request to be closed, so the next landing opens a new one, instead of kept open as a draft.
-	Close bool
+	// BeamRecord reads the pull request the beam's landing record holds and reports whether it holds one.
+	// A non-nil BeamRecord marks the landing as a beam's, and is nil on every run but a beam's.
+	BeamRecord func() (pullRequest BeamPullRequest, recorded bool, err error)
+	// DropBeamRecord drops the pull request from the beam's landing record and commits the landing directory; nil with BeamRecord.
+	DropBeamRecord func() error
 }
 
 // ParentOwnership is who owns the parent a run lands on.

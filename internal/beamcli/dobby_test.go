@@ -10,9 +10,38 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/dobbyengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
+
+func TestLandingsPast(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	line := []fabricengine.LineCommit{
+		{SHA: "aaaaaaa1111", Message: "Add widgets\n\nBody."},
+		{SHA: "bbbbbbb2222", Message: "beam: bookkeeping", RecordsOnly: true},
+		{SHA: "ccccccc3333", Message: "Add gadgets"},
+	}
+	tests := []struct {
+		name string
+		from string
+		want []string
+	}{
+		{"CommitsAfterFromAreListedOldestFirstWithoutRecordsOnlyOnes", "aaaaaaa1111", []string{"ccccccc Add gadgets"}},
+		{"FromAtTheHeadListsNone", "ccccccc3333", nil},
+		{"FromNotOnTheLineListsTheWholeLine", "elsewhere", []string{"aaaaaaa Add widgets", "ccccccc Add gadgets"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := landingsPast(line, tt.from); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("landingsPast(line, %q) = %q; want %q", tt.from, got, tt.want)
+			}
+		})
+	}
+}
 
 func TestRegisterDobby(t *testing.T) {
 	tiergate.Require(t, 0)

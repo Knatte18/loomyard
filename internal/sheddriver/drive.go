@@ -99,6 +99,9 @@ type Deps struct {
 	StartCheck func(row string) (refusal string, err error)
 	// HandsBack is the recipe's told check of a blocked stop that goes to the orch, answering for a producer and the error its blocked status persists; nil marks nothing from a status.
 	HandsBack func(producer, reason string) bool
+	// CompletedWake reads the stamp of the last wake the row completed, whether one is recorded, and the read's error; nil reads none.
+	// A stamp at least wakeRestartGap later than the stop key's last re-step restarts that key's repair count, so a row that waits for long is re-stepped again after each loop that lived through a wake.
+	CompletedWake func(row string) (at time.Time, found bool, err error)
 }
 
 // ArbiterSeam is the stronger agent a tackler escalation, or a stop only it may judge, goes to.
@@ -725,6 +728,14 @@ func (d *goDriver) facts(stop Stop) (driveFacts, error) {
 		return driveFacts{}, err
 	}
 	facts.RepairCount = repairCount(records, key)
+	if facts.RepairCount > 0 && d.deps.CompletedWake != nil {
+		stamp, found, err := d.deps.CompletedWake(key.CurrentProducer)
+		if err != nil {
+			logger.Warn("sheddriver: drive: the completed-wake stamp is unreadable; the re-step count stands", "run", d.deps.RunID, "row", key.CurrentProducer, "error", err)
+		} else if last, restepped := lastRestepAt(records, key); found && restepped && stamp.Sub(last) >= wakeRestartGap {
+			facts.RepairCount = 0
+		}
+	}
 	_, _, applied, err := d.deps.OpenAttempts(key)
 	if err != nil {
 		return driveFacts{}, fmt.Errorf("listing the stop's attempts: %w", err)

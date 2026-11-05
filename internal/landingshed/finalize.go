@@ -303,6 +303,15 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	// the notice it yields is queued only at Done.
 	notice := fz.configChangeNotice()
 
+	// landed ends the pass once the parent-side merge is done: it pushes the parent and, for a beam whose recorded pull request is spent, drops that record after the push answered Done, since the landing has happened by then.
+	landed := func() (shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+		outcome, out, err := fz.pushParent(ctx, parentHandle, notice, landing.atOnce)
+		if err == nil && outcome == shedengine.Done && landing.dropBeamRecord {
+			fz.dropBeamRecord()
+		}
+		return end(outcome, out, err)
+	}
+
 	// Steps 2 and 3: merge the parent branch into the task worktree and judge the merge, then gate the merged tree.
 	if outcome, out, err, done := fz.mergeAndGate(ctx); done {
 		return end(outcome, out, err)
@@ -339,7 +348,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 	if mergeErr == nil {
 		fz.markTaskDone()
 		fz.recordLanding(parentHandle)
-		return end(fz.pushParent(ctx, parentHandle, notice, landing.atOnce))
+		return landed()
 	}
 
 	// Retry: on the merge-in-required error, re-run steps 2 to 5 under the same lock and retry the parent-side merge exactly once.
@@ -362,7 +371,7 @@ func (fz *Finalize) landUnderLock(ctx context.Context, front bool, title, body, 
 		if retryErr == nil {
 			fz.markTaskDone()
 			fz.recordLanding(parentHandle)
-			return end(fz.pushParent(ctx, parentHandle, notice, landing.atOnce))
+			return landed()
 		}
 		mergeErr = retryErr
 	}

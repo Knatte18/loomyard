@@ -1,4 +1,4 @@
-// client.go holds Client, the GitHub calls on one repository's pull requests, and the API interface the row, Finalize and pair teardown hold.
+// client.go holds Client, the GitHub calls on one repository's pull requests, and the API interface its callers hold.
 
 package pullrequest
 
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/go-github/v75/github"
@@ -40,6 +41,19 @@ type Status struct {
 	ChangesRequested bool
 	// Draft reports whether the pull request is a draft, which GitHub refuses to merge.
 	Draft bool
+	// MergeableState is GitHub's mergeable_state of the pull request: clean, dirty, blocked, behind, unstable, has_hooks, unknown or draft.
+	MergeableState string
+}
+
+// CheckMissing is the conclusion of a required check that neither a check run nor a commit status carries at the head.
+const CheckMissing = "missing"
+
+// Check is one status check a repository's rules require, with its outcome at a head commit.
+type Check struct {
+	// Name is the check's name, the context a rule requires.
+	Name string
+	// Conclusion is the check's conclusion at the head: empty while it has not finished, and CheckMissing when no check run or commit status of it exists there.
+	Conclusion string
 }
 
 // Ref names a pull request.
@@ -96,6 +110,8 @@ type API interface {
 	Merge(ctx context.Context, number int, expectedHead string, squash bool, title, message string) error
 	// RequiresPullRequest reports whether a repository rule active on branch requires a pull request, so GitHub refuses a direct push to it.
 	RequiresPullRequest(ctx context.Context, branch string) (bool, error)
+	// RequiredChecks returns the status checks the repository's rules for base require, each with its conclusion at head.
+	RequiredChecks(ctx context.Context, base, head string) ([]Check, error)
 }
 
 // Client is the pull requests of one GitHub repository, reached through an authenticated client.
@@ -174,7 +190,7 @@ func (c *Client) Status(ctx context.Context, number int) (Status, error) {
 	if err != nil {
 		return Status{}, fmt.Errorf("pullrequest: read pull request #%d: %w", number, err)
 	}
-	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA(), Draft: pull.GetDraft()}
+	status := Status{State: StateOpen, HeadSHA: pull.GetHead().GetSHA(), Draft: pull.GetDraft(), MergeableState: pull.GetMergeableState()}
 	switch {
 	case pull.GetMerged():
 		status.State = StateMerged
@@ -287,6 +303,87 @@ func (c *Client) RequiresPullRequest(ctx context.Context, branch string) (bool, 
 		}
 		opts.Page = resp.NextPage
 	}
+}
+
+// RequiredChecks reads every page of the rules active on base for its required status-check contexts, then matches each context to its outcome at head.
+// A context's conclusion comes from the check run of that name, else from the commit status of that context with a pending one read as unfinished, else it is CheckMissing.
+// It makes no check call when base requires none.
+func (c *Client) RequiredChecks(ctx context.Context, base, head string) ([]Check, error) {
+	var contexts []string
+	ruleOpts := &github.ListOptions{PerPage: listPageSize}
+	for {
+		rules, resp, err := c.gh.Repositories.GetRulesForBranch(ctx, c.owner, c.repo, base, ruleOpts)
+		if err != nil {
+			return nil, fmt.Errorf("pullrequest: read the rules active on branch %s: %w", base, err)
+		}
+		if rules != nil {
+			for _, rule := range rules.RequiredStatusChecks {
+				for _, required := range rule.Parameters.RequiredStatusChecks {
+					if !slices.Contains(contexts, required.Context) {
+						contexts = append(contexts, required.Context)
+					}
+				}
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		ruleOpts.Page = resp.NextPage
+	}
+	if len(contexts) == 0 {
+		return nil, nil
+	}
+
+	runConclusions := map[string]string{}
+	runOpts := &github.ListCheckRunsOptions{ListOptions: github.ListOptions{PerPage: listPageSize}}
+	for {
+		runs, resp, err := c.gh.Checks.ListCheckRunsForRef(ctx, c.owner, c.repo, head, runOpts)
+		if err != nil {
+			return nil, fmt.Errorf("pullrequest: list the check runs at %s: %w", head, err)
+		}
+		for _, run := range runs.CheckRuns {
+			if _, seen := runConclusions[run.GetName()]; !seen {
+				runConclusions[run.GetName()] = run.GetConclusion()
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		runOpts.Page = resp.NextPage
+	}
+
+	statusConclusions := map[string]string{}
+	statusOpts := &github.ListOptions{PerPage: listPageSize}
+	for {
+		combined, resp, err := c.gh.Repositories.GetCombinedStatus(ctx, c.owner, c.repo, head, statusOpts)
+		if err != nil {
+			return nil, fmt.Errorf("pullrequest: read the commit statuses at %s: %w", head, err)
+		}
+		for _, commitStatus := range combined.Statuses {
+			conclusion := commitStatus.GetState()
+			if conclusion == "pending" {
+				conclusion = ""
+			}
+			if _, seen := statusConclusions[commitStatus.GetContext()]; !seen {
+				statusConclusions[commitStatus.GetContext()] = conclusion
+			}
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		statusOpts.Page = resp.NextPage
+	}
+
+	checks := make([]Check, len(contexts))
+	for i, name := range contexts {
+		checks[i] = Check{Name: name, Conclusion: CheckMissing}
+		if conclusion, ok := runConclusions[name]; ok {
+			checks[i].Conclusion = conclusion
+		} else if conclusion, ok := statusConclusions[name]; ok {
+			checks[i].Conclusion = conclusion
+		}
+	}
+	return checks, nil
 }
 
 // Merge merges a pull request whose head must equal expectedHead, squashing when squash is set, with the told commit title and message.

@@ -122,4 +122,7 @@
 // open. And PR list results carry a state precedence of MERGED > OPEN >
 // CLOSED when a consumer needs to collapse multiple PRs touching the same
 // subject down to one representative state.
+//
+// `lym beam pr` is a consumer too: it opens, edits and reopens the pull request from a beam's branch into its parent and reads its status through internal/pullrequest, so its token reaches it only through this package.
+// It never merges a pull request.
 package githubclient

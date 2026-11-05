@@ -3,10 +3,8 @@
 package shedrecipe
 
 import (
-	"path/filepath"
 	"testing"
 
-	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -39,21 +37,6 @@ func minimalEntries() map[string]minimalEntry {
 		"Describe": {
 			env: newDescribeTestEnv,
 			cfg: func(*testing.T, Env) Config { return gatesCfg("description", 3) },
-		},
-		"BeamDescribe": {
-			env: func(t *testing.T) Env {
-				env := newTestEnv(t)
-				env.BeamDescribe = landingshed.BeamDescribeDeps{
-					Slug:             "demo",
-					DescriptionPath:  filepath.Join(t.TempDir(), "summary.md"),
-					ProjectDecisions: func() ([]string, error) { return nil, nil },
-					Entry:            func() (string, string, error) { return "Title", "Brief", nil },
-					Commits:          func() ([]landingshed.BeamCommit, error) { return nil, nil },
-					Commit:           func() error { return nil },
-				}
-				return env
-			},
-			cfg: emptyConfig,
 		},
 		"BeamUp":    {newTestEnv, emptyConfig},
 		"BeamAwait": {newTestEnv, emptyConfig},

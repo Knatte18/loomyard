@@ -1,10 +1,9 @@
 # pawl-recipe.yaml is the pawl recipe, a beam's life, and a loom recipe: Preflight checks the pair, as tapestry and darn do,
 # Record-Write writes the project's decision record from its board entry, Beam-Up brings the beam up, Beam-Await holds the run
-# while the members' runs do the work a writer does in a task recipe, until a land request passes the landing re-check,
-# Parent-Align brings the parent's upstream tip into the beam, Beam-Describe writes the change description from the beam's
-# board entry, its project record and the commits it adds, PR-Review lands the beam through a pull request when the resolver
-# says so, Finalize merges the beam's parent into the beam, runs the landing gate and fast-forwards the parent, and Beam-Down
-# takes the beam's dobby and orch down.
+# while the members' runs do the work a writer does in a task recipe, and while the beam's orch, with the operator, writes the
+# beam's description and opens, updates, checks and closes its pull request, until a land request passes the landing re-check,
+# Finalize merges the beam's parent into the beam, runs the landing gate and lands the beam, and Beam-Down takes the beam's
+# dobby and orch down.
 # It is embedded into the binary by the sibling recipes.go rather than read from disk. The row names below
 # are the durable on-disk identities that resume depends on.
 #
@@ -15,12 +14,11 @@
 # Record-Write writes it under the beam's slug, apart from any member's own record, since every pair forked from the beam
 # inherits the beam's records. After that only `lym loom decision add <beam-slug>` changes it.
 #
-# The hold boundary: a beam project's run holds its beam from Parent-Align on, so Preflight, Record-Write, Beam-Up and
+# The hold boundary: a beam project's run holds its beam from Finalize on, so Preflight, Record-Write, Beam-Up and
 # Beam-Await leave the beam open to members, and boardengine.RunHolds names those rows and batten's claim row as the
 # hold-free ones. A test pins that list against this recipe's row names.
 #
 # The recipe has no review round of its own: a member's run reviews its own change before it lands in the beam.
-# Beam-Describe carries no entry gate: it writes from the entry, the record and the commits.
 #
 # Finalize never reroutes, in this recipe or any other, so it declares no on_reroute: it settles an
 # over-cap fixer change in place, through its own fix review and the fixer. A conflict or a large merge lands through the gate in every recipe: the merge
@@ -28,9 +26,11 @@
 #
 # Preflight carries no on_stuck: nothing in the list produces what it gates, so a human is the only thing
 # that can fix it.
-# Record-Write, Parent-Align and Beam-Describe carry no on_stuck: Record-Write's Stuck names its way forward,
-# Parent-Align fixes its own merge and test failures in its merge fixer, and a description that fails validation halts
-# the run for the orch, which ends the landing and fixes the entry.
+# Record-Write carries no on_stuck: its Stuck names its way forward.
+#
+# The retired map: Parent-Align, Beam-Describe and PR-Review were rows of an earlier pawl recipe, whose work the beam's orch
+# now does at Beam-Await. A run parked at one of them moves to Beam-Await and pauses, so the orch settles the landing
+# there before the run goes on to Finalize.
 
 version: 1
 entry: Preflight
@@ -40,6 +40,11 @@ contract: loom
 verify_source: plan
 terminals:
   - Beam-Down
+
+retired:
+  Parent-Align: Beam-Await
+  Beam-Describe: Beam-Await
+  PR-Review: Beam-Await
 
 producers:
   - name: Preflight
@@ -59,25 +64,7 @@ producers:
   # Beam-Await is the recipe's build row: the members' runs land their changes in the beam while it waits.
   - name: Beam-Await
     engine: BeamAwait
-    on_done: Parent-Align
-
-  # Parent-Align brings the parent's upstream tip into the beam with no parent lock and runs the merge
-  # fixer on a conflict or a failing merged tree. A failure the fixer cannot fix halts the run for the orch.
-  - name: Parent-Align
-    engine: ParentAlign
-    on_done: Beam-Describe
-
-  - name: Beam-Describe
-    engine: BeamDescribe
-    on_done: PR-Review
-
-  # PR-Review carries no entry_gate and no on_stuck, because its Stuck is always a Halt or a reroute.
-  # Its on_reroute takes a reopen request, which `lym beam reopen` writes, back to Beam-Await, so the beam takes new members;
-  # Beam-Await removes the request on entry.
-  - name: PR-Review
-    engine: PRReview
     on_done: Finalize
-    on_reroute: Beam-Await
 
   - name: Finalize
     engine: Finalize

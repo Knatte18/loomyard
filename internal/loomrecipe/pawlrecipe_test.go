@@ -1,9 +1,10 @@
-// pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment, PR-Review's one reroute edge back to Beam-Await, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
+// pawlrecipe_test.go covers the pawl recipe as a loom recipe: its rows, their edges and producer types through New and Routing, the absence of a review segment and of a reroute edge, the retired rows, and the hold boundary the recipe's rows pin against boardengine.RunHolds.
 
 package loomrecipe
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
@@ -16,31 +17,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// wantPawlRow is one row of the pawl recipe: its name, its engine's producer type and its edges.
+// wantPawlRow is one row of the pawl recipe: its name, its engine's producer type and the row its Done routes to.
 type wantPawlRow struct {
 	name         string
 	producerType reflect.Type
 	onDone       string
-	onReroute    string
 }
 
-func wantPawlRows(t *testing.T) []wantPawlRow {
-	t.Helper()
-	env, _ := testEnv(t)
-	describe, err := landingshed.NewBeamDescribe("Beam-Describe", env.BeamDescribe)
-	if err != nil {
-		t.Fatalf("landingshed.NewBeamDescribe() error = %v; want nil", err)
-	}
+func wantPawlRows() []wantPawlRow {
 	return []wantPawlRow{
-		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), loomshed.NameRecordWrite, ""},
-		{loomshed.NameRecordWrite, reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{})), pawlengine.NameBeamUp, ""},
-		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait, ""},
-		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameParentAlign, ""},
-		{loomshed.NameParentAlign, reflect.TypeOf(&landingshed.ParentAlign{}), loomshed.NameBeamDescribe, ""},
-		{loomshed.NameBeamDescribe, reflect.TypeOf(describe), loomshed.NamePRReview, ""},
-		{loomshed.NamePRReview, reflect.TypeOf(&landingshed.PRReview{}), loomshed.NameFinalize, pawlengine.NameBeamAwait},
-		{loomshed.NameFinalize, reflect.TypeOf(&landingshed.Finalize{}), pawlengine.NameBeamDown, ""},
-		{pawlengine.NameBeamDown, reflect.TypeOf(&pawlengine.BeamDown{}), "", ""},
+		{loomshed.NamePreflight, reflect.TypeOf(preflightshed.NewPreflight("", "")), loomshed.NameRecordWrite},
+		{loomshed.NameRecordWrite, reflect.TypeOf(loomshed.NewRecordWrite("", loomshed.RecordWriteDeps{})), pawlengine.NameBeamUp},
+		{pawlengine.NameBeamUp, reflect.TypeOf(&pawlengine.BeamUp{}), pawlengine.NameBeamAwait},
+		{pawlengine.NameBeamAwait, reflect.TypeOf(&pawlengine.BeamAwait{}), loomshed.NameFinalize},
+		{loomshed.NameFinalize, reflect.TypeOf(&landingshed.Finalize{}), pawlengine.NameBeamDown},
+		{pawlengine.NameBeamDown, reflect.TypeOf(&pawlengine.BeamDown{}), ""},
 	}
 }
 
@@ -57,7 +48,7 @@ func TestPawlRecipe(t *testing.T) {
 			t.Fatalf("New(pawl) error = %v; want nil, with no review segment to budget", err)
 		}
 
-		want := wantPawlRows(t)
+		want := wantPawlRows()
 		if len(shed.Producers) != len(want) {
 			t.Fatalf("New(pawl) built %d rows; want %d", len(shed.Producers), len(want))
 		}
@@ -66,8 +57,8 @@ func TestPawlRecipe(t *testing.T) {
 			if got.Name != w.name {
 				t.Errorf("row %d name = %q; want %q", i, got.Name, w.name)
 			}
-			if got.OnDone != w.onDone || got.OnStuck != "" || got.OnReroute != w.onReroute {
-				t.Errorf("row %q OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/%q", w.name, got.OnDone, got.OnStuck, got.OnReroute, w.onDone, w.onReroute)
+			if got.OnDone != w.onDone || got.OnStuck != "" || got.OnReroute != "" {
+				t.Errorf("row %q OnDone/OnStuck/OnReroute = %q/%q/%q; want %q/empty/empty", w.name, got.OnDone, got.OnStuck, got.OnReroute, w.onDone)
 			}
 			if got.Segment != "" || got.MaxBounces != 0 {
 				t.Errorf("row %q Segment/MaxBounces = %q/%d; want no review segment", w.name, got.Segment, got.MaxBounces)
@@ -87,21 +78,22 @@ func TestPawlRecipe(t *testing.T) {
 		if routing.Entry != loomshed.NamePreflight {
 			t.Errorf("Routing(pawl).Entry = %q; want %q", routing.Entry, loomshed.NamePreflight)
 		}
-		want := wantPawlRows(t)
+		want := wantPawlRows()
 		if len(routing.Producers) != len(want) {
 			t.Fatalf("Routing(pawl) has %d rows; want %d", len(routing.Producers), len(want))
 		}
 		for i, w := range want {
-			if got := routing.Producers[i]; got.Name != w.name || got.OnDone != w.onDone || got.OnReroute != w.onReroute {
-				t.Errorf("Routing(pawl) row %d = %q -> %q, reroute %q; want %q -> %q, reroute %q", i, got.Name, got.OnDone, got.OnReroute, w.name, w.onDone, w.onReroute)
+			if got := routing.Producers[i]; got.Name != w.name || got.OnDone != w.onDone || got.OnReroute != "" {
+				t.Errorf("Routing(pawl) row %d = %q -> %q, reroute %q; want %q -> %q, no reroute", i, got.Name, got.OnDone, got.OnReroute, w.name, w.onDone)
 			}
 		}
 	})
 }
 
-// TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign pins boardengine.RunHolds, which imports no recipe package, against the recipe's rows:
-// a beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Parent-Align, and holds it at Parent-Align and every row after it.
-func TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign(t *testing.T) {
+// TestPawlRecipe_HoldLiftsOnlyBeforeFinalize pins boardengine.RunHolds, which imports no recipe package, against the recipe's rows:
+// a beam project's run holds nothing of its entry at batten's claim row and at every pawl row before Finalize, and holds it at Finalize and every row after it.
+// It also pins the recipe's retired rows, which a parked run may still stand at, as held.
+func TestPawlRecipe_HoldLiftsOnlyBeforeFinalize(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	names, err := RowNames(shedrun.RecipePawl)
@@ -117,17 +109,30 @@ func TestPawlRecipe_HoldLiftsOnlyBeforeParentAlign(t *testing.T) {
 	if held(battenrecipe.NameWorktreeCreate) {
 		t.Errorf("RunHolds at %s = true; want false, the claim row holds nothing", battenrecipe.NameWorktreeCreate)
 	}
-	reachedParentAlign := false
+	reachedFinalize := false
 	for _, name := range names {
-		if name == loomshed.NameParentAlign {
-			reachedParentAlign = true
+		if name == loomshed.NameFinalize {
+			reachedFinalize = true
 		}
-		if got := held(name); got != reachedParentAlign {
-			t.Errorf("RunHolds at %s = %v; want %v", name, got, reachedParentAlign)
+		if got := held(name); got != reachedFinalize {
+			t.Errorf("RunHolds at %s = %v; want %v", name, got, reachedFinalize)
 		}
 	}
-	if !reachedParentAlign {
-		t.Fatalf("the pawl recipe's rows %v name no %s row", names, loomshed.NameParentAlign)
+	if !reachedFinalize {
+		t.Fatalf("the pawl recipe's rows %v name no %s row", names, loomshed.NameFinalize)
+	}
+
+	retired, err := RetiredRowNames(shedrun.RecipePawl)
+	if err != nil {
+		t.Fatalf("RetiredRowNames(pawl) error = %v; want nil", err)
+	}
+	if want := []string{"Beam-Describe", loomshed.NamePRReview, loomshed.NameParentAlign}; !slices.Equal(retired, want) {
+		t.Errorf("RetiredRowNames(pawl) = %v; want %v, sorted", retired, want)
+	}
+	for _, name := range retired {
+		if !held(name) {
+			t.Errorf("RunHolds at the retired row %s = false; want true, a parked run there holds its beam", name)
+		}
 	}
 }
 

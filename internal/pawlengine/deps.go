@@ -29,6 +29,9 @@ type Deps struct {
 	SetStatus func(producer string) error
 	// EntryProducer reads the producer the entry's run status names.
 	EntryProducer func() (string, error)
+	// RetiredRows are the names of the rows the pawl recipe retired, told by the wiring; nil reads as none.
+	// An entry status naming one is a landing hold an older binary wrote.
+	RetiredRows []string
 	// OwnedElsewhere reports whether another machine owns the beam.
 	OwnedElsewhere func() (bool, error)
 	// MarkBeam marks the pair a beam; it is a no-op on a marked pair.
@@ -47,6 +50,10 @@ type Deps struct {
 	DobbyLive func() (bool, error)
 	// Recheck returns the blockers the landing re-check finds, empty when it passes.
 	Recheck func() ([]string, error)
+	// ReadyStands reports whether the tracked ready record names this beam.
+	ReadyStands func() (bool, error)
+	// StampWake records that Beam-Await completed a wake at the given time.
+	StampWake func(at time.Time) error
 	// Notify posts one line to the beam's own orch.
 	Notify func(line string) error
 	// Down takes the beam's dobby and orch down.

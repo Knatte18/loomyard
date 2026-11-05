@@ -1,4 +1,4 @@
-// cli.go builds the beam cobra command with its create, ready, reopen, land, merge-parent, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
+// cli.go builds the beam cobra command with its create, describe, pr, ready, land, merge-parent, start and stop verbs and the RunCLI/RunCLIIn seams that wire it into the standard io.Writer-based call contract.
 
 package beamcli
 
@@ -32,18 +32,209 @@ import (
 func Command() *cobra.Command {
 	beam := &cobra.Command{
 		Use:   "beam",
-		Short: "make, flag ready, reopen, land, start and stop beams, the long-lived pairs that group board work, file a beam's merge from its parent, and show their dobbies and orchs",
+		Short: "make, describe, flag ready, land, start and stop beams, the long-lived pairs that group board work, file a beam's merge from its parent, and show their dobbies and orchs",
 		Long: `A beam is a long-lived pair that groups board work: its tasks fork from the
 beam's own branch and land back into it, and it is one unit of two parts, its dobby
 and its orch, that run on the machine owning it. The dobby drives the runs of the
 beam's tasks, and the orch is the session that works the beam with the operator.
 "lym beam start" brings both up and "lym beam stop" takes both down. Create and
-status run from the hub's prime worktree and from any beam, ready, reopen, land and
+status run from the hub's prime worktree and from any beam, ready, land and
 merge-parent from anywhere in the hub, and all act on the prime's location.`,
 		RunE: clihelp.GroupRunE,
 	}
-	beam.AddCommand(createCmd(), readyCmd(), reopenCmd(), landCmd(), mergeParentCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
+	beam.AddCommand(createCmd(), describeCmd(), prCmd(), readyCmd(), landCmd(), mergeParentCmd(), startCmd(), stopCmd(), statusCmd(), dobbyCmd())
 	return beam
+}
+
+// prCmd returns the `beam pr` group, whose verbs act on the pull request from a beam's branch into its parent.
+func prCmd() *cobra.Command {
+	pr := &cobra.Command{
+		Use:   "pr",
+		Short: "open, update, check and close the pull request from a beam's branch into its parent",
+		Long: `The pull request verbs of a beam. The beam's orch runs them when the operator
+says so, so it never runs gh by hand. They act only on the pull request from the
+beam's own branch into its parent, read a GitHub token only through lym's own
+client, and never merge a pull request: Finalize merges it on GitHub when the beam
+lands. All but "status", which changes nothing, refuse once "lym beam ready" has
+flagged the beam.`,
+		RunE: clihelp.GroupRunE,
+	}
+	pr.AddCommand(prOpenCmd(), prUpdateCmd(), prStatusCmd(), prCloseCmd())
+	return pr
+}
+
+// prOpenCmd returns the `beam pr open` verb.
+func prOpenCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "open <slug>",
+		Short:       "open the pull request from a beam's branch into its parent and record it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Pushes the beam <slug>'s branch, then finds the open pull request from it into
+its parent or creates one with the title and body of the change description, marks
+a draft it finds ready for review without editing its text, and records the pull
+request in the beam's landing record. A pull request the record names is checked
+instead: one GitHub reports open answers already and commits the record, a closed
+one is reopened and a merged one is left for "lym beam ready <slug>", after which
+Finalize lands the beam. The orch runs it when the operator says so, and never
+merges the pull request.
+
+It runs anywhere in the hub and refuses, each naming its way forward:
+  - an entry that is not an open beam project, or a beam with no pair here
+  - a beam, or a beam's parent, that another machine owns
+  - a beam with no pawl run, or whose run is not at Beam-Await
+  - a beam flagged ready with "lym beam ready <slug>", which is final
+  - a beam with no change description written, "lym beam describe <slug>" writes it
+  - a beam with no commits beyond its parent
+  - an origin that is not on GitHub, or a parent branch with no upstream, or a push skip
+  - a failed push or GitHub call, which names its cause
+
+Example:
+  lym beam pr open payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam pr open", func(deps landDeps) (map[string]any, error) { return prOpen(cmd.Context(), deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+}
+
+// prUpdateCmd returns the `beam pr update` verb.
+func prUpdateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "update <slug>",
+		Short:       "push a beam's branch and bring its recorded pull request up to date",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Pushes the beam <slug>'s branch, sets the title and body of its recorded pull
+request from the change description, marks a draft ready for review and records
+the pushed head. Run "lym beam describe <slug>" first when the description should
+change. The orch runs it when the operator says so, and never merges the pull
+request.
+
+It runs anywhere in the hub and refuses what "lym beam pr open" refuses of the
+entry, the owners, the run and the ready record, a beam with no pull request
+recorded, naming "lym beam pr open <slug>", an origin a pull request is not
+possible on, and a failed push or GitHub call.
+
+Example:
+  lym beam pr update payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam pr update", func(deps landDeps) (map[string]any, error) { return prUpdate(cmd.Context(), deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+}
+
+// prStatusCmd returns the `beam pr status` verb.
+func prStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "status <slug>",
+		Short:       "read whether a beam's recorded pull request can merge now and what stops it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Reads the pull request the landing record of the beam <slug> names and prints
+its state, whether it is a draft, its head, GitHub's mergeable_state, whether a
+review approves it, each required check of the parent branch with its conclusion
+and mergeable_now: whether GitHub would merge it now with the beam's head. When it
+would not, causes names each reason. A mergeable_state GitHub has not yet computed
+is read again for up to a minute first. It is the read "lym beam ready <slug>"
+judges by, and it changes nothing.
+
+It answers at any row of the beam's run up to Beam-Down. With no pull request
+recorded it answers recorded false, naming "lym beam pr open <slug>" while the run
+waits at Beam-Await and, at a later row, that Finalize decides the landing's pull
+request by the parent's rules. It refuses an entry that is not an open beam
+project with a pair here, an origin a pull request is not possible on, and a
+failed GitHub call.
+
+Example:
+  lym beam pr status payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam pr status", func(deps landDeps) (map[string]any, error) { return prStatus(cmd.Context(), deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+}
+
+// prCloseCmd returns the `beam pr close` verb.
+func prCloseCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "close <slug>",
+		Short:       "close a beam's recorded pull request so the beam lands without it",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Closes the pull request the landing record of the beam <slug> names, with one
+comment, and drops it from the record. An open pull request is closed; one GitHub
+reports closed or merged is only dropped. The comment says the operator chose to
+land without a pull request when the parent's rules let the beam land without one,
+and otherwise only that it was closed; the answer says what follows, naming
+"lym beam pr open <slug>" when "lym beam ready <slug>" refuses until one is recorded
+again.
+
+The orch closes a pull request only to land without one, never to add work, since
+work lands into the beam while the pull request stays open.
+
+It runs anywhere in the hub and refuses what "lym beam pr open" refuses of the
+entry, the owners, the run and the ready record, a beam with no pull request
+recorded, naming "lym beam pr open <slug>", an origin a pull request is not
+possible on, and a failed GitHub call.
+
+Example:
+  lym beam pr close payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam pr close", func(deps landDeps) (map[string]any, error) { return prClose(cmd.Context(), deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
+}
+
+// describeCmd returns the `beam describe` verb.
+func describeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:         "describe <slug>",
+		Short:       "write a beam's change description, which its pull request carries",
+		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
+		Long: `Writes the change description of the beam <slug> to summary.md in the beam
+worktree's _lym/landing directory, whole, on every run: the verb owns the file.
+It is made from the entry's title and brief, the beam's first-parent commits with
+their pull request numbers or commits, merge times and summaries, and the entries
+"lym loom decision add" added to the project record. The orch never edits the file
+by hand and changes its text only through "lym board upsert" of the entry's title
+or brief. The verb stamps the landing record and commits the description and the
+record together; nothing at or after landing rewrites the description.
+
+It runs anywhere in the hub and refuses, each naming its way forward:
+  - an entry that is not an open beam project, or a beam with no pair here
+  - a beam with no pawl run, or whose run is not at Beam-Await, in any state
+  - a beam flagged ready with "lym beam ready <slug>", which is final
+  - a title or brief that makes the description invalid
+
+Follow it with "lym beam pr open <slug>", or "lym beam pr update <slug>" when a
+pull request is recorded.
+
+Example:
+  lym beam describe payments`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if clihelp.ShouldAbort(cmd.Context()) {
+				return nil
+			}
+			result, err := onHubLandDeps(cmd, "lym beam describe", func(deps landDeps) (map[string]any, error) { return describe(deps, args[0]) })
+			return finishVerb(cmd, result, err)
+		},
+	}
 }
 
 // mergeParentCmd returns the `beam merge-parent` verb.
@@ -57,8 +248,9 @@ parent branch into the beam: its writer runs "lym fabric merge-in <parent branch
 in the task's own worktree, settles the conflicts and the gate failures, and its
 Code-Review perch, turned on through the task's run_settings, reviews the merge
 alone. The task's landing brings the merge into the beam. The beam's dobby starts
-it as any member, at any time; the beam's own landing brings the parent in at
-Parent-Align whether or not one ran.
+it as any member, at any time. The orch runs it before "lym beam ready", which
+refuses while the parent holds commits the beam lacks; Finalize merges the parent
+in again at landing.
 
 The task's slug is the beam's slug and "-merge-in", numbered from -2 when that slug
 is taken, and it carries the beam's labels.
@@ -228,9 +420,11 @@ The orch resumes the session it recorded, else starts from the last handoff note
 from a fresh prompt. A dobby or orch that is live already is left alone, so the verb is
 idempotent. Before anything starts it reconciles the hub's config once after a binary
 change and the hub's branches against origin, claims a prime no owner is recorded for,
-and pauses the runs another machine owns. A beam another machine owns, or one whose
-landing hold stands, is refused with its way forward; "lym adopt <beam>" takes a beam
-over, and "lym adopt root" the prime.
+and pauses the runs another machine owns. A beam another machine owns, or one held by
+a run other than its own landing, is refused with its way forward; "lym adopt <beam>"
+takes a beam over, and "lym adopt root" the prime. A beam in its own landing gets its
+orch back and its dobby stays down, so the operator can follow a halted Finalize with
+the orch.
 
 It refuses a task pair, naming the beam it belongs to, and a slug with no pair here.
 It prints the outcome per beam and exits non-zero when any beam failed to come up.
@@ -584,9 +778,9 @@ func landCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Asks the pawl run of the beam <slug> to land it: the verb writes a land request
 naming that run into the beam worktree's .lym/beam directory, which the run's
-Beam-Await row consumes. The run then writes the beam's description, merges the beam
-into its parent worktree's branch and removes the beam's pair, whose board entry is
-then done. Follow the landing with "lym batten status <slug>".
+Beam-Await row consumes. The run then lands what the orch described: it merges the
+beam into its parent worktree's branch and removes the beam's pair, whose board entry
+is then done. Follow the landing with "lym batten status <slug>".
 
 It runs anywhere in the hub, a task pair and the beam itself included, and refuses,
 each naming its way forward:
@@ -619,15 +813,26 @@ func readyCmd() *cobra.Command {
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
 		Long: `Flags the beam <slug> ready to be merged into its parent: the verb writes a
 ready record naming the beam into the beam worktree's _lym/landing directory,
-beside the beam's change description, and commits it. The flag does not say the
+beside the beam's change description, and commits it. The flag is final: no verb
+removes the record, only Finalize's landing, Beam-Down and the retired-row move
+end it, and a member filed after it never starts. The flag does not say the
 project is finished: once it is set and nothing works under the beam, the beam's
 dobby asks its pawl run to land it, as "lym beam land" does, and the landing
 removes the beam's pair. Without the flag the dobby never lands the beam, and
 "lym beam land" refuses it. A beam already flagged is reported as such.
 
-The beam's orch or the operator runs it, from anywhere in the hub; dobby never
-does. It refuses an entry that is not an open beam project with a pair here,
-naming its way forward.
+The beam's orch runs it with the operator, only when the operator is satisfied;
+dobby never does. It runs from anywhere in the hub and refuses, each naming its
+way forward:
+  - an entry that is not an open beam project with a pair here
+  - a run that is not at Beam-Await
+  - open members or child pairs under the beam
+  - a parent branch that holds commits the beam lacks, "lym beam merge-parent <slug>"
+    brings them in
+  - a change description that is not written or fails validation
+  - a required parent, or GitHub's rules, with no pull request recorded
+  - a recorded pull request that is closed, at a head other than the beam's, in a
+    state that cannot merge now, or merged without a beam commit
 
 Example:
   lym beam ready payments`,
@@ -642,52 +847,7 @@ Example:
 	}
 }
 
-// reopenCmd returns the `beam reopen` verb.
-func reopenCmd() *cobra.Command {
-	var closePR bool
-	cmd := &cobra.Command{
-		Use:         "reopen <slug>",
-		Short:       "send a beam's landing back to Beam-Await, so the beam takes new members",
-		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceOperator},
-		Long: `Sends the landing of the beam <slug> back to Beam-Await, so new members can
-join the beam. The beam's pawl run must be past Beam-Await and before Finalize:
-at Parent-Align, Beam-Describe or PR-Review.
-
-The verb writes a reopen request naming the run into the beam worktree's
-.lym/beam directory, then removes the beam's ready record and commits that, so its
-dobby does not land the beam again. The run's PR-Review row takes the request: it
-stops the pr-reviewer, keeps the pull request open as a draft with a comment
-saying the beam was reopened, and sends the run back to Beam-Await, which restarts
-the beam's dobby. With --close it closes the pull request instead, and the next
-landing opens a new one; use it when the reopened work changes the beam enough
-that a fresh pull request reads better.
-
-A later "lym beam ready <slug>" lands the beam again through Parent-Align,
-Beam-Describe and PR-Review, which refreshes the kept pull request's description
-and marks it ready for review. A halted run takes the request once "lym loom
-resume" in the beam's worktree resumes it.
-
-It runs anywhere in the hub and refuses, each naming its way forward, an entry
-that is not an open beam project with a pair here, a beam another machine owns,
-a beam with no pawl run, and a run at any other row.
-
-Example:
-  lym beam reopen payments
-  lym beam reopen payments --close`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			if clihelp.ShouldAbort(cmd.Context()) {
-				return nil
-			}
-			result, err := onHubLandDeps(cmd, "lym beam reopen", func(deps landDeps) (map[string]any, error) { return reopen(deps, args[0], closePR) })
-			return finishVerb(cmd, result, err)
-		},
-	}
-	cmd.Flags().BoolVar(&closePR, "close", false, "close the beam's pull request instead of keeping it open as a draft, so the next landing opens a new one")
-	return cmd
-}
-
-// onHubLandDeps runs verb, `beam land`, `beam ready`, `beam reopen` or `beam merge-parent`, over the land deps of the hub the command's cwd belongs to.
+// onHubLandDeps runs verb, such as `beam land`, `beam ready` or `beam describe`, over the land deps of the hub the command's cwd belongs to.
 // It resolves the hub's prime from the cwd's own worktree, so a task pair reaches the verb's own refusals.
 // A nil result is a refusal made before the request was written.
 func onHubLandDeps(cmd *cobra.Command, verb string, run func(deps landDeps) (map[string]any, error)) (*map[string]any, error) {

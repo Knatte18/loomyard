@@ -5,6 +5,7 @@ package pawlengine
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,8 +17,9 @@ const (
 	// NameBeamAwait is the pawl recipe's Beam-Await row name.
 	NameBeamAwait = "Beam-Await"
 
-	// parentAlignName is the row whose status holds the beam's landing: a run at it holds its beam.
-	parentAlignName = "Parent-Align"
+	// finalizeName is the row whose status holds the beam's landing: a run at it holds its beam.
+	// The package keeps its own copy, since it must not import the package that declares the row.
+	finalizeName = "Finalize"
 
 	// awaitFloor is the shortest wake and the wait the timer starts at and returns to on an event.
 	awaitFloor = time.Second
@@ -46,6 +48,8 @@ func NewBeamAwait(name string, deps Deps) (*BeamAwait, error) {
 		seam{"StartDobby", deps.StartDobby != nil},
 		seam{"DobbyLive", deps.DobbyLive != nil},
 		seam{"Recheck", deps.Recheck != nil},
+		seam{"ReadyStands", deps.ReadyStands != nil},
+		seam{"StampWake", deps.StampWake != nil},
 		seam{"Notify", deps.Notify != nil},
 		seam{"Now", deps.Now != nil},
 		seam{"Sleep", deps.Sleep != nil},
@@ -65,8 +69,10 @@ func nextAwaitWait(current time.Duration, event bool) time.Duration {
 }
 
 // Call holds the run at the row, spawning no agent, until a land request naming this run passes the landing re-check, and then is Done.
+// An entry that finds an accepted landing with no land request settles it itself: a standing ready record is re-checked and lands the beam, and with none the hold is lifted and the dobby restarted.
 // A beam another machine owns removes any request and yields, deciding nothing.
 // A failing re-check lifts the landing hold again, restarts the dobby the landing stopped, removes the request, posts the blockers and keeps waiting.
+// Each wake that completes without ending the row is stamped; a failed stamp is logged only.
 // A cancelled context is an error.
 func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	if err := entryErr(ctx, p.name); err != nil {
@@ -82,6 +88,9 @@ func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 		if result.finished {
 			return result.outcome, shedengine.OutputPointer{}, nil
 		}
+		if err := p.deps.StampWake(p.deps.Now()); err != nil {
+			logger.Warn("pawlengine: the completed wake could not be stamped", "producer", p.name, "error", err)
+		}
 		event, err := p.pause(ctx, wait, run.lastWake)
 		if err != nil {
 			if cerr := cancelErr(ctx, p.name); cerr != nil {
@@ -93,8 +102,8 @@ func (p *BeamAwait) Call(ctx context.Context) (shedengine.Outcome, shedengine.Ou
 	}
 }
 
-// interruptedLanding reports whether the row is entered with no land request standing while the entry's status still names Parent-Align:
-// the landing hold a crash left between the request's removal and the row's Done.
+// interruptedLanding reports whether the row is entered with no land request standing while the entry's status still names Finalize or a row of Deps.RetiredRows:
+// the landing hold a crash left between the accept's removals and the row's Done, or the one an older binary wrote under a name the recipe has since retired.
 // A failed read reads as not interrupted and is logged.
 func (p *BeamAwait) interruptedLanding() bool {
 	_, found, err := ReadLandRequest(p.deps.Paths)
@@ -110,19 +119,17 @@ func (p *BeamAwait) interruptedLanding() bool {
 		logger.Warn("pawlengine: the entry's status could not be read on entry", "producer", p.name, "error", err)
 		return false
 	}
-	return producer == parentAlignName
+	return producer == finalizeName || slices.Contains(p.deps.RetiredRows, producer)
 }
 
 // awaitRun is the state of one Call: its producer, what its entry found and when it last woke.
 type awaitRun struct {
 	*BeamAwait
-	// interrupted is true when the entry found the hold a crash left standing.
+	// interrupted is true when the entry found an accepted landing it must lift: the hold standing, or the dobby-stop marker standing with no ready record.
 	interrupted bool
-	// entered is true once the entry's status write succeeded and any reopen request of this run it found is removed.
-	entered bool
-	// reopenStuckNoticed is true once a notice told that a reopen request of this run could not be removed.
-	reopenStuckNoticed bool
-	lastWake           time.Time
+	// entered is true once the entry's status write succeeded.
+	entered  bool
+	lastWake time.Time
 }
 
 // awaitWake is what one wake decided.
@@ -134,7 +141,7 @@ type awaitWake struct {
 	acted bool
 }
 
-// wake runs one wake: the owner read, the entry's writes while they are pending, and the land request.
+// wake runs one wake: the owner read, the settling of an accepted landing the entry finds and the entry's writes while they are pending, and the land request.
 func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 	r.lastWake = r.deps.Now()
 	if err := cancelErr(ctx, r.name); err != nil {
@@ -150,6 +157,15 @@ func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 			logger.Warn("pawlengine: a land request of a beam another machine owns could not be removed", "producer", r.name, "error", err)
 		}
 		return awaitWake{outcome: shedengine.Yield, finished: true}, nil
+	}
+	if !r.entered {
+		settled, result, err := r.settleEntry(ctx)
+		if err != nil {
+			return awaitWake{}, err
+		}
+		if settled {
+			return result, nil
+		}
 	}
 	if !r.entered && !r.enter() {
 		return awaitWake{}, nil
@@ -171,14 +187,12 @@ func (r *awaitRun) wake(ctx context.Context) (awaitWake, error) {
 	return r.accept(ctx)
 }
 
-// enter writes the status naming this row and, once it is written, answers a reopen request and writes the entry's markers and notices.
-// It reports whether the entry completed; a failed status write, and a reopen request of this run that could not be removed, are retried at the next wake.
+// enter writes the status naming this row and, once it is written, the entry's markers and notices.
+// An entry that lifts an interrupted landing also removes the dobby-stop marker and restarts the dobby, whether or not the marker stood.
+// It reports whether the entry completed; a failed status write is retried at the next wake.
 func (r *awaitRun) enter() bool {
 	if err := r.deps.SetStatus(NameBeamAwait); err != nil {
 		logger.Warn("pawlengine: the entry's status could not be written, so it is retried at the next wake", "producer", r.name, "error", err)
-		return false
-	}
-	if !r.answerReopen() {
 		return false
 	}
 	r.entered = true
@@ -191,7 +205,11 @@ func (r *awaitRun) enter() bool {
 		if err := removeFile(r.deps.Paths.DobbyStopMarker); err != nil {
 			logger.Warn("pawlengine: the dobby-stop marker of an interrupted landing could not be removed", "producer", r.name, "error", err)
 		}
-		r.notify(fmt.Sprintf("the beam's landing was interrupted: its hold is lifted and its dobby may be down; run `lym beam start %s` to bring it back, then `lym beam land %s` to land again", r.deps.Slug, r.deps.Slug))
+		line := fmt.Sprintf("the beam's landing was interrupted: its hold is lifted and its dobby restarted; run `lym beam ready %s` to land once you are satisfied", r.deps.Slug)
+		if err := r.deps.StartDobby(); err != nil {
+			line = fmt.Sprintf("the beam's landing was interrupted and its hold is lifted, but its dobby could not be restarted (%v); run `lym beam start %s`, then `lym beam ready %s` to land once you are satisfied", err, r.deps.Slug, r.deps.Slug)
+		}
+		r.notify(line)
 	}
 	if !marked {
 		if err := writeMarker(r.deps.Paths.AwaitMarker, r.deps.Now()); err != nil {
@@ -202,48 +220,6 @@ func (r *awaitRun) enter() bool {
 	if !r.interrupted {
 		r.noticeDownDobby()
 	}
-	return true
-}
-
-// answerReopen removes a reopen request the entry finds, which PR-Review answered by sending the run back here, and reports whether the entry may go on.
-// For a request naming this run it starts the beam's dobby when it is down, since the landing stopped it, and posts that the beam is reopened; a request of another run is removed alone.
-// A failed read or dobby read is logged, and a failed start is named in the notice with `lym beam start`.
-// A request of another run whose removal fails is logged and the entry goes on, since PR-Review reads it as none.
-// A request naming this run whose removal fails would be read by PR-Review as a fresh request and reroute at once, so the entry starts nothing, posts one notice naming the file, and reports false for the next wake to retry.
-func (r *awaitRun) answerReopen() bool {
-	req, found, err := ReadReopenRequest(r.deps.Paths)
-	if err != nil {
-		logger.Warn("pawlengine: the reopen request could not be read on entry", "producer", r.name, "error", err)
-		return true
-	}
-	if !found {
-		return true
-	}
-	if err := RemoveReopenRequest(r.deps.Paths); err != nil {
-		logger.Warn("pawlengine: the answered reopen request could not be removed", "producer", r.name, "path", r.deps.Paths.ReopenRequest, "error", err)
-		if req.RunID != r.deps.RunID {
-			return true
-		}
-		if !r.reopenStuckNoticed {
-			r.reopenStuckNoticed = r.notify(fmt.Sprintf("the beam %s is reopened, but its reopen request %s could not be removed (%v), so the row waits at %s until the file is removed", r.deps.Slug, r.deps.Paths.ReopenRequest, err, NameBeamAwait))
-		}
-		return false
-	}
-	if req.RunID != r.deps.RunID {
-		return true
-	}
-	line := fmt.Sprintf("the beam %s is reopened: its run waits at %s and takes new members; run `lym beam ready %s` once it is ready to land again", r.deps.Slug, NameBeamAwait, r.deps.Slug)
-	live, err := r.deps.DobbyLive()
-	if err != nil {
-		logger.Warn("pawlengine: whether the reopened beam's dobby runs could not be read", "producer", r.name, "error", err)
-		live = true
-	}
-	if !live {
-		if err := r.deps.StartDobby(); err != nil {
-			line = fmt.Sprintf("%s; the beam's dobby could not be started (%v), so run `lym beam start %s`", line, err, r.deps.Slug)
-		}
-	}
-	r.notify(line)
 	return true
 }
 
@@ -289,11 +265,40 @@ func (r *awaitRun) clearDownNotice(recorded bool) {
 }
 
 // accept answers a request naming this run.
-// It writes the status naming Parent-Align, so the landing hold stands, then stops the dobby and re-checks the beam, and ends the row when the re-check passes.
-// A failed Parent-Align write keeps the request for the next wake.
+// It writes the status naming Finalize, so the landing hold stands, then stops the dobby and re-checks the beam, and ends the row when the re-check passes.
+// A failed Finalize write keeps the request for the next wake.
+// The await marker goes first and the land request last, so a crash between the removals leaves either the request, which the next wake accepts, or the ready record standing with no await marker, which the entry settles.
 func (r *awaitRun) accept(ctx context.Context) (awaitWake, error) {
-	if err := r.deps.SetStatus(parentAlignName); err != nil {
-		logger.Warn("pawlengine: the landing hold could not be written, so the request is kept for the next wake", "producer", r.name, "error", err)
+	return r.landOrRefuse(ctx, r.deps.Paths.AwaitMarker, r.deps.Paths.DobbyStopMarker, r.deps.Paths.LandRequest)
+}
+
+// recheckStanding runs the accept's re-check for a landing the entry found with no land request, so the beam lands with no request and the dobby is never asked to write one again.
+// A passing re-check removes the await marker and then the dobby-stop marker and ends the row; a failing one is refused as the accept refuses it, and the entry then completes with the await marker written.
+func (r *awaitRun) recheckStanding(ctx context.Context) (awaitWake, error) {
+	wake, err := r.landOrRefuse(ctx, r.deps.Paths.AwaitMarker, r.deps.Paths.DobbyStopMarker)
+	if err != nil || wake.finished || !r.entered {
+		return wake, err
+	}
+	r.interrupted = false
+	marked, err := markerStands(r.deps.Paths.AwaitMarker)
+	if err != nil {
+		logger.Warn("pawlengine: the await marker could not be read", "producer", r.name, "error", err)
+		return wake, nil
+	}
+	if !marked {
+		if err := writeMarker(r.deps.Paths.AwaitMarker, r.deps.Now()); err != nil {
+			logger.Warn("pawlengine: the await marker could not be written", "producer", r.name, "error", err)
+		}
+	}
+	return wake, nil
+}
+
+// landOrRefuse writes the status naming Finalize, so the landing hold stands, then stops the dobby and re-checks the beam.
+// A passing re-check removes the files of remove in order and ends the row; a failing one is refused.
+// A failed Finalize write decides nothing, so the landing is retried at the next wake.
+func (r *awaitRun) landOrRefuse(ctx context.Context, remove ...string) (awaitWake, error) {
+	if err := r.deps.SetStatus(finalizeName); err != nil {
+		logger.Warn("pawlengine: the landing hold could not be written, so the landing is retried at the next wake", "producer", r.name, "error", err)
 		return awaitWake{}, nil
 	}
 	blockers := r.landChecks()
@@ -303,12 +308,52 @@ func (r *awaitRun) accept(ctx context.Context) (awaitWake, error) {
 	if len(blockers) > 0 {
 		return r.refuse(blockers), nil
 	}
-	for _, path := range []string{r.deps.Paths.LandRequest, r.deps.Paths.DobbyStopMarker, r.deps.Paths.AwaitMarker} {
+	for _, path := range remove {
 		if err := removeFile(path); err != nil {
 			logger.Warn("pawlengine: a file of the landing could not be removed", "producer", r.name, "error", err)
 		}
 	}
 	return awaitWake{outcome: shedengine.Done, finished: true}, nil
+}
+
+// settleEntry settles, before the entry writes any status, an accepted landing that left no land request.
+// The landing is found by the hold the board names, by the ready record standing with the await marker absent, or by the dobby-stop marker standing.
+// With the ready record standing it re-checks the beam itself; with none it leaves the hold to be lifted by enter, marking the entry interrupted when the dobby-stop marker stands.
+// It reports whether the wake is decided; a failed read decides nothing and is retried at the next wake.
+func (r *awaitRun) settleEntry(ctx context.Context) (bool, awaitWake, error) {
+	_, requested, err := ReadLandRequest(r.deps.Paths)
+	if err != nil {
+		logger.Warn("pawlengine: the land request could not be read on entry", "producer", r.name, "error", err)
+		return true, awaitWake{}, nil
+	}
+	if requested {
+		return false, awaitWake{}, nil
+	}
+	stopMarked, err := markerStands(r.deps.Paths.DobbyStopMarker)
+	if err != nil {
+		logger.Warn("pawlengine: the dobby-stop marker could not be read on entry", "producer", r.name, "error", err)
+	}
+	awaiting, err := markerStands(r.deps.Paths.AwaitMarker)
+	if err != nil {
+		logger.Warn("pawlengine: the await marker could not be read on entry", "producer", r.name, "error", err)
+		awaiting = true
+	}
+	if !r.interrupted && !stopMarked && awaiting {
+		return false, awaitWake{}, nil
+	}
+	ready, err := r.deps.ReadyStands()
+	if err != nil {
+		logger.Warn("pawlengine: the ready record could not be read on entry, so it is retried at the next wake", "producer", r.name, "error", err)
+		return true, awaitWake{}, nil
+	}
+	if ready {
+		wake, err := r.recheckStanding(ctx)
+		return true, wake, err
+	}
+	if stopMarked {
+		r.interrupted = true
+	}
+	return false, awaitWake{}, nil
 }
 
 // landChecks writes the dobby-stop marker, stops the dobby and runs the re-check.
@@ -338,6 +383,8 @@ func (r *awaitRun) refuse(blockers []string) awaitWake {
 		logger.Warn("pawlengine: the landing hold could not be lifted, so the request and the marker are kept for the next wake", "producer", r.name, "error", err)
 		return awaitWake{acted: true}
 	}
+	// The status naming this row is the entry's own write, so an entry that had not completed has now.
+	r.entered = true
 	stopped, err := markerStands(r.deps.Paths.DobbyStopMarker)
 	if err != nil {
 		logger.Warn("pawlengine: the dobby-stop marker could not be read, so the dobby is restarted", "producer", r.name, "error", err)

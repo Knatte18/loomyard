@@ -22,11 +22,7 @@
 // A merged pull request takes the merged verdicts whatever the flag says, and an uncommitted file at any ending is Stuck with Halt.
 // A pause that covers the run holds the row in process, before its push and at each wake, and does no gate, push or GitHub call meanwhile.
 //
-// A reopen request, which the told Deps.PullRequest.Reopen reads and only a beam's run is told, is read on entry before the mode decision and at every wake of the wait after the pause hold.
-// It stops the session, then keeps an open recorded pull request open as a draft, through GitHub's GraphQL mutation, with a comment saying the landing was reopened, or closes it with a comment when the request asks.
-// A kept record loses the continue flag, the operator's ending, the mailed head and the session; a pull request closed by the request, or closed or merged on GitHub, loses its record, so the next entry opens a new one.
-// The row then ends Stuck with Reroute, which the recipe's reroute edge sends back to the row that takes more work, and leaves the request for that row to remove.
-// A later entry that finds its recorded pull request open as a draft marks it ready for review before it sets the title and body, so the reopened pull request keeps its link, comments and history.
+// An entry that finds its recorded pull request open as a draft marks it ready for review before it sets the title and body, so the pull request keeps its link, comments and history.
 //
 // The row keeps one interactive agent session per run, in a window of its own in the task worktree, for the operator to discuss the pull request in; the row never waits on its output.
 // After it records the pull request, and before it waits, it reuses the recorded strand when that is live, resumes the recorded session id when the strand is not, and otherwise starts a new session.
@@ -48,6 +44,8 @@
 // beam.yaml's `pull_request` set at the default layer marks every branch of the hub, and at a worktree's layer that worktree's branch.
 // A wanted pull request needs an origin on github.com that the owner and repository parse from, an upstream for the parent and no push skip.
 // A wanted pull request on a task branch with no commit beyond its parent is a no, before any origin fact is judged, since GitHub opens none on an empty branch; both rows then take the no path, and Finalize's parent-side merge commits nothing.
+// For a beam it also takes what the beam's landing record holds, `BeamRecord`: the entry's field is not read, a recorded pull request is wanted whatever the mode says, a required or merge parent and GitHub's rules want one as for any run, and an on or off parent with none recorded wants none.
+// Every beam yes is marked MergeAtOnce, since a beam always lands by squash on GitHub with no review.
 // A missing fact is a Halt when the parent is required or the field is on, and a no with the fact named when the parent is on alone; an origin on github.com that names no repository is a Halt in every mode that wants a pull request.
 // It also takes whether GitHub's rules for the parent branch require a pull request, which counts as a required parent whatever beam.yaml and the field say, since GitHub refuses the direct push a landing without one ends in.
 // Both rows read those rules, `GET repos/{owner}/{repo}/rules/branches/{branch}`, only when beam.yaml and the field give a no for a task branch with commits and an origin a pull request could be opened on, and then ask the resolver again with them.
@@ -263,6 +261,12 @@
 // An open one is merged on GitHub after the lock re-check and before the parent-side merge: Finalize pushes the task branch, merges with the pushed head as the expected head, `squash` choosing the method, the change description's title followed by ` (#<number>)` as the commit title, the form GitHub's own squash merge writes, so the landed commit names its pull request after the board entry is pruned, and its body and the credit block as the commit message, then fetches and fast-forwards the parent pair.
 // A yes marked MergeAtOnce with no record opens the pull request at that point, after the task push: Finalize finds the open one from the task branch into the parent and sets its title and body, else opens one with them, records it with the pushed head as gated and the review ended, and merges it.
 // A yes marked MergeAtOnce always merges by squash, on GitHub and in the parent-side merge alike, whatever `squash` says.
+// A beam's landing, whose PullRequest.BeamRecord is set, never reads the entry's field and reads the beam's landing record beside the run's own pull request record, under the lock.
+// A recorded pull request GitHub reports open is merged on GitHub, squashed, with no edit of its title or body; a closed one is Stuck with Halt naming the operator reopening it on GitHub and `lym loom resume`.
+// A recorded pull request merged at the task head lands through the already-landed path; one merged at another head does too when it lacks no task commit, and otherwise the landing is decided as with none recorded.
+// With none recorded, an open pull request in the run's own record is merged as it stands, and otherwise the resolver decides: a yes finds or opens the pull request from the beam branch, leaves the text of one it finds as it is, and merges it, and a no lands by the local squash.
+// Once the parent-side landing completed, `DropBeamRecord` drops a spent recorded pull request from the landing record; a failed drop is logged only.
+// A refused merge of a beam's pull request names GitHub's message, `lym beam pr status <slug>` and `lym loom resume`, and never `lym batten cancel`.
 // A merge GitHub refuses as pending is retried for at most a minute under the lock, a method refusal names `lym config landing --set squash=<true|false>`, or the repository's settings under MergeAtOnce, and any other refusal names a second person's approval or a settled check or conflict, and `lym batten cancel`.
 // The retry after a merge-in-required error never merges on GitHub a second time.
 // Every GitHub failure is judged as PR-Review judges one, with each halt opening with LandingStopPrefix.
@@ -289,9 +293,11 @@
 // the seat engine's geometry for Describe, and Deps.ParentName passed through to the resolver for Parent-Align and Finalize.
 // DescribeTable builds every loom recipe's session from one stencil, which reads the decision record, the board entry, the diff and the run records that exist, rendering an absent record as `(none)`.
 // The stencil also shows the regression check the landing appends, so the session writes no section of its own for it and lists no check it settled as one to run by hand.
-// NewBeamDescribe is the beam recipe's Describe row and starts no agent: it writes the description from the beam's board entry, the commits on the beam branch's own first-parent line and the entries `lym loom decision add` added to the beam's project record, validates it with the check the Describe gate runs, and commits it.
+// WriteBeamDescription starts no agent: it writes the description from the beam's board entry, the commits on the beam branch's own first-parent line and the entries `lym loom decision add` added to the beam's project record, validates it with the check the Describe gate runs, and commits it.
 // Its `## Changes` list names each pull request a member landed through by the ` (#<number>)` Finalize writes into the merge's subject, with its title, merge time and the first sentence of its body, and each other commit, a merge from the parent included, by its object name, subject and time, oldest first.
-// A finding is an error naming the finding and the way out, which is to end the landing with `lym batten cancel <slug>`, fix the entry with `lym board upsert` and run `lym beam land <slug>` again, since the landing's claim holds the entry under the run lock.
+// It takes its told seams as BeamDescribeDeps, which `lym beam describe` fills.
+// A finding is an error naming the finding and the way out, which is to fix the title or brief with `lym board upsert` and run `lym beam describe <slug>` again.
+// OriginMissing names the first fact an origin lacks for a pull request, in the order ResolvePullRequest judges them, so `lym beam pr open` refuses an origin the resolver would refuse.
 //
 // It takes told absolute paths and has no direct production import of internal/lymcwd, per the
 // Told-Geometry Invariant: every path this package operates on is handed to it by its caller, and it

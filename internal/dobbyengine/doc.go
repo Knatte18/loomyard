@@ -116,7 +116,7 @@
 //
 // The slot rule:
 //
-//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await; it takes one from Parent-Align on.
+//   - A run whose RunView carries NoSlot takes no slot under `max_runs`, a pawl run whose landing hold does not stand, which only waits on its members at Worktree-Create, Preflight, Beam-Up and Beam-Await; it takes one from Finalize on.
 //     The parent's dobby still schedules the run's passes, owed full passes and probes as for every run it drives, and the view's `max_runs` reasons follow, since BuildView counts through the same rule.
 //
 // The landing step:
@@ -130,6 +130,20 @@
 //     A reading that does not pass clears the episode, so a member opened again re-arms the step; a restarted dobby reads the record and takes no second step.
 //   - Bound: the step lands nothing by itself: Beam-Await re-checks the beam before anything lands, and a land request Beam-Await refuses is not asked for again in the same episode.
 //   - A failed read or post is logged once per episode and changes nothing: a failed post leaves the episode open for the next tick.
+//   - While Deps.BeamReady reads true, the beam's ready record stands and its start step starts no task of the worktree, so no member begins once the beam is flagged ready.
+//     Each open member of the beam, a task not done with no run listed, drafts and tasks held by a dependency included, gets one notice naming it, that it blocks the landing and `lym batten cancel <member> --remove`; State.ReadyHold lists the members noticed, each recorded only once its post went out.
+//     A reading that is false clears State.ReadyHold, so a later episode notices again; a read that fails starts nothing, is logged once per episode and changes no record; a nil BeamReady holds nothing.
+//     The view shows every waiting task as held by the flag.
+//
+// The member landing announcement:
+//
+//   - After the landing step, each tick of a beam's dobby reads Deps.LandingPullRequest: with no pull request recorded in the beam's landing record it does nothing.
+//     Otherwise it reads the last announced head from Geometry.AnnouncePath, a never-tracked file, or from the record's announce head when the file is missing, so a fresh machine repeats at most one notice, and reads the landings past it through Deps.BeamLandingsSince.
+//   - With landings it posts one line through Deps.Notice naming them, `lym beam describe <slug>` and `lym beam pr update <slug>`, so the orch keeps the description and the pull request listing every member; only after the post succeeds does it write the head the read returned.
+//     A head that moved past only commits that record lym's own state is written with no line, so the notice cannot feed itself.
+//   - Every landing counts, a member filed after the pull request opened included, and no entry's `notify_on_land` is read; a member that carries one also gets its own landing notice.
+//   - A failed read, post or record is logged once per episode and retried at the next tick; nothing else depends on it.
+//     The prime's dobby and a nil LandingPullRequest or BeamLandingsSince announce nothing.
 //
 // The run notices:
 //
@@ -179,7 +193,7 @@
 //   - It carries beam.yaml's `max_runs` and `land_notice`, and marks each run and waiting task whose board entry asks for a landing notice, a run also when the state record remembers the request.
 //   - The runs are the listed ones that are not done, each with batten's state and producer, a pass in flight while its driver lock is held, and its last pass exit, owed full pass, owner mark and failing count from the state record.
 //   - A task waits while it is released to the worktree, a task with an empty status whose parent is the worktree, and not started.
-//     Its reasons are the start step's own conditions: the dependencies not done, another machine's ownership, a covering pause, a refused start whose backoff has not run out for the entry as it reads now, and `max_runs`.
+//     Its reasons are the start step's own conditions: the dependencies not done, another machine's ownership, a covering pause, a refused start whose backoff has not run out for the entry as it reads now, the beam's ready hold, and `max_runs`.
 //     The `max_runs` reason falls, in board order as the start step walks, on the tasks nothing else holds once the runs that take a slot fill it; a task with no reason starts on the dobby's next tick unless the task-limit hold stands, which the view does not read and the dobby log records.
 //   - Bound: a first pass in flight that has left no status file is in no file, so its task reads as ready and its slot as free until the status appears.
 //

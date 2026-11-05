@@ -235,13 +235,31 @@ func (s *Shed) stepLocked(ctx context.Context) (StepResult, error) {
 	// Step 2, the lookup.
 	// An empty current_producer is the run's start, the list's first row, so a seed never names a row the recipe lacks;
 	// every write this step makes then names the row itself.
-	// A named row not found is a hard error that changes nothing on disk.
+	// A named row not found is a hard error that changes nothing on disk, unless the recipe's Retired map names it:
+	// the run then moves once onto the row the map names and pauses, and the driver hands the pause back.
 	// Shed never guesses, neither restarting from the first producer nor advancing to the nearest match, because both fabricate a status nobody confirmed.
 	// started records whether the status on disk names a row yet, which step 3b reads.
 	started := st.CurrentProducer != ""
 	st.CurrentProducer = RowAt(s.Producers, st.CurrentProducer)
 	def, ok := findProducer(s.Producers, st.CurrentProducer)
 	if !ok {
+		if target, retired := s.Retired[st.CurrentProducer]; retired {
+			from := st.CurrentProducer
+			wayForward := s.RetiredWayForward
+			if wayForward == "" {
+				wayForward = runVerb("run", s.RunID)
+			}
+			if s.RetiredMove != nil {
+				if err := s.RetiredMove(from, target, st.State != StateRunning); err != nil {
+					return StepResult{}, fmt.Errorf("shedengine: move the run off the retired row %s: %w; way forward: fix the cause it names, then %s", from, err, wayForward)
+				}
+			}
+			reason := fmt.Sprintf("the row %s is retired from the recipe, so the run moved to %s and paused; way forward: %s", from, target, wayForward)
+			if err := s.persistTransient(target, StatePaused, "", st.History, false, false, "", "", "", reason); err != nil {
+				return StepResult{}, err
+			}
+			return StepResult{Next: target, State: StatePaused, Reason: reason, History: st.History}, nil
+		}
 		names := make([]string, len(s.Producers))
 		for i, p := range s.Producers {
 			names[i] = p.Name

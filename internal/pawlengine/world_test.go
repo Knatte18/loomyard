@@ -40,6 +40,14 @@ type world struct {
 
 	blockers []string
 
+	// ready is whether the ready record names the beam; readyFail returns the error the call-th read fails with, or nil.
+	ready      bool
+	readyFail  func(call int) error
+	readyCalls int
+	// stamps are the times of the wakes the row stamped; stampErr fails each stamp.
+	stamps   []time.Time
+	stampErr error
+
 	recheckErr, stopErr, startErr, notifyErr error
 	markErr, pushErr, workspaceErr           error
 
@@ -100,18 +108,17 @@ func (w *world) snapshotSleeps() []time.Duration {
 	return append([]time.Duration(nil), w.sleeps...)
 }
 
+// snapshotStamps returns a copy of the wake stamps recorded so far.
+func (w *world) snapshotStamps() []time.Time {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]time.Time(nil), w.stamps...)
+}
+
 // request writes a land request naming runID.
 func (w *world) request(t *testing.T, runID string) {
 	t.Helper()
 	if err := pawlengine.WriteLandRequest(w.paths, pawlengine.LandRequest{RunID: runID, RequestedAt: w.now}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// reopen writes a reopen request naming runID.
-func (w *world) reopen(t *testing.T, runID string) {
-	t.Helper()
-	if err := pawlengine.WriteReopenRequest(w.paths, pawlengine.ReopenRequest{RunID: runID, RequestedAt: w.now}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -158,6 +165,7 @@ func (w *world) deps() pawlengine.Deps {
 			defer w.mu.Unlock()
 			return w.status, nil
 		},
+		RetiredRows:    []string{"Beam-Describe", "PR-Review", "Parent-Align"},
 		OwnedElsewhere: func() (bool, error) { return w.owned, nil },
 		MarkBeam:       func() error { w.record("mark"); return w.markErr },
 		SpawnPush:      func() error { w.record("push"); return w.pushErr },
@@ -177,6 +185,23 @@ func (w *world) deps() pawlengine.Deps {
 			return w.dobbyLive, nil
 		},
 		Recheck: func() ([]string, error) { w.record("recheck"); return w.blockers, w.recheckErr },
+		ReadyStands: func() (bool, error) {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.readyCalls++
+			if w.readyFail != nil {
+				if err := w.readyFail(w.readyCalls); err != nil {
+					return false, err
+				}
+			}
+			return w.ready, nil
+		},
+		StampWake: func(at time.Time) error {
+			w.mu.Lock()
+			defer w.mu.Unlock()
+			w.stamps = append(w.stamps, at)
+			return w.stampErr
+		},
 		Notify: func(line string) error {
 			w.mu.Lock()
 			defer w.mu.Unlock()

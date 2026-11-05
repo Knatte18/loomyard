@@ -8,16 +8,16 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/githubclient"
+	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // prMergeRetryWindow is how long a merge GitHub refuses as pending is retried under the lock.
-const prMergeRetryWindow = time.Minute
+const prMergeRetryWindow = pullrequest.MergeRetryWindow
 
 // prLanding is what Finalize's decision about the run's pull request leaves for the landing.
 // The zero value is a landing with no GitHub merge, which lands through the parent-side merge alone.
@@ -30,6 +30,8 @@ type prLanding struct {
 	atOnce bool
 	// reopen marks a landing whose closed recorded pull request mergeOnGitHub reopens just before it merges.
 	reopen bool
+	// dropBeamRecord marks the landing of a beam whose recorded pull request is spent: Finalize drops it from the beam's landing record once the parent-side landing completed.
+	dropBeamRecord bool
 	// api calls GitHub for the repository the origin names, set when merge is.
 	api pullrequest.API
 	// record is the run's pull request record, set when merge is and open is not.
@@ -139,6 +141,8 @@ func (fz *Finalize) githubFailure(ctx context.Context, action string, err error)
 // The exception is a yes marked MergeAtOnce, which has no review to end: with no record it is marked for mergeOnGitHub to open the pull request itself, and a closed recorded pull request is marked for mergeOnGitHub to reopen, so nothing is opened or reopened on GitHub before the owner checks.
 // A yes never lands by a local merge pushed to the parent: a merged pull request lands through the parent-side merge's already-landed path, an open one is marked to merge on GitHub, and a closed one whose record carries the operator's ending is reopened and marked to merge, since GitHub merges only an open pull request.
 // A Finalize with no ParentMode seam skips the step and lands locally.
+// A beam's landing, whose PullRequest.BeamRecord is set, never reads the entry's field and reads the beam's landing record beside the run's own pull request record.
+// A pull request the run's own record holds, which GitHub reports open, with none in the beam's is merged as it stands whatever the resolver says; a closed or merged one is decided as any other record is.
 // stop is true when Call returns the other values at once.
 func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
 	pr := fz.deps.PullRequest
@@ -156,9 +160,11 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	if err != nil {
 		return halt(beamModeUnreadableReason(worktree, err))
 	}
-	field, err := pr.EntryField()
-	if err != nil {
-		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", finalizeName, err)))
+	field := ""
+	if pr.BeamRecord == nil {
+		if field, err = pr.EntryField(); err != nil {
+			return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the landing entry's pull_request: %w", finalizeName, err)))
+		}
 	}
 	origin, err := pr.Origin()
 	if err != nil {
@@ -172,14 +178,57 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 	if err != nil {
 		return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the pull request record: %w", finalizeName, err)))
 	}
-	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, field, origin, hasCommits, found)
+	beam := NotABeam
+	var beamPullRequest BeamPullRequest
+	if pr.BeamRecord != nil {
+		recorded := false
+		if beamPullRequest, recorded, err = pr.BeamRecord(); err != nil {
+			return ended(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the beam landing record: %w", finalizeName, err)))
+		}
+		beam = BeamWithoutPullRequest
+		if recorded {
+			beam = BeamWithPullRequest
+		}
+	}
+
+	if beam == BeamWithoutPullRequest && found {
+		// A pull request Finalize opened before a halt, or one an older PR-Review left, is merged as it stands whatever the resolver says, while GitHub reports it open.
+		// A closed or merged one is decided below as any other record is.
+		api, err := pr.API(origin.URL)
+		if err != nil {
+			return prStopped(fz.githubFailure(ctx, "open the GitHub client", err))
+		}
+		status, err := api.Status(ctx, rec.Number)
+		if err != nil {
+			return prStopped(fz.githubFailure(ctx, "read the pull request's status", err))
+		}
+		if status.State == pullrequest.StateOpen {
+			return prLanding{merge: true, atOnce: true, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
+		}
+	}
+	decision, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, field, beam, origin, hasCommits, found)
 	if err != nil {
 		return ended(fz.errorStop(ctx, err))
 	}
 	if decision.Halt != "" {
 		return halt(decision.Halt)
 	}
+	if beam == BeamWithPullRequest {
+		return fz.recordedBeamLanding(ctx, mode, beamPullRequest, origin, hasCommits, decision, rec, found)
+	}
+	return fz.landingForDecision(ctx, decision, origin, rec, found)
+}
 
+// prStopped adapts a Finalize stop, which carries no landing, to the stop return of pullRequestLanding.
+func prStopped(outcome shedengine.Outcome, out shedengine.OutputPointer, err error, _ bool) (prLanding, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	return prLanding{}, outcome, out, err, true
+}
+
+// landingForDecision turns a yes or no of the resolver into the landing, against the run's own pull request record rec, which found reports present.
+// A no closes a recorded pull request GitHub reports open and lands locally; a yes needs the recorded pull request, bar a yes marked MergeAtOnce, which opens or reopens the pull request itself.
+// stop is true when the other values are what Call returns.
+func (fz *Finalize) landingForDecision(ctx context.Context, decision PullRequestDecision, origin Origin, rec pullrequest.Record, found bool) (prLanding, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	pr := fz.deps.PullRequest
 	if !decision.Open {
 		if !found {
 			return prLanding{}, "", shedengine.OutputPointer{}, nil, false
@@ -187,37 +236,95 @@ func (fz *Finalize) pullRequestLanding(ctx context.Context) (prLanding, shedengi
 		return fz.dropRecordedPullRequest(ctx, origin, rec, decision.Reason)
 	}
 	if !found && !decision.MergeAtOnce {
-		return halt(fmt.Sprintf("this landing goes through a pull request (%s) but the run has no pull request recorded; way forward: lym loom goto PR-Review, which opens it", decision.Reason))
+		return prStopped(fz.halt(ctx, LandingStopPrefix+fmt.Sprintf("this landing goes through a pull request (%s) but the run has no pull request recorded; way forward: lym loom goto PR-Review, which opens it", decision.Reason)))
 	}
 
 	api, err := pr.API(origin.URL)
 	if err != nil {
-		return ended(fz.githubFailure(ctx, "open the GitHub client", err))
+		return prStopped(fz.githubFailure(ctx, "open the GitHub client", err))
 	}
 	if !found {
 		return prLanding{merge: true, open: true, atOnce: true, api: api}, "", shedengine.OutputPointer{}, nil, false
 	}
 	status, err := api.Status(ctx, rec.Number)
 	if err != nil {
-		return ended(fz.githubFailure(ctx, "read the pull request's status", err))
+		return prStopped(fz.githubFailure(ctx, "read the pull request's status", err))
 	}
 	switch status.State {
 	case pullrequest.StateOpen:
 		return prLanding{merge: true, atOnce: decision.MergeAtOnce, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
 	case pullrequest.StateClosed:
 		if !rec.ReviewEnded && !decision.MergeAtOnce {
-			return halt(fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug))
+			return prStopped(fz.halt(ctx, LandingStopPrefix+fmt.Sprintf("the run's pull request %s was closed without a merge; way forward: reopen it on GitHub, then lym loom goto PR-Review, or lym batten cancel %s", rec.URL, fz.deps.Slug)))
 		}
 		if decision.MergeAtOnce {
 			return prLanding{merge: true, atOnce: true, reopen: true, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
 		}
 		if err := api.Reopen(ctx, rec.Number); err != nil {
-			return ended(fz.githubFailure(ctx, "reopen the pull request", err))
+			return prStopped(fz.githubFailure(ctx, "reopen the pull request", err))
 		}
 		return prLanding{merge: true, api: api, record: rec}, "", shedengine.OutputPointer{}, nil, false
 	}
 	// A merged pull request has no GitHub merge left, yet the parent-side merge still follows the parent's mode.
 	return prLanding{atOnce: decision.MergeAtOnce}, "", shedengine.OutputPointer{}, nil, false
+}
+
+// recordedBeamLanding decides the landing of a beam whose landing record holds the pull request recorded, which decision, the resolver's answer for that record, wants merged.
+// An open one merges on GitHub, squashed, with no edit of its title or body; a closed one halts for the operator to reopen it on GitHub.
+// A merged one lands through the already-landed path when it merged at the task head or lacks no task commit; one that lacks a task commit is decided as with none recorded.
+// Every outcome but a halt marks the record to be dropped once the landing completed.
+// stop is true when the other values are what Call returns.
+func (fz *Finalize) recordedBeamLanding(ctx context.Context, mode string, recorded BeamPullRequest, origin Origin, hasCommits bool, decision PullRequestDecision, rec pullrequest.Record, found bool) (prLanding, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
+	pr := fz.deps.PullRequest
+	if !decision.Open {
+		return prLanding{dropBeamRecord: true}, "", shedengine.OutputPointer{}, nil, false
+	}
+	api, err := pr.API(origin.URL)
+	if err != nil {
+		return prStopped(fz.githubFailure(ctx, "open the GitHub client", err))
+	}
+	status, err := api.Status(ctx, recorded.Number)
+	if err != nil {
+		return prStopped(fz.githubFailure(ctx, "read the pull request's status", err))
+	}
+	switch status.State {
+	case pullrequest.StateOpen:
+		beamRecord := pullrequest.Record{Number: recorded.Number, URL: recorded.URL}
+		return prLanding{merge: true, atOnce: true, dropBeamRecord: true, api: api, record: beamRecord}, "", shedengine.OutputPointer{}, nil, false
+	case pullrequest.StateClosed:
+		return prStopped(fz.halt(ctx, LandingStopPrefix+fmt.Sprintf("the beam's pull request %s was closed without a merge; way forward: the operator reopens it on GitHub, then runs lym loom resume", recorded.URL)))
+	}
+
+	head, err := fz.deps.TaskHead()
+	if err != nil {
+		return prStopped(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: read the task head: %w", finalizeName, err)))
+	}
+	if status.HeadSHA != head {
+		missing, err := pr.CommitsMissing(status.HeadSHA, head)
+		if err != nil {
+			return prStopped(fz.errorStop(ctx, fmt.Errorf("landingshed: %s: list the task commits the merged pull request lacks: %w", finalizeName, err)))
+		}
+		if len(missing) > 0 {
+			again, err := resolveWithParentRule(ctx, finalizeName, fz.deps, mode, "", BeamWithoutPullRequest, origin, hasCommits, found)
+			if err != nil {
+				return prStopped(fz.errorStop(ctx, err))
+			}
+			if again.Halt != "" {
+				return prStopped(fz.halt(ctx, LandingStopPrefix+again.Halt))
+			}
+			landing, outcome, out, err, stop := fz.landingForDecision(ctx, again, origin, rec, found)
+			landing.dropBeamRecord = true
+			return landing, outcome, out, err, stop
+		}
+	}
+	return prLanding{atOnce: true, dropBeamRecord: true}, "", shedengine.OutputPointer{}, nil, false
+}
+
+// dropBeamRecord drops the spent pull request from the beam's landing record once the landing completed; a failed drop is logged only, since the landing has happened.
+func (fz *Finalize) dropBeamRecord() {
+	if err := fz.deps.PullRequest.DropBeamRecord(); err != nil {
+		logger.Warn("landingshed: the landed pull request could not be dropped from the beam's landing record", "row", finalizeName, "cause", err)
+	}
 }
 
 // dropRecordedPullRequest ends the run's pull request when the landing no longer goes through one.
@@ -320,6 +427,7 @@ func (fz *Finalize) mergeOnGitHub(ctx context.Context, parentHandle parentMerger
 }
 
 // openAtOnce finds the open pull request from the task branch into the parent and sets its title and body, else opens one with them, for a parent that takes its pull request with no review.
+// A beam's landing, whose PullRequest.BeamRecord is set, leaves the text of a pull request it finds as the orch wrote it.
 // It records the pull request with head as its gated head and the review ended, so a re-entry merges the recorded one and reopens it when it was closed.
 // stop is true when Call returns the other values at once; a GitHub failure is judged as githubFailure judges one.
 func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, title, body string) (pullrequest.Record, shedengine.Outcome, shedengine.OutputPointer, error, bool) {
@@ -330,12 +438,14 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 	if err != nil {
 		return failed(fz.githubFailure(ctx, "look for an open pull request", err))
 	}
-	if open {
+	if !open {
+		if ref, err = api.Create(ctx, fz.deps.TaskBranch, fz.deps.ParentBranch, title, body); err != nil {
+			return failed(fz.githubFailure(ctx, "open the pull request", err))
+		}
+	} else if fz.deps.PullRequest.BeamRecord == nil {
 		if err := api.Edit(ctx, ref.Number, title, body); err != nil {
 			return failed(fz.githubFailure(ctx, "set the pull request's title and body", err))
 		}
-	} else if ref, err = api.Create(ctx, fz.deps.TaskBranch, fz.deps.ParentBranch, title, body); err != nil {
-		return failed(fz.githubFailure(ctx, "open the pull request", err))
 	}
 
 	rec := pullrequest.Record{
@@ -355,8 +465,16 @@ func (fz *Finalize) openAtOnce(ctx context.Context, api pullrequest.API, head, t
 
 // mergeRefusalReason is the Stuck reason of a merge GitHub refused for good, or kept refusing as pending past the retry window.
 // A method refusal names the squash setting, or the repository's settings for a parent that always squashes.
+// A beam's refusal never names a cancel: it names GitHub's message, the pull request's status verb and the resume, and a method refusal also names the repository's squash setting.
 func (fz *Finalize) mergeRefusalReason(landing prLanding, refusal *pullrequest.MergeRefusal) string {
 	rec := landing.record
+	if fz.deps.PullRequest.BeamRecord != nil {
+		check := fmt.Sprintf("check the pull request with lym beam pr status %s, then run lym loom resume", fz.deps.Slug)
+		if refusal.Kind == pullrequest.RefusalMethod {
+			return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a beam always lands by squash, then %s", rec.URL, refusal.Message, check)
+		}
+		return fmt.Sprintf("GitHub refused to merge pull request %s: %s; way forward: settle on GitHub what the message names, then %s", rec.URL, refusal.Message, check)
+	}
 	if refusal.Kind == pullrequest.RefusalMethod && landing.atOnce {
 		return fmt.Sprintf("GitHub refused the squash merge of pull request %s: %s; way forward: allow squash merging in the repository's settings on GitHub, since a parent whose beam.yaml pull_request is merge always squashes, then run lym loom resume", rec.URL, refusal.Message)
 	}

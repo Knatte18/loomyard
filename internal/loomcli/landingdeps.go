@@ -83,7 +83,13 @@ func landingDeps(
 	}
 	// Only a pawl run lands a beam, so only its Finalize backstops the landing re-check with a land check over the members and pairs still working under it.
 	var landBlockers func() ([]landingshed.LandBlocker, error)
+	pullRequest := pullRequestDeps(l, parentBranch, pushSkipped, runner)
 	if recipe == shedrun.RecipePawl {
+		pullRequest.BeamRecord, pullRequest.DropBeamRecord = beamLandingRecordSeams(l, seedSlug(l.WorktreeName))
+		// A beam's merged pull request lacks the commits `lym beam ready` counts as lacking, never a merge of the parent or a records-only commit.
+		pullRequest.CommitsMissing = func(merged, _ string) ([]string, error) {
+			return fabricengine.BeamCommitsPast(l, parentBranch, merged)
+		}
 		landBlockers = func() ([]landingshed.LandBlocker, error) {
 			prime, err := primeOfHub(l)
 			if err != nil {
@@ -282,7 +288,7 @@ func landingDeps(
 		},
 		CodeReviewOff: codeBudgetZero(l, recipe),
 		LandBlockers:  landBlockers,
-		PullRequest:   pullRequestDeps(l, parentBranch, pushSkipped, runner),
+		PullRequest:   pullRequest,
 		// The task branch's remote-tracking ref is read without a fetch, so an absent one is no tip.
 		TaskRemoteTip: func() (string, error) {
 			tip, err := gitrepo.New(l.WorktreePath()).RefSHA("refs/remotes/origin/" + taskBranch)
@@ -292,6 +298,28 @@ func landingDeps(
 			return tip, err
 		},
 	}
+}
+
+// beamLandingRecordSeams returns the seams Finalize reads and drops the pull request of the landing record of the beam slug at l through.
+// The drop commits the landing directory in the beam's worktree, so the record leaves the tracked tree the beam branch carries.
+func beamLandingRecordSeams(l *lymcwd.Location, slug string) (read func() (landingshed.BeamPullRequest, bool, error), drop func() error) {
+	path, lockPath := loomengine.BeamLandingPath(l), loomengine.BeamLandingLockPath(l)
+	read = func() (landingshed.BeamPullRequest, bool, error) {
+		record, found, err := pawlengine.ReadLanding(path, lockPath, slug)
+		if err != nil || !found || record.PullRequest == nil {
+			return landingshed.BeamPullRequest{}, false, err
+		}
+		return landingshed.BeamPullRequest{Number: record.PullRequest.Number, URL: record.PullRequest.URL}, true, nil
+	}
+	drop = func() error {
+		dropped, err := pawlengine.DropLandingPullRequest(path, lockPath, slug)
+		if err != nil || !dropped {
+			return err
+		}
+		_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), l, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: drop the landed pull request from the landing record of %s", slug), fabricengine.EnvSyncOptions())
+		return err
+	}
+	return read, drop
 }
 
 // pullRequestDeps assembles the PR-Review row's seams for the run of the worktree l.
@@ -351,6 +379,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 			}, landingPushRetryPauses, time.Sleep)
 		}),
 		// CommitsMissing reads over the task pair, whose repository holds the merged head once the pair has fetched it.
+		// A pawl run's landing replaces it with the beam's own reading, set where the beam's landing record seams are.
 		CommitsMissing: func(merged, task string) ([]string, error) {
 			f, err := fabricengine.Open(l)
 			if err != nil {
@@ -382,25 +411,7 @@ func pullRequestDepsGuardedBy(check prePushCheck, l *lymcwd.Location, parentBran
 		RecordChanges: func() (<-chan struct{}, func()) {
 			return watchFileChanges(shedrun.PullRequestRecord(l, shedrun.SelfRunID), "the PR-Review wait")
 		},
-		Reopen: func() (landingshed.ReopenRequest, bool, error) { return readReopenRequest(l) },
 	}
-}
-
-// readReopenRequest reads the reopen request `lym beam reopen` writes into the pair at l, and reports whether one names the pair's own run.
-// Only a beam's pair is ever written one, and a request naming another run reads as none, for Beam-Await to remove.
-func readReopenRequest(l *lymcwd.Location) (landingshed.ReopenRequest, bool, error) {
-	req, found, err := pawlengine.ReadReopenRequest(hubgeom.PawlPaths(l))
-	if err != nil || !found {
-		return landingshed.ReopenRequest{}, false, err
-	}
-	seed, seeded, err := shedrun.ReadSeed(l, shedrun.SelfRunID)
-	if err != nil {
-		return landingshed.ReopenRequest{}, false, err
-	}
-	if !seeded || seed.StartedAt != req.RunID {
-		return landingshed.ReopenRequest{}, false, nil
-	}
-	return landingshed.ReopenRequest{Close: req.Close}, true, nil
 }
 
 // landingPushRetryPauses are the growing pauses between the attempts of a landing push whose push lock stays held.

@@ -92,7 +92,7 @@ func TestDobbyGeometry(t *testing.T) {
 			if got.WorktreeRoot != root || got.WorktreeName != tt.worktree || got.Slug != tt.wantSlug {
 				t.Errorf("DobbyGeometry(%q) worktree = %q, %q, slug %q; want %q, %q, slug %q", tt.worktree, got.WorktreeRoot, got.WorktreeName, got.Slug, root, tt.worktree, tt.wantSlug)
 			}
-			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "LogPath": got.LogPath, "OutPath": got.OutPath, "TidyDir": got.TidyDir} {
+			for name, path := range map[string]string{"LockPath": got.LockPath, "StatePath": got.StatePath, "LogPath": got.LogPath, "OutPath": got.OutPath, "AnnouncePath": got.AnnouncePath, "TidyDir": got.TidyDir} {
 				if filepath.Dir(path) != beamDir {
 					t.Errorf("DobbyGeometry(%q).%s = %q; want it directly under %q", tt.worktree, name, path, beamDir)
 				}

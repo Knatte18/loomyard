@@ -30,7 +30,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.parent+"_"+tt.field, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, false, githubOrigin, true)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, NotABeam, false, githubOrigin, true)
 				if got.Open != tt.wantOpen || got.Halt != "" || got.Reason == "" {
 					t.Errorf("ResolvePullRequest(%q, %q) = %+v; want Open %v, no halt and a reason", tt.parent, tt.field, got, tt.wantOpen)
 				}
@@ -43,7 +43,7 @@ func TestResolvePullRequest(t *testing.T) {
 				}
 			})
 		}
-		off := ResolvePullRequest("slug", "off", "", false, githubOrigin, true)
+		off := ResolvePullRequest("slug", "off", "", NotABeam, false, githubOrigin, true)
 		if want := "pull request off: the parent's beam.yaml pull_request is off and the entry's pull_request is empty"; off.Reason != want {
 			t.Errorf("off reason = %q; want %q", off.Reason, want)
 		}
@@ -72,7 +72,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logs := logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, true, tt.origin, tt.taskHasCommits)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, NotABeam, true, tt.origin, tt.taskHasCommits)
 				if got.Open != tt.wantOpen || (got.Halt != "") != tt.wantHalt {
 					t.Fatalf("ResolvePullRequest(%q, %q, rule) = %+v; want Open %v, halt %v", tt.parent, tt.field, got, tt.wantOpen, tt.wantHalt)
 				}
@@ -97,6 +97,9 @@ func TestResolvePullRequest(t *testing.T) {
 		const haltStart = "a pull request is required here ("
 		const wayForward = "way forward: give the hub a GitHub origin, an upstream for the parent branch and no push skip, then run lym loom resume"
 		const cancelClause = ", or run lym batten cancel slug and start a new run with the entry's pull_request changed"
+		if missing := OriginMissing(githubOrigin); missing != "" {
+			t.Errorf("OriginMissing(%+v) = %q; want none for a complete GitHub origin", githubOrigin, missing)
+		}
 		local := Origin{URL: "/srv/hub.git", Upstream: true}
 		tests := []struct {
 			name     string
@@ -129,9 +132,16 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, false, tt.origin, true)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, NotABeam, false, tt.origin, true)
 				if got.Open {
 					t.Fatalf("ResolvePullRequest() = %+v; want no pull request", got)
+				}
+				text := got.Reason
+				if tt.wantHalt {
+					text = got.Halt
+				}
+				if missing := OriginMissing(tt.origin); missing == "" || !strings.Contains(text, missing) {
+					t.Errorf("OriginMissing(%+v) = %q; want the missing fact the resolver's text %q names", tt.origin, missing, text)
 				}
 				if tt.wantHalt {
 					if !strings.HasPrefix(got.Halt, haltStart) || !strings.Contains(got.Halt, tt.wantIn) || !strings.Contains(got.Halt, wayForward) {
@@ -144,6 +154,54 @@ func TestResolvePullRequest(t *testing.T) {
 				}
 				if got.Halt != "" || !strings.Contains(got.Reason, tt.wantIn) {
 					t.Errorf("ResolvePullRequest() = %+v; want no halt and a reason holding %q", got, tt.wantIn)
+				}
+			})
+		}
+	})
+
+	t.Run("Beam", func(t *testing.T) {
+		const recordDemand = "the beam's landing record holds a pull request"
+		const noRecord = "the beam's landing record holds no pull request"
+		local := Origin{URL: "/srv/hub.git", Upstream: true}
+		tests := []struct {
+			name     string
+			parent   string
+			field    string
+			beam     BeamRecord
+			rule     bool
+			origin   Origin
+			wantOpen bool
+			wantHalt bool
+			// wantIn is a substring the reason, or the halt when one is wanted, holds.
+			wantIn string
+		}{
+			{"RecordedPullRequestIsYesUnderOff", "off", "", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
+			{"RecordedPullRequestIsYesUnderOn", "on", "", BeamWithPullRequest, false, githubOrigin, true, false, recordDemand},
+			{"NoneRecordedUnderOnIsNo", "on", "", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
+			{"NoneRecordedUnderOffIsNo", "off", "", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
+			{"NoneRecordedUnderRequiredIsYes", "required", "", BeamWithoutPullRequest, false, githubOrigin, true, false, "the parent's beam.yaml pull_request is required"},
+			{"NoneRecordedUnderMergeIsYes", "merge", "", BeamWithoutPullRequest, false, githubOrigin, true, false, "the parent's beam.yaml pull_request is merge"},
+			{"NoneRecordedUnderAParentRuleIsYes", "off", "", BeamWithoutPullRequest, true, githubOrigin, true, false, "GitHub's rules for the parent branch require one"},
+			{"EntryFieldOnIsNeverRead", "off", "on", BeamWithoutPullRequest, false, githubOrigin, false, false, noRecord},
+			{"EntryFieldOffIsNeverReadUnderRequired", "required", "off", BeamWithoutPullRequest, false, githubOrigin, true, false, "required"},
+			{"RecordedPullRequestWithALocalOriginHalts", "off", "", BeamWithPullRequest, false, local, false, true, recordDemand},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				logs := logcapture.CaptureVerbose(t)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, tt.beam, tt.rule, tt.origin, true)
+				if got.Open != tt.wantOpen || (got.Halt != "") != tt.wantHalt || got.MergeAtOnce != tt.wantOpen {
+					t.Fatalf("ResolvePullRequest(%q, %q, beam %d) = %+v; want Open and MergeAtOnce %v, halt %v", tt.parent, tt.field, tt.beam, got, tt.wantOpen, tt.wantHalt)
+				}
+				text := got.Reason
+				if tt.wantHalt {
+					text = got.Halt
+				}
+				if !strings.Contains(text, tt.wantIn) {
+					t.Errorf("ResolvePullRequest() text = %q; want it to hold %q", text, tt.wantIn)
+				}
+				if strings.Contains(got.Halt, "lym batten cancel") || strings.Contains(logs.String(), warnLine) {
+					t.Errorf("ResolvePullRequest() halt = %q, log = %q; want no cancel clause and no entry-field warning for a beam", got.Halt, logs.String())
 				}
 			})
 		}
@@ -169,7 +227,7 @@ func TestResolvePullRequest(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				logcapture.CaptureVerbose(t)
-				got := ResolvePullRequest("slug", tt.parent, tt.field, false, tt.origin, false)
+				got := ResolvePullRequest("slug", tt.parent, tt.field, NotABeam, false, tt.origin, false)
 				if got.Open || got.Halt != "" || !strings.Contains(got.Reason, tt.wantIn) {
 					t.Errorf("ResolvePullRequest(%q, %q, %+v, false) = %+v; want no pull request, no halt and a reason holding %q", tt.parent, tt.field, tt.origin, got, tt.wantIn)
 				}

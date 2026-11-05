@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -308,6 +309,126 @@ func TestStartReady_RefusalsAndBackoff(t *testing.T) {
 		}
 		if _, kept := h.stateRecord().Runs["r"]; kept {
 			t.Errorf("the done run's state entry is kept after its pass exited; want it dropped")
+		}
+	})
+
+	// readiness is what the BeamReady seam of a ready-beam harness answers.
+	type readiness struct {
+		ready bool
+		err   error
+	}
+	// readyBeam is a harness over the beam b whose BeamReady answers from the returned readiness, flagged ready at first.
+	readyBeam := func(t *testing.T) (*passHarness, *readiness) {
+		t.Helper()
+		h := newPassHarness(t)
+		h.d.geom.Slug, h.d.geom.WorktreeName = "b", "b"
+		reading := &readiness{ready: true}
+		h.d.deps.BeamReady = func() (bool, error) { return reading.ready, reading.err }
+		return h, reading
+	}
+	member := func(slug string) TaskView {
+		task := readyTask(slug)
+		task.Parent = "b"
+		return task
+	}
+
+	t.Run("a beam flagged ready starts no task and notices each open member once", func(t *testing.T) {
+		t.Parallel()
+		h, _ := readyBeam(t)
+		draft, done, running := "draft", "done", "running · Run-Shed"
+		drafted := TaskView{Slug: "drafted", Kind: "task", Status: &draft, Project: "b", Fingerprint: "drafted-v1"}
+		dependent := member("dependent")
+		dependent.PendingDependencies = []string{"x"}
+		finished := member("finished")
+		finished.Status = &done
+		working := TaskView{Slug: "working", Kind: "task", Status: &running, Project: "b", Fingerprint: "working-v1"}
+		elsewhere := TaskView{Slug: "elsewhere", Kind: "task", Status: &draft, Project: "other", Fingerprint: "elsewhere-v1"}
+		h.fake.runs = []RunView{runningRun("working")}
+		h.fake.tasks = []TaskView{member("released"), drafted, dependent, finished, working, elsewhere}
+
+		h.tick(true)
+		h.tick(true)
+
+		for _, slug := range []string{"released", "drafted", "dependent", "finished", "elsewhere"} {
+			if got := h.fake.spawnsOf(slug); len(got) != 0 {
+				t.Errorf("passes of %s = %+v; want none under a ready beam", slug, got)
+			}
+		}
+		wantNoticed := []string{"released", "drafted", "dependent"}
+		if len(h.fake.notices) != len(wantNoticed) {
+			t.Fatalf("notices = %q; want one for each of %v", h.fake.notices, wantNoticed)
+		}
+		for i, slug := range wantNoticed {
+			for _, want := range []string{slug, "filed after the beam was flagged ready", "blocks the landing", "lym batten cancel " + slug + " --remove"} {
+				if !strings.Contains(h.fake.notices[i], want) {
+					t.Errorf("notice %d = %q; want it to carry %q", i, h.fake.notices[i], want)
+				}
+			}
+		}
+		if got := h.stateRecord().ReadyHold; got == nil || !slices.Equal(got.Notified, wantNoticed) {
+			t.Errorf("state ReadyHold = %+v; want the noticed members %v", got, wantNoticed)
+		}
+	})
+
+	t.Run("a failed member notice is retried on the next tick", func(t *testing.T) {
+		t.Parallel()
+		h, _ := readyBeam(t)
+		h.fake.tasks = []TaskView{member("a")}
+		posts := 0
+		h.d.deps.Notice = func(_ context.Context, line string) error {
+			posts++
+			if posts == 1 {
+				return errors.New("no orch strand is recorded")
+			}
+			h.fake.notices = append(h.fake.notices, line)
+			return nil
+		}
+
+		h.tick(true)
+		if got := h.stateRecord().ReadyHold; len(h.fake.notices) != 0 || got == nil || len(got.Notified) != 0 {
+			t.Fatalf("after a failed post notices, ReadyHold = %q, %+v; want none noticed", h.fake.notices, got)
+		}
+		h.tick(true)
+		h.tick(true)
+		if len(h.fake.notices) != 1 {
+			t.Errorf("notices after the retry = %q; want one", h.fake.notices)
+		}
+	})
+
+	t.Run("a beam no longer flagged ready starts its released member and clears the hold, and a later flag notices again", func(t *testing.T) {
+		t.Parallel()
+		h, reading := readyBeam(t)
+		h.fake.tasks = []TaskView{member("a")}
+		h.tick(true)
+		if len(h.fake.spawned) != 0 || h.stateRecord().ReadyHold == nil {
+			t.Fatalf("passes, ReadyHold under the flag = %+v, %+v; want none and the hold recorded", h.fake.spawned, h.stateRecord().ReadyHold)
+		}
+
+		reading.ready = false
+		h.tick(true)
+		if len(h.fake.spawnsOf("a")) != 1 || h.stateRecord().ReadyHold != nil {
+			t.Fatalf("passes of a, ReadyHold after the flag went = %d, %+v; want the start and no hold", len(h.fake.spawnsOf("a")), h.stateRecord().ReadyHold)
+		}
+
+		reading.ready = true
+		h.fake.tasks = []TaskView{member("e")}
+		h.tick(true)
+		if len(h.fake.notices) != 2 || !strings.Contains(h.fake.notices[1], "lym batten cancel e --remove") {
+			t.Errorf("notices after a second episode = %q; want e noticed again", h.fake.notices)
+		}
+	})
+
+	t.Run("a failing ready read starts nothing and changes no record", func(t *testing.T) {
+		t.Parallel()
+		h, reading := readyBeam(t)
+		reading.err = errors.New("ready record unreadable")
+		h.fake.tasks = []TaskView{member("a")}
+
+		h.tick(true)
+		h.tick(true)
+
+		if len(h.fake.spawned) != 0 || len(h.fake.notices) != 0 || h.stateRecord().ReadyHold != nil {
+			t.Errorf("passes, notices, ReadyHold = %+v, %q, %+v; want nothing started, noticed or recorded", h.fake.spawned, h.fake.notices, h.stateRecord().ReadyHold)
 		}
 	})
 

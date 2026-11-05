@@ -229,9 +229,10 @@ func LandingDeps(dir string) landingshed.Deps {
 			Sessions:        noopSessions{},
 			SessionLive:     func(string) (bool, error) { return false, nil },
 			RegisterSession: func(string) error { return nil },
-			Reopen: func() (landingshed.ReopenRequest, bool, error) {
-				return landingshed.ReopenRequest{}, false, nil
+			BeamRecord: func() (landingshed.BeamPullRequest, bool, error) {
+				return landingshed.BeamPullRequest{}, false, nil
 			},
+			DropBeamRecord: func() error { return nil },
 		},
 	}
 }
@@ -363,14 +364,6 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			}, nil
 		},
 		CommitDescription: func() error { return nil },
-		BeamDescribe: landingshed.BeamDescribeDeps{
-			Slug:             "demo",
-			DescriptionPath:  filepath.Join(dir, "beam-description.md"),
-			ProjectDecisions: func() ([]string, error) { return nil, nil },
-			Entry:            func() (string, string, error) { return "Title", "Brief", nil },
-			Commits:          func() ([]landingshed.BeamCommit, error) { return nil, nil },
-			Commit:           func() error { return nil },
-		},
 		Pawl: pawlengine.Deps{
 			Slug:  "demo",
 			RunID: "run-1",
@@ -380,6 +373,7 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 				DobbyStopMarker: filepath.Join(dir, "dobby-stop"),
 				AwaitMarker:     filepath.Join(dir, "await-entered"),
 			},
+			RetiredRows:         []string{"Parent-Align"},
 			SetStatus:           func(string) error { return nil },
 			EntryProducer:       func() (string, error) { return "", nil },
 			OwnedElsewhere:      func() (bool, error) { return false, nil },
@@ -391,6 +385,8 @@ func FullEnv(t testing.TB) shedrecipe.Env {
 			StartDobby:          func() error { return nil },
 			DobbyLive:           func() (bool, error) { return false, nil },
 			Recheck:             func() ([]string, error) { return nil, nil },
+			ReadyStands:         func() (bool, error) { return false, nil },
+			StampWake:           func(time.Time) error { return nil },
 			Notify:              func(string) error { return nil },
 			Down:                func() error { return nil },
 			Now:                 time.Now,

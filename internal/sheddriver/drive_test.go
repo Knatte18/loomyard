@@ -140,6 +140,18 @@ func TestGoDriver_Settle(t *testing.T) {
 		record := SettleRecord{StopKey: key, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleRestep}
 		return []SettleRecord{record, record}
 	}
+	runningKey := StopKey{CurrentProducer: "Build", HistoryLength: 2, State: "running"}
+	// lastRestep is when the seeded re-steps of the wake rows were made, an hour before the driver's own clock.
+	lastRestep := driveTestEpoch.Add(-time.Hour)
+	wakeSeed := func() []SettleRecord {
+		record := SettleRecord{StopKey: runningKey, Settler: shedrun.SettlerGoRule, Action: shedrun.SettleRestep, At: lastRestep}
+		return []SettleRecord{record, record}
+	}
+	// wakeReading is what the CompletedWake seam answers: the stamp at, none when at is zero, or err.
+	type wakeReading struct {
+		at  time.Time
+		err error
+	}
 	gotoMoved := shedengine.Status{
 		State:           shedengine.StatePaused,
 		CurrentProducer: "Build",
@@ -167,7 +179,9 @@ func TestGoDriver_Settle(t *testing.T) {
 		// initialStatus is what the status read before the first step returns; without it the run has no status file.
 		initialStatus *shedengine.Status
 		// settleSeed holds the settle records an earlier process left.
-		settleSeed  []SettleRecord
+		settleSeed []SettleRecord
+		// wake, when set, wires CompletedWake to answer with the reading.
+		wake        *wakeReading
 		runLockHeld bool
 		escalation  bool
 		// judgesFirst, when set, is the one row the arbiter seam judges before the tackler.
@@ -287,6 +301,48 @@ func TestGoDriver_Settle(t *testing.T) {
 			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
 			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
 			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack, wantReportHas: map[int][]string{2: {"what now?"}},
+		},
+		{
+			name:  "an interrupted stop at the repair cap whose wake seam reads no stamp reaches the tackler",
+			steps: []func(*testing.T) []byte{interrupted}, settleSeed: wakeSeed(), wake: &wakeReading{},
+			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a wake stamp eleven minutes past the last re-step restarts the repair count and re-steps again",
+			steps: []func(*testing.T) []byte{interrupted, done}, settleSeed: wakeSeed(), wake: &wakeReading{at: lastRestep.Add(11 * time.Minute)},
+			wantCalls:   []string{"step", "step", "commit-records"},
+			wantActions: []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep}, wantExit: ExitDone,
+		},
+		{
+			name:  "a second crash right after that re-step, whose stamp is older than the new record, reaches the tackler",
+			steps: []func(*testing.T) []byte{interrupted, interrupted}, settleSeed: wakeSeed(), wake: &wakeReading{at: lastRestep.Add(11 * time.Minute)},
+			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:      []string{"step", "step", "tackler", "snapshot", "snapshot"},
+			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a wake stamp only five minutes past the last re-step leaves the count and reaches the tackler",
+			steps: []func(*testing.T) []byte{interrupted}, settleSeed: wakeSeed(), wake: &wakeReading{at: lastRestep.Add(5 * time.Minute)},
+			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
+		},
+		{
+			name:  "a failing wake read leaves the count as the records give it",
+			steps: []func(*testing.T) []byte{interrupted}, settleSeed: wakeSeed(), wake: &wakeReading{err: errors.New("wake record unreadable")},
+			tacklerReturns: tacklerOutcome(TacklerVerdictHandBack, 1),
+			wantCalls:      []string{"step", "tackler", "snapshot", "snapshot"},
+			wantActions:    []string{shedrun.SettleRestep, shedrun.SettleRestep, shedrun.SettleSpawn, shedrun.SettleHandBack},
+			wantSettlers:   []string{shedrun.SettlerGoRule, shedrun.SettlerGoRule, shedrun.SettlerTackler, shedrun.SettlerParent},
+			wantReports:    2, wantParked: true, wantHandBack: true, wantExit: ExitHandBack,
 		},
 		{
 			name:  "a tackler escalate calls the arbiter with the case brief, and the arbiter's resume steps with its attempt number",
@@ -786,6 +842,14 @@ func TestGoDriver_Settle(t *testing.T) {
 			if tt.handsBack {
 				deps.HandsBack = func(producer, reason string) bool {
 					return producer == "Finalize" && strings.HasPrefix(reason, "landing stop: ")
+				}
+			}
+			if tt.wake != nil {
+				deps.CompletedWake = func(row string) (time.Time, bool, error) {
+					if row != "Build" {
+						t.Errorf("CompletedWake(%q); want the stop key's row, Build", row)
+					}
+					return tt.wake.at, !tt.wake.at.IsZero(), tt.wake.err
 				}
 			}
 			if tt.startCheck {

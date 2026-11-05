@@ -8,6 +8,7 @@ package loomshed
 import (
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -28,6 +29,9 @@ func TestInterruptPolicyFor(t *testing.T) {
 		{"burler review reinvoke", NameDiscussionBurlerReview, shedverbs.InterruptPolicyReinvoke},
 		{"burler fix reinvoke", NameCodeBurlerFix, shedverbs.InterruptPolicyReinvoke},
 		{"darn reinvoke", NameDarnWrite, shedverbs.InterruptPolicyReinvoke},
+		{"beam up reinvoke", pawlengine.NameBeamUp, shedverbs.InterruptPolicyReinvoke},
+		{"beam await reinvoke", pawlengine.NameBeamAwait, shedverbs.InterruptPolicyReinvoke},
+		{"beam down reinvoke", pawlengine.NameBeamDown, shedverbs.InterruptPolicyReinvoke},
 		{"empty name", "", ""},
 		{"unknown name", "Not-A-Real-Row", ""},
 	}

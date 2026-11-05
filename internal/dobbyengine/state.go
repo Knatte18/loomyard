@@ -41,6 +41,14 @@ type State struct {
 	LandNotices map[string]LandNoticeState `json:"land_notices,omitempty"`
 	// Land is the landing step taken in the episode now standing, a land request asked for or a notice posted, nil when none was taken or the beam can no longer land, and open to a retry when it holds only a posted refusal of Land.
 	Land *LandState `json:"land,omitempty"`
+	// ReadyHold is the episode in which the beam is flagged ready and the dobby starts no task, nil when the beam is not flagged ready.
+	ReadyHold *ReadyHoldState `json:"ready_hold,omitempty"`
+}
+
+// ReadyHoldState is the memory of one episode of a beam flagged ready.
+// Notified lists the members already named in a notice this episode, so a restarted dobby posts none twice.
+type ReadyHoldState struct {
+	Notified []string `json:"notified,omitempty"`
 }
 
 // LandState is the landing step a beam's dobby took, which a restarted dobby reads so it takes no second one.

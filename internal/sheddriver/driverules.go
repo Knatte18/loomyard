@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -16,6 +17,10 @@ import (
 
 // driveRepairCap is how many re-steps of one interrupted stop the driver makes before the tackler is asked.
 const driveRepairCap = 2
+
+// wakeRestartGap is how much later than a stop key's last re-step a completed-wake stamp must be to restart the key's repair count.
+// A loop that died sooner after its re-step than this counts against the cap, so a loop that keeps dying still reaches the tackler.
+const wakeRestartGap = 10 * time.Minute
 
 // Stop is what the loop's envelope says about one stop, or what a status says when the driver acts on a stop it did not step to.
 // The loop-object fields are empty for a stop built from a status, and Raw holds the envelope bytes verbatim.
@@ -207,6 +212,18 @@ func repairCount(records []SettleRecord, key StopKey) int {
 		}
 	}
 	return count
+}
+
+// lastRestepAt returns the time of the latest restep settle record of the stop key, and whether the key has one.
+func lastRestepAt(records []SettleRecord, key StopKey) (time.Time, bool) {
+	var last time.Time
+	found := false
+	for _, record := range records {
+		if record.Action == shedrun.SettleRestep && record.StopKey == key && (!found || record.At.After(last)) {
+			last, found = record.At, true
+		}
+	}
+	return last, found
 }
 
 // decideDrive returns the first row of the rule table that matches the stop, and a hand-back when none does.

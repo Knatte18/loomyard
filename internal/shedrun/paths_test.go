@@ -83,6 +83,8 @@ func TestPathConstructors(t *testing.T) {
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "sampler.json") }},
 		{"SamplerRecordLock", func(l *lymcwd.Location) string { return SamplerRecordLock(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "sampler.json.lock") }},
+		{"WakeRecord", func(l *lymcwd.Location) string { return WakeRecord(l, "self") },
+			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "wake.json") }},
 		{"LastCommitMarker", func(l *lymcwd.Location) string { return LastCommitMarker(l, "self") },
 			func(l *lymcwd.Location) string { return filepath.Join(ScratchDir(l, "self"), "last-commit") }},
 		{"BattenWatchedMarker", func(l *lymcwd.Location) string { return BattenWatchedMarker(l, "self") },

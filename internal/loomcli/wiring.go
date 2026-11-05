@@ -976,6 +976,7 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		MissingStatusWayForward: loomMissingStatusWayForward,
 		RerouteCapWayForward:    loomRerouteCapWayForward,
 		BudgetWayForward:        loomBudgetWayForward,
+		RetiredWayForward:       loomRetiredWayForward,
 	}
 
 	// wireDarn and wireLanding tell the list to the writer and the conflict session.
@@ -1024,19 +1025,15 @@ func (c *loomCLI) wire(location *lymcwd.Location, cwd string) error {
 		})
 	}
 
-	// A beam run's description row reads the beam's board entry, its project record and its commits over the parent, with no agent, and its Go rows are told the hub seams of the beam's life.
+	// A beam run's Go rows are told the hub seams of the beam's life.
 	if record.project {
-		parentBranch, err := beamParentBranch(location)
-		if err != nil {
-			return err
-		}
-		slug := seedSlug(location.WorktreeName)
-		c.env.BeamDescribe = beamDescribeDeps(location, slug, parentBranch, record.path)
-		pawl, err := pawlDeps(location, slug)
+		pawl, err := pawlDeps(location, seedSlug(location.WorktreeName))
 		if err != nil {
 			return err
 		}
 		c.env.Pawl = pawl
+		// A run moved off a row its recipe retired gets the landing's side effects, which only a beam run has.
+		c.shedPaths.RetiredMove = pawlRetiredMove(location, seedSlug(location.WorktreeName), pawl)
 	}
 
 	c.location = location
@@ -1236,6 +1233,9 @@ const loomRerouteCapWayForward = "run \"lym loom resume\" in the task worktree o
 // loomBudgetWayForward is the told clause a bounce-budget-exhausted halt ends with, whichever row's budget ran out.
 // Only the resume grants a budget; a goto keeps the spent one.
 const loomBudgetWayForward = "run \"lym loom resume\" in the task worktree: the resume grants the row one more budget; a goto keeps the spent budget and grants none"
+
+// loomRetiredWayForward is the command a move off a retired row names as the way forward, since the resume steps the run again.
+const loomRetiredWayForward = "lym loom resume"
 
 // hubConfigWayForward is the trailing clause for a failed load of the hub-wide landing config: reconciling the hub's config is what restores it.
 const hubConfigWayForward = "way forward: run lym config reconcile --apply in the hub, then step again"

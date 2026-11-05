@@ -461,6 +461,7 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		note = c.prepare(&report)
 	}
 
+	ownLandingOf := ""
 	if c.readBeamFacts != nil {
 		facts, err := c.readBeamFacts()
 		if err != nil {
@@ -470,12 +471,19 @@ func (c *orchCLI) beamUp(opts BeamUpOptions) (report BeamUpReport, err error) {
 		if opts.Here != "" {
 			here = opts.Here
 		}
-		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.status); err != nil {
+		if err := beamUpRefusal(facts.slug, here, facts.owner, facts.moveWayForward, facts.held, facts.ownLanding, facts.status); err != nil {
 			return report, err
+		}
+		if facts.held && facts.ownLanding {
+			ownLandingOf = facts.slug
 		}
 	}
 
-	c.startDobbyStep(&report)
+	if ownLandingOf != "" {
+		report.Warnings = append(report.Warnings, fmt.Sprintf("the dobby was not started: the beam %s is held by its own landing run, and its dobby stays down while the landing runs; way forward: follow the landing with `lym batten status %s`", ownLandingOf, ownLandingOf))
+	} else {
+		c.startDobbyStep(&report)
+	}
 
 	if err := c.reedUp(); err != nil {
 		return report, err

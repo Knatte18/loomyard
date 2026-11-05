@@ -75,6 +75,7 @@ func readyToStart(task TaskView, here string, covered bool) bool {
 // A task whose backoff has not run out waits, unless its entry changed since the refusal.
 // While the cgroup task limit leaves fewer than task_headroom tasks free, the step starts no task.
 // While an open front task of the worktree stands, the step starts no other task, and starts the front task itself once it is released, even when the runs in flight fill max_runs.
+// While the beam is flagged ready, the step starts no task at all.
 func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	cfg, err := d.deps.LoadConfig()
 	if err != nil {
@@ -86,6 +87,9 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 	tasks, err := d.deps.Tasks()
 	if err != nil {
 		return fmt.Errorf("read the board: %w", err)
+	}
+	if d.holdReadyBeam(ctx, tasks) {
+		return nil
 	}
 	current, _, err := ReadState(d.geom.StatePath)
 	if err != nil {
@@ -135,6 +139,99 @@ func (d *daemon) startReady(ctx context.Context, now time.Time) error {
 		d.busy = true
 	}
 	return nil
+}
+
+// holdReadyBeam reports whether the beam of this dobby is flagged ready, so the tick starts no task under it.
+// While it is, each open member of tasks gets one notice naming it and the cancel that removes it, since a member filed after the flag blocks the landing.
+// An open member is a task of this beam, drafts and tasks held by a dependency included, that is not done and has no run listed.
+// A member is recorded as noticed only once its post went out, so a failed post is retried on the next tick.
+// A reading that is not flagged clears the episode and holds nothing, so a later one notices again.
+// A ready read that fails holds the tick's starts, is logged once per episode and changes no record.
+// A nil Deps.BeamReady holds nothing.
+func (d *daemon) holdReadyBeam(ctx context.Context, tasks []TaskView) bool {
+	if d.deps.BeamReady == nil {
+		return false
+	}
+	ready, err := d.deps.BeamReady()
+	if err != nil {
+		d.readyRead.Fail("dobbyengine: the beam's ready record is unreadable; the dobby starts no task", "worktree", d.geom.WorktreeName, "error", err)
+		return true
+	}
+	d.readyRead.Recover("dobbyengine: the beam's ready record reads again", "worktree", d.geom.WorktreeName)
+
+	record, _, readErr := ReadState(d.geom.StatePath)
+	if readErr != nil {
+		logger.Warn("dobbyengine: the state record is unreadable, so the ready hold is neither noted nor cleared", "worktree", d.geom.WorktreeName, "error", readErr)
+	}
+	if !ready {
+		if readErr == nil && record.ReadyHold != nil {
+			err := UpdateState(d.geom.StatePath, func(s *State) error {
+				s.ReadyHold = nil
+				return nil
+			})
+			if err != nil {
+				logger.Warn("dobbyengine: the ready hold could not be cleared; the next tick tries again", "worktree", d.geom.WorktreeName, "error", err)
+			}
+		}
+		return false
+	}
+	if readErr == nil {
+		d.noticeReadyBeamMembers(ctx, tasks, record)
+	}
+	return true
+}
+
+// noticeReadyBeamMembers records the ready hold in the state record and posts one notice for each open member of tasks that record does not list as noticed.
+func (d *daemon) noticeReadyBeamMembers(ctx context.Context, tasks []TaskView, record State) {
+	hold := record.ReadyHold
+	if hold == nil {
+		hold = &ReadyHoldState{}
+		err := UpdateState(d.geom.StatePath, func(s *State) error {
+			if s.ReadyHold == nil {
+				s.ReadyHold = &ReadyHoldState{}
+			}
+			return nil
+		})
+		if err != nil {
+			logger.Warn("dobbyengine: the ready hold could not be recorded; the next tick tries again", "worktree", d.geom.WorktreeName, "error", err)
+			return
+		}
+	}
+	listed := make(map[string]bool, len(d.runs))
+	for _, run := range d.runs {
+		listed[run.Slug] = true
+	}
+	for _, task := range tasks {
+		if !d.opensReadyBeam(task, listed) || slices.Contains(hold.Notified, task.Slug) {
+			continue
+		}
+		line := fmt.Sprintf("%s: %s was filed after the beam was flagged ready, so it blocks the landing; run `lym batten cancel %s --remove` to end it", d.geom.Slug, task.Slug, task.Slug)
+		if err := d.deps.Notice(ctx, line); err != nil {
+			d.readyPost.Fail("dobbyengine: a notice of a member of the ready beam did not go out; the next tick tries again", "worktree", d.geom.WorktreeName, "slug", task.Slug, "error", err)
+			continue
+		}
+		d.readyPost.Recover("dobbyengine: the notices of the ready beam's members go out again", "worktree", d.geom.WorktreeName)
+		hold.Notified = append(hold.Notified, task.Slug)
+		err := UpdateState(d.geom.StatePath, func(s *State) error {
+			if s.ReadyHold == nil {
+				s.ReadyHold = &ReadyHoldState{}
+			}
+			s.ReadyHold.Notified = append(s.ReadyHold.Notified, task.Slug)
+			return nil
+		})
+		if err != nil {
+			logger.Warn("dobbyengine: a noticed member of the ready beam could not be recorded; the next tick notices it again", "worktree", d.geom.WorktreeName, "slug", task.Slug, "error", err)
+		}
+	}
+}
+
+// opensReadyBeam reports whether task is an open member of this dobby's beam: a task of the beam that is not done and has no run among listed.
+// A draft's parent is not read, so a task also belongs to the beam when its project is the beam's slug.
+func (d *daemon) opensReadyBeam(task TaskView, listed map[string]bool) bool {
+	if task.Kind != boardengine.KindTask || boardengine.IsDoneStatus(task.Status) || listed[task.Slug] {
+		return false
+	}
+	return task.Parent == d.geom.WorktreeName || (d.geom.Slug != "" && task.Project == d.geom.Slug)
 }
 
 // settleFronts settles the worktree's front tasks through Deps.SettleFronts and stops nothing on its error.

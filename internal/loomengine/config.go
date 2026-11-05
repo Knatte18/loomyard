@@ -44,6 +44,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/burlerengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
 	"github.com/Knatte18/loomyard/internal/lenses"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -138,6 +139,21 @@ func BeamReadyPath(l *lymcwd.Location) string {
 // BeamReadyLockPath returns the lock path that guards BeamReadyPath's record, at the mirrored never-tracked landing path.
 func BeamReadyLockPath(l *lymcwd.Location) string {
 	return filepath.Join(l.AnchorPath(), lymdirs.DotLymDirName, landingDirName, beamReadyFileName+".lock")
+}
+
+// beamLandingFileName is the file name of a beam's landing record within LandingDir.
+// loomengine is this segment's sole declarer.
+const beamLandingFileName = "beam-landing.json"
+
+// BeamLandingPath returns the path of the landing record of the beam whose pair is at l, beside the ready record.
+// It is AnchorPath-anchored.
+func BeamLandingPath(l *lymcwd.Location) string {
+	return filepath.Join(LandingDir(l), beamLandingFileName)
+}
+
+// BeamLandingLockPath returns the lock path that guards BeamLandingPath's record, under the checkout's never-tracked lock directory.
+func BeamLandingLockPath(l *lymcwd.Location) string {
+	return lock.TrackedFileLockPath(BeamLandingPath(l), ".lock")
 }
 
 // DiscussionDecisionRecordRel returns the worktree-anchor-relative form of DiscussionDecisionRecord's path.

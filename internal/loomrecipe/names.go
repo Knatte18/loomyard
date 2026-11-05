@@ -1,5 +1,5 @@
 // names.go declares RecipeEngines, the derived engine set the cross-consumer coverage guard in internal/shedrecipe trusts.
-// It also declares RowNames and Rows, a recipe's row names and rows in file order, and EntryNumbers, the entry number of each row.
+// It also declares RowNames and Rows, a recipe's row names and rows in file order, RetiredRowNames, the rows its `retired` map declares, and EntryNumbers, the entry number of each row.
 
 package loomrecipe
 
@@ -95,6 +95,22 @@ func Rows(recipe string) ([]RecipeRow, error) {
 		})
 	}
 	return rows, nil
+}
+
+// RetiredRowNames returns the sorted row names the named recipe's `retired` map declares: the rows a run of an earlier version of the recipe may still stand at.
+// It reads the recipe's `retired` map and never RetiredRows, which holds the arm-time renames.
+// It is empty for a recipe that retires none; the recipe names are Rows', and any other name is refused with an error naming it.
+func RetiredRowNames(recipe string) ([]string, error) {
+	parsed, err := parseEmbeddedRecipe(recipe)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(parsed.Retired))
+	for name := range parsed.Retired {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // AmendmentTarget returns the optional `amendment_target` of the named recipe: the row a plan amendment routes to, empty when the recipe sets none.

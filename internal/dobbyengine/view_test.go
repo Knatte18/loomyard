@@ -182,6 +182,18 @@ func TestBuildView(t *testing.T) {
 			want: View{Alive: true, MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{{Slug: "next", FrontFirst: "fix"}}},
 		},
 		{
+			name: "AReadyHoldInTheRecordHoldsEveryWaitingTaskAndTakesNoSlot",
+			mutate: func(in *ViewInput) {
+				in.Config.MaxRuns = 1
+				in.Record.ReadyHold = &ReadyHoldState{}
+				in.Tasks = []TaskView{readyTask("first"), readyTask("second")}
+			},
+			want: View{Alive: true, MaxRuns: 1, Runs: []ViewRun{}, Waiting: []WaitingTask{
+				{Slug: "first", ReadyHold: true},
+				{Slug: "second", ReadyHold: true},
+			}},
+		},
+		{
 			name:   "ADeadDobbyReadsNotAlive",
 			mutate: func(in *ViewInput) { in.Alive = false },
 			want:   View{MaxRuns: 2, Runs: []ViewRun{}, Waiting: []WaitingTask{}},

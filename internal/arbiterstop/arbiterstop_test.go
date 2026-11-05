@@ -11,6 +11,8 @@ import (
 	"github.com/Knatte18/loomyard/internal/battenrecipe"
 	"github.com/Knatte18/loomyard/internal/battenshed"
 	"github.com/Knatte18/loomyard/internal/landingshed"
+	"github.com/Knatte18/loomyard/internal/loomshed"
+	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedverbs"
@@ -96,6 +98,22 @@ func TestEligibility_BattenRule(t *testing.T) {
 			}
 			if tt.wantErr && !strings.HasSuffix(err.Error(), tt.wantWays) {
 				t.Errorf("Check() error = %q; want it to end with %q", err, tt.wantWays)
+			}
+		})
+	}
+}
+
+// TestEligibility_InterruptedPawlRows pins that an interrupted stop at each of Beam-Up, Beam-Await and Beam-Down, with the policy loomshed.InterruptPolicyFor reads for it, is eligible, so the arbiter admits one the driver re-stepped past its repair cap.
+func TestEligibility_InterruptedPawlRows(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	for _, row := range []string{pawlengine.NameBeamUp, pawlengine.NameBeamAwait, pawlengine.NameBeamDown} {
+		t.Run(row, func(t *testing.T) {
+			t.Parallel()
+			stop := Stop{State: shedengine.StateFailed, Producer: row, Kind: shedverbs.KindInterrupted, InterruptPolicy: loomshed.InterruptPolicyFor(row)}
+
+			if err := Eligibility(stop); err != nil {
+				t.Errorf("Eligibility(interrupted at %s) = %v; want nil", row, err)
 			}
 		})
 	}

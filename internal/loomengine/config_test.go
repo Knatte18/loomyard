@@ -1110,6 +1110,12 @@ func TestLandingAndApprovalAccessors(t *testing.T) {
 	if got, want := LandingDir(l), filepath.Join(l.AnchorPath(), "_lym", "landing"); got != want {
 		t.Errorf("LandingDir() = %q; want %q", got, want)
 	}
+	if got, want := BeamLandingPath(l), filepath.Join(l.AnchorPath(), "_lym", "landing", "beam-landing.json"); got != want {
+		t.Errorf("BeamLandingPath() = %q; want %q", got, want)
+	}
+	if got, want := BeamLandingLockPath(l), filepath.Join(l.AnchorPath(), ".lym", "locks", "_lym", "landing", "beam-landing.json.lock"); got != want || got == BeamLandingPath(l)+".lock" {
+		t.Errorf("BeamLandingLockPath() = %q; want %q, never beside the tracked record", got, want)
+	}
 	if got, want := LoomReworkCoveragePath(l), filepath.Join(l.AnchorPath(), ".lym", "loom", "rework-coverage.md"); got != want {
 		t.Errorf("LoomReworkCoveragePath() = %q; want %q", got, want)
 	}

@@ -1,11 +1,11 @@
-// wiring_beam_test.go covers the wiring a pawl run adds to wire: the BeamDescribe and Pawl seams, the nine-row routing, the landing deps a pawl run's Finalize is built with, and the reopen request PR-Review reads.
+// wiring_beam_test.go covers the wiring a pawl run adds to wire: the Pawl seams, the six-row routing, and the landing deps a pawl run's Finalize is built with.
 // wire resolves no cwd and spawns no process over a hand-built hub.
 
 package loomcli
 
 import (
-	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -13,61 +13,15 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/modelspec"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/pawlengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/envkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/websterengine"
 )
-
-// TestReadReopenRequest asserts PR-Review reads only a reopen request that names the pair's own run:
-// no request file, a request of another run and a request with no seed to name the run read as none, and a matching request reads with its close flag.
-func TestReadReopenRequest(t *testing.T) {
-	tiergate.Require(t, 0)
-	t.Parallel()
-
-	const runStart = "2026-03-01T09:30:00Z"
-	tests := []struct {
-		name string
-		// seeded says the pair's pawl run has a seed started at runStart.
-		seeded bool
-		// request is the reopen request written first; nil writes none.
-		request   *pawlengine.ReopenRequest
-		want      landingshed.ReopenRequest
-		wantFound bool
-	}{
-		{name: "NoRequestFileReadsAsNone", seeded: true},
-		{name: "RequestOfAnotherRunReadsAsNone", seeded: true, request: &pawlengine.ReopenRequest{RunID: "2026-02-28T08:00:00Z"}},
-		{name: "RequestWithNoSeedReadsAsNone", request: &pawlengine.ReopenRequest{RunID: runStart}},
-		{name: "RequestOfThePairsRunReadsAsKeepingThePullRequest", seeded: true, request: &pawlengine.ReopenRequest{RunID: runStart}, wantFound: true},
-		{name: "RequestOfThePairsRunReadsWithItsCloseFlag", seeded: true, request: &pawlengine.ReopenRequest{RunID: runStart, Close: true}, want: landingshed.ReopenRequest{Close: true}, wantFound: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			loc := hubLocation(t, "pair", ".")
-			if tt.seeded {
-				if err := shedrun.WriteSeed(loc, shedrun.SelfRunID, shedrun.Seed{Recipe: shedrun.RecipePawl, Driver: shedrun.DriverGo, StartedAt: runStart}); err != nil {
-					t.Fatalf("WriteSeed() = %v; want nil", err)
-				}
-			}
-			if tt.request != nil {
-				if err := pawlengine.WriteReopenRequest(hubgeom.PawlPaths(loc), *tt.request); err != nil {
-					t.Fatalf("WriteReopenRequest() = %v; want nil", err)
-				}
-			}
-
-			got, found, err := readReopenRequest(loc)
-
-			if err != nil || found != tt.wantFound || got != tt.want {
-				t.Errorf("readReopenRequest() = %+v, %v, %v; want %+v, %v, nil", got, found, err, tt.want, tt.wantFound)
-			}
-		})
-	}
-}
 
 //lym:seam internal/battenshed#InnerRunDeps
 //lym:seam internal/battenshed#LandDeps
@@ -78,7 +32,6 @@ func TestReadReopenRequest(t *testing.T) {
 //lym:seam internal/configengine#Dirs
 //lym:seam internal/driftengine#Deps
 //lym:seam internal/driftengine#Paths
-//lym:seam internal/landingshed#BeamDescribeDeps
 //lym:seam internal/landingshed#Config
 //lym:seam internal/landingshed#Deps
 //lym:seam internal/landingshed#ParentLockDeps
@@ -99,7 +52,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
-	t.Run("a pawl seed fills the BeamDescribe and Pawl seams and routes its rows with PR-Review's one reroute edge back to Beam-Await", func(t *testing.T) {
+	t.Run("a pawl seed fills the Pawl seams and routes its six rows with no reroute edge", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipePawl}
@@ -108,7 +61,7 @@ func TestWire_BeamRecipe(t *testing.T) {
 		}
 
 		for _, nilSeam := range envkit.NilSeams(c.env) {
-			if strings.HasPrefix(nilSeam, "BeamDescribe") || strings.HasPrefix(nilSeam, "Pawl") {
+			if strings.HasPrefix(nilSeam, "Pawl") {
 				t.Errorf("c.env.%s is nil after wire() of a pawl seed", nilSeam)
 			}
 		}
@@ -126,17 +79,6 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if got := c.env.RecordWrite; got.RecordPath != wantRecord || got.SupportLogPath != loomengine.ProjectSupportLog(loc, "pair") || got.DiscussionDir != loomengine.ProjectDir(loc, "pair") {
 			t.Errorf("c.env.RecordWrite = %q, %q, %q; want the project record, its support log and the project directory", got.RecordPath, got.SupportLogPath, got.DiscussionDir)
 		}
-		// A project record carries an added decision that the discussion directory lacks, so the BeamDescribe seam can only read it from the project path.
-		if err := os.MkdirAll(filepath.Dir(wantRecord), 0o755); err != nil {
-			t.Fatalf("MkdirAll(%q) = %v; want nil", filepath.Dir(wantRecord), err)
-		}
-		added := "### Added after Discussion (orch, 2026-01-02): Keep the cache\n\nDecision: Keep it per run.\n"
-		if err := os.WriteFile(wantRecord, []byte("## Goal\n\n## Decisions\n\n"+added), 0o644); err != nil {
-			t.Fatalf("WriteFile(%q) = %v; want nil", wantRecord, err)
-		}
-		if got, err := c.env.BeamDescribe.ProjectDecisions(); err != nil || len(got) != 1 || !strings.Contains(got[0], "Keep the cache") {
-			t.Errorf("c.env.BeamDescribe.ProjectDecisions() = %q, %v; want the project record's one added decision", got, err)
-		}
 		arbiter, err := c.arbiterDepsFor()
 		if err != nil {
 			t.Fatalf("arbiterDepsFor() = %v; want nil", err)
@@ -150,14 +92,16 @@ func TestWire_BeamRecipe(t *testing.T) {
 		if len(c.env.Pawl.Steps) != 1 {
 			t.Errorf("c.env.Pawl.Steps = %d steps; want the one beam-up step", len(c.env.Pawl.Steps))
 		}
-		if got, want := c.env.BeamDescribe.Slug, "pair"; got != want {
-			t.Errorf("c.env.BeamDescribe.Slug = %q; want %q", got, want)
+		wantRetired, err := loomrecipe.RetiredRowNames(shedrun.RecipePawl)
+		if err != nil {
+			t.Fatalf("RetiredRowNames(pawl) = %v; want nil", err)
 		}
-		if got, want := filepath.Base(c.env.BeamDescribe.DescriptionPath), filepath.Base(c.env.DescriptionPath); got != want {
-			t.Errorf("c.env.BeamDescribe.DescriptionPath base = %q; want the landing description's %q", got, want)
+		if len(wantRetired) == 0 || !slices.Equal(c.env.Pawl.RetiredRows, wantRetired) {
+			t.Errorf("c.env.Pawl.RetiredRows = %v; want the recipe's retired rows %v", c.env.Pawl.RetiredRows, wantRetired)
 		}
-		if _, err := c.env.BeamDescribe.Commits(); err == nil || !strings.Contains(err.Error(), "way forward") {
-			t.Errorf("c.env.BeamDescribe.Commits() of a pair with no origin record = %v; want a refusal naming the way forward", err)
+
+		if c.shedPaths.RetiredMove == nil || c.shedPaths.RetiredWayForward != "lym loom resume" {
+			t.Errorf("c.shedPaths RetiredMove set = %v, RetiredWayForward = %q; want the move set and `lym loom resume` as the way forward", c.shedPaths.RetiredMove != nil, c.shedPaths.RetiredWayForward)
 		}
 
 		routing, err := c.recipeRouting()
@@ -167,31 +111,27 @@ func TestWire_BeamRecipe(t *testing.T) {
 		var rows []string
 		for _, producer := range routing.Producers {
 			rows = append(rows, producer.Name)
-			want := ""
-			if producer.Name == "PR-Review" {
-				want = "Beam-Await"
-			}
-			if producer.OnReroute != want {
-				t.Errorf("row %q OnReroute = %q; want %q", producer.Name, producer.OnReroute, want)
+			if producer.OnReroute != "" {
+				t.Errorf("row %q OnReroute = %q; want none", producer.Name, producer.OnReroute)
 			}
 		}
-		if want := []string{"Preflight", "Record-Write", "Beam-Up", "Beam-Await", "Parent-Align", "Beam-Describe", "PR-Review", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
+		if want := []string{"Preflight", "Record-Write", "Beam-Up", "Beam-Await", "Finalize", "Beam-Down"}; strings.Join(rows, ",") != strings.Join(want, ",") {
 			t.Errorf("recipeRouting() rows = %v; want %v", rows, want)
 		}
 	})
 
-	t.Run("a loom seed leaves the BeamDescribe seams unfilled", func(t *testing.T) {
+	t.Run("a loom seed leaves the Pawl seams unfilled", func(t *testing.T) {
 		t.Parallel()
 		loc := hubLocation(t, "pair", ".")
 		c := &loomCLI{runID: shedrun.SelfRunID, recipe: shedrun.RecipeTapestry}
 		if err := c.wire(loc, loc.AnchorPath()); err != nil {
 			t.Fatalf("wire() = %v; want nil", err)
 		}
-		if c.env.BeamDescribe.Entry != nil || c.env.BeamDescribe.Slug != "" {
-			t.Errorf("a loom seed filled c.env.BeamDescribe = %+v; want the zero value", c.env.BeamDescribe)
-		}
 		if c.env.Pawl.Down != nil || c.env.Pawl.Slug != "" {
 			t.Errorf("a loom seed filled c.env.Pawl = %+v; want the zero value", c.env.Pawl)
+		}
+		if c.shedPaths.RetiredMove != nil || c.shedPaths.RetiredWayForward != "lym loom resume" {
+			t.Errorf("c.shedPaths RetiredMove set = %v, RetiredWayForward = %q; want no move and `lym loom resume` as the way forward", c.shedPaths.RetiredMove != nil, c.shedPaths.RetiredWayForward)
 		}
 	})
 

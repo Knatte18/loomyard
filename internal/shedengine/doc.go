@@ -126,6 +126,16 @@
 //
 // Row names are durable resume identities, so a product that renames a row carries in-flight runs across with RenameProducers.
 // It rewrites each retired name in current_producer, entered_row, pause_before, pause_after and every history entry's producer, under the run lock, and leaves a file that names no retired row untouched.
+// That rename has no side effect and serves a row that lives on under a new name.
+//
+// # Retired rows
+//
+// A row the recipe dropped is declared in the told Shed.Retired map, each name to the row a run on it moves to.
+// When a step finds current_producer naming no row but a key of the map, it calls the told Shed.RetiredMove with the retired row, its target and whether the status was not running, then persists the target as current_producer, state paused, with the reason `the row <from> is retired from the recipe, so the run moved to <target> and paused; way forward: <command>`.
+// The command is the told Shed.RetiredWayForward, or the run verb that resumes the run.
+// A RetiredMove error returns an error naming the cause and the same way forward, and persists nothing, so the next step calls it again.
+// A current row that is a row of the list never consults the map, and a name that is neither a row nor a key keeps the missing-producer refusal.
+// Retired's move and pause is the second mechanism beside RenameProducers' rewrite of each retired name.
 //
 // # Field ownership and the stop conditions
 //

@@ -1,8 +1,9 @@
-// pawlwiring.go holds the wiring only a pawl run needs beyond the BeamDescribe row: the seams of Beam-Up, Beam-Await and Beam-Down over the hub, the notice of Beam-Up's warnings, the landing re-check Beam-Await runs, and the blocker read Finalize's land check backstops it with.
+// pawlwiring.go holds the wiring only a pawl run needs: the seams of Beam-Up, Beam-Await and Beam-Down over the hub, the notice of Beam-Up's warnings, the landing re-check Beam-Await runs, the blocker read Finalize's land check backstops it with, and the side effects of a move off a retired row.
 
 package loomcli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,16 +18,21 @@ import (
 	"github.com/Knatte18/loomyard/internal/landingshed"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/loomrecipe"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
 	"github.com/Knatte18/loomyard/internal/orchcli"
 	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/pullrequest"
 	"github.com/Knatte18/loomyard/internal/runproc"
 	"github.com/Knatte18/loomyard/internal/shedrun"
 )
 
 // pawlProgram is the program name the pawl rows sign their notices to the beam's orch with.
 const pawlProgram = "PAWL"
+
+// retiredMoveGitHubTimeout bounds the GitHub read of a move off a retired row, so a stuck network holds the move for no longer than that.
+const retiredMoveGitHubTimeout = 30 * time.Second
 
 // pawlDeps assembles the seams of the pawl producers for the beam pair at location, whose slug names its project entry.
 // Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
@@ -40,6 +46,10 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 	if found {
 		runID = seed.StartedAt
 	}
+	retiredRows, err := loomrecipe.RetiredRowNames(shedrun.RecipePawl)
+	if err != nil {
+		return pawlengine.Deps{}, err
+	}
 
 	prime := func() (*lymcwd.Location, error) { return primeOfHub(location) }
 	notify := func(line string) error {
@@ -50,6 +60,8 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Slug:  slug,
 		Paths: hubgeom.PawlPaths(location),
 		RunID: runID,
+		// RetiredRows are the rows the recipe's retired map names, so a hold an older binary wrote under one of them is still found.
+		RetiredRows: retiredRows,
 		SetStatus: func(producer string) error {
 			board, err := boardengine.OpenHub(location.HubPath)
 			if err != nil {
@@ -134,7 +146,13 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 			return dobbyengine.Live(geometry)
 		},
 		Recheck: func() ([]string, error) { return pawlRecheck(location, slug) },
-		Notify:  notify,
+		ReadyStands: func() (bool, error) {
+			return pawlengine.ReadyFor(loomengine.BeamReadyPath(location), loomengine.BeamReadyLockPath(location), slug)
+		},
+		StampWake: func(at time.Time) error {
+			return shedrun.WriteWakeStamp(shedrun.WakeRecord(location, shedrun.SelfRunID), pawlengine.NameBeamAwait, at)
+		},
+		Notify: notify,
 		Down: func() error {
 			_, err := orchcli.BeamDown(location)
 			return err
@@ -142,6 +160,85 @@ func pawlDeps(location *lymcwd.Location, slug string) (pawlengine.Deps, error) {
 		Now:   time.Now,
 		Sleep: sleepContext,
 	}, nil
+}
+
+// pawlRetiredMove returns the seam that gives the pawl run of the beam slug at location the side effects of a move off a retired row, over the hub.
+// The PR-Review session ends through the run's `RoleSession` records, and the pull request's state reads through the pair's origin; pawl's own status and notice seams are reused.
+// Every closure reads or writes on demand and opens nothing at build time, since wire also runs for status and pause.
+func pawlRetiredMove(location *lymcwd.Location, slug string, pawl pawlengine.Deps) func(from, to string, resumed bool) error {
+	recordPath := shedrun.PullRequestRecord(location, shedrun.SelfRunID)
+	recordLock := shedrun.PullRequestRecordLock(location, shedrun.SelfRunID)
+	deps := pawlengine.RetiredMoveDeps{
+		Slug:            slug,
+		Paths:           hubgeom.PawlPaths(location),
+		LandingPath:     loomengine.BeamLandingPath(location),
+		LandingLockPath: loomengine.BeamLandingLockPath(location),
+		ReadyPath:       loomengine.BeamReadyPath(location),
+		ReadyLockPath:   loomengine.BeamReadyLockPath(location),
+		EndSession: func() error {
+			record, found, err := pullrequest.ReadRecord(recordPath, recordLock)
+			if err != nil || !found || record.StrandGUID == "" {
+				return err
+			}
+			_, err = runproc.EndRole(fabricengine.RunProcDir(location.HubPath), slug, runproc.RoleSession, os.Getpid())
+			return err
+		},
+		ScratchPullRequest: func() (int, string, bool, error) {
+			record, found, err := pullrequest.ReadRecord(recordPath, recordLock)
+			if err != nil || !found {
+				return 0, "", false, err
+			}
+			return record.Number, record.URL, true, nil
+		},
+		PullRequestOpen: func(number int) (bool, error) { return pullRequestOpen(location, number) },
+		BeamHead: func() (string, error) {
+			fabric, err := fabricengine.Open(location)
+			if err != nil {
+				return "", err
+			}
+			return fabric.HeadSHA()
+		},
+		RemoveScratch: func() error { return pullrequest.RemoveRecord(recordPath, recordLock) },
+		Commit:        func() error { return commitLandingDirectory(location, slug) },
+		SetStatus:     pawl.SetStatus,
+		Notify:        pawl.Notify,
+	}
+	return func(from, to string, resumed bool) error {
+		return pawlengine.MoveOffRetired(deps, from, to, resumed)
+	}
+}
+
+// pullRequestOpen reports whether GitHub reports the pull request number open, read through the origin of the pair at location.
+func pullRequestOpen(location *lymcwd.Location, number int) (bool, error) {
+	fabric, err := fabricengine.Open(location)
+	if err != nil {
+		return false, err
+	}
+	originURL, err := fabric.OriginURL()
+	if err != nil {
+		return false, err
+	}
+	client, err := pullrequest.Open(originURL)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), retiredMoveGitHubTimeout)
+	defer cancel()
+	status, err := client.Status(ctx, number)
+	if err != nil {
+		return false, err
+	}
+	return status.State == pullrequest.StateOpen, nil
+}
+
+// commitLandingDirectory commits the landing directory of the beam pair at location, and commits nothing when the directory holds nothing git could take.
+func commitLandingDirectory(location *lymcwd.Location, slug string) error {
+	hasContent, err := fabricengine.AnchoredPathHasContent(location, loomengine.LandingDirRel())
+	if err != nil || !hasContent {
+		return err
+	}
+	_, _, err = fabricengine.CommitAnchoredPaths(fabricengine.NewMutations(""), location, []string{loomengine.LandingDirRel()}, fmt.Sprintf("loom: move the landing of %s off a retired row", slug), fabricengine.EnvSyncOptions())
+	return err
 }
 
 // runBeamUpStep brings the beam slug up through beamUp and surfaces the warnings of its report through notify.

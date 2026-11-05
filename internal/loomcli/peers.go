@@ -97,7 +97,7 @@ func recipeRow(status *string, rows []string) int {
 }
 
 // runStatusTasks returns the tasks of tasks whose run holds the entry, in board order.
-// A beam whose pawl run has not reached Parent-Align is no in-flight peer.
+// A beam whose pawl run has not reached Finalize is no in-flight peer.
 func runStatusTasks(tasks []boardengine.Task) []boardengine.Task {
 	var held []boardengine.Task
 	for _, task := range tasks {

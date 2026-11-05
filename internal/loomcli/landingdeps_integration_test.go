@@ -339,3 +339,35 @@ func TestLandingDeps_RemoveFollowUpIsEmptyWhenThePrimeIsUnreadable(t *testing.T)
 		t.Errorf("RemoveFollowUp() = %q over a hub with no readable prime; want empty", got)
 	}
 }
+
+// TestLandingDeps_BeamCommitsMissingLeavesOutAMergeOfTheParent asserts a pawl run's CommitsMissing seam lists the beam commits past a merged head and leaves out a merge that only brought the parent in, so Finalize reads a merged pull request as lacking what `lym beam ready` reads it as lacking.
+func TestLandingDeps_BeamCommitsMissingLeavesOutAMergeOfTheParent(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, "b", fabricengine.AddOptions{SkipPush: true, Beam: true})
+	worktree := h.PairCodeWorktree("b")
+	beam, err := lymcwd.ResolveWorktree(worktree)
+	if err != nil {
+		t.Fatalf("lymcwd.ResolveWorktree(b) error = %v; want nil", err)
+	}
+	deps := landingDeps(beam, shedrun.RecipePawl, websterengine.Geometry{}, "b", "main",
+		true, modelspec.Registry{}, &shuttleengine.Runner{}, landingshed.Config{}, "", nil, nil, nil, planVerifySource(beam), parentLockDeps(beam, shedrun.SelfRunID, "", ""))
+
+	gitkit.CommitFile(t, worktree, "widgets.txt", "widgets\n", "Add widgets")
+	mergedHead := gitkit.Git(t, worktree, "rev-parse", "HEAD")
+	parentTip := gitkit.CommitFile(t, h.PrimeWorktree(), "parent.txt", "parent\n", "parent: progress")
+	gitkit.Git(t, worktree, "merge", "--no-ff", "-m", "Merge the parent", parentTip)
+
+	missing, err := deps.PullRequest.CommitsMissing(mergedHead, gitkit.Git(t, worktree, "rev-parse", "HEAD"))
+	if err != nil || len(missing) != 0 {
+		t.Errorf("CommitsMissing() = %q, %v for a beam past the merged head only by a merge of the parent; want none", missing, err)
+	}
+
+	gitkit.CommitFile(t, worktree, "gadgets.txt", "gadgets\n", "Add gadgets")
+	missing, err = deps.PullRequest.CommitsMissing(mergedHead, gitkit.Git(t, worktree, "rev-parse", "HEAD"))
+	if err != nil || len(missing) != 1 || !strings.HasSuffix(missing[0], " Add gadgets") {
+		t.Errorf("CommitsMissing() = %q, %v after a beam commit; want the one commit named by its subject", missing, err)
+	}
+}

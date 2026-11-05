@@ -145,9 +145,12 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 	}
 
 	// SessionLive and RegisterSession read reed's strand table, which only wireLanding holds, so it fills them.
+	// BeamRecord and DropBeamRecord are a pawl run's, which a tapestry run leaves unset.
 	unfilledPullRequest := map[string]bool{
 		"SessionLive":     true,
 		"RegisterSession": true,
+		"BeamRecord":      true,
+		"DropBeamRecord":  true,
 	}
 	pullRequest := reflect.ValueOf(deps.PullRequest)
 	pullRequestType := pullRequest.Type()
@@ -158,6 +161,14 @@ func TestLandingDeps_EveryFieldPopulated(t *testing.T) {
 		if pullRequest.Field(i).IsZero() {
 			t.Errorf("landingDeps(...).PullRequest.%s is the zero value; want it populated", pullRequestType.Field(i).Name)
 		}
+	}
+
+	// Only a pawl run lands a beam, so only its landing reads and drops the beam's pull request record.
+	if deps.PullRequest.BeamRecord != nil || deps.PullRequest.DropBeamRecord != nil {
+		t.Error("landingDeps(...).PullRequest beam seams are set for the tapestry recipe; want nil")
+	}
+	if pawl := build(shedrun.RecipePawl).PullRequest; pawl.BeamRecord == nil || pawl.DropBeamRecord == nil {
+		t.Error("landingDeps(...).PullRequest beam seams are unset for the pawl recipe; want both populated")
 	}
 }
 

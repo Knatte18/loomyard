@@ -1,9 +1,8 @@
-// beamdescribe.go implements NewBeamDescribe, the beam recipe's Describe row: a Go producer that writes a beam's change description from its board entry, its project record and the commits it adds, with no agent.
+// beamdescribe.go implements WriteBeamDescription, which writes a beam's change description from its board entry, its project record and the commits it adds.
 
 package landingshed
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/summaryparser"
 )
 
@@ -41,10 +39,10 @@ type BeamCommit struct {
 	Committed time.Time
 }
 
-// BeamDescribeDeps carries the told values NewBeamDescribe needs.
+// BeamDescribeDeps carries the told values WriteBeamDescription needs, which `lym beam describe` calls it with.
 // Every field is required.
 type BeamDescribeDeps struct {
-	// Slug is the run's slug, which names the landing in a refusal's way forward.
+	// Slug is the beam's slug, which names the verb to run again in a refusal's way forward.
 	Slug string
 	// DescriptionPath is the absolute path of the change description the producer writes.
 	DescriptionPath string
@@ -58,23 +56,8 @@ type BeamDescribeDeps struct {
 	Commit func() error
 }
 
-// beamDescribeProducer writes a beam's change description.
-type beamDescribeProducer struct {
-	name string
-	deps BeamDescribeDeps
-}
-
-var _ shedengine.ShedProducer = (*beamDescribeProducer)(nil)
-
-// NewBeamDescribe returns the ShedProducer that writes and commits the change description of a beam.
-// The description is the entry's title cut to 72 characters as a heading, its brief, a `## Changes` list of the beam's commits oldest first and the project record's added entries verbatim under a `## Project decisions` heading.
-// A commit whose subject ends in ` (#<number>)`, as a pull request's merge writes it, is listed by its pull request's number, title and merge time; any other commit, a merge from the parent included, by its object name, subject and commit time.
-// Either entry carries the first sentence of the commit's body as its summary, when the body has one.
-// GitHub links the number and the object name in a pull request's body.
-// The description is validated like the Describe row's, and a finding is an error naming the finding and the way to end the landing and fix the entry.
-// An empty brief with no commits leaves the body empty, which that validation refuses.
-// A re-run rewrites the same bytes.
-func NewBeamDescribe(name string, deps BeamDescribeDeps) (shedengine.ShedProducer, error) {
+// requireBeamDescribeDeps returns an error naming the first field of deps that is unset, for caller's refusal.
+func requireBeamDescribeDeps(caller string, deps BeamDescribeDeps) error {
 	required := []struct {
 		field string
 		set   bool
@@ -88,45 +71,49 @@ func NewBeamDescribe(name string, deps BeamDescribeDeps) (shedengine.ShedProduce
 	}
 	for _, r := range required {
 		if !r.set {
-			return nil, fmt.Errorf("landingshed: NewBeamDescribe: %s is empty", r.field)
+			return fmt.Errorf("landingshed: %s: %s is empty", caller, r.field)
 		}
 	}
-	return &beamDescribeProducer{name: name, deps: deps}, nil
+	return nil
 }
 
-// Call implements shedengine.ShedProducer.
-// It reads the entry, the record's added entries and the commits, writes the description, validates it and commits it.
-// A read, write or commit failure and a finding are errors; only a cancelled context is reported as the cancellation.
-func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
-	if err := entryErr(ctx, p.name); err != nil {
-		return "", shedengine.OutputPointer{}, err
+// WriteBeamDescription writes a beam's change description at deps.DescriptionPath, whole, and commits it.
+// The description is the entry's title cut to 72 characters as a heading, its brief, a `## Changes` list of the beam's commits oldest first and the project record's added entries verbatim under a `## Project decisions` heading.
+// A commit whose subject ends in ` (#<number>)`, as a pull request's merge writes it, is listed by its pull request's number, title and merge time; any other commit, a merge from the parent included, by its object name, subject and commit time.
+// Either entry carries the first sentence of the commit's body as its summary, when the body has one.
+// GitHub links the number and the object name in a pull request's body.
+// It reads the board entry's title and brief, the project record's added entries and the beam's first-parent commits, and validates the file as the Describe row's gate does.
+// It refuses a deps with an unset field, naming it.
+// A read, write, validation or commit failure is an error naming the step.
+// A finding is an error naming it, with the way forward of fixing the title or brief with `lym board upsert` and running `lym beam describe <slug>` again.
+// A re-run over unchanged inputs rewrites the same bytes.
+func WriteBeamDescription(deps BeamDescribeDeps) error {
+	if err := requireBeamDescribeDeps("WriteBeamDescription", deps); err != nil {
+		return err
 	}
-	fail := func(action string, err error) (shedengine.Outcome, shedengine.OutputPointer, error) {
-		if cerr := cancelErr(ctx, p.name); cerr != nil {
-			return "", shedengine.OutputPointer{}, cerr
-		}
-		return "", shedengine.OutputPointer{}, fmt.Errorf("landingshed: %s: %s: %w", p.name, action, err)
+	fail := func(step string, err error) error {
+		return fmt.Errorf("landingshed: write the beam description: %s: %w", step, err)
 	}
 
-	title, brief, err := p.deps.Entry()
+	title, brief, err := deps.Entry()
 	if err != nil {
 		return fail("read the board entry", err)
 	}
-	decisions, err := p.deps.ProjectDecisions()
+	decisions, err := deps.ProjectDecisions()
 	if err != nil {
 		return fail("read the project record", err)
 	}
-	commits, err := p.deps.Commits()
+	commits, err := deps.Commits()
 	if err != nil {
 		return fail("read the beam's commits", err)
 	}
-	if err := os.MkdirAll(filepath.Dir(p.deps.DescriptionPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(deps.DescriptionPath), 0o755); err != nil {
 		return fail("create the description directory", err)
 	}
-	if err := os.WriteFile(p.deps.DescriptionPath, []byte(beamDescription(title, brief, decisions, commits)), 0o644); err != nil {
+	if err := os.WriteFile(deps.DescriptionPath, []byte(beamDescription(title, brief, decisions, commits)), 0o644); err != nil {
 		return fail("write the description", err)
 	}
-	findings, err := summaryparser.ValidateDescription(p.deps.DescriptionPath)
+	findings, err := summaryparser.ValidateDescription(deps.DescriptionPath)
 	if err != nil {
 		return fail("validate the description", err)
 	}
@@ -135,13 +122,12 @@ func (p *beamDescribeProducer) Call(ctx context.Context) (shedengine.Outcome, sh
 		for i, finding := range findings {
 			parts[i] = finding.Error()
 		}
-		// The landing's claim holds the entry under the run lock, so the entry is fixed only after the landing is ended.
-		return fail("validate the description", fmt.Errorf("%s; way forward: run \"lym batten cancel %s\" to end the landing, fix the title or brief with \"lym board upsert\", then run \"lym beam land %s\" again", strings.Join(parts, "; "), p.deps.Slug, p.deps.Slug))
+		return fail("validate the description", fmt.Errorf("%s; way forward: fix the title or brief with \"lym board upsert\", then run \"lym beam describe %s\" again", strings.Join(parts, "; "), deps.Slug))
 	}
-	if err := p.deps.Commit(); err != nil {
+	if err := deps.Commit(); err != nil {
 		return fail("commit the description", err)
 	}
-	return shedengine.Done, shedengine.OutputPointer{}, nil
+	return nil
 }
 
 // beamDescription renders the description file: the title cut to beamDescriptionTitleMax characters as a heading, then the brief, the list of commits and the project decisions, each part set off by a blank line.

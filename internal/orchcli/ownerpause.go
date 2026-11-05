@@ -3,7 +3,11 @@
 package orchcli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"sync"
 
@@ -12,6 +16,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubgeom"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/machinename"
+	"github.com/Knatte18/loomyard/internal/shedengine"
+	"github.com/Knatte18/loomyard/internal/shedrun"
+	"github.com/Knatte18/loomyard/internal/state"
 )
 
 var (
@@ -71,6 +78,13 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 			if task.Status != nil {
 				facts.status = *task.Status
 			}
+			if facts.held {
+				run, found, err := readOwnRunStatus(location)
+				if err != nil {
+					return beamFacts{}, fmt.Errorf("read the beam's own run status: %w", err)
+				}
+				facts.ownLanding = ownLandingHold(task.Status, run, found)
+			}
 			break
 		}
 	}
@@ -82,6 +96,19 @@ func readBeamFacts(location *lymcwd.Location, beam bool) (beamFacts, error) {
 		facts.moveWayForward = wayForward
 	}
 	return facts, nil
+}
+
+// readOwnRunStatus reads the status of the pair's own run, the one its worktree's slug names, found false when the pair has none.
+func readOwnRunStatus(location *lymcwd.Location) (shedengine.Status, bool, error) {
+	statusPath := shedrun.StatusFile(location, shedrun.SelfRunID)
+	if _, err := os.Stat(statusPath); errors.Is(err, fs.ErrNotExist) {
+		return shedengine.Status{}, false, nil
+	}
+	lockPath := shedrun.StatusLock(location, shedrun.SelfRunID)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+		return shedengine.Status{}, false, err
+	}
+	return state.ReadJSON[shedengine.Status](statusPath, lockPath)
 }
 
 // claimPrimeFor records this machine as the owner of the hub's prime, writing only when the hub's board records no prime owner.

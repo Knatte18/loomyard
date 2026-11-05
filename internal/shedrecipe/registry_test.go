@@ -87,7 +87,6 @@ func TestNames(t *testing.T) {
 	t.Run("ShipsExpectedEntries", func(t *testing.T) {
 		want := []string{
 			"BeamAwait",
-			"BeamDescribe",
 			"BeamDown",
 			"BeamUp",
 			"Block",

@@ -15,14 +15,18 @@ import (
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
-// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn, sampler and motif recipes.
+// TestInterruptPolicies_MatchAssembledRows asserts, in both directions, that loomshed.InterruptPolicies covers exactly the rows New assembles for the tapestry, darn, sampler, motif and pawl recipes.
 // Every row either's real, current output has must carry an entry in the table (the direction that catches a row added to a recipe with no policy assigned),
 // and every key in the table must name a row one of them actually has (the direction that keeps the table from accumulating dead entries for a renamed or removed row).
 func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 	tiergate.Require(t, 0)
 	env, paths := testEnv(t)
 	rowNames := map[string]bool{}
-	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeMotif} {
+	for _, name := range []string{shedrun.RecipeTapestry, shedrun.RecipeDarn, shedrun.RecipeSampler, shedrun.RecipeMotif, shedrun.RecipePawl} {
+		// Pawl is last, since its build has no review segment to budget and the others need theirs.
+		if name == shedrun.RecipePawl {
+			delete(env.Segments, codeReviewSegment)
+		}
 		shed, err := New(name, env, paths)
 		if err != nil {
 			t.Fatalf("New(%s) error = %v, want nil", name, err)
@@ -37,7 +41,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 
 	for rowName := range loomshed.InterruptPolicies {
 		if !rowNames[rowName] {
-			t.Errorf("loomshed.InterruptPolicies names row %q, which none of tapestry, darn, sampler and motif has", rowName)
+			t.Errorf("loomshed.InterruptPolicies names row %q, which none of tapestry, darn, sampler, motif and pawl has", rowName)
 		}
 	}
 }
@@ -46,6 +50,7 @@ func TestInterruptPolicies_MatchAssembledRows(t *testing.T) {
 // every row whose engine is "Implementer" must carry shedverbs.InterruptPolicyHandback, and every row whose engine is anything else must carry shedverbs.InterruptPolicyReinvoke.
 // This is the assertion that keeps a row which changes adapter from silently keeping the wrong policy, and the engine-name side is what makes the implementer exception derivable rather than hand-maintained.
 // The handback is webster's, the only implementer the engine builds.
+// Every row of the pawl recipe, whose rows are no table row, spawns no agent of its own and carries the reinvoke policy as well.
 //
 //testtiming:keep pins the Webster-handback and reinvoke-otherwise policy per row engine, which TestApproveSeam_FailsToBuild never asserts
 func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {
@@ -66,6 +71,11 @@ func TestInterruptPolicies_MatchEngineIdentity(t *testing.T) {
 
 		if policy != shedverbs.InterruptPolicyReinvoke {
 			t.Errorf("row %q (engine %q) policy = %q; want %q", rowName, engineName, policy, shedverbs.InterruptPolicyReinvoke)
+		}
+	}
+	for _, row := range wantPawlRows() {
+		if policy := loomshed.InterruptPolicies[row.name]; policy != shedverbs.InterruptPolicyReinvoke {
+			t.Errorf("pawl row %q policy = %q; want %q", row.name, policy, shedverbs.InterruptPolicyReinvoke)
 		}
 	}
 }

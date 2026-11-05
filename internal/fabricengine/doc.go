@@ -56,6 +56,11 @@
 // A failed fetch returns the error, so each caller decides whether it refuses or degrades.
 // It mutates no ref other than the remote-tracking refs the fetch refreshes.
 //
+// `BeamLineCommits` (beamline.go) lists the commits on a beam pair's own first-parent line that its merge base with the parent branch lacks, oldest first, as `LineCommit` values.
+// A commit's `RecordsOnly` is true when every path it changes against its first parent lies under the pair's lym directory: lym's own bookkeeping, never a landing of work.
+// Its `Parents` name the commit's parents, first parent first, so a caller tells a merge of the parent from a landing.
+// `BeamCommitsPast` (beamline.go) lists, each as a short object name and subject, the commits of that line past a merged pull request's head that a landing of the merged pull request would lack, leaving out records-only commits and merges whose second parent the parent branch holds.
+//
 // # Origin reconcile
 //
 // `ReconcileOrigin` (originreconcile.go) is the one judge of this machine's local branches against origin, run before anything acts on a run or the hub after the machine may have been away.

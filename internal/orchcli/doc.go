@@ -5,7 +5,8 @@
 //
 // Every verb runs in the hub's prime worktree and in a beam, a pair whose own origin record carries the beam mark, and is refused in every other worktree with the beam verbs that make a pair one.
 // There is one orch per worktree: a beam's orch keeps its files under that worktree's own `.lym/orch/` and `_lym/orch/`, its strand is `<shortname>:<slug>:orch`, and its watcher is its own.
-// `BeamUp` refuses a worktree another machine owns, naming the owner and `lym adopt <slug>` (`lym adopt root` for the prime), a worktree with an anchor change standing on it or on the prime, naming the change's way forward, and a beam whose board entry its landing holds, naming `lym batten status <slug>`.
+// `BeamUp` refuses a worktree another machine owns, naming the owner and `lym adopt <slug>` (`lym adopt root` for the prime), a worktree with an anchor change standing on it or on the prime, naming the change's way forward, and a beam whose board entry a run other than the beam's own landing holds, naming `lym batten status <slug>`.
+// A beam held by its own pawl run's landing is no refusal: `ownLandingHold` reads it from the beam pair's own run status, found, not done and standing at the producer the board status names, and the bring-up then starts the orch alone, with a warning that the dobby stays down while the landing runs.
 // It judges them from the local Bolt, after the reconcile when `Prepare` ran and before it starts any dobby, window or orch, and `beamUpRefusal` is the pure judgment over the facts `readBeamFacts` reads.
 // The hub-scope origin reconcile runs from the prime whichever orch is brought up.
 // After the refusals `BeamUp` starts this worktree's dobby through `dobbyengine.EnsureLive`, only when it is not live, as the first step of the pair it brings up with the runs strand, the orch and its watcher.

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/shedengine"
 )
 
 // beamFacts are what the bring-up's refusals read from the local Bolt and the worktree.
@@ -24,12 +25,22 @@ type beamFacts struct {
 	// held is whether the worktree's entry is held by its run, and status is that entry's status.
 	held   bool
 	status string
+	// ownLanding is whether a held entry's hold is the beam's own pawl run's landing.
+	ownLanding bool
+}
+
+// ownLandingHold reports whether a held beam's hold is its own pawl run's: the beam pair's own run status is found, not done, and its current producer is the producer half of the board status.
+// That covers Finalize and Beam-Down, and a halt at a retired row an older binary left, before the move off it lifts it; a hold whose producer the pair's own run does not stand at is held by something else.
+func ownLandingHold(boardStatus *string, run shedengine.Status, runFound bool) bool {
+	producer, isRunStatus := boardengine.RunStatusProducer(boardStatus)
+	return isRunStatus && runFound && run.State != shedengine.StateDone && run.CurrentProducer == producer
 }
 
 // beamUpRefusal returns nil when an orch may come up in the beam slug, or in the prime when slug is empty, on the machine here.
 // owner is the machine the worktree reads as owned by, empty for none, and moveWayForward the way forward of a standing anchor change, empty for none.
-// A worktree another machine owns is refused naming the owner and the takeover, a standing anchor change is refused naming its way forward, and a beam whose entry its landing holds is refused naming the landing's status verb.
-func beamUpRefusal(slug, here, owner string, moveWayForward string, held bool, status string) error {
+// A worktree another machine owns is refused naming the owner and the takeover, a standing anchor change is refused naming its way forward, and a beam whose entry a run other than its own landing holds is refused naming that run's status verb.
+// A beam held by its own landing, ownLanding, is no refusal.
+func beamUpRefusal(slug, here, owner string, moveWayForward string, held, ownLanding bool, status string) error {
 	subject, adopted := fmt.Sprintf("beam %q", slug), slug
 	if slug == "" {
 		subject, adopted = "the prime", "root"
@@ -40,7 +51,7 @@ func beamUpRefusal(slug, here, owner string, moveWayForward string, held bool, s
 	if moveWayForward != "" {
 		return fmt.Errorf("orch: an anchor change stands on %s or the prime; way forward: %s", subject, moveWayForward)
 	}
-	if held {
+	if held && !ownLanding {
 		return fmt.Errorf("orch: %s is held by its landing run (status %q); way forward: watch it with `lym batten status %s`, and run `lym beam start` again once the landing has ended", subject, status, slug)
 	}
 	return nil

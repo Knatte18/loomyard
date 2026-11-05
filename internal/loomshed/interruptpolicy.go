@@ -5,7 +5,10 @@
 
 package loomshed
 
-import "github.com/Knatte18/loomyard/internal/shedverbs"
+import (
+	"github.com/Knatte18/loomyard/internal/pawlengine"
+	"github.com/Knatte18/loomyard/internal/shedverbs"
+)
 
 // InterruptPolicies maps each of loom's durable row names (the Name* constants declared
 // in loomshed.go) to the shedverbs.InterruptPolicyReinvoke/shedverbs.InterruptPolicyHandback action an external
@@ -71,6 +74,11 @@ var InterruptPolicies = map[string]string{
 
 	// Sampler-Session reattaches the live session or resumes the recorded one rather than spawning a second.
 	NameSamplerSession: shedverbs.InterruptPolicyReinvoke,
+
+	// Each pawl row spawns no agent and is idempotent, so re-invoking an interrupted one repeats nothing.
+	pawlengine.NameBeamUp:    shedverbs.InterruptPolicyReinvoke,
+	pawlengine.NameBeamAwait: shedverbs.InterruptPolicyReinvoke,
+	pawlengine.NameBeamDown:  shedverbs.InterruptPolicyReinvoke,
 }
 
 // InterruptPolicyFor returns InterruptPolicies' entry for name, or the empty string when name is

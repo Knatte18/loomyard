@@ -16,14 +16,16 @@ import (
 // AmendmentTarget is optional graph metadata of the same kind: it names the row a plan amendment routes to, empty when the recipe sets none.
 // Contract is empty or `loom`, and `loom` declares the recipe a loom, which Build checks against the loom contract.
 // VerifySource is empty, `plan` or `tree_scope`, and a loom recipe must set it.
+// Retired maps each row name the recipe no longer has to the row a run on it moves to; it is empty when the recipe retires none.
 type Recipe struct {
-	Version         int      `yaml:"version"`
-	Entry           string   `yaml:"entry"`
-	AmendmentTarget string   `yaml:"amendment_target"`
-	Contract        string   `yaml:"contract"`
-	VerifySource    string   `yaml:"verify_source"`
-	Terminals       []string `yaml:"terminals"`
-	Producers       []Row    `yaml:"producers"`
+	Version         int               `yaml:"version"`
+	Entry           string            `yaml:"entry"`
+	AmendmentTarget string            `yaml:"amendment_target"`
+	Contract        string            `yaml:"contract"`
+	VerifySource    string            `yaml:"verify_source"`
+	Terminals       []string          `yaml:"terminals"`
+	Producers       []Row             `yaml:"producers"`
+	Retired         map[string]string `yaml:"retired"`
 }
 
 // Row is one producer entry in a Recipe: the row's identity, its engine name, its portable

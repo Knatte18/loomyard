@@ -46,16 +46,12 @@
 // The RecordWrite entry builds a loom recipe's record row for a run whose task is a board entry: a Go producer that writes the decision record and support log with no agent.
 // It takes no Config key and reads Env.RecordWrite alone; the three paths must be absolute and both seams non-nil, or the row refuses when it is built.
 //
-// # The BeamDescribe row
-//
-// The BeamDescribe entry builds the beam recipe's description row, a Go producer that writes a beam's change description from its board entry and its commits with no agent.
-// It takes no Config key, and reads Env.BeamDescribe alone, whose every field is required; a zero field refuses when the row is built.
-//
 // # The BeamUp, BeamAwait and BeamDown rows
 //
 // The BeamUp, BeamAwait and BeamDown entries build the pawl recipe's Go producers that bring a beam up, hold its run until a land request passes the landing re-check, and take it down.
 // Each takes no Config key and reads Env.Pawl alone.
 // An entry refuses a field of Env.Pawl its producer uses and the wiring left unset, naming it in its dotted `Pawl.<Field>` form; Watch alone may be nil.
+// BeamAwait uses ReadyStands and StampWake beside its other seams.
 //
 // # The Implementer row
 //

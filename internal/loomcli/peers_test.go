@@ -48,8 +48,8 @@ func peersFakeTasks() []boardengine.Task {
 		{Slug: "darn-peer", Title: "Darn peer", Status: status("blocked · Darn-Write")},
 		{Slug: "finalize-peer", Title: "Finalize peer", Status: status("awaiting · Finalize")},
 		{Slug: "retired-row-peer", Title: "Retired row peer", Status: status("blocked · Merge-In")},
-		// A beam that has reached Parent-Align holds its entry, so it is a peer; its row is read in the pawl recipe.
-		{Slug: "pawl-peer", Title: "Pawl peer", Kind: boardengine.KindProject, Beam: true, Status: status("running · Parent-Align")},
+		// A beam that has reached Finalize holds its entry, so it is a peer; its row is read in the pawl recipe.
+		{Slug: "pawl-peer", Title: "Pawl peer", Kind: boardengine.KindProject, Beam: true, Status: status("running · Finalize")},
 		// A beam whose pawl run stands at Beam-Await holds nothing, so it is no in-flight peer.
 		{Slug: "awaiting-beam", Title: "Awaiting beam", Kind: boardengine.KindProject, Beam: true, Status: status("running · Beam-Await")},
 		{Slug: "idle", Title: "Idle", Status: nil},
@@ -126,12 +126,12 @@ func TestPeersVerb(t *testing.T) {
 			"running-peer":  0,
 			"awaiting-peer": loomRowNumber(t, "PR-Review"),
 			"blocked-peer":  loomRowNumber(t, "Plan-Write"),
-			// A peer's row is read in its own recipe: Darn-Write is darn's row, and Parent-Align's position in pawl's recipe is not tapestry's.
+			// A peer's row is read in its own recipe: Darn-Write is darn's row, and Finalize's position in pawl's recipe is not tapestry's.
 			"darn-peer":     recipeRowNumber(t, shedrun.RecipeDarn, "Darn-Write"),
 			"finalize-peer": loomRowNumber(t, "Finalize"),
 			// A peer parked on the row's name before its rename is listed at the renamed row's position.
 			"retired-row-peer": loomRowNumber(t, "Parent-Align"),
-			"pawl-peer":        recipeRowNumber(t, shedrun.RecipePawl, "Parent-Align"),
+			"pawl-peer":        recipeRowNumber(t, shedrun.RecipePawl, "Finalize"),
 		}
 		for _, peer := range raw["peers"].([]any) {
 			line := peer.(map[string]any)
