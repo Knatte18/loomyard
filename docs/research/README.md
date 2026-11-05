@@ -128,6 +128,7 @@ A study's script finds the repository root with `git rev-parse --show-toplevel`,
 - [token-audit-2026-10-22](tokens/token-audit-2026-10-22/report.md) — where Claude tokens went over two weeks of runs.
 - [token-usage-by-role.md](tokens/token-usage-by-role.md) — token usage and time per role.
 - [haiku-judge.md](tokens/haiku-judge.md) — Haiku as the Bouncer judge, per row.
+- [startup-context-2026-11-05](tokens/startup-context-2026-11-05/report.md) — what the orch and a spawned role load at start, by source, and how to leave out what they do not need.
 
 ### model-downgrade — cheaper models per role
 

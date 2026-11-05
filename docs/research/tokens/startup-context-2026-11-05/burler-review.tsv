@@ -1,0 +1,43 @@
+input tokens	34252
+characters	95430
+characters per token	2.79
+
+cc: tool schemas	16692	5991
+skills listing: plugin anthropic-skills	9503	3410
+skills listing: built-in	8068	2895
+skill body: code-quality	7650	2745
+skill body: golang-comments	7383	2649
+skill body: prose	5220	1873
+cc: agent types	4681	1680
+skill body: testing	3541	1270
+cc: system prompt: intro	2965	1064
+skill body: golang-testing	2805	1006
+instructions: lym: CLAUDE.local.md (heddle)	2616	938
+lym: append: deny notices and creel trust	2486	892
+cc: environment	2374	852
+cc: system prompt: auto-memory instructions	2099	753
+connectors: loaded tool schemas	2069	742
+connectors: MCP instructions	2017	723
+connectors: deferred tool names	1866	669
+instructions: auto-memory MEMORY.md index	1759	631
+skills listing: plugin scribe	1556	558
+cc: session context (email, git status)	1382	496
+skills listing: plugin ly	929	333
+cc: system prompt: session-specific guidance	923	331
+cc: deferred tool names	663	237
+cc: system prompt: closing notes	658	236
+cc: system prompt: environment	581	208
+cc: system prompt: context management	561	201
+instructions: user's global ~/.claude/CLAUDE.md	410	147
+skills listing: plugin prowler	401	143
+lym: skill preload request	264	94
+hook: SessionStart (scribe)	256	91
+instructions: preamble	195	69
+lym: role prompt pointer	183	65
+tool results	178	63
+assistant: tool calls	153	54
+lym: pane color command	138	49
+message: user text	111	39
+skills listing: header	65	23
+cc: date	28	10
+unrecorded message	1	0

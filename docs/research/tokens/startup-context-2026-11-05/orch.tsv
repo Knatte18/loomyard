@@ -1,0 +1,44 @@
+input tokens	45865
+characters	141614
+characters per token	3.09
+
+cc: tool schemas	34214	11081
+compact: summary	15689	5081
+compact: re-read files	11751	3805
+skill body: board	10713	3469
+skills listing: plugin anthropic-skills	9503	3077
+skills listing: built-in	8068	2613
+skill body: board-policy	5583	1808
+skill body: prose	5272	1707
+cc: agent types	4681	1516
+skill body: conversation	3445	1115
+cc: system prompt: intro	2965	960
+instructions: lym: CLAUDE.local.md (heddle)	2601	842
+message: user text	2355	762
+lym: append: deny notices and creel trust	2255	730
+cc: system prompt: auto-memory instructions	2099	679
+connectors: loaded tool schemas	2069	670
+connectors: MCP instructions	2018	653
+connectors: deferred tool names	1866	604
+instructions: auto-memory MEMORY.md index	1759	569
+cc: environment	1649	534
+skills listing: plugin scribe	1556	503
+cc: session context (email, git status)	1365	442
+lym: append: hub orch rules	987	319
+skills listing: plugin ly	929	300
+cc: system prompt: closing notes	925	299
+cc: system prompt: session-specific guidance	923	298
+compact: re-injected skill bodies	751	243
+cc: system prompt: environment	581	188
+cc: system prompt: context management	561	181
+cc: deferred tool names	444	143
+instructions: user's global ~/.claude/CLAUDE.md	410	132
+skills listing: plugin prowler	401	129
+hook: other	287	92
+hook: SessionStart (scribe)	256	82
+skill body: distill	240	77
+instructions: preamble	195	63
+lym: pane color command	136	44
+skills listing: header	65	21
+cc: date	28	9
+message: assistant text	19	6
