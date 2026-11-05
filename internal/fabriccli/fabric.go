@@ -1163,6 +1163,9 @@ func removeFields(r fabricengine.RemoveResult, session pairteardown.SessionResul
 	if r.StrayPath != "" {
 		fields["stray_path"] = r.StrayPath
 	}
+	if r.StrayPathDeleted {
+		fields["stray_path_deleted"] = true
+	}
 	if r.OriginArchiveTag != "" {
 		fields["origin_archive_tag"] = r.OriginArchiveTag
 	}

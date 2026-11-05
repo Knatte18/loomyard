@@ -408,8 +408,9 @@ func finishRemoval(res fabricengine.RemoveResult, err error, slug string) error 
 // Remote is true: a batten-driven teardown is the task's own final removal, never a step toward re-adopting the pair, so nothing will ever need the pair's other-side branch again, and a remote copy left behind makes a later create of this slug refuse its push.
 // It never forces, and it neither waits for a quiet driver nor refuses a busy one, since the InnerRun done arm already waited its driver_exit_grace_s.
 // Landed is true: the row runs only after a done child, so the task's board entry is marked done once the pair is removed.
+// ClearStray is true: the run created the pair at its path, so a directory a late writer leaves there once the pair is removed is the run's to delete, and a resumed row deletes one an earlier attempt kept.
 func teardownRequest(slug string) pairteardown.Request {
-	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false, Landed: true}
+	return pairteardown.Request{Slug: slug, Force: false, Remote: true, QuietWait: 0, RefuseWhenBusy: false, Landed: true, ClearStray: true}
 }
 
 // teardownRefusal rewords the teardown refusal for content in the pair's sibling the teardown could not commit, names the resume for a failed archive of the run records, and passes every other error through unchanged.
@@ -420,7 +421,11 @@ func teardownRequest(slug string) pairteardown.Request {
 // A push of the pair still running past the teardown's wait is refused before any mutation too, and the remedy names the resume once the push finishes.
 // A failed archive runs before any teardown mutation, so the pair is still whole and a plain resume retries it once the failure is fixed.
 // That failure is most often an unreachable remote, but not always, so the remedy points at the wrapped cause rather than naming one.
+// A directory the teardown could not delete at the task worktree's path names the resume once it is deleted.
 func teardownRefusal(err error, slug string) error {
+	if errors.Is(err, fabricengine.ErrStrayPathKept) {
+		return fmt.Errorf("the pair for %q was removed, but a directory stays at its task worktree path: %w; once it is deleted, resume this run with \"lym batten run %s\"", slug, err, slug)
+	}
 	if errors.Is(err, fabricengine.ErrArchiveFailed) {
 		return fmt.Errorf("the pair for %q was left in place because archiving its run records to the remote failed: %w; fix the failure named here (most often an unreachable remote), then resume this run with \"lym batten run %s\"", slug, err, slug)
 	}

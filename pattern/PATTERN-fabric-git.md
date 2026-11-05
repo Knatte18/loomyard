@@ -40,7 +40,9 @@ The entry binds lym's own code only.
 `internal/fabricengine/destroy.go` is the only file in `package fabricengine` permitted a destructive primitive.
 
 - Every executor checks, in order, stopping at the first failure: containment, ownership, dirtiness, force.
-  The one exception is `removeWorktreeLeftover`, which keeps containment through `os.Root` and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
+  There are two exceptions.
+  `removeWorktreeLeftover` keeps containment through `os.Root` and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
+  `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it: its caller proves ownership, as a run that created the pair at that path or as an operator who asked to remove the slug's pair, the function refuses a registered linked worktree and a directory holding a `.git` entry, and `--force` and dirtiness do not apply.
 - `--force` answers dirtiness only, never containment or ownership.
 - A gate refusal is never silently discarded.
 - The `rec *Mutations` recorder is threaded into `destroy.go` only.

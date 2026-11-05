@@ -71,6 +71,7 @@ func TestRemoveFields(t *testing.T) {
 				Steps:                      []string{"a", "b"},
 				Finished:                   true,
 				StrayPath:                  "/stray",
+				StrayPathDeleted:           true,
 				RemoteCodeBranchDeleted:    true,
 				RemoteCodeBranchKeptReason: "not landed",
 			},
@@ -78,6 +79,7 @@ func TestRemoveFields(t *testing.T) {
 			wantFields: map[string]any{
 				"finished":                       true,
 				"stray_path":                     "/stray",
+				"stray_path_deleted":             true,
 				"remote_code_branch_deleted":     true,
 				"remote_code_branch_kept_reason": "not landed",
 				"session_ended":                  true,
@@ -121,7 +123,7 @@ func TestRemoveFields(t *testing.T) {
 			name:   "ConditionalKeysAbsentWhenEmpty",
 			result: fabricengine.RemoveResult{Slug: "s"},
 			wantAbsent: []string{
-				"stray_path", "abandoned_session", "remote_branch_kept_reason", "remote_code_branch_kept_reason", "code_branch_kept_reason",
+				"stray_path", "stray_path_deleted", "abandoned_session", "remote_branch_kept_reason", "remote_code_branch_kept_reason", "code_branch_kept_reason",
 				"origin_archive_tag", "remote_handed_off", "warning",
 			},
 			// The always-present key set: the existing keys plus steps, finished, remote_code_branch_deleted, session_ended and ended_processes.

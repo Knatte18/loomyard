@@ -6,6 +6,8 @@
 package fabricengine_test
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -57,6 +59,23 @@ func TestPairParts(t *testing.T) {
 		onOrigin, err := h.Topology.TaskBranchOnOrigin(h.Location, slug)
 		if err != nil || !onOrigin {
 			t.Errorf("TaskBranchOnOrigin() = %v, %v; want true, nil", onOrigin, err)
+		}
+	})
+
+	t.Run("PlainDirectoryAtTheTaskWorktreePathReadsAsStrayPathOnly", func(t *testing.T) {
+		t.Parallel()
+		const slug = "pp-stray"
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		if err := os.MkdirAll(filepath.Join(fabricengine.WorktreePath(h.Location, slug), "obj"), 0o755); err != nil {
+			t.Fatalf("plant a plain directory at the task worktree path: %v", err)
+		}
+
+		got, err := h.Topology.PairParts(h.Location, slug)
+		if err != nil {
+			t.Fatalf("PairParts: %v", err)
+		}
+		if want := (fabricengine.PairParts{StrayPath: true}); got != want || !got.Any() {
+			t.Errorf("PairParts() = %+v, Any() = %v; want %+v, true", got, got.Any(), want)
 		}
 	})
 

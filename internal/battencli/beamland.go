@@ -4,7 +4,6 @@ package battencli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,7 +15,7 @@ import (
 )
 
 // BeamLandMember is an open board entry whose parent is a beam.
-// Slug names it, HasPair says whether this machine holds its pair, and Running says whether its board status is a run status, so a run is in flight on some machine.
+// Slug names it, HasPair says whether this machine holds its pair as a registered worktree, a directory left at its path reading as none, and Running says whether its board status is a run status, so a run is in flight on some machine.
 type BeamLandMember struct {
 	Slug    string
 	HasPair bool
@@ -125,23 +124,11 @@ func beamMembers(prime *lymcwd.Location, slug string) ([]BeamLandMember, error) 
 		if parent != slug {
 			continue
 		}
-		hasPair, err := pairPresent(prime, task.Slug)
-		if err != nil {
-			return nil, err
-		}
+		hasPair := fabricengine.PairWorktreeStands(prime, task.Slug)
 		members = append(members, BeamLandMember{Slug: task.Slug, HasPair: hasPair, Running: boardengine.IsRunStatus(task.Status)})
 	}
 	slices.SortFunc(members, func(a, b BeamLandMember) int { return strings.Compare(a.Slug, b.Slug) })
 	return members, nil
-}
-
-// pairPresent reports whether this machine holds the worktree of slug's pair.
-func pairPresent(prime *lymcwd.Location, slug string) (bool, error) {
-	info, err := os.Stat(fabricengine.WorktreePath(prime, slug))
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return err == nil && info.IsDir(), err
 }
 
 // beamChildPairs lists, sorted, the local pairs whose origin record names the beam slug as their parent worktree.

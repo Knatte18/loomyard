@@ -44,6 +44,10 @@ func (e siblingDirtyRefusal) Unwrap() error { return ErrPairSiblingDirty }
 // It is worded without naming either side of the pair so callers outside the fabric vocabulary owner set can match it with errors.Is.
 var ErrPairNotFound = errors.New("pair not found")
 
+// ErrStrayPathKept is the sentinel an error wraps when a directory that is no worktree stays at a pair's task worktree path after the pair's removal, because deleting it failed.
+// The pair itself is gone; the directory blocks the slug's next pair until it is deleted.
+var ErrStrayPathKept = errors.New("a directory that is no worktree stays at the pair's task worktree path")
+
 // The steps a Remove call reports in RemoveResult.Steps, a closed set; each is appended only after it changed state.
 // The two origin steps are the teardown child's, so they are listed only when its steps ran in process.
 const (
@@ -80,8 +84,10 @@ type RemoveResult struct {
 	// Finished is true when the task worktree was already gone at entry, so the call completed a half-removed pair.
 	Finished bool `json:"finished"`
 	// StrayPath names a path at the task worktree's location that is not a registered linked worktree:
-	// one found there at entry, which Remove never deletes, or a directory a late writer refilled after the task worktree's removal and that a last removal could not delete.
+	// one found there at entry, which Remove never deletes, or a directory a late writer refilled after the task worktree's removal and that a last removal could not delete, which Remove also returns as an error wrapping ErrStrayPathKept.
 	StrayPath string `json:"stray_path,omitempty"`
+	// StrayPathDeleted is true when a caller's separate delete of a directory that is no worktree at the task worktree's path removed one; Remove itself never sets it.
+	StrayPathDeleted bool `json:"stray_path_deleted,omitempty"`
 	// RemoteBranchDeleted reports whether the pair's weft branch was observably removed from the
 	// remote. It is true only when the remote deletion was attempted and actually removed a ref.
 	RemoteBranchDeleted bool `json:"remote_branch_deleted,omitempty"`
@@ -158,7 +164,7 @@ type RemoveResult struct {
 // A sibling branch present only on origin is archived from there by the child and, with remote, deleted there; without remote it stays.
 // A path at the task worktree's location that is not a registered linked worktree is reported in StrayPath and never deleted.
 // A directory a late writer, such as a build server or a session's exit hooks, refills at the task worktree's path after its removal is removed once more after the sibling's teardown;
-// one that cannot be is logged and reported in StrayPath, and Remove still succeeds, since the pair is gone.
+// one that cannot be is reported in StrayPath, and Remove finishes the teardown and then returns an error wrapping ErrStrayPathKept that names the directory.
 // After the refusals and the pair inspection, and before its first mutation, Remove has the teardown child take the pair's teardown lock exclusive, waiting at most the topology's teardown wait for a push of the pair to let go of it;
 // when the wait runs out it returns, before any mutation, an error wrapping ErrPairPushRunning.
 // The child holds the lock past the remote steps, and a failure after taking it that leaves a worktree of the pair in place releases the lock and respawns the pair's push.
@@ -222,7 +228,8 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		if !handedOver {
 			hold.finish(nil)
 		}
-		if err != nil && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
+		// A directory kept at the task worktree's path is no worktree, so it leaves nothing to push.
+		if err != nil && !errors.Is(err, ErrStrayPathKept) && !localMode && (pathPresent(target) || pathPresent(RecordsWorktreePath(l, slug))) {
 			respawnPairPush(l, slug)
 		}
 	}()
@@ -326,11 +333,12 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 
 	// A late writer can refill the task worktree's directory after its removal finished, and a directory left there blocks the slug's next pair.
 	// This call's own removal of the registered worktree is the ownership proof, as it is for the finish right after git.
-	refilledKept := false
+	var strayErr error
 	if pair.taskWorktree && pathPresent(target) && !isRegisteredLinkedWorktree(l, target) {
 		if leftoverErr := removeWorktreeLeftover(rec, l.HubPath, target, t.leftover); leftoverErr != nil {
 			logger.Warn("fabricengine: a directory refilled at a removed task worktree's path was not deleted", "slug", slug, "path", target, "error", leftoverErr)
-			refilledKept = true
+			strayErr = fmt.Errorf("%w: the pair of %q is removed, but %s was refilled after its removal and deleting it failed: %w; way forward: stop whatever writes into it, such as a build or language server, then delete it",
+				ErrStrayPathKept, slug, target, leftoverErr)
 		}
 	}
 
@@ -355,7 +363,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	}
 
 	strayPath := ""
-	if pair.strayPath || refilledKept {
+	if pair.strayPath || strayErr != nil {
 		strayPath = target
 	}
 	res = RemoveResult{
@@ -375,7 +383,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		res.RemoteSkippedReason = "no remote deletion attempted: " + strings.TrimPrefix(archiveSkippedReason, "no archive tag pushed: ")
 	}
 	if localMode {
-		return res, nil
+		return res, strayErr
 	}
 
 	// The remote steps go last, to the holder of the teardown lock, which releases it once they end.
@@ -394,7 +402,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	})
 	res.RemoteHandedOff = out.handedOff
 	if !out.ran {
-		return res, nil
+		return res, strayErr
 	}
 	res.ArchiveTag, res.OriginArchiveTag = out.archive.localTag, out.archive.originTag
 	// A sibling found only on origin had no local tip to tag, so its archive is the child's alone.
@@ -412,7 +420,10 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	if out.taskDeleted {
 		res.Steps = append(res.Steps, RemoveStepTaskBranchOnOrigin)
 	}
-	return res, out.err
+	if out.err != nil {
+		return res, out.err
+	}
+	return res, strayErr
 }
 
 // housekeepHook, nil in production, runs with the slug just before a Remove's store housekeeping, so a test observes whether the housekeeping ran.

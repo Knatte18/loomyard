@@ -339,8 +339,8 @@ func TestCancelRun(t *testing.T) {
 			wantCalls: []string{"EndForCancel", "RemovePair", "DiscardTaskBranch", "RemoveRecords", "ClearClaim"},
 			marker:    "removed",
 			check: func(t *testing.T, r cancelReport, f *cancelFake) {
-				want := pairteardown.Request{Slug: cancelSlug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true}
-				if f.removeRequest.Slug != want.Slug || !f.removeRequest.Force || !f.removeRequest.Snapshot || !f.removeRequest.Remote || !f.removeRequest.LeaveClaim {
+				want := pairteardown.Request{Slug: cancelSlug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true}
+				if f.removeRequest.Slug != want.Slug || !f.removeRequest.Force || !f.removeRequest.Snapshot || !f.removeRequest.Remote || !f.removeRequest.LeaveClaim || !f.removeRequest.ClearStray {
 					t.Errorf("RemovePair request = %+v; want %+v", f.removeRequest, want)
 				}
 				if f.endRequest.Keep {
@@ -676,18 +676,30 @@ func TestCancelRun(t *testing.T) {
 			marker:  "left",
 		},
 		{
-			name:   "RemoveLeavingAStrayDirectoryWarnsOfIt",
+			name: "StrayDirectoryAloneRefusesWithoutRemove",
+			setup: func(f *cancelFake) {
+				f.recordsPresent, f.boardStatus, f.boardFound = false, nil, false
+				f.parts = fabricengine.PairParts{StrayPath: true}
+			},
+			wantErr: `a directory that is no worktree is all that is left of some-slug, at its task worktree path; way forward: run "lym batten cancel some-slug --remove", which deletes it`,
+			noCalls: append([]string{"TakeMarker"}, destructiveCancelCalls...),
+			marker:  "none",
+		},
+		{
+			name:   "StrayDirectoryAloneWithRemoveDeletesIt",
 			remove: true,
 			setup: func(f *cancelFake) {
-				f.parts = fabricengine.PairParts{TaskWorktree: true}
-				f.removeResult = fabricengine.RemoveResult{StrayPath: "/hub/some-slug"}
+				f.recordsPresent, f.boardStatus, f.boardFound, f.statusFound = false, nil, false, false
+				f.parts = fabricengine.PairParts{StrayPath: true}
+				f.removeErr = fmt.Errorf("remove: %w", fabricengine.ErrPairNotFound)
+				f.removeResult = fabricengine.RemoveResult{StrayPathDeleted: true}
 			},
-			wantCalls: []string{"RemovePair", "RemoveRecords", "ClearClaim"},
+			wantCalls: []string{"TakeMarker", "EndForCancel", "RemovePair", "RemoveRecords", "ClearClaim"},
+			noCalls:   []string{"DiscardTaskBranch"},
 			marker:    "removed",
-			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
-				want := "the directory /hub/some-slug stays at the pair's path and is not a worktree; save anything worth keeping from it, then delete it before some-slug runs again"
-				if !r.PairRemoved || !slices.Contains(r.Warnings, want) {
-					t.Errorf("report pair removed, warnings = %v, %q; want true and a warning %q", r.PairRemoved, r.Warnings, want)
+			check: func(t *testing.T, r cancelReport, f *cancelFake) {
+				if !f.removeRequest.ClearStray || !r.PairRemoved || !r.StrayDirectoryDeleted {
+					t.Errorf("RemovePair request ClearStray, report pair removed, stray directory deleted = %v, %v, %v; want true, true, true", f.removeRequest.ClearStray, r.PairRemoved, r.StrayDirectoryDeleted)
 				}
 			},
 		},
@@ -703,6 +715,9 @@ func TestCancelRun(t *testing.T) {
 			check: func(t *testing.T, r cancelReport, _ *cancelFake) {
 				if !r.PairRemoved {
 					t.Error("PairRemoved = false; want a pair with nothing left read as removed")
+				}
+				if r.StrayDirectoryDeleted {
+					t.Error("StrayDirectoryDeleted = true; want false when the removal deleted no directory")
 				}
 			},
 		},

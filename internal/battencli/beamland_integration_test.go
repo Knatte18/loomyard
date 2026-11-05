@@ -125,6 +125,29 @@ func TestBeamLanding_ReachesWorktreeCreateSkip(t *testing.T) {
 		}
 	})
 
+	t.Run("MemberHoldsAPairOnlyThroughARegisteredWorktree", func(t *testing.T) {
+		// c is a registered worktree; t gets a plain directory at its task worktree path.
+		if err := os.MkdirAll(filepath.Join(fabricengine.WorktreePath(h.Location, "t"), "obj"), 0o755); err != nil {
+			t.Fatalf("plant a plain directory at the task worktree path of t: %v", err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(fabricengine.WorktreePath(h.Location, "t")) })
+
+		members, err := beamMembers(h.Location, "outer")
+		if err != nil {
+			t.Fatalf("beamMembers(outer): %v", err)
+		}
+		got := map[string]bool{}
+		for _, member := range members {
+			got[member.Slug] = member.HasPair
+		}
+		if hasPair, listed := got["c"]; !listed || !hasPair {
+			t.Errorf("member c HasPair, listed = %v, %v; want true, true for a registered worktree", hasPair, listed)
+		}
+		if hasPair, listed := got["t"]; !listed || hasPair {
+			t.Errorf("member t HasPair, listed = %v, %v; want false, true for a plain directory", hasPair, listed)
+		}
+	})
+
 	t.Run("BeamWithMembersIsRefusedNamingEachOpenEntry", func(t *testing.T) {
 		err := BeamLandRefusal(h.Location, "outer")
 		if err == nil {

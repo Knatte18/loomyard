@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -200,9 +201,9 @@ func TestRemove_DeletesTaskWorktreeDirRefilledAfterItsRemoval(t *testing.T) {
 	}
 }
 
-// TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCannotBeDeleted asserts Remove still succeeds when the directory a late writer refilled at the task worktree's path cannot be deleted, leaves it on disk and reports its path in StrayPath.
+// TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted asserts Remove returns an error wrapping ErrStrayPathKept and naming the directory when the directory a late writer refilled at the task worktree's path cannot be deleted, leaves it on disk and reports its path in StrayPath.
 // It sets the process-global teardown hook, so it is not parallel.
-func TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCannotBeDeleted(t *testing.T) {
+func TestRemove_FailsOnTaskWorktreeDirRefilledAfterItsRemovalThatCannotBeDeleted(t *testing.T) {
 	tiergate.Require(t, 1)
 
 	const slug = "refilled-late-kept"
@@ -219,8 +220,11 @@ func TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCanno
 		func(time.Duration) {})
 
 	res, err := h.Topology.Remove(l, slug, false, false)
-	if err != nil {
-		t.Fatalf("Remove error = %v; want success, since the pair is gone", err)
+	if !errors.Is(err, fabricengine.ErrStrayPathKept) || !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("Remove error = %v; want it to wrap ErrStrayPathKept and the delete's failure", err)
+	}
+	if !strings.Contains(err.Error(), dir) {
+		t.Errorf("Remove error = %q; want it to name %s", err.Error(), dir)
 	}
 	if !refilled {
 		t.Fatalf("no late writer refilled %s; want the refill after the teardown", dir)
@@ -241,6 +245,40 @@ func TestRemove_KeepsAndReportsTaskWorktreeDirRefilledAfterItsRemovalWhenItCanno
 	}
 }
 
+// TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory asserts Remove returns the failure of a remote step, not the error for a kept refilled directory, when both occur, and still reports the directory in StrayPath.
+// It sets process-global hooks, so it is not parallel.
+func TestRemove_ReturnsTheRemoteStepFailureOverAKeptDirectory(t *testing.T) {
+	tiergate.Require(t, 1)
+
+	const slug = "refilled-late-remote"
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+	l := h.Location
+	dir := fabricengine.WorktreePath(l, slug)
+	gitkit.CommitFile(t, h.PairRecordsSibling(slug), "_lym/record.txt", "run record\n", "record")
+	fabricengine.SetTeardownHooksForTest(t, nil, func() { refillWithLockFile(t, dir) })
+	fabricengine.SetLeftoverSeamForTest(h.Topology,
+		func(container, target string) (bool, bool, error) {
+			return false, false, &os.PathError{Op: "unlinkat", Path: target, Err: fs.ErrPermission}
+		},
+		func(time.Duration) {})
+	fabricengine.SetArchiveSleepForTest(h.Topology, func(time.Duration) {})
+	fabricengine.SetArchiveTagPushHookForTest(t, func(tagRef string) error {
+		return &gitexec.GitError{Args: []string{"push"}, ExitCode: 1, Stderr: " ! [remote rejected] " + tagRef + " -> " + tagRef + " (pre-receive hook declined)\n"}
+	})
+
+	res, err := h.Topology.Remove(l, slug, false, false)
+	if err == nil {
+		t.Fatal("Remove error = nil; want the remote step's failure")
+	}
+	if errors.Is(err, fabricengine.ErrStrayPathKept) {
+		t.Errorf("Remove error = %v; want the remote step's failure, not the kept directory's", err)
+	}
+	if res.StrayPath != dir {
+		t.Errorf("StrayPath = %q; want %q", res.StrayPath, dir)
+	}
+}
+
 // refillWithLockFile plays a late writer: it writes a lock file under dir, recreating dir, and reports whether it did.
 func refillWithLockFile(t *testing.T, dir string) bool {
 	t.Helper()
@@ -255,6 +293,130 @@ func refillWithLockFile(t *testing.T, dir string) bool {
 		return false
 	}
 	return true
+}
+
+// TestRemoveStrayTaskPath asserts a plain directory at a pair's task worktree path is deleted, an absent path is no error, a registered worktree, a directory holding a .git entry, an invalid slug and the prime's slug are refused and kept, and a failed delete wraps ErrStrayPathKept and keeps the directory.
+func TestRemoveStrayTaskPath(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// slug is the slug asked for; empty means the default stray slug.
+		slug string
+		// primeSlug asks for the prime worktree's own name instead of slug.
+		primeSlug bool
+		// plant prepares the hub for the slug asked for; nil plants nothing.
+		plant func(t *testing.T, h *hubforge.Hub, slug string)
+		// removeErr is what the seam's removal returns; nil keeps the removal working.
+		removeErr   error
+		wantRemoved bool
+		// wantErrIs is a sentinel the error must wrap, and wantErrContains text it must hold; both empty means success.
+		wantErrIs       error
+		wantErrContains string
+		// wantGone says the path is absent afterwards.
+		wantGone bool
+	}{
+		{
+			name:        "PlainDirectoryWithBuildOutputIsDeleted",
+			plant:       plantStrayDir("obj"),
+			wantRemoved: true,
+			wantGone:    true,
+		},
+		{
+			name:     "AbsentPathIsNoError",
+			wantGone: true,
+		},
+		{
+			name: "RegisteredWorktreeIsRefused",
+			plant: func(t *testing.T, h *hubforge.Hub, slug string) {
+				hubforge.AddPairWith(t, h, slug, fabricengine.AddOptions{})
+			},
+			wantErrContains: "is a registered worktree",
+		},
+		{
+			name:            "DirectoryHoldingGitIsRefused",
+			plant:           plantStrayDir(".git"),
+			wantErrContains: "holds a .git entry",
+		},
+		{
+			name:      "FailedDeleteKeepsTheDirectory",
+			plant:     plantStrayDir("obj"),
+			removeErr: fs.ErrPermission,
+			wantErrIs: fabricengine.ErrStrayPathKept,
+		},
+		{
+			name:            "InvalidSlugIsRefusedAndNothingIsDeleted",
+			slug:            "nested/slug",
+			plant:           plantStrayDir("obj"),
+			wantErrContains: "invalid slug",
+		},
+		{
+			name:            "PrimeSlugIsRefusedAndThePrimeIsKept",
+			primeSlug:       true,
+			wantErrContains: "prime worktree",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			slug := "stray-left"
+			if tt.slug != "" {
+				slug = tt.slug
+			}
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			if tt.primeSlug {
+				primeName, err := fabricengine.PrimeName(h.Location)
+				if err != nil {
+					t.Fatalf("read the prime worktree's name: %v", err)
+				}
+				slug = primeName
+			}
+			if tt.plant != nil {
+				tt.plant(t, h, slug)
+			}
+			if tt.removeErr != nil {
+				fabricengine.SetLeftoverSeamForTest(h.Topology,
+					func(container, target string) (bool, bool, error) {
+						return false, false, &os.PathError{Op: "unlinkat", Path: target, Err: tt.removeErr}
+					},
+					func(time.Duration) {})
+			}
+			dir := fabricengine.WorktreePath(h.Location, slug)
+
+			removed, err := h.Topology.RemoveStrayTaskPath(h.Location, slug)
+
+			switch {
+			case tt.wantErrIs != nil:
+				if !errors.Is(err, tt.wantErrIs) {
+					t.Errorf("RemoveStrayTaskPath error = %v; want it to wrap %v", err, tt.wantErrIs)
+				}
+			case tt.wantErrContains != "":
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrContains) {
+					t.Errorf("RemoveStrayTaskPath error = %v; want it to hold %q", err, tt.wantErrContains)
+				}
+			case err != nil:
+				t.Errorf("RemoveStrayTaskPath error = %v; want nil", err)
+			}
+			if removed != tt.wantRemoved {
+				t.Errorf("RemoveStrayTaskPath removed = %v; want %v", removed, tt.wantRemoved)
+			}
+			_, statErr := os.Lstat(dir)
+			if gone := os.IsNotExist(statErr); gone != tt.wantGone {
+				t.Errorf("%s gone = %v (stat error = %v); want %v", dir, gone, statErr, tt.wantGone)
+			}
+		})
+	}
+}
+
+// plantStrayDir returns a plant that creates a plain directory at the slug's task worktree path holding an empty entry named child.
+func plantStrayDir(child string) func(t *testing.T, h *hubforge.Hub, slug string) {
+	return func(t *testing.T, h *hubforge.Hub, slug string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(fabricengine.WorktreePath(h.Location, slug), child), 0o755); err != nil {
+			t.Fatalf("plant a stray directory for %s: %v", slug, err)
+		}
+	}
 }
 
 // TestPairWorktreeStands_ReadsOnlyARegisteredWorktree asserts a registered task worktree reads as standing, while a plain directory at a pair's path and an absent path do not.

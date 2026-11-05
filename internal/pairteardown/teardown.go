@@ -57,6 +57,9 @@ type Request struct {
 	Snapshot bool
 	// LeaveClaim, in origin mode, leaves the pair's board claim to the caller: the removal reads no landed answer and settles no claim.
 	LeaveClaim bool
+	// ClearStray deletes a directory that is no worktree at the task worktree's path once the removal left the pair gone, such as one a build or language server refilled with ignored output.
+	// A caller sets it only where it created the slug's pair at that path or the operator asked to remove the slug's pair; a delete that fails returns an error wrapping fabricengine.ErrStrayPathKept.
+	ClearStray bool
 	// AfterSnapshot runs once the snapshot step succeeded and before the removal; its error stops the removal with the snapshot tag kept.
 	AfterSnapshot func() error
 	// Verdict is the caller's origin reconcile verdict for the slug, empty when it ran none.
@@ -129,6 +132,8 @@ type Teardown struct {
 	ownedProcesses func(slug string) ([]runproc.Record, error)
 	endSession     func(slug string, gone bool) (ended bool, abandoned string, err error)
 	remove         func(req Request) (fabricengine.RemoveResult, error)
+	// removeStray deletes a path at the slug's task worktree location that is no worktree and reports whether it deleted anything.
+	removeStray func(slug string) (bool, error)
 	// snapshot keeps the pair's uncommitted paths under a local snapshot tag, recording into rec; the tag is empty when nothing was uncommitted.
 	snapshot func(rec *fabricengine.Mutations, slug string) (tag string, paths []string, err error)
 	// archive copies the pair's trace and verify logs into the hub's log archive; it never fails the teardown.
@@ -221,6 +226,13 @@ func New(prime *lymcwd.Location) (*Teardown, error) {
 			return top.RemoveLocal(prime, req.Slug, req.Force)
 		}
 		return top.Remove(prime, req.Slug, req.Force, req.Remote)
+	}
+	t.removeStray = func(slug string) (bool, error) {
+		top, err := t.topology()
+		if err != nil {
+			return false, err
+		}
+		return top.RemoveStrayTaskPath(prime, slug)
 	}
 	t.snapshot = func(rec *fabricengine.Mutations, slug string) (string, []string, error) {
 		top, err := t.topology()
@@ -391,6 +403,9 @@ func (t *Teardown) driverLockBusyError(slug, retry string) error {
 // The returned result carries the snapshot's tag, paths and mutation record on every return after the snapshot step.
 //
 // With req.LeaveClaim and no req.Local the landed answer is not read and the board claim is not settled, which the caller does itself.
+//
+// With req.ClearStray, a removal that left the pair gone, one that succeeded, found nothing of the pair, or kept a refilled directory, is followed by the delete of a directory that is no worktree at the task worktree's path, before the claim is settled.
+// A failed delete returns its error, and a delete that clears a kept directory turns the removal's error into success.
 func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	var snap snapshotOutcome
 	if req.Snapshot {
@@ -423,6 +438,9 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 	t.archive(req.Slug)
 	res, err := t.remove(req)
 	res = snap.applyTo(res)
+	if req.ClearStray {
+		res, err = t.clearStray(req.Slug, res, err)
+	}
 	if err != nil {
 		return res, err
 	}
@@ -430,6 +448,28 @@ func (t *Teardown) RemovePair(req Request) (fabricengine.RemoveResult, error) {
 		t.settleBoardClaim(req.Slug, landed)
 	}
 	return res, nil
+}
+
+// clearStray deletes a directory that is no worktree at the task worktree's path after a removal that left the pair gone, given the removal's result and error.
+// Any other removal error is returned as it is, since the pair may still stand.
+// A kept refilled directory the delete clears reads as a removal that succeeded.
+func (t *Teardown) clearStray(slug string, res fabricengine.RemoveResult, err error) (fabricengine.RemoveResult, error) {
+	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) && !errors.Is(err, fabricengine.ErrStrayPathKept) {
+		return res, err
+	}
+	removed, strayErr := t.removeStray(slug)
+	if strayErr != nil {
+		return res, strayErr
+	}
+	if removed {
+		logger.Info("pairteardown: a directory that is no worktree was deleted at the task worktree's path", "slug", slug)
+	}
+	res.StrayPathDeleted = removed
+	res.StrayPath = ""
+	if errors.Is(err, fabricengine.ErrStrayPathKept) {
+		return res, nil
+	}
+	return res, err
 }
 
 // snapshotOutcome is what the snapshot step of a local removal produced.

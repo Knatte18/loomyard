@@ -41,8 +41,12 @@ type fakeSubstrates struct {
 	// killCaptureErr is what the capture job's termination answers.
 	killCaptureErr error
 
-	// removeErr is returned by the removal.
-	removeErr error
+	// removeErr is returned by the removal, and removeStrayPath is the StrayPath of its result.
+	removeErr       error
+	removeStrayPath string
+	// strayRemoved and strayErr are what the stray path's delete answers.
+	strayRemoved bool
+	strayErr     error
 	// snapshotErr fails the snapshot step.
 	snapshotErr error
 	// childLanded is what the landed read answers.
@@ -176,7 +180,11 @@ func (f *fakeSubstrates) teardown() *Teardown {
 			} else {
 				f.calls = append(f.calls, "remove")
 			}
-			return fabricengine.RemoveResult{}, f.removeErr
+			return fabricengine.RemoveResult{StrayPath: f.removeStrayPath}, f.removeErr
+		},
+		removeStray: func(string) (bool, error) {
+			f.calls = append(f.calls, "removeStray")
+			return f.strayRemoved, f.strayErr
 		},
 		snapshot: func(*fabricengine.Mutations, string) (string, []string, error) {
 			f.calls = append(f.calls, "snapshot")
@@ -245,6 +253,62 @@ func (f *fakeSubstrates) teardown() *Teardown {
 }
 
 var busy = quietState{driver: "tst:slug:driver"}
+
+// TestRemovePair_ClearStray asserts a request with ClearStray deletes a stray path at the task worktree's location once the removal left the pair gone, reads a kept refilled directory the delete clears as success, returns a failed delete, and leaves the path alone without the flag or after a removal that may have left the pair standing.
+func TestRemovePair_ClearStray(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	const strayPath = "/hub/slug"
+	kept := fmt.Errorf("remove: %w", fabricengine.ErrStrayPathKept)
+	notFound := fmt.Errorf("remove: %w", fabricengine.ErrPairNotFound)
+	refused := errors.New("removal refused")
+	deleteFailed := fmt.Errorf("%w: delete failed", fabricengine.ErrStrayPathKept)
+	tests := []struct {
+		name       string
+		clearStray bool
+		removeErr  error
+		strayPath  string
+		strayErr   error
+		// wantErrIs is what the error must wrap, nil for success.
+		wantErrIs     error
+		wantStrayPath string
+		// wantDeleted is the StrayPathDeleted the result must carry.
+		wantDeleted bool
+		wantCalls   string
+	}{
+		{name: "WithoutTheFlagAKeptDirectoryIsReturned", removeErr: kept, strayPath: strayPath, wantErrIs: fabricengine.ErrStrayPathKept, wantStrayPath: strayPath, wantCalls: "archive,remove"},
+		{name: "SuccessfulRemovalLooksForAStrayThenSettlesTheClaim", clearStray: true, wantDeleted: true, wantCalls: "archive,remove,removeStray,readClaim"},
+		{name: "KeptDirectoryTheDeleteClearsReadsAsSuccess", clearStray: true, removeErr: kept, strayPath: strayPath, wantDeleted: true, wantCalls: "archive,remove,removeStray,readClaim"},
+		{name: "NothingOfThePairLeftClearsTheStrayAndStaysNotFound", clearStray: true, removeErr: notFound, strayPath: strayPath, wantErrIs: fabricengine.ErrPairNotFound, wantDeleted: true, wantCalls: "archive,remove,removeStray"},
+		{name: "FailedDeleteIsReturned", clearStray: true, removeErr: kept, strayPath: strayPath, strayErr: deleteFailed, wantErrIs: deleteFailed, wantStrayPath: strayPath, wantCalls: "archive,remove,removeStray"},
+		{name: "RefusedRemovalLeavesThePathAlone", clearStray: true, removeErr: refused, wantErrIs: refused, wantCalls: "archive,remove"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			f := &fakeSubstrates{removeErr: tt.removeErr, removeStrayPath: tt.strayPath, strayRemoved: true, strayErr: tt.strayErr}
+
+			res, err := f.teardown().RemovePair(Request{Slug: "slug", Landed: true, ClearStray: tt.clearStray})
+
+			if tt.wantErrIs == nil && err != nil {
+				t.Errorf("RemovePair error = %v; want nil", err)
+			}
+			if tt.wantErrIs != nil && !errors.Is(err, tt.wantErrIs) {
+				t.Errorf("RemovePair error = %v; want it to wrap %v", err, tt.wantErrIs)
+			}
+			if res.StrayPath != tt.wantStrayPath {
+				t.Errorf("RemovePair StrayPath = %q; want %q", res.StrayPath, tt.wantStrayPath)
+			}
+			if res.StrayPathDeleted != tt.wantDeleted {
+				t.Errorf("RemovePair StrayPathDeleted = %v; want %v", res.StrayPathDeleted, tt.wantDeleted)
+			}
+			if got := strings.Join(f.calls, ","); got != tt.wantCalls {
+				t.Errorf("RemovePair calls = %q; want %q", got, tt.wantCalls)
+			}
+		})
+	}
+}
 
 // TestTeardown_CallSequence drives EndSession and Run through the fake substrates and pins which substrate calls each makes, in what order, and what it returns.
 // The board-claim rows pin the settlement rule through Run: which reads precede the removal and the write, and what is written.

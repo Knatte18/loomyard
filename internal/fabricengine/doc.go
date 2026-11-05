@@ -588,13 +588,15 @@
 // `Remove` reports the handover in `RemoteHandedOff`; in a test binary the child's steps run in process before the verb returns, filling `OriginArchiveTag`, the `RemoteBranch` and `RemoteCodeBranch` fields and the sweep entry's remote fields, an archive failure returned as the error.
 // Just before the tag, `Remove` commits the sibling worktree's uncommitted changes under the scoped record pathspec, so the tag holds them; only changes outside that pathspec refuse without `force`.
 // `Topology.RemoveRefusal` is the read-only probe of every refusal `Remove` raises before its first mutation.
-// `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally (task worktree, records worktree, records branch, task branch, launchers), made from the same `inspectPair` `Remove` uses.
+// `Topology.PairParts` is the read-only, network-free reading of which parts of a pair are left locally (task worktree, records worktree, records branch, task branch, launchers, and a stray path at the task worktree's location), made from the same `inspectPair` `Remove` uses.
 // `Topology.TaskBranchOnOrigin` reports whether the task branch is on the task repository's origin: a repository with no origin remote reads false, and a failed lookup is returned.
 // `TaskBranchSlugs` lists, offline and read-only, the slugs of a prefix whose task branch exists locally or as an origin remote-tracking branch, so a caller numbering new slugs past a torn-down pair's kept branch sees it.
 // `Topology.DiscardTaskBranch` archives and deletes the task branch locally and on origin whether or not its work is landed: it tags the local tip `archive/<slug>/<first 12 hex>` and deletes the local branch under that tag, and its teardown child pushes the tags, archiving only the containing tip when one tip holds the other, and deletes the branch on origin under them.
 // A failed local tag deletes nothing and wraps `ErrArchiveFailed`, and a refused gate is returned as an error naming the branch.
 // A pair already half removed is finished rather than refused: `Remove` does whatever teardown remains, reports its `Steps` and any `StrayPath`, and returns `ErrPairNotFound` when nothing is left.
-// After the sibling's teardown `Remove` looks at the task worktree's path once more and removes a directory a late writer refilled there since its removal; one it cannot remove is reported in `StrayPath`.
+// After the sibling's teardown `Remove` looks at the task worktree's path once more and removes a directory a late writer refilled there since its removal;
+// one it cannot remove is reported in `StrayPath`, and `Remove` finishes the teardown and returns an error wrapping `ErrStrayPathKept`.
+// `Topology.RemoveStrayTaskPath` deletes a path at a slug's task worktree location that is no registered worktree and holds no `.git` entry, for a caller that knows the slug's pair stood there; a failed delete wraps `ErrStrayPathKept`.
 // `PairWorktreeStands` reports whether a slug's task worktree stands as a registered linked worktree, so a caller never reads such a leftover directory as a pair.
 // `Prune` reports every hub directory named as a pair slug that no registration covers as `Unowned`, naming the way to clear it, and never removes one.
 // With `remote`, `Remove`'s teardown child also deletes the landed task branch on origin, leased to the observed tip and gated on the branch being landed; a refusal or lost lease is logged as kept and is no failure.
@@ -922,7 +924,9 @@
 // # The destruction chokepoint
 //
 // `destroy.go` is the one file in this package permitted to perform a destructive primitive — `os.RemoveAll`/`os.Remove`, `git worktree remove`, `git branch -D`, `fslink.Remove`, deleting a branch on a remote (`git push <remote> --delete`), moving a task branch on a remote (a leased force push), a warp checkout's `ResetHard`, and the board checkout's seed-commit drop — and every one of them runs its shared four-check pipeline first.
-// The one exception is `removeWorktreeLeftover`: it keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
+// There are two exceptions.
+// `removeWorktreeLeftover` keeps containment through `os.Root`, and takes ownership and dirtiness from the gated `git worktree remove` its caller just ran on the same target.
+// `Topology.RemoveStrayTaskPath` reaches the same delete with no git run before it: its caller proves ownership, as a run that created the pair at that path or as an operator who asked to remove the slug's pair, it refuses a registered linked worktree and a directory holding a `.git` entry, and neither `force` nor dirtiness applies.
 // See `PATTERN-fabric-git` for the rules;
 // this section is the rationale the invariant deliberately omits.
 //

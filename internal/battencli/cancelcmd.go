@@ -53,10 +53,10 @@ func (c *battenCLI) cancelCmd() *cobra.Command {
 		Long: `cancel ends the batten run of one slug for good, from the prime or a beam, whatever its state.
 It ends the run's registered processes and strands, stops the tackler strand its marker names,
 clears the board claim, removes the run's records and scratch and commits that removal on the
-records side, lifts the slug's own pause entries and spawns the push of the records.
+records side, lifts the slug's own pause entries and pushes the records.
 The pair is kept by default, and "lym batten cancel <slug> --remove" must run before the slug runs again.
 --remove removes the pair, keeps its uncommitted paths under a local snapshot tag, and archives
-and deletes its task branch locally and on origin, each deleted tip held by an archive tag on origin.
+and deletes its task branch locally and on origin, each tip held by an archive tag on origin.
 
 It refuses, before it ends or removes anything, while a hub pause covers the prime, when the run's
 work already reached its parent (finish the landing with "lym batten run" instead), when another
@@ -72,7 +72,7 @@ A beam with no members ends the pawl run's processes and the beam's dobby, then 
 beam's orch and watcher; "lym beam create <slug>" starts the run again.
 
 Output: {"slug", "state", "row", "ended", "strands_stopped", "tackler_stopped", "pair_removed",
-"snapshot_tag", "archive_tags", "records_removed", "claim_cleared", "lifted", "push_spawned",
+"stray_directory_deleted", "snapshot_tag", "archive_tags", "records_removed", "claim_cleared", "lifted", "push_spawned",
 "notice_posted", "end_only", "way_forward", "warnings"}.
 push_spawned says the push was started, not that origin took it.
 
@@ -150,23 +150,24 @@ func cancelEnvelope(report cancelReport) map[string]any {
 		ended = append(ended, map[string]any{"pid": process.PID, "role": process.Role})
 	}
 	return map[string]any{
-		"slug":            report.Slug,
-		"state":           report.State,
-		"row":             report.Row,
-		"ended":           ended,
-		"strands_stopped": slices.Concat([]string{}, report.StrandsStopped),
-		"tackler_stopped": report.TacklerStopped,
-		"pair_removed":    report.PairRemoved,
-		"snapshot_tag":    report.SnapshotTag,
-		"archive_tags":    slices.Concat([]string{}, report.ArchiveTags),
-		"records_removed": report.RecordsRemoved,
-		"claim_cleared":   report.ClaimCleared,
-		"lifted":          slices.Concat([]string{}, report.Lifted),
-		"push_spawned":    report.PushSpawned,
-		"notice_posted":   report.NoticePosted,
-		"end_only":        report.EndOnly,
-		"way_forward":     report.WayForward,
-		"warnings":        slices.Concat([]string{}, report.Warnings),
+		"slug":                    report.Slug,
+		"state":                   report.State,
+		"row":                     report.Row,
+		"ended":                   ended,
+		"strands_stopped":         slices.Concat([]string{}, report.StrandsStopped),
+		"tackler_stopped":         report.TacklerStopped,
+		"pair_removed":            report.PairRemoved,
+		"stray_directory_deleted": report.StrayDirectoryDeleted,
+		"snapshot_tag":            report.SnapshotTag,
+		"archive_tags":            slices.Concat([]string{}, report.ArchiveTags),
+		"records_removed":         report.RecordsRemoved,
+		"claim_cleared":           report.ClaimCleared,
+		"lifted":                  slices.Concat([]string{}, report.Lifted),
+		"push_spawned":            report.PushSpawned,
+		"notice_posted":           report.NoticePosted,
+		"end_only":                report.EndOnly,
+		"way_forward":             report.WayForward,
+		"warnings":                slices.Concat([]string{}, report.Warnings),
 	}
 }
 

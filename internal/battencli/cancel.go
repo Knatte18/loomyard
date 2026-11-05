@@ -116,6 +116,8 @@ type cancelReport struct {
 	TacklerStopped string
 	// PairRemoved is true when the cancel removed the pair, or found nothing of it left.
 	PairRemoved bool
+	// StrayDirectoryDeleted is true when the cancel deleted a directory that is no worktree at the pair's task worktree path.
+	StrayDirectoryDeleted bool
 	// SnapshotTag names the snapshot tag that holds the pair's uncommitted paths, empty when none was taken.
 	SnapshotTag string
 	// ArchiveTags lists the archive tags that hold the deleted task branch tips.
@@ -605,7 +607,7 @@ func cancelOwnedElsewhere(slug, owner, subject string) error {
 	return fmt.Errorf("%s is owned by machine %s; way forward: run \"lym adopt %s\" on this machine first, or \"lym batten cancel %s\" on %s", slug, owner, subjectOrSlug(subject, slug), slug, owner)
 }
 
-// refuseNothingLeft refuses a cancel when no record, claim, pair part, session, process or marker of the slug is left, and for a task branch left alone when remove is not set.
+// refuseNothingLeft refuses a cancel when no record, claim, pair part, session, process or marker of the slug is left, and for a task branch or a directory that is no worktree at the task worktree's path left alone when remove is not set.
 // With remove the task branch on origin counts as left, read only when nothing else is left and origin was reached.
 func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading cancelMarkerReading, parts fabricengine.PairParts, deps cancelDeps) error {
 	recordsHere, err := deps.RecordsPresent()
@@ -634,9 +636,12 @@ func refuseNothingLeft(slug string, remove, endOnly bool, rerun string, reading 
 		if parts.TaskBranch {
 			return fmt.Errorf("the task branch of %s is all that is left; way forward: run %q, which archives and deletes its task branch", slug, cancelCommand(slug, true))
 		}
+		if parts.StrayPath {
+			return fmt.Errorf("a directory that is no worktree is all that is left of %s, at its task worktree path; way forward: run %q, which deletes it", slug, cancelCommand(slug, true))
+		}
 		return nothingLeft(slug)
 	}
-	if parts.TaskBranch {
+	if parts.TaskBranch || parts.StrayPath {
 		return nil
 	}
 	if endOnly {
@@ -659,17 +664,15 @@ func nothingLeft(slug string) error {
 
 // removePairAndBranch removes the pair, snapshotting its uncommitted paths first, then archives and deletes the task branch while one is left.
 // A pair with nothing left reads as removed.
-// A directory the removal left at the pair's path, which is no worktree, is named in a warning with the way to clear it, since it blocks the slug's next run.
+// A directory that is no worktree at the pair's task worktree path is deleted with the pair, since it blocks the slug's next run, and a failed delete refuses naming the cancel to run again.
 func removePairAndBranch(slug, rerun string, report *cancelReport, deps cancelDeps) error {
-	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true})
+	result, err := deps.RemovePair(pairteardown.Request{Slug: slug, Force: true, Snapshot: true, Remote: true, LeaveClaim: true, ClearStray: true})
 	report.SnapshotTag = result.SnapshotTag
+	report.StrayDirectoryDeleted = result.StrayPathDeleted
 	if err != nil && !errors.Is(err, fabricengine.ErrPairNotFound) {
 		return fmt.Errorf("battencli: removing the pair of %s refused: %w; way forward: fix the cause it names, then run \"lym batten cancel %s --remove\" again", slug, err, slug)
 	}
 	report.PairRemoved = true
-	if result.StrayPath != "" {
-		report.Warnings = append(report.Warnings, fmt.Sprintf("the directory %s stays at the pair's path and is not a worktree; save anything worth keeping from it, then delete it before %s runs again", result.StrayPath, slug))
-	}
 
 	parts, err := deps.PairParts()
 	if err != nil {

@@ -780,7 +780,22 @@ func TestCreateRefusal_LeftoverBranchRemedyNeverNamesCheckout(t *testing.T) {
 	}
 }
 
-// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive and a still-running push of the pair each name the resume, and that every other teardown error passes through unchanged.
+// TestTeardownRequest_ClearsStrayAndLandsTheRemovalRemotely asserts the batten-driven teardown request names the slug, removes the remote branch, marks the entry landed and clears a directory left at the task worktree's path, and never forces.
+func TestTeardownRequest_ClearsStrayAndLandsTheRemovalRemotely(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	got := teardownRequest("some-slug")
+
+	if got.Slug != "some-slug" || got.Force {
+		t.Errorf("teardownRequest Slug, Force = %q, %v; want %q, false", got.Slug, got.Force, "some-slug")
+	}
+	if !got.Remote || !got.Landed || !got.ClearStray {
+		t.Errorf("teardownRequest Remote, Landed, ClearStray = %v, %v, %v; want true, true, true", got.Remote, got.Landed, got.ClearStray)
+	}
+}
+
+// TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce asserts a sibling-dirt refusal is reworded to batten's own recovery -- inspect the sibling's out-of-pathspec content, commit or remove it by hand, then resume -- and never names --force, that a failed archive, a still-running push of the pair and a directory kept at the task worktree's path each name the resume, and that every other teardown error passes through unchanged.
 func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T) {
 	tiergate.Require(t, 0)
 	dirty := fmt.Errorf("remove: %w", fabricengine.ErrPairSiblingDirty)
@@ -827,6 +842,17 @@ func TestTeardownRefusal_RecordsRemedyNamesCommitRecordsNeverForce(t *testing.T)
 	}
 	if strings.Contains(got.Error(), "--force") {
 		t.Errorf("teardownRefusal(push running) = %q; want it to never name --force", got.Error())
+	}
+
+	strayKept := fmt.Errorf("%w: delete failed", fabricengine.ErrStrayPathKept)
+	got = teardownRefusal(strayKept, "some-slug")
+	if !errors.Is(got, fabricengine.ErrStrayPathKept) {
+		t.Errorf("teardownRefusal(stray kept) = %v; want it to still wrap ErrStrayPathKept", got)
+	}
+	for _, want := range []string{"was removed", "delete failed", "once it is deleted", "lym batten run some-slug"} {
+		if !strings.Contains(got.Error(), want) {
+			t.Errorf("teardownRefusal(stray kept) = %q; want it to contain %q", got.Error(), want)
+		}
 	}
 
 	other := errors.New("the task worktree has uncommitted changes")

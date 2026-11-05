@@ -50,6 +50,8 @@
 //
 // RemovePair then archives the pair's logs and calls Topology.Remove.
 // It repeats the probe's checks, so a refusal raised only by Remove means the pair changed between probe and removal, and the session is already ended.
+// With Request.ClearStray, once the removal left the pair gone, RemovePair deletes a directory that is no worktree at the task worktree's path through Topology.RemoveStrayTaskPath, such as one a build or language server refilled after the removal;
+// a delete that fails returns an error wrapping fabricengine.ErrStrayPathKept, and one that removed a directory sets StrayPathDeleted on the returned result.
 //
 // # Pull request
 //

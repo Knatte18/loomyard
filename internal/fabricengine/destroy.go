@@ -1412,6 +1412,38 @@ func finishGitWorktreeRemoval(rec *Mutations, repoDir, container, target string,
 	return nil
 }
 
+// RemoveStrayTaskPath deletes what stands at slug's task worktree path when it is no registered linked worktree, such as a directory a build or language server refilled with ignored output after the pair's removal, and reports whether it deleted anything.
+// The caller's ownership proof is its own knowledge that a pair of slug stood at that path: a run that created the pair, or a removal of the slug's pair the operator asked for.
+// It refuses a registered linked worktree, which is a pair to remove, and a directory holding a `.git` entry, which is a repository of its own and never fabric's to delete.
+// Containment is kept by the delete's os.Root under the hub; no dirtiness check runs and no force applies, since what stands there is no worktree.
+// A delete that fails, after the late-writer retries, returns an error wrapping ErrStrayPathKept and leaves the path on disk.
+func (t *Topology) RemoveStrayTaskPath(l *lymcwd.Location, slug string) (bool, error) {
+	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
+		return false, err
+	}
+	if err := refusePrimeSlug(l, slug); err != nil {
+		return false, err
+	}
+	target := WorktreePath(l, slug)
+	if !pathPresent(target) {
+		return false, nil
+	}
+	entries, err := List(l.WorktreePath())
+	if err != nil {
+		return false, fmt.Errorf("list the worktrees to judge %s: %w", target, err)
+	}
+	if listsLinkedWorktree(entries, target) {
+		return false, fmt.Errorf("%s is a registered worktree, so it is a pair to remove and not a stray directory", target)
+	}
+	if pathPresent(filepath.Join(target, ".git")) {
+		return false, fmt.Errorf("%s holds a .git entry, so it is a repository of its own and fabric leaves it alone; save anything worth keeping from it, then delete it", target)
+	}
+	if err := removeWorktreeLeftover(NewMutations(l.HubPath), l.HubPath, target, t.leftover); err != nil {
+		return false, fmt.Errorf("%w: %w; way forward: stop whatever writes into it, such as a build or language server, then delete it", ErrStrayPathKept, err)
+	}
+	return true, nil
+}
+
 // removeGitWorktree is the executor for the git worktree remove primitive: it runs the pipeline,
 // then runs git worktree remove [--force] from repoDir.
 // It returns the resulting error unchanged rather than wrapping it, because every call site builds
