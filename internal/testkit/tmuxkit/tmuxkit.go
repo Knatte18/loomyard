@@ -14,6 +14,10 @@
 // It also sets `GIT_CEILING_DIRECTORIES` to the directory, so no repository discovery from a temp fixture climbs above it.
 // After the run it sweeps the servers, killing every process their panes' sessions still hold, scans `/proc` on Linux for any process whose cwd, executable or argv references the directory, kills it and fails the package, then removes the directory on every platform, Windows included.
 // A removal that fails is reported without changing the exit code, and a binary killed before it removes its directory leaves it for the next start's sweep.
+// Main also fails the package for a `.git` that appeared during its run directly in the lym temp root or the system temp directory above it, both shared by every test binary on the machine:
+// such an entry makes go's VCS stamping and git's repository discovery treat everything below it as one repository.
+// It removes the entry when it is an empty directory and names it for removal by hand otherwise.
+// Bound: a package running at the same time is failed for the same entry, since the check cannot tell which binary wrote it.
 // A test binary re-executed as a helper inherits that environment, and its own run directory is made beside the inherited one, never inside it, so its socket paths do not grow past the limit.
 // A socket on a reed capability-probe key is no finding in a run whose tier selection holds tier2 or tier3.
 // A reed watchdog daemon is killed without failing the package, because it idles out on its own schedule after the test that spawned it.
@@ -33,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -80,9 +85,12 @@ func Main(m *testing.M) int {
 		return 1
 	}
 
+	shared := sharedTempDirs(dir)
+
 	if runtime.GOOS == "windows" {
 		setTempEnv(dir)
-		return afterRun(os.Stderr, dir, m.Run(), leftoverGrace, func() {}, lymtemp.Remove)
+		code := runCheckingGitEntries(os.Stderr, shared, m.Run)
+		return afterRun(os.Stderr, dir, code, leftoverGrace, func() {}, lymtemp.Remove)
 	}
 
 	if err := checkSocketPath(dir, os.Getuid()); err != nil {
@@ -92,9 +100,75 @@ func Main(m *testing.M) int {
 	}
 	setEnv(dir)
 
-	code := m.Run()
+	code := runCheckingGitEntries(os.Stderr, shared, m.Run)
 
 	return afterRun(os.Stderr, dir, code, leftoverGrace, func() { sweep(dir, os.Getuid()) }, lymtemp.Remove)
+}
+
+// gitEntryName is the repository marker that, left directly in a shared temp directory, turns everything below it into one repository.
+const gitEntryName = ".git"
+
+// sharedTempDirs returns the directories above the run directory dir that every test binary on the machine shares: the lym temp root holding dir, and the system temp directory holding that root.
+func sharedTempDirs(dir string) []string {
+	root := filepath.Dir(dir)
+	return []string{root, filepath.Dir(root)}
+}
+
+// presentGitEntries returns the set of `.git` paths that exist directly in dirs, whatever their type.
+func presentGitEntries(dirs []string) map[string]bool {
+	present := map[string]bool{}
+	for _, dir := range dirs {
+		path := filepath.Join(dir, gitEntryName)
+		if _, err := os.Lstat(path); err == nil {
+			present[path] = true
+		}
+	}
+	return present
+}
+
+// runCheckingGitEntries snapshots the `.git` entries in dirs, calls run, and returns run's exit code, or 1 when the run left a new `.git` in dirs, naming it on w.
+func runCheckingGitEntries(w io.Writer, dirs []string, run func() int) int {
+	before := presentGitEntries(dirs)
+	return checkNewGitEntries(w, dirs, before, run())
+}
+
+// checkNewGitEntries fails the run for each `.git` directly in dirs that before does not hold, naming it on w, and returns code or 1.
+// It removes such an entry when it is an empty directory, so the stray breaks no later build, and asks for its removal by hand otherwise.
+// The entries are reported in the order of dirs.
+func checkNewGitEntries(w io.Writer, dirs []string, before map[string]bool, code int) int {
+	for _, dir := range dirs {
+		path := filepath.Join(dir, gitEntryName)
+		if before[path] {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		fmt.Fprintf(w, "tmuxkit: %s appeared during the run of this package or one running beside it; a test or the code it drives wrote outside its own t.TempDir, often through a path joined onto an empty or parent directory, and go's VCS stamping and git's discovery read everything below it as one repository\n", path)
+		fmt.Fprintln(w, removeStrayGitEntry(path, info))
+		code = 1
+	}
+	return code
+}
+
+// removeStrayGitEntry removes the `.git` entry at path, described by info, when it is an empty directory, and returns the line that says what became of it.
+// A symlink or file is never removed or followed.
+func removeStrayGitEntry(path string, info fs.FileInfo) string {
+	if !info.IsDir() {
+		return fmt.Sprintf("tmuxkit: %s is not a directory; remove it by hand", path)
+	}
+	err := os.Remove(path)
+	switch {
+	case err == nil:
+		return fmt.Sprintf("tmuxkit: removed the empty directory %s", path)
+	case errors.Is(err, fs.ErrNotExist):
+		return fmt.Sprintf("tmuxkit: %s was already removed by another process", path)
+	}
+	if entries, readErr := os.ReadDir(path); readErr == nil && len(entries) > 0 {
+		return fmt.Sprintf("tmuxkit: %s is not an empty directory; remove it by hand", path)
+	}
+	return fmt.Sprintf("tmuxkit: could not remove %s: %v; remove it by hand", path, err)
 }
 
 // afterRun finishes a package's run: it checks the sockets under dir, sweeps the servers, then, on Linux, kills every process still referencing dir and fails the run for each that is not a reed watchdog daemon, and finally calls remove to delete dir.

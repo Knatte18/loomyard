@@ -51,6 +51,9 @@ A test package never reaches the operator's global gitconfig or default tmux soc
 - The per-user directory `tmux-<uid>` is no finding by itself: tmux creates it on any invocation that names a `-L` key, a client probe of a server that never started included, and a client probe starts no server.
 - Bound: the check misses a test that points `TMUX_TMPDIR` elsewhere and a server started by a binary other than tmux.
   It also misses a server that reed tore down itself within the run, since reed removes its server's socket file, in tier 2 and under any tag alike.
+- After the run `Main` fails the package with exit 1 for a `.git` that appeared during its run directly in the lym temp root or the system temp directory above it, since both are shared by every test binary on the machine and such an entry makes go's VCS stamping and git's discovery read everything below it as one repository.
+  A test writes only under its own `t.TempDir`; the finding names the path, and `Main` removes the entry when it is an empty directory and asks for its removal by hand otherwise.
+  Bound: a package running at the same time fails for the same entry, since the check cannot tell which binary wrote it, and an entry present before the run is no finding.
 - Bound: a test binary killed by a panic or timeout skips the post-run check.
 
 ## Hermetic servers
