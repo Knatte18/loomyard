@@ -13,6 +13,9 @@ import (
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
+// detachedBranch is the Branch a WorktreeEntry carries for a worktree on a detached HEAD.
+const detachedBranch = "(detached)"
+
 // WorktreeEntry represents a single git worktree in the output of `git worktree list`.
 type WorktreeEntry struct {
 	Path     string `json:"path"`
@@ -67,7 +70,7 @@ func parseWorktreePorcelain(out string) ([]WorktreeEntry, error) {
 				branchRef := strings.TrimPrefix(line, "branch ")
 				entry.Branch = strings.TrimPrefix(branchRef, "refs/heads/")
 			} else if line == "detached" {
-				entry.Branch = "(detached)"
+				entry.Branch = detachedBranch
 			} else if strings.HasPrefix(line, "prunable") {
 				// Real porcelain output emits "prunable <reason>" (a reason string
 				// follows the keyword), never a bare "prunable" line, so an

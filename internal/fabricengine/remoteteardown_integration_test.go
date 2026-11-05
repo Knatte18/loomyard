@@ -99,7 +99,6 @@ func TestRunTeardownChild_RunsTheRemoteStepsInOrderUnderTheLock(t *testing.T) {
 				"kind":                  "remove",
 				"slug":                  slug,
 				"worktree":              l.WorktreePath(),
-				"branch_prefix":         cfg.BranchPrefix,
 				"weft_branch":           weftBranch,
 				"weft_tip":              tip,
 				"delete_weft_on_origin": true,

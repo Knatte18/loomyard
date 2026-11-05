@@ -215,9 +215,8 @@ type pathRequest struct {
 
 // branchRequest is the gate's request shape for the one destructive primitive whose target is a ref:
 // git branch -D. It carries no container and no target field at all — containment is structurally
-// N/A for a ref, expressed by the type rather than by a per-site "" that could be forgotten. It
-// carries no branchPrefix field either: the prefix is an input ownedManagedBranch's predicate needs,
-// so per the "each check's inputs travel with the check" rule it rides on that constructor instead.
+// N/A for a ref, expressed by the type rather than by a per-site "" that could be forgotten.
+// Per the "each check's inputs travel with the check" rule, an ownership predicate's inputs ride on its constructor.
 type branchRequest struct {
 	// what names the act being attempted, for the refusal message.
 	what string
@@ -419,9 +418,8 @@ const (
 // branchOwnership declares which of the closed set of ownership kinds a branchRequest's branch must
 // satisfy. The zero value is invalid and is refused by the pipeline before any check runs.
 type branchOwnership struct {
-	kind         branchOwnershipKind
-	location     *lymcwd.Location
-	branchPrefix string
+	kind     branchOwnershipKind
+	location *lymcwd.Location
 	// warpBranch serves ownedPairWarpBranch and ownedPairWeftBranch;
 	// parentBranch serves ownedPairWarpBranch only.
 	warpBranch   string
@@ -438,12 +436,11 @@ func ownedCreatedBranch(l *lymcwd.Location, tok createdBranchToken) branchOwners
 	return branchOwnership{kind: branchOwnershipCreatedBranch, location: l, createdBranch: tok.branch}
 }
 
-// ownedPairWarpBranch declares branch as owned when it is exactly warpBranch — the pair's own
-// BranchPrefix + slug — and warpBranch is not parentBranch, the branch the pair lands on.
-// ownedManagedBranch cannot serve a warp branch: under the default empty branch_prefix the warp branch
-// is the bare slug, which it accepts only when weft-suffixed, and its primary-branch and checked-out
-// predicates read the weft side only. This kind consults no weft-side predicate; the checked-out
-// question belongs to the dirtiness step. An empty warpBranch matches nothing.
+// ownedPairWarpBranch declares branch as owned when it is exactly warpBranch, the branch the pair stands on, and warpBranch is not parentBranch, the branch the pair lands on.
+// ownedManagedBranch cannot serve a warp branch:
+// under the default empty branch_prefix the warp branch is the bare slug, which it accepts only when weft-suffixed, and its primary-branch and checked-out predicates read the weft side only.
+// This kind consults no weft-side predicate; the checked-out question belongs to the dirtiness step.
+// An empty warpBranch matches nothing.
 func ownedPairWarpBranch(warpBranch, parentBranch string) branchOwnership {
 	return branchOwnership{kind: branchOwnershipPairWarp, warpBranch: warpBranch, parentBranch: parentBranch}
 }
@@ -456,14 +453,12 @@ func ownedPairWeftBranch(l *lymcwd.Location, warpBranch string) branchOwnership 
 	return branchOwnership{kind: branchOwnershipPairWeft, location: l, warpBranch: warpBranch}
 }
 
-// ownedManagedBranch declares branch as owned when it is one fabric's own scheme constructs (accepted
-// by WeftWarpSlug, or carrying branchPrefix), is not l's primary weft branch, and is not checked out
-// at any worktree. It is the only ownership constructor that takes a *lymcwd.Location, because
-// primaryWeftBranch(l) is the one predicate that genuinely needs it — clone's two hub-level path
-// sites have no Location in scope at all, which is exactly why every other kind does without one.
-// An empty branchPrefix means "the prefix test does not apply", never a match-everything wildcard.
-func ownedManagedBranch(l *lymcwd.Location, branchPrefix string) branchOwnership {
-	return branchOwnership{kind: branchOwnershipManaged, location: l, branchPrefix: branchPrefix}
+// ownedManagedBranch declares a records branch as owned when it is one fabric's own scheme constructs (accepted
+// by WeftWarpSlug), is not l's primary weft branch, and is not checked out at any worktree.
+// It consults no branch prefix, so a pair made under an earlier prefix stays as owned as one made under the current prefix.
+// It takes a *lymcwd.Location because primaryWeftBranch(l) needs it.
+func ownedManagedBranch(l *lymcwd.Location) branchOwnership {
+	return branchOwnership{kind: branchOwnershipManaged, location: l}
 }
 
 // pathDirtinessKind enumerates the closed set of dirtiness declarations a pathRequest may carry.
@@ -813,7 +808,7 @@ func containsCleanPath(paths []string, target string) bool {
 func resolveBranchOwnership(own branchOwnership, branch string) (ok bool, reason string) {
 	switch own.kind {
 	case branchOwnershipManaged:
-		return resolveManagedBranch(own.location, own.branchPrefix, branch)
+		return resolveManagedBranch(own.location, branch)
 	case branchOwnershipPairWarp:
 		return resolvePairWarpBranch(own.warpBranch, own.parentBranch, branch)
 	case branchOwnershipPairWeft:
@@ -864,10 +859,8 @@ func resolvePairWeftBranch(l *lymcwd.Location, warpBranch, branch string) (bool,
 // scheme constructs, must not be l's primary weft branch, and must not be checked out at any
 // worktree. It inherits primaryWeftBranch's fail-closed direction: an unreadable primary refuses
 // rather than proceeds, since Cleanup's deletions (and every other branch -D site) are irreversible.
-func resolveManagedBranch(l *lymcwd.Location, branchPrefix, branch string) (bool, string) {
-	_, weftManaged := WeftWarpSlug(branch)
-	prefixManaged := branchPrefix != "" && strings.HasPrefix(branch, branchPrefix)
-	if !weftManaged && !prefixManaged {
+func resolveManagedBranch(l *lymcwd.Location, branch string) (bool, string) {
+	if _, weftManaged := WeftWarpSlug(branch); !weftManaged {
 		return false, fmt.Sprintf("%s is not a name fabric's own scheme constructs", branch)
 	}
 

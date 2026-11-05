@@ -291,7 +291,7 @@ func (t *Topology) rollbackSwitch(rec *Mutations, l *lymcwd.Location, originalBr
 			what:      "delete forked weft branch",
 			repoDir:   RecordsWorktree(l),
 			branch:    forkedWeftBranch,
-			ownership: ownedManagedBranch(l, t.cfg.BranchPrefix),
+			ownership: ownedManagedBranch(l),
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}

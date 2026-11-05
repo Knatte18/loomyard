@@ -1,7 +1,7 @@
 // cleanupremotewarp_integration_test.go covers Topology.CleanupRemoteWarp against hubforge bare origins:
 // a dry run classifies every branch on the warp origin, apply deletes only the candidate, and a tip that moves after it was observed keeps the branch.
 //
-// Every hub is built through hubforge.CopyHub with an empty branch_prefix, so a branch is fabric-managed when the weft origin holds its weft branch.
+// Every hub is built through hubforge.CopyHub with an empty branch_prefix, so a branch is fabric-managed when the weft origin holds its weft branch; one test sets a prefix afterwards.
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
 package fabricengine_test
@@ -229,6 +229,58 @@ func TestCleanupRemoteWarp_ApplyDeletesOnlyTheCandidate(t *testing.T) {
 			t.Errorf("gone-landed was deleted from origin despite the checked-out worktree")
 		}
 	})
+}
+
+// TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches pins that, with branch_prefix set, a branch lacking the prefix is read as the bare slug of a pair made before it was set:
+// the weft evidence makes it managed and deletable, and without evidence it is kept as not fabric-managed.
+func TestCleanupRemoteWarp_BranchPrefixSetOverBareBranches(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := sweepFixture(t)
+	top := topologyWithPrefix(t, h.Location, laterBranchPrefix)
+
+	res, err := top.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+	if err != nil {
+		t.Fatalf("CleanupRemoteWarp error = %v", err)
+	}
+	got := remoteWarpEntries(res)
+
+	if e := got["gone-landed"]; !e.Candidate || !e.Deleted || e.Error != "" {
+		t.Errorf("gone-landed = %+v; want a managed candidate, deleted", e)
+	}
+	if originHasBranch(t, h.CodeBare, "gone-landed") {
+		t.Errorf("gone-landed still on origin")
+	}
+	if e := got["unmanaged"]; e.Candidate || e.Deleted || !strings.Contains(e.Reason, "not fabric-managed") {
+		t.Errorf("unmanaged = %+v; want a non-candidate whose reason says not fabric-managed", e)
+	}
+	if !originHasBranch(t, h.CodeBare, "unmanaged") {
+		t.Errorf("unmanaged was deleted from origin")
+	}
+}
+
+// TestCleanupRemoteWarp_BranchPrefixSetTakesTheBareSlugsLock pins that, with branch_prefix set, the sweep takes the teardown lock of a bare branch's own slug and keeps the branch while that lock is held.
+func TestCleanupRemoteWarp_BranchPrefixSetTakesTheBareSlugsLock(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	h := sweepFixture(t)
+	holdTeardownLock(t, h, "gone-landed")
+	top := topologyWithPrefix(t, h.Location, laterBranchPrefix)
+
+	res, err := top.CleanupRemoteWarp(h.Location, true, map[string]bool{"has-pr": true})
+	if err != nil {
+		t.Fatalf("CleanupRemoteWarp error = %v", err)
+	}
+
+	e := remoteWarpEntries(res)["gone-landed"]
+	if e.Deleted || e.Error != "" || !strings.Contains(e.Reason, "teardown lock") {
+		t.Errorf("gone-landed = %+v; want kept with a reason naming the teardown lock and no Error", e)
+	}
+	if !originHasBranch(t, h.CodeBare, "gone-landed") {
+		t.Errorf("gone-landed was deleted from origin despite the held lock")
+	}
 }
 
 func TestCleanupRemoteWarp_NilOpenPRHeadsRefusesEveryDeletion(t *testing.T) {

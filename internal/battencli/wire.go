@@ -1029,12 +1029,16 @@ func (c *battenCLI) wire(location *lymcwd.Location, slug string) error {
 				return err
 			}
 			if present {
+				branch, err := fabricengine.NewTopology(cfg).PairTaskBranch(location, slug)
+				if err != nil {
+					return err
+				}
 				// A worktree exists but Add never finished it -- see taskWorktreeComplete's own doc
 				// comment. Add refuses an existing worktree directory the same way it refuses a
 				// leftover branch, so the remedy is a cleanup followed by a resume.
 				return fmt.Errorf(
 					"the task worktree for %q exists but %s; %s, then resume this run to create it fresh",
-					slug, incompleteReason, incompletePairRemedy(slug, cfg.BranchPrefix+slug),
+					slug, incompleteReason, incompletePairRemedy(slug, branch),
 				)
 			}
 

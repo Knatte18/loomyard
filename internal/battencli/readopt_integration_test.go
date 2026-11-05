@@ -268,6 +268,23 @@ func TestBattenIntegration_GoneTaskWorktree(t *testing.T) {
 		}
 	})
 
+	t.Run("APrefixSetOverALiveBareSlugPairKeepsItsBranch", func(t *testing.T) {
+		t.Parallel()
+
+		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+		const slug = "bare-pair"
+		hubforge.AddPair(t, h, slug)
+		hubforge.SeedFabricConfig(t, h, "branch_prefix: hanf/\npathspec: \"\"\n")
+		seams := hubReadoptSeams(h.Location)
+
+		if got, err := seams.TaskBranch(slug); err != nil || got != slug {
+			t.Errorf("TaskBranch(%q) = %q, %v; want the bare slug %q", slug, got, err, slug)
+		}
+		if gone, err := seams.TaskBranchGone(slug); err != nil || gone {
+			t.Errorf("TaskBranchGone(%q) = %v, %v; want false for a live bare-slug pair", slug, gone, err)
+		}
+	})
+
 	t.Run("TaskWorktreePresentReadsStrayPathsAsAbsent", func(t *testing.T) {
 		t.Parallel()
 

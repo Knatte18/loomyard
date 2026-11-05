@@ -47,20 +47,15 @@ func (t *Topology) PairParts(l *lymcwd.Location, slug string) (PairParts, error)
 	}, nil
 }
 
-// TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin.
+// TaskBranchOnOrigin reports whether slug's task branch exists on the task repository's origin, under the current branch prefix or as the bare slug of a pair made before the prefix was set.
 // A repository with no origin remote reads false, and a failed lookup on a configured origin is returned.
 func (t *Topology) TaskBranchOnOrigin(l *lymcwd.Location, slug string) (bool, error) {
-	if _, err := gitrepo.New(l.WorktreePath()).RemoteURL(originRemoteName); err != nil {
-		return false, nil
-	}
-	tip, err := remoteHeadTip(l.WorktreePath(), t.cfg.BranchPrefix+slug)
-	if err != nil {
-		return false, err
-	}
-	return tip != "", nil
+	found, err := t.originTaskBranch(l, slug)
+	return found != "", err
 }
 
 // TaskBranchSlugs lists, sorted and without duplicates, the slugs starting with prefix whose task branch exists in the prime's warp repository, as a local branch or as an origin remote-tracking branch.
+// A branch carrying the configured branch prefix names the slug after it, and one lacking it names itself, as a pair made before the prefix was set does.
 // It reads the branch prefix from the fabric config and the refs in-process, so the remote-tracking branches are the ones the last fetch left and no network call is made.
 // An empty result is no error.
 func TaskBranchSlugs(prime *lymcwd.Location, prefix string) ([]string, error) {
@@ -76,8 +71,7 @@ func TaskBranchSlugs(prime *lymcwd.Location, prefix string) ([]string, error) {
 			return nil, err
 		}
 		for _, branch := range branches {
-			slug, ok := strings.CutPrefix(branch, cfg.BranchPrefix)
-			if ok && strings.HasPrefix(slug, prefix) {
+			if slug := slugOfBranch(cfg, branch); strings.HasPrefix(slug, prefix) {
 				seen[slug] = true
 			}
 		}

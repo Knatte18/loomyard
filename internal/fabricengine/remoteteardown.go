@@ -58,14 +58,15 @@ type remoteTeardownJob struct {
 	Kind string `json:"kind"`
 	Slug string `json:"slug"`
 	// Worktree is the warp worktree the command ran from, the location every step runs from.
-	Worktree     string `json:"worktree"`
-	BranchPrefix string `json:"branch_prefix"`
-	WeftBranch   string `json:"weft_branch,omitempty"`
+	Worktree string `json:"worktree"`
+	// WeftBranch is the pair's records branch as the command read it from the pair, since the pair's worktrees are gone when the job runs.
+	WeftBranch string `json:"weft_branch,omitempty"`
 	// WeftTip is the local weft tip the command tagged before it deleted the branch, empty when no local branch was left, so the child reads origin's.
 	WeftTip string `json:"weft_tip,omitempty"`
 	// DeleteWeftOnOrigin asks for the weft branch's delete on origin, leased on the origin tip the archive read.
-	DeleteWeftOnOrigin bool   `json:"delete_weft_on_origin,omitempty"`
-	WarpBranch         string `json:"warp_branch,omitempty"`
+	DeleteWeftOnOrigin bool `json:"delete_weft_on_origin,omitempty"`
+	// WarpBranch is the pair's task branch as the command read it from the pair, since the pair's worktrees are gone when the job runs.
+	WarpBranch string `json:"warp_branch,omitempty"`
 	// ParentBranch is the pair's recorded parent, which gates the task branch's delete on origin.
 	ParentBranch       string `json:"parent_branch,omitempty"`
 	DeleteTaskOnOrigin bool   `json:"delete_task_on_origin,omitempty"`
@@ -122,7 +123,7 @@ func runRemoteTeardown(rec *Mutations, l *lymcwd.Location, job remoteTeardownJob
 				out.err = out.weftRootErr
 				return out
 			}
-			deleteWeftBranchOnRemote(rec, l, job.WeftBranch, job.BranchPrefix, weftRoot, out.archive.leaseTip, &out.weft)
+			deleteWeftBranchOnRemote(rec, l, job.WeftBranch, weftRoot, out.archive.leaseTip, &out.weft)
 		} else if job.WeftTip == "" {
 			out.weftKeptOnOrigin = fmt.Sprintf("the sibling branch %q exists only on %q and was kept; pass --remote to delete it", job.WeftBranch, originRemoteName)
 		}

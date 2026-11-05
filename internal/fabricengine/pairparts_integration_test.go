@@ -1,5 +1,5 @@
 // pairparts_integration_test.go covers Topology.PairParts, Topology.TaskBranchOnOrigin and TaskBranchSlugs over hubforge hubs.
-// Every hub has an empty branch_prefix, so a pair's task branch is the bare slug.
+// Every hub has an empty branch_prefix unless a test seeds one, so a pair's task branch is the bare slug.
 //
 // Package fabricengine_test; shares the single TestMain in testmain_test.go.
 
@@ -120,30 +120,38 @@ func TestPairParts(t *testing.T) {
 	})
 }
 
-// TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads from the local branches and the origin remote-tracking branches.
+// TestTaskBranchSlugs pins which slugs of a prefix TaskBranchSlugs reads from the local branches and the origin remote-tracking branches, under the empty branch_prefix and under a set one.
 func TestTaskBranchSlugs(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
 
-	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
-	prime := h.PrimeWorktree()
-	gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t1")
-	gitkit.MustRun(t, prime, "git", "branch", "other")
-	gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t3")
-	gitkit.MustRun(t, prime, "git", "push", "origin", "adopt-fix-x-t3")
-	gitkit.MustRun(t, prime, "git", "branch", "-D", "adopt-fix-x-t3")
-
 	tests := []struct {
-		name   string
-		prefix string
-		want   []string
+		name string
+		// branchPrefix is the hub's branch_prefix; empty seeds none.
+		branchPrefix string
+		prefix       string
+		want         []string
 	}{
-		{"LocalAndOriginTrackingBranches", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3"}},
-		{"NoMatch", "nothing-", nil},
+		{"LocalAndOriginTrackingBranches", "", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3"}},
+		{"NoMatch", "", "nothing-", nil},
+		{"BareAndPrefixedBranchesUnderABranchPrefix", "hanf/", "adopt-fix-x-t", []string{"adopt-fix-x-t1", "adopt-fix-x-t3", "adopt-fix-x-t4"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+			if tt.branchPrefix != "" {
+				hubforge.SeedFabricConfig(t, h, "branch_prefix: "+tt.branchPrefix+"\npathspec: \"\"\n")
+			}
+			prime := h.PrimeWorktree()
+			gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t1")
+			gitkit.MustRun(t, prime, "git", "branch", "other")
+			gitkit.MustRun(t, prime, "git", "branch", "adopt-fix-x-t3")
+			gitkit.MustRun(t, prime, "git", "push", "origin", "adopt-fix-x-t3")
+			gitkit.MustRun(t, prime, "git", "branch", "-D", "adopt-fix-x-t3")
+			gitkit.MustRun(t, prime, "git", "branch", "hanf/adopt-fix-x-t4")
+
 			got, err := fabricengine.TaskBranchSlugs(h.Location, tt.prefix)
 			if err != nil {
 				t.Fatalf("TaskBranchSlugs(%q): %v", tt.prefix, err)

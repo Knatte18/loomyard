@@ -14,6 +14,7 @@ package fabricengine_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
@@ -84,6 +85,34 @@ func TestCleanup_RemoteTrueDeletesLocalAndRemoteOrphan(t *testing.T) {
 	}
 	if gitkit.BranchExists(t, h.RecordsBare, branch) {
 		t.Errorf("branch %q still exists on the remote after Cleanup(apply=true, remote=true)", branch)
+	}
+}
+
+// TestCleanup_PrefixSetOverBareSlugOrphan covers an orphan weft branch of a pair made before branch_prefix was set:
+// it is read as the bare slug, so the sweep archives and deletes it under that slug.
+func TestCleanup_PrefixSetOverBareSlugOrphan(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+
+	const slug = "cleanup-bare-before-prefix"
+	branch := fabricengine.RecordsBranchName(slug)
+	h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
+	l := h.Location
+	weftRoot := mustRecordsRepoRoot(t, l)
+	mustCreateOrphanWeftBranch(t, weftRoot, branch)
+	mustPushBranch(t, weftRoot, branch)
+
+	res, err := topologyWithPrefix(t, l, laterBranchPrefix).Cleanup(l, true, false, true)
+	if err != nil {
+		t.Fatalf("Cleanup(apply=true, remote=true) error = %v", err)
+	}
+
+	entry := findCleanupEntry(t, res.Entries, branch)
+	if !entry.Deleted || !entry.RemoteDeleted || entry.Error != "" {
+		t.Errorf("entry = %+v; want the bare-slug orphan deleted locally and on the remote with no error", entry)
+	}
+	if !strings.HasPrefix(entry.ArchiveTag, fabricengine.ArchiveTagPrefix+slug+"/") {
+		t.Errorf("entry.ArchiveTag = %q; want a tag under %q", entry.ArchiveTag, fabricengine.ArchiveTagPrefix+slug+"/")
 	}
 }
 

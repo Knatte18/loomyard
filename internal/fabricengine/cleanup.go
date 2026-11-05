@@ -41,7 +41,7 @@
 // accepts — so a directory-name comparison would misclassify it as a deletable orphan
 // and delete the very branch board's reserved weft:main branch requires to stay
 // permanent, distinct from it. Comparing
-// against live warp *branches* protects every task pair with no BranchPrefix juggling — but NOT the
+// against live warp *branches* protects every task pair whatever its branch prefix — but NOT the
 // primary weft branch, which needs the explicit carve-out described below.
 //
 // Board needs no explicit exclusion: its weft:main branch is the warp's own
@@ -270,7 +270,7 @@ func liveWarpBranchSet(l *lymcwd.Location) (map[string]bool, error) {
 // It re-reads the live warp branches under the lock and reports false, so the caller records no entry, when a worktree now sits on the orphan's paired warp branch, since the sweep listed them before an Add of the slug may have finished.
 // A failed local tag fills entry.Error and keeps the branch; a remote half that ran in process fills the entry's tags and remote outcome, and a failed one fills entry.Error.
 func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch string, entry *CleanupBranchEntry, remoteWeftRoot string, result *CleanupResult) (record bool) {
-	slug := strings.TrimPrefix(warpBranch, t.cfg.BranchPrefix)
+	slug := slugOfBranch(t.cfg, warpBranch)
 	if t.cleanupAfterEnumerate != nil {
 		t.cleanupAfterEnumerate()
 	}
@@ -311,11 +311,11 @@ func (t *Topology) cleanupOrphan(rec *Mutations, l *lymcwd.Location, warpBranch 
 		result.ArchiveSkippedReason = archiveSkipped
 	}
 
-	entry.Deleted = deleteWeftBranch(rec, l, entry.Branch, t.cfg.BranchPrefix, entry)
+	entry.Deleted = deleteWeftBranch(rec, l, entry.Branch, entry)
 	if archiveSkipped != "" {
 		return true
 	}
-	job = &remoteTeardownJob{Kind: remoteTeardownCleanup, Slug: slug, Worktree: l.WorktreePath(), BranchPrefix: t.cfg.BranchPrefix, WeftBranch: entry.Branch, WeftTip: tip, DeleteWeftOnOrigin: entry.Deleted && remoteWeftRoot != ""}
+	job = &remoteTeardownJob{Kind: remoteTeardownCleanup, Slug: slug, Worktree: l.WorktreePath(), WeftBranch: entry.Branch, WeftTip: tip, DeleteWeftOnOrigin: entry.Deleted && remoteWeftRoot != ""}
 	out := hold.finish(job)
 	if out.ran {
 		if out.err != nil {
@@ -403,7 +403,7 @@ func listWeftBranches(l *lymcwd.Location) ([]weftBranchCheckout, error) {
 // by no gate in this verb, and may not answer the gate's own primary-weft carve-out or checked-out
 // check either way.
 // rec is the calling verb's own recorder, passed straight through to deleteBranch.
-func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch, branchPrefix string, entry *CleanupBranchEntry) bool {
+func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch string, entry *CleanupBranchEntry) bool {
 	weftRepoRoot, err := RecordsRepoRoot(l)
 	if err != nil {
 		entry.Error = fmt.Sprintf("resolve weft repo root: %v", err)
@@ -413,7 +413,7 @@ func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch, branchPrefix s
 		what:      "delete weft branch",
 		repoDir:   weftRepoRoot,
 		branch:    branch,
-		ownership: ownedManagedBranch(l, branchPrefix),
+		ownership: ownedManagedBranch(l),
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}
@@ -432,7 +432,7 @@ func deleteWeftBranch(rec *Mutations, l *lymcwd.Location, branch, branchPrefix s
 // and a branch origin moved since is kept and reported in entry.RemoteKeptReason, never in entry.RemoteError.
 // A remote failure never aborts the sweep. It distinguishes a gate refusal from an operational
 // failure so entry.RemoteError always names the layer that actually said no.
-func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branchPrefix, weftRepoRoot, leaseSHA string, entry *CleanupBranchEntry) {
+func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, weftRepoRoot, leaseSHA string, entry *CleanupBranchEntry) {
 	if leaseSHA == "" {
 		return
 	}
@@ -441,7 +441,7 @@ func deleteWeftBranchOnRemote(rec *Mutations, l *lymcwd.Location, branch, branch
 		repoDir:   weftRepoRoot,
 		remote:    originRemoteName,
 		branch:    branch,
-		ownership: ownedManagedBranch(l, branchPrefix),
+		ownership: ownedManagedBranch(l),
 		dirtiness: dirtyCheckedOutBranch(),
 		leaseSHA:  leaseSHA,
 		force:     false,

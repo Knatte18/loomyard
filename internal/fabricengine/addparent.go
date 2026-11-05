@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
@@ -22,7 +23,7 @@ type addParent struct {
 
 // resolveAddParent resolves the pair slug parent of l's hub into the fork point of a new pair.
 // It refuses a parent that is not a live pair of the hub, the prime, a parent on a detached HEAD or unborn branch,
-// and a parent whose checked-out branch is not its own pair branch, each naming the way forward.
+// and a parent whose checked-out branch is not its own pair branch, under the current branch prefix, as the bare slug, or as any branch that has a records branch (a pair made under an earlier prefix), each naming the way forward.
 // It reads and mutates nothing.
 func resolveAddParent(l *lymcwd.Location, cfg Config, parent string) (addParent, error) {
 	entries, err := List(l.AnchorPath())
@@ -44,7 +45,8 @@ func resolveAddParent(l *lymcwd.Location, cfg Config, parent string) (addParent,
 		return addParent{}, fmt.Errorf("--parent %q names the prime; way forward: drop --parent and run the add from the prime, since without --parent the add forks from the acting worktree's HEAD", parent)
 	}
 
-	pairBranch := cfg.BranchPrefix + parent
+	pairNames := pairBranchNames(cfg, parent)
+	pairBranch := pairNames[0]
 	location, err := lymcwd.ResolveWorktree(parentPath)
 	if err != nil {
 		return addParent{}, fmt.Errorf("resolve the worktree of --parent %q: %w", parent, err)
@@ -61,7 +63,7 @@ func resolveAddParent(l *lymcwd.Location, cfg Config, parent string) (addParent,
 	if shaErr != nil {
 		return addParent{}, fmt.Errorf("read HEAD commit of --parent %q: %w", parent, shaErr)
 	}
-	if branch != pairBranch {
+	if !slices.Contains(pairNames, branch) && !weftBranchExists(l, RecordsBranchName(branch)) {
 		return addParent{}, fmt.Errorf("--parent %q has %q checked out, not its own pair branch %q; way forward: run `lym fabric checkout %s` in %s, then re-run the add", parent, branch, pairBranch, pairBranch, parentPath)
 	}
 	return addParent{location: location, branch: branch, recordsBranch: RecordsBranchName(branch), headSHA: headSHA}, nil

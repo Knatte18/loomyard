@@ -443,7 +443,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			what:      "test",
 			repoDir:   t.TempDir(),
 			branch:    "task-weft",
-			ownership: ownedManagedBranch(l, ""),
+			ownership: ownedManagedBranch(l),
 		}
 		err := checkBranchRequest(req)
 		assertRefusalCheck(t, err, CheckDirtiness)
@@ -519,15 +519,14 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			repoDir:   t.TempDir(),
 			remote:    originRemoteName,
 			branch:    "task-weft",
-			ownership: ownedManagedBranch(l, ""),
+			ownership: ownedManagedBranch(l),
 		}
 		err := checkRemoteBranchRequest(req)
 		assertRefusalCheck(t, err, CheckDirtiness)
 	})
 
 	t.Run("RemoteBranchNamingPredicateRefused", func(t *testing.T) {
-		// A branch name fabric's own scheme does not construct (no "-weft" suffix, no branchPrefix
-		// match) is refused by resolveManagedBranch's naming predicate before it spawns git at all —
+		// A branch name fabric's own scheme does not construct (no "-weft" suffix) is refused by resolveManagedBranch's naming predicate before it spawns git at all —
 		// safe with a hand-built Location for the same reason the naming-predicate case is safe
 		// elsewhere in this file: the predicate short-circuits ahead of the first spawn.
 		l := &lymcwd.Location{HubPath: t.TempDir(), WorktreeName: "prime"}
@@ -536,7 +535,7 @@ func TestGate_ZeroValueDeclarationsAreRefusals(t *testing.T) {
 			repoDir:   t.TempDir(),
 			remote:    originRemoteName,
 			branch:    "not-a-fabric-branch",
-			ownership: ownedManagedBranch(l, ""),
+			ownership: ownedManagedBranch(l),
 			dirtiness: dirtyCheckedOutBranch(),
 		}
 		err := checkRemoteBranchRequest(req)

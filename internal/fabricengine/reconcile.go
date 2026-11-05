@@ -584,7 +584,7 @@ func (t *Topology) deleteAdoptedWeftBranch(rec *Mutations, warpLayout *lymcwd.Lo
 		what:      "delete weft branch adopted from origin",
 		repoDir:   weftRepoRoot,
 		branch:    weftBranch,
-		ownership: ownedManagedBranch(warpLayout, t.cfg.BranchPrefix),
+		ownership: ownedManagedBranch(warpLayout),
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}

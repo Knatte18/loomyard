@@ -170,42 +170,33 @@ func WorktreeDirtyAllForTest(dir string) (dirty bool, detail string, err error) 
 	return worktreeDirty(scopeAll, dir)
 }
 
-// DeleteBranchForTest re-exports the gate's deleteBranch executor, built from
-// ownedManagedBranch(l, branchPrefix) and dirtyCheckedOutBranch(), for package fabricengine_test
-// integration tests that need to drive the branch-ownership gate directly rather than through
-// Cleanup's application-level orphan/liveness filtering — which never reaches the gate at all for
-// the primary weft branch or a branch checked out at some worktree.
-// It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its
-// own and its callers assert nothing about the record.
-func DeleteBranchForTest(l *lymcwd.Location, repoDir, branch, branchPrefix string, force bool) error {
+// DeleteBranchForTest re-exports the gate's deleteBranch executor, built from ownedManagedBranch(l) and dirtyCheckedOutBranch(), for package fabricengine_test integration tests.
+// Those tests drive the branch-ownership gate directly rather than through Cleanup's application-level orphan/liveness filtering, which never reaches the gate at all for the primary weft branch or a branch checked out at some worktree.
+// It passes a throwaway NewMutations("") recorder, since this seam has no verb-level recorder of its own and its callers assert nothing about the record.
+func DeleteBranchForTest(l *lymcwd.Location, repoDir, branch string, force bool) error {
 	req := branchRequest{
 		what:      "test delete branch",
 		repoDir:   repoDir,
 		branch:    branch,
-		ownership: ownedManagedBranch(l, branchPrefix),
+		ownership: ownedManagedBranch(l),
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     force,
 	}
 	return deleteBranch(NewMutations(""), req)
 }
 
-// CheckRemoteBranchRequestForTest re-exports checkRemoteBranchRequest, built from
-// ownedManagedBranch(l, branchPrefix) and dirtyCheckedOutBranch(), for package fabricengine_test
-// integration tests that need to drive the remote-branch gate directly against a real hub —
-// mirroring DeleteBranchForTest's shape for the local executor. package fabricengine_test cannot
-// construct a remoteBranchRequest directly (it is unexported) and cannot import the hubforge package
-// from an internal (unsuffixed package fabricengine) test file either, since that package imports
-// fabriccli, which imports fabricengine, closing an import cycle for Go's internal test
-// augmentation — this seam is what lets a package fabricengine_test file reach the gate while still
-// building its real-hub fixture through that package's own factory function, per the hubforge
-// Fabric-Fixture Invariant.
-func CheckRemoteBranchRequestForTest(l *lymcwd.Location, repoDir, remote, branch, branchPrefix string) error {
+// CheckRemoteBranchRequestForTest re-exports checkRemoteBranchRequest, built from ownedManagedBranch(l) and dirtyCheckedOutBranch(), for package fabricengine_test integration tests.
+// Those tests drive the remote-branch gate directly against a real hub, mirroring DeleteBranchForTest's shape for the local executor.
+// package fabricengine_test cannot construct a remoteBranchRequest directly, since it is unexported.
+// It cannot import the hubforge package from an internal (unsuffixed package fabricengine) test file either, since that package imports fabriccli, which imports fabricengine, closing an import cycle for Go's internal test augmentation.
+// This seam is what lets a package fabricengine_test file reach the gate while still building its real-hub fixture through that package's own factory function, per the hubforge Fabric-Fixture Invariant.
+func CheckRemoteBranchRequestForTest(l *lymcwd.Location, repoDir, remote, branch string) error {
 	req := remoteBranchRequest{
 		what:      "test delete remote branch",
 		repoDir:   repoDir,
 		remote:    remote,
 		branch:    branch,
-		ownership: ownedManagedBranch(l, branchPrefix),
+		ownership: ownedManagedBranch(l),
 		dirtiness: dirtyCheckedOutBranch(),
 		force:     false,
 	}

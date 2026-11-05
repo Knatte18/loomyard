@@ -130,6 +130,8 @@ type RemoveResult struct {
 	SnapshotTag string `json:"snapshot_tag,omitempty"`
 	// SnapshotPaths lists the paths the snapshot tag holds.
 	SnapshotPaths []string `json:"snapshot_paths,omitempty"`
+	// SiblingBranch names the pair's sibling branch the removal tore down, read from the pair before its teardown.
+	SiblingBranch string `json:"sibling_branch,omitempty"`
 }
 
 // Remove removes a paired warp and weft git worktree with all associated artifacts.
@@ -146,7 +148,9 @@ type RemoveResult struct {
 // The tag is taken whatever remote says, and force does not skip it: force answers dirtiness only.
 // A weft repo with no origin proceeds untagged, with ArchiveSkippedReason set on the result.
 // Launcher cleanup runs after the tag but before the git removal.
-// Once both worktrees are removed, Remove deletes the local warp branch (BranchPrefix + slug) through
+// The pair's branches are read from the pair itself before any teardown (PairTaskBranch), so a pair made under an earlier branch prefix is torn down by the branches it stands on;
+// with no worktree or local branch of the pair left, origin names them.
+// Once both worktrees are removed, Remove deletes the local warp branch through
 // the destructive gate, which refuses unless the branch's work is on another ref or landed on the
 // parent recorded in the pair's origin record; a refusal fills CodeBranchKeptReason and Remove still
 // succeeds. force never answers that check.
@@ -189,11 +193,9 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	rec := NewMutations(l.HubPath)
 	defer func() { res.Mutations = rec.Snapshot() }()
 
-	warpBranch := t.cfg.BranchPrefix + slug
-	weftBranch := RecordsBranchName(warpBranch)
-
 	// Every refusal runs here, through the same probe a caller can ask without removing anything, so the two can never drift.
-	if err := t.RemoveRefusal(l, slug, force); err != nil {
+	onOrigin, err := t.refuseRemoval(l, slug, force, localMode)
+	if err != nil {
 		return RemoveResult{}, err
 	}
 
@@ -202,6 +204,12 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 	if err != nil {
 		return RemoveResult{}, err
 	}
+	// No worktree or local branch of the pair is left to name its branch, so the name origin holds it under, which the refusal found, names it, as it must for a pair made before the branch prefix changed.
+	if !localMode && onOrigin != "" {
+		pair.warpBranch = onOrigin
+	}
+	warpBranch := pair.warpBranch
+	weftBranch := RecordsBranchName(warpBranch)
 	// Read before the teardown deletes the records worktree that holds the pair's own marker.
 	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
@@ -378,6 +386,7 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		Finished:             !pair.taskWorktree,
 		StrayPath:            strayPath,
 		SetAsideTag:          setAsideTagName,
+		SiblingBranch:        weftBranch,
 	}
 	if remote && archiveSkippedReason != "" {
 		res.RemoteSkippedReason = "no remote deletion attempted: " + strings.TrimPrefix(archiveSkippedReason, "no archive tag pushed: ")
@@ -392,7 +401,6 @@ func (t *Topology) removePair(l *lymcwd.Location, slug string, force, remote, lo
 		Kind:               remoteTeardownRemove,
 		Slug:               slug,
 		Worktree:           l.WorktreePath(),
-		BranchPrefix:       t.cfg.BranchPrefix,
 		WeftBranch:         weftBranch,
 		WeftTip:            weftTip,
 		DeleteWeftOnOrigin: remote && !weftBranchExists(l, weftBranch),
@@ -477,7 +485,7 @@ func (t *Topology) removeSibling(rec *Mutations, l *lymcwd.Location, slug, weftB
 	// absent, or removed with just a branch/prune step failing) — a weft worktree still on disk
 	// after a "successful" Remove is a half-torn pair the operator was never told about. This check
 	// reads the error return alone.
-	_, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, false, t.cfg.BranchPrefix, "", t.leftover)
+	_, weftErr := removeWeftWorktree(rec, l, slug, weftBranch, force, true, false, "", t.leftover)
 	if weftErr != nil {
 		weftTarget := RecordsWorktreePath(l, slug)
 		if _, statErr := os.Stat(weftTarget); statErr == nil {
@@ -507,6 +515,8 @@ type pairState struct {
 	taskBranch, siblingBranch bool
 	// launchers reports the hub-level launcher directory Remove tears down.
 	launchers bool
+	// warpBranch is the pair's warp branch, read locally from the pair itself.
+	warpBranch string
 }
 
 // inspectPair reads pairState for slug.
@@ -527,49 +537,51 @@ func (t *Topology) inspectPair(l *lymcwd.Location, slug string) (pairState, erro
 	}
 	s.launchers = pathPresent(LauncherDir(pairLoc, slug))
 
-	taskBranch, err := localBranchExists(l.WorktreePath(), t.cfg.BranchPrefix+slug)
+	warpBranch, err := t.PairTaskBranch(l, slug)
+	if err != nil {
+		return pairState{}, err
+	}
+	s.warpBranch = warpBranch
+	taskBranch, err := localBranchExists(l.WorktreePath(), warpBranch)
 	if err != nil {
 		return pairState{}, err
 	}
 	s.taskBranch = taskBranch
-	s.siblingBranch = weftBranchExists(l, RecordsBranchName(t.cfg.BranchPrefix+slug))
+	s.siblingBranch = weftBranchExists(l, RecordsBranchName(warpBranch))
 	return s, nil
 }
 
-// refuseWhenNothingRemains returns an error wrapping ErrPairNotFound when no part of the pair is left locally and neither of its branches is on origin.
-// Origin is asked only after every local part is found gone, and only for a repository that has an origin, so a pair with any local remnant never costs a network call.
+// branchPartRemains reports whether a worktree or local branch of the pair is left, the parts that name its warp branch.
+func (s pairState) branchPartRemains() bool {
+	return s.taskWorktree || s.siblingWorktree || s.taskBranch || s.siblingBranch
+}
+
+// refuseWhenNothingRemains returns an error wrapping ErrPairNotFound when no part of the pair is left locally and none of its branches, under any of the pair's names, is on origin.
+// Origin is asked once no worktree and no local branch of the pair is left, and only for a repository that has an origin, so a pair with either never costs a network call.
+// A pair whose only local remnant is its launcher directory is asked too, since the directory names no branch, unless localMode is set, where a removal makes no origin call for a pair that still has a remnant; it is no error when origin holds nothing.
+// When origin holds the pair, it returns the name origin holds it under, and otherwise "".
 // A stray path at the pair's location is named in the error and left alone.
-func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s pairState) error {
-	if s.taskWorktree || s.siblingWorktree || s.taskBranch || s.siblingBranch || s.launchers {
-		return nil
+func (t *Topology) refuseWhenNothingRemains(l *lymcwd.Location, slug string, s pairState, localMode bool) (onOrigin string, err error) {
+	if s.branchPartRemains() || (s.launchers && localMode) {
+		return "", nil
 	}
 
-	weftRoot, err := RecordsRepoRoot(l)
+	onOrigin, err = t.originPairBranch(l, slug)
 	if err != nil {
-		return fmt.Errorf("resolve weft repo root: %w", err)
+		return "", err
 	}
-	warpBranch := t.cfg.BranchPrefix + slug
-	for _, side := range []struct{ repoDir, branch string }{
-		{l.WorktreePath(), warpBranch},
-		{weftRoot, RecordsBranchName(warpBranch)},
-	} {
-		if _, urlErr := gitrepo.New(side.repoDir).RemoteURL(originRemoteName); urlErr != nil {
-			continue
-		}
-		tip, err := remoteHeadTip(side.repoDir, side.branch)
-		if err != nil {
-			return err
-		}
-		if tip != "" {
-			return nil
-		}
+	if onOrigin != "" {
+		return onOrigin, nil
+	}
+	if s.launchers {
+		return "", nil
 	}
 
 	if s.strayPath {
-		return fmt.Errorf("%w: nothing of %q remains, and %s exists at the pair location but is not a linked worktree of this repo, so it was left alone",
+		return "", fmt.Errorf("%w: nothing of %q remains, and %s exists at the pair location but is not a linked worktree of this repo, so it was left alone",
 			ErrPairNotFound, slug, WorktreePath(l, slug))
 	}
-	return fmt.Errorf("%w: nothing of %q remains", ErrPairNotFound, slug)
+	return "", fmt.Errorf("%w: nothing of %q remains", ErrPairNotFound, slug)
 }
 
 // pathPresent reports whether anything, a dangling link included, exists at path.
@@ -664,23 +676,29 @@ func deleteTaskBranchAtTip(rec *Mutations, l *lymcwd.Location, warpBranch, paren
 // It mutates nothing, takes no lock and pushes nothing, and Remove calls it first, so the two can never drift.
 // Its name carries no fabric side, because callers outside the owner set call it.
 func (t *Topology) RemoveRefusal(l *lymcwd.Location, slug string, force bool) error {
-	warpBranch := t.cfg.BranchPrefix + slug
+	_, err := t.refuseRemoval(l, slug, force, false)
+	return err
+}
 
+// refuseRemoval is RemoveRefusal's body; localMode is true for a removal that runs no origin step.
+// With no refusal it also returns the name origin holds the pair under when no worktree or local branch of the pair is left, else "", so a Remove asks origin once.
+func (t *Topology) refuseRemoval(l *lymcwd.Location, slug string, force, localMode bool) (onOrigin string, err error) {
 	if err := validateWorktreeSlug(slug, t.cfg.Dirs()); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := refusePrimeSlug(l, slug); err != nil {
-		return err
+		return "", err
 	}
 
 	target := WorktreePath(l, slug)
 	pair, err := t.inspectPair(l, slug)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err := t.refuseWhenNothingRemains(l, slug, pair); err != nil {
-		return err
+	onOrigin, err = t.refuseWhenNothingRemains(l, slug, pair, localMode)
+	if err != nil {
+		return "", err
 	}
 
 	// Refuse before any teardown for the named pair: a mid-merge pair is not force's to override —
@@ -688,46 +706,49 @@ func (t *Topology) RemoveRefusal(l *lymcwd.Location, slug string, force bool) er
 	// A gone task worktree makes the probe read false on its own, so the task side needs no skip.
 	blocked, err := mergeBlocksMutation(target, RecordsWorktreePath(l, slug))
 	if err != nil {
-		return err
+		return "", err
 	}
 	if blocked {
-		return &ErrMergeInProgress{}
+		return "", &ErrMergeInProgress{}
 	}
 
 	// Refuse for the other direction too: this pair may be idle itself while some OTHER pair in the
 	// hub is mid-merge ON its branches. Removing it there deletes the weft branch that merge is
 	// resolving against, so an abort would leave the source work reachable only from the remote.
-	inFlight, err := mergeSourceInFlight(l, warpBranch)
+	inFlight, err := mergeSourceInFlight(l, pair.warpBranch)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if inFlight {
-		return &ErrMergeInProgress{}
+		return "", &ErrMergeInProgress{}
 	}
 
 	// force answers the two dirtiness checks only.
 	if force {
-		return nil
+		return onOrigin, nil
 	}
 	if pair.taskWorktree {
 		dirty, _, err := worktreeDirty(scopeAll, target)
 		if err != nil {
-			return fmt.Errorf("check warp worktree status: %w", err)
+			return "", fmt.Errorf("check warp worktree status: %w", err)
 		}
 		if dirty {
-			return fmt.Errorf("worktree has uncommitted changes; use --force")
+			return "", fmt.Errorf("worktree has uncommitted changes; use --force")
 		}
 	}
 
 	names, err := PathspecNames(ConfigDirs(l))
 	if err != nil {
-		return fmt.Errorf("load the record pathspec: %w", err)
+		return "", fmt.Errorf("load the record pathspec: %w", err)
 	}
 	pairLoc, err := lymcwd.NamedWorktree(l.HubPath, slug)
 	if err != nil {
-		return fmt.Errorf("read the anchor of %q: %w", slug, err)
+		return "", fmt.Errorf("read the anchor of %q: %w", slug, err)
 	}
-	return refuseDirtyWeftWorktree(RecordsWorktreePath(l, slug), pairLoc.AnchorRel, names)
+	if err := refuseDirtyWeftWorktree(RecordsWorktreePath(l, slug), pairLoc.AnchorRel, names); err != nil {
+		return "", err
+	}
+	return onOrigin, nil
 }
 
 // commitPendingRecords commits the pair's sibling worktree's uncommitted changes inside the record pathspec, so the archive tag that follows covers them.

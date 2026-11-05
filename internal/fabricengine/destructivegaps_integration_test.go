@@ -718,7 +718,7 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 }
 
 // assertBranchGateRefusesBothForceModes asserts DeleteBranchForTest refuses branch (a weft branch
-// in the repo at weftRoot, gated via ownedManagedBranch(l, "")) under both force=false and
+// in the repo at weftRoot, gated via ownedManagedBranch(l)) under both force=false and
 // force=true, with the same wantSubstring reason each time, and that branch survives both attempts.
 // The force=true half is what proves the property card 34 exists to pin: force reaches only
 // Cleanup's own folded-back-raddle gate, never the branch-ownership kind itself — a
@@ -726,7 +726,7 @@ func TestWorktreeDirty_BothScopesAcrossFourStates(t *testing.T) {
 func assertBranchGateRefusesBothForceModes(t *testing.T, l *lymcwd.Location, weftRoot, branch, wantSubstring string) {
 	t.Helper()
 	for _, force := range []bool{false, true} {
-		err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, "", force)
+		err := fabricengine.DeleteBranchForTest(l, weftRoot, branch, force)
 		if err == nil {
 			t.Fatalf("DeleteBranchForTest(%q, force=%v) = nil error; want a refusal", branch, force)
 		}
@@ -791,7 +791,7 @@ func TestBranchOwnership_ManagedBranchKind(t *testing.T) {
 	t.Run("AcceptsOrphanedFabricNamedNonPrimaryNonCheckedOutBranch", func(t *testing.T) {
 		const orphan = "orphan-task-weft"
 		gitkit.MustRun(t, weftRoot, "git", "branch", orphan)
-		err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, "", false)
+		err := fabricengine.DeleteBranchForTest(l, weftRoot, orphan, false)
 		if err != nil {
 			t.Fatalf("DeleteBranchForTest(%q) = err %v; want a clean deletion", orphan, err)
 		}

@@ -19,7 +19,7 @@ const closePullRequestTimeout = 30 * time.Second
 const tornDownPullRequestComment = "lym closed this pull request: the run's pair was torn down before it landed"
 
 // closePairPullRequest closes the open pull request the pair's run recorded, if any.
-// It reads whether the task worktree is gone, and when gone derives the task branch from the fabric config; when present it resolves the task location, reads the record under the run's scratch directory and the pair's origin URL, then closes through closeOpenPullRequest.
+// It reads whether the task worktree is gone, and when gone reads the task branch from what is left of the pair, or from origin when nothing is; when present it resolves the task location, reads the record under the run's scratch directory and the pair's origin URL, then closes through closeOpenPullRequest.
 // Every failure is logged as a warning naming the slug, and none stops the teardown.
 func (t *Teardown) closePairPullRequest(slug string) {
 	gone, err := t.gone(slug)
@@ -37,13 +37,13 @@ func (t *Teardown) closePairPullRequest(slug string) {
 	ctx, cancel := context.WithTimeout(context.Background(), closePullRequestTimeout)
 	defer cancel()
 	if gone {
-		// An unreadable config leaves the branch unnamed; the warning still goes out.
+		// An unreadable config or pair leaves the branch unnamed; the warning still goes out.
 		taskBranch := ""
 		cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(t.prime))
 		if err != nil {
 			logger.Warn("pairteardown: could not read the fabric config to name the task branch", "slug", slug, "cause", err)
-		} else {
-			taskBranch = cfg.BranchPrefix + slug
+		} else if taskBranch, err = fabricengine.NewTopology(cfg).PairTaskBranchOrOrigin(t.prime, slug); err != nil {
+			logger.Warn("pairteardown: could not read the pair to name the task branch", "slug", slug, "cause", err)
 		}
 		closeOpenPullRequest(ctx, slug, taskBranch, true, pullrequest.Record{}, false, openClient, "")
 		return

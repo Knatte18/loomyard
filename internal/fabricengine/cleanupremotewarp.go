@@ -39,8 +39,8 @@ type RemoteWarpCleanupResult struct {
 }
 
 // CleanupRemoteWarp classifies every branch on the warp repo's origin and, with apply, deletes the leftover task branches among them.
-// A branch is fabric-managed when the weft origin holds an archive/<slug>/* tag or a RecordsBranchName(branch) branch for it, where slug is the branch without BranchPrefix;
-// with a non-empty BranchPrefix, a branch lacking it is unmanaged.
+// A branch is fabric-managed when the weft origin holds an archive/<slug>/* tag or a RecordsBranchName(branch) branch for it, where slug is the branch without the current branch prefix;
+// a branch lacking the prefix is read as the bare slug of a pair made before the prefix was set, and the weft evidence alone decides whether it is managed.
 // A managed branch is a deletion candidate unless it is origin's default branch, is checked out in a hub worktree, is in openPRHeads, or carries work not landed on the default branch.
 // Every other entry carries the reason it was kept.
 // Without apply nothing is deleted; with apply each candidate whose slug's teardown lock one try takes, and which no hub worktree has checked out under that lock, goes through the destructive gate, leased to the tip observed at enumeration,
@@ -144,7 +144,7 @@ func checkedOutBranches(repoDir string) (map[string]bool, error) {
 // It re-reads under the lock whether a hub worktree has the branch checked out, since the sweep read them before an Add of the slug may have finished, and keeps the candidate with a Reason when one does.
 func (t *Topology) deleteLeftoverUnderLock(rec *Mutations, l *lymcwd.Location, entry *RemoteWarpBranchEntry, defaultBranch, parent, tip string) {
 	repoDir := l.WorktreePath()
-	slug := strings.TrimPrefix(entry.Branch, t.cfg.BranchPrefix)
+	slug := slugOfBranch(t.cfg, entry.Branch)
 	// The lock file is the sweep's scratch state, not a mutation of the branch, so it joins no record.
 	release, lockErr := t.lockPairTeardown(NewMutations(l.HubPath), l, slug, true, cleanupSweepRerun)
 	switch {
@@ -194,11 +194,7 @@ func (t *Topology) keptReason(branch, defaultBranch string, weftBranches map[str
 	if branch == defaultBranch {
 		return "origin's default branch"
 	}
-	prefix := t.cfg.BranchPrefix
-	if prefix != "" && !strings.HasPrefix(branch, prefix) {
-		return fmt.Sprintf("not fabric-managed: lacks the branch prefix %q", prefix)
-	}
-	slug := strings.TrimPrefix(branch, prefix)
+	slug := slugOfBranch(t.cfg, branch)
 	if slug == "" {
 		return "not fabric-managed: empty slug"
 	}

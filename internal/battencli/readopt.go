@@ -46,13 +46,14 @@ type readoptSeams struct {
 	TaskBranchGone func(slug string) (bool, error)
 }
 
-// hubTaskBranch returns slug's task branch name under the hub's fabric config.
+// hubTaskBranch returns slug's task branch name, read from what is left of its pair, or from origin when nothing is, under the hub's fabric config, with that config.
 func hubTaskBranch(location *lymcwd.Location, slug string) (string, fabricengine.Config, error) {
 	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(location))
 	if err != nil {
 		return "", fabricengine.Config{}, err
 	}
-	return cfg.BranchPrefix + slug, cfg, nil
+	branch, err := fabricengine.NewTopology(cfg).PairTaskBranchOrOrigin(location, slug)
+	return branch, cfg, err
 }
 
 // hubReadoptSeams builds the re-adoption seams over the prime location of a hub.

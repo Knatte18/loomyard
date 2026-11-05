@@ -35,7 +35,7 @@ func TestDeleteRemoteBranchGate_PrimaryWeftBranchRefused(t *testing.T) {
 	}
 	primary := fabricengine.RecordsBranchName("main")
 
-	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", primary, "")
+	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", primary)
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
 		t.Fatalf("CheckRemoteBranchRequestForTest(%q) = %v; want a CheckOwnership refusal", primary, err)
 	}
@@ -67,7 +67,7 @@ func TestDeleteRemoteBranchGate_CheckedOutBranchRefused(t *testing.T) {
 	}
 	checkedOut := fabricengine.RecordsBranchName(slug)
 
-	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", checkedOut, "")
+	err = fabricengine.CheckRemoteBranchRequestForTest(h.Location, weftRoot, "origin", checkedOut)
 	if !RefusedByGate(err, fabricengine.CheckOwnership) {
 		t.Fatalf("CheckRemoteBranchRequestForTest(%q) = %v; want a CheckOwnership refusal", checkedOut, err)
 	}

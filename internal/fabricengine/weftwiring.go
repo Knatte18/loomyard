@@ -180,15 +180,13 @@ type weftTeardownResult struct {
 // encountered among worktree removal, local branch deletion, and prune, or nil if all three succeed
 // — the error return's meaning is unchanged, and a remote deletion failure is never accumulated into
 // it.
-// branchPrefix is the caller's configured warp branch prefix, forwarded to ownedManagedBranch — this
-// function has no config in scope of its own.
 // leaseSHA is the origin tip the remote deletion is leased on, the tip the caller's archive read.
 // With an origin configured, an empty leaseSHA means origin held no copy of the branch, and nothing is deleted there.
 // A branch origin moved since is kept and reported in the result, never as a failure.
 // rec is the calling verb's own recorder.
 // It is threaded through to removeGitWorktree, deleteBranch, and the remote deletion below.
 // A worktree directory git deregistered but left on disk is finished through finishGitWorktreeRemoval, with leftover as its seam.
-func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, branchPrefix, leaseSHA string, leftover leftoverSeam) (weftTeardownResult, error) {
+func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string, force, alsoDeleteBranch, remote bool, leaseSHA string, leftover leftoverSeam) (weftTeardownResult, error) {
 	weftPath := RecordsWorktreePath(l, slug)
 	weftRoot, err := RecordsRepoRoot(l)
 	if err != nil {
@@ -216,7 +214,7 @@ func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string,
 			what:      "delete weft branch",
 			repoDir:   weftRoot,
 			branch:    branch,
-			ownership: ownedManagedBranch(l, branchPrefix),
+			ownership: ownedManagedBranch(l),
 			dirtiness: dirtyCheckedOutBranch(),
 			force:     false,
 		}
@@ -232,7 +230,7 @@ func removeWeftWorktree(rec *Mutations, l *lymcwd.Location, slug, branch string,
 					originRemoteName, urlErr)
 			} else {
 				entry := CleanupBranchEntry{Branch: branch}
-				deleteWeftBranchOnRemote(rec, l, branch, branchPrefix, weftRoot, leaseSHA, &entry)
+				deleteWeftBranchOnRemote(rec, l, branch, weftRoot, leaseSHA, &entry)
 				result.remoteBranchDeleted = entry.RemoteDeleted
 				result.remoteBranchError = entry.RemoteError
 				result.remoteBranchKeptReason = entry.RemoteKeptReason

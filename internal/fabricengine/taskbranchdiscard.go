@@ -21,7 +21,8 @@ type DiscardResult struct {
 }
 
 // DiscardTaskBranch archives and deletes slug's task branch locally and on the task repository's origin, whether or not its work is landed.
-// It tags the local tip archive/<slug>/<first 12 hex> and deletes the local branch under that tag, then hands the remote half to the holder of the slug's teardown lock and returns without waiting on origin.
+// The task branch is the one the pair stands on, read from the pair itself; with no local branch of the pair's names, the first name origin holds, so a pair made under an earlier branch prefix is discarded by its own branch.
+// It tags the local tip archive/<slug>/<first 12 hex> and deletes the local branch under that tag, then hands the remote half to the holder of the slug's teardown lock and returns without waiting on the remote half.
 // The remote half reads origin's tip, pushes the tags covering the tips, archiving only the containing tip when one tip holds the other, and deletes the branch on origin leased on the tip it read;
 // a failure there is logged and mailed to the hub's orch with its way forward.
 // A failed local tag deletes nothing and wraps ErrArchiveFailed, and a refused gate is returned as an error naming the branch.
@@ -45,10 +46,23 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 	}()
 
 	repoDir := l.WorktreePath()
-	warpBranch := t.cfg.BranchPrefix + slug
+	warpBranch, err := t.PairTaskBranch(l, slug)
+	if err != nil {
+		return DiscardResult{}, err
+	}
 	localTip, err := localBranchTip(repoDir, warpBranch)
 	if err != nil {
 		return DiscardResult{}, err
+	}
+	if localTip == "" {
+		// No local branch names the task branch, so origin names it, as it must for a pair made before the branch prefix changed.
+		onOrigin, err := t.originTaskBranch(l, slug)
+		if err != nil {
+			return DiscardResult{}, err
+		}
+		if onOrigin != "" {
+			warpBranch = onOrigin
+		}
 	}
 	if localTip != "" {
 		localTag, err := createArchiveTag(repoDir, slug, localTip, "task")
@@ -62,7 +76,7 @@ func (t *Topology) DiscardTaskBranch(l *lymcwd.Location, slug string) (res Disca
 		res.ArchiveTags = []string{localTag}
 	}
 
-	job = &remoteTeardownJob{Kind: remoteTeardownDiscard, Slug: slug, Worktree: repoDir, BranchPrefix: t.cfg.BranchPrefix, WarpBranch: warpBranch, TaskTip: localTip}
+	job = &remoteTeardownJob{Kind: remoteTeardownDiscard, Slug: slug, Worktree: repoDir, WarpBranch: warpBranch, TaskTip: localTip}
 	out := hold.finish(job)
 	if out.ran {
 		res.ArchiveTags, res.OriginDeleted = out.discard.ArchiveTags, out.discard.OriginDeleted

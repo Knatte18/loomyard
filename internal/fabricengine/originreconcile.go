@@ -663,7 +663,7 @@ func originTargets(l *lymcwd.Location, scope ReconcileScope) (targets []originTa
 		if entry.Main {
 			warpDir = filepath.FromSlash(entry.Path)
 		}
-		if entry.Prunable || entry.Branch == "" || entry.Branch == "(detached)" || !wanted(entry) {
+		if entry.Prunable || entry.Branch == "" || entry.Branch == detachedBranch || !wanted(entry) {
 			continue
 		}
 		worktree := filepath.FromSlash(entry.Path)

@@ -1078,8 +1078,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 		return output.Err(out, err.Error())
 	}
 
-	cfg, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l))
-	if err != nil {
+	if _, err := fabricengine.LoadConfig(fabricengine.ConfigDirs(l)); err != nil {
 		return output.Err(out, err.Error())
 	}
 
@@ -1111,7 +1110,7 @@ func runRemoveWithFlag(ctx context.Context, out io.Writer, args []string, force,
 	// produces exit 0 here exactly as it does from cleanup, and the identical configuration state
 	// never yields two different verdicts across the two verbs.
 	if r.RemoteBranchError != "" {
-		weftBranch := fabricengine.RecordsBranchName(cfg.BranchPrefix + slug)
+		weftBranch := r.SiblingBranch
 		// "origin" is hardcoded here rather than referencing fabricengine's own unexported
 		// originRemoteName, which stays unexported: exporting it just to spell this one error string
 		// would widen the engine's API for no caller that needs it.
