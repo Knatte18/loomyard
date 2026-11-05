@@ -169,7 +169,7 @@ func readRaddleStartRefusal(location *lymcwd.Location, slug string) error {
 func raddleStartRefusal(entry boardengine.Task, recordStored bool, store boardengine.RaddleStore) error {
 	slug := entry.Slug
 	if !recordStored {
-		return raddleRefusal{fmt.Sprintf("%s runs the raddle recipe, which splits a Sketch's stored decision record, and it holds none; way forward: run its Discussion first with a motif run: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"motif\"}'`, release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`, and once the motif run has made it a Sketch, `lym board promote %s --recipe raddle`", slug, slug, slug, slug)}
+		return raddleRefusal{fmt.Sprintf("%s runs the raddle recipe, which splits a Sketch's stored decision record, and it holds none; way forward: run its Discussion first with a motif run: `lym board upsert '{\"slug\":\"%s\",\"recipe\":\"motif\"}'`, release it with `lym board set-status '{\"slug\":\"%s\",\"status\":null}'`, and once the motif run has made it a Sketch, `%s`", slug, slug, slug, boardengine.SketchPromoteCommand(slug))}
 	}
 	held, isHeld := store.Holds(slug)
 	if !isHeld || (held.Sketch == slug && held.Created.Equal(entry.Created)) {

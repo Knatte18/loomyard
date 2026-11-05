@@ -366,7 +366,7 @@ User-facing modules each get one `lym <module>` namespace:
   One `board.json` store holds every entry, and each entry is a task or a note with labels; only a task runs.
   `types` and `labels` in `board.yaml` are maps from label to description, and `lym board labels` prints both in file order.
   `default_recipe` names the recipe a task with no recipe field runs, `darn` in the template.
-  A Sketch, or any discussed note whose decision record is stored, becomes a task only through `lym board promote --recipe raddle`, which makes it a raddle run's entry; `lym board raddle <slug>` prints the approved proposal of the raddle store on the Bolt, which keeps each filed Sketch's proposal after prune.
+  A Sketch, or any discussed note whose decision record is stored, becomes a task only as a raddle run's entry, which a plain `lym board promote` of it makes; `lym board raddle <slug>` prints the approved proposal of the raddle store on the Bolt, which keeps each filed Sketch's proposal after prune.
   `lym board intake` lists the open issues of the hub's own GitHub repository not yet on the board, imports one as a note or folds it into an entry, and closes noise with a stated reason.
   The hub's repository is the one its recorded binding names, else its origin remote, so only the loomyard hub's intake reads LoomYard's issues; intake never goes through selfreport.
   The README renders Tasks split into Running, Ready (waiting on nothing open) and dependency layers whose entries can run in parallel, then Notes grouped by type label, Sketches first, each subsection one numbered table that links each slug to its design doc, with a `Sketch` link to the decision record `decision-<slug>.md` under the slug of a discussed entry;

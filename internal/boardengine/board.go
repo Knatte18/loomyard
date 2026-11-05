@@ -412,8 +412,9 @@ func (b *Board) Promote(idOrSlug any) (Task, error) {
 
 // PromoteTo makes the entry identified by idOrSlug a task under the write lock, setting its recipe to recipe in the same write when recipe is not empty.
 // An entry that is already a task is returned unchanged without a write.
-// Promoting a discussed note whose decision record is stored with the raddle recipe keeps the record and the flag, restores the sketch label a note write dropped, and releases the task in the same write.
-// A Sketch becomes a task only through that promotion; any other promotion of it is refused, naming `lym board promote <slug> --recipe raddle`.
+// A discussed note whose decision record is stored, or that carries the sketch label, takes the raddle recipe when recipe is empty;
+// promoting a note whose record is stored with the raddle recipe keeps the record and the flag, restores the sketch label a note write dropped, and releases the task in the same write.
+// A Sketch becomes a task only through that promotion; a promotion of it with any other recipe is refused, naming the plain promote.
 func (b *Board) PromoteTo(idOrSlug any, recipe string) (Task, error) {
 	result, err := b.boardCriticalSection(func(store *Store) (any, error) {
 		task, changed, err := store.promoteTo(idOrSlug, recipe, b.recordStored)

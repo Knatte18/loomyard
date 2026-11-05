@@ -319,12 +319,12 @@
 // It writes nothing for an absent, done or already sketched entry, and refuses while another entry depends on the entry, since a note cannot be depended on.
 // The README lists Sketches under their own `Sketches` heading, the first Notes subsection, and `lym board list --text` lists them after every other entry under a `sketches:` line.
 //
-// A Sketch becomes a task only as a raddle run's entry: Board.PromoteTo with recipe `raddle` makes the task in one write, keeps the decision record, the discussed flag and the sketch label, restores the label when a note write dropped it, and releases the task, so its parent's dobby starts the run.
+// A Sketch becomes a task only as a raddle run's entry: Board.PromoteTo with recipe `raddle`, or with no recipe, which gives a Sketch `raddle`, makes the task in one write, keeps the decision record, the discussed flag and the sketch label, restores the label when a note write dropped it, and releases the task, so its parent's dobby starts the run.
 // Board.Promote is PromoteTo with no recipe.
 // Two write rules close every other way.
-// A discussed note whose record file exists that a write makes a task must carry recipe `raddle`, the discussed flag and the sketch label, else the write is refused with `lym board promote <slug> --recipe raddle` as the way forward; the rule keys on the flag and the stored record, never on the label.
+// A discussed note whose record file exists that a write makes a task must carry recipe `raddle`, the discussed flag and the sketch label, else the write is refused with the plain promote, `lym board promote '{"slug":"<slug>"}'`, as the way forward; the rule keys on the flag and the stored record, never on the label.
 // The sketch label on a task whose recipe is not `raddle`, or on a project, is refused too, judged only for a write that adds the label, makes the entry a task or project, or changes its recipe, so a legacy task that already carries the label keeps taking writes that leave all three alone.
-// The label rule cannot see the record file, so a discussed note whose record file is missing is led to the raddle promote as well.
+// The label rule cannot see the record file, so a discussed note whose record file is missing is led to the plain promote as well, which gives it recipe raddle when it still carries the label.
 // The Bolt replayer admits an entry through the run lock and the kind and label checks only, never the promotion rule, so a promotion in a board commit from another machine can land on origin.
 //
 // # Raddle store
@@ -337,7 +337,7 @@
 // It then refuses a write that makes a slug the store holds, whether or not the pair slug seam is set, bar the made entry whose slug is a store entry's Sketch slug and whose created stamp is that entry's recorded one, so a live raddle run's own Sketch is never refused.
 // A store file that cannot be read refuses only a write that makes a slug, naming the file and `git -C <bolt> checkout -- <path>` as the way forward; a write that makes no slug goes on.
 // A refusal names a slug both the seam and the store admit; for a note made a task or project, which keeps its slug, it names `lym board rename` of the note to such a slug before the promotion.
-// The input that reaches a refusal: `lym board upsert` creating a task or project under a filed slug, `lym board rename` to a Sketch slug the store holds, and `lym board promote --recipe raddle` of a note under a filed slug.
+// The input that reaches a refusal: `lym board upsert` creating a task or project under a filed slug, `lym board rename` to a Sketch slug the store holds, and `lym board promote` of a Sketch under a filed slug.
 // The Bolt replayer adds an entry through the run lock and the kind and label checks only, never this rule, so a board commit from a machine that had not yet pulled the store can land an entry under a held slug on origin; only a raddle entry is caught, by batten's start guard.
 //
 // A raddle run writes the board through three Board methods, each one write under the board lock.

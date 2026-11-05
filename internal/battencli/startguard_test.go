@@ -455,7 +455,7 @@ func TestRaddleStartRefusal(t *testing.T) {
 	}{
 		{
 			name:       "NoStoredRecordRefusedNamingTheMotifUpsertAndTheRaddlePromote",
-			wantErrors: []string{"holds none", `lym board upsert '{"slug":"some-slug","recipe":"motif"}'`, "lym board promote some-slug --recipe raddle"},
+			wantErrors: []string{"holds none", `lym board upsert '{"slug":"some-slug","recipe":"motif"}'`, `lym board promote '{"slug":"some-slug"}'`},
 		},
 		{
 			name:         "SlugFiledByAnotherSketchRefusedNamingTheRename",

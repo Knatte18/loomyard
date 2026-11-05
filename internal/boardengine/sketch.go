@@ -89,6 +89,12 @@ func (b *Board) MakeSketch(slug string) error {
 	return err
 }
 
+// SketchPromoteCommand returns the command that makes the Sketch slug a raddle run's entry: a plain promote, which gives a Sketch recipe raddle.
+// A refusal of any other way to make a Sketch a task names it as the way forward.
+func SketchPromoteCommand(slug string) string {
+	return fmt.Sprintf(`lym board promote '{"slug":"%s"}'`, slug)
+}
+
 // checkDiscussedPromotion refuses a write that makes a task of a discussed note whose decision record is stored, unless the task carries recipe raddle, the discussed flag and the sketch label.
 // The rule keys on the flag and the stored record, never on the label, so a note a note write stripped of its sketch label is judged too.
 // loaded is the entries before the write, under any rename the write made, and after the entries the write leaves; recordStored reports whether an entry's record file exists.
@@ -105,7 +111,7 @@ func checkDiscussedPromotion(loaded, after []Task, recordStored func(slug string
 		if task.Recipe == shedrun.RecipeRaddle && task.Discussed && slices.Contains(task.Labels, SketchType) {
 			continue
 		}
-		return fmt.Errorf("entry %q is a discussed note with a stored decision record, which becomes tasks only through a raddle run; way forward: `lym board promote %s --recipe raddle`", task.Slug, task.Slug)
+		return fmt.Errorf("entry %q is a discussed note with a stored decision record, which becomes tasks only through a raddle run; way forward: `%s`, which gives it recipe raddle", task.Slug, SketchPromoteCommand(task.Slug))
 	}
 	return nil
 }

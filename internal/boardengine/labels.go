@@ -49,7 +49,7 @@ func validateLabels(t Task, prior *Task, v Vocabulary) error {
 }
 
 // checkSketchLabel refuses a project, and a task whose recipe is not raddle, that carries the sketch type label, when the write adds the label, changes the entry's kind or changes its recipe.
-// A promotion of a discussed note names the raddle promote as the way forward, and any other write names the upsert.
+// A promotion of a discussed note names the plain promote, which gives it recipe raddle, as the way forward, and any other write names the upsert.
 func checkSketchLabel(t Task, prior *Task) error {
 	if (t.Kind != KindTask && t.Kind != KindProject) || !slices.Contains(t.Labels, SketchType) {
 		return nil
@@ -64,7 +64,7 @@ func checkSketchLabel(t Task, prior *Task) error {
 		return fmt.Errorf("project %q carries the %s type label, and a project is never a Sketch: drop the label with `lym board upsert`", t.Slug, SketchType)
 	}
 	if prior != nil && prior.Kind == KindNote && prior.Discussed {
-		return fmt.Errorf("task %q carries the %s type label with recipe %q, and a Sketch becomes a task only as a raddle run's entry; way forward: `lym board promote %s --recipe raddle`", t.Slug, SketchType, t.Recipe, t.Slug)
+		return fmt.Errorf("task %q carries the %s type label with recipe %q, and a Sketch becomes a task only as a raddle run's entry; way forward: `%s`, which gives it recipe raddle", t.Slug, SketchType, t.Recipe, SketchPromoteCommand(t.Slug))
 	}
 	return fmt.Errorf("task %q carries the %s type label with recipe %q, and only a raddle run's entry is a Sketch made a task; way forward: `lym board upsert` setting the entry's recipe to raddle, or dropping the label", t.Slug, SketchType, t.Recipe)
 }

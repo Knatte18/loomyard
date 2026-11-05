@@ -762,8 +762,9 @@ func (s *Store) Promote(idOrSlug any) (task Task, changed bool, err error) {
 }
 
 // promoteTo is Promote with the recipe set in the same write when recipe is not empty.
-// With recipe raddle, a discussed note whose decision record recordStored reports stored keeps its record and flag and gets the sketch label back when a note write dropped it.
-// A nil recordStored reports no record stored.
+// A discussed note whose decision record recordStored reports stored, or that carries the sketch label, takes recipe raddle when recipe is empty, since raddle is the one recipe such a note may take.
+// With recipe raddle, a note whose record is stored keeps its record and flag and gets the sketch label back when a note write dropped it.
+// A nil recordStored reports no record stored, so only the label then gives recipe raddle.
 func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug string) bool) (task Task, changed bool, err error) {
 	current, ok := s.GetTask(idOrSlug)
 	if !ok {
@@ -779,10 +780,14 @@ func (s *Store) promoteTo(idOrSlug any, recipe string, recordStored func(slug st
 	incoming := current
 	incoming.Kind = KindTask
 	incoming.Priority = ""
+	recordHeld := current.Discussed && recordStored != nil && recordStored(current.Slug)
+	if recipe == "" && current.Discussed && (recordHeld || slices.Contains(current.Labels, SketchType)) {
+		recipe = shedrun.RecipeRaddle
+	}
 	if recipe != "" {
 		incoming.Recipe = recipe
 	}
-	if recipe == shedrun.RecipeRaddle && current.Discussed && recordStored != nil && recordStored(current.Slug) && !slices.Contains(incoming.Labels, SketchType) {
+	if recipe == shedrun.RecipeRaddle && recordHeld && !slices.Contains(incoming.Labels, SketchType) {
 		incoming.Labels = append([]string{SketchType}, incoming.Labels...)
 	}
 	if err := s.validateWrite(s.tasks, incoming); err != nil {

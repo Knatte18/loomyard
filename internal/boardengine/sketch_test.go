@@ -197,8 +197,8 @@ func newPromotionBoard(t *testing.T) (*boardengine.Board, string) {
 	return boardengine.New(boardengine.Config{Path: path, Readme: "Home.md", DesignPrefix: "proposal-", Types: types, Labels: []boardengine.Label{{Name: "board"}}, SkipGit: true}), path
 }
 
-// TestDiscussedPromotion asserts a Sketch, or a discussed note a note write stripped of its label, becomes a task only through a promotion with recipe raddle, which releases it in the same write,
-// and that a note whose record file is missing or that was never discussed promotes as any note does.
+// TestDiscussedPromotion asserts a Sketch, or a discussed note a note write stripped of its label, becomes a task only through a promotion with recipe raddle, which a promotion with no recipe gives it and which releases it in the same write,
+// and that a note with no sketch label whose record file is missing, or that was never discussed, promotes as any note does.
 func TestDiscussedPromotion(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -215,13 +215,30 @@ func TestDiscussedPromotion(t *testing.T) {
 		sketch(t, b, boardPath)
 		mustUpsertEntry(t, b, map[string]any{"slug": "idea", "labels": bugLabels})
 	}
-	promoteTo := func(recipe string) func(b *boardengine.Board) error {
+	recordMissing := func(t *testing.T, b *boardengine.Board, boardPath string) {
+		t.Helper()
+		stripped(t, b, boardPath)
+		if err := os.Remove(filepath.Join(boardPath, boardengine.DecisionFileName("idea"))); err != nil {
+			t.Fatalf("remove record file: %v", err)
+		}
+	}
+	sketchRecordMissing := func(t *testing.T, b *boardengine.Board, boardPath string) {
+		t.Helper()
+		sketch(t, b, boardPath)
+		if err := os.Remove(filepath.Join(boardPath, boardengine.DecisionFileName("idea"))); err != nil {
+			t.Fatalf("remove record file: %v", err)
+		}
+	}
+	promote := func(selector any, recipe string) func(b *boardengine.Board) error {
 		return func(b *boardengine.Board) error {
-			_, err := b.PromoteTo("idea", recipe)
+			_, err := b.PromoteTo(selector, recipe)
 			return err
 		}
 	}
-	wayForward := "lym board promote idea --recipe raddle"
+	promoteTo := func(recipe string) func(b *boardengine.Board) error {
+		return promote("idea", recipe)
+	}
+	wayForward := `lym board promote '{"slug":"idea"}'`
 
 	tests := []struct {
 		name  string
@@ -245,14 +262,21 @@ func TestDiscussedPromotion(t *testing.T) {
 			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
 		},
 		{
-			name: "PlainPromoteOfASketchIsRefusedByTheLabelRule", setup: sketch, act: promoteTo(""),
-			wantErr:  []string{wayForward},
-			wantKind: boardengine.KindNote, wantSketch: true, wantDiscussed: true, wantRecord: true,
+			name: "PlainPromoteOfASketchTakesRaddle", setup: sketch, act: promoteTo(""),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
 		},
 		{
-			name: "PlainPromoteOfAStrippedNoteIsRefused", setup: stripped, act: promoteTo(""),
-			wantErr:  []string{"discussed note with a stored decision record", wayForward},
-			wantKind: boardengine.KindNote, wantDiscussed: true, wantRecord: true,
+			name: "PlainPromoteOfASketchByHandleTakesRaddle", setup: sketch, act: promote(boardengine.Handle("S1"), ""),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "PlainPromoteOfAStrippedNoteTakesRaddle", setup: stripped, act: promoteTo(""),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true, wantRecord: true,
+		},
+		{
+			name: "DarnPromoteOfASketchIsRefusedByTheLabelRule", setup: sketch, act: promoteTo("darn"),
+			wantErr:  []string{wayForward},
+			wantKind: boardengine.KindNote, wantSketch: true, wantDiscussed: true, wantRecord: true,
 		},
 		{
 			name: "DarnPromoteOfAStrippedNoteIsRefused", setup: stripped, act: promoteTo("darn"),
@@ -269,16 +293,16 @@ func TestDiscussedPromotion(t *testing.T) {
 			wantKind: boardengine.KindNote, wantSketch: true, wantDiscussed: true, wantRecord: true,
 		},
 		{
-			name: "NoteWithAMissingRecordFileIsNotJudged",
-			setup: func(t *testing.T, b *boardengine.Board, boardPath string) {
-				t.Helper()
-				stripped(t, b, boardPath)
-				if err := os.Remove(filepath.Join(boardPath, boardengine.DecisionFileName("idea"))); err != nil {
-					t.Fatalf("remove record file: %v", err)
-				}
-			},
-			act:      promoteTo("darn"),
+			name: "NoteWithAMissingRecordFileIsNotJudged", setup: recordMissing, act: promoteTo("darn"),
 			wantKind: boardengine.KindTask, wantRecipe: "darn", wantDraft: true, wantDiscussed: true,
+		},
+		{
+			name: "PlainPromoteOfANoteWithAMissingRecordFileTakesNoRecipe", setup: recordMissing, act: promoteTo(""),
+			wantKind: boardengine.KindTask, wantDraft: true, wantDiscussed: true,
+		},
+		{
+			name: "PlainPromoteOfASketchWithAMissingRecordFileTakesRaddle", setup: sketchRecordMissing, act: promoteTo(""),
+			wantKind: boardengine.KindTask, wantRecipe: shedrun.RecipeRaddle, wantSketch: true, wantDiscussed: true,
 		},
 		{
 			name: "DarnPromoteOfAnUndiscussedNote",

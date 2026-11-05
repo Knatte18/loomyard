@@ -171,9 +171,9 @@ available subcommands without requiring a git repo.
 The promoted entry loses its priority, which only a note carries, and its note handle: it takes
 the lowest free T handle.
 --recipe <name> sets the task's recipe in the same write.
-A Sketch, or any discussed note whose decision record is stored, becomes a task only through
---recipe raddle, which keeps its record and releases the task so its raddle run starts; any other
-promotion of it is refused, naming that command.
+A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe
+raddle, which keeps its record and releases the task so its raddle run starts: a promote with no
+--recipe gives it raddle, --recipe raddle is accepted, and any other recipe is refused.
 Demotion goes through "lym board upsert" with "kind":"note".
 
 Fields (one of):
@@ -184,7 +184,7 @@ Fields (one of):
 Examples:
   lym board promote '{"slug":"my-note"}'
   lym board promote B4
-  lym board promote '{"slug":"my-sketch"}' --recipe raddle` + slugLimitNote(),
+  lym board promote S3` + slugLimitNote(),
 		RunE: clihelp.WrapRun(func(out io.Writer, args []string) int {
 			if len(args) == 0 {
 				return outputError(out, "json payload required")
@@ -200,7 +200,7 @@ Examples:
 			return outputSuccessWithTask(out, task, "")
 		}),
 	}
-	promoteCmd.Flags().StringVar(&promoteRecipe, "recipe", "", "set the promoted task's recipe in the same write; a Sketch is promoted only with raddle")
+	promoteCmd.Flags().StringVar(&promoteRecipe, "recipe", "", "set the promoted task's recipe in the same write; a Sketch takes raddle when none is given, and no other")
 
 	renameCmd := &cobra.Command{
 		Use:         "rename {slug|id|handle, to}",

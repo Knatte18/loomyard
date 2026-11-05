@@ -95,6 +95,9 @@ Promote a note to a task:
 lym board promote '{"slug":"my-note"}'
 ```
 
+Promoting a Sketch, by slug or by its handle such as `lym board promote S3`, makes it a task with recipe `raddle`, which splits its decision record into tasks or a project.
+A Sketch takes no other recipe.
+
 Rename an entry, keeping every other field and rewriting the old slug in every other entry's `depends_on`:
 
 ```

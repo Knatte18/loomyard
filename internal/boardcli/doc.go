@@ -76,7 +76,8 @@
 // `set-deps` prints `notice` only then.
 // `promote` and `intake import` write no `depends_on` and stay unchanged.
 // `promote` takes `--recipe <name>`, which sets the promoted task's recipe in the same write.
-// A Sketch, or any discussed note whose decision record is stored, becomes a task only through `promote --recipe raddle`, which keeps its record and releases the task; any other promotion of it is refused, naming that command.
+// A Sketch, or any discussed note whose decision record is stored, becomes a task only with recipe raddle, which keeps its record and releases the task:
+// `promote` with no `--recipe` gives it raddle, `--recipe raddle` is accepted, and any other recipe is refused, naming the plain promote.
 //
 // `profiles` prints `{"ok":true,"defaults":{…},"profiles":[{"name":…,"settings":{recipe:{module:{…}}}}]}`, every run profile in the hub's `profiles.yaml` in name order with its settings per recipe, and `"profiles":[]` when there is none.
 // `defaults` maps each recipe to the profile a task of that recipe takes when it names none.

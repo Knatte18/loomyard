@@ -28,7 +28,7 @@ func TestValidateLabels(t *testing.T) {
 			name:    "sketch label on a darn task promoted from a discussed note",
 			task:    Task{Slug: "t", Kind: KindTask, Recipe: "darn", Labels: []string{SketchType}},
 			prior:   &Task{Slug: "t", Kind: KindNote, Discussed: true, Labels: []string{SketchType}},
-			wantErr: []string{`"t"`, "lym board promote t --recipe raddle"},
+			wantErr: []string{`"t"`, `lym board promote '{"slug":"t"}'`},
 		},
 		{
 			name:    "sketch label added to a darn task",
