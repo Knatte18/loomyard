@@ -16,13 +16,14 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/weftname"
 )
 
-// BoltDirName is the name of the Bolt checkout inside a hub.
-// It lives here because lymcwd reads the hub-wide anchor marker in the Bolt checkout.
+// BoltDirName is the name of the Bolt checkout inside a hub, re-exported from lymdirs.
+// lymcwd reads the hub-wide anchor marker in the Bolt checkout.
 // fabricengine and runproc take the name from here, since lymcwd cannot import either.
-const BoltDirName = "_bolt"
+const BoltDirName = lymdirs.BoltDirName
 
 // boardDir returns the absolute path to the Bolt checkout inside hub.
 // It is the one reader of BoltDirName in lymcwd, to find the recorded-anchor marker.

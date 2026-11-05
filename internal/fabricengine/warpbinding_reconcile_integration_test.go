@@ -421,7 +421,11 @@ func TestReconcile_BoardLockArtifactDoesNotDeferBackfill(t *testing.T) {
 	unbindHub(t, fixture.Result.BoardDir)
 
 	for _, name := range []string{"tasks.json.swaplock", "board.write.lock"} {
-		if err := os.WriteFile(filepath.Join(fixture.Result.BoardDir, name), nil, 0o600); err != nil {
+		lockPath, err := fabricengine.BoltLockPath(fixture.Result.BoardDir, name)
+		if err != nil {
+			t.Fatalf("lock path of %s: %v", name, err)
+		}
+		if err := os.WriteFile(lockPath, nil, 0o600); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}

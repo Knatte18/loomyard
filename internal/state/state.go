@@ -27,10 +27,10 @@ var ErrRead = errors.New("state: read failed")
 var ErrDecode = errors.New("state: decode failed")
 
 // WriteJSON writes a value as indented JSON to path atomically, keeping every key of the file it replaces that the value's type does not declare.
+// It creates the directories of path and lockPath.
 func WriteJSON[T any](path, lockPath string, v T) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
+	if err := mkdirParents(path, lockPath); err != nil {
+		return err
 	}
 
 	l, err := lock.AcquireWriteLock(lockPath)
@@ -42,11 +42,11 @@ func WriteJSON[T any](path, lockPath string, v T) error {
 	return writeJSONUnlocked(path, v)
 }
 
-// WriteFile writes data verbatim to path atomically under the write lock at lockPath, creating the parent directory.
+// WriteFile writes data verbatim to path atomically under the write lock at lockPath, creating the directories of path and lockPath.
 // It does no marshalling and keeps nothing of the file it replaces, so it fits a record that is not JSON, such as a patch.
 func WriteFile(path, lockPath string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
+	if err := mkdirParents(path, lockPath); err != nil {
+		return err
 	}
 
 	l, err := lock.AcquireWriteLock(lockPath)
@@ -56,6 +56,16 @@ func WriteFile(path, lockPath string, data []byte) error {
 	defer l.Release()
 
 	return fsx.AtomicWriteBytes(path, data)
+}
+
+// mkdirParents creates the directories of a record at path and of its lock at lockPath, which may sit in another tree.
+func mkdirParents(path, lockPath string) error {
+	for _, dir := range []string{filepath.Dir(path), filepath.Dir(lockPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("mkdir: %w", err)
+		}
+	}
+	return nil
 }
 
 // writeJSONUnlocked marshals v as indented JSON and writes it to path atomically, assuming the
@@ -145,10 +155,10 @@ func readJSONUnlocked[T any](path string) (T, bool, error) {
 // zero-value "fix" would silently discard whatever was actually on disk.
 // UpdateJSON must never be composed from ReadJSON and WriteJSON — both acquire lockPath
 // internally, so nesting one inside a held lock on the same path hangs rather than failing.
+// It creates the directories of path and lockPath.
 func UpdateJSON[T any](path, lockPath string, mutate func(cur T, found bool) (T, error)) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
+	if err := mkdirParents(path, lockPath); err != nil {
+		return err
 	}
 
 	l, err := lock.AcquireWriteLock(lockPath)

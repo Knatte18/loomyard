@@ -1,5 +1,5 @@
-// dirs.go declares the lym directory-name tokens: the two worktree-level directories, the beam directory under a worktree's .lym and the pause directory under the board-level .lym.
-// internal/lymdirs is the sole declarer of either worktree-level literal, enforced by TestEnforcement_GeometryLiterals in internal/lymcwd/enforcement_test.go.
+// dirs.go declares the lym directory-name tokens: the two worktree-level directories, the Bolt checkout directory, the beam directory under a worktree's .lym and the pause directory under the board-level .lym.
+// internal/lymdirs is the sole declarer of each worktree-level literal and of the Bolt checkout's, enforced by TestEnforcement_GeometryLiterals in internal/lymcwd/enforcement_test.go.
 
 package lymdirs
 
@@ -11,6 +11,10 @@ const LymDirName = "_lym"
 // Every never-tracked file lives under it at the mirrored subpath of the _lym content it relates to.
 // internal/lymdirs is the sole declarer of this literal, enforced by TestEnforcement_GeometryLiterals in internal/lymcwd/enforcement_test.go.
 const DotLymDirName = ".lym"
+
+// BoltDirName is the name of the Bolt checkout inside a hub.
+// internal/lymdirs is the sole declarer of this literal, enforced by TestEnforcement_GeometryLiterals in internal/lymcwd/enforcement_test.go.
+const BoltDirName = "_bolt"
 
 // PauseDirName is the directory under the hub's board-level DotLymDirName that holds the pause record and its lock.
 const PauseDirName = "pause"
@@ -41,3 +45,6 @@ const CreelFlagDirName = "flags"
 
 // HeddleDirName is the directory under a worktree's DotLymDirName that holds heddle's render lock.
 const HeddleDirName = "heddle"
+
+// LocksDirName is the directory under a checkout's DotLymDirName that holds the lock files guarding the checkout's tracked files.
+const LocksDirName = "locks"

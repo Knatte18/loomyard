@@ -327,7 +327,8 @@
 // Read methods (Get/List) bypass the lock and load directly from disk, persisting nothing.
 //
 // The detached sync path talks to git through fabricengine.Bolt, never hand-rolled gitexec calls,
-// under board's own board.lock/board.push.lock write and push locks.
+// under the board write and push locks, which sit in the board checkout's never-tracked lock directory.
+// The swap lock that fences readers of board.json sits there too, and the board's .gitignore ignores only the render manifest.
 // The detached sync is spawned as `lym board sync --deferrable` in the board directory, so its network gate is held under the hub scope.
 // Under a pause it defers instead of waiting: it exits with one Info line before it commits or pushes anything, or at its push's network call when the pause came later, leaving the change for the next sync.
 //

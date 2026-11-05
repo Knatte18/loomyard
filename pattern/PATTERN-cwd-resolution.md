@@ -10,7 +10,7 @@
 - A worktree's anchor comes from its own `.lym-anchor` at the root of its weft branch, with the hub-wide Bolt marker as the fallback and `"."` after that.
 - `lymcwd.NamedWorktree(hubPath, name)` is how code outside `lymcwd` gets another worktree's `Location`, at that worktree's own anchor.
 - Only `fabricengine` writes the marker or reads it from git; `lymcwd` reads the working tree alone.
-- `lymcwd` imports the standard library, `internal/dotgit` and `internal/weftname` only.
+- `lymcwd` imports the standard library, `internal/dotgit`, `internal/lymdirs` and `internal/weftname` only.
 
 ## Told geometry
 

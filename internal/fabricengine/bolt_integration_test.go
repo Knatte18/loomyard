@@ -327,7 +327,11 @@ func TestBolt_Sync_HoldsSingleAbsorbingLockAcrossBurst(t *testing.T) {
 	repoPath := newBoltRepo(t, container, "bolt", bareRemote)
 	b := NewBolt(repoPath)
 
-	held, err := lock.AcquireWriteLock(filepath.Join(repoPath, "board.push.lock"))
+	pushLockPath, err := BoltLockPath(repoPath, BoardPushLockFile)
+	if err != nil {
+		t.Fatalf("BoltLockPath() error = %v", err)
+	}
+	held, err := lock.AcquireWriteLock(pushLockPath)
 	if err != nil {
 		t.Fatalf("AcquireWriteLock() error = %v", err)
 	}

@@ -222,9 +222,8 @@ func PushWarpAt(warpPath string, opts SyncOptions) (res PushResult, err error) {
 // no Fabric instance and no weft path involved.
 //
 // The push never runs `git pull --rebase`, so it never rewrites this side's SHAs while the
-// paired side is not rebased and never invalidates the correspondence index; and it never
-// takes the push lock, so it leaves no untracked .gitrepo-push.lock residue in the operator's own
-// warp repo, which has no exclude entry for that file.
+// paired side is not rebased and never invalidates the correspondence index;
+// and it takes no push lock.
 //
 // A failed push is classified, recorded as a failed push and returned as a *PushFailedError.
 // The error wraps gitrepo.ErrPushRejected for a rejection and gitrepo.ErrPushAuthRefused for a refused credential.

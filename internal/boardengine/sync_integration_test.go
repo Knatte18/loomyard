@@ -1,13 +1,6 @@
-// sync_integration_test.go covers boardengine.Sync's parity after delegating
-// its absorbing-lock coalescing loop to fabricengine.CoalescePush: a dirty
-// board still commits and pushes, .gitignore is still seeded with the
-// lock/manifest patterns, the absorbing push lock still lives at the
-// unchanged board.push.lock path, and skipPush still commits locally without
-// advancing the remote. The board+bare-origin fixture is built inline via
-// gitkit.MustRun, mirroring the fixture shape of
-// internal/gitrepo/push_test.go's newBareRemote/newRepoWithRemote —
-// reimplemented locally since those helpers live in a different test
-// package (gitrepo_test) and are not importable across that boundary.
+// sync_integration_test.go covers boardengine.Sync's parity after delegating its absorbing-lock coalescing loop to fabricengine.CoalescePush.
+// A dirty board still commits and pushes, .gitignore ignores the render manifest and loses the retired lock patterns, the absorbing push lock lives in the board checkout's lock directory, no lock file is left beside the board's files, and skipPush still commits locally without advancing the remote.
+// The board+bare-origin fixture is built inline via gitkit.MustRun, mirroring the fixture shape of internal/gitrepo/push_test.go's newBareRemote/newRepoWithRemote, reimplemented locally since those helpers live in a different test package (gitrepo_test) and are not importable across that boundary.
 
 package boardengine
 
@@ -18,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitexec"
 	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -94,7 +88,7 @@ func TestSync_Scenario(t *testing.T) {
 	}{
 		{"SkipPush_CommitsLocallyButDoesNotPush", stepSyncSkipPushCommitsLocallyButDoesNotPush},
 		{"DirtyBoard_CommitsAndPushes", stepSyncDirtyBoardCommitsAndPushes},
-		{"SeedsGitignoreWithLockAndManifestPatterns", stepSyncSeedsGitignoreWithLockAndManifestPatterns},
+		{"GitignoreIgnoresManifestAndDropsLockPatterns", stepSyncGitignoreIgnoresManifestAndDropsLockPatterns},
 		{"ConcurrentCallSerializesOnBoardPushLock", stepSyncConcurrentCallSerializesOnBoardPushLock},
 		{"RetireLegacy_CommitsBoardJSONAndLegacyDeletions", stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions},
 	}
@@ -142,22 +136,31 @@ func stepSyncDirtyBoardCommitsAndPushes(t *testing.T, f *syncFixture) {
 	}
 }
 
-// stepSyncSeedsGitignoreWithLockAndManifestPatterns asserts Sync seeded .gitignore with lock and manifest patterns.
-func stepSyncSeedsGitignoreWithLockAndManifestPatterns(t *testing.T, f *syncFixture) {
-	got, err := os.ReadFile(filepath.Join(f.boardPath, ".gitignore"))
+// stepSyncGitignoreIgnoresManifestAndDropsLockPatterns asserts Sync leaves .gitignore ignoring the render manifest alone, with the retired lock patterns removed.
+func stepSyncGitignoreIgnoresManifestAndDropsLockPatterns(t *testing.T, f *syncFixture) {
+	gitignorePath := filepath.Join(f.boardPath, ".gitignore")
+	writeBoardFile(t, f.boardPath, ".gitignore", "*.lock\n*.swaplock\n"+renderManifestFile+"\n")
+
+	if err := Sync(f.boardPath, false, false); err != nil {
+		t.Fatalf("Sync() error = %v; want nil", err)
+	}
+
+	got, err := os.ReadFile(gitignorePath)
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
-	for _, pat := range []string{"*.lock", "*.swaplock", renderManifestFile} {
-		if !strings.Contains(string(got), pat) {
-			t.Errorf(".gitignore = %q; want it to contain %q", got, pat)
-		}
+	if want := renderManifestFile + "\n"; string(got) != want {
+		t.Errorf(".gitignore = %q; want %q", got, want)
 	}
 }
 
-// stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on board.push.lock.
+// stepSyncConcurrentCallSerializesOnBoardPushLock asserts concurrent Sync calls serialize on the board push lock.
 func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixture) {
-	held, err := lock.AcquireWriteLock(filepath.Join(f.boardPath, "board.push.lock"))
+	pushLockPath, err := fabricengine.BoltLockPath(f.boardPath, fabricengine.BoardPushLockFile)
+	if err != nil {
+		t.Fatalf("BoltLockPath() error = %v", err)
+	}
+	held, err := lock.AcquireWriteLock(pushLockPath)
 	if err != nil {
 		t.Fatalf("AcquireWriteLock() error = %v", err)
 	}
@@ -171,7 +174,7 @@ func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixtur
 	select {
 	case err := <-done:
 		_ = held.Release()
-		t.Fatalf("Sync() returned (err=%v) while board.push.lock was externally held; want it to block", err)
+		t.Fatalf("Sync() returned (err=%v) while the board push lock was externally held; want it to block", err)
 	case <-time.After(200 * time.Millisecond):
 	}
 
@@ -184,7 +187,7 @@ func stepSyncConcurrentCallSerializesOnBoardPushLock(t *testing.T, f *syncFixtur
 	}
 }
 
-// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree.
+// stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions asserts that after RetireLegacy on a synced board that tracked the legacy files, Sync commits board.json and the deletions and leaves a clean tree with no lock file beside the board's files.
 func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syncFixture) {
 	writeBoardFile(t, f.boardPath, legacyTasksFile, `[{"id":0,"slug":"alpha","title":"Alpha","depends_on":[]}]`)
 	writeBoardFile(t, f.boardPath, legacyNotesFile, `[]`)
@@ -218,5 +221,14 @@ func stepSyncRetireLegacyCommitsBoardJSONAndLegacyDeletions(t *testing.T, f *syn
 	}
 	if strings.TrimSpace(status) != "" {
 		t.Errorf("working tree not clean after Sync: %q", status)
+	}
+	entries, err := os.ReadDir(f.boardPath)
+	if err != nil {
+		t.Fatalf("ReadDir(%q) error = %v", f.boardPath, err)
+	}
+	for _, entry := range entries {
+		if name := entry.Name(); strings.HasSuffix(name, ".lock") || strings.HasSuffix(name, swapLockSuffix) {
+			t.Errorf("board root holds lock file %q after a write and a sync; want every lock under the checkout's lock directory", name)
+		}
 	}
 }

@@ -218,12 +218,12 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 	// geometryTokenOwners maps each policed geometry token to the set of directories permitted to declare or construct it in path-construction context: the finished per-token ownership map, converged batch by batch from a single allowlisted directory (internal/hubgeometry, then internal/lymcwd) to this map, each token's row landing in the same batch that moved its declaration.
 	//
 	geometryTokenOwners := map[string][]string{
-		// "_bolt" is declared once, as lymcwd.BoltDirName; fabricengine and runproc take the name from it.
+		// "_bolt" is declared once, as lymdirs.BoltDirName, which lymcwd.BoltDirName re-exports; fabricengine and runproc take the name from it.
 		// "-LYMHUB" is dual-owned: internal/lymcwd keeps a private hubSuffix const
 		// (Location.RepoName derives from it), while internal/fabricengine
 		// owns the exported HubPath constructor every other caller uses.
 		// The duplication is sanctioned by this map, not a leak.
-		"_bolt":   {"internal/lymcwd"},
+		"_bolt":   {"internal/lymdirs"},
 		"-weft":   {"internal/weftname"},
 		"-LYMHUB": {"internal/lymcwd", "internal/fabricengine"},
 		// "_portals" and "_launchers" are fabric's own illusion-maintenance
@@ -512,7 +512,7 @@ func TestEnforcement_GeometryLiterals(t *testing.T) {
 
 // TestEnforcement_BoltDirNameDeclaredOnce keeps the value of BoltDirName to its one declaration:
 // no other Go file, stencil, spec or skill spells it as a whole token.
-// internal/lymcwd/anchor.go holds exactly one occurrence, and this file spells the token its geometry test polices.
+// internal/lymdirs/dirs.go holds exactly one occurrence, and this file spells the token its geometry test polices.
 //
 //lym:guard
 func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
@@ -528,7 +528,7 @@ func TestEnforcement_BoltDirNameDeclaredOnce(t *testing.T) {
 		}
 	})
 
-	const declarationFile = "internal/lymcwd/anchor.go"
+	const declarationFile = "internal/lymdirs/dirs.go"
 	const policingFile = "internal/lymcwd/enforcement_test.go"
 
 	var findings []string

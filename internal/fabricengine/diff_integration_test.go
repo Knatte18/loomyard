@@ -202,10 +202,12 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 	}
 	fabricengine.WriteWeftConfigContentForTest(t, weftFixture.PrimeRecords(), "weft dirty, uncommitted")
 
-	// CommitWeft never creates the push lock file — only PushCoalesced
-	// does — so it must be created explicitly to genuinely exercise the
-	// exclude mechanism rather than assert on an absent file.
-	pushLockPath := filepath.Join(weftFixture.PrimeRecords(), gitrepo.PushLockFileName)
+	// CommitWeft never creates the push lock file, only PushCoalesced does.
+	// It is created where it now lives, in the records git dir, so the test proves nothing of it surfaces in the worktree.
+	pushLockPath, err := gitrepo.New(weftFixture.PrimeRecords()).PushLockPath()
+	if err != nil {
+		t.Fatalf("PushLockPath() error = %v", err)
+	}
 	if err := os.WriteFile(pushLockPath, nil, 0o644); err != nil {
 		t.Fatalf("WriteFile(push lock): %v", err)
 	}
@@ -259,13 +261,11 @@ func TestStatus_MergesUncommittedChangesBothSides_ExcludesWeftArtifacts(t *testi
 		t.Errorf("Status() weft-side paths = %v; want it to contain _lym/config.yaml", weftPaths)
 	}
 
-	// Neither the lock dir nor the push lock file (both git-excluded) may
-	// appear on the weft side. Scoped to weft only, per this batch's
-	// documented known limitation: the warp/warp side deliberately does not
-	// seed these excludes.
+	// The git-excluded lock dir must not appear on the weft side, and the push lock in the git dir must not appear anywhere.
+	// Scoped to weft only: the warp side deliberately does not seed these excludes.
 	for _, p := range weftPaths {
-		if strings.HasPrefix(p, fabricengine.WeftLockDirNameForTest+"/") || p == gitrepo.PushLockFileName {
-			t.Errorf("Status() weft-side paths = %v; want neither %s/ nor %s (both git-excluded)", weftPaths, fabricengine.WeftLockDirNameForTest, gitrepo.PushLockFileName)
+		if strings.HasPrefix(p, fabricengine.WeftLockDirNameForTest+"/") || filepath.Base(p) == gitrepo.PushLockFileName {
+			t.Errorf("Status() weft-side paths = %v; want neither %s/ nor any %s entry", weftPaths, fabricengine.WeftLockDirNameForTest, gitrepo.PushLockFileName)
 		}
 	}
 }

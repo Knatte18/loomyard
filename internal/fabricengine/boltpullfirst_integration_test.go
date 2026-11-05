@@ -486,7 +486,11 @@ func TestBolt_PullThenCommitWritten(t *testing.T) {
 		f.seedCommitLocal(stencilPath, "old\n")
 		tip := f.head()
 		upstream := f.moveUpstream("notes/up.md", "up\n")
-		pushLock, err := lock.AcquireWriteLock(filepath.Join(f.board, gitrepo.PushLockFileName))
+		pushLockPath, err := gitrepo.New(f.board).PushLockPath()
+		if err != nil {
+			t.Fatalf("locate the push lock: %v", err)
+		}
+		pushLock, err := lock.AcquireWriteLock(pushLockPath)
 		if err != nil {
 			t.Fatalf("take the push lock: %v", err)
 		}

@@ -77,6 +77,8 @@ var uncontainedWriteAllowlist = []scankit.Entry{
 		"caller-derived slug path"},
 	{Key: "internal/fabricengine/recordsgit.go", Why: "the lock-directory helper's os.MkdirAll creates the lock directory inside the records worktree " +
 		"root fabric created via containedWorktreeAdd; race-only, not statically pre-plantable"},
+	{Key: "internal/fabricengine/junctionnames.go", Why: "BoltLockPath's os.MkdirAll creates the never-tracked lock directory under the Bolt checkout " +
+		"root the caller passes, a directory fabric created via containedWorktreeAdd; race-only, not statically pre-plantable"},
 	{Key: "internal/fabricengine/originreconcilemoves.go", Why: "tryPrimeLock's os.MkdirAll creates the hub-scoped ephemeral run-lock directory under the prime's .lym, " +
 		"the same directory batten's own prime lock creates, so the try-acquire has a file to lock; the path is shedrun's, never caller-derived"},
 	{Key: "internal/fabricengine/junction.go", Why: "seedLymJunction's os.MkdirAll(target) materialises a junction's records-side target inside the " +

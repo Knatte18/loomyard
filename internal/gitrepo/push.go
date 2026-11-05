@@ -25,9 +25,18 @@ var ErrLeaseRejected = errors.New("gitrepo: lease rejected (remote branch moved)
 // The package doc's locale caveat applies.
 const leaseRejectedTrigger = "stale info"
 
-// PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the repo's
-// worktree root.
-const PushLockFileName = ".gitrepo-push.lock"
+// PushLockFileName is the name of the single-pusher lock file PushCoalesced acquires in the checkout's own git dir.
+const PushLockFileName = "lym-push.lock"
+
+// PushLockPath returns the single-pusher lock file PushCoalesced takes: PushLockFileName in the checkout's own git dir, where no commit can stage it.
+// A caller that must keep a coalesced push off the checkout while it works takes the same file.
+func (r *Repo) PushLockPath() (string, error) {
+	gitDir, err := r.GitDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(gitDir, PushLockFileName), nil
+}
 
 // rebaseRetryTriggers are the git-push stderr substrings indicating the
 // remote has commits this checkout lacks.
@@ -316,7 +325,11 @@ func containsAny(s string, substrs []string) bool {
 // Returns immediately if nothing is unpushed once the lock is acquired.
 // Shares Push's rebase-retry and SHA invalidation caveat.
 func (r *Repo) PushCoalesced() error {
-	l, err := lock.AcquireWriteLock(filepath.Join(r.path, PushLockFileName))
+	lockPath, err := r.PushLockPath()
+	if err != nil {
+		return err
+	}
+	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return fmt.Errorf("gitrepo: acquire push lock: %w", err)
 	}

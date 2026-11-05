@@ -199,12 +199,8 @@
 // A push that exhausts the attempts returns an error wrapping ErrPushRetriesExhausted and the last push error, never ErrPushRejected.
 // PushWithRetry exposes the same loop for a caller that runs its own push, on the backoff delays the caller passes;
 // PushWithRetryReasons adds reasons the caller names as retryable beside those two forms.
-// PushCoalesced adds cross-process coalescing on top: it acquires a
-// single-pusher lock file, .gitrepo-push.lock, in the repo's
-// worktree root before checking whether anything is actually unpushed, so a
-// burst of concurrent callers collapses into as few pushes as possible — a
-// caller that finds nothing unpushed once it acquires the lock returns
-// immediately instead of pushing again.
+// PushCoalesced adds cross-process coalescing on top: it acquires a single-pusher lock file in the checkout's own git dir (Repo.PushLockPath), out of the tracked tree, before checking whether anything is actually unpushed,
+// so a burst of concurrent callers collapses into as few pushes as possible — a caller that finds nothing unpushed once it acquires the lock returns immediately instead of pushing again.
 //
 // # Pull surface
 //

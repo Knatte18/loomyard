@@ -754,7 +754,11 @@ func TestPushFailureClasses(t *testing.T) {
 		branch := f.boardBranch()
 		gitkit.CommitFile(t, board, "notes/a.md", "a\n", "board change")
 		f.originCommit(branch, "notes/up.md", "up\n", "upstream work")
-		boardLock, err := lock.AcquireWriteLock(filepath.Join(board, fabricengine.BoardWriteLockFile))
+		boardLockPath, err := fabricengine.BoltLockPath(board, fabricengine.BoardWriteLockFile)
+		if err != nil {
+			t.Fatalf("locate the board lock: %v", err)
+		}
+		boardLock, err := lock.AcquireWriteLock(boardLockPath)
 		if err != nil {
 			t.Fatalf("take the board lock: %v", err)
 		}

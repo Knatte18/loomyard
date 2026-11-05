@@ -3,6 +3,7 @@
 Every never-tracked file lives under `.lym`, at the mirrored subpath of the `_lym` content it relates to.
 `_lym` holds tracked content only.
 
+- A lock file is never-tracked state: the lock of a tracked file sits under its checkout's `.lym/locks/`, mirroring the file's path, never beside the file (`PATTERN-tracked-file-locks`).
 - Nothing a run, the orch or a landing depends on lives only under `.lym`: decisions, landings, stop reports and board state are always in git (board, records, decision record), and never-tracked state such as the creel journal is a delivery path or cache that a fresh machine starts without.
 - The two are siblings under `AnchorPath()`: in a hub the sibling is `BoltDir(hub)`, standalone it is `standalonestate.Derive`.
 - No engine derives its own `.lym` path; each module exposes a scratch accessor beside its durable one.

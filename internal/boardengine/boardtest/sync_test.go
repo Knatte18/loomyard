@@ -181,9 +181,10 @@ func stepSyncIgnoresLockfiles(t *testing.T, f *syncFixture) {
 	if err != nil {
 		t.Fatalf("read .gitignore: %v", err)
 	}
+	// Locks live under .lym/locks, so no lock pattern hides a stray one in the tracked tree.
 	for _, pat := range []string{"*.lock", "*.swaplock"} {
-		if got := strings.Count(string(gitignore), pat+"\n"); got != 1 {
-			t.Errorf(".gitignore contains %q %d times; want exactly 1:\n%s", pat, got, gitignore)
+		if got := strings.Count(string(gitignore), pat+"\n"); got != 0 {
+			t.Errorf(".gitignore contains %q %d times; want none:\n%s", pat, got, gitignore)
 		}
 	}
 }

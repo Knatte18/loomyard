@@ -9,10 +9,12 @@
 package fabricengine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/Knatte18/loomyard/internal/configengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
@@ -88,9 +90,22 @@ func PathspecNames(dirs configengine.Dirs) ([]string, error) {
 // the literal a second time.
 const BoardWriteLockFile = "board.lock"
 
-// BoardWriteLockPath returns the absolute path to the Bolt write lock file inside hub.
-func BoardWriteLockPath(hub string) string {
-	return filepath.Join(BoltDir(hub), BoardWriteLockFile)
+// BoardPushLockFile is the name of the Bolt checkout's absorbing push lock, held across a board sync's whole commit-and-push loop.
+const BoardPushLockFile = "board.push.lock"
+
+// BoardWriteLockPath returns the absolute path to the Bolt write lock file of hub, creating its directory.
+func BoardWriteLockPath(hub string) (string, error) {
+	return BoltLockPath(BoltDir(hub), BoardWriteLockFile)
+}
+
+// BoltLockPath returns the lock file named name of the Bolt checkout at boltDir, in the checkout's never-tracked lock directory, and creates that directory.
+// A lock there never shows as a change in the board repository, so a stage-all board commit never sweeps it in.
+func BoltLockPath(boltDir, name string) (string, error) {
+	path := lock.TrackedLockPath(boltDir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("fabricengine: create the Bolt lock directory of %s: %w", boltDir, err)
+	}
+	return path, nil
 }
 
 // BoltDirName is the name of the Bolt checkout inside a hub, re-exported from lymcwd.

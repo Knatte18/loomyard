@@ -19,12 +19,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 )
 
-// swapLockSuffix is the fine-grained lock that fences readers during writer
-// swap, separate from board.lock to minimize read latency.
+// swapLockSuffix ends the name of the fine-grained lock that fences readers during writer
+// swap, separate from the board write lock to minimize read latency.
 const swapLockSuffix = ".swaplock"
+
+// swapLockPath returns the swap lock guarding the board file at path, in the board checkout's never-tracked lock directory.
+func swapLockPath(path string) string {
+	return lock.TrackedLockPath(filepath.Dir(path), filepath.Base(path)+swapLockSuffix)
+}
 
 // BriefTask is the enriched read-only view returned by list, with Layer and HasProposal computed at
 // read time.
@@ -195,7 +201,7 @@ func (s *Store) Load() error {
 	if fileExists(path) {
 		// The raw bytes are read under the shared lock and decoded after it is released,
 		// so the decode never holds off a writer waiting for the exclusive lock.
-		raw, found, err := state.ReadJSON[json.RawMessage](path, path+swapLockSuffix)
+		raw, found, err := state.ReadJSON[json.RawMessage](path, swapLockPath(path))
 		if err != nil {
 			return fmt.Errorf("load store: %w", err)
 		}
@@ -263,13 +269,13 @@ func ParseBoardTasks(data []byte) ([]Task, error) {
 	return migrateEntries(file.Entries, nil), nil
 }
 
-// readLegacyFile reads one legacy file when it exists, under the swap lock the pre-upgrade binary wrote it with.
+// readLegacyFile reads one legacy file when it exists, under its swap lock.
 // Existence is checked first so a read never creates a lock file for an absent file.
 func readLegacyFile(path string) ([]legacyRecord, bool, error) {
 	if !fileExists(path) {
 		return nil, false, nil
 	}
-	records, found, err := state.ReadJSON[[]legacyRecord](path, path+swapLockSuffix)
+	records, found, err := state.ReadJSON[[]legacyRecord](path, swapLockPath(path))
 	if err != nil {
 		return nil, false, err
 	}
@@ -288,7 +294,7 @@ func (s *Store) Save() error {
 		return fmt.Errorf("save store: no board directory")
 	}
 	path := filepath.Join(s.boardDir, boardFile)
-	return state.WriteJSON(path, path+swapLockSuffix, storeFile{
+	return state.WriteJSON(path, swapLockPath(path), storeFile{
 		Version:     storeVersion,
 		Entries:     s.tasks,
 		LegacyDone:  s.legacyDone,

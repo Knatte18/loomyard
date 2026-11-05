@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/state"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -377,7 +378,11 @@ func TestPreUpgradeDoneMarkSurvivesNewWrite(t *testing.T) {
 		DependsOn []string `json:"depends_on"`
 		Status    string   `json:"status,omitempty"`
 	}
-	l, err := flock.AcquireWriteLock(filepath.Join(boardPath, "board.lock"))
+	boardLockPath, err := fabricengine.BoltLockPath(boardPath, fabricengine.BoardWriteLockFile)
+	if err != nil {
+		t.Fatalf("locate board.lock: %v", err)
+	}
+	l, err := flock.AcquireWriteLock(boardLockPath)
 	if err != nil {
 		t.Fatalf("acquire board.lock: %v", err)
 	}

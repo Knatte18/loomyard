@@ -289,23 +289,7 @@
 // and the unified `Fabric.Status` merges each side's currently-uncommitted worktree changes into
 // one side-labelled view, reachable via `lym fabric status`.
 //
-// A known asymmetry in `Fabric.Status` is worth recording rather than leaving as a surprise: it may
-// surface gitrepo's `.gitrepo-push.lock` operational artifact (`PushCoalesced`'s single-pusher lock
-// file, left behind in a repo's worktree root because `lock.FileLock.Release` unlocks without
-// deleting it) as an uncommitted change on the warp/warp side but never on the weft side, because
-// fabric seeds a `.git/info/exclude` entry for it only on the weft worktree it owns
-// (`seedWeftArtifactExcludes`) and deliberately does not manage the warp repo's own git
-// configuration.
-// This asymmetry is now narrower than it was: the warp-via-fabric async push described above uses
-// the rebase-free `PushRebaseFree`, which takes no push-serialising lock, for both sides (per the
-// no-warp-root-gitrepo-push-lock Shared Decision), so that path never creates a
-// `.gitrepo-push.lock` at the pristine warp worktree root at all anymore — `Fabric.Status`'s own
-// behavior of not suppressing a warp-side artifact is unchanged, but there is normally nothing
-// there left for it to surface.
-// A warp-side `.gitrepo-push.lock` can still appear only from a non-fabric caller of
-// `gitrepo.PushCoalesced` running directly against the warp repo (e.g.
-// a manual warp-side push outside fabric) — a lingering lock from that path is still reported by
-// `Fabric.Status` like any other untracked warp file, not specially suppressed.
+// `gitrepo.PushCoalesced`'s single-pusher lock file sits in a checkout's own git dir, so `Fabric.Status` never reports it on either side.
 //
 // The read half of the same `Snapshot:` trailer mechanism exposes `Fabric.snapshotWarpSHA(tag
 // string) (string, error)`, resolving a caller-supplied snapshot tag to the warp SHA recorded under
@@ -972,7 +956,7 @@
 // A Bolt with no upstream writes as before; one only behind is fast-forwarded (`repo_advanced`); one with seed commits ahead of a moved upstream has them dropped by the executor above.
 // When Bolt cannot be brought up to date, no write runs and the result's `Skipped` names why: `fetch_failed`, `diverged` (a non-seed commit ahead of a moved upstream, a drop refused on containment or ownership, or a failed replay) or `dirty` (a tracked change blocking the reset or the fast-forward).
 // Each skip is logged at Warn once, inside `Bolt.pullFirst`, with a detail naming the way forward; callers only read the result.
-// The lock order is the board write lock, then the push lock (`gitrepo.PushLockFileName`) in the board dir, across every reset, replay and fast-forward of Bolt;
+// The lock order is the board write lock, then the board checkout's push lock (`gitrepo.Repo.PushLockPath`), across every reset, replay and fast-forward of Bolt;
 // a coalesced push holds the push lock across its own rebase and never takes the board write lock, so the order cannot deadlock.
 //
 // **Push classification.** Every push fabric runs per side goes through `pushClassified`:

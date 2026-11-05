@@ -475,7 +475,12 @@ func pushCoalescedChild(dir string) int {
 
 // lockHolderChild acquires the push lock of the clone at dir, prints a marker so the parent knows the lock is held, and blocks until the parent SIGKILLs it.
 func lockHolderChild(dir string) int {
-	held, err := lock.AcquireWriteLock(filepath.Join(dir, ".gitrepo-push.lock"))
+	lockPath, err := gitrepo.New(dir).PushLockPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "PushLockPath() in child process error = %v\n", err)
+		return 1
+	}
+	held, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "AcquireWriteLock() in child process error = %v\n", err)
 		return 1
@@ -489,11 +494,11 @@ func lockHolderChild(dir string) int {
 	}
 }
 
-// TestPushCoalesced drives PushCoalesced's single-pusher lock (one clone, one .gitrepo-push.lock) through goroutines, genuinely separate OS processes and a crashed lock holder.
+// TestPushCoalesced drives PushCoalesced's single-pusher lock (one clone, one push lock) through goroutines, genuinely separate OS processes and a crashed lock holder.
 // Several commits land locally before any push runs, so concurrent PushCoalesced calls must coalesce them rather than each pushing its own subset, serializing on the lock: the second finds nothing unpushed once it acquires the lock and returns immediately.
 // The cross-process step proves the lock holds across real OS processes, not just goroutines sharing one process: several re-exec'd child processes call PushCoalesced against the same clone concurrently, and every commit must land on the bare remote with all children succeeding;
 // synchronization is the lock itself — no timing assumptions.
-// The crash step proves the push lock does not wedge the repo when its holder dies without releasing: a child process acquires .gitrepo-push.lock (confirmed genuinely held cross-process via a failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced must then complete — the OS releases a flock on process death — and push the pending commit.
+// The crash step proves the push lock does not wedge the repo when its holder dies without releasing: a child process acquires the push lock (confirmed genuinely held cross-process via a failed TryAcquire), is SIGKILLed mid-hold, and a fresh PushCoalesced must then complete — the OS releases a flock on process death — and push the pending commit.
 // The steps run serially in that order and share the clone and the remote: each commits locally and leaves everything pushed for the next.
 // The top-level test calls t.Parallel; no step does, because the steps share the fixture.
 func TestPushCoalesced(t *testing.T) {
@@ -637,7 +642,11 @@ func TestPushCoalesced(t *testing.T) {
 
 		// The lock must be genuinely held by the other process before the kill,
 		// or the recovery below would prove nothing.
-		if _, ok, err := lock.TryAcquireWriteLock(filepath.Join(repoPath, ".gitrepo-push.lock")); err != nil {
+		pushLockPath, err := repo.PushLockPath()
+		if err != nil {
+			t.Fatalf("PushLockPath() error = %v", err)
+		}
+		if _, ok, err := lock.TryAcquireWriteLock(pushLockPath); err != nil {
 			t.Fatalf("TryAcquireWriteLock() error = %v", err)
 		} else if ok {
 			t.Fatal("TryAcquireWriteLock() ok = true while the child holds the lock; want contention")

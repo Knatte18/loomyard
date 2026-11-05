@@ -192,7 +192,11 @@ func TestBoltPull_HoldsTheBoardWriteLockWhileItPulls(t *testing.T) {
 	moveOrigin(t, second.BoardDir(), "board-moved.txt")
 	// Holding the push lock, which Bolt.Pull takes after the board write lock, parks the pull with the board write lock already held.
 	// The test then observes the lock instead of waiting out a clock.
-	pushLock, err := lock.AcquireWriteLock(filepath.Join(h.BoardDir(), gitrepo.PushLockFileName))
+	pushLockPath, err := gitrepo.New(h.BoardDir()).PushLockPath()
+	if err != nil {
+		t.Fatalf("locate the push lock: %v", err)
+	}
+	pushLock, err := lock.AcquireWriteLock(pushLockPath)
 	if err != nil {
 		t.Fatalf("take the push lock: %v", err)
 	}
@@ -208,7 +212,10 @@ func TestBoltPull_HoldsTheBoardWriteLockWhileItPulls(t *testing.T) {
 		done <- pullResult{skip, err}
 	}()
 
-	writeLockPath := filepath.Join(h.BoardDir(), fabricengine.BoardWriteLockFile)
+	writeLockPath, err := fabricengine.BoltLockPath(h.BoardDir(), fabricengine.BoardWriteLockFile)
+	if err != nil {
+		t.Fatalf("locate the board write lock: %v", err)
+	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		contender, acquired, err := lock.TryAcquireWriteLock(writeLockPath)

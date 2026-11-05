@@ -665,7 +665,11 @@ func fetchBoltBranch(hubPath string) error {
 // A held write lock and an uncommitted change on a path the replay touches report a deferral, with nothing changed.
 // A replay that stops returns ErrReplayConflict, and a second rejection returns gitrepo.ErrPushRejected.
 func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {
-	writeLock, held, err := lock.TryAcquireWriteLock(filepath.Join(boardDir, BoardWriteLockFile))
+	writeLockPath, err := BoltLockPath(boardDir, BoardWriteLockFile)
+	if err != nil {
+		return false, err
+	}
+	writeLock, held, err := lock.TryAcquireWriteLock(writeLockPath)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
 	}
@@ -673,13 +677,17 @@ func retryBoltPush(rec *Mutations, boardDir string) (deferred bool, err error) {
 		return true, nil
 	}
 	defer func() { _ = writeLock.Release() }()
-	pushLock, err := lock.AcquireWriteLock(filepath.Join(boardDir, gitrepo.PushLockFileName))
+	repo := gitrepo.New(boardDir)
+	pushLockPath, err := repo.PushLockPath()
+	if err != nil {
+		return false, err
+	}
+	pushLock, err := lock.AcquireWriteLock(pushLockPath)
 	if err != nil {
 		return false, fmt.Errorf("fabricengine: acquire push lock: %w", err)
 	}
 	defer func() { _ = pushLock.Release() }()
 
-	repo := gitrepo.New(boardDir)
 	if err := repo.Fetch(); err != nil {
 		return false, fmt.Errorf("fabricengine: fetch the board in %s: %w", boardDir, err)
 	}

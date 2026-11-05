@@ -16,7 +16,11 @@ import (
 // It never pushes; the caller pushes through Bolt.Push.
 // rec accumulates the file write and, when a commit was made, the commit.
 func CommitShortname(hub, shortname, message string, rec *Mutations) (sha string, committed bool, err error) {
-	l, err := lock.AcquireWriteLock(BoardWriteLockPath(hub))
+	lockPath, err := BoardWriteLockPath(hub)
+	if err != nil {
+		return "", false, err
+	}
+	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return "", false, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
 	}

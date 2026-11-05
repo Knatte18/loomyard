@@ -497,7 +497,11 @@ func TestSetOwners(t *testing.T) {
 							}
 						}
 					})
-					lockHeld, acquired, err := lock.TryAcquireWriteLock(filepath.Join(f.boardDir, fabricengine.BoardWriteLockFile))
+					boardLockPath, err := fabricengine.BoltLockPath(f.boardDir, fabricengine.BoardWriteLockFile)
+					if err != nil {
+						t.Fatalf("locate the board write lock: %v", err)
+					}
+					lockHeld, acquired, err := lock.TryAcquireWriteLock(boardLockPath)
 					if err != nil || !acquired {
 						t.Fatalf("take the board write lock: acquired %v, error %v", acquired, err)
 					}

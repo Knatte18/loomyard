@@ -286,7 +286,7 @@ func ReadOwners(boardDir string) (Owners, error) {
 	if !fileExists(path) {
 		return Owners{}, nil
 	}
-	raw, found, err := state.ReadJSON[json.RawMessage](path, path+swapLockSuffix)
+	raw, found, err := state.ReadJSON[json.RawMessage](path, swapLockPath(path))
 	if err != nil {
 		return Owners{}, fmt.Errorf("read owners: %w", err)
 	}

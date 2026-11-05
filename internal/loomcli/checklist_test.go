@@ -1277,7 +1277,11 @@ func TestChecklistPoll_WaitLineKeepsTheNoteText(t *testing.T) {
 				t.Fatalf("mkdir run dir: %v", err)
 			}
 			status := shedengine.Status{State: tt.state, CurrentProducer: "Build", Activity: shedengine.Activity{Now: "Build"}}
-			if err := state.WriteJSON(statusFile, filepath.Join(filepath.Dir(statusFile), "status.lock"), status); err != nil {
+			statusLock := shedrun.StatusLock(location, shedrun.SelfRunID)
+			if err := os.MkdirAll(filepath.Dir(statusLock), 0o755); err != nil {
+				t.Fatalf("mkdir status lock dir: %v", err)
+			}
+			if err := state.WriteJSON(statusFile, statusLock, status); err != nil {
 				t.Fatalf("write status: %v", err)
 			}
 			waiting := func(shedengine.Status) (shedverbs.WaitNote, error) {

@@ -162,7 +162,11 @@ func (r Renderer) read(boltDir string) (Layers, error) {
 	if wait == 0 {
 		wait = DefaultBoltLockWait
 	}
-	boltLock, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(boltDir, fabricengine.BoardWriteLockFile), wait)
+	lockPath, err := fabricengine.BoltLockPath(boltDir, fabricengine.BoardWriteLockFile)
+	if err != nil {
+		return Layers{}, err
+	}
+	boltLock, acquired, err := lock.AcquireWriteLockWithin(lockPath, wait)
 	if err != nil {
 		return Layers{}, err
 	}

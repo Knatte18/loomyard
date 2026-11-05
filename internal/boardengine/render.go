@@ -35,7 +35,7 @@ import (
 )
 
 // renderManifestFile is the name of the sidecar that records the filenames the
-// last render produced. It is gitignored (via ensureLockfilesIgnored) so it never
+// last render produced. It is gitignored (via ensureBoardIgnores) so it never
 // adds commit churn, and it is never itself a member of the rendered file set.
 const renderManifestFile = ".board-rendered.json"
 

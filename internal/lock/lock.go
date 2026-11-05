@@ -3,6 +3,7 @@
 // FileLock backs both an exclusive write lock and a shared read lock.
 // Being a real OS file lock it coordinates across processes — the way Loomyard is used, one
 // short-lived process per command.
+// Every acquire refuses a lock path inside a tracked lym directory or a tracked directory of the Bolt checkout, so no lock file can show up as a change a commit stages.
 
 package lock
 
@@ -28,6 +29,9 @@ type FileLock struct {
 
 // AcquireWriteLock acquires an exclusive lock, blocking until available.
 func AcquireWriteLock(lockPath string) (*FileLock, error) {
+	if err := refuseTrackedTree(lockPath); err != nil {
+		return nil, err
+	}
 	fl := flock.New(lockPath)
 	if err := fl.Lock(); err != nil {
 		return nil, fmt.Errorf("acquire write lock: %w", err)
@@ -38,6 +42,9 @@ func AcquireWriteLock(lockPath string) (*FileLock, error) {
 // TryAcquireWriteLock attempts to acquire an exclusive lock without blocking.
 // It reports (lock, true, nil) on success, and (nil, false, nil) when already held (not an error).
 func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
+	if err := refuseTrackedTree(lockPath); err != nil {
+		return nil, false, err
+	}
 	fl := flock.New(lockPath)
 	locked, err := fl.TryLock()
 	if err != nil {
@@ -52,6 +59,9 @@ func TryAcquireWriteLock(lockPath string) (*FileLock, bool, error) {
 // AcquireWriteLockWithin acquires an exclusive lock, waiting at most wait for it.
 // It reports (lock, true, nil) on success, and (nil, false, nil) when the lock is still held once wait runs out (not an error).
 func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, bool, error) {
+	if err := refuseTrackedTree(lockPath); err != nil {
+		return nil, false, err
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 
@@ -68,6 +78,9 @@ func AcquireWriteLockWithin(lockPath string, wait time.Duration) (*FileLock, boo
 
 // AcquireReadLock acquires a shared lock, blocking until available.
 func AcquireReadLock(lockPath string) (*FileLock, error) {
+	if err := refuseTrackedTree(lockPath); err != nil {
+		return nil, err
+	}
 	fl := flock.New(lockPath)
 	if err := fl.RLock(); err != nil {
 		return nil, fmt.Errorf("acquire read lock: %w", err)
@@ -78,6 +91,9 @@ func AcquireReadLock(lockPath string) (*FileLock, error) {
 // TryAcquireReadLock attempts to acquire a shared lock without blocking.
 // It reports (lock, true, nil) on success, and (nil, false, nil) when an exclusive holder has it (not an error).
 func TryAcquireReadLock(lockPath string) (*FileLock, bool, error) {
+	if err := refuseTrackedTree(lockPath); err != nil {
+		return nil, false, err
+	}
 	fl := flock.New(lockPath)
 	locked, err := fl.TryRLock()
 	if err != nil {

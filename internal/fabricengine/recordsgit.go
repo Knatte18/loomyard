@@ -32,15 +32,16 @@ const (
 	// weftLockDirName + "/" entry, so no separate exclude entry is needed for
 	// it (Shared Decision lock-artifact-under-weft).
 	weftPushLockFile = "fabric.push.lock"
-	// lockFilePattern and swapLockFilePattern cover every module's write- and swap-lock artifact
-	// anywhere in the weft repo, not only fabric's own. They are load-bearing rather than tidy: a
-	// lock file left at the board root by an ordinary board read makes `git status --porcelain`
-	// non-empty there forever, and the once-per-hub warp-binding backfill refuses to run against a
-	// dirty board (Bolt.Commit is stage-all), so a hub predating the binding would report
-	// WarpBindingOutcomeDeferred on every reconcile and never record one.
-	lockFilePattern     = "*.lock"
-	swapLockFilePattern = "*.swaplock"
+	// retiredLockFilePattern and retiredSwapLockFilePattern once hid every lock file in the weft repo's checkouts.
+	// seedWeftArtifactExcludes removes them, so a lock file that strays into a tracked tree shows in `git status` instead of hiding.
+	retiredLockFilePattern     = "*.lock"
+	retiredSwapLockFilePattern = "*.swaplock"
 )
+
+// legacyLockFileNames are the lock files earlier binaries wrote beside tracked files in the weft repo's checkouts: in the Bolt root, and beside the review records of a run directory.
+// No code writes them any more.
+// They stay excluded by name, so a leftover one never enters a stage-all board commit or a records commit.
+var legacyLockFileNames = []string{".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 
 // ensureWeftLockDir creates the .weft lock directory and seeds git-exclude
 // entries for fabric's lock artifacts.
@@ -87,37 +88,29 @@ func HoldRecordsWriteLock(recordsWorktreePath string, wait time.Duration) (relea
 	return l.Release, true, nil
 }
 
-// seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the
-// .weft/ lock directory, gitrepo's push lock file, lymdirs.DotLymDirName, and every module's
-// *.lock / *.swaplock write- and swap-lock file
-// — to the weft repo's .git/info/exclude, line-exact idempotent (the same
-// discipline as seedGitExclude). It is the sole owner of that file's
-// content: one `.lym/` pattern now keeps every module's machine-local
-// scratch untracked in the weft repo, replacing the three deep wildcard
-// patterns batch 6 deleted, and no .gitignore is ever committed in weft
-// either — .git/info/exclude wins there because it needs no commit, no
-// pathspec change, and no new file in the weft root. Without this seeding,
-// every weft worktree that has ever run a weft-git verb reports fabric's own
-// artifacts (and, now, .lym scratch) as untracked dirt forever: Remove's
-// no-force dirty gate then refuses with a "run lym fabric sync" hint that a
-// pathspec-scoped sync can never satisfy. The exclude file lives in the
-// repo's common gitdir, so one seeding covers every linked weft worktree,
-// and — because excludes are evaluated at status time — it also heals
-// worktrees that already carry the artifacts as untracked (though not ones
-// where a prior sync already committed them; see commitWeft's doc comment
-// for that limit).
+// seedWeftArtifactExcludes appends the weft repo's never-tracked operational artifacts — the .weft/ lock directory, lymdirs.DotLymDirName, and the legacy lock file names — to the weft repo's .git/info/exclude, line-exact idempotent (the same discipline as seedGitExclude), and removes the retired *.lock and *.swaplock lines.
+// Every lock file lives under .lym or .weft, or in a git dir, so the two wildcards would only hide a stray one.
+// It is the sole owner of that file's content: one `.lym/` pattern keeps every module's machine-local scratch and every lock under a checkout's .lym/locks untracked in the weft repo,
+// and no .gitignore is ever committed in weft either — .git/info/exclude wins there because it needs no commit, no pathspec change, and no new file in the weft root.
+// Without this seeding, every weft worktree that has ever run a weft-git verb reports fabric's own artifacts (and .lym scratch) as untracked dirt forever: Remove's no-force dirty gate then refuses with a "run lym fabric sync" hint that a pathspec-scoped sync can never satisfy.
+// The exclude file lives in the repo's common gitdir, so one seeding covers every linked weft worktree,
+// and — because excludes are evaluated at status time — it also heals worktrees that already carry the artifacts as untracked (though not ones where a prior sync already committed them; see commitWeft's doc comment for that limit).
 func seedWeftArtifactExcludes(weftPath string) error {
 	_, _, err := mutateGitExclude(weftPath, func(content string) (string, error) {
-		entries := []string{weftLockDirName + "/", gitrepo.PushLockFileName, lymdirs.DotLymDirName + "/", lockFilePattern, swapLockFilePattern}
-		for _, entry := range entries {
-			present := false
-			for _, line := range strings.Split(content, "\n") {
-				if strings.TrimSpace(line) == entry {
-					present = true
-					break
-				}
+		present := map[string]bool{}
+		var kept []string
+		for _, line := range strings.Split(content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == retiredLockFilePattern || trimmed == retiredSwapLockFilePattern {
+				continue
 			}
-			if present {
+			present[trimmed] = true
+			kept = append(kept, line)
+		}
+		content = strings.Join(kept, "\n")
+		entries := append([]string{weftLockDirName + "/", lymdirs.DotLymDirName + "/"}, legacyLockFileNames...)
+		for _, entry := range entries {
+			if present[entry] {
 				continue
 			}
 			if content != "" && !strings.HasSuffix(content, "\n") {

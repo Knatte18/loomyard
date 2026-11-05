@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/state"
 )
@@ -19,6 +20,8 @@ const (
 	settleRecordFile     = "settle-record.json"
 	settlePatchFile      = "settle-record.patch"
 	generationRecordFile = "generation-record.json"
+	// recordLockSuffix ends the name of each record's lock, which lock.TrackedFileLockPath places outside the tracked run directory.
+	recordLockSuffix = ".lock"
 )
 
 // The kinds of subject a review segment judges.
@@ -118,16 +121,16 @@ func readRecord[T any](path string) (T, bool, error) {
 		}
 		return zero, false, fmt.Errorf("shedadapters: stat record %s: %w", path, err)
 	}
-	record, found, err := state.ReadJSON[T](path, path+".lock")
+	record, found, err := state.ReadJSON[T](path, lock.TrackedFileLockPath(path, recordLockSuffix))
 	if err != nil {
 		return record, false, fmt.Errorf("shedadapters: read record %s: %w", path, err)
 	}
 	return record, found, nil
 }
 
-// writeRecord writes the JSON record at path through internal/state under a lock beside it.
+// writeRecord writes the JSON record at path through internal/state under its lock, which sits outside the tracked run directory.
 func writeRecord[T any](path string, record T) error {
-	if err := state.WriteJSON(path, path+".lock", record); err != nil {
+	if err := state.WriteJSON(path, lock.TrackedFileLockPath(path, recordLockSuffix), record); err != nil {
 		return fmt.Errorf("shedadapters: write record %s: %w", path, err)
 	}
 	return nil
@@ -146,7 +149,7 @@ func readSettleRecord(runDir string) (settleRecord, bool, error) {
 func writeSettleRecord(runDir string, rec settleRecord, patch []byte) error {
 	if patch != nil {
 		patchPath := filepath.Join(runDir, settlePatchFile)
-		if err := state.WriteFile(patchPath, patchPath+".lock", patch); err != nil {
+		if err := state.WriteFile(patchPath, lock.TrackedFileLockPath(patchPath, recordLockSuffix), patch); err != nil {
 			return fmt.Errorf("shedadapters: write settle patch %s: %w", patchPath, err)
 		}
 	}
@@ -252,7 +255,7 @@ func CarryRecords(fromDir, toDir string) error {
 			return fmt.Errorf("shedadapters: read %s to carry: %w", filepath.Join(fromDir, name), err)
 		}
 		target := filepath.Join(toDir, name)
-		if err := state.WriteFile(target, target+".lock", data); err != nil {
+		if err := state.WriteFile(target, lock.TrackedFileLockPath(target, recordLockSuffix), data); err != nil {
 			return fmt.Errorf("shedadapters: carry %s: %w", target, err)
 		}
 	}

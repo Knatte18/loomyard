@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -276,6 +277,52 @@ func TestCarryRecords(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestRecordLocks_SitOutsideTheTrackedRunDirectory(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("EvalSymlinks: %v", err)
+	}
+	runDir := filepath.Join(root, lymdirs.LymDirName, "reviews", "code", "run")
+	carriedDir := filepath.Join(root, lymdirs.LymDirName, "reviews", "code", "carried")
+	if err := writeSettleRecord(runDir, documentSettleRecord(1, 1), []byte("patch")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeGenerationRecord(runDir, generationRecord{Number: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := readSettleRecord(runDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := CarryRecords(runDir, carriedDir); err != nil {
+		t.Fatal(err)
+	}
+
+	locksRoot := filepath.Join(root, lymdirs.DotLymDirName, lymdirs.LocksDirName, lymdirs.LymDirName, "reviews", "code")
+	for _, dir := range []string{"run", "carried"} {
+		for _, name := range []string{settleRecordFile, settlePatchFile, generationRecordFile} {
+			wantLock := filepath.Join(locksRoot, dir, name+recordLockSuffix)
+			if _, err := os.Stat(wantLock); err != nil {
+				t.Errorf("Stat(%q) error = %v; want the record's lock under the checkout's lock directory", wantLock, err)
+			}
+		}
+	}
+
+	for _, dir := range []string{runDir, carriedDir} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("ReadDir(%s): %v", dir, err)
+		}
+		for _, entry := range entries {
+			if ext := filepath.Ext(entry.Name()); ext == ".lock" || ext == ".swaplock" {
+				t.Errorf("run directory %s holds %s; want no lock file beside a tracked record", dir, entry.Name())
+			}
+		}
 	}
 }
 

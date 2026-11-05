@@ -445,7 +445,10 @@ func TestHeddleCLI(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cwd := primeCwd(h)
 		boltDir := fabricengine.BoltDir(h.Path)
-		lockPath := filepath.Join(boltDir, fabricengine.BoardWriteLockFile)
+		lockPath, err := fabricengine.BoltLockPath(boltDir, fabricengine.BoardWriteLockFile)
+		if err != nil {
+			t.Fatalf("BoltLockPath: %v", err)
+		}
 		headBefore := git(t, boltDir, "rev-parse", "HEAD")
 		boltStatusBefore := git(t, boltDir, "status", "--porcelain", "--untracked-files=no")
 		primeStatusBefore := git(t, cwd, "status", "--porcelain")
@@ -630,7 +633,11 @@ func TestHeddleCLI(t *testing.T) {
 		h := hubforge.CopyHub(t, hubforge.Shape{Anchor: "."})
 		cwd := primeCwd(h)
 		seedStore(t, h, map[string][]string{"rules": {"claude-file"}})
-		held, err := lock.AcquireWriteLock(filepath.Join(fabricengine.BoltDir(h.Path), fabricengine.BoardWriteLockFile))
+		boltLockPath, err := fabricengine.BoltLockPath(fabricengine.BoltDir(h.Path), fabricengine.BoardWriteLockFile)
+		if err != nil {
+			t.Fatalf("BoltLockPath: %v", err)
+		}
+		held, err := lock.AcquireWriteLock(boltLockPath)
 		if err != nil {
 			t.Fatalf("AcquireWriteLock: %v", err)
 		}

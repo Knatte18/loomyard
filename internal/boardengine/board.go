@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/Knatte18/loomyard/internal/fabricengine"
 	flock "github.com/Knatte18/loomyard/internal/lock"
 )
 
@@ -84,7 +85,11 @@ func (b *Board) boardCriticalSection(fn func(store *Store) (any, error), afterSa
 		return nil, fmt.Errorf("mkdir board: %w", err)
 	}
 
-	lock, err := flock.AcquireWriteLock(filepath.Join(b.boardPath, writeLockFile))
+	lockPath, err := fabricengine.BoltLockPath(b.boardPath, writeLockFile)
+	if err != nil {
+		return nil, err
+	}
+	lock, err := flock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return nil, fmt.Errorf("acquire lock: %w", err)
 	}

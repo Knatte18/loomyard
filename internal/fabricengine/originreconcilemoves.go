@@ -51,7 +51,7 @@ func tryPrimeLock(l *lymcwd.Location) (release func(), held bool, err error) {
 }
 
 // tryRecordsLocks takes a records branch's write lock and then its push lock, each by one try-acquire.
-// On Bolt they are `board.lock` and the push lock in the board checkout, and on a weft they are the weft's write and push locks.
+// On Bolt they are the board write lock and the board checkout's push lock, and on a weft they are the weft's write and push locks.
 // A held lock returns its name in busy, with pushHeld set when it was the push lock, and nothing held.
 func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, pushHeld bool, err error) {
 	writePath := ""
@@ -61,8 +61,14 @@ func tryRecordsLocks(worktree string, bolt bool) (release func(), busy string, p
 	// weftLockDir is the weft's lock directory, whose push lock gets a holder record; it stays empty on Bolt.
 	weftLockDir := ""
 	if bolt {
-		writePath = filepath.Join(worktree, BoardWriteLockFile)
-		pushPath = filepath.Join(worktree, gitrepo.PushLockFileName)
+		writePath, err = BoltLockPath(worktree, BoardWriteLockFile)
+		if err != nil {
+			return nil, "", false, err
+		}
+		pushPath, err = gitrepo.New(worktree).PushLockPath()
+		if err != nil {
+			return nil, "", false, err
+		}
 		writeName = busyBoardWriteLock
 		pushName = busyBoardPushLock
 	} else {

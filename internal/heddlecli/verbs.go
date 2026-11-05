@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
@@ -408,7 +407,11 @@ func (c *heddleCLI) write(file storeFile, change func(*heddleengine.Store) error
 
 // saveLocked loads file, applies change and saves it, all under the Bolt write lock.
 func (c *heddleCLI) saveLocked(file storeFile, change func(*heddleengine.Store) error) error {
-	boltLock, acquired, err := lock.AcquireWriteLockWithin(filepath.Join(c.boltDir, fabricengine.BoardWriteLockFile), heddleengine.DefaultBoltLockWait)
+	lockPath, err := fabricengine.BoltLockPath(c.boltDir, fabricengine.BoardWriteLockFile)
+	if err != nil {
+		return fmt.Errorf("heddle: %w", err)
+	}
+	boltLock, acquired, err := lock.AcquireWriteLockWithin(lockPath, heddleengine.DefaultBoltLockWait)
 	if err != nil {
 		return fmt.Errorf("heddle: %w", err)
 	}

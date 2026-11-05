@@ -152,10 +152,7 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 
 	// The repo-wide fabric.yaml and warp binding must be committed onto weft:main (the board worktree), not merely present on disk.
 	// The .lym-anchor marker is tracked at the root of the prime's weft worktree and absent from the board.
-	// This checks tracked-ness directly (git ls-files) rather than a blanket `git status --porcelain` cleanliness assertion:
-	// CommitWeftAt/PushWeftAt bypass ensureWeftLockDir's exclude-seeding (by design — see recordsgit.go's CommitWeftAt doc comment),
-	// so gitrepo's own .gitrepo-push.lock can legitimately surface as untracked dirt on the board worktree;
-	// that is a pre-existing gap in boardengine.Sync's own identical CommitWeftAt/PushWeftAt pairing, not something this batch's clone orchestration introduces or is responsible for fixing.
+	// This checks tracked-ness directly (git ls-files) rather than a blanket `git status --porcelain` cleanliness assertion.
 	boardDir := fabricengine.BoardDir(hubPath)
 	for _, relPath := range []string{
 		filepath.Join(lymdirs.LymDirName, "config", "fabric.yaml"),

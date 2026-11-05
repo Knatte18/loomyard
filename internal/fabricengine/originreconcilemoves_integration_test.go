@@ -515,7 +515,13 @@ func TestReconcileOrigin_Moves(t *testing.T) {
 		}{
 			{
 				"Bolt push lock", fabricengine.ReconcileScope{},
-				func(pair *movesPair) string { return filepath.Join(pair.BoardDir(), gitrepo.PushLockFileName) },
+				func(pair *movesPair) string {
+					path, err := gitrepo.New(pair.BoardDir()).PushLockPath()
+					if err != nil {
+						t.Fatalf("locate the Bolt push lock: %v", err)
+					}
+					return path
+				},
 				func(pair *movesPair) { originCommitFile(t, pair.RecordsBare, "main", "moved.txt", "moved") },
 				"bolt", func(*movesPair) string { return "main" },
 			},

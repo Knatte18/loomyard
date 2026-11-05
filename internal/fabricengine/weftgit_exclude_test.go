@@ -1,12 +1,5 @@
-// weftgit_exclude_test.go proves fabric's own lock artifacts (.weft/ from
-// Fabric.Commit's write lock, .gitrepo-push.lock from PushCoalesced) never
-// surface as untracked dirt in the weft worktree: ensureWeftLockDir seeds
-// them into the weft repo's info/exclude, so Remove's no-force dirty gate
-// (a raw `git status --porcelain`, untracked included) never dead-ends on
-// them. It also proves every module's machine-local artifact — locks, pause
-// flags, rendered prompts — is kept out of weft history structurally, by
-// living under .lym and so never falling inside a weft-commit pathspec,
-// rather than by an exclude-layer pattern.
+// weftgit_exclude_test.go proves fabric's own lock artifacts (.weft/ from Fabric.Commit's write lock, and a legacy lock file left by an earlier binary) never surface as untracked dirt in the weft worktree: ensureWeftLockDir seeds them into the weft repo's info/exclude, so Remove's no-force dirty gate (a raw `git status --porcelain`, untracked included) never dead-ends on them, while a lock file that strays into _lym shows.
+// It also proves every module's machine-local artifact — locks, pause flags, rendered prompts — is kept out of weft history structurally, by living under .lym and so never falling inside a weft-commit pathspec, rather than by an exclude-layer pattern.
 //
 // Package fabricengine_test to construct a real *fabricengine.Fabric against a real hubforge.NewHub
 // hub; shares the TestMain in testmain_test.go. newFabricPair/writeWeftConfig below are this file's
@@ -21,12 +14,12 @@ package fabricengine_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/Knatte18/loomyard/internal/fabricengine"
 	"github.com/Knatte18/loomyard/internal/gitkit"
-	"github.com/Knatte18/loomyard/internal/gitrepo"
 	"github.com/Knatte18/loomyard/internal/hubforge"
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -57,8 +50,8 @@ func writeWeftConfig(t *testing.T, weftPath, content string) {
 }
 
 // TestCommitWeft_LockArtifactsExcludedFromStatus commits scoped weft content (which creates the
-// .weft lock dir) and drops a push lock file, then asserts neither artifact appears in `git status
-// --porcelain` — the exact check Remove's no-force weft dirty gate runs.
+// .weft lock dir) and drops a legacy push lock file, then asserts neither artifact appears in `git status
+// --porcelain` — the exact check Remove's no-force weft dirty gate runs — while a stray lock file under _lym does.
 func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -78,19 +71,25 @@ func TestCommitWeft_LockArtifactsExcludedFromStatus(t *testing.T) {
 		t.Fatalf(".weft lock dir missing after Commit: %v", err)
 	}
 
-	// Materialize the push lock artifact the way an interrupted PushCoalesced
-	// would leave it: a plain file at the worktree root.
-	pushLock := filepath.Join(weftPath, gitrepo.PushLockFileName)
-	if err := os.WriteFile(pushLock, nil, 0o644); err != nil {
-		t.Fatalf("write push lock artifact: %v", err)
+	// Materialize the push lock an earlier binary left at the worktree root.
+	const legacyPushLock = ".gitrepo-push.lock"
+	if err := os.WriteFile(filepath.Join(weftPath, legacyPushLock), nil, 0o644); err != nil {
+		t.Fatalf("write legacy push lock: %v", err)
+	}
+	const strayLock = "stray-record.json.lock"
+	if err := os.WriteFile(filepath.Join(weftPath, lymdirs.LymDirName, strayLock), nil, 0o644); err != nil {
+		t.Fatalf("write stray lock: %v", err)
 	}
 
 	status := gitkit.GitStatusPorcelain(t, weftPath)
 	if strings.Contains(status, ".weft") {
 		t.Errorf("git status --porcelain reports .weft as dirt: %q; want it git-excluded", status)
 	}
-	if strings.Contains(status, gitrepo.PushLockFileName) {
-		t.Errorf("git status --porcelain reports %s as dirt: %q; want it git-excluded", gitrepo.PushLockFileName, status)
+	if strings.Contains(status, legacyPushLock) {
+		t.Errorf("git status --porcelain reports %s as dirt: %q; want it git-excluded", legacyPushLock, status)
+	}
+	if !strings.Contains(status, strayLock) {
+		t.Errorf("git status --porcelain = %q; want the stray %s under %s shown", status, strayLock, lymdirs.LymDirName)
 	}
 }
 
@@ -109,13 +108,8 @@ func nonEmptyExcludeLines(content string) []string {
 	return lines
 }
 
-// TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent proves
-// seedWeftArtifactExcludes' shape: it seeds exactly fabric's own .weft/ lock
-// directory, gitrepo's push-lock filename, lymdirs.DotLymDirName + "/", and the
-// *.lock / *.swaplock write- and swap-lock patterns every module's lock artifacts land under
-// into the weft repo's info/exclude, none of the retired cross-module
-// machine-local patterns, and re-seeding via a second commit leaves the file
-// byte-identical.
+// TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent proves seedWeftArtifactExcludes' shape: it seeds fabric's own .weft/ lock directory, lymdirs.DotLymDirName + "/" and the legacy lock file names into the weft repo's info/exclude, removes the retired *.lock / *.swaplock lines, and seeds none of the retired cross-module machine-local patterns.
+// Re-seeding via a second commit leaves the file byte-identical.
 func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -123,34 +117,44 @@ func TestCommitWeft_SeedsFabricArtifactsOnlyAndIsIdempotent(t *testing.T) {
 	f, weftPath := newFabricPair(t)
 	writeWeftConfig(t, weftPath, "modified for exclude test")
 
+	excludePath := filepath.Join(weftPath, ".git", "info", "exclude")
+	seeded, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("read info/exclude: %v", err)
+	}
+	if err := os.WriteFile(excludePath, append(seeded, []byte("*.lock\n*.swaplock\n")...), 0o644); err != nil {
+		t.Fatalf("write info/exclude: %v", err)
+	}
+
 	if _, err := f.Commit([]string{lymdirs.LymDirName}, fabricengine.DefaultCommitMessage, nil, fabricengine.SyncOptions{}); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
 
-	excludePath := filepath.Join(weftPath, ".git", "info", "exclude")
 	first, err := os.ReadFile(excludePath)
 	if err != nil {
 		t.Fatalf("read info/exclude: %v", err)
 	}
 
-	wantLines := []string{".weft/", gitrepo.PushLockFileName, lymdirs.DotLymDirName + "/", "*.lock", "*.swaplock"}
+	wantLines := []string{".weft/", lymdirs.DotLymDirName + "/", ".gitrepo-push.lock", "board.lock", "board.push.lock", "board.json.swaplock", "tasks.json.swaplock", "notes.json.swaplock", "generation-record.json.lock", "settle-record.json.lock", "settle-record.patch.lock"}
 	gotLines := nonEmptyExcludeLines(string(first))
 	if len(gotLines) != len(wantLines) {
-		t.Fatalf("info/exclude entries = %v; want exactly %v", gotLines, wantLines)
+		t.Fatalf("info/exclude entries = %v; want exactly the entries of %v", gotLines, wantLines)
 	}
-	for i, want := range wantLines {
-		if gotLines[i] != want {
-			t.Errorf("info/exclude entry %d = %q; want %q (full: %v)", i, gotLines[i], want, gotLines)
+	for _, want := range wantLines {
+		if !slices.Contains(gotLines, want) {
+			t.Errorf("info/exclude entries = %v; want %q among them", gotLines, want)
 		}
 	}
 
 	retiredPatterns := []string{
+		"*.lock",
+		"*.swaplock",
 		"**/" + lymdirs.LymDirName + "/*/**/*.lock",
 		"**/" + lymdirs.LymDirName + "/*/pause",
 		"**/" + lymdirs.LymDirName + "/*/prompts/",
 	}
 	for _, retired := range retiredPatterns {
-		if strings.Contains(string(first), retired) {
+		if slices.Contains(gotLines, retired) {
 			t.Errorf("info/exclude seeds retired cross-module pattern %q; want it gone", retired)
 		}
 	}

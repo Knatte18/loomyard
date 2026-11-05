@@ -539,7 +539,11 @@ func TestRender(t *testing.T) {
 	t.Run("HeldBoltLockFailsTheRender", func(t *testing.T) {
 		t.Parallel()
 		f := newRenderFixture(t, claudeStore)
-		held, err := lock.AcquireWriteLock(filepath.Join(f.bolt, fabricengine.BoardWriteLockFile))
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held, err := lock.AcquireWriteLock(boltLockPath)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -559,7 +563,11 @@ func TestRender(t *testing.T) {
 		if err := os.Remove(filepath.Join(f.bolt, FileName)); err != nil {
 			t.Fatal(err)
 		}
-		held, err := lock.AcquireWriteLock(filepath.Join(f.bolt, fabricengine.BoardWriteLockFile))
+		boltLockPath, err := fabricengine.BoltLockPath(f.bolt, fabricengine.BoardWriteLockFile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		held, err := lock.AcquireWriteLock(boltLockPath)
 		if err != nil {
 			t.Fatal(err)
 		}

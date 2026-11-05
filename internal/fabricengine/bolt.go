@@ -48,9 +48,9 @@ func (b *Bolt) Commit(message string, opts SyncOptions) (sha string, committed b
 // With opts.SkipGit, write still runs under the lock but nothing is committed.
 // It never pushes; callers push with Push afterwards, outside the write lock.
 func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opts SyncOptions) (sha string, committed bool, err error) {
-	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	l, err := b.acquireWriteLock()
 	if err != nil {
-		return "", false, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+		return "", false, err
 	}
 	defer func() { _ = l.Release() }()
 
@@ -67,6 +67,19 @@ func (b *Bolt) CommitWritten(message string, write func() ([]string, error), opt
 		return "", false, err
 	}
 	return repo.StageAndCommit(message, ScopedPathspec(".", stageable))
+}
+
+// acquireWriteLock takes the board write lock of the Bolt's checkout, waiting while another holder has it.
+func (b *Bolt) acquireWriteLock() (*lock.FileLock, error) {
+	path, err := BoltLockPath(b.path, BoardWriteLockFile)
+	if err != nil {
+		return nil, err
+	}
+	l, err := lock.AcquireWriteLock(path)
+	if err != nil {
+		return nil, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+	}
+	return l, nil
 }
 
 // stageablePaths returns the paths, relative to the repo at root, that git can stage: each one on disk, and each missing one HEAD's tree holds, whose deletion it stages.
@@ -129,7 +142,11 @@ func (b *Bolt) PushRecorded(opts SyncOptions, rec *Mutations) error {
 
 // Sync drives step to completion under an absorbing push lock, looping while step reports progress.
 func (b *Bolt) Sync(step func() (progressed bool, err error)) error {
-	return coalescePush(filepath.Join(b.path, "board.push.lock"), step)
+	lockPath, err := BoltLockPath(b.path, BoardPushLockFile)
+	if err != nil {
+		return err
+	}
+	return coalescePush(lockPath, step)
 }
 
 // HasUpstream reports whether the Bolt's current branch has an upstream configured, read from local config without contacting the remote.
@@ -192,9 +209,9 @@ type BoltWriteResult struct {
 // A path that no longer exists stages its deletion and is not recorded as a written file, and one HEAD does not hold either is left out of the commit.
 // It never pushes.
 func (b *Bolt) PullThenCommitWritten(writes []BoltWrite, rec *Mutations) (res BoltWriteResult, err error) {
-	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	l, err := b.acquireWriteLock()
 	if err != nil {
-		return BoltWriteResult{}, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+		return BoltWriteResult{}, err
 	}
 	defer func() { _ = l.Release() }()
 
@@ -248,9 +265,9 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 	if opts.SkipGit {
 		return "", "", nil
 	}
-	l, err := lock.AcquireWriteLock(filepath.Join(b.path, BoardWriteLockFile))
+	l, err := b.acquireWriteLock()
 	if err != nil {
-		return "", "", fmt.Errorf("fabricengine: acquire board write lock: %w", err)
+		return "", "", err
 	}
 	defer func() { _ = l.Release() }()
 	return b.pullFirst(rec)
@@ -258,7 +275,7 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 
 // pullFirst brings Bolt up to date with its upstream and reports why it could not, as a skip with a detail naming the way forward.
 // The caller holds the board write lock.
-// pullFirst also holds the push lock in the board dir for its whole run, taken after the board write lock.
+// pullFirst also holds the board checkout's push lock for its whole run, taken after the board write lock.
 // A coalesced push rebases the board under that lock and never takes the write lock, so without it a push could rebase the board mid-drop.
 //
 // A Bolt with no upstream is left alone.
@@ -267,13 +284,17 @@ func (b *Bolt) Pull(opts SyncOptions, rec *Mutations) (BoltSkip, string, error) 
 // A replay that stops on a conflict skips as diverged, and one an uncommitted change blocks skips as dirty.
 // Each skip is logged at Warn here, once, so no caller repeats the text.
 func (b *Bolt) pullFirst(rec *Mutations) (BoltSkip, string, error) {
-	pushLock, err := lock.AcquireWriteLock(filepath.Join(b.path, gitrepo.PushLockFileName))
+	repo := gitrepo.New(b.path)
+	pushLockPath, err := repo.PushLockPath()
+	if err != nil {
+		return "", "", err
+	}
+	pushLock, err := lock.AcquireWriteLock(pushLockPath)
 	if err != nil {
 		return "", "", fmt.Errorf("fabricengine: acquire push lock: %w", err)
 	}
 	defer func() { _ = pushLock.Release() }()
 
-	repo := gitrepo.New(b.path)
 	if err := repo.Fetch(); err != nil {
 		if _, upstreamErr := repo.UpstreamSHA(); errors.Is(upstreamErr, gitrepo.ErrNoUpstream) {
 			return "", "", nil

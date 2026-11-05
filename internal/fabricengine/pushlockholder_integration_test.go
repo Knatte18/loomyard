@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/Knatte18/loomyard/internal/gitkit"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
 
@@ -42,7 +43,10 @@ func TestTryRecordsLocks_HolderRecord(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			worktree := t.TempDir()
-			if !tt.bolt {
+			if tt.bolt {
+				// Bolt's push lock sits in the checkout's git dir, so the checkout must be a repository.
+				gitkit.Git(t, worktree, "init", "-q", "-b", "main")
+			} else {
 				worktree = newPlainWeftRepo(t)
 			}
 			release, busy, _, err := tryRecordsLocks(worktree, tt.bolt)

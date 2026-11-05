@@ -10,7 +10,8 @@
 
 - `PATTERN-cwd-resolution` — Resolving a cwd, worktree root or anchor: only `internal/lymcwd`, from the worktree's own weft-root `.lym-anchor`; only `fabricengine` writes or git-reads it; engines get absolute paths, never import lymcwd; hub containers and workspace files stay hub-reachable only. (test) — [background](pattern/PATTERN-cwd-resolution.md)
 - `PATTERN-lym-temp-root` — Creating temp file or dir: under `internal/lymtemp`'s run dir, never `os.TempDir()`. (test) — [background](pattern/PATTERN-lym-temp-root.md)
-- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered instruction files and their `.heddle` temporary directory at a warp worktree's anchor; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-durable-vs-ephemeral-state` — Adding file: tracked under `_lym`, never-tracked under `.lym`, same subpath, bar heddle's rendered files and `.heddle` at a warp worktree's anchor; only `internal/lymdirs` names either, bar a `tools/` script's variable block. — [background](pattern/PATTERN-durable-vs-ephemeral-state.md)
+- `PATTERN-tracked-file-locks` — Tracked-file lock: path via `lock`. (test) — [background](pattern/PATTERN-tracked-file-locks.md)
 - `PATTERN-leaf-packages` — Importing into a leaf package: only closed import set. — [background](pattern/PATTERN-leaf-packages.md)
 - `PATTERN-fs-links` — Creating a filesystem link: only `internal/fslink`'s `CreateDirLink` or `CreateFileLink`; no `os.Symlink` or `os.Link` outside `internal/fslink`. (test) — [background](pattern/PATTERN-fs-links.md)
 

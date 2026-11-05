@@ -62,7 +62,11 @@ func CommitSeededStencils(hub, subtreeRel, subtreeDir string, writtenRelPaths []
 		return StencilSeedResult{}, nil
 	}
 
-	l, err := lock.AcquireWriteLock(BoardWriteLockPath(hub))
+	lockPath, err := BoardWriteLockPath(hub)
+	if err != nil {
+		return StencilSeedResult{}, err
+	}
+	l, err := lock.AcquireWriteLock(lockPath)
 	if err != nil {
 		return StencilSeedResult{}, fmt.Errorf("fabricengine: acquire board write lock: %w", err)
 	}
