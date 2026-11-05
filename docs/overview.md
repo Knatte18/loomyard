@@ -612,7 +612,7 @@ User-facing modules each get one `lym <module>` namespace:
   `lym loom start` writes a handoff voucher right before it spawns a driver, so a deliberate resume never reads as a crash.
   A tapestry run's tail is `Webster → Parent-Align → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize`, where `Code-Review` is the Code-Perch of `Code-Bouncer`, `Code-Burler-Review` and `Code-Burler-Fix`;
   a darn run's tail is `Darn-Write → Drift-Verify → Code-Review → Drift-Recheck → Describe → PR-Review → Finalize`, with no `Parent-Align`.
-  `Drift-Recheck` compares again code committed after `Drift-Verify`'s last compare, its accepted tests against the profile captured when they were accepted, and its Stuck routes back to `Drift-Verify`.
+  `Drift-Recheck` compares again code committed after `Drift-Verify`'s last compare, its accepted tests against the accepted profile built from the output kept when they were accepted, and its Stuck routes back to `Drift-Verify`.
   The regression rows, `Drift-Baseline` before `Parts-Write` in loom and before `Drift-Await` in darn, `Drift-Await` before `Webster` in loom and before `Darn-Write` in darn, and `Drift-Verify` and `Drift-Recheck` as above, each carry the entry gate `drift.enabled` of the hub-wide `drift.yaml`, so a hub that leaves it off records each of them skipped and spawns or runs nothing for them.
   `Drift-Baseline` records a scope that `drift.scope` sets, such as one in a task's `run_settings`, with no agent, and spawns its agent to decide the scope only when the key is empty.
   Each Drift producer also reads `drift.enabled` at every pass, so switching it off, in the hub or in one task's local layer, lets a resume pass a Drift row the run already entered.

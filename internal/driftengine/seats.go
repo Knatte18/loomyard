@@ -55,11 +55,16 @@ const (
 	operatorVerifyMode   = "The operator is present at your pane and decides each drift: you present it, discuss it and record what the operator decides.\n" +
 		"Ask in plain text in the pane and wait for the operator's typed reply; never call the `AskUserQuestion` tool, whose modal dialog the run cannot drive."
 	autonomousVerifyJudging = "Accept a drifted test with `lym drift accept <test> --reason <text>`, giving the reason the drift is intended.\n" +
+		acceptanceKeepsOutput +
 		"The run's parent can withdraw an acceptance; a withdrawn test is refused to you, so fix its drift or report it in the report."
 	operatorVerifyJudging = "Present the drift to the operator one test at a time: for each quantity that drifted, its baseline value, its current value and the size of the deviation, then the baseline report's expectation for the test and your own judgment with its reason.\n" +
 		"Discuss it with the operator, who decides whether the test's drift is accepted or fixed, and go on to the next test only once the operator has decided.\n" +
 		"Record each acceptance the operator decides with `lym drift accept <test> --reason <text>`, giving the operator's reason, and never accept a test the operator has not decided on.\n" +
+		acceptanceKeepsOutput +
 		"Each test the operator decides to fix, you fix in Step 3."
+	// acceptanceKeepsOutput tells either verify agent how an acceptance names its test and what output it keeps.
+	acceptanceKeepsOutput = "Name the test as its profile file under the baseline directory is named, with or without the file's extension; any other name is refused.\n" +
+		"The acceptance captures the test's output first and keeps it as the accepted output, so accept a test only once its output is final: a later change to that output halts the row.\n"
 )
 
 // subjectFields are the told values the task's subject is read from.

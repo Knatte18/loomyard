@@ -18,10 +18,11 @@
 // Config.StepWithHubEnv, which every row and verb that runs a command calls, adds the env config module's variables beneath the step's own `env`, so a command runs with the inherited environment, then the hub's and this machine's variables, then the step's, each replacing the one before.
 //
 // Paths is the one declarer of every drift path.
-// The durable directory `_lym/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lym/drift/` holds the capture record, the capture lock, the compare marker, the baseline, side-capture and accepted-profile directories, the skip file and the run counter.
+// The durable directory `_lym/drift/` holds the scope record, the two agents' reports and the logs of every run; the ephemeral directory `.lym/drift/` holds the capture record, the capture lock, the compare marker, the accept lock that serializes accepts, the baseline, side-capture and accepted-profile directories, the accepting directory an acceptance captures into, the accepted tests' kept outputs, the skip file and the run counter.
+// A profile file holds a test's profile when its path relative to its profile directory, with or without its last extension, is the test's name; a dotfile has no extension to drop, so its whole name is the test's name.
 //
 // Every record is JSON written through `internal/state`, so an unknown key survives a rewrite.
-// The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named, the time of the last gate halt, the last compare Drift-Verify or Drift-Recheck ran: the baseline's commit, the commit compared, its time and whether it passed, and the commit the accepted profile was captured at.
+// The scope record (`scope.json`) holds the recorded scope (`off`, `partial` or `full`) and its skipped tests, when the baseline was awaited or deferred, a waiver, the accepted and withdrawn tests, the unruled tests the last decision halt named, the time of the last gate halt, the last compare Drift-Verify or Drift-Recheck ran: the baseline's commit, the commit compared, its time and whether it passed, and the commit a compare against the accepted profile last passed at.
 // Verdict renders that record as the `## Regression check` section a landing carries: the scope and its skipped tests, the baseline's commit, the last compare's result or the waiver, and each accepted test with who accepted it and why; with no scope record it renders nothing and creates no directory.
 // The capture record (`capture.json`) holds the state of the latest main capture (`running`, `passed` or `failed`) with its pid, HEAD, the tests it skipped, times, exit code, reason, whether it exited 0 with no file written, and log.
 // CountedCapture decides whether a capture counts as the baseline: a passed record with an `awaited_at` in the scope record.
@@ -41,7 +42,7 @@
 // A Stuck over such a record, at Drift-Baseline or Drift-Await, names in place of a plain capture, which would fail the same way, `lym drift scope --scope full` or a shorter `--skip` list followed by `lym drift capture` and `lym loom resume` while HEAD is the branch point, and `lym drift scope --scope off` followed by `lym loom resume`, besides `lym drift defer`.
 // RunCapture holds no job object of its own, since it also runs in a row's step process; the detached child holds the capture's named job (CaptureJobName) around it.
 // RunSideCapture takes no lock and writes no record: it runs the same command into the next free numbered directory under the side directory.
-// RunAcceptedCapture takes no lock and writes no record either: it empties the accepted-profile directory and runs the same command into it, and passes for exit 0 within the timeout with a file written; a reason it did not pass names the directory and the last output as a failed record's does.
+// RunAcceptanceCapture takes no lock and writes no record either: it empties the accepting directory and runs the same command into it for an acceptance of one test, and passes for exit 0 within the timeout with a profile file of that test written; a reason it did not pass names the directory and the last output as a failed record's does.
 // CheckMainCapture is the main capture's precondition: the run is at Drift-Baseline, or blocked at Drift-Await, HEAD equals the branch point and the tracked tree is clean; each refusal names its way forward.
 // StartCapture spawns `drift capture-child` detached in the anchored directory, where a lym verb's cwd must be, with breakaway, registers it under the run's processes with role `capture` and returns its pid only once the capture record carries that pid, in any state, since a capture can fail between two reads.
 // A child that ends or stalls before that record is an error carrying the last JSON error envelope's error from the child's log, folded onto one bounded line, and whether the child marked it with LastingFaultKey as one a fresh start in the same directory cannot change.
@@ -67,7 +68,10 @@
 // Accept admits the agent session and a caller at a halt; a running status with the mark closed is the row's own work and refuses, and any other state refuses naming `lym loom resume`.
 // Under scope full the agent's acceptances are unruled and a caller's are ruled; a withdrawn test, and under scope full any test, is accepted by a caller only at a decision halt, and never by an autonomous agent session.
 // An acceptance in a session with the operator in its pane is the operator's decision: it is ruled under scope full and may accept a withdrawn test again.
-// Withdraw moves an accepted test to the withdrawn list, and RunCount reads the agent session's run count.
+// Accept refuses a test with no profile file under the baseline directory, naming the test and the directory, so a typo or a test the capture skipped never joins the compare's skip list.
+// It keeps the test's profile files that RunAcceptanceCapture left in the accepting directory as the output the acceptance saw, and refuses an acceptance with none there; CheckAccept runs Accept's checks writing nothing, so `lym drift accept` refuses before it captures.
+// The verb holds the accept lock, `Paths.AcceptLock`, from before its check until Accept returns and refuses while another accept holds it, so two accepts never share the accepting directory; the engine functions take no part in it.
+// Withdraw moves an accepted test to the withdrawn list and drops its kept output, and RunCount reads the agent session's run count.
 // Accept and Withdraw clear the accepted profile's commit, since the profile no longer holds the acceptances.
 // Defer sets awaited_at with deferred while blocked at Drift-Await or at a Drift-Baseline capture halt, and refuses while the capture lock is held.
 // Waive records a waiver at a blocked Drift-Verify only when no counted capture exists.
@@ -126,7 +130,8 @@
 // then the compare runs, its result goes into the scope record, and a pass is Done.
 // A failing compare resets the run counter at the current HEAD, recording whether `verify_interactive` puts the operator in the session, and spawns one agent whose table gates, in order, on a clean tree, on the verify entry, which runs only once the session committed code, and on a final compare that ends the session when drift remains.
 // The agent's end closes the mark; a Done records a passed compare at the agent's HEAD and, under scope full, is checked again for unruled acceptances.
-// A Done with tests accepted first captures the accepted profile at HEAD, unless the scope record names HEAD as its commit already, and records HEAD as its commit; a capture that does not pass is a Stuck naming `lym loom resume`.
+// A Done with tests accepted first builds the accepted profile, the baseline with each accepted test's profile files replaced by the output its acceptance kept, compares HEAD against it with only the scope's skipped tests left out, and records HEAD as its commit, unless the scope record names HEAD as its commit already.
+// So an accepted test whose output moved after its acceptance, such as by a later fix of the agent, shows as drift and is never taken into the profile: that compare failing is a Stuck naming `lym drift accept` again, `lym drift withdraw` or a fix, then `lym loom resume`, as is an acceptance with no kept output.
 //
 // A Stuck opens with shedadapters.DecisionHaltPrefix, so the stop chain hands it to the parent, under scope full, for the missing counted capture, and under scope partial for a failing final compare while a test is withdrawn.
 // Under scope full a decision halt names the unruled acceptances and the parent's ways forward for them, `lym loom resume` to stand by them or `lym drift withdraw <test>` to reject one, and records the names and the time in the scope record; the parent's resume then rules them.
@@ -141,6 +146,6 @@
 // Otherwise it compares HEAD again and records the compare: against the baseline while no test is accepted, and against the accepted profile, with only the scope's skipped tests left out, while tests are accepted, so an accepted test whose output differs from the one its acceptance saw shows as drift.
 // A passing compare is Done; a compare against the accepted profile that passes also records HEAD as the profile's commit.
 // No compare recorded yet, a dirty tracked tree, an undeclared compare and a compare showing drift are a Stuck, which the recipe routes to Drift-Verify to judge the drift again.
-// With tests accepted, drift against the accepted profile, or no profile captured at the last compare's commit, lapses every acceptance first, since the compare cannot tell which accepted test changed, so Drift-Verify compares each of them against the baseline again.
+// With tests accepted, drift against the accepted profile, or no compare against the accepted profile that passed at the last compare's commit, lapses every acceptance first, since the compare cannot tell which accepted test changed, so Drift-Verify compares each of them against the baseline again.
 // Under scope full that includes the parent's rulings: every lapsed acceptance needs the parent's ruling again once Drift-Verify's agent accepts it anew.
 package driftengine

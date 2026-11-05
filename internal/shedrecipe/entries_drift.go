@@ -136,7 +136,7 @@ func driftVerifyEntry(row RowIdentity, cfg Config, env Env) (shedengine.ShedProd
 		{"Drift.Commit", d.Commit},
 		{"Drift.VerifyTable", d.VerifyTable},
 		{"Drift.Compare", d.Compare},
-		{"Drift.CaptureAccepted", d.CaptureAccepted},
+		{"Drift.CompareAccepted", d.CompareAccepted},
 	})
 	if err != nil {
 		return nil, err

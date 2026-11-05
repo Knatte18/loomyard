@@ -33,8 +33,14 @@ type Paths struct {
 	BaselineDir string
 	// SideDir holds the numbered directories of side captures.
 	SideDir string
-	// AcceptedDir is the accepted profile: the capture Drift-Verify takes once its compare passed with tests accepted, which Drift-Recheck compares later code against.
+	// AcceptedDir is the accepted profile: the baseline with each accepted test's profile files replaced by the output kept at its acceptance, which Drift-Verify and Drift-Recheck compare later code against.
 	AcceptedDir string
+	// AcceptingDir is where an acceptance's capture writes the current code's output before the accepted test's files are kept.
+	AcceptingDir string
+	// AcceptLock is the lock an accept holds from before its capture until it records the acceptance, so two accepts never share the accepting directory.
+	AcceptLock string
+	// AcceptedTestsDir holds each accepted test's profile files as captured at its acceptance, under their paths in the profile.
+	AcceptedTestsDir string
 	// SkipFile is the file naming one skipped test per line.
 	SkipFile string
 	// Runs is the run counter of the Drift-Verify agent session.
@@ -46,18 +52,21 @@ func NewPaths(anchorRoot string) Paths {
 	durable := filepath.Join(anchorRoot, lymdirs.LymDirName, driftDirName)
 	ephemeral := filepath.Join(anchorRoot, lymdirs.DotLymDirName, driftDirName)
 	return Paths{
-		Scope:          filepath.Join(durable, "scope.json"),
-		BaselineReport: filepath.Join(durable, "baseline.md"),
-		VerifyReport:   filepath.Join(durable, "verify-report.md"),
-		LogsDir:        filepath.Join(durable, "logs"),
-		Capture:        filepath.Join(ephemeral, "capture.json"),
-		CaptureLock:    filepath.Join(ephemeral, "capture.lock"),
-		CompareMarker:  filepath.Join(ephemeral, "compare.lock"),
-		BaselineDir:    filepath.Join(ephemeral, "baseline"),
-		SideDir:        filepath.Join(ephemeral, "side"),
-		AcceptedDir:    filepath.Join(ephemeral, "accepted"),
-		SkipFile:       filepath.Join(ephemeral, "skip.txt"),
-		Runs:           filepath.Join(ephemeral, "runs.json"),
+		Scope:            filepath.Join(durable, "scope.json"),
+		BaselineReport:   filepath.Join(durable, "baseline.md"),
+		VerifyReport:     filepath.Join(durable, "verify-report.md"),
+		LogsDir:          filepath.Join(durable, "logs"),
+		Capture:          filepath.Join(ephemeral, "capture.json"),
+		CaptureLock:      filepath.Join(ephemeral, "capture.lock"),
+		CompareMarker:    filepath.Join(ephemeral, "compare.lock"),
+		BaselineDir:      filepath.Join(ephemeral, "baseline"),
+		SideDir:          filepath.Join(ephemeral, "side"),
+		AcceptedDir:      filepath.Join(ephemeral, "accepted"),
+		AcceptingDir:     filepath.Join(ephemeral, "accepting"),
+		AcceptLock:       filepath.Join(ephemeral, "accept.lock"),
+		AcceptedTestsDir: filepath.Join(ephemeral, "accepted-tests"),
+		SkipFile:         filepath.Join(ephemeral, "skip.txt"),
+		Runs:             filepath.Join(ephemeral, "runs.json"),
 	}
 }
 

@@ -191,19 +191,6 @@ func driftDeps(location *lymcwd.Location, statusPath, statusLockPath string, tab
 			request.LockRetry = driftCompareLockRetry
 			return driftengine.RunCompare(ctx, request)
 		},
-		CaptureAccepted: func(ctx context.Context) (driftengine.AcceptedCapture, error) {
-			step, err := stepOf("capture")
-			if err != nil {
-				return driftengine.AcceptedCapture{}, err
-			}
-			scope, _, err := driftengine.ReadScope(paths)
-			if err != nil {
-				return driftengine.AcceptedCapture{}, err
-			}
-			request := driftCaptureRequest(location, paths, pool, waitDir, step)
-			request.Skip = scope.Skip
-			return driftengine.RunAcceptedCapture(ctx, request)
-		},
 		CompareAccepted: func(ctx context.Context) (driftengine.CompareResult, error) {
 			step, err := stepOf("compare")
 			if err != nil {

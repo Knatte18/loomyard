@@ -1,6 +1,6 @@
 //go:build !windows
 
-// capture_test.go — tier 1 tests for RunCapture and RunSideCapture, driven by fake sh commands against a temp gate-slot pool.
+// capture_test.go — tier 1 tests for RunCapture, RunSideCapture and RunAcceptanceCapture, driven by fake sh commands against a temp gate-slot pool.
 
 package driftengine
 
@@ -484,83 +484,83 @@ func TestRunCapture(t *testing.T) {
 		}
 	})
 
-	acceptedRows := []struct {
+	acceptanceRows := []struct {
 		name    string
 		command string
-		// stale seeds a file in the accepted directory before the capture.
+		// stale seeds a profile file of t1 in the accepting directory before the capture.
 		stale bool
 		// timeout, when set, replaces the fixture's timeout.
 		timeout    time.Duration
 		wantPassed bool
-		// wantFile is the file the command wrote under the accepted directory.
+		// wantFile is the file the command wrote under the accepting directory.
 		wantFile     string
 		wantReasonIn []string
 	}{
-		{name: "an accepted capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after ", "; it ran in {dir} and printed nothing; log "}},
-		{name: "an accepted capture writing a file passes and leaves its output under the accepted directory", command: "echo profile > {baseline_dir}/p.json", wantPassed: true, wantFile: "p.json"},
-		{name: "an accepted capture empties a file left in the accepted directory first", command: "echo profile > {baseline_dir}/p.json", stale: true, wantPassed: true, wantFile: "p.json"},
+		{name: "an acceptance capture past the timeout does not pass and names the timeout and the log", command: "sleep 60", timeout: 300 * time.Millisecond, wantReasonIn: []string{"timed out after ", "; it ran in {dir} and printed nothing; log "}},
+		{name: "an acceptance capture writing the test's file passes and leaves it under the accepting directory", command: "echo profile > {baseline_dir}/t1.json", wantPassed: true, wantFile: "t1.json"},
+		{name: "an acceptance capture empties a file left in the accepting directory first", command: "echo profile > {baseline_dir}/t1.json", stale: true, wantPassed: true, wantFile: "t1.json"},
 		{
-			name:    "an accepted capture exiting non-zero does not pass and names the exit, the directory, the last output and the log",
+			name:    "an acceptance capture exiting non-zero does not pass and names the exit, the directory, the last output and the log",
 			command: "echo boom; exit 3", wantReasonIn: []string{"exit 3; it ran in {dir} and its last output was: boom; log "},
 		},
 		{
-			name:    "an accepted capture exiting 0 with no file does not pass and names the missing file, the directory and the log",
-			command: "true", wantReasonIn: []string{"wrote no file", "; it ran in {dir} and printed nothing; log "},
+			name:    "an acceptance capture writing only another test's file does not pass and names the test, the directory and the log",
+			command: "echo profile > {baseline_dir}/t2.json", wantReasonIn: []string{"wrote no file for t1", "; it ran in {dir} and printed nothing; log "},
 		},
-		{name: "a file left in the accepted directory does not make an empty capture pass", command: "true", stale: true, wantReasonIn: []string{"wrote no file"}},
+		{name: "a file of the test left in the accepting directory does not make an empty capture pass", command: "true", stale: true, wantReasonIn: []string{"wrote no file for t1"}},
 	}
-	for _, tt := range acceptedRows {
+	for _, tt := range acceptanceRows {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			f := newCaptureFixture(t, tt.command)
 			if tt.timeout > 0 {
 				f.req.Timeout = tt.timeout
 			}
-			dir := f.req.Paths.AcceptedDir
+			dir := f.req.Paths.AcceptingDir
 			if tt.stale {
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					t.Fatalf("MkdirAll() = %v; want nil", err)
 				}
-				if err := os.WriteFile(filepath.Join(dir, "stale.json"), []byte("old"), 0o644); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "t1.stale"), []byte("old"), 0o644); err != nil {
 					t.Fatalf("WriteFile() = %v; want nil", err)
 				}
 			}
 
-			got, err := RunAcceptedCapture(context.Background(), f.req)
+			got, err := RunAcceptanceCapture(context.Background(), f.req, "t1")
 			if err != nil {
-				t.Fatalf("RunAcceptedCapture() = _, %v; want nil", err)
+				t.Fatalf("RunAcceptanceCapture() = _, %v; want nil", err)
 			}
 			if got.Passed != tt.wantPassed {
-				t.Errorf("RunAcceptedCapture() = %+v; want passed = %v", got, tt.wantPassed)
+				t.Errorf("RunAcceptanceCapture() = %+v; want passed = %v", got, tt.wantPassed)
 			}
 			if tt.wantPassed && got.Reason != "" {
-				t.Errorf("RunAcceptedCapture() reason = %q; want none for a pass", got.Reason)
+				t.Errorf("RunAcceptanceCapture() reason = %q; want none for a pass", got.Reason)
 			}
 			for _, want := range tt.wantReasonIn {
 				want = strings.ReplaceAll(want, "{dir}", f.req.WorktreeDir)
 				if !strings.Contains(got.Reason, want) {
-					t.Errorf("RunAcceptedCapture() reason = %q; want it to name %q", got.Reason, want)
+					t.Errorf("RunAcceptanceCapture() reason = %q; want it to name %q", got.Reason, want)
 				}
 			}
 			if !tt.wantPassed && !strings.Contains(got.Reason, got.Log) {
-				t.Errorf("RunAcceptedCapture() reason = %q; want it to name the log %q", got.Reason, got.Log)
+				t.Errorf("RunAcceptanceCapture() reason = %q; want it to name the log %q", got.Reason, got.Log)
 			}
 			if _, err := os.Stat(got.Log); err != nil {
-				t.Errorf("accepted capture log %q: %v; want the log file", got.Log, err)
+				t.Errorf("acceptance capture log %q: %v; want the log file", got.Log, err)
 			}
 			if tt.wantFile != "" {
 				if text := readFile(t, filepath.Join(dir, tt.wantFile)); text != "profile\n" {
-					t.Errorf("accepted/%s = %q; want the command's output", tt.wantFile, text)
+					t.Errorf("accepting/%s = %q; want the command's output", tt.wantFile, text)
 				}
 			}
-			if _, err := os.Stat(filepath.Join(dir, "stale.json")); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("the stale file is still in the accepted directory")
+			if _, err := os.Stat(filepath.Join(dir, "t1.stale")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the stale file is still in the accepting directory")
 			}
 			if _, found, _ := ReadCapture(f.req.Paths); found {
-				t.Errorf("an accepted capture wrote a capture record")
+				t.Errorf("an acceptance capture wrote a capture record")
 			}
 			if !slotFree(t, f.pool) {
-				t.Errorf("the slot is still held after the accepted capture")
+				t.Errorf("the slot is still held after the acceptance capture")
 			}
 		})
 	}
@@ -603,6 +603,17 @@ func TestRunCapture(t *testing.T) {
 		}
 		if !slotFree(t, f.pool) {
 			t.Errorf("the slot is held after a refused dir")
+		}
+	})
+
+	t.Run("an acceptance capture of a missing dir is refused with the acceptance as its way forward", func(t *testing.T) {
+		t.Parallel()
+		f := newCaptureFixture(t, "true")
+		f.req.Step.Dir = "gone"
+
+		_, err := RunAcceptanceCapture(context.Background(), f.req, "t1")
+		if err == nil || !strings.Contains(err.Error(), "lym config drift --set capture.dir=<dir> from the prime, then lym drift accept") {
+			t.Errorf("RunAcceptanceCapture() = %v; want an error naming the dir write and lym drift accept", err)
 		}
 	})
 

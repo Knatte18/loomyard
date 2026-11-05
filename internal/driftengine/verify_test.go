@@ -105,9 +105,11 @@ type verifyFixture struct {
 	events    []string
 	told      []VerifyTold
 
-	// accepted is what the scripted accepted capture answers, and acceptedHeads the HEAD each of its calls saw.
-	accepted      AcceptedCapture
-	acceptedHeads []string
+	// acceptedCompares are what the scripted compares against the accepted profile answer in turn, the last one repeating;
+	// acceptedHeads is the HEAD each of their calls saw and acceptedProfiles the accepted profile's t1.txt each read.
+	acceptedCompares []CompareResult
+	acceptedHeads    []string
+	acceptedProfiles []string
 
 	compareCalls int
 	verifyCalls  int
@@ -118,10 +120,12 @@ var (
 	failingCompare = CompareResult{ExitCode: 1, Log: "compare-1.log", Reason: "exit 1; log compare-1.log"}
 )
 
-// newVerifyFixture returns a fixture with a counted capture at HEAD, a declared compare and a scope record of scope.
+// newVerifyFixture returns a fixture with a counted capture at HEAD holding the profile files t1.txt and t2.txt, a declared compare and a scope record of scope.
 func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verifyFixture {
 	t.Helper()
-	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}, accepted: AcceptedCapture{Passed: true}}
+	f := &verifyFixture{baselineFixture: newBaselineFixture(t), compares: []CompareResult{passingCompare}, acceptedCompares: []CompareResult{passingCompare}}
+	writeProfileFile(t, f.paths.BaselineDir, "t1.txt", "baseline\n")
+	writeProfileFile(t, f.paths.BaselineDir, "t2.txt", "baseline\n")
 	f.verifyFn = func() (shuttleengine.GateResult, error) { return shuttleengine.GateResult{Passed: true}, nil }
 	if scope.Scope != "" {
 		scope.AwaitedAt = "2026-01-01T00:00:00Z"
@@ -176,10 +180,15 @@ func newVerifyFixture(t *testing.T, scope ScopeRecord, actions []func()) *verify
 		f.compareCalls++
 		return result, nil
 	}
-	d.CaptureAccepted = func(context.Context) (AcceptedCapture, error) {
-		f.events = append(f.events, "capture-accepted")
+	d.CompareAccepted = func(context.Context) (CompareResult, error) {
+		f.events = append(f.events, "compare-accepted")
 		f.acceptedHeads = append(f.acceptedHeads, f.head)
-		return f.accepted, nil
+		profile, err := os.ReadFile(filepath.Join(f.paths.AcceptedDir, "t1.txt"))
+		if err != nil {
+			return CompareResult{}, err
+		}
+		f.acceptedProfiles = append(f.acceptedProfiles, string(profile))
+		return f.acceptedCompares[min(len(f.acceptedHeads)-1, len(f.acceptedCompares)-1)], nil
 	}
 	return f
 }
@@ -206,9 +215,15 @@ func (f *verifyFixture) stuckHistory(at, lastAt string) {
 	f.history = []shedengine.HistoryEntry{{Producer: "Drift-Verify", Outcome: shedengine.Stuck, At: at, LastAt: lastAt}}
 }
 
+// captureForAcceptance leaves t1's output at the current HEAD in the accepting directory, as `lym drift accept` captures it before Accept.
+func (f *verifyFixture) captureForAcceptance() {
+	writeProfileFile(f.t, f.paths.AcceptingDir, "t1.txt", "accepted at "+f.head+"\n")
+}
+
 // agentAccept is the action of the agent accepting test t1.
 func (f *verifyFixture) agentAccept() func() {
 	return func() {
+		f.captureForAcceptance()
 		if err := Accept(f.paths, statusAt("Drift-Verify", shedengine.StateRunning, "", true), "t1", "intended"); err != nil {
 			f.t.Fatal(err)
 		}
@@ -228,6 +243,7 @@ func (f *verifyFixture) sessionAccept() func() {
 		}
 		st := statusAt("Drift-Verify", shedengine.StateRunning, "", open)
 		st.OperatorSession = operator
+		f.captureForAcceptance()
 		if err := Accept(f.paths, st, "t1", "intended"); err != nil {
 			f.t.Fatal(err)
 		}
@@ -868,28 +884,34 @@ func TestDriftVerify(t *testing.T) {
 		withAccepted := func(profileHead string) ScopeRecord {
 			return ScopeRecord{Scope: ScopePartial, Skip: []string{"slow"}, Accepted: accepted, AcceptedProfileHead: profileHead}
 		}
+		// withKept is a fixture over scope with t1's output kept at its acceptance.
+		withKept := func(t *testing.T, scope ScopeRecord) *verifyFixture {
+			f := newVerifyFixture(t, scope, nil)
+			writeProfileFile(t, f.paths.AcceptedTestsDir, "t1.txt", "accepted\n")
+			return f
+		}
 		rows := []struct {
 			name  string
 			scope ScopeRecord
-			// wantCaptures is how many accepted captures the pass runs, and wantProfileHead the commit the scope record names afterwards.
-			wantCaptures    int
+			// wantCompares is how many compares against the accepted profile the pass runs, and wantProfileHead the commit the scope record names afterwards.
+			wantCompares    int
 			wantProfileHead string
 		}{
-			{"a passing compare with tests accepted captures the profile once and records HEAD", withAccepted(""), 1, "aaa"},
-			{"a profile captured at an earlier commit is captured again at HEAD", withAccepted("old"), 1, "aaa"},
-			{"a profile already captured at HEAD runs no capture", withAccepted("aaa"), 0, "aaa"},
-			{"no acceptance runs no capture", partial, 0, ""},
+			{"a passing compare with tests accepted checks the profile once and records HEAD", withAccepted(""), 1, "aaa"},
+			{"a profile checked at an earlier commit is checked again at HEAD", withAccepted("old"), 1, "aaa"},
+			{"a profile already checked at HEAD runs no compare", withAccepted("aaa"), 0, "aaa"},
+			{"no acceptance runs no compare", partial, 0, ""},
 		}
 		for _, row := range rows {
 			t.Run(row.name, func(t *testing.T) {
 				t.Parallel()
-				f := newVerifyFixture(t, row.scope, nil)
+				f := withKept(t, row.scope)
 				requireDone(f)
-				if len(f.acceptedHeads) != row.wantCaptures {
-					t.Errorf("accepted captures = %d; want %d", len(f.acceptedHeads), row.wantCaptures)
+				if len(f.acceptedHeads) != row.wantCompares {
+					t.Errorf("compares against the accepted profile = %d; want %d", len(f.acceptedHeads), row.wantCompares)
 				}
-				if row.wantCaptures > 0 && f.events[len(f.events)-1] != "capture-accepted" {
-					t.Errorf("events = %v; want the accepted capture after the compare", f.events)
+				if row.wantCompares > 0 && f.events[len(f.events)-1] != "compare-accepted" {
+					t.Errorf("events = %v; want the compare against the accepted profile after the compare", f.events)
 				}
 				if got := f.scope().AcceptedProfileHead; got != row.wantProfileHead {
 					t.Errorf("accepted_profile_head = %q; want %q", got, row.wantProfileHead)
@@ -897,33 +919,59 @@ func TestDriftVerify(t *testing.T) {
 			})
 		}
 
-		t.Run("a capture that does not pass is Stuck naming the accepted profile and resume, and records no commit", func(t *testing.T) {
+		t.Run("the profile is the baseline with the accepted test's kept output in its place", func(t *testing.T) {
 			t.Parallel()
-			f := newVerifyFixture(t, withAccepted(""), nil)
-			f.accepted = AcceptedCapture{Reason: "exit 2; log accepted-capture-1.log"}
+			f := withKept(t, withAccepted(""))
+			writeProfileFile(t, f.paths.AcceptedDir, "stale.txt", "old\n")
+			requireDone(f)
+			if !slices.Equal(f.acceptedProfiles, []string{"accepted\n"}) {
+				t.Errorf("accepted profile t1.txt = %q; want the kept output", f.acceptedProfiles)
+			}
+			if got, err := os.ReadFile(filepath.Join(f.paths.AcceptedDir, "t2.txt")); err != nil || string(got) != "baseline\n" {
+				t.Errorf("accepted profile t2.txt = %q, %v; want the baseline's", got, err)
+			}
+			if _, err := os.Stat(filepath.Join(f.paths.AcceptedDir, "stale.txt")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("a file of an earlier profile is still in the accepted profile: %v", err)
+			}
+		})
+
+		t.Run("an accepted output that changed after its acceptance is Stuck naming the ways forward, and records no commit", func(t *testing.T) {
+			t.Parallel()
+			f := withKept(t, withAccepted(""))
+			f.acceptedCompares = []CompareResult{failingCompare}
 			outcome, pointer, err := f.call()
-			requireStuck(t, outcome, pointer, err, false, "accepted profile", "lym loom resume", "exit 2; log accepted-capture-1.log")
+			requireStuck(t, outcome, pointer, err, false, "changed after its acceptance", "exit 1; log compare-1.log", "lym drift accept <test>", "lym drift withdraw <test>", "lym loom resume")
 			if got := f.scope().AcceptedProfileHead; got != "" {
-				t.Errorf("accepted_profile_head = %q; want none after a capture that did not pass", got)
+				t.Errorf("accepted_profile_head = %q; want none after a compare that did not pass", got)
 			}
 			if len(f.commits) != 1 || !slices.Equal(f.commits[0], []string{DirRel()}) {
 				t.Errorf("commits = %v; want the durable directory once", f.commits)
 			}
 		})
 
-		t.Run("an agent's acceptance is captured at the agent's HEAD before Done", func(t *testing.T) {
+		t.Run("an acceptance with no kept output is Stuck naming the test and a new acceptance, with no compare against the profile", func(t *testing.T) {
+			t.Parallel()
+			f := newVerifyFixture(t, withAccepted(""), nil)
+			outcome, pointer, err := f.call()
+			requireStuck(t, outcome, pointer, err, false, "no output was kept at the acceptance of t1", "lym drift accept <test>", "lym loom resume")
+			if len(f.acceptedHeads) != 0 {
+				t.Errorf("compares against the accepted profile = %d; want none", len(f.acceptedHeads))
+			}
+		})
+
+		t.Run("an agent's acceptance keeps the output it saw, and the agent's later commit is compared against it", func(t *testing.T) {
 			t.Parallel()
 			f := newVerifyFixture(t, partial, nil)
 			f.compares = []CompareResult{failingCompare, passingCompare}
 			accept := f.agentAccept()
 			f.seats = gateLoopSeats(t, []func(){func() {
-				f.head = "bbb"
 				accept()
+				f.head = "bbb"
 			}})
 			f.deps.Seats = f.seats
 			requireDone(f)
-			if !slices.Equal(f.acceptedHeads, []string{"bbb"}) {
-				t.Errorf("accepted capture heads = %v; want one capture at the agent's HEAD bbb", f.acceptedHeads)
+			if !slices.Equal(f.acceptedHeads, []string{"bbb"}) || !slices.Equal(f.acceptedProfiles, []string{"accepted at aaa\n"}) {
+				t.Errorf("compares against the accepted profile at %v reading %q; want one at the agent's HEAD bbb reading the output accepted at aaa", f.acceptedHeads, f.acceptedProfiles)
 			}
 			scope := f.scope()
 			if scope.AcceptedProfileHead != "bbb" || len(scope.Accepted) != 1 || scope.Accepted[0].Test != "t1" {

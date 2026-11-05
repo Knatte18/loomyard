@@ -30,10 +30,10 @@ const stampLayout = "20060102T150405.000Z"
 
 // The sites a drift command runs from, which label its slot holder and wait record and word the way forward of a refused dir.
 const (
-	siteCapture         = "drift capture"
-	siteSideCapture     = "drift side capture"
-	siteAcceptedCapture = "drift accepted capture"
-	siteCompare         = "drift compare"
+	siteCapture           = "drift capture"
+	siteSideCapture       = "drift side capture"
+	siteAcceptanceCapture = "drift acceptance capture"
+	siteCompare           = "drift compare"
 )
 
 // stepRun is one drift command to run.
@@ -247,6 +247,8 @@ func missingDirRefusal(run stepRun, cause error) error {
 		again = "lym drift capture and lym loom resume"
 	case siteSideCapture:
 		again = "lym drift capture --side"
+	case siteAcceptanceCapture:
+		again = "lym drift accept"
 	}
 	return fmt.Errorf("drift: the %s command cannot start: %s.yaml key %q: %w; way forward: lym config drift --set %s.dir=<dir> from the prime, then %s", run.Site, configModule, run.Name+".dir", cause, run.Name, again)
 }

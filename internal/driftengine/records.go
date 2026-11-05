@@ -100,7 +100,7 @@ type ScopeRecord struct {
 	ComparedAt string `json:"compared_at"`
 	// ComparePassed reports whether the last compare showed no drift.
 	ComparePassed bool `json:"compare_passed"`
-	// AcceptedProfileHead is the commit the accepted profile was captured at, and empty while no profile holds the current acceptances: an acceptance, a withdrawal and a lapse clear it.
+	// AcceptedProfileHead is the commit a compare against the accepted profile last passed at, and empty while no profile holds the current acceptances: an acceptance, a withdrawal and a lapse clear it.
 	AcceptedProfileHead string `json:"accepted_profile_head"`
 }
 

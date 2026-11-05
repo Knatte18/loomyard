@@ -27,4 +27,12 @@
 //
 // `compare` and `capture --side` each take one run of the agent session's budget from the run counter after the declared step is known, so a verb that fails on an undeclared step spends none.
 // A spent budget is refused to the agent session with the instruction to write verify-report.md and end its turn, and to a caller at a halt with the instruction to resume the run for a fresh agent.
+//
+// # Accept
+//
+// `accept` takes the accept lock first and refuses while another accept of the worktree holds it, so two accepts never share the accepting directory.
+// It then runs driftengine.CheckAccept, so a refused acceptance, a test name with no profile file under the baseline directory among them, captures nothing.
+// It then runs the acceptance capture of the current code with the scope's skipped tests left out, in a gate slot and outside the session's budget, and a capture that does not pass refuses the acceptance with its reason;
+// it reads the run status again after the capture, which can last minutes, and driftengine.Accept then keeps the test's output from that capture as the accepted one and decides from that status who the acceptance is by.
+// The lock is held until Accept returns.
 package driftcli

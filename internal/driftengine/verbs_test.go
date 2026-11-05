@@ -3,6 +3,7 @@
 package driftengine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -45,6 +46,38 @@ func mustReadScope(t *testing.T, p Paths) (ScopeRecord, bool) {
 		t.Fatalf("ReadScope() = %v", err)
 	}
 	return rec, found
+}
+
+// writeProfileFile writes text to the profile file rel under dir, creating its directory.
+func writeProfileFile(t *testing.T, dir, rel, text string) {
+	t.Helper()
+	file := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		t.Fatalf("MkdirAll() = %v; want nil", err)
+	}
+	if err := os.WriteFile(file, []byte(text), 0o644); err != nil {
+		t.Fatalf("WriteFile() = %v; want nil", err)
+	}
+}
+
+// stageAcceptance writes test's profile file rel into the baseline and the output an acceptance capture leaves in the accepting directory, as `lym drift accept` captures it before Accept.
+func stageAcceptance(t *testing.T, p Paths, rel, output string) {
+	t.Helper()
+	writeProfileFile(t, p.BaselineDir, rel, "baseline\n")
+	writeProfileFile(t, p.AcceptingDir, rel, output)
+}
+
+// keptOutput returns the text of the output an acceptance kept under rel, and "" when none is kept.
+func keptOutput(t *testing.T, p Paths, rel string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(p.AcceptedTestsDir, filepath.FromSlash(rel)))
+	if errors.Is(err, os.ErrNotExist) {
+		return ""
+	}
+	if err != nil {
+		t.Fatalf("ReadFile() = %v; want nil", err)
+	}
+	return string(data)
 }
 
 // requireRefusal checks that err names every fragment of want and that the scope record still reads as it did before.
@@ -182,7 +215,7 @@ func TestRecordScope(t *testing.T) {
 	})
 }
 
-// TestAcceptWithdraw covers Accept's callers and rulings, Withdraw, and CheckVerifyRow's admissions.
+// TestAcceptWithdraw covers Accept's callers and rulings, its test names and kept outputs, CheckAccept, Withdraw, and CheckVerifyRow's admissions.
 func TestAcceptWithdraw(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -226,9 +259,13 @@ func TestAcceptWithdraw(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
 				p := seedScope(t, tt.before)
+				stageAcceptance(t, p, "t1.txt", "accepted\n")
 				err := Accept(p, tt.st, "t1", "intended")
 				if tt.wantErr != nil {
 					requireRefusal(t, err, tt.wantErr, p, tt.before)
+					if kept := keptOutput(t, p, "t1.txt"); kept != "" {
+						t.Errorf("kept output = %q; want none after a refusal", kept)
+					}
 					return
 				}
 				if err != nil {
@@ -248,6 +285,119 @@ func TestAcceptWithdraw(t *testing.T) {
 				if got.AcceptedProfileHead != "" {
 					t.Errorf("accepted_profile_head = %q; want it cleared by the acceptance", got.AcceptedProfileHead)
 				}
+				if kept := keptOutput(t, p, "t1.txt"); kept != "accepted\n" {
+					t.Errorf("kept output = %q; want the output the acceptance captured", kept)
+				}
+				if _, err := os.Stat(filepath.Join(p.AcceptingDir, "t1.txt")); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("the captured output is still in the accepting directory: %v", err)
+				}
+			})
+		}
+	})
+
+	t.Run("Accept names a test by its profile file and keeps the output captured for it", func(t *testing.T) {
+		t.Parallel()
+		agent := statusAt("Drift-Verify", shedengine.StateRunning, "", true)
+		tests := []struct {
+			name string
+			// baseline and staged are the profile files under the baseline and the accepting directory.
+			baseline, staged []string
+			test             string
+			// wantErr names the refusal's fragments; "{baseline}" stands for the baseline directory.
+			wantErr  []string
+			wantKept string
+		}{
+			{name: "a name without the file's extension", baseline: []string{"t1.txt"}, staged: []string{"t1.txt"}, test: "t1", wantKept: "t1.txt"},
+			{name: "a name with the file's extension", baseline: []string{"t1.txt"}, staged: []string{"t1.txt"}, test: "t1.txt", wantKept: "t1.txt"},
+			{name: "a nested file named by its relative path", baseline: []string{"group/t1.txt"}, staged: []string{"group/t1.txt"}, test: "group/t1", wantKept: "group/t1.txt"},
+			{name: "a typo is refused naming the name and the baseline directory", baseline: []string{"t1.txt"}, staged: []string{"t1.txt"}, test: "t11", wantErr: []string{"t11 is no test of the baseline", "{baseline}", "way forward"}},
+			{name: "a nested file's bare name is refused", baseline: []string{"group/t1.txt"}, staged: []string{"group/t1.txt"}, test: "t1", wantErr: []string{"t1 is no test of the baseline"}},
+			{name: "an empty name is refused against a top-level dotfile", baseline: []string{".gitkeep"}, staged: []string{".gitkeep"}, test: "", wantErr: []string{`"" is no test of the baseline`, "{baseline}"}},
+			{name: "a directory name is refused against a nested dotfile", baseline: []string{"group/.gitkeep"}, staged: []string{"group/.gitkeep"}, test: "group/", wantErr: []string{"group/ is no test of the baseline"}},
+			{name: "a name is the file's stem under a second extension", baseline: []string{"t1.txt.bak"}, staged: []string{"t1.txt.bak"}, test: "t1.txt", wantKept: "t1.txt.bak"},
+			{name: "a name two extensions short is refused", baseline: []string{"t1.txt.bak"}, staged: []string{"t1.txt.bak"}, test: "t1", wantErr: []string{"t1 is no test of the baseline"}},
+			{name: "an empty baseline refuses every name", staged: []string{"t1.txt"}, test: "t1", wantErr: []string{"t1 is no test of the baseline", "{baseline}"}},
+			{name: "an acceptance with no captured output is refused", baseline: []string{"t1.txt"}, test: "t1", wantErr: []string{"no output of t1 was captured", "lym drift accept"}},
+			{name: "a captured output of another test is refused", baseline: []string{"t1.txt"}, staged: []string{"t2.txt"}, test: "t1", wantErr: []string{"no output of t1 was captured"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				before := &ScopeRecord{Scope: ScopePartial}
+				p := seedScope(t, before)
+				for _, rel := range tt.baseline {
+					writeProfileFile(t, p.BaselineDir, rel, "baseline\n")
+				}
+				for _, rel := range tt.staged {
+					writeProfileFile(t, p.AcceptingDir, rel, "accepted\n")
+				}
+				err := Accept(p, agent, tt.test, "intended")
+				if tt.wantErr != nil {
+					want := slices.Clone(tt.wantErr)
+					for i := range want {
+						want[i] = strings.ReplaceAll(want[i], "{baseline}", p.BaselineDir)
+					}
+					requireRefusal(t, err, want, p, before)
+					return
+				}
+				if err != nil {
+					t.Fatalf("Accept(%q) = %v; want nil", tt.test, err)
+				}
+				if kept := keptOutput(t, p, tt.wantKept); kept != "accepted\n" {
+					t.Errorf("kept output %s = %q; want the captured output", tt.wantKept, kept)
+				}
+			})
+		}
+
+		t.Run("a second acceptance replaces the output the first kept", func(t *testing.T) {
+			t.Parallel()
+			p := seedScope(t, &ScopeRecord{Scope: ScopePartial})
+			stageAcceptance(t, p, "t1.txt", "first\n")
+			if err := Accept(p, agent, "t1", "intended"); err != nil {
+				t.Fatalf("Accept() = %v; want nil", err)
+			}
+			writeProfileFile(t, p.AcceptingDir, "t1.json", "second\n")
+			if err := Accept(p, agent, "t1", "intended again"); err != nil {
+				t.Fatalf("Accept() again = %v; want nil", err)
+			}
+			if old := keptOutput(t, p, "t1.txt"); old != "" {
+				t.Errorf("kept t1.txt = %q; want the first acceptance's output dropped", old)
+			}
+			if kept := keptOutput(t, p, "t1.json"); kept != "second\n" {
+				t.Errorf("kept t1.json = %q; want the second acceptance's output", kept)
+			}
+		})
+	})
+
+	t.Run("CheckAccept refuses as Accept does and writes nothing", func(t *testing.T) {
+		t.Parallel()
+		agent := statusAt("Drift-Verify", shedengine.StateRunning, "", true)
+		tests := []struct {
+			name    string
+			before  *ScopeRecord
+			test    string
+			wantErr []string
+		}{
+			{name: "an admitted acceptance with no output captured yet", before: scoped(ScopePartial), test: "t1"},
+			{name: "a typo", before: scoped(ScopePartial), test: "t11", wantErr: []string{"t11 is no test of the baseline"}},
+			{name: "a withdrawn test", before: withdrawn(ScopePartial), test: "t1", wantErr: []string{"the run's parent withdrew t1"}},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Parallel()
+				p := seedScope(t, tt.before)
+				writeProfileFile(t, p.BaselineDir, "t1.txt", "baseline\n")
+				err := CheckAccept(p, agent, tt.test)
+				if tt.wantErr != nil {
+					requireRefusal(t, err, tt.wantErr, p, tt.before)
+					return
+				}
+				if err != nil {
+					t.Fatalf("CheckAccept() = %v; want nil", err)
+				}
+				if got, _ := mustReadScope(t, p); !reflect.DeepEqual(got, *tt.before) {
+					t.Errorf("scope record = %+v after CheckAccept; want %+v", got, *tt.before)
+				}
 			})
 		}
 	})
@@ -260,8 +410,16 @@ func TestAcceptWithdraw(t *testing.T) {
 			t.Parallel()
 			before := &ScopeRecord{Scope: ScopePartial, Skip: []string{"s"}, Accepted: []Acceptance{{Test: "t1"}, {Test: "t2"}}, AcceptedProfileHead: "aaa"}
 			p := seedScope(t, before)
+			writeProfileFile(t, p.AcceptedTestsDir, "t1.txt", "accepted\n")
+			writeProfileFile(t, p.AcceptedTestsDir, "t2.txt", "accepted\n")
 			if err := Withdraw(p, running, "t1"); err != nil {
 				t.Fatalf("Withdraw() = %v; want nil", err)
+			}
+			if kept := keptOutput(t, p, "t1.txt"); kept != "" {
+				t.Errorf("kept output of t1 = %q; want it dropped by the withdrawal", kept)
+			}
+			if kept := keptOutput(t, p, "t2.txt"); kept != "accepted\n" {
+				t.Errorf("kept output of t2 = %q; want it kept", kept)
 			}
 			got, _ := mustReadScope(t, p)
 			if want := []string{"s", "t2"}; !slices.Equal(SkipList(got), want) {

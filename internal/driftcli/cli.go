@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/driftengine"
 	"github.com/Knatte18/loomyard/internal/fabricengine"
+	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/logger"
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/output"
@@ -119,34 +121,92 @@ func acceptCmd() *cobra.Command {
 		Short:       "accept a drifted test as intended",
 		Annotations: map[string]string{clihelp.AudienceAnnotation: clihelp.AudienceRole},
 		Long: `accept records that a test's drift is intended, with the reason, so the
-compare skips the test from then on. The Drift-Verify agent accepts while its
+compare skips the test from then on. The test is named as its profile file
+under the baseline directory is named, with or without the file's last
+extension (a dotfile has none), and any other name is refused. Before it records the acceptance it captures
+the current code's output, in a gate slot and outside the session's run
+budget, and keeps the test's output as the accepted one: Drift-Verify and
+Drift-Recheck later compare the code against it, so a change to that output
+after the acceptance shows as drift. The Drift-Verify agent accepts while its
 session runs; under scope full its acceptances stay unruled until the run's
 parent rules at a decision halt. The parent uses accept at a halt, where it is
 the only way to re-accept a test it withdrew. A halt that is no decision halt
 refuses the parent's accept of a withdrawn test or under scope full. With
 drift.yaml's verify_interactive set, the agent's session has the operator in
 its pane, and each acceptance it records is the operator's decision: ruled
-under scope full, and admitted for a withdrawn test.
+under scope full, and admitted for a withdrawn test. A second accept in the
+same worktree is refused while one runs.
 
 Example:
   lym drift accept parser_roundtrip --reason "the format changed on purpose"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runVerb(cmd, "accept", func(w *worktree) (any, error) {
-				st, err := w.verbStatus()
-				if err != nil {
-					return nil, err
-				}
-				if err := driftengine.Accept(w.paths, st, args[0], reason); err != nil {
-					return nil, err
-				}
-				return map[string]any{"test": args[0]}, nil
-			})
+			return runVerb(cmd, "accept", func(w *worktree) (any, error) { return acceptTest(cmd, w, args[0], reason) })
 		},
 	}
 	cmd.Flags().StringVar(&reason, "reason", "", "why the drift is intended")
 	_ = cmd.MarkFlagRequired("reason")
 	return cmd
+}
+
+// holdAcceptLock takes the lock that keeps two accepts of one worktree from sharing the accepting directory, and refuses while another accept holds it.
+func holdAcceptLock(p driftengine.Paths) (*lock.FileLock, error) {
+	if err := os.MkdirAll(filepath.Dir(p.AcceptLock), 0o755); err != nil {
+		return nil, fmt.Errorf("drift: create %s: %w", filepath.Dir(p.AcceptLock), err)
+	}
+	held, taken, err := lock.TryAcquireWriteLock(p.AcceptLock)
+	if err != nil {
+		return nil, err
+	}
+	if !taken {
+		return nil, fmt.Errorf("drift accept refused: another accept holds %s; way forward: wait for it to end, then lym drift accept again", p.AcceptLock)
+	}
+	return held, nil
+}
+
+// acceptTest checks the acceptance, captures the current code's output for it and records it, keeping the test's output as the accepted one.
+// It holds the accept lock throughout, and reads the run status again after the capture, which can last minutes, for who the acceptance is by.
+func acceptTest(cmd *cobra.Command, w *worktree, test, reason string) (any, error) {
+	held, err := holdAcceptLock(w.paths)
+	if err != nil {
+		return nil, err
+	}
+	defer held.Release()
+	st, err := w.verbStatus()
+	if err != nil {
+		return nil, err
+	}
+	if err := driftengine.CheckAccept(w.paths, st, test); err != nil {
+		return nil, err
+	}
+	cfg, err := w.config()
+	if err != nil {
+		return nil, err
+	}
+	step, err := cfg.StepWithHubEnv("capture", w.configDirs())
+	if err != nil {
+		return nil, err
+	}
+	scope, _, err := driftengine.ReadScope(w.paths)
+	if err != nil {
+		return nil, err
+	}
+	request := w.captureRequest(step)
+	request.Skip = scope.Skip
+	captured, err := driftengine.RunAcceptanceCapture(cmd.Context(), request, test)
+	if err != nil {
+		return nil, err
+	}
+	if !captured.Passed {
+		return nil, fmt.Errorf("drift accept refused: the capture of %s's output did not pass: %s; way forward: fix what it names, then lym drift accept again", test, captured.Reason)
+	}
+	if st, err = w.verbStatus(); err != nil {
+		return nil, err
+	}
+	if err := driftengine.Accept(w.paths, st, test, reason); err != nil {
+		return nil, err
+	}
+	return map[string]any{"test": test, "log": captured.Log}, nil
 }
 
 // withdrawCmd returns the `drift withdraw` verb.

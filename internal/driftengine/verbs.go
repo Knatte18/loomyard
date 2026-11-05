@@ -119,34 +119,19 @@ func dropCaptureSkipping(p Paths, skip []string) error {
 // a running status with the mark closed is the row's own work, and any other state is an error or a transient stop that only lym loom resume settles.
 // A session with the operator in its pane records the operator's decision, which is ruled under scope full and may accept a withdrawn test again.
 // Otherwise a withdrawn test is accepted again only by a caller at a decision halt, and under scope full so is every test a caller accepts.
+// A test with no profile file under the baseline directory is refused, naming the test and the directory.
+// The test's profile files that RunAcceptanceCapture left in the accepting directory are kept as the output the acceptance saw, replacing any an earlier acceptance kept, and an acceptance with none there is refused.
 func Accept(p Paths, st VerbStatus, test, reason string) error {
-	if st.Status.CurrentProducer != verifyRow {
-		return wrongRow("accept", verifyRow, st)
+	by, decisionHalt, err := acceptingCaller(st)
+	if err != nil {
+		return err
 	}
-	by := AcceptedByCaller
-	switch {
-	case st.AtOperatorSession():
-		by = AcceptedByOperator
-	case st.AtAgentSession():
-		by = AcceptedByAgent
-	case st.Status.State == shedengine.StateBlocked:
-	case st.Status.State == shedengine.StateRunning:
-		return errors.New("drift accept refused: the row is running its own compare and checks; way forward: wait for the row's halt (lym loom status shows it), then accept there under the parent's ruling")
-	default:
-		return fmt.Errorf("drift accept refused: the run is %s at %s, and no acceptance settles that; way forward: lym loom resume", st.Status.State, verifyRow)
-	}
-	decisionHalt := st.AtDecisionHalt()
-
 	return UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
-		if !found {
-			return cur, errNoScope
+		if err := admitAcceptance(p, cur, found, by, decisionHalt, test); err != nil {
+			return cur, err
 		}
-		withdrawn := slices.Contains(cur.Withdrawn, test)
-		switch {
-		case withdrawn && by == AcceptedByAgent:
-			return cur, fmt.Errorf("drift accept refused: the run's parent withdrew %s; way forward: fix its drift or report it in verify-report.md; only the parent re-accepts it at a decision halt", test)
-		case by == AcceptedByCaller && !decisionHalt && (withdrawn || cur.Scope == ScopeFull):
-			return cur, fmt.Errorf("drift accept refused: %s needs the parent's ruling; way forward: re-accept it at a decision halt, which lym loom status shows", test)
+		if err := keepAcceptedOutput(p, test); err != nil {
+			return cur, err
 		}
 
 		acceptance := Acceptance{Test: test, Reason: reason, By: by, At: stamp(time.Now())}
@@ -164,13 +149,60 @@ func Accept(p Paths, st VerbStatus, test, reason string) error {
 	})
 }
 
-// Withdraw moves an accepted test back to the compare, so its drift is judged again.
+// CheckAccept runs every check Accept runs before it keeps the test's output, and writes nothing, so a caller refuses an acceptance before it captures that output.
+func CheckAccept(p Paths, st VerbStatus, test string) error {
+	by, decisionHalt, err := acceptingCaller(st)
+	if err != nil {
+		return err
+	}
+	cur, found, err := ReadScope(p)
+	if err != nil {
+		return err
+	}
+	return admitAcceptance(p, cur, found, by, decisionHalt, test)
+}
+
+// acceptingCaller returns who an acceptance at st is by and whether st is a decision halt, or the refusal of an acceptance at st.
+func acceptingCaller(st VerbStatus) (by string, decisionHalt bool, err error) {
+	if st.Status.CurrentProducer != verifyRow {
+		return "", false, wrongRow("accept", verifyRow, st)
+	}
+	switch {
+	case st.AtOperatorSession():
+		return AcceptedByOperator, false, nil
+	case st.AtAgentSession():
+		return AcceptedByAgent, false, nil
+	case st.Status.State == shedengine.StateBlocked:
+		return AcceptedByCaller, st.AtDecisionHalt(), nil
+	case st.Status.State == shedengine.StateRunning:
+		return "", false, errors.New("drift accept refused: the row is running its own compare and checks; way forward: wait for the row's halt (lym loom status shows it), then accept there under the parent's ruling")
+	}
+	return "", false, fmt.Errorf("drift accept refused: the run is %s at %s, and no acceptance settles that; way forward: lym loom resume", st.Status.State, verifyRow)
+}
+
+// admitAcceptance returns the refusal of an acceptance of test by by against the scope record cur, or nil when it is admitted.
+func admitAcceptance(p Paths, cur ScopeRecord, found bool, by string, decisionHalt bool, test string) error {
+	if !found {
+		return errNoScope
+	}
+	withdrawn := slices.Contains(cur.Withdrawn, test)
+	switch {
+	case withdrawn && by == AcceptedByAgent:
+		return fmt.Errorf("drift accept refused: the run's parent withdrew %s; way forward: fix its drift or report it in verify-report.md; only the parent re-accepts it at a decision halt", test)
+	case by == AcceptedByCaller && !decisionHalt && (withdrawn || cur.Scope == ScopeFull):
+		return fmt.Errorf("drift accept refused: %s needs the parent's ruling; way forward: re-accept it at a decision halt, which lym loom status shows", test)
+	}
+	return requireBaselineTest(p, test)
+}
+
+// Withdraw moves an accepted test back to the compare, so its drift is judged again, and drops the output its acceptance kept.
 // It is admitted only at Drift-Verify and refuses a test that is not accepted.
+// The output is dropped once the scope record is written, so a failed drop leaves a record that already compares the test again.
 func Withdraw(p Paths, st VerbStatus, test string) error {
 	if st.Status.CurrentProducer != verifyRow {
 		return wrongRow("withdraw", verifyRow, st)
 	}
-	return UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
+	err := UpdateScope(p, func(cur ScopeRecord, found bool) (ScopeRecord, error) {
 		if !found {
 			return cur, errNoScope
 		}
@@ -183,6 +215,10 @@ func Withdraw(p Paths, st VerbStatus, test string) error {
 		cur.AcceptedProfileHead = ""
 		return cur, nil
 	})
+	if err != nil {
+		return err
+	}
+	return dropAcceptedOutput(p, test, nil)
 }
 
 // Defer settles the baseline wait with no baseline taken, so the run goes on to code changes.

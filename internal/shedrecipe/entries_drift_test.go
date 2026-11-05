@@ -37,9 +37,6 @@ func driftTestEnv(t *testing.T) Env {
 		Compare: func(context.Context) (driftengine.CompareResult, error) {
 			return driftengine.CompareResult{}, nil
 		},
-		CaptureAccepted: func(context.Context) (driftengine.AcceptedCapture, error) {
-			return driftengine.AcceptedCapture{}, nil
-		},
 		CompareAccepted: func(context.Context) (driftengine.CompareResult, error) {
 			return driftengine.CompareResult{}, nil
 		},
@@ -83,7 +80,7 @@ func TestDriftEntries(t *testing.T) {
 		{"VerifySecondGate", driftVerifyEntry, verifyCfg(verifyGate, map[string]any{"name": "description", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyOnlyOtherGate", driftVerifyEntry, verifyCfg(map[string]any{"name": "description", "attempts": 3}), nil, nil, "way forward: set gates"},
 		{"VerifyNilCompare", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.Compare = nil }, nil, "Drift.Compare"},
-		{"VerifyNilCaptureAccepted", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.CaptureAccepted = nil }, nil, "Drift.CaptureAccepted"},
+		{"VerifyNilCompareAccepted", driftVerifyEntry, verifyCfg(verifyGate), func(e *Env) { e.Drift.CompareAccepted = nil }, nil, "Drift.CompareAccepted"},
 		{"RecheckBuilds", driftRecheckEntry, Config{}, nil, reflect.TypeOf(&driftengine.DriftRecheck{}), ""},
 		{"RecheckUnknownKey", driftRecheckEntry, Config{"subject": "decision-record"}, nil, nil, "entry_gate"},
 		{"RecheckNilConfig", driftRecheckEntry, Config{}, func(e *Env) { e.Drift.Config = nil }, nil, "Drift.Config"},

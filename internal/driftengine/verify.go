@@ -67,7 +67,8 @@ func NewDriftVerify(name string, row Row, verify shuttleengine.GateEntry, deps D
 // It halts for the parent on an unruled acceptance under scope full and on a missing baseline.
 // It checks that the tree is clean and that the agent's commits pass the verify gate, then runs the compare.
 // A passing compare is Done; a failing one spawns one agent, with the operator in its pane under verify_interactive, whose table gates on a clean tree, on the verify entry and on a final compare.
-// A Done with tests accepted first captures the accepted profile at HEAD, unless one was captured there since the last acceptance, and a capture that does not pass is a Stuck naming lym loom resume.
+// A Done with tests accepted first builds the accepted profile from the baseline and the output each acceptance kept and compares HEAD against it, unless such a compare passed at HEAD since the last acceptance;
+// an acceptance with no kept output, and a compare that does not pass, are a Stuck naming the ways forward.
 // Every Stuck under scope full, and under scope partial the missing-baseline halt and a failing final compare while a test is withdrawn, opens with shedadapters.DecisionHaltPrefix.
 func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
@@ -80,7 +81,7 @@ func (p *DriftVerify) Call(ctx context.Context) (shedengine.Outcome, shedengine.
 		seam{"Seats", d.Seats != nil},
 		seam{"VerifyTable", d.VerifyTable != nil},
 		seam{"Compare", d.Compare != nil},
-		seam{"CaptureAccepted", d.CaptureAccepted != nil},
+		seam{"CompareAccepted", d.CompareAccepted != nil},
 	)
 	if err == nil && p.verify.Gate == nil {
 		err = fmt.Errorf("drift: %s is wired without a verify gate entry", p.name)
@@ -196,8 +197,8 @@ func (p *DriftVerify) pass(ctx context.Context) (shedengine.Outcome, shedengine.
 }
 
 // keepAcceptedProfile ends a pass whose compare passed as a Done carrying pointer.
-// With tests accepted and no accepted profile captured at HEAD since their acceptance, it first captures one and records HEAD as its commit, so a later compare can tell an accepted test whose output changed.
-// A capture that does not pass is a Stuck naming its reason and lym loom resume.
+// With tests accepted and no compare against the accepted profile passed at HEAD since their acceptance, it first builds the profile from the baseline and the output each acceptance kept, compares HEAD against it and records HEAD as its commit, so an accepted test whose output changed after its acceptance shows, now and in a later compare.
+// An acceptance with no kept output, and a compare that does not pass, are a Stuck naming the ways forward, and record no commit.
 func (p *DriftVerify) keepAcceptedProfile(ctx context.Context, pointer shedengine.OutputPointer) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	scope, _, err := ReadScope(p.deps.Paths)
 	if err != nil {
@@ -210,12 +211,19 @@ func (p *DriftVerify) keepAcceptedProfile(ctx context.Context, pointer shedengin
 	if len(scope.Accepted) == 0 || scope.AcceptedProfileHead == head {
 		return shedengine.Done, pointer, nil
 	}
-	captured, err := p.deps.CaptureAccepted(ctx)
+	missing, err := buildAcceptedProfile(p.deps.Paths, scope)
 	if err != nil {
 		return "", shedengine.OutputPointer{}, err
 	}
-	if !captured.Passed {
-		return p.haltFrom(pointer, false, generalHaltOpening, "the capture of the accepted profile did not pass: "+captured.Reason+"; way forward: lym loom resume")
+	if len(missing) > 0 {
+		return p.haltFrom(pointer, false, generalHaltOpening, fmt.Sprintf("no output was kept at the acceptance of %s, so the accepted profile cannot be built; way forward: lym drift accept <test> --reason <text> again for each, which keeps its output, then lym loom resume", strings.Join(missing, ", ")))
+	}
+	compared, err := p.deps.CompareAccepted(ctx)
+	if err != nil {
+		return "", shedengine.OutputPointer{}, err
+	}
+	if !compared.Passed {
+		return p.haltFrom(pointer, false, generalHaltOpening, "the compare against the accepted profile shows drift, so an accepted test's output changed after its acceptance: "+compared.Reason+"; way forward: lym drift accept <test> --reason <text> again for a test whose new output is intended, lym drift withdraw <test> to judge it again, or a fix that restores its accepted output, then lym loom resume")
 	}
 	if _, err := p.updateScope(func(cur *ScopeRecord) { cur.AcceptedProfileHead = head }); err != nil {
 		return "", shedengine.OutputPointer{}, err

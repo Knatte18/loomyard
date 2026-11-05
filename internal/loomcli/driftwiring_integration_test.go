@@ -131,8 +131,8 @@ compare:
 	}
 }
 
-// TestDriftDeps_AcceptedSeamsKeepAcceptedTestsInTheRun covers the CaptureAccepted and CompareAccepted seams against Compare:
-// with skip s1 and accepted test t1, Compare leaves out both, the two accepted seams leave out s1 alone, and CompareAccepted renders {baseline_dir} as the accepted profile directory.
+// TestDriftDeps_AcceptedSeamsKeepAcceptedTestsInTheRun covers the CompareAccepted seam against Compare:
+// with skip s1 and accepted test t1, Compare leaves out both, CompareAccepted leaves out s1 alone and renders {baseline_dir} as the accepted profile directory.
 func TestDriftDeps_AcceptedSeamsKeepAcceptedTestsInTheRun(t *testing.T) {
 	tiergate.Require(t, 1)
 	t.Parallel()
@@ -202,17 +202,5 @@ compare:
 	}
 	if got, want := strings.TrimSpace(readSeen("dir.txt")), paths.AcceptedDir; got != want {
 		t.Errorf("CompareAccepted() rendered {baseline_dir} as %q; want the accepted profile directory %q", got, want)
-	}
-
-	captured, err := deps.CaptureAccepted(context.Background())
-	if err != nil || !captured.Passed {
-		t.Fatalf("CaptureAccepted() = %+v, %v; want a passed capture", captured, err)
-	}
-	data, err := os.ReadFile(filepath.Join(paths.AcceptedDir, "skip.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(data), "s1\n"; got != want {
-		t.Errorf("CaptureAccepted() skip file = %q; want %q, the accepted test left in", got, want)
 	}
 }

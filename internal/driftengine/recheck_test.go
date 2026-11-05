@@ -44,7 +44,7 @@ func comparedScope() ScopeRecord {
 	}
 }
 
-// acceptingScope returns comparedScope with t1 and t2 accepted and the accepted profile captured at profileHead.
+// acceptingScope returns comparedScope with t1 and t2 accepted and a compare against the accepted profile last passed at profileHead.
 func acceptingScope(profileHead string) ScopeRecord {
 	scope := comparedScope()
 	scope.Accepted = []Acceptance{{Test: "t1", By: AcceptedByAgent}, {Test: "t2", By: AcceptedByAgent}}
@@ -233,7 +233,7 @@ func TestDriftRecheck(t *testing.T) {
 		})
 	})
 
-	t.Run("with tests accepted and the profile captured at the compared head", func(t *testing.T) {
+	t.Run("with tests accepted and the profile compare last passed at the compared head", func(t *testing.T) {
 		t.Parallel()
 
 		t.Run("a passing compare against the accepted profile is Done and moves both heads to HEAD", func(t *testing.T) {
@@ -269,12 +269,12 @@ func TestDriftRecheck(t *testing.T) {
 		})
 	})
 
-	t.Run("tests accepted with the profile captured at another commit lapse with no compare", func(t *testing.T) {
+	t.Run("tests accepted with the profile compare last passed at another commit lapse with no compare", func(t *testing.T) {
 		t.Parallel()
 		for _, profileHead := range []string{"", "older"} {
 			scope := acceptingScope(profileHead)
 			f := newRecheckFixture(t, &scope)
-			f.requireOutcome(shedengine.Stuck, "no accepted profile", recheckComparedHead, "`t1`", "`t2`", "lapse")
+			f.requireOutcome(shedengine.Stuck, "no compare against the accepted profile passed", recheckComparedHead, "`t1`", "`t2`", "lapse")
 			f.requireCompares(0, 0)
 			f.requireCommittedOnce()
 			got := f.scope()

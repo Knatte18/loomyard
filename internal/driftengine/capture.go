@@ -256,9 +256,9 @@ func RunSideCapture(ctx context.Context, req CaptureRequest) (SideResult, error)
 	return captureInto(ctx, req, nextFree(req.Paths.SideDir, ""), siteSideCapture, "side-capture")
 }
 
-// AcceptedCapture is how a capture of the accepted profile ended.
-type AcceptedCapture struct {
-	// Passed is true when the command exited 0 within its timeout and wrote at least one file.
+// AcceptanceCapture is how the capture of a test's output for its acceptance ended.
+type AcceptanceCapture struct {
+	// Passed is true when the command exited 0 within its timeout and wrote at least one profile file of the test.
 	Passed bool
 	// Log is the command's log file.
 	Log string
@@ -266,16 +266,16 @@ type AcceptedCapture struct {
 	Reason string
 }
 
-// RunAcceptedCapture captures the accepted profile: the capture command run on the current code into the accepted directory, which it empties first.
-// A later compare against that profile shows an accepted test whose output changed after its acceptance as drift.
-// It takes no capture lock and writes no capture record; a command that fails, times out or writes no file is a result that did not pass, not an error.
-func RunAcceptedCapture(ctx context.Context, req CaptureRequest) (AcceptedCapture, error) {
-	dir := req.Paths.AcceptedDir
+// RunAcceptanceCapture captures the current code's output for an acceptance of test: the capture command run into the accepting directory, which it empties first.
+// Accept then keeps the test's profile files as the output the acceptance saw, so the accepted profile holds that output and not a later one.
+// It takes no capture lock and writes no capture record; a command that fails, times out or writes no profile file of test is a result that did not pass, not an error.
+func RunAcceptanceCapture(ctx context.Context, req CaptureRequest, test string) (AcceptanceCapture, error) {
+	dir := req.Paths.AcceptingDir
 	if err := os.RemoveAll(dir); err != nil {
-		return AcceptedCapture{}, fmt.Errorf("drift: empty the accepted profile %s: %w", dir, err)
+		return AcceptanceCapture{}, fmt.Errorf("drift: empty the accepting directory %s: %w", dir, err)
 	}
-	side, err := captureInto(ctx, req, dir, siteAcceptedCapture, "accepted-capture")
-	result := AcceptedCapture{Log: side.Log}
+	side, err := captureInto(ctx, req, dir, siteAcceptanceCapture, "acceptance-capture")
+	result := AcceptanceCapture{Log: side.Log}
 	if err != nil {
 		return result, err
 	}
@@ -286,12 +286,12 @@ func RunAcceptedCapture(ctx context.Context, req CaptureRequest) (AcceptedCaptur
 	case side.ExitCode != 0:
 		result.Reason = "exit " + strconv.Itoa(side.ExitCode) + report()
 	default:
-		wrote, err := holdsFile(dir)
+		files, err := testFiles(dir, test)
 		if err != nil {
 			return result, err
 		}
-		if !wrote {
-			result.Reason = "exit 0 but wrote no file to " + dir + report()
+		if len(files) == 0 {
+			result.Reason = "exit 0 but wrote no file for " + test + " to " + dir + report()
 			break
 		}
 		result.Passed = true

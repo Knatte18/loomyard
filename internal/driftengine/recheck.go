@@ -33,7 +33,7 @@ func NewDriftRecheck(name string, deps Deps) *DriftRecheck {
 // Otherwise it compares the code again: against the accepted profile while tests are accepted, which checks each accepted test against the output its acceptance saw, and against the baseline while none is.
 // A passing compare is Done and records the compare at HEAD.
 // A pass with no compare recorded yet, a dirty tracked tree, an undeclared compare or a compare that shows drift is a Stuck.
-// With tests accepted, a compare against the accepted profile that shows drift, or no accepted profile captured at the last compare's commit, first lapses every acceptance, since the compare cannot tell which accepted test changed, so Drift-Verify compares them again.
+// With tests accepted, a compare against the accepted profile that shows drift, or no compare against the accepted profile that passed at the last compare's commit, first lapses every acceptance, since the compare cannot tell which accepted test changed, so Drift-Verify compares them again.
 func (p *DriftRecheck) Call(ctx context.Context) (shedengine.Outcome, shedengine.OutputPointer, error) {
 	d := p.deps
 	err := requireSeams(p.name,
@@ -118,7 +118,7 @@ func (p *DriftRecheck) pass(ctx context.Context) (shedengine.Outcome, shedengine
 		if err := p.lapse(); err != nil {
 			return "", shedengine.OutputPointer{}, err
 		}
-		return back(fmt.Sprintf("no accepted profile was captured at %s, the commit of the last compare, so the acceptances of %s lapse", scope.ComparedHead, tests))
+		return back(fmt.Sprintf("no compare against the accepted profile passed at %s, the commit of the last compare, so the acceptances of %s lapse", scope.ComparedHead, tests))
 	}
 	result, err := d.CompareAccepted(ctx)
 	if err != nil {
