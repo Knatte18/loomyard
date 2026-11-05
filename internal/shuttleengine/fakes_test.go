@@ -610,8 +610,8 @@ func (e *skillFakeEngine) DefaultSkillLoadTimeout() time.Duration { return e.Tim
 var _ SkillLoader = (*skillFakeEngine)(nil)
 
 // hookStateSkillEngine is a skillFakeEngine that also reads hook state: the session signal parser, a live prober and the SessionCycler idle reading.
-// A capture is idle when it starts with "IDLE" or holds a skill load, carried on the launch line or typed, whose turn the skill reed ends at once.
-// A pane the test leaves busy is one the pane fallback refuses until that load turn ends, and the hook fold reading idle from the launch-carried turn's end lets the color and retry sends through it before the prompt offset moves past that end.
+// A capture is idle when it starts with "IDLE".
+// A pane the test leaves busy is one the pane fallback refuses throughout, so every send of the start goes through on the hook fold's reading of the load turn's end, before the prompt offset moves past that end and after.
 type hookStateSkillEngine struct {
 	*skillFakeEngine
 
@@ -633,7 +633,7 @@ func (e *hookStateSkillEngine) CompactedSince(Event, time.Time) (CompactionBound
 	return CompactionBoundary{}, false
 }
 func (e *hookStateSkillEngine) IdleSession(capture string) bool {
-	return strings.Contains(capture, "LOAD:") || e.hooks.IdleSession(capture)
+	return e.hooks.IdleSession(capture)
 }
 func (e *hookStateSkillEngine) PaneTooShort(string) bool                  { return false }
 func (e *hookStateSkillEngine) ClearSessionSequence() []PaneInput         { return nil }

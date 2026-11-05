@@ -123,9 +123,21 @@ func judgeReadiness(state SessionState, unmatched bool, box boxReading) readines
 	return readiness{ready: true, noTurn: noTurn, turnEndedAt: turnEndedAt}
 }
 
+// readinessState returns the session state a readiness reading judges at now: the fold of the run's signals past its prompt offset.
+// When no signal lies past a non-zero offset, the session has done nothing since the offset was set, so the state is the fold of the whole events file.
+// A send right after the skill-load turns, which start moved the offset past, so reads the last load turn's end instead of an unknown state.
+func readinessState(rs RunState, engine Engine, now time.Time) SessionState {
+	state := readRunSessionState(rs, engine, now).State
+	if state.Name != SessionUnknown || state.Cause != SessionCauseNoSignal || rs.PromptOffset == 0 {
+		return state
+	}
+	rs.PromptOffset = 0
+	return readRunSessionState(rs, engine, now).State
+}
+
 // sessionReadiness reads the readiness of the strand sc names from capture, its pane just captured.
 // A recordless context reads unknown with cause no-run-record, so the caller takes the pane-only reading.
-// It folds the run's session state at the context's clock; an unknown state settles nothing, so the reading is unknown without a look at the box.
+// It folds the run's session state at the context's clock, through readinessState; an unknown state settles nothing, so the reading is unknown without a look at the box.
 // Otherwise it decides through hold whether an unmatched turn start still holds, and reads the box.
 // A turn start whose hold released, by a later turn end, a reported interrupt, a later session start or the pane reading idle for turnStartIdleOverride, no longer counts as a running turn;
 // a turn start the engine reads in flight is not released by the idle pane.
@@ -134,7 +146,7 @@ func sessionReadiness(sc sendContext, cycler SessionCycler, hold *turnStartHold,
 		return judgeReadiness(SessionState{Name: SessionUnknown, Cause: sessionCauseNoRunRecord}, false, boxReading{})
 	}
 	now := sc.clock.Now()
-	state := readRunSessionState(sc.state, sc.engine, now).State
+	state := readinessState(sc.state, sc.engine, now)
 	if state.Name == SessionUnknown {
 		return judgeReadiness(state, false, boxReading{})
 	}

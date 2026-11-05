@@ -336,6 +336,8 @@
 // An engine with TurnProgressReader that reads the unmatched turn in flight vetoes the idle-pane release, so the turn start keeps holding until a turn end, a reported interrupt or a later session start.
 // A session start after the turn start lifts the veto, since the session's context began anew.
 // Runner.SessionIdle reports busy while a turn reads in flight.
+// The state is folded from the signals past the run's prompt offset, or from the whole events file when none lies past a non-zero offset,
+// so the prompt send after the skill-load turns reads the last load turn's end rather than an unknown state.
 // When the session state is unknown, the reading falls back to the pane, which must classify ready and idle, and for an engine that parses session signals no turn start may be left unmatched by a later turn end; the cause is logged at Debug.
 // A fallback hold whose box reads non-empty quotes the box.
 // Styled box read: for an engine with StyledBoxReader, every box reading of a decision, the idle probe's, the pre-write guard's and the landing check's, takes one styled capture and reads the plain capture the engine makes of it, with a box holding only the provider's placeholder blanked.

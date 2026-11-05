@@ -230,7 +230,7 @@ func TestRunner_SessionIdle_DeadStrandErrors(t *testing.T) {
 
 // TestRunner_SessionIdle_ReturnsScriptedClassification drives Runner.SessionIdle over a fake reed and an engine with the signal parser, the cycler and the box reader, or, for a guarded row, the box reader and the running-turn check.
 // Each row is a series of probes of one strand on one runner, each appending events and moving the clock before it reads one pane capture:
-// a ready, held or unknown readiness reading and its fallback to the pane, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.
+// a ready, held or unknown readiness reading and its fallback to the pane, a prompt offset past the events a run already wrote, whose last turn end the reading then takes, a draft, a pane too short, a hook turn end beside a pane needle, a turn start held then released by a later turn end, an interrupt report and the idle override across polls.
 // An engine without the signal parser falls back to the pane probe, whose TooShort is reported only for a pane that is not idle.
 //
 // It is not parallel: logcapture redirects the process-global logger.
@@ -272,6 +272,8 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		interactive, outputsExist   bool
 		// unreadable points the run record at an events file that cannot be read, so the session state reads unknown and the pane decides.
 		unreadable bool
+		// seeded is written to the events file before the first probe, and its length is the run's prompt offset.
+		seeded string
 		// styled gives the engine the styled box read, which blanks a capture's ~…~ spans.
 		styled bool
 		// guarded runs the row on guardedReadinessEngine, which adds the running-turn check Claude's pane probe uses.
@@ -306,6 +308,20 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
 			probes:  []probe{{events: turnEnded, capture: needleFrame, want: idleAtEnd}},
 			wantLog: "readiness reads ready beside a pane that does not show idle",
+		},
+		{
+			name:   "no signal past the prompt offset reads the load turn's end",
+			seeded: "SESSIONSTART:startup\nSTART\n" + endStamp + "STOP:done\n",
+			probes: []probe{{capture: idleFrame, want: idleAtEnd}},
+		},
+		{
+			name:   "no signal past the prompt offset keeps a stale unmatched turn start held",
+			seeded: "START\n",
+			probes: []probe{{capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"}},
+		},
+		{
+			name:   "no signal at a zero offset reads unknown and falls back to the pane",
+			probes: []probe{{capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}},
 		},
 		{name: "a pane with no readable box is held for an engine that reads one", probes: []probe{{events: turnEnded, capture: "no box here", want: atEnd(IdleProbe{Reason: readinessReasonNoInputBox, NoInputBox: true}), wantReason: "no input box"}}},
 		{name: "an active operator is held with the activity reason", probes: []probe{{events: turnEnded, capture: idleFrame, active: true, want: atEnd(IdleProbe{Reason: "the operator typed in this pane within the last 5 s"}), wantReason: "operator typed"}}},
@@ -364,7 +380,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			}
 			fx := newFixture(t, reed, probed, withStrand("strand-1"), withClock(clock))
 			runDir := filepath.Dir(fx.EventsPath)
-			state := RunState{RunID: "run-1", StrandGUID: "strand-1", EventsPath: fx.EventsPath, Interactive: tt.interactive}
+			state := RunState{RunID: "run-1", StrandGUID: "strand-1", EventsPath: fx.EventsPath, Interactive: tt.interactive, PromptOffset: int64(len(tt.seeded))}
 			if tt.unreadable {
 				state.EventsPath = filepath.Join(runDir, "missing-events.jsonl")
 			}
@@ -379,7 +395,7 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 				t.Fatalf("saveRunState: %v", err)
 			}
 
-			events := ""
+			events := tt.seeded
 			for i, p := range tt.probes {
 				events += p.events
 				if err := os.WriteFile(fx.EventsPath, []byte(events), 0o644); err != nil {
