@@ -87,6 +87,7 @@ func newLoopFixture(t *testing.T, scripts ...childScript) *loopFixture {
 			},
 			TraceFiles: func(traceID string) ([]string, error) { return fx.traces[traceID], nil },
 			Runner:     fx.run,
+			Signals:    func() (<-chan os.Signal, func()) { return nil, func() {} },
 		},
 	}
 	return fx
@@ -451,6 +452,31 @@ func TestLoop_InterruptedChildFillsTheErrorForm(t *testing.T) {
 		}
 		if st := fx.readStatus(); st.CurrentProducer != "B" || !strings.Contains(st.Error, "step B interrupted (") {
 			t.Errorf("status current/error = %s/%q; want B blamed", st.CurrentProducer, st.Error)
+		}
+	})
+
+	t.Run("the loop panics while stepping", func(t *testing.T) {
+		fx := newLoopFixture(t, func(*loopFixture, string, ChildRequest) error { panic("boom") })
+		var cause string
+		fx.spec.Hooks.AfterInterrupt = func(_ context.Context, _, gotCause, _ string) string {
+			cause = gotCause
+			return ""
+		}
+
+		env, code := fx.execute()
+
+		wantText := "shedverbs: step A interrupted (loop-panicked: boom); way forward: read loop.trace_copy and loop.stderr_path, apply the interrupted rule under loop.interrupt_policy, then re-run lym shed step run-1 --until-stop"
+		if code != 1 || env["kind"] != KindInterrupted || env["error"] != wantText || cause != "loop-panicked: boom" {
+			t.Errorf("exit/kind/error/hook cause = %d/%v/%v/%q; want the interrupted loop-panicked stop", code, env["kind"], env["error"], cause)
+		}
+		if st := fx.readStatus(); st.State != shedengine.StateFailed || st.Error != wantText {
+			t.Errorf("status state/error = %s/%q; want failed with the stop's text", st.State, st.Error)
+		}
+		if written, found := readLoopEnvelopeFile(fx.spec.Loop.EnvelopePath); !found || written.LoopID != detachedLoopID {
+			t.Errorf("loop envelope file = %+v, found %v; want the stop written under %s", written, found, detachedLoopID)
+		}
+		if fileExists(fx.spec.Loop.PIDPath) {
+			t.Errorf("the loop left its pid file behind; it removes it once its envelope is written")
 		}
 	})
 
@@ -1402,6 +1428,34 @@ func TestLoop_ExitHookRunsOnceAtEveryStop(t *testing.T) {
 				t.Errorf("envelope loop stop = %v; want %s, written after the hook", loopOf(t, env)["stop"], tt.wantStop)
 			}
 		})
+	}
+}
+
+func TestLoop_TerminatingSignalIsMarkedInTheLoopLog(t *testing.T) {
+	tiergate.Require(t, 0)
+	received := make(chan os.Signal, 1)
+	raised := make(chan os.Signal, 1)
+	var raisedSignal os.Signal
+	fx := newLoopFixture(t, func(fx *loopFixture, traceID string, req ChildRequest) error {
+		received <- syscall.SIGTERM
+		raisedSignal = <-raised
+		return halting(shedengine.StateDone, "", 1)(fx, traceID, req)
+	})
+	fx.spec.Loop.Signals = func() (<-chan os.Signal, func()) { return received, func() {} }
+	fx.spec.Loop.Raise = func(sig os.Signal) { raised <- sig }
+
+	var out bytes.Buffer
+	clihelp.Execute(stepCmd(stepTexts(), fx.spec), &out, detachedArgs(detachedLoopID))
+
+	if raisedSignal != syscall.SIGTERM {
+		t.Errorf("raised signal = %v; want SIGTERM, raised once the loop recorded it", raisedSignal)
+	}
+	if _, found := readLoopEnvelopeFile(fx.spec.Loop.EnvelopePath); found || out.Len() != 0 || !fileExists(fx.spec.Loop.PIDPath) {
+		t.Errorf("envelope found %v, output %q, pid file present %v; want no envelope and the dead loop's pid file left for the waiter", found, out.String(), fileExists(fx.spec.Loop.PIDPath))
+	}
+	log, err := os.ReadFile(fx.spec.Loop.LogPath)
+	if want := loopLogMark(detachedLoopID, "received signal "+syscall.SIGTERM.String()+" and ends without an envelope"); err != nil || string(log) != want {
+		t.Errorf("loop log = %q, %v; want the signal's mark %q", log, err, want)
 	}
 }
 

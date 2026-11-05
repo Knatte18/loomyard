@@ -6,11 +6,15 @@ package shedverbs
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -62,8 +66,8 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 		t.Fatalf("after the waiter's death the loop, its child or the grandchild ended; want all three to outlive the waiter")
 	}
 
-	if err := proc.KillPID(record.Loop.PID); err != nil {
-		t.Fatalf("kill the loop: %v", err)
+	if err := syscall.Kill(record.Loop.PID, syscall.SIGTERM); err != nil {
+		t.Fatalf("terminate the loop: %v", err)
 	}
 	waitUntil(t, 30*time.Second, "the step child to die with the loop", func() bool { return processEnded(record.Child.PID) })
 
@@ -80,11 +84,72 @@ func TestLoopIntegration_ChildTreeDiesWithLoop(t *testing.T) {
 	}
 	loopObj, _ := env["loop"].(map[string]any)
 	detail, _ := loopObj["detail"].(string)
-	if !strings.Contains(detail, "; step A was in flight under trace "+record.TraceID) || !strings.Contains(detail, "; its step tree was still running and was killed") {
-		t.Errorf("second waiter loop.detail = %q; want the in-flight step with its trace and the killed step tree", detail)
+	wantExit := "; loop exit: " + strings.TrimSuffix(loopLogMark(record.LoopID, "received signal terminated and ends without an envelope"), "\n")
+	if !strings.Contains(detail, "; step A was in flight under trace "+record.TraceID) || !strings.Contains(detail, wantExit) || !strings.Contains(detail, "; its step tree was still running and was killed") {
+		t.Errorf("second waiter loop.detail = %q; want the in-flight step with its trace, the loop's signal mark and the killed step tree", detail)
 	}
 	waitUntil(t, 30*time.Second, "the dead loop's step tree to be killed", func() bool { return processEnded(grandchild) })
 	if st, found, err := state.ReadJSON[shedengine.Status](spec.StatusPath, spec.StatusLockPath); err != nil || !found || st.State != shedengine.StateFailed {
 		t.Errorf("status = %+v, %v, %v; want failed", st, found, err)
+	}
+}
+
+// groupChild is a Child whose record names a real process group.
+type groupChild struct{ record proc.TreeRecord }
+
+func (c groupChild) Wait() error             { return nil }
+func (c groupChild) Quit() error             { return nil }
+func (c groupChild) Kill() error             { return nil }
+func (c groupChild) Record() proc.TreeRecord { return c.record }
+
+func TestLoopIntegration_PanicKillsTheInFlightStepTree(t *testing.T) {
+	tiergate.Require(t, 1)
+	sleeper := exec.Command("sleep", "60")
+	sleeper.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := sleeper.Start(); err != nil {
+		t.Fatalf("start the stand-in step child: %v", err)
+	}
+	reaped := make(chan struct{})
+	go func() {
+		_ = sleeper.Wait()
+		close(reaped)
+	}()
+	t.Cleanup(func() {
+		_ = sleeper.Process.Kill()
+		<-reaped
+	})
+	pid := sleeper.Process.Pid
+	startTime, _ := proc.StartTime(pid)
+	fx := newLoopFixture(t)
+	fx.spec.Loop.Runner = func(context.Context, ChildRequest) (Child, error) {
+		return groupChild{record: proc.TreeRecord{PID: pid, PGID: pid, StartTime: startTime}}, nil
+	}
+	// The loop reads its clock right after it records the child, so this panics with the child in flight.
+	fx.spec.Loop.Now = func() time.Time { panic("boom") }
+
+	env, _ := fx.execute()
+
+	if env["kind"] != KindInterrupted {
+		t.Errorf("envelope kind = %v; want the interrupted loop-panicked stop", env["kind"])
+	}
+	waitUntil(t, 30*time.Second, "the panicked loop's in-flight step tree to be killed", func() bool { return processEnded(pid) })
+}
+
+func TestLoopIntegration_SpawnMarksTheLoopsExit(t *testing.T) {
+	tiergate.Require(t, 1)
+	t.Parallel()
+	spec := helperSpec(t.TempDir(), "/bin/sh")
+
+	// The output ends without a newline, so the exit mark must open its own line to stay a mark.
+	exited, err := spawnLoop(spec, "loop-x", []string{"-c", "printf crashed >&2; exit 3"})
+	if err != nil {
+		t.Fatalf("spawnLoop = %v; want the process started", err)
+	}
+	<-exited
+
+	got := loopExitEvidence(spec.Loop.LogPath, "loop-x")
+	want := regexp.MustCompile(`^; loop exit: lym shed: loop loop-x process [0-9]+ exited: exit status 3; loop log: crashed$`)
+	if !want.MatchString(got) {
+		t.Errorf("loopExitEvidence = %q; want it to match %s", got, want)
 	}
 }

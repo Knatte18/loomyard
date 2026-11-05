@@ -12,9 +12,13 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Knatte18/loomyard/internal/lock"
@@ -80,7 +84,7 @@ type LoopSpec struct {
 	// A loop that refuses before its first step never runs it.
 	OnStart func()
 	// OnExit runs once in runLoop after the stop is final, with the stop and the status file as it then reads, and before the envelope is written; nil is skipped.
-	// A loop that refuses before its first step never runs it.
+	// A loop that refuses before its first step, or that a terminating signal ends while it steps, never runs it.
 	OnExit func(stop LoopStop, st shedengine.Status)
 	// OnWake runs on every wake of the child watch; nil is skipped.
 	// With a zero IdleTimeout and OnWake set, the watch runs without ever killing the child.
@@ -94,6 +98,10 @@ type LoopSpec struct {
 	Watch func(dir string, names ...string) (<-chan struct{}, func(), error)
 	// Sleep waits for the given duration, and replaces the waiter's timer wait when set.
 	Sleep func(ctx context.Context, delay time.Duration) error
+	// Signals reports the terminating signals the loop receives through the channel it returns, with the function that stops reporting; nil selects SIGINT, SIGTERM and SIGHUP through os/signal.
+	Signals func() (<-chan os.Signal, func())
+	// Raise ends the loop process by sig once the loop has recorded it in the loop log; nil restores sig's default action and sends it to the process again, and exits with status 128 plus sig's number if the process outlives a second.
+	Raise func(sig os.Signal)
 }
 
 // ChildRequest is everything a ChildRunner needs to start one child step.
@@ -168,10 +176,15 @@ func (r childResult) ok() bool {
 // The exception is a stop on the status read at an iteration's top, absent or unreadable: nothing can be written without destroying the evidence, so the file is left as found.
 // A read error that is not a decode failure gets the same one re-step, as a re-read.
 // LoopSpec.OnStart runs once after the start is logged and before the first step.
-// LoopSpec.OnExit runs once at every stop kind, after the stop is final and before the envelope is written.
+// LoopSpec.OnExit runs once at every stop kind but a terminating signal's while the loop steps, after the stop is final and before the envelope is written.
 // A loop that cannot take the lock within the grace period, or that finds the teardown's mark, an undelivered envelope or a dead loop's pid file, returns 1 at once, before any step and without an envelope.
+// A terminating signal is recorded in the loop log and then ends the process without an envelope, for the waiter's dead-loop stop to report;
+// the loop writes no failed stop and runs no interrupt hook once it has seen the signal.
+// A panic outside the stepping, in a hook or in the code after it, is not recovered and also ends the loop without an envelope.
 func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out io.Writer) int {
 	loop := spec.Loop
+	stopRecordingSignals, endedBySignal := recordTerminatingSignals(loop, loopID)
+	defer stopRecordingSignals()
 	if err := os.MkdirAll(filepath.Dir(loop.LockPath), 0o755); err != nil {
 		logger.Warn("shed: loop could not create its directory", "loop_id", loopID, "error", err.Error())
 		return 1
@@ -206,85 +219,12 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	if loop.OnStart != nil {
 		loop.OnStart()
 	}
-	idleWindow := idleWindowOf(loop)
 	obj := loopObject{FirstProducer: first.CurrentProducer}
-	readStatus := loop.ReadStatus
-	if readStatus == nil {
-		readStatus = readStatusAt
+	run := stepUntilStop(ctx, spec, loopID, argv, &pid, first, &obj)
+	if endedBySignal() {
+		return 1
 	}
-
-	var (
-		res        childResult
-		before     = first
-		stop       LoopStop
-		restepped  bool
-		lastKnown  = first.CurrentProducer
-		stopReason string
-	)
-	for {
-		traceID := logger.NewTraceID()
-		current, present, readErr := readStatus(spec.StatusPath, spec.StatusLockPath)
-		if present {
-			before = current
-			lastKnown = current.CurrentProducer
-			res = runChild(ctx, spec, argv, traceID, idleWindow, func(child proc.TreeRecord) {
-				pid.Child, pid.TraceID, pid.CurrentProducer, pid.HistoryLength = child, traceID, current.CurrentProducer, len(current.History)
-				if err := WriteLoopPIDRecord(loop.PIDPath, pid); err != nil {
-					logger.Warn("shed: loop could not update its pid file", "loop_id", loopID, "error", err.Error())
-				}
-			})
-			obj.Steps++
-		} else {
-			if readErr != nil && !errors.Is(readErr, state.ErrDecode) && !restepped {
-				restepped = true
-				cause := "status-unreadable: " + readErr.Error()
-				obj.Restep = &loopRestep{Producer: lastKnown, Error: cause}
-				logger.Warn("shed: loop re-reads an unreadable status file", "status", spec.StatusPath, "error", readErr.Error())
-				continue
-			}
-			cause := "status-missing"
-			if readErr != nil {
-				cause = "status-unreadable: " + readErr.Error()
-			}
-			logger.Warn("shed: loop stops on its status file", "status", spec.StatusPath, "cause", cause)
-			res = childResult{traceID: traceID, cause: cause, statusStop: true, statusErr: readErr}
-		}
-
-		if res.ok() {
-			restepped = false
-			if next, _ := res.full["next"].(string); next != "" {
-				lastKnown = next
-			}
-			if keepGoing, _ := res.full["continue"].(bool); keepGoing {
-				continue
-			}
-			stopReason, _ = res.full["reason"].(string)
-			stop = LoopStopHalted
-			if stateName, _ := res.full["state"].(string); stateName == string(shedengine.StatePaused) && isConditionReason(stopReason) {
-				stop = LoopStopCondition
-			}
-			break
-		}
-		if res.full != nil {
-			kind, _ := res.full["kind"].(string)
-			transient, _ := res.full["transient"].(string)
-			errText, _ := res.full["error"].(string)
-			if kind == KindBusy {
-				stop = LoopStopBusy
-				break
-			}
-			if transient != "" && !restepped {
-				restepped = true
-				obj.Restep = &loopRestep{Producer: before.CurrentProducer, Error: errText, Transient: transient}
-				logger.Warn("shed: loop re-steps a transient failure", "producer", before.CurrentProducer, "transient", transient, "error", errText)
-				continue
-			}
-			stop = LoopStopError
-			break
-		}
-		stop = LoopStopInterrupted
-		break
-	}
+	res, before, stop, lastKnown, stopReason := run.res, run.before, run.stop, run.lastKnown, run.stopReason
 
 	var (
 		errText   string
@@ -377,6 +317,9 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	} else {
 		code = output.ErrFields(&buf, errText, loopEnvelope(shortStepErrFields(res.full, res.path), obj))
 	}
+	if endedBySignal() {
+		return 1
+	}
 	if err := writeLoopEnvelopeFile(loop.EnvelopePath, loopID, buf.Bytes()); err != nil {
 		logger.Warn("shed: loop could not write its envelope", "path", loop.EnvelopePath, "error", err.Error())
 	} else if err := os.Remove(loop.PIDPath); err != nil {
@@ -384,6 +327,172 @@ func runLoop(ctx context.Context, spec *Spec, loopID string, argv []string, out 
 	}
 	_, _ = out.Write(buf.Bytes())
 	return code
+}
+
+// steppedRun is where the loop's stepping stopped: the stop step's result, the status file read before that step, the stop, the row last known to be current and a halted stop's reason.
+type steppedRun struct {
+	res        childResult
+	before     shedengine.Status
+	stop       LoopStop
+	lastKnown  string
+	stopReason string
+}
+
+// stepUntilStop runs child steps from the status file first read until one stops the run, writing each child's start and exit into pid and counting the steps and a re-step into obj.
+// A panic while stepping is recovered as an interrupted stop with the cause loop-panicked: <value>, after the in-flight child's step tree is killed, so the loop still writes its envelope.
+func stepUntilStop(ctx context.Context, spec *Spec, loopID string, argv []string, pid *LoopPIDRecord, first shedengine.Status, obj *loopObject) (run steppedRun) {
+	loop := spec.Loop
+	idleWindow := idleWindowOf(loop)
+	readStatus := loop.ReadStatus
+	if readStatus == nil {
+		readStatus = readStatusAt
+	}
+	run.before, run.lastKnown = first, first.CurrentProducer
+	restepped := false
+	traceID := ""
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			return
+		}
+		logger.Error("shed: loop panicked while stepping", "loop_id", loopID, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
+		killStepTree(*pid)
+		run.res = childResult{traceID: traceID, cause: fmt.Sprintf("loop-panicked: %v", recovered)}
+		run.stop = LoopStopInterrupted
+	}()
+
+	for {
+		traceID = logger.NewTraceID()
+		current, present, readErr := readStatus(spec.StatusPath, spec.StatusLockPath)
+		if present {
+			run.before = current
+			run.lastKnown = current.CurrentProducer
+			childTraceID := traceID
+			run.res = runChild(ctx, spec, argv, traceID, idleWindow, func(child proc.TreeRecord) {
+				pid.Child, pid.TraceID, pid.CurrentProducer, pid.HistoryLength = child, childTraceID, current.CurrentProducer, len(current.History)
+				if err := WriteLoopPIDRecord(loop.PIDPath, *pid); err != nil {
+					logger.Warn("shed: loop could not update its pid file", "loop_id", loopID, "error", err.Error())
+				}
+			})
+			obj.Steps++
+		} else {
+			if readErr != nil && !errors.Is(readErr, state.ErrDecode) && !restepped {
+				restepped = true
+				cause := "status-unreadable: " + readErr.Error()
+				obj.Restep = &loopRestep{Producer: run.lastKnown, Error: cause}
+				logger.Warn("shed: loop re-reads an unreadable status file", "status", spec.StatusPath, "error", readErr.Error())
+				continue
+			}
+			cause := "status-missing"
+			if readErr != nil {
+				cause = "status-unreadable: " + readErr.Error()
+			}
+			logger.Warn("shed: loop stops on its status file", "status", spec.StatusPath, "cause", cause)
+			run.res = childResult{traceID: traceID, cause: cause, statusStop: true, statusErr: readErr}
+		}
+
+		res := run.res
+		if res.ok() {
+			restepped = false
+			if next, _ := res.full["next"].(string); next != "" {
+				run.lastKnown = next
+			}
+			if keepGoing, _ := res.full["continue"].(bool); keepGoing {
+				continue
+			}
+			run.stopReason, _ = res.full["reason"].(string)
+			run.stop = LoopStopHalted
+			if stateName, _ := res.full["state"].(string); stateName == string(shedengine.StatePaused) && isConditionReason(run.stopReason) {
+				run.stop = LoopStopCondition
+			}
+			return run
+		}
+		if res.full != nil {
+			kind, _ := res.full["kind"].(string)
+			transient, _ := res.full["transient"].(string)
+			errText, _ := res.full["error"].(string)
+			if kind == KindBusy {
+				run.stop = LoopStopBusy
+				return run
+			}
+			if transient != "" && !restepped {
+				restepped = true
+				obj.Restep = &loopRestep{Producer: run.before.CurrentProducer, Error: errText, Transient: transient}
+				logger.Warn("shed: loop re-steps a transient failure", "producer", run.before.CurrentProducer, "transient", transient, "error", errText)
+				continue
+			}
+			run.stop = LoopStopError
+			return run
+		}
+		run.stop = LoopStopInterrupted
+		return run
+	}
+}
+
+// recordTerminatingSignals watches for a terminating signal until the function it returns first is called.
+// A signal that arrives is written to the loop log as a mark of loopID, and then ends the process through LoopSpec.Raise.
+// Such a signal comes from whatever ends the run's processes, as a cancel, a teardown or a reap does, and it reaches the step child too, so the loop writes no envelope and leaves the stop to the waiter's dead-loop stop, which reads the mark.
+// The second function reports whether a signal has arrived; once one has, it waits for Raise to return before it answers true, so the caller leaves the ending of the process to Raise.
+func recordTerminatingSignals(loop LoopSpec, loopID string) (stop func(), signalled func() bool) {
+	signals := loop.Signals
+	if signals == nil {
+		signals = notifyTerminatingSignals
+	}
+	raise := loop.Raise
+	if raise == nil {
+		raise = raiseSignal
+	}
+	received, stopNotify := signals()
+	done := make(chan struct{})
+	var arrived atomic.Bool
+	raised := make(chan struct{})
+	go func() {
+		select {
+		case sig := <-received:
+			arrived.Store(true)
+			logger.Warn("shed: loop received a terminating signal and ends without an envelope", "loop_id", loopID, "signal", sig.String())
+			appendLoopLogMark(loop.LogPath, loopLogMark(loopID, "received signal "+sig.String()+" and ends without an envelope"))
+			raise(sig)
+			close(raised)
+		case <-done:
+		}
+	}()
+	stop = func() {
+		close(done)
+		stopNotify()
+	}
+	signalled = func() bool {
+		if !arrived.Load() {
+			return false
+		}
+		<-raised
+		return true
+	}
+	return stop, signalled
+}
+
+// notifyTerminatingSignals is the production Signals: SIGINT, SIGTERM and SIGHUP through os/signal.
+func notifyTerminatingSignals() (<-chan os.Signal, func()) {
+	received := make(chan os.Signal, 1)
+	signal.Notify(received, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	return received, func() { signal.Stop(received) }
+}
+
+// raiseGrace is how long raiseSignal waits for the process to end by the signal it sent itself.
+const raiseGrace = time.Second
+
+// raiseSignal is the production Raise: it restores sig's default action and sends sig to this process again, so the process ends by the signal its sender sent.
+// A process that outlives the grace, as one whose signal was inherited as ignored does, exits with status 128 plus the signal's number, and with status 1 where the platform cannot send sig to a process.
+func raiseSignal(sig os.Signal) {
+	signal.Reset(sig)
+	status := 1
+	if self, err := os.FindProcess(os.Getpid()); err == nil && self.Signal(sig) == nil {
+		time.Sleep(raiseGrace)
+		if number, ok := sig.(syscall.Signal); ok {
+			status = 128 + int(number)
+		}
+	}
+	os.Exit(status)
 }
 
 // loopStartRefusal names the reason a loop that holds the loop lock must not step, or the empty string when it may.
@@ -553,16 +662,21 @@ const stderrExcerptLines = 3
 // goCrashPrefixes open the line a Go program writes to stderr when it panics or dies of a runtime fatal error, which exits with status 2.
 var goCrashPrefixes = []string{"panic: ", "fatal error: ", "runtime: "}
 
-// stderrExcerpt returns at most stderrExcerptLines non-empty lines of the stderr file at path, joined with " | ", or "" when it is empty or unreadable.
-// A Go crash's lines are taken from its first crash line on, since the goroutine stacks that follow it name no cause;
-// otherwise the file's last lines are taken.
+// stderrExcerpt returns the excerpt of the stderr file at path, or "" when it is empty or unreadable.
 func stderrExcerpt(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
+	return outputExcerpt(strings.Split(string(data), "\n"))
+}
+
+// outputExcerpt returns at most stderrExcerptLines of the non-empty lines of a process's output, joined with " | ", or "" when there are none.
+// A Go crash's lines are taken from its first crash line on, since the goroutine stacks that follow it name no cause;
+// otherwise the last lines are taken.
+func outputExcerpt(output []string) string {
 	var lines []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range output {
 		if line = strings.TrimSpace(line); line != "" {
 			lines = append(lines, line)
 		}
@@ -620,6 +734,29 @@ func appendLoopLog(path string, data []byte) {
 	if _, err := file.Write(data); err != nil {
 		logger.Warn("shed: loop could not write the loop log", "path", path, "error", err.Error())
 	}
+}
+
+// appendLoopLogMark appends mark to the loop log at path on a line of its own, even when the log's last line of output has no newline.
+func appendLoopLogMark(path, mark string) {
+	appendLoopLog(path, []byte(newlineIfUnterminated(path)+mark))
+}
+
+// newlineIfUnterminated returns "\n" when the file at path is non-empty and does not end in a newline, and "" otherwise, including when it cannot be read.
+func newlineIfUnterminated(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.Size() == 0 {
+		return ""
+	}
+	last := make([]byte, 1)
+	if _, err := file.ReadAt(last, info.Size()-1); err != nil || last[0] == '\n' {
+		return ""
+	}
+	return "\n"
 }
 
 // isConditionReason reports whether reason is the one a fired pause_before or pause_after condition gives.

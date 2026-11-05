@@ -108,20 +108,32 @@
 // A child that exits on its own with a non-zero status and no record keeps cause exited with the exit status.
 // The watch kills only the loop's own in-flight child and its process group or job.
 //
+// A loop ends without an envelope by a signal that kills it, by a failure of the machine, or by a panic outside the stepping, in a hook or in the code after it.
+// It also ends without one by an early return before its first step, such as the loop lock not taken, the teardown's mark, an undelivered envelope or a dead loop's pid file.
+// A panic while stepping is recovered: the in-flight child's step tree is killed, and the stop is interrupted with the cause loop-panicked: <value>.
+// A terminating signal, SIGINT, SIGTERM or SIGHUP through Spec.Loop.Signals, is written to the loop log as a mark of the loop, and then ends the process through Spec.Loop.Raise, which by default sends it again with its default action.
+// Such a signal comes from whatever ends the run's processes, as a cancel, a teardown or a reap does, so once the loop has seen the signal it writes no failed stop, runs no interrupt hook and writes no envelope, and the dead-loop stop below reports it.
+// A mark opens its own line in the loop log, even after a last line of output that has no newline.
+// The waiter that spawns a loop marks in the loop log that the loop is starting, before its process starts, and the process's pid and exit status once it reaps it;
+// lym's marks open with "lym shed: loop <loop id> ", which tells them from the output of the loop and its children.
+//
 // Three optional seams let the arming module hook the loop.
 // Spec.Loop.OnStart runs once, after the pid file is written and the start is logged and before the first step, so the arming module registers the loop as a run process without this package importing the owner record.
 // Spec.Loop.OnWake runs on every wake of the child watch; with a zero idle window and OnWake set, the watch runs on the same wake schedule without ever killing the child, until the child exits.
-// Spec.Loop.OnExit runs once at every stop, after the stop is final and a failed stop is written, with the stop and the status file as it then reads, and before the envelope is written.
+// Spec.Loop.OnExit runs once at every stop but one a terminating signal ends while the loop steps, after the stop is final and a failed stop is written, with the stop and the status file as it then reads, and before the envelope is written.
 // A loop that refuses before its first step, and a dead loop the waiter reports, never run OnStart or OnExit.
 //
 // A loop that is gone without an envelope ends in the dead-loop stop.
 // It kills what is left of the loop's step tree from the pid file's child record, writes the run failed while the status file still reads running, and reports an interrupted stop with cause loop-exited and loop.status_moved from the recorded producer and history length against the status file.
-// Its loop.detail names the loop log, the producer of the in-flight child and its trace id while the status file has not moved past that child, and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
+// Its loop.detail names the loop log, the producer of the in-flight child and its trace id while the status file has not moved past that child, how the loop ended, an excerpt of the recorded child's captured stderr while the status file has not moved past that child, and whether that child's step tree was still running and was killed, which a loop killed from outside leaves behind.
+// How the loop ended is read from the loop log's lines after the loop's last starting mark: the loop's own marks, its exit status and a signal it recorded, or "loop exit: not recorded" when there are none, then an excerpt of its other lines, a Go crash's first lines or the last lines.
+// A log with no starting mark for the loop gives the first part alone.
+// While the status file has not moved past that child, its loop.stderr_path names the recorded child's captured stderr, and loop.trace_copy a copy of that child's trace files; after it has moved, both are empty.
 // Spec.Hooks.AfterInterrupt gets loop-exited followed by that detail as its cause, and the in-flight child's first trace file, or the loop log when the record names no trace, no file is listed for it or the status file has moved past that child.
 // It writes that stop as the loop's envelope under the dead loop's id, delivers it and retires the pid file.
 // A record naming no child kills nothing and reports status_moved false.
 // Another holder of the run lock makes the stop busy: nothing is written, the pid file stays and the next invocation retries.
-// A waiter whose own spawn exited before any pid file named it, with the lock free, reports the same stop with loop.detail naming the loop log, and writes no loop envelope.
+// A waiter whose own spawn exited before any pid file named it, with the lock free, reports the same stop with loop.detail naming the loop log and how the loop ended, and writes no loop envelope.
 // The teardown's mark, which a pair's session end puts in the pid file in place of a loop's record, stops every invocation the same way, writes no envelope and keeps the mark, so no loop runs until the pair is removed.
 //
 // progress has two shapes.

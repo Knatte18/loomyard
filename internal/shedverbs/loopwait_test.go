@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -473,43 +474,74 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		}
 	})
 
-	t.Run("the interrupt hook gets a cause naming the in-flight step and that step's trace file", func(t *testing.T) {
+	t.Run("the interrupt hook gets a cause naming the in-flight step, how the loop ended and that step's trace file", func(t *testing.T) {
 		tests := []struct {
-			name         string
-			traceID      string
-			traces       []string
+			name    string
+			traceID string
+			// traceBodies are the contents of the child's trace files, which the test writes and lists for traceID.
+			traceBodies []string
+			// loopLog and stepStderr, when set, are the loop log and the recorded child's captured stderr.
+			loopLog      string
+			stepStderr   string
 			statusMoved  bool
 			wantProducer string
-			wantCause    string
-			wantFile     func(w *waitWorld) string
+			// wantCause is what the cause carries after the loop log clause.
+			wantCause string
+			wantFile  func(w *waitWorld) string
+			// wantTraceCopy is whether loop.trace_copy names a copy holding the trace files joined; false wants it empty.
+			wantTraceCopy bool
 		}{
 			{
-				name:         "TraceKnown",
-				traceID:      "trace-7",
-				traces:       []string{"/logs/trace-7.log", "/logs/trace-7.1.log"},
-				wantProducer: "A",
-				wantCause:    "; step A was in flight under trace trace-7",
-				wantFile:     func(*waitWorld) string { return "/logs/trace-7.log" },
+				name:          "TraceKnown",
+				traceID:       "trace-7",
+				traceBodies:   []string{"first\n", "second\n"},
+				wantProducer:  "A",
+				wantCause:     "; step A was in flight under trace trace-7; loop exit: not recorded",
+				wantFile:      func(w *waitWorld) string { return w.traces["trace-7"][0] },
+				wantTraceCopy: true,
 			},
 			{
 				name:         "NoTraceID_LoopLog",
 				wantProducer: "A",
-				wantCause:    "; step A was in flight",
+				wantCause:    "; step A was in flight; loop exit: not recorded",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
 				name:         "NoTraceFile_LoopLog",
 				traceID:      "trace-8",
 				wantProducer: "A",
-				wantCause:    "; step A was in flight under trace trace-8",
+				wantCause:    "; step A was in flight under trace trace-8; loop exit: not recorded",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 			{
-				name:         "StatusMoved_NoInFlightClause_LoopLog",
+				name:         "StatusMoved_NoInFlightClause_NoStepFiles_LoopLog",
 				traceID:      "trace-9",
-				traces:       []string{"/logs/trace-9.log"},
+				traceBodies:  []string{"finished step\n"},
+				stepStderr:   "finished step's stderr\n",
 				statusMoved:  true,
 				wantProducer: "B",
+				wantCause:    "; loop exit: not recorded",
+				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:    "LoopExitMarksAndStderr_OnlyTheDeadLoopsLines",
+				traceID: "trace-10",
+				loopLog: "lym shed: loop old-1 starting\npanic: old crash\nlym shed: loop old-1 process 7 exited: exit status 2\n" +
+					"lym shed: loop dead-1 starting\nlym shed: loop old-1 process 8 exited: exit status 1\n{\"ok\":true}\npanic: boom\n\ngoroutine 1 [running]:\nmain.main()\n\tmain.go:3\n" +
+					"lym shed: loop dead-1 received signal terminated and ends without an envelope\nlym shed: loop dead-1 process 9 exited: signal: terminated\n",
+				stepStderr:   "one\ntwo\nthree\nfour\n",
+				wantProducer: "A",
+				wantCause: "; step A was in flight under trace trace-10" +
+					"; loop exit: lym shed: loop dead-1 received signal terminated and ends without an envelope | lym shed: loop dead-1 process 9 exited: signal: terminated" +
+					"; loop log: panic: boom | goroutine 1 [running]: | main.main()" +
+					"; step stderr: two | three | four",
+				wantFile: func(w *waitWorld) string { return w.spec.Loop.LogPath },
+			},
+			{
+				name:         "NoStartingMark_OnlyTheLoopExitClause",
+				loopLog:      "lym shed: loop old-1 starting\npanic: old crash\nlym shed: loop old-1 process 7 exited: exit status 2\n",
+				wantProducer: "A",
+				wantCause:    "; step A was in flight; loop exit: not recorded",
 				wantFile:     func(w *waitWorld) string { return w.spec.Loop.LogPath },
 			},
 		}
@@ -522,7 +554,34 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 					w.setStatus("A", shedengine.StateRunning, 0)
 				}
 				w.writePID(LoopPIDRecord{LoopID: "dead-1", Child: proc.TreeRecord{PID: 4242}, TraceID: tt.traceID, CurrentProducer: "A"})
-				w.traces[tt.traceID] = tt.traces
+				var traceFiles []string
+				traceDir := t.TempDir()
+				for i, body := range tt.traceBodies {
+					path := filepath.Join(traceDir, fmt.Sprintf("%s.%d.log", tt.traceID, i))
+					if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+						t.Fatalf("write %s: %v", path, err)
+					}
+					traceFiles = append(traceFiles, path)
+				}
+				w.traces[tt.traceID] = traceFiles
+				traceCopyPath, stderrPath := "", ""
+				if tt.traceID != "" {
+					traceCopyPath, stderrPath = w.spec.Loop.StopFiles(tt.traceID)
+				}
+				wantStderrPath, wantTraceCopy := stderrPath, ""
+				if tt.statusMoved {
+					wantStderrPath = ""
+				}
+				if tt.wantTraceCopy {
+					wantTraceCopy = traceCopyPath
+				}
+				for path, text := range map[string]string{w.spec.Loop.LogPath: tt.loopLog, stderrPath: tt.stepStderr} {
+					if text != "" {
+						if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+							t.Fatalf("write %s: %v", path, err)
+						}
+					}
+				}
 				var producer, cause, file string
 				w.spec.Hooks.AfterInterrupt = func(_ context.Context, gotProducer, gotCause, gotFile string) string {
 					producer, cause, file = gotProducer, gotCause, gotFile
@@ -538,6 +597,17 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 				}
 				if env["friction"] != "noted" {
 					t.Errorf("envelope friction = %v; want the hook's noted", env["friction"])
+				}
+				if got := loopOf(t, env)["stderr_path"]; got != wantStderrPath {
+					t.Errorf("loop stderr_path = %v; want the recorded child's captured stderr %q", got, wantStderrPath)
+				}
+				if got := loopOf(t, env)["trace_copy"]; got != wantTraceCopy {
+					t.Errorf("loop trace_copy = %v; want %q", got, wantTraceCopy)
+				}
+				if tt.wantTraceCopy {
+					if copied, err := os.ReadFile(traceCopyPath); err != nil || string(copied) != strings.Join(tt.traceBodies, "") {
+						t.Errorf("trace copy = %q, %v; want the trace files joined in order", copied, err)
+					}
 				}
 			})
 		}
@@ -774,7 +844,7 @@ func TestUntilStop_DeadLoopStopsLoopExited(t *testing.T) {
 		if detail := loopOf(t, env)["detail"].(string); !strings.Contains(detail, w.spec.Loop.LogPath) {
 			t.Errorf("detail = %q; want it naming the loop log %s", detail, w.spec.Loop.LogPath)
 		}
-		wantCause := "loop-exited: loop " + spawnedID.Load().(string) + " exited before it recorded itself; its output is in " + w.spec.Loop.LogPath
+		wantCause := "loop-exited: loop " + spawnedID.Load().(string) + " exited before it recorded itself; its output is in " + w.spec.Loop.LogPath + "; loop exit: not recorded"
 		if cause != wantCause || file != w.spec.Loop.LogPath {
 			t.Errorf("AfterInterrupt cause/file = %q/%q; want %q/%q", cause, file, wantCause, w.spec.Loop.LogPath)
 		}
