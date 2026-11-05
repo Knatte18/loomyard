@@ -17,6 +17,8 @@
 // Every document also sets `promptSuggestionEnabled` to false for shuttle-launched sessions: a plain capture carries no styling,
 // so a greyed suggestion in an empty input box would read as a draft and IdleSession would never pass.
 // The styled read is what lets a hand-added session's suggestion read as empty.
+// Every document, the run document and the creel-only one alike, sets Claude Code's `attribution` to empty commit and pull-request texts,
+// so no session lym launches credits itself in a commit or pull request it makes.
 
 package claudeengine
 
@@ -185,10 +187,19 @@ type openSettingsHooks struct {
 	PostToolUse []hookEntry `json:"PostToolUse"`
 }
 
+// attributionSettings is Claude Code's `attribution` setting: the text a session appends to a commit message and to a pull request body it writes.
+// An empty text appends nothing, so its zero value credits no session.
+type attributionSettings struct {
+	Commit      string `json:"commit"`
+	PullRequest string `json:"pr"`
+}
+
 // openSettingsDoc is the settings document OpenLaunch writes for a session opened in a hub.
-// It carries hooks alone, so every other setting of the session stays the worktree's own.
+// It carries hooks and the attribution alone, so every other setting of the session stays the worktree's own.
+// Attribution has no omitempty and buildOpenSettings leaves it zero, so the document credits no session.
 type openSettingsDoc struct {
-	Hooks openSettingsHooks `json:"hooks"`
+	Hooks       openSettingsHooks   `json:"hooks"`
+	Attribution attributionSettings `json:"attribution"`
 }
 
 // buildOpenSettings marshals an opened session's settings document over the creel flag directory creelFlagDirPosix, a git-bash POSIX path:
@@ -213,9 +224,11 @@ func buildOpenSettings(creelFlagDirPosix string) ([]byte, error) {
 // settingsDoc is the Claude Code settings.json document Prepare writes.
 // PromptSuggestionEnabled has no omitempty and buildSettings leaves it false, so every document carries `"promptSuggestionEnabled": false`.
 // The styled read is what lets a hand-added session, which this document does not configure, have its suggestion read as an empty box.
+// Attribution has no omitempty and buildSettings leaves it zero, so the document credits no session.
 type settingsDoc struct {
-	Hooks                   settingsHooks `json:"hooks"`
-	PromptSuggestionEnabled bool          `json:"promptSuggestionEnabled"`
+	Hooks                   settingsHooks       `json:"hooks"`
+	PromptSuggestionEnabled bool                `json:"promptSuggestionEnabled"`
+	Attribution             attributionSettings `json:"attribution"`
 }
 
 // shQuote wraps s in POSIX shell single quotes, escaping embedded quotes with the standard sh idiom (close, emit escaped quote, reopen).

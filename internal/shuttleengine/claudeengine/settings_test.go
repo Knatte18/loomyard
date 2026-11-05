@@ -72,6 +72,21 @@ func TestBuildSettings_PromptSuggestionOff(t *testing.T) {
 	}
 }
 
+// TestBuildSettings_CreditNoSessionInAHub pins `attribution` as empty commit and pull-request texts in a run document built with a creel flag directory, a path the golden test never reaches.
+func TestBuildSettings_CreditNoSessionInAHub(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	data, err := buildSettings("/c/run/events.jsonl", true, shuttleengine.Config{}, Config{}, false, false, "", "/c/hub/flags")
+	if err != nil {
+		t.Fatalf("buildSettings() error: %v", err)
+	}
+	got := parseSettings(t, data)["attribution"]
+	want := map[string]any{"commit": "", "pr": ""}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("attribution = %v; want %v (data: %s)", got, want, data)
+	}
+}
+
 // stampPrintf is the stamp line command a recording hook runs for hookEventName before its payload, written out by hand so the test pins the line shape.
 func stampPrintf(hookEventName, quotedEventsPath string) string {
 	return `printf '{"lym_stamp":"` + hookEventName + `","lym_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ` + quotedEventsPath

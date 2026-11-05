@@ -138,6 +138,7 @@
 // a tool call, a fork's included, and a compaction move the run's activity stamp without growing the events file.
 // No SubagentStart or SubagentStop hook is installed: the PostToolUse stamp already moves for every tool call a fork makes, and an unmatched start would read a crashed fork active without bound.
 // The settings leave Claude Code's `autoContinueAtUsageLimit` unset, so a session the usage limit stopped waits for the orch's wake and revive rather than racing it.
+// They set Claude Code's `attribution` to `{"commit": "", "pr": ""}`, so a commit or pull request the session makes carries no credit of its own and a landing's credit block stays the one credit.
 // An engine told a hub board directory also installs a second PostToolUse entry with no matcher, creel's mail hook; an engine told none, a standalone run, installs the stamp alone.
 // Its command is plain POSIX `sh`: it forms the strand's flag name from `$LYM_STRAND_NAME` by parameter expansion alone, turning every `:` into `.` as agentname.FileName does, and exits 0 at once unless that flag stands in CreelFlagDir of the board directory, so a tool call with no mail starts no process.
 // When the flag stands it changes to `$CLAUDE_PROJECT_DIR` and runs `lym creel hook-read claude`, whose standard output, HookOutput's `{"systemMessage":<echo and mail>,"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":<mail>}}`, hands the strand's mail to the session after the tool call as additional context and shows it to the operator as the system message.
@@ -308,7 +309,7 @@
 // Its line carries the session id and the strand-name reference, and adds `--model` and `--effort` only when set.
 // An open naming skills puts their load message after the binary on the fresh line as the session's first turn; the resume line carries none.
 // An engine told no board directory passes no `--settings`, so the session takes the worktree's own settings.
-// An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
+// An engine told one writes, into the directory Runner.Open names for the session, a settings.json holding creel's hook delivery and the run document's empty `attribution` and nothing else, and the append-system-prompt file holding the creel trust sentence; both lines name the two files, and the launch is marked CreelHooks.
 // The settings' PostToolUse mail hook and idle waiter are a run's; its Stop delivery is the merged command without the recording, since an opened session has no events file: it exits 0 whatever the delivery printed, so an echo reaches the operator.
 // Claude Code stacks `--settings` over the worktree's own settings, so every other setting stays the worktree's.
 // It carries `--dangerously-skip-permissions` unless the open's permission mode is `prompt`, on the fresh and the resume line alike, and an unknown mode refuses the open.

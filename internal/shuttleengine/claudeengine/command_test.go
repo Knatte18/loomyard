@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -527,7 +528,7 @@ func TestOpenLaunch(t *testing.T) {
 	}
 }
 
-// checkOpenCreelFiles asserts what an open launch with a board directory leaves: CreelHooks, both lines naming the two files in dir, the settings document holding creel's hooks alone, and the append prompt holding the trust sentence alone.
+// checkOpenCreelFiles asserts what an open launch with a board directory leaves: CreelHooks, both lines naming the two files in dir, the settings document holding creel's hooks and the empty attribution alone, and the append prompt holding the trust sentence alone.
 func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDir string, sh shell.Shell) {
 	t.Helper()
 	if !launch.CreelHooks {
@@ -554,22 +555,32 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 	if err != nil {
 		t.Fatalf("read settings.json: %v", err)
 	}
-	var doc map[string]map[string][]struct {
-		Hooks []struct {
-			Command       string `json:"command"`
-			AsyncRewake   bool   `json:"asyncRewake"`
-			Timeout       int    `json:"timeout"`
-			RewakeMessage string `json:"rewakeMessage"`
-			RewakeSummary string `json:"rewakeSummary"`
+	var doc struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command       string `json:"command"`
+				AsyncRewake   bool   `json:"asyncRewake"`
+				Timeout       int    `json:"timeout"`
+				RewakeMessage string `json:"rewakeMessage"`
+				RewakeSummary string `json:"rewakeSummary"`
+			} `json:"hooks"`
 		} `json:"hooks"`
+		Attribution map[string]string `json:"attribution"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		t.Fatalf("parse settings.json %q: %v", data, err)
 	}
-	if len(doc) != 1 || len(doc["hooks"]) != 2 {
-		t.Fatalf("settings.json = %s; want a hooks object holding only Stop and PostToolUse", data)
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		t.Fatalf("parse settings.json %q: %v", data, err)
 	}
-	stop, post := doc["hooks"]["Stop"], doc["hooks"]["PostToolUse"]
+	if len(keys) != 2 || len(doc.Hooks) != 2 {
+		t.Fatalf("settings.json = %s; want a hooks object holding only Stop and PostToolUse beside the attribution", data)
+	}
+	if want := map[string]string{"commit": "", "pr": ""}; !reflect.DeepEqual(doc.Attribution, want) {
+		t.Errorf("settings.json attribution = %v; want %v", doc.Attribution, want)
+	}
+	stop, post := doc.Hooks["Stop"], doc.Hooks["PostToolUse"]
 	if len(stop) != 2 || len(stop[0].Hooks) != 1 || len(stop[1].Hooks) != 1 || len(post) != 1 || len(post[0].Hooks) != 1 {
 		t.Fatalf("settings.json = %s; want two Stop entries and one PostToolUse entry of one hook each", data)
 	}
