@@ -58,9 +58,10 @@ type Module struct {
 	// configsync keeps only the names the file changed, leaves out a name holding the template's value, never copies a template name in, and keeps every entry the template lacks.
 	PerNameMaps []string
 	// SeedOnly marks a module whose key set is open-ended and owned by the operator (e.g. models.yaml aliases).
-	// configsync materializes a seed-only module's template when its file is absent, and never fills or prunes a present file.
+	// configsync materializes a seed-only module's template when its file is absent, and never prunes a present file down to the template or strips it sparse.
 	// This is unlike the default reconcile behavior applied to every other module, whose seed in a hub is sparse.
-	// The board dir's reconcile still runs the module's Migrate and Lacking hooks over a present file.
+	// The board dir's reconcile runs the module's Migrate hook over a present file, then carries each template change into it against the template base kept beside it, keeping every value the operator set, then runs the Unsettled hook.
+	// A worktree's copy is never rewritten.
 	SeedOnly bool
 	// HubWide marks a module that describes a hub-level fact.
 	// Its one file lives at configengine.ConfigFile(<BoardDir>, name)
@@ -72,9 +73,9 @@ type Module struct {
 	// Migrate, when non-nil, rewrites a present config file's bytes before reconcile compares them to the template.
 	// It returns the rewritten bytes and one human-readable line per rewrite, and changes only the keys its module declares retired, renames a retired name to its replacement, rewrites a key's retired meaning into its replacement, or raises a key to its module's floor.
 	Migrate func(existing []byte) ([]byte, []string, error)
-	// Lacking, when non-nil, lists the units of the template a seed-only module's present file lacks and the module wants the operator told of, after Migrate.
-	// Reconcile reports them and never adds them, since the file is the operator's.
-	Lacking func(existing []byte) ([]string, error)
+	// Unsettled, when non-nil, lists the pairs a seed-only module's present file holds for the operator to settle, after Migrate and the template merge.
+	// Reconcile reports them and never changes them, since only the operator can tell which one holds.
+	Unsettled func(existing []byte) ([]string, error)
 	// MigrateHubBase, when non-nil, runs only over the module's hub base file: after Migrate on a present file, and over the prime or legacy seed on an absent one.
 	// It adds what only that file may gain, returns the rewritten bytes and one human-readable line per addition, and, like Migrate, leaves the registry fingerprint unchanged.
 	MigrateHubBase func(existing []byte) ([]byte, []string, error)
@@ -163,7 +164,7 @@ func Modules() []Module {
 		{Name: "loom", Template: loomengine.ConfigTemplate, OpenMaps: loomengine.ConfigOpenMaps(), Migrate: loomengine.MigrateConfig, CheckValues: loomengine.ValidateLocalValues, CheckLoad: checkLoadNamed(loomengine.LoadConfig, "loom"), Spec: loomengine.ConfigSpec},
 		{Name: "models", Template: modelspec.ConfigTemplate, SeedOnly: true, CheckLoad: checkLoad(modelspec.LoadRegistry), Spec: modelspec.ConfigSpec},
 		{Name: "orch", Template: orchengine.ConfigTemplate, Migrate: orchengine.MigrateConfig, CheckLoad: checkLoadNamed(orchengine.LoadConfig, "orch"), Spec: orchengine.ConfigSpec},
-		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, Migrate: runprofile.MigrateConfig, Lacking: runprofile.LackingTemplateBlocks, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
+		{Name: runprofile.ModuleName, Template: runprofile.ConfigTemplate, HubWide: true, SeedOnly: true, Migrate: runprofile.MigrateConfig, Unsettled: runprofile.UnsettledFormerBlocks, CheckLoad: checkProfiles, Spec: runprofile.ConfigSpec},
 		{Name: "reed", Template: reedengine.ConfigTemplate, OpenMaps: reedengine.ConfigOpenMaps(), CheckLoad: checkLoadNamed(reedengine.LoadConfig, "reed"), Spec: reedengine.ConfigSpec},
 		{Name: "sampler", Template: samplerengine.ConfigTemplate, HubWide: true, CheckLoad: checkLoadNamed(samplerengine.LoadConfig, "sampler"), Spec: samplerengine.ConfigSpec},
 		{Name: "shed", Template: sheddriver.ConfigTemplate, CheckValues: sheddriver.ValidateLocalValues, CheckLoad: checkLoad(sheddriver.LoadConfig), Spec: sheddriver.ConfigSpec},

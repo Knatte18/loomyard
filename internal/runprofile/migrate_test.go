@@ -1,4 +1,4 @@
-// migrate_test.go table-drives the profiles reconcile hooks, MigrateConfig and LackingTemplateBlocks, and the Seed-Child lookups' refusal of a recipe held under its former name.
+// migrate_test.go table-drives the profiles reconcile hooks, MigrateConfig and UnsettledFormerBlocks, and the Seed-Child lookups' refusal of a recipe held under its former name.
 
 package runprofile_test
 
@@ -106,8 +106,8 @@ func TestMigrateConfig(t *testing.T) {
 	}
 }
 
-// TestLackingTemplateBlocks pins the report of the template's recipe blocks and defaults entries a hub's entry of the same name lacks and the former blocks held beside a differing current one, and that an entry the template lacks or the hub removed whole lists nothing.
-func TestLackingTemplateBlocks(t *testing.T) {
+// TestUnsettledFormerBlocks pins the report of the former blocks held beside a differing current one, and that an equal pair, a lacking block or an empty document lists nothing.
+func TestUnsettledFormerBlocks(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	tests := []struct {
@@ -115,39 +115,29 @@ func TestLackingTemplateBlocks(t *testing.T) {
 		existing string
 		want     []string
 	}{
-		{name: "the template itself lacks nothing", existing: runprofile.ConfigTemplate()},
-		{
-			name:     "a starting profile seeded before motif and sampler lists their blocks",
-			existing: "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n",
-			want:     []string{"light.motif", "light.sampler"},
-		},
-		{
-			name:     "defaults lacking a template recipe list it",
-			existing: "defaults: {darn: docs}\ndocs:\n  darn:\n    darn: {writer: opus}\n",
-			want:     []string{"defaults.motif", "defaults.pawl", "defaults.tapestry"},
-		},
+		{name: "the template itself holds no pair", existing: runprofile.ConfigTemplate()},
 		{
 			name:     "a former block differing from the current one is listed and an equal one is not",
-			existing: "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n  sampler:\n    loom: {code_max_bounces: 1}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 2}\n  tapestry:\n    loom: {plan_max_bounces: 2}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n  sampler:\n    loom: {code_max_bounces: 1}\n",
-			want:     []string{"light.loom: differs from light.tapestry", "light.motif", "solid.motif"},
+			existing: "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 2}\n  tapestry:\n    loom: {plan_max_bounces: 2}\n",
+			want:     []string{"light.loom: differs from light.tapestry"},
 		},
-		{name: "a profile the template lacks lists nothing", existing: "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n"},
+		{name: "a profile lacking template blocks lists nothing", existing: "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n"},
 		{name: "an empty document lists nothing", existing: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := runprofile.LackingTemplateBlocks([]byte(tt.existing))
+			got, err := runprofile.UnsettledFormerBlocks([]byte(tt.existing))
 			if err != nil {
-				t.Fatalf("LackingTemplateBlocks() error = %v; want none", err)
+				t.Fatalf("UnsettledFormerBlocks() error = %v; want none", err)
 			}
 			if !slices.Equal(got, tt.want) {
-				t.Errorf("LackingTemplateBlocks() = %q; want %q", got, tt.want)
+				t.Errorf("UnsettledFormerBlocks() = %q; want %q", got, tt.want)
 			}
 		})
 	}
-	if _, err := runprofile.LackingTemplateBlocks([]byte("light: [\n")); !errors.Is(err, configengine.ErrInvalid) {
-		t.Errorf("LackingTemplateBlocks(unparseable) error = %v; want one marked invalid", err)
+	if _, err := runprofile.UnsettledFormerBlocks([]byte("light: [\n")); !errors.Is(err, configengine.ErrInvalid) {
+		t.Errorf("UnsettledFormerBlocks(unparseable) error = %v; want one marked invalid", err)
 	}
 }
 

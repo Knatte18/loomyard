@@ -23,6 +23,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/hubreconcile"
 	"github.com/Knatte18/loomyard/internal/lock"
 	"github.com/Knatte18/loomyard/internal/loomengine"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/testkit/boardkit"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
@@ -885,6 +886,8 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 		unmigratedBoard bool
 		// wantInMessage is text the error message must hold; empty skips the check.
 		wantInMessage string
+		// wantAbsentFromMessage is text the error message must not hold; empty skips the check.
+		wantAbsentFromMessage string
 		// ensure runs the walk; nil runs Ensure.
 		ensure func(geom hubreconcile.Geometry) error
 	}{
@@ -970,9 +973,12 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 			},
 		},
 		{
-			name: "a failure after the hub-wide files and the marker were written restores the files and removes the marker",
+			name: "a failure after the hub-wide files, the marker and a template base were written restores the files and removes the marker and the base",
 			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
 				commitPreMigrationBase(t, h.BoardDir())
+				// The profiles template base is dropped from the board, so the walk writes it before the failure and the restore must remove it again.
+				gitkit.Git(t, h.BoardDir(), "rm", "-q", "--ignore-unmatch", "--", filepath.ToSlash(configengine.TemplateBaseFileRel("profiles")))
+				gitkit.Git(t, h.BoardDir(), "commit", "-q", "--allow-empty", "-m", "fixture: no profiles template base")
 				return h.BoardDir(), h.BoardDir(), h.BoardDir()
 			},
 			unmigratedBoard: true,
@@ -980,6 +986,19 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				return hubreconcile.EnsureFailingAfterHubWideWrite(geom, hubreconcile.Options{}, errors.New("fixture: failure after the hub-wide write"))
 			},
 			repair: func(t *testing.T, h *hubforge.Hub) {},
+		},
+		{
+			name: "a template base that is not a YAML mapping names the base and no config command",
+			breakConfig: func(t *testing.T, h *hubforge.Hub) (string, string, string) {
+				gitkit.CommitFile(t, h.BoardDir(), configengine.TemplateBaseFileRel("profiles"), "- not\n- a mapping\n", "fixture: corrupt profiles template base")
+				return h.BoardDir(), h.BoardDir(), configengine.TemplateBaseFile(h.BoardDir(), "profiles")
+			},
+			wantInMessage:         "delete it",
+			wantAbsentFromMessage: "lym config",
+			repair: func(t *testing.T, h *hubforge.Hub) {
+				gitkit.Git(t, h.BoardDir(), "rm", "-q", "--", filepath.ToSlash(configengine.TemplateBaseFileRel("profiles")))
+				gitkit.Git(t, h.BoardDir(), "commit", "-q", "-m", "fixture: delete the corrupt profiles template base")
+			},
 		},
 	}
 	for _, tc := range tests {
@@ -1016,6 +1035,9 @@ func TestEnsure_FailedWalkNamesTheFileAndLeavesTheTreeAsItWas(t *testing.T) {
 				if !strings.Contains(err.Error(), "lym config "+tc.module) {
 					t.Errorf("message %q does not name lym config %s", err.Error(), tc.module)
 				}
+			}
+			if tc.wantAbsentFromMessage != "" && strings.Contains(err.Error(), tc.wantAbsentFromMessage) {
+				t.Errorf("message %q holds %q", err.Error(), tc.wantAbsentFromMessage)
 			}
 			if tc.wantInMessage != "" && !strings.Contains(err.Error(), tc.wantInMessage) {
 				t.Errorf("message %q does not hold %q", err.Error(), tc.wantInMessage)
@@ -1312,29 +1334,74 @@ func TestEnsure_BoardWithNoRemoteCommitsHubWideConfigAndWritesStamp(t *testing.T
 	}
 }
 
-// The logger's output and the detached board sync are process-global, so this test does not call t.Parallel.
-func TestEnsure_WarnsOfTemplateUnitsASeedOnlyConfigFileLacks(t *testing.T) {
+// The installed notifier and the detached board sync are process-global, so this test does not call t.Parallel.
+func TestEnsure_CarriesATemplateChangeIntoASeedOnlyConfigFile(t *testing.T) {
 	tiergate.Require(t, 1)
-	logs := logcapture.Capture(t)
 
 	h := hubforge.NewHub(t, ".")
 	geom := geometryOf(h)
-	const profilesLackingSampler = "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n"
-	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("profiles"), profilesLackingSampler, "fixture: a starting profile seeded before sampler")
+	const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+	const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
+	const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}\n"
+	const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 3, code_hard_max_bounces: 4}\n"
+	const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4}\n"
+	const solidDarnFollowed = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 3}\n"
+	olderTemplate := strings.Replace(strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1), solidDarn, solidDarnBase, 1)
+	hubProfiles := strings.Replace(olderTemplate, solidDarnBase, solidDarnTuned, 1)
+	gitkit.CommitFile(t, h.BoardDir(), configengine.ConfigFileRel("profiles"), hubProfiles, "fixture: profiles seeded from an older template, with solid's darn rounds tuned")
+	gitkit.CommitFile(t, h.BoardDir(), configengine.TemplateBaseFileRel("profiles"), olderTemplate, "fixture: the older template as the profiles' base")
 	gitkit.Git(t, h.BoardDir(), "remote", "remove", "origin")
 	recordBoardSyncs(t)
+	var mailed []string
+	t.Cleanup(hubreconcile.InstallNotifier(func(_, line string) (bool, error) {
+		mailed = append(mailed, line)
+		return true, nil
+	}))
 
 	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
 		t.Fatalf("Ensure: %v", err)
 	}
 
-	for _, want := range []string{"lacks units its template holds or holds a pair to settle", "module=profiles", "light.sampler"} {
-		if !strings.Contains(logs.String(), want) {
-			t.Errorf("log lacks %q:\n%s", want, logs.String())
+	got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "profiles"))
+	if err != nil {
+		t.Fatalf("read the board's profiles.yaml: %v", err)
+	}
+	if strings.Contains(string(got), lightDarnSolo) || !strings.Contains(string(got), lightDarn) {
+		t.Errorf("board profiles.yaml = %q; want light's darn block to follow the template and drop its solo fan", got)
+	}
+	if !strings.Contains(string(got), solidDarnFollowed) {
+		t.Errorf("board profiles.yaml = %q; want the operator's tuned solid code_max_bounces kept and the untouched code_hard_max_bounces updated", got)
+	}
+	if base, err := os.ReadFile(configengine.TemplateBaseFile(h.BoardDir(), "profiles")); err != nil || !strings.HasSuffix(string(base), runprofile.ConfigTemplate()) {
+		t.Errorf("board profiles.template-base = %q, %v; want it to end with the running template", base, err)
+	}
+	committed := gitkit.Git(t, h.BoardDir(), "log", "-1", "--name-only", "--format=")
+	for _, rel := range []string{configengine.ConfigFileRel("profiles"), configengine.TemplateBaseFileRel("profiles")} {
+		if !strings.Contains(committed, filepath.ToSlash(rel)) {
+			t.Errorf("the walk's board commit holds %q; want it to carry %s", committed, rel)
 		}
 	}
-	if got, err := os.ReadFile(configengine.ConfigFile(h.BoardDir(), "profiles")); err != nil || string(got) != profilesLackingSampler {
-		t.Errorf("board profiles.yaml = %q, %v after Ensure; want it left as the operator wrote it", got, err)
+	assertClean(t, h.BoardDir())
+	for _, want := range []string{
+		"profiles.yaml removed light.darn.loom.code_reviewer_fan",
+		"profiles.yaml updated solid.darn.loom.code_hard_max_bounces: 4 -> 3",
+		"profiles.yaml kept the hub's solid.darn.loom.code_max_bounces: file 5, template 2",
+	} {
+		if !strings.Contains(strings.Join(mailed, "\n"), want) {
+			t.Errorf("orch mail = %q; want a reconcile notice naming %q", mailed, want)
+		}
+	}
+
+	// The base now records the template, so a second walk has nothing to carry or report and mails nothing.
+	mailedByFirstWalk := len(mailed)
+	if err := os.Remove(geom.StampPath()); err != nil {
+		t.Fatalf("remove the stamp: %v", err)
+	}
+	if err := hubreconcile.Ensure(geom, hubreconcile.Options{}); err != nil {
+		t.Fatalf("second Ensure: %v", err)
+	}
+	if len(mailed) != mailedByFirstWalk {
+		t.Errorf("orch mail after the second walk = %q; want nothing beyond the first walk's", mailed[mailedByFirstWalk:])
 	}
 }
 
@@ -1375,10 +1442,10 @@ func arrangeUnpushedHubWide(t *testing.T) *unpushedHubWide {
 	if key, found := stampKey(t, geom); !found || key != runningKey() {
 		t.Fatalf("stamp = %q (found %v); want the running key although the hub-wide commit was not pushed", key, found)
 	}
-	// The first walk of a hub also commits each reinterpretation marker, which is no config file.
+	// The first walk of a hub also commits each reinterpretation marker and each seed-only module's template base, which are no config files.
 	var changed []string
 	for _, path := range strings.Fields(gitkit.Git(t, board, "show", "--name-only", "--format=", "HEAD")) {
-		if !strings.Contains(path, "reinterpreted-") {
+		if !strings.Contains(path, "reinterpreted-") && !strings.HasSuffix(path, ".template-base") {
 			changed = append(changed, path)
 		}
 	}

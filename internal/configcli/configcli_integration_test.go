@@ -370,19 +370,40 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("seed the machine file: %v", err)
 		}
 
-		// A starting profile seeded before motif and sampler existed lacks their blocks, which the dry run lists under lacking.
+		// A profiles file beside a template base recording an older template follows the template change, which the dry run lists:
+		// a key the file still holds at the base's value under removed and updated, a value the operator set that the template holds otherwise under differs,
+		// and a recipe block held under its former name beside a differing current one under unsettled.
 		profilesFile := configengine.ConfigFile(boardDir, "profiles")
 		profilesOriginal, err := os.ReadFile(profilesFile)
 		if err != nil {
 			t.Fatalf("read the board profiles.yaml: %v", err)
 		}
-		const profilesLackingSampler = "light:\n  tapestry:\n    loom: {plan_max_bounces: 1}\n  darn:\n    loom: {code_max_bounces: 1}\n  pawl:\n    loom: {code_max_bounces: 1}\n"
-		if err := os.WriteFile(profilesFile, []byte(profilesLackingSampler), 0o644); err != nil {
-			t.Fatalf("plant a profile lacking its sampler block: %v", err)
+		baseFile := configengine.TemplateBaseFile(boardDir, "profiles")
+		baseOriginal, baseErr := os.ReadFile(baseFile)
+		const lightDarn = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+		const lightDarnSolo = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
+		const solidDarn = "  darn:\n    loom: {code_max_bounces: 2, code_hard_max_bounces: 3}\n"
+		const solidDarnBase = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 4}\n"
+		const solidDarnTuned = "  darn:\n    loom: {code_max_bounces: 5, code_hard_max_bounces: 4}\n"
+		const formerPair = "paired:\n  loom:\n    loom: {code_max_bounces: 1}\n  tapestry:\n    loom: {code_max_bounces: 2}\n"
+		olderTemplate := strings.Replace(runprofile.ConfigTemplate(), lightDarn, lightDarnSolo, 1)
+		basePlanted := strings.Replace(olderTemplate, solidDarn, solidDarnBase, 1)
+		profilesPlanted := strings.Replace(olderTemplate, solidDarn, solidDarnTuned, 1) + formerPair
+		for path, content := range map[string]string{profilesFile: profilesPlanted, baseFile: basePlanted} {
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatalf("plant the older template state at %s: %v", path, err)
+			}
 		}
 		restoreProfiles := sync.OnceFunc(func() {
 			if err := os.WriteFile(profilesFile, profilesOriginal, 0o644); err != nil {
 				t.Errorf("restore the board profiles.yaml: %v", err)
+			}
+			if baseErr != nil {
+				if err := os.Remove(baseFile); err != nil && !os.IsNotExist(err) {
+					t.Errorf("remove the planted profiles template base: %v", err)
+				}
+			} else if err := os.WriteFile(baseFile, baseOriginal, 0o644); err != nil {
+				t.Errorf("restore the board profiles template base: %v", err)
 			}
 		})
 		t.Cleanup(restoreProfiles)
@@ -391,13 +412,23 @@ func TestConfigOverRealHub(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("reconcile --layer default = %d; want 0; result: %v", code, result)
 		}
+		if got, err := os.ReadFile(profilesFile); err != nil || string(got) != profilesPlanted {
+			t.Errorf("board profiles.yaml after the dry run = %q, %v; want it unwritten", got, err)
+		}
 		restoreProfiles()
-		if lacking := fmt.Sprint(reconcileModule(t, result, "profiles")["lacking"]); lacking != "[light.motif light.sampler]" {
-			t.Errorf("dry-run profiles lacking = %s; want [light.motif light.sampler]", lacking)
+		for key, want := range map[string]string{
+			"removed":   "[light.darn.loom.code_reviewer_fan]",
+			"updated":   "[solid.darn.loom.code_hard_max_bounces: 4 -> 3]",
+			"differs":   "[solid.darn.loom.code_max_bounces: file 5, template 2]",
+			"unsettled": "[paired.loom: differs from paired.tapestry]",
+		} {
+			if got := fmt.Sprint(reconcileModule(t, result, "profiles")[key]); got != want {
+				t.Errorf("dry-run profiles %s = %s; want %s", key, got, want)
+			}
 		}
 		loom := reconcileBaseEntry(t, result, "loom")
-		if _, has := loom["lacking"]; has {
-			t.Errorf("dry-run loom entry = %v; want no lacking key for a module with no lacking units", loom)
+		if _, has := loom["differs"]; has {
+			t.Errorf("dry-run loom entry = %v; want no differs key for a module that is not seed-only", loom)
 		}
 		if loom["layer"] != string(configengine.LayerDefault) || loom["seed"] != "hub" || loom["applied"] != false {
 			t.Errorf("dry-run loom entry = %v; want layer default, seed hub, applied false", loom)
@@ -463,6 +494,22 @@ func TestConfigOverRealHub(t *testing.T) {
 			})
 		}
 
+		// A committed template base holding an older template is rewritten by the apply, and the config commit carries it beside the files.
+		if err := os.WriteFile(baseFile, []byte(olderTemplate), 0o644); err != nil {
+			t.Fatalf("plant an older template as the committed profiles template base: %v", err)
+		}
+		baseRel := filepath.ToSlash(configengine.TemplateBaseFileRel("profiles"))
+		for _, args := range [][]string{
+			{"add", "--", baseRel},
+			{"-c", "user.name=fixture", "-c", "user.email=fixture@example.com", "commit", "-q", "-m", "fixture: an older profiles template base", "--", baseRel},
+		} {
+			fixtureGit := exec.Command("git", args...)
+			fixtureGit.Dir = boardDir
+			if out, err := fixtureGit.CombinedOutput(); err != nil {
+				t.Fatalf("git %v in the Bolt checkout: %v\n%s", args, err, out)
+			}
+		}
+
 		// An unrelated file left uncommitted in Bolt must stay out of the config commit.
 		const rulesContent = "an uncommitted rule\n"
 		rulesRel := filepath.Join("_lym", "orch", "rules.md")
@@ -506,8 +553,8 @@ func TestConfigOverRealHub(t *testing.T) {
 			t.Fatalf("git show in the Bolt checkout: %v", err)
 		}
 		wantShow := "config: reconcile the board dir's files"
-		for _, module := range []string{"lenses", "loom", "tapestry"} {
-			wantShow += "\n" + strings.ReplaceAll(configengine.ConfigFileRel(module), "\\", "/")
+		for _, rel := range []string{configengine.ConfigFileRel("lenses"), configengine.ConfigFileRel("loom"), configengine.TemplateBaseFileRel("profiles"), configengine.ConfigFileRel("tapestry")} {
+			wantShow += "\n" + strings.ReplaceAll(rel, "\\", "/")
 		}
 		if strings.TrimSpace(string(showOut)) != wantShow {
 			t.Errorf("HEAD in the Bolt checkout = %q; want %q", showOut, wantShow)

@@ -1,8 +1,9 @@
 # models.yaml — the model-spec registry. Materialized once (lym init / lym
 # config reconcile) when this file is absent; after that, this file is
-# OPERATOR-OWNED: reconcile is seed-only for models.yaml and never rewrites or
-# prunes it again, so any alias you add or default you change or remove here
-# survives every future reconcile untouched.
+# OPERATOR-OWNED: any alias you add, or value you change or remove, here
+# survives every future reconcile. In a hub, the reconcile after a lym upgrade
+# carries a template change into the board's copy only where it still holds
+# lym's earlier value, kept in models.template-base beside it.
 #
 # Add a new alias by adding a block like this (freely — no code change or
 # recompile is needed to adopt a brand-new model):

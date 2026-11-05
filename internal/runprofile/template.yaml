@@ -5,8 +5,10 @@
 # batten's Seed-Child writes the block of the recipe the task runs into the pair's local config, with the task's own run_settings layered on top.
 # Each perch's hard cap is its rounds plus one, so `lym loom circling continue` can grant one more round.
 #
-# Seeded once when this file is absent; after that it is operator-owned and no reconcile fills or prunes it.
-# Reconcile only renames a block held under a recipe's former name, and lists a starting profile's missing recipe block without adding it.
+# Seeded once when this file is absent; after that it is operator-owned.
+# The hub reconcile after a lym upgrade carries a template change into it only where it still holds lym's earlier value, kept in profiles.template-base beside it:
+# a value you set, added or removed stays yours, and one the new template holds otherwise is reported under differs.
+# Reconcile also renames a block held under a recipe's former name, and lists a former block left beside a differing current one under unsettled.
 # Add or replace a profile, or the defaults, with: lym config profiles --set <name>='<json object>'
 # Remove one by deleting its block in the editor: lym config profiles
 
@@ -28,15 +30,15 @@ speed:
     loom: {code_max_bounces: 0, code_hard_max_bounces: 1}
 light:
   tapestry:
-    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
+    loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2, plan_max_bounces: 1, plan_hard_max_bounces: 2, code_max_bounces: 1, code_hard_max_bounces: 2}
   motif:
     loom: {discussion_max_bounces: 1, discussion_hard_max_bounces: 2}
   darn:
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
   pawl:
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
   sampler:
-    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: ""}
+    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}
     sampler: {code_review: true}
 solid:
   tapestry:

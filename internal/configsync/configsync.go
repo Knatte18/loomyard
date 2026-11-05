@@ -4,6 +4,7 @@
 // added/removed keys and applying changes when requested.
 // In a hub every non-seed-only base file is sparse over the template, seeded sparse and pruned but never filled, and stripped once by the walk behind the board marker;
 // only a standalone worktree base and a seed-only file stay full, and every layer above a base is sparse.
+// A seed-only board file follows its template against the template base kept beside it, keeping every value the operator set.
 // ReconcileHubWideAt covers every module's file at the board dir, hub files and per-worktree repo defaults;
 // ReconcileAll covers a worktree's sparse and local layers.
 // A key the template lacks and no retired key of its module covers leaves a hub base or worktree file only under the options' PruneUnknown;
@@ -136,10 +137,17 @@ type Result struct {
 	// Module is the name of the config module (e.g., "board", "worktree", "fabric").
 	Module string
 	// Added is the slice of key-paths newly discovered in the template.
-	// A hub base seed copies no template key, so it reports none; only a full base file and a seed-only seed do.
+	// A hub base seed copies no template key, so it reports none; only a full base file, a seed-only seed and a seed-only board file following its template do.
 	Added []string
 	// Removed is the slice of key-paths that existed in the file but not in the template.
+	// For a seed-only board file it lists the units the template dropped while the file held its template base's value.
 	Removed []string
+	// Updated lists, as "<dotted.key>: <old> -> <new>", each unit of a seed-only board file left at its template base's value that now holds the template's new value.
+	// Set only by ReconcileHubWideAt, on a dry run too.
+	Updated []string
+	// Differs lists, as "<dotted.key>: file <value>, template <value>", each unit of a seed-only board file the operator set that the template holds otherwise; reconcile keeps the operator's value.
+	// Set only by ReconcileHubWideAt, on a dry run too.
+	Differs []string
 	// Applied reports whether the file was written to disk, or deleted when Retired.
 	Applied bool
 	// MigratedFrom names the pre-cutover legacy config modules (e.g. "warp",
@@ -200,9 +208,49 @@ type Result struct {
 	// Preserved lists, sorted, the dotted keys a sparse file holds that the template lacks and no retired key covers, left in place because the run did not prune unknown keys.
 	// Set on a dry run too.
 	Preserved []string
-	// Lacking lists the template units a seed-only module's file lacks and the pairs it holds for the operator to settle, as its module's Lacking hook reports them; reconcile never adds or changes either.
+	// Unsettled lists the pairs a seed-only module's file holds for the operator to settle, as its module's Unsettled hook reports them; reconcile never changes them.
 	// Set only by ReconcileHubWideAt, on a dry run too.
-	Lacking []string
+	Unsettled []string
+	// WroteTemplateBase reports that the apply wrote the template base beside a seed-only module's board file.
+	// Set only by ReconcileHubWideAt.
+	WroteTemplateBase bool
+}
+
+// ChangedFilesRel returns, relative to the board dir, each file an applied ReconcileHubWideAt result wrote or removed:
+// the module's file and the legacy files it folded in when Applied, and the template base when WroteTemplateBase.
+func (r Result) ChangedFilesRel() []string {
+	var files []string
+	if r.Applied {
+		files = append(files, configengine.ConfigFileRel(r.Module))
+		for _, legacy := range r.MigratedFrom {
+			files = append(files, configengine.ConfigFileRel(legacy))
+		}
+	}
+	if r.WroteTemplateBase {
+		files = append(files, configengine.TemplateBaseFileRel(r.Module))
+	}
+	return files
+}
+
+// templateBaseHeader opens a template base file, saying what it holds and that no one edits it.
+const templateBaseHeader = "# lym's template for the file beside this one, as the hub reconcile last carried it in.\n# Reconcile reads it to tell a template change from a value the operator set; never edit it by hand.\n"
+
+// templateBaseContent returns the template base a reconcile writes beside m's board file: the header over m's template.
+func templateBaseContent(m configreg.Module) []byte {
+	return []byte(templateBaseHeader + m.Template())
+}
+
+// readTemplateBase reads the template base beside m's board file under boardDir, reporting present false when there is none.
+func readTemplateBase(m configreg.Module, boardDir string) (base []byte, present bool, err error) {
+	path := configengine.TemplateBaseFile(boardDir, m.Name)
+	base, err = os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, &FileError{Module: m.Name, Path: path, Err: fmt.Errorf("read the template base of %s: %w", m.Name, err)}
+	}
+	return base, true, nil
 }
 
 // Options configures ReconcileAll.
@@ -883,9 +931,13 @@ func primeConfig(primeBaseDir, module string) []byte {
 // a hub-wide module's hub file and a per-worktree module's repo default, which is that module's full base layer.
 // primeBaseDir is the prime worktree's anchor dir; empty means no prime is resolvable.
 //
-// A seed-only module is reconciled as a full file, never filled or pruned.
-// A present one, or the prime's copy seeding an absent default, runs the module's Migrate hook and is written only when that rewrote it.
-// Its Lacking hook's report goes in the result, and an absent one with no prime copy is seeded whole from the template.
+// A seed-only module is reconciled as a full file, never pruned down to the template or stripped.
+// A present one, or the prime's copy seeding an absent default, runs the module's Migrate hook and then follows the template through yamlengine.FollowTemplate, against the template base at configengine.TemplateBaseFile when the board file is present:
+// a unit the file holds as the base does takes the template's value and is reported Added, Updated or Removed, and any other unit is the operator's, kept and reported under Differs when the template holds a third value.
+// With no base, a unit the file lacks is added and one it holds otherwise than the template is kept and reported under Differs.
+// The file is written only when the migration or the merge rewrote it, and the module's Unsettled hook's report goes in the result.
+// An absent one with no prime copy is seeded whole from the template.
+// An apply also writes the template base, the template under a header, when it is absent or stale, and reports WroteTemplateBase.
 // Every other module's file is a sparse base over the template: a present file runs the module's Migrate hook and is pruned of its retired keys, and nothing is ever added.
 // Under opts.PruneUnknown it is pruned of every other key the template lacks as well; without it such a key stays and is reported as Preserved.
 // A module's MigrateHubBase hook runs right after Migrate on a present hub file, and over the bytes of a prime or legacy seed on an absent one, so a hub file seeded in a pass holds what the hook adds at once, since the build stamp gates the next reconcile; no other reconcile path runs it.
@@ -964,13 +1016,21 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			}
 		}
 
-		var added, removed, keptExtra, dropped, stripped, preserved, lacking []string
+		var templateBase []byte
+		templateBasePresent := false
+		if m.SeedOnly {
+			if templateBase, templateBasePresent, err = readTemplateBase(m, boardDir); err != nil {
+				return nil, err
+			}
+		}
+
+		var added, removed, updated, differs, keptExtra, dropped, stripped, preserved, unsettled []string
 		var mergedBytes []byte
 		var reconcileErr error
 		changed := fileAbsent
 		switch {
 		case m.SeedOnly:
-			// An absent seed-only default is the prime's copy or the template, verbatim; a present file or prime copy is only migrated.
+			// An absent seed-only file with no prime copy is the template verbatim; a present file or prime copy is migrated and then follows the template.
 			mergedBytes = existing
 			if mergedBytes == nil {
 				mergedBytes = []byte(m.Template())
@@ -981,8 +1041,17 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 				mergedBytes, migrated, reconcileErr = m.Migrate(mergedBytes)
 				changed = changed || len(migrated) > 0
 			}
-			if reconcileErr == nil && m.Lacking != nil {
-				lacking, reconcileErr = m.Lacking(mergedBytes)
+			if reconcileErr == nil {
+				var follow yamlengine.FollowReport
+				mergedBytes, follow, reconcileErr = yamlengine.FollowTemplate(templateBase, []byte(m.Template()), mergedBytes, templateBasePresent && !fileAbsent)
+				if errors.Is(reconcileErr, yamlengine.ErrInvalidBase) {
+					reconcileErr = &FileError{Module: m.Name, Path: configengine.TemplateBaseFile(boardDir, m.Name), Err: fmt.Errorf("%w; delete it, and the next reconcile treats %s.yaml as having no base", reconcileErr, m.Name)}
+				}
+				added, updated, removed, differs = follow.Added, follow.Updated, follow.Removed, follow.Differs
+				changed = changed || follow.Changed()
+			}
+			if reconcileErr == nil && m.Unsettled != nil {
+				unsettled, reconcileErr = m.Unsettled(mergedBytes)
 			}
 		case fileAbsent:
 			switch seed {
@@ -1055,11 +1124,13 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 			Module:       m.Name,
 			Added:        added,
 			Removed:      removed,
+			Updated:      updated,
+			Differs:      differs,
 			KeptExtra:    keptExtra,
 			Dropped:      dropped,
 			Stripped:     stripped,
 			Preserved:    preserved,
-			Lacking:      lacking,
+			Unsettled:    unsettled,
 			MigratedFrom: migratedFrom,
 			Migrated:     migrated,
 			Seed:         seed,
@@ -1084,6 +1155,16 @@ func ReconcileHubWideAt(boardDir, primeBaseDir string, opts HubWideOptions) ([]R
 					return nil, &FileError{Module: m.Name, Path: legacyPath, Err: fmt.Errorf("remove migrated legacy config %s: %w", legacy, err)}
 				}
 			}
+		}
+		if wantBase := templateBaseContent(m); opts.Apply && m.SeedOnly && !(templateBasePresent && bytes.Equal(templateBase, wantBase)) {
+			basePath := configengine.TemplateBaseFile(boardDir, m.Name)
+			if err := os.MkdirAll(configengine.ConfigDir(boardDir), 0o755); err != nil {
+				return nil, &FileError{Module: m.Name, Path: basePath, Err: fmt.Errorf("mkdir config dir for the template base of %s: %w", m.Name, err)}
+			}
+			if err := fsx.AtomicWriteBytes(basePath, wantBase); err != nil {
+				return nil, &FileError{Module: m.Name, Path: basePath, Err: fmt.Errorf("write the template base of %s: %w", m.Name, err)}
+			}
+			result.WroteTemplateBase = true
 		}
 
 		results = append(results, result)

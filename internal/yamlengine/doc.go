@@ -11,6 +11,7 @@
 // [RaiseIntFloor] raises one top-level integer key to a floor, carrying every other key and comment through unchanged, for a module's migration hook.
 // [RenameKeys] renames retired top-level keys to their new names with their values and the template's line comment for each new name, for a module's migration hook.
 // [DropKeys] removes retired top-level keys with their values and comments, reporting one line per removed key, for a module's migration hook.
+// [FollowTemplate] carries a template change into an operator-owned file unit by unit, against the template the file last followed: a unit left at that template's value takes the new one, and a unit the operator set is kept and reported when the template holds it otherwise.
 //
 // # Layer operations
 //

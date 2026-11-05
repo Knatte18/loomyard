@@ -1,4 +1,4 @@
-// migrate.go — the reconcile hooks of profiles.yaml: renaming a block held under a recipe's former name, and listing the template's recipe blocks a starting profile lacks and the former blocks left beside a differing current one.
+// migrate.go — the reconcile hooks of profiles.yaml: renaming a block held under a recipe's former name, and listing the former blocks left beside a differing current one.
 
 package runprofile
 
@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
 	"slices"
 
@@ -43,7 +42,7 @@ func heldFormerName[V any](entries map[string]V, recipe string) (string, bool) {
 
 // MigrateConfig renames, in each profile and under defaults, every recipe block or entry keyed by a recipe's former name to the recipe's current name, keeping its value, so a hub seeded before a recipe rename runs that recipe on its profiles.
 // An entry already holding the current name keeps it, and drops the former block only when it equals the current one;
-// a differing former block stays untouched for the operator to settle, and LackingTemplateBlocks reports it.
+// a differing former block stays untouched for the operator to settle, and UnsettledFormerBlocks reports it.
 // It returns one line per rewrite, "<entry>.<from>: renamed to <entry>.<to>" or "<entry>.<from>: removed, <entry>.<to> already set",
 // and the document unchanged with no lines when nothing is rewritten.
 // Every comment and other key is carried through yaml node editing.
@@ -116,28 +115,14 @@ func mappingKeyIndex(mapping *yaml.Node, key string) int {
 	return -1
 }
 
-// LackingTemplateBlocks lists, sorted, as "<entry>.<recipe>", each recipe block or defaults entry the template holds under an entry existing also holds and that entry lacks.
-// An example is a starting profile seeded before a recipe was added, so reconcile can report what the operator-owned file never gained.
-// An entry the template lacks, or one existing lacks whole, lists nothing for the template's blocks.
-// An entry holding a recipe's former name beside its current name with a differing block also lists "<entry>.<from>: differs from <entry>.<to>", so the operator settles the pair by hand.
+// UnsettledFormerBlocks lists, sorted, as "<entry>.<from>: differs from <entry>.<to>", each entry holding a recipe's former name beside its current name with a differing block, so the operator settles the pair by hand.
 // A document that does not parse returns an error marked configengine.ErrInvalid.
-func LackingTemplateBlocks(existing []byte) ([]string, error) {
+func UnsettledFormerBlocks(existing []byte) ([]string, error) {
 	var hub map[string]any
 	if err := yaml.Unmarshal(existing, &hub); err != nil {
-		return nil, configengine.MarkInvalid(fmt.Errorf("runprofile: list the template blocks profiles lack: %w", err))
+		return nil, configengine.MarkInvalid(fmt.Errorf("runprofile: list the former recipe blocks profiles hold beside a differing current one: %w", err))
 	}
-	var lacking []string
-	for name, templateEntry := range templateEntries() {
-		hubRecipes, ok := hub[name].(map[string]any)
-		if !ok {
-			continue
-		}
-		for _, recipe := range slices.Sorted(maps.Keys(templateEntry.(map[string]any))) {
-			if _, held := hubRecipes[recipe]; !held {
-				lacking = append(lacking, name+"."+recipe)
-			}
-		}
-	}
+	var unsettled []string
 	for name, entry := range hub {
 		hubRecipes, ok := entry.(map[string]any)
 		if !ok {
@@ -147,10 +132,10 @@ func LackingTemplateBlocks(existing []byte) ([]string, error) {
 			former, heldFormer := hubRecipes[rename.from]
 			current, heldCurrent := hubRecipes[rename.to]
 			if heldFormer && heldCurrent && !reflect.DeepEqual(former, current) {
-				lacking = append(lacking, fmt.Sprintf("%s.%s: differs from %s.%s", name, rename.from, name, rename.to))
+				unsettled = append(unsettled, fmt.Sprintf("%s.%s: differs from %s.%s", name, rename.from, name, rename.to))
 			}
 		}
 	}
-	slices.Sort(lacking)
-	return lacking, nil
+	slices.Sort(unsettled)
+	return unsettled, nil
 }

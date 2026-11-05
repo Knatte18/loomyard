@@ -23,7 +23,7 @@ type Notifier func(boardDir, line string) (posted bool, err error)
 
 var installedNotifier atomic.Pointer[Notifier]
 
-// InstallNotifier stores n as the process's notifier, which a walk mails what its reinterpretations rewrote or flagged through, and returns a function that reinstates the previous one.
+// InstallNotifier stores n as the process's notifier, which a walk mails its reconcile notices through, and returns a function that reinstates the previous one.
 func InstallNotifier(n Notifier) (restore func()) {
 	previous := installedNotifier.Swap(&n)
 	return func() { installedNotifier.Store(previous) }
@@ -81,6 +81,12 @@ func notifyReinterpretations(boardDir, label string, lines []string) {
 	}
 	line := fmt.Sprintf("%s lym build %s changed what a value in the hub's config means, and the reconcile carried the hub's files across: %s", noticePrefix, label, strings.Join(lines, "; "))
 	logger.Warn("hubreconcile: a reinterpretation rewrote or flagged a hub config value", "board", boardDir, "lines", lines)
+	mailOrch(boardDir, line)
+}
+
+// mailOrch mails line to the orch of the hub whose Bolt checkout is boardDir through the installed notifier;
+// with no notifier installed, a failed mail or no orch recorded, the log holds the line alone.
+func mailOrch(boardDir, line string) {
 	notifier := installedNotifier.Load()
 	if notifier == nil {
 		logger.Warn("hubreconcile: no notifier is installed, so the orch is not mailed", "line", line)

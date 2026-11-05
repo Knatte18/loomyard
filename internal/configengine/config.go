@@ -146,6 +146,24 @@ func ReinterpretedMarkerRel(id string) string {
 	return filepath.Join(lymdirs.LymDirName, configDirName, reinterpretedMarkerPrefix+id)
 }
 
+// templateBaseSuffix ends the name of a seed-only module's template base file; the name has no .yaml suffix, so no module reader takes it for a module file.
+const templateBaseSuffix = ".template-base"
+
+// TemplateBaseFile returns the tracked file under boardDir that keeps, beside a seed-only module's board file, the template that file last followed.
+func TemplateBaseFile(boardDir, module string) string {
+	return filepath.Join(ConfigDir(boardDir), module+templateBaseSuffix)
+}
+
+// TemplateBaseFileRel returns a module's template base file relative to the board dir, the form a board commit lists.
+func TemplateBaseFileRel(module string) string {
+	return filepath.Join(lymdirs.LymDirName, configDirName, module+templateBaseSuffix)
+}
+
+// IsTemplateBaseFile reports whether path names a seed-only module's template base file.
+func IsTemplateBaseFile(path string) bool {
+	return strings.HasSuffix(path, templateBaseSuffix)
+}
+
 // sparseBase reports whether the base layer under dirs is sparse over the template:
 // a board dir is told and the spec is not seed-only.
 func sparseBase(dirs Dirs, spec Spec) bool {

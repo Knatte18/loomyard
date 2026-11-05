@@ -716,13 +716,7 @@ func runReconcile(ctx context.Context, out io.Writer, _ []string) int {
 			hubWideResults = results
 			var written []string
 			for _, result := range results {
-				if !result.Applied {
-					continue
-				}
-				written = append(written, configengine.ConfigFileRel(result.Module))
-				for _, legacy := range result.MigratedFrom {
-					written = append(written, configengine.ConfigFileRel(legacy))
-				}
+				written = append(written, result.ChangedFilesRel()...)
 			}
 			return written, nil
 		},

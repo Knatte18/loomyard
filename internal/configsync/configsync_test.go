@@ -19,6 +19,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lenses"
 	"github.com/Knatte18/loomyard/internal/loggerconfig"
 	"github.com/Knatte18/loomyard/internal/modelspec"
+	"github.com/Knatte18/loomyard/internal/runprofile"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 	"github.com/Knatte18/loomyard/internal/yamlengine"
 	"gopkg.in/yaml.v3"
@@ -559,9 +560,9 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 		wantNotDropped []string
 		// loadUnchanged pins that lenses.Load over the board dir resolves the same before the dry run and after the apply.
 		loadUnchanged bool
-		// wantMigrated and wantLacking are the applied result's Migrated and Lacking, compared as they stand; nil skips the check.
-		wantMigrated []string
-		wantLacking  []string
+		// wantMigrated and wantUnsettled are the applied result's Migrated and Unsettled, compared as they stand; nil skips the check.
+		wantMigrated  []string
+		wantUnsettled []string
 		// wantFileError means both the dry run and the apply return a *FileError naming the module and leave the hub file's bytes as they were.
 		wantFileError bool
 	}{
@@ -667,22 +668,20 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantNoFile: true,
 		},
 		{
-			name:         "models default absent is seeded from the prime verbatim",
+			name:         "models default absent is seeded from the prime and gains the template aliases it lacks",
 			module:       "models",
 			primeFile:    "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
 			seedDefaults: true,
 			wantSeed:     SeedPrime,
-			wantContains: []string{"zephyr:"},
-			wantAbsent:   []string{"sonnet:"},
+			wantContains: []string{"zephyr:\n  engine: claude\n  model: claude-zephyr-1\n", "sonnet:"},
 		},
 		{
-			name:         "models default present is never rewritten",
+			name:         "models default present keeps its own alias and gains the template aliases it lacks",
 			module:       "models",
 			hubFile:      "zephyr:\n  engine: claude\n  model: claude-zephyr-1\n",
 			seedDefaults: true,
 			wantSeed:     SeedHub,
-			wantContains: []string{"zephyr:"},
-			wantAbsent:   []string{"sonnet:"},
+			wantContains: []string{"zephyr:\n  engine: claude\n  model: claude-zephyr-1\n", "sonnet:"},
 		},
 		{
 			name:         "board absent with a prime copy is seeded from the prime",
@@ -738,33 +737,32 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			wantContains: []string{"defaults:", "light:", "solid:", "docs:"},
 		},
 		{
-			name:         "profiles present with a starting profile removed is never rewritten",
-			module:       "profiles",
-			hubFile:      "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n",
-			wantSeed:     SeedHub,
-			wantContains: []string{"broad:"},
-			wantAbsent:   []string{"defaults:", "light:", "solid:", "docs:"},
-			wantMigrated: []string{},
-			wantLacking:  []string{},
+			name:          "profiles present with no template base gain every template unit they lack and keep their own profile",
+			module:        "profiles",
+			hubFile:       "broad:\n  darn:\n    loom: {code_max_bounces: 2}\n",
+			wantSeed:      SeedHub,
+			wantContains:  []string{"broad:\n  darn:\n    loom: {code_max_bounces: 2}\n", "defaults:", "light:", "solid:", "docs:"},
+			wantMigrated:  []string{},
+			wantUnsettled: []string{},
 		},
 		{
-			name:         "profiles present under the recipe's former name are renamed in place and the template blocks they lack listed",
-			module:       "profiles",
-			hubFile:      "# operator note\ndefaults: {loom: solid}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 7}\n",
-			wantSeed:     SeedHub,
-			wantContains: []string{"# operator note", "defaults: {tapestry: solid}", "  tapestry:\n    loom: {plan_max_bounces: 7}"},
-			wantAbsent:   []string{"loom: solid", "  loom:\n    loom:", "sampler:", "darn:"},
-			wantMigrated: []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
-			wantLacking:  []string{"defaults.darn", "defaults.motif", "defaults.pawl", "solid.darn", "solid.motif", "solid.pawl", "solid.sampler"},
+			name:          "profiles present under the recipe's former name are renamed in place and then gain the template units they lack",
+			module:        "profiles",
+			hubFile:       "# operator note\ndefaults: {loom: solid}\nsolid:\n  loom:\n    loom: {plan_max_bounces: 7}\n",
+			wantSeed:      SeedHub,
+			wantContains:  []string{"# operator note", "defaults: {tapestry: solid, motif: solid, darn: light, pawl: light}", "  tapestry:\n    loom: {plan_max_bounces: 7, discussion_max_bounces: 2,"},
+			wantAbsent:    []string{"loom: solid", "  loom:\n    loom:"},
+			wantMigrated:  []string{"defaults.loom: renamed to defaults.tapestry", "solid.loom: renamed to solid.tapestry"},
+			wantUnsettled: []string{},
 		},
 		{
-			name:         "profiles present with a former block differing from the current one keep both and list the pair",
-			module:       "profiles",
-			hubFile:      "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n",
-			wantSeed:     SeedHub,
-			wantContains: []string{"  loom:\n    loom: {plan_max_bounces: 7}", "  tapestry:\n    loom: {plan_max_bounces: 1}"},
-			wantMigrated: []string{},
-			wantLacking:  []string{"light.darn", "light.loom: differs from light.tapestry", "light.motif", "light.pawl", "light.sampler"},
+			name:          "profiles present with a former block differing from the current one keep both and list the pair",
+			module:        "profiles",
+			hubFile:       "light:\n  loom:\n    loom: {plan_max_bounces: 7}\n  tapestry:\n    loom: {plan_max_bounces: 1}\n",
+			wantSeed:      SeedHub,
+			wantContains:  []string{"  loom:\n    loom: {plan_max_bounces: 7}\n", "  tapestry:\n    loom: {plan_max_bounces: 1, discussion_max_bounces: 1,"},
+			wantMigrated:  []string{},
+			wantUnsettled: []string{"light.loom: differs from light.tapestry"},
 		},
 		{
 			name:          "profiles present that fails to parse is refused and left untouched",
@@ -833,8 +831,8 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			if dryResult != nil && tt.wantMigrated != nil && !slices.Equal(dryResult.Migrated, tt.wantMigrated) {
 				t.Errorf("dry-run Migrated = %v; want %v", dryResult.Migrated, tt.wantMigrated)
 			}
-			if dryResult != nil && tt.wantLacking != nil && !slices.Equal(dryResult.Lacking, tt.wantLacking) {
-				t.Errorf("dry-run Lacking = %v; want %v", dryResult.Lacking, tt.wantLacking)
+			if dryResult != nil && tt.wantUnsettled != nil && !slices.Equal(dryResult.Unsettled, tt.wantUnsettled) {
+				t.Errorf("dry-run Unsettled = %v; want %v", dryResult.Unsettled, tt.wantUnsettled)
 			}
 			if tt.hubFile == "" {
 				if _, err := os.Stat(hubPath); !os.IsNotExist(err) {
@@ -864,11 +862,11 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 			if tt.wantMigrated != nil && !slices.Equal(appliedResult.Migrated, tt.wantMigrated) {
 				t.Errorf("applied Migrated = %v; want %v", appliedResult.Migrated, tt.wantMigrated)
 			}
-			if tt.wantLacking != nil && !slices.Equal(appliedResult.Lacking, tt.wantLacking) {
-				t.Errorf("applied Lacking = %v; want %v", appliedResult.Lacking, tt.wantLacking)
+			if tt.wantUnsettled != nil && !slices.Equal(appliedResult.Unsettled, tt.wantUnsettled) {
+				t.Errorf("applied Unsettled = %v; want %v", appliedResult.Unsettled, tt.wantUnsettled)
 			}
-			if wantApplied := tt.hubFile == "" || len(tt.wantMigrated) > 0; tt.module == "profiles" && appliedResult.Applied != wantApplied {
-				t.Errorf("applied Applied = %v; want %v, since a present seed-only file is written only when migrated", appliedResult.Applied, wantApplied)
+			if tt.module == "profiles" && !appliedResult.WroteTemplateBase {
+				t.Errorf("applied WroteTemplateBase = false; want the template base written beside a board that held none")
 			}
 			for _, name := range tt.wantDropped {
 				if !slices.Contains(appliedResult.Dropped, name) {
@@ -904,6 +902,215 @@ func TestReconcileHubWideAt_SeedsFromHubPrimeLegacyOrTemplate(t *testing.T) {
 				if strings.Contains(string(got), absent) {
 					t.Errorf("hub file = %q; want it not to contain %q", got, absent)
 				}
+			}
+		})
+	}
+}
+
+// TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate pins how a present profiles.yaml follows the template against the template base beside it:
+// a key left at the base's value takes the template's change, a key the operator set or removed stays, a dry run writes nothing, and an apply writes an absent or stale base and leaves nothing for the next apply.
+func TestReconcileHubWideAt_SeedOnlyFileFollowsItsTemplate(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	const (
+		lightDarn            = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+		lightDarnSolo        = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: \"\"}\n"
+		lightDarnOperator    = "  darn:\n    loom: {code_max_bounces: 1, code_hard_max_bounces: 2, code_reviewer_fan: standard}\n"
+		lightSamplerReview   = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n    sampler: {code_review: true}\n"
+		lightSamplerNoReview = "    loom: {code_max_bounces: 1, code_hard_max_bounces: 2}\n"
+	)
+	template := runprofile.ConfigTemplate()
+	older := strings.Replace(template, lightDarn, lightDarnSolo, 1)
+	withoutSamplerReview := strings.Replace(template, lightSamplerReview, lightSamplerNoReview, 1)
+	m, ok := configreg.Lookup(runprofile.ModuleName)
+	if !ok {
+		t.Fatalf("module %q is not registered", runprofile.ModuleName)
+	}
+	currentBase := string(templateBaseContent(m))
+
+	tests := []struct {
+		name    string
+		hubFile string
+		// baseFile is the template base beside the hub file; empty leaves it absent.
+		baseFile string
+		// baseIsDir makes the template base a directory, so reading it fails.
+		baseIsDir bool
+		// wantBaseError, when set, expects both runs to fail with a FileError naming the template base and holding this text, and the hub file untouched.
+		wantBaseError string
+		// wantAdded nil skips the Added check, and wantAddedHas lists paths Added must hold.
+		wantAdded     []string
+		wantAddedHas  []string
+		wantUpdated   []string
+		wantRemoved   []string
+		wantDiffers   []string
+		wantContains  []string
+		wantAbsent    []string
+		wantRewritten bool
+	}{
+		{
+			name:          "a key left at the base's value follows the template's removal",
+			hubFile:       older,
+			baseFile:      older,
+			wantAdded:     []string{},
+			wantRemoved:   []string{"light.darn.loom.code_reviewer_fan"},
+			wantContains:  []string{lightDarn},
+			wantAbsent:    []string{lightDarnSolo},
+			wantRewritten: true,
+		},
+		{
+			name:         "a key the operator set is kept and listed when the template moved it",
+			hubFile:      strings.Replace(template, lightDarn, lightDarnOperator, 1),
+			baseFile:     older,
+			wantAdded:    []string{},
+			wantDiffers:  []string{"light.darn.loom.code_reviewer_fan: file standard, template absent"},
+			wantContains: []string{lightDarnOperator},
+		},
+		{
+			name:          "a key the template added since the base is added",
+			hubFile:       withoutSamplerReview,
+			baseFile:      withoutSamplerReview,
+			wantAdded:     []string{"light.sampler.sampler"},
+			wantContains:  []string{lightSamplerReview},
+			wantRewritten: true,
+		},
+		{
+			name:      "a key the operator removed stays removed",
+			hubFile:   withoutSamplerReview,
+			baseFile:  template,
+			wantAdded: []string{},
+		},
+		{
+			name:          "with no base a lacking key is added and a differing one kept and listed",
+			hubFile:       "light:\n  darn:\n    loom: {code_max_bounces: 4}\n",
+			wantAddedHas:  []string{"light.darn.loom.code_hard_max_bounces", "solid"},
+			wantDiffers:   []string{"light.darn.loom.code_max_bounces: file 4, template 1"},
+			wantContains:  []string{"    loom: {code_max_bounces: 4, code_hard_max_bounces: 2}\n", "solid:"},
+			wantRewritten: true,
+		},
+		{
+			name:      "a file and base that hold the template change nothing",
+			hubFile:   template,
+			baseFile:  currentBase,
+			wantAdded: []string{},
+		},
+		{
+			name:          "a template base that is not a YAML mapping fails naming the base and the way forward",
+			hubFile:       template,
+			baseFile:      "- not\n- a mapping\n",
+			wantBaseError: "delete it",
+		},
+		{
+			name:          "an unreadable template base fails naming the base",
+			hubFile:       template,
+			baseIsDir:     true,
+			wantBaseError: "read the template base",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			boardDir := t.TempDir()
+			writeModuleFile(t, boardDir, runprofile.ModuleName, tt.hubFile)
+			hubPath := configengine.ConfigFile(boardDir, runprofile.ModuleName)
+			basePath := configengine.TemplateBaseFile(boardDir, runprofile.ModuleName)
+			if tt.baseFile != "" {
+				if err := os.WriteFile(basePath, []byte(tt.baseFile), 0o644); err != nil {
+					t.Fatalf("write the template base: %v", err)
+				}
+			}
+			if tt.baseIsDir {
+				if err := os.Mkdir(basePath, 0o755); err != nil {
+					t.Fatalf("make the template base a directory: %v", err)
+				}
+			}
+			if tt.wantBaseError != "" {
+				for _, apply := range []bool{false, true} {
+					_, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply})
+					var fileErr *FileError
+					if !errors.As(err, &fileErr) || fileErr.Path != basePath || !strings.Contains(err.Error(), tt.wantBaseError) {
+						t.Errorf("ReconcileHubWideAt(apply=%v) error = %v; want a *FileError naming %s and holding %q", apply, err, basePath, tt.wantBaseError)
+					}
+				}
+				if hub, err := os.ReadFile(hubPath); err != nil || string(hub) != tt.hubFile {
+					t.Errorf("hub file = %q, %v after the failed runs; want it untouched", hub, err)
+				}
+				return
+			}
+
+			for _, apply := range []bool{false, true} {
+				results, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: apply})
+				if err != nil {
+					t.Fatalf("ReconcileHubWideAt(apply=%v): %v", apply, err)
+				}
+				result := findResult(results, runprofile.ModuleName)
+				if result == nil {
+					t.Fatalf("ReconcileHubWideAt(apply=%v) holds no profiles result", apply)
+				}
+				if tt.wantAdded != nil && !slices.Equal(result.Added, tt.wantAdded) {
+					t.Errorf("apply=%v Added = %q; want %q", apply, result.Added, tt.wantAdded)
+				}
+				for _, path := range tt.wantAddedHas {
+					if !slices.Contains(result.Added, path) {
+						t.Errorf("apply=%v Added = %q; want it to hold %q", apply, result.Added, path)
+					}
+				}
+				for _, field := range []struct {
+					name      string
+					got, want []string
+				}{
+					{"Updated", result.Updated, tt.wantUpdated},
+					{"Removed", result.Removed, tt.wantRemoved},
+					{"Differs", result.Differs, tt.wantDiffers},
+				} {
+					if !slices.Equal(field.got, field.want) {
+						t.Errorf("apply=%v %s = %q; want %q", apply, field.name, field.got, field.want)
+					}
+				}
+
+				hub, err := os.ReadFile(hubPath)
+				if err != nil {
+					t.Fatalf("read the hub file: %v", err)
+				}
+				base, baseErr := os.ReadFile(basePath)
+				if !apply {
+					if string(hub) != tt.hubFile {
+						t.Errorf("hub file after the dry run = %q; want it unwritten", hub)
+					}
+					if (tt.baseFile == "") != os.IsNotExist(baseErr) || (tt.baseFile != "" && string(base) != tt.baseFile) {
+						t.Errorf("template base after the dry run = %q, %v; want it unwritten", base, baseErr)
+					}
+					continue
+				}
+				if result.Applied != tt.wantRewritten {
+					t.Errorf("Applied = %v; want %v", result.Applied, tt.wantRewritten)
+				}
+				if wantBase := tt.baseFile != currentBase; result.WroteTemplateBase != wantBase {
+					t.Errorf("WroteTemplateBase = %v; want %v", result.WroteTemplateBase, wantBase)
+				}
+				if string(base) != currentBase {
+					t.Errorf("template base after the apply = %q, %v; want the header over the running template", base, baseErr)
+				}
+				if !tt.wantRewritten && string(hub) != tt.hubFile {
+					t.Errorf("hub file = %q; want it left as the operator holds it", hub)
+				}
+				for _, want := range tt.wantContains {
+					if !strings.Contains(string(hub), want) {
+						t.Errorf("hub file = %q; want it to contain %q", hub, want)
+					}
+				}
+				for _, absent := range tt.wantAbsent {
+					if strings.Contains(string(hub), absent) {
+						t.Errorf("hub file = %q; want it not to contain %q", hub, absent)
+					}
+				}
+			}
+
+			again, err := ReconcileHubWideAt(boardDir, "", HubWideOptions{Apply: true})
+			if err != nil {
+				t.Fatalf("second ReconcileHubWideAt: %v", err)
+			}
+			if r := findResult(again, runprofile.ModuleName); r == nil || r.Applied || r.WroteTemplateBase || len(r.Added)+len(r.Updated)+len(r.Removed)+len(r.Differs) > 0 {
+				t.Errorf("second apply result = %+v; want nothing written or reported, since the base now records the template", r)
 			}
 		})
 	}
@@ -1166,6 +1373,13 @@ func TestReconcileHubWideAt_StripsAnUnmigratedBaseOnce(t *testing.T) {
 				case tt.wantUnchangedAll || registered.SeedOnly:
 					// A per-name map drops its template-equal names on every applied reconcile, marked board or not.
 					if len(registered.PerNameMaps) > 0 && tt.options.Apply && !registered.SeedOnly {
+						continue
+					}
+					if registered.SeedOnly && tt.options.Apply {
+						// An applied seed-only file follows its template: it gains the units it lacks and keeps everything it held.
+						if !strings.Contains(got, content) {
+							t.Errorf("%s.yaml = %q; want it to keep what it held, %q", module, got, content)
+						}
 						continue
 					}
 					if got != content {

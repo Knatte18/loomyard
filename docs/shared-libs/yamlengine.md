@@ -126,6 +126,25 @@ Merges every mapping key the template holds and `existing` lacks into `existing`
 **Differs from `Reconcile`:** `Reconcile` builds on the template, so it drops file keys the template lacks and replaces a mismatched shape, and its `added` lists keys inside list elements it never fills.
 `FillMissing` builds on the file and only adds.
 
+### `FollowTemplate(base, template, existing []byte, haveBase bool) ([]byte, FollowReport, error)`
+
+Carries a template change into `existing`, an operator-owned file seeded from an earlier template, and keeps every value the operator set.
+`base` is the template the file last followed, and `haveBase` false says the file has no record of one, so `base` is not read.
+
+**Behavior:**
+
+- A unit is a mapping key, descended into while the file, the template and the base each hold a mapping or nothing there, and otherwise compared whole, so a scalar or a sequence is always one unit.
+- With a base, a unit the file holds as the base does, absence included, takes the template's value, gaining, changing or losing it.
+  Any other unit is the operator's and is kept, and `Differs` lists it when the template holds a third value.
+- Without a base, a unit the file lacks is added, one it holds with a value the template holds otherwise is kept and listed under `Differs`, and one only the file holds is kept silently.
+- A mapping a removal empties is removed with it.
+- An unchanged file comes back byte for byte.
+  A changed one is re-encoded, keeping its comments, each node's style and a long flow mapping on one line, and dropping the blank lines between entries.
+  A unit copied in from the template carries none of its comments.
+- A document whose top level is not a mapping is an error naming the document, and an error caused by `base` wraps `ErrInvalidBase`.
+
+**Returns:** the followed bytes and a `FollowReport` listing the `Added`, `Updated` and `Removed` units and the kept `Differs`, each sorted, or an error.
+
 ### `SetValues(template, existing []byte, pairs []KV) (SetResult, error)`
 
 Applies an explicit list of key=value pairs to a template-shaped YAML document.

@@ -63,6 +63,9 @@ func CloneAndWire(cwd string, opts fabricengine.CloneOptions) (res fabricengine.
 		if hubWideResult.Applied {
 			rec.Append(fabricengine.KindFileWritten, configengine.ConfigFile(res.BoardDir, hubWideResult.Module), "")
 		}
+		if hubWideResult.WroteTemplateBase {
+			rec.Append(fabricengine.KindFileWritten, configengine.TemplateBaseFile(res.BoardDir, hubWideResult.Module), "")
+		}
 	}
 	// A board seeded from nothing holds only sparse files, so it is marked here and the board commit below carries the marker.
 	// A board that already held a base file is left unmarked: the walk at the end strips it once and commits the marker itself.

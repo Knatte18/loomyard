@@ -52,6 +52,10 @@ Every other reconcile, the binary-change walk, a clone and `lym fabric reconcile
 A binary older than the one that wrote a key cannot tell a key it never knew from one the template dropped, so an automatic removal would strip a newer binary's settings from the committed board.
 A local override file is pruned of every such key on any reconcile, since its load refuses one.
 
+A seed-only board file's key that its template base, `<module>.template-base` beside it, holds is no such key: the base records that the template held it, so the template dropped it.
+Every reconcile of the board dir removes it while the file holds the base's value, and keeps it as the operator's otherwise.
+A binary older than the base's writer reads that drop the same way, and the newer binary's next walk adds the key back, since the older one wrote its own template as the base.
+
 ## Strictness
 
 `internal/configengine` offers `Load` (strict) and `LoadOrTemplate` (degrades to the embedded template); a caller adopts exactly one, except `runprofile`.

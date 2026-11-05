@@ -66,12 +66,12 @@ func TestPrepareRunSettings(t *testing.T) {
 		{
 			name:     "no profiles file takes the template's default for the recipe",
 			settings: battenshed.RunSettings{Recipe: "darn"},
-			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_fan: \"\"\n"},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\n"},
 		},
 		{
 			name:     "a sampler task naming the template's light profile writes its loom values and the review on",
 			settings: battenshed.RunSettings{Recipe: "sampler", Profile: "light"},
-			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\ncode_reviewer_fan: \"\"\n", "sampler": "code_review: true\n"},
+			wantDocs: map[string]string{"loom": "code_hard_max_bounces: 2\ncode_max_bounces: 1\n", "sampler": "code_review: true\n"},
 		},
 		{
 			name:        "the task's settings lie over the tapestry block with its plan keys in the tapestry document, and the profile's retired merge_max_bounces is dropped",

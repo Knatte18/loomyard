@@ -160,7 +160,8 @@ func newHubCommit(boardDir string) hubCommitFunc {
 }
 
 // reconcileDefaultLayer reconciles every module's file under the hub's board dir against its template, seeded from the prime's anchor, and reports the reconcile envelope.
-// It seeds absent bases sparse and never fills a present one.
+// It seeds absent bases sparse and never fills a present base that is not seed-only;
+// a present seed-only file follows its template against the template base kept beside it.
 // The one-time base strip of an unmigrated board is reported as pending and never performed, so the board marker is not written.
 // A dry run writes nothing and takes no guard.
 // apply is refused when guard refuses.
@@ -220,13 +221,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 			return nil, restoreBoardConfig(prior, err)
 		}
 		for _, result := range results {
-			if !result.Applied {
-				continue
-			}
-			written = append(written, configengine.ConfigFileRel(result.Module))
-			for _, legacy := range result.MigratedFrom {
-				written = append(written, configengine.ConfigFileRel(legacy))
-			}
+			written = append(written, result.ChangedFilesRel()...)
 		}
 		return written, nil
 	}, syncOpts)
@@ -244,7 +239,7 @@ func reconcileDefaultLayer(l *lymcwd.Location, out io.Writer, apply bool, guard 
 	return output.Ok(out, reconcileEnvelope(true, results))
 }
 
-// snapshotBoardConfig reads every file in the board dir's config dir and every registry module's config file there; an absent module file maps to a snapshot of absence.
+// snapshotBoardConfig reads every file in the board dir's config dir and every registry module's config file there, and each seed-only module's template base; an absent module file or base maps to a snapshot of absence.
 func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
 	prior := make(map[string]fileSnapshot)
 	configDir := configengine.ConfigDir(board)
@@ -260,6 +255,9 @@ func snapshotBoardConfig(board string) (map[string]fileSnapshot, error) {
 	}
 	for _, module := range configreg.Modules() {
 		paths = append(paths, configengine.ConfigFile(board, module.Name))
+		if module.SeedOnly {
+			paths = append(paths, configengine.TemplateBaseFile(board, module.Name))
+		}
 	}
 	for _, path := range paths {
 		snap, err := snapshotFile(path)

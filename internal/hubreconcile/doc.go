@@ -30,7 +30,10 @@
 // `lym config reconcile --apply`, with `--layer default` for a board file, is the one way to remove it.
 // A local override file is pruned of every such key, since its load refuses one.
 //
-// A seed-only file is never filled: the walk runs its module's migration and logs one Warn per module naming the template units the file lacks and the pairs it leaves for the operator to settle, with `lym config <module>` as the way forward.
+// A seed-only file follows its template: the walk runs its module's migration, then carries each template change into the file against the template base kept beside it on the board, `<module>.template-base`, keeping every value the operator set, and commits the base with the file.
+// A key the file holds as the base does takes the template's new value, gained, changed or dropped, while a key the operator set, added or removed stays; a file with no base yet gains only the keys it lacks.
+// Once the board commit landed, what each file took and each operator value the template holds otherwise go to the hub's orch as one `[reconcile notice]` line.
+// A pair the module leaves for the operator to settle is logged in one Warn per module, with `lym config <module>` as the way forward.
 //
 // # The base strip
 //
@@ -40,7 +43,8 @@
 // A failed hub-wide step restores the board's files to their prior bytes and removes a marker the pass wrote, while steps that committed before it keep their commits.
 // With the marker present the walk strips no base, so a unit later set equal to the template stays as a pin.
 //
-// A base file is a hub-wide module's hub file or a per-worktree module's repo default.
+// A base file is a hub-wide module's hub file, a seed-only module's board file excepted, or a per-worktree module's repo default.
+// A seed-only module's board file takes each template change on every walk, against the template base kept beside it, and keeps every value the operator set.
 // Every write to one, by any package, holds only the units the hub tuned and never fills in a template value (PATTERN-sparse-hub-base);
 // only this walk's one-time strip drops a unit the template holds, behind the board marker.
 // lenses' template-equal entries are the one exception: a per-name entry equal to the template is dropped on every reconcile.

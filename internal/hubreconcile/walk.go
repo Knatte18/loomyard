@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/Knatte18/loomyard/internal/boardengine"
 	"github.com/Knatte18/loomyard/internal/configengine"
@@ -193,16 +194,17 @@ var spawnBoardSync = boardengine.SpawnSync
 
 // reconcileHubWide reconciles the hub-wide config at boardDir, seeded from the prime's anchor, and commits what it wrote on the board.
 // While the board's base-sparse marker is absent the pass also strips each present base file once, and the marker it writes joins the files in the board commit.
+// Each seed-only module's template base the pass wrote joins the commit beside its file.
 // Each registered reinterpretation whose board marker is absent is then applied, judged against the prime, and its marker joins the commit too.
 // The board is pulled first: when it cannot be brought up to date nothing is written and skipped is true.
-// A reconcile or commit failure restores the board's config files to their prior bytes and removes a marker the pass wrote.
-// Once the commit landed, what the reinterpretations rewrote or flagged is mailed to the hub's orch.
+// A reconcile or commit failure restores the board's config files to their prior bytes and removes a marker or template base the pass wrote.
+// Once the commit landed, what the reinterpretations rewrote or flagged, and what the seed-only files took from their template or kept against it, is mailed to the hub's orch.
 // The board is synced by the detached board sync whether or not this run committed, so a hub-wide commit an earlier run left unpushed is pushed too.
 // The walk never waits on that push: a refusal of it reaches the orch as a failed-push record, and a spawn failure is only logged.
 func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label string, hooks walkHooks) (skipped bool, err error) {
 	bolt := fabricengine.NewBolt(boardDir)
 	var prior map[string][]byte
-	var notices []string
+	var notices, followed []string
 	write := fabricengine.BoltWrite{
 		Message: "lym: reconcile hub-wide config for build " + label,
 		Write: func() ([]string, error) {
@@ -217,19 +219,19 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 				return nil, err
 			}
 			var written []string
+			followed = nil
 			for _, result := range results {
-				if len(result.Lacking) > 0 {
-					logger.Warn("hubreconcile: a seed-only config file lacks units its template holds or holds a pair to settle, and reconcile never changes either", "module", result.Module, "lacking", result.Lacking,
-						"way_forward", fmt.Sprintf("in \"lym config %s\" from the hub's prime worktree, add each lacking unit or leave it out on purpose, and keep one block of each pair that differs", result.Module))
+				if len(result.Unsettled) > 0 {
+					logger.Warn("hubreconcile: a seed-only config file holds a pair to settle, and reconcile never changes it", "module", result.Module, "unsettled", result.Unsettled,
+						"way_forward", fmt.Sprintf("in \"lym config %s\" from the hub's prime worktree, keep one block of each pair that differs", result.Module))
 				}
-				if !result.Applied {
+				followed = append(followed, followedLines(result)...)
+				files := result.ChangedFilesRel()
+				if len(files) == 0 {
 					continue
 				}
 				logResult(boardDir, result)
-				written = append(written, configengine.ConfigFileRel(result.Module))
-				for _, legacy := range result.MigratedFrom {
-					written = append(written, configengine.ConfigFileRel(legacy))
-				}
+				written = append(written, files...)
 			}
 			if !markedBefore && fileExists(configengine.BaseSparseMarker(boardDir)) {
 				written = append(written, configengine.BaseSparseMarkerRel())
@@ -260,6 +262,7 @@ func reconcileHubWide(boardDir string, prime fabricengine.CodeWorktree, label st
 		return true, nil
 	}
 	notifyReinterpretations(boardDir, label, notices)
+	notifyTemplateFollowed(boardDir, label, followed)
 	if err := spawnBoardSync(boardDir); err != nil {
 		logger.Warn("hubreconcile: the detached board sync did not start, so the board's commits wait for the board's next push", "board", boardDir, "committed", res.Committed, "error", err)
 	}
@@ -379,10 +382,15 @@ func passOverOrFail(worktreePath string, err error) (skipped bool, failure error
 }
 
 // worktreeErrorFor wraps a reconcile failure, taking the file and module from a *configsync.FileError.
+// A template base is no file the module's editor repairs, so a failure naming one carries no module and its way forward is the file alone.
 func worktreeErrorFor(worktree string, err error) *WorktreeError {
 	var fileErr *configsync.FileError
 	if errors.As(err, &fileErr) {
-		return &WorktreeError{Worktree: worktree, File: fileErr.Path, Module: fileErr.Module, Err: fileErr.Err}
+		module := fileErr.Module
+		if configengine.IsTemplateBaseFile(fileErr.Path) {
+			module = ""
+		}
+		return &WorktreeError{Worktree: worktree, File: fileErr.Path, Module: module, Err: fileErr.Err}
 	}
 	return &WorktreeError{Worktree: worktree, Err: err}
 }
@@ -394,10 +402,45 @@ func boardErrorFor(boardDir string, err error) *WorktreeError {
 	return failure
 }
 
+// followedLines renders what a board result carried from the template into a present seed-only file, and the operator values it kept against the template, one line per unit naming the module's file.
+// Any other result renders none.
+func followedLines(result configsync.Result) []string {
+	module, ok := configreg.Lookup(result.Module)
+	if !ok || !module.SeedOnly || result.Seed != configsync.SeedHub {
+		return nil
+	}
+	file := result.Module + ".yaml"
+	var lines []string
+	for _, path := range result.Added {
+		lines = append(lines, file+" added "+path)
+	}
+	for _, change := range result.Updated {
+		lines = append(lines, file+" updated "+change)
+	}
+	for _, path := range result.Removed {
+		lines = append(lines, file+" removed "+path)
+	}
+	for _, kept := range result.Differs {
+		lines = append(lines, file+" kept the hub's "+kept)
+	}
+	return lines
+}
+
+// notifyTemplateFollowed logs what the walk carried from the template into the hub's seed-only files and kept against it, and mails it, as one line, to the hub's orch through the installed notifier.
+// No line sends nothing.
+func notifyTemplateFollowed(boardDir, label string, lines []string) {
+	if len(lines) == 0 {
+		return
+	}
+	line := fmt.Sprintf("%s lym build %s carried template changes into the hub's operator-owned config files, keeping every value the operator set: %s; each kept value is the operator's to settle with lym config <module>", noticePrefix, label, strings.Join(lines, "; "))
+	logger.Info("hubreconcile: a seed-only config file followed its template", "board", boardDir, "lines", lines)
+	mailOrch(boardDir, line)
+}
+
 // logResult logs one changed module.
 func logResult(worktree string, result configsync.Result) {
 	logger.Info("hubreconcile: config changed", "worktree", worktree, "module", result.Module,
-		"added", result.Added, "removed", result.Removed, "migrated", result.Migrated,
+		"added", result.Added, "removed", result.Removed, "updated", result.Updated, "differs", result.Differs, "templateBase", result.WroteTemplateBase, "migrated", result.Migrated,
 		"stripped", result.Stripped, "inherited", result.Inherited, "preserved", result.Preserved,
 		"moved", result.Moved, "keptTarget", result.KeptTarget, "keptExtra", result.KeptExtra, "dropped", result.Dropped, "overwritten", result.Overwritten, "copied", result.Copied)
 }
@@ -408,7 +451,7 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
-// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file and the sparse, base-sparse and reinterpretation markers under anchor; an absent one maps to nil.
+// snapshotConfig reads every file in anchor's config dir and every registry module's config file and local override file, each seed-only module's template base, and the sparse, base-sparse and reinterpretation markers under anchor; an absent one maps to nil.
 // The dir's own files cover a legacy file a migration removes.
 // Any read or list failure other than absence is returned naming the path, since a snapshot missing a file could not restore it.
 func snapshotConfig(anchor string) (map[string][]byte, error) {
@@ -433,6 +476,9 @@ func snapshotConfig(anchor string) (map[string][]byte, error) {
 	paths := []string{configengine.SparseMarker(anchor), configengine.BaseSparseMarker(anchor)}
 	for _, module := range configreg.Modules() {
 		paths = append(paths, configengine.ConfigFile(anchor, module.Name), configengine.LocalFile(anchor, module.Name))
+		if module.SeedOnly {
+			paths = append(paths, configengine.TemplateBaseFile(anchor, module.Name))
+		}
 		for _, change := range module.Reinterpretations {
 			paths = append(paths, configengine.ReinterpretedMarker(anchor, change.ID))
 		}

@@ -207,6 +207,22 @@ func TestRunCLI_CloneEndToEnd(t *testing.T) {
 	if !markerRecorded {
 		t.Errorf("mutation record holds no file_written entry for %q\nentries: %v", wantTarget, mutations)
 	}
+	// The seed-only profiles file's template base is written and committed by the clone too.
+	baseRel := filepath.ToSlash(configengine.TemplateBaseFileRel("profiles"))
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", baseRel)); tracked != baseRel {
+		t.Errorf("board tracks %q for the profiles template base; want %q", tracked, baseRel)
+	}
+	wantBaseTarget := filepath.ToSlash(boardRel) + "/" + baseRel
+	baseRecorded := false
+	for _, entry := range mutations {
+		fields, _ := entry.(map[string]any)
+		if fields["kind"] == string(fabricengine.KindFileWritten) && fields["target"] == wantBaseTarget {
+			baseRecorded = true
+		}
+	}
+	if !baseRecorded {
+		t.Errorf("mutation record holds no file_written entry for %q\nentries: %v", wantBaseTarget, mutations)
+	}
 	if fabricYAML, err := os.ReadFile(configengine.ConfigFile(boardDir, "fabric")); err != nil || string(fabricYAML) != configengine.SparseBaseHeader {
 		t.Errorf("board fabric.yaml = %q, %v; want the header alone %q", fabricYAML, err, configengine.SparseBaseHeader)
 	}
@@ -452,8 +468,9 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	}
 
 	boardDir := fabricengine.BoardDir(hubPath)
-	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName)
-	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub")
+	baseRel := filepath.ToSlash(configengine.TemplateBaseFileRel("profiles"))
+	gitkit.MustRun(t, boardDir, "git", "rm", fabricengine.WarpBindingFileName, baseRel)
+	gitkit.MustRun(t, boardDir, "git", "commit", "-m", "test fixture: unbind hub and drop the profiles template base")
 
 	// Proving cwd is a per-call value and not a per-process one is exactly what this test exists to
 	// demonstrate: this reconcile runs against a different directory than the clone above, passed
@@ -475,6 +492,9 @@ func TestRunCLI_ReconcileBacksFillsWarpBinding(t *testing.T) {
 	tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", fabricengine.WarpBindingFileName))
 	if tracked == "" {
 		t.Errorf("%s is not tracked on weft:main at %s after the reconcile backfill", fabricengine.WarpBindingFileName, boardDir)
+	}
+	if tracked := strings.TrimSpace(gitOutputCLI(t, boardDir, "ls-files", "--", baseRel)); tracked != baseRel {
+		t.Errorf("board tracks %q for the profiles template base after the reconcile; want %q committed again", tracked, baseRel)
 	}
 }
 
