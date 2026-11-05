@@ -1078,15 +1078,17 @@ func (r *idleReed) CapturePane(guid string) (string, error) {
 var _ ReedOps = (*idleReed)(nil)
 
 // tuiReed is a fakeReed standing in for a Claude pane over time on its clock.
-// The pane reads busy until busyUntil and "IDLE" after, then the history of submitted texts and the input box after a caret.
+// The pane reads "IDLE", then the history of submitted texts and the input box after a caret, and an operator is active in it until activeUntil.
+// While working is set the pane reads a turn in flight in place of "IDLE".
 // Typed text lands in the box, C-u empties it, and Enter submits the box into the history once swallowEnterUntil has passed.
 // While picker is set the pane shows it alone, and Escape clears it unless pickerSticky is set.
 type tuiReed struct {
 	*fakeReed
 
 	clock             Clock
-	busyUntil         time.Time
+	activeUntil       time.Time
 	swallowEnterUntil time.Time
+	working           bool
 
 	picker       string
 	pickerSticky bool
@@ -1185,10 +1187,18 @@ func (r *tuiReed) frame(drawnSuggestion string) string {
 	if box == "" {
 		box = drawnSuggestion
 	}
-	if r.clock.Now().Before(r.busyUntil) {
+	if r.working {
 		return "working (esc to interrupt)\n❯ " + box
 	}
 	return "IDLE\n" + strings.Join(r.history, "\n") + "\n❯ " + box
+}
+
+// OperatorActive reads an operator active in the pane until activeUntil and answers from the embedded fakeReed after.
+func (r *tuiReed) OperatorActive(guid string) (bool, time.Duration, error) {
+	if r.clock.Now().Before(r.activeUntil) {
+		return true, 5 * time.Second, nil
+	}
+	return r.fakeReed.OperatorActive(guid)
 }
 
 // blankMarkedSpans replaces every ~…~ span of a fake capture, tildes included, by spaces, standing in for a provider's placeholder cells.
@@ -1514,18 +1524,9 @@ var (
 
 // strayPasteEngine is a pasteEngine whose idle reading needs an empty box and that implements StrayInputReader:
 // a box holding exactly one character that is neither a letter, a digit nor whitespace is a candidate.
-// The registry reads its process alive when alive is set, so the hook-derived reading decides; otherwise liveness is unproven and the pane decides.
+// The hook-derived reading decides once the events file holds a signal, and the pane decides while it holds none.
 type strayPasteEngine struct {
 	*pasteEngine
-
-	alive bool
-}
-
-func (e *strayPasteEngine) ProcessLiveness(string) Liveness {
-	if e.alive {
-		return LivenessAlive
-	}
-	return LivenessUnproven
 }
 
 func (e *strayPasteEngine) IdleSession(capture string) bool {

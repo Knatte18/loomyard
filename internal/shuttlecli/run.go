@@ -60,8 +60,9 @@ envelope. A run's output files ARE its return value: "done" means every
 A turn end without them holds the run: it keeps waiting until the outputs
 exist, the pane dies or the deadline passes, and an interactive run is
 answered in its pane.
-A run's strand opens in a detached window of its own unless --anchor says
-otherwise.
+A run's strand opens in a detached window of its own; --focus=false keeps
+the viewer where it is. --anchor hidden is refused, since reed starts no
+command for a hidden strand.
 
 An --output-file entry may be absolute or relative — a
 relative path resolves against the WORKTREE ROOT, not the shell's cwd — and
@@ -118,8 +119,12 @@ report.`,
 				return nil
 			}
 
-			if anchor != string(render.AnchorOwnWindow) && anchor != string(render.AnchorHidden) {
-				clihelp.SetExit(cmd.Context(), output.Err(out, fmt.Sprintf("invalid --anchor %q; want own-window|hidden", anchor)))
+			if anchor != string(render.AnchorOwnWindow) {
+				msg := fmt.Sprintf("invalid --anchor %q; want %s", anchor, render.AnchorOwnWindow)
+				if anchor == string(render.AnchorHidden) {
+					msg += fmt.Sprintf(": reed starts no command for a %s strand, so its provider never starts, and --focus=false keeps the viewer where it is", render.AnchorHidden)
+				}
+				clihelp.SetExit(cmd.Context(), output.Err(out, msg))
 				return nil
 			}
 
@@ -194,7 +199,7 @@ report.`,
 	cmd.Flags().StringVar(&role, "role", "", "role token used to fill the strand-name template")
 	cmd.Flags().StringVar(&round, "round", "", "round token used to fill the strand-name template")
 	cmd.Flags().StringVar(&parent, "parent", "", "parent strand's guid")
-	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window|hidden")
+	cmd.Flags().StringVar(&anchor, "anchor", string(render.AnchorOwnWindow), "placement: own-window; hidden is refused, since reed starts no command for a hidden strand")
 	cmd.Flags().BoolVar(&focus, "focus", true, "give this strand tmux input focus; false never moves the viewer to its window")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "wall-clock deadline before an in-progress run is classified as timed out (0 = config default)")
 	cmd.Flags().BoolVar(&keepPane, "keep-pane", false, `leave the strand and its pane alive after a "done" outcome`)

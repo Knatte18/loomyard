@@ -268,8 +268,10 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 	tests := []struct {
 		name string
 		// engine settings; the zero value is a live process.
-		dead, unproven, interrupted, tooShort bool
-		interactive, outputsExist             bool
+		dead, interrupted, tooShort bool
+		interactive, outputsExist   bool
+		// unreadable points the run record at an events file that cannot be read, so the session state reads unknown and the pane decides.
+		unreadable bool
 		// styled gives the engine the styled box read, which blanks a capture's ~…~ spans.
 		styled bool
 		// guarded runs the row on guardedReadinessEngine, which adds the running-turn check Claude's pane probe uses.
@@ -288,17 +290,17 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 		{name: "a running turn is held", probes: []probe{{events: "START\n", capture: idleFrame, want: IdleProbe{Reason: "a turn is running"}, wantReason: "a turn is running"}}},
 		{name: "an ask is held", probes: []probe{{events: "START\nASK\n", capture: idleFrame, want: IdleProbe{Reason: "the session waits on an answer"}, wantReason: "waits on an answer"}}},
 		{name: "a dead process is held", dead: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Reason: "the session's process is gone"}, wantReason: "process is gone"}}},
-		{name: "an unknown reading falls back to an idle pane", unproven: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
-		{name: "an unknown reading falls back to a busy pane, too short or not", unproven: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
+		{name: "an unknown reading falls back to an idle pane", unreadable: true, probes: []probe{{events: turnEnded, capture: idleFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
+		{name: "an unknown reading falls back to a busy pane, too short or not", unreadable: true, tooShort: true, probes: []probe{{events: turnEnded, capture: needleFrame, want: IdleProbe{TooShort: true}}}},
 		{name: "a draft in the box is held with its reason", probes: []probe{{events: turnEnded, capture: "IDLE\n❯ half a draft", want: atEnd(IdleProbe{Reason: `the input box holds a draft: "half a draft"`, Draft: true}), wantReason: "draft"}}},
 		{name: "a placeholder in the box is idle for a styled box read", styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: idleAtEnd}}},
 		{name: "a placeholder in the box is a draft for a plain box read", probes: []probe{{events: turnEnded, capture: suggestionFrame, want: atEnd(IdleProbe{Reason: `the input box holds a draft: "~Try something~"`, Draft: true}), wantReason: "draft"}}},
-		{name: "an unknown reading over a placeholder falls back to an idle pane for a styled box read", unproven: true, styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
-		{name: "an unknown reading falls back to a busy pane holding a draft", unproven: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
-		{name: "a guarded pane holding a draft with no running turn reads no turn while not idle", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
-		{name: "a guarded pane showing a running turn reads a turn", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "RUNNING\n❯ half a draft", want: IdleProbe{Draft: true}}}},
-		{name: "a guarded pane too short reads a turn as possible", unproven: true, guarded: true, tooShort: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ ", want: IdleProbe{TooShort: true}}}},
-		{name: "a guarded pane showing no input box reads a turn as possible", unproven: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY no box here", want: IdleProbe{NoInputBox: true}}}},
+		{name: "an unknown reading over a placeholder falls back to an idle pane for a styled box read", unreadable: true, styled: true, probes: []probe{{events: turnEnded, capture: suggestionFrame, want: IdleProbe{Idle: true, NoTurn: true}}}},
+		{name: "an unknown reading falls back to a busy pane holding a draft", unreadable: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
+		{name: "a guarded pane holding a draft with no running turn reads no turn while not idle", unreadable: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ half a draft", want: IdleProbe{Draft: true, NoTurn: true}}}},
+		{name: "a guarded pane showing a running turn reads a turn", unreadable: true, guarded: true, probes: []probe{{events: turnEnded, capture: "RUNNING\n❯ half a draft", want: IdleProbe{Draft: true}}}},
+		{name: "a guarded pane too short reads a turn as possible", unreadable: true, guarded: true, tooShort: true, probes: []probe{{events: turnEnded, capture: "BUSY\n❯ ", want: IdleProbe{TooShort: true}}}},
+		{name: "a guarded pane showing no input box reads a turn as possible", unreadable: true, guarded: true, probes: []probe{{events: turnEnded, capture: "BUSY no box here", want: IdleProbe{NoInputBox: true}}}},
 		{name: "a pane too short is held and reported too short", tooShort: true, probes: []probe{{events: turnEnded, capture: "IDLE", want: atEnd(IdleProbe{TooShort: true, Reason: readinessReasonPaneTooShort}), wantReason: "too short"}}},
 		{
 			name:    "a hook turn end beside a pane needle reads idle and logs the disagreement",
@@ -349,9 +351,6 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			if tt.dead {
 				engine.liveness = LivenessDead
 			}
-			if tt.unproven {
-				engine.liveness = LivenessUnproven
-			}
 			engine.interrupted = tt.interrupted
 			engine.markEvents = true
 			engine.progress = tt.progress
@@ -366,6 +365,9 @@ func TestRunner_SessionIdle_ReturnsScriptedClassification(t *testing.T) {
 			fx := newFixture(t, reed, probed, withStrand("strand-1"), withClock(clock))
 			runDir := filepath.Dir(fx.EventsPath)
 			state := RunState{RunID: "run-1", StrandGUID: "strand-1", EventsPath: fx.EventsPath, Interactive: tt.interactive}
+			if tt.unreadable {
+				state.EventsPath = filepath.Join(runDir, "missing-events.jsonl")
+			}
 			if tt.outputsExist {
 				output := filepath.Join(runDir, "report.md")
 				if err := os.WriteFile(output, []byte("done"), 0o644); err != nil {
@@ -563,7 +565,7 @@ func newSlashPasteRunnerAppending(t *testing.T, box string, active, noColor bool
 	cfg := Config{SubmitSettleMS: 100, SubmitConfirmTimeoutS: 30, SendReadyTimeoutS: 60}
 	fx := newFixture(t, appending, engine, withConfig(cfg), withStrand("strand-1"), withClock(clock))
 	appending.eventsPath = fx.EventsPath
-	// A finished turn of a session whose process is alive makes the hook-derived session state known, so the idle wait reads the input box.
+	// A finished turn makes the hook-derived session state known, so the idle wait reads the input box.
 	if err := os.WriteFile(fx.EventsPath, []byte("START\nSTOP:done\n"), 0o644); err != nil {
 		t.Fatalf("write events: %v", err)
 	}

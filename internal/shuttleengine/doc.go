@@ -76,6 +76,7 @@
 // A died or api-error run whose strand is own-window keeps its last pane capture in `died-capture.txt` in the run directory and loses its strand, and an anchored strand stays;
 // a timed-out run keeps its strand, since its agent may still be live.
 // A run's strand lands in a window of its own unless its spec names an anchor.
+// A spec naming the hidden anchor is refused before any strand exists, since reed starts no command for a hidden strand and its provider would never start.
 // A turn end that precedes the start prompt's own turn start is not a task turn end:
 // Wait logs it at Warn as `turn end before the prompt's turn start; not held` and neither holds nor notifies it.
 // The hold guard arms when the events file holds a turn start before `promptOffset`, which proves the provider writes turn starts for typed turns.
@@ -506,7 +507,8 @@
 // A session start of source resume or clear sets idle-fresh with cause session-start, and so does one of source startup unless the derived state is a running turn;
 // a compaction start, one with the empty source and a startup beside a running turn leave the state and the newest signal as they were, so an automatic compaction inside a turn keeps it busy.
 // SessionFold reduces the signals in file order, with facts the caller reads, to one state: busy, idle-done, idle-stalled, idle-fresh, asking, dead or unknown, with a cause, a since time and the history of states passed through.
-// Precedence, first that applies: a process-ending session end; a process proven dead; liveness left unproven; an unreadable events file; no signal at all; otherwise the state the signals give.
+// Precedence, first that applies: a process-ending session end; a process proven dead; an unreadable events file; no signal at all; otherwise the state the signals give.
+// Liveness left unproven settles nothing, so an engine whose prober never proves a process alive still reads the turn state its signals give.
 // A turn end reads busy while it reports background tasks, idle-done when the run's output files exist, asking for an interactive run, and idle-stalled otherwise.
 // The transcript's API-error marker turns the newest turn end into an API-error stall, and the interrupt marker turns a turn that is still open into an interrupt stall.
 // The interrupt marker also releases an ask with cause ask, whichever signal raised it, to the same interrupt stall when the marker's time is not before the ask's, or either time is zero; an awaiting-input ask from a turn end is not released.

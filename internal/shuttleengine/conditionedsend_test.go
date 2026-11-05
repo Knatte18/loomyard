@@ -89,7 +89,7 @@ func TestRunner_SendConditioned(t *testing.T) {
 			reed := &framedReed{tuiReed: tui, frame: tt.frame}
 			var engine Engine = &pickerEngine{readinessEngine: readinessEngine{idleEngine: idleEngine{sessionFakeEngine: sessionFakeEngine{liveness: LivenessAlive}}}}
 			if tt.pasteEngine {
-				engine = &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: true}, alive: true}
+				engine = &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: true}}
 			}
 			fx := newFixture(t, reed, engine, withConfig(cfg), withClock(clock), withStrand("strand-1"))
 			runDir := filepath.Join(fx.RunRoot, "run-1")

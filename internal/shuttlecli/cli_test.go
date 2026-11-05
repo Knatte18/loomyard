@@ -116,9 +116,14 @@ func TestRunCLI_Run_FlagValidation(t *testing.T) {
 			wantErr: "own-window",
 		},
 		{
+			name:    "AnchorHidden",
+			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "hidden"},
+			wantErr: `invalid --anchor "hidden"; want own-window: reed starts no command for a hidden strand, so its provider never starts, and --focus=false keeps the viewer where it is`,
+		},
+		{
 			name:    "AnchorUnknown",
 			args:    []string{"--prompt", "do the thing", "--output-file", "out.md", "--anchor", "sideways"},
-			wantErr: "own-window",
+			wantErr: `invalid --anchor "sideways"; want own-window`,
 		},
 		{
 			name:    "AnchorEmpty",

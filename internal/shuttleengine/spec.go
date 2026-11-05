@@ -168,6 +168,7 @@ type Spec struct {
 // behind an instant OutcomeTimeout); a zero Timeout is replaced with
 // cfg.RunTimeoutMin minutes.
 // An empty Display.Anchor defaults to render.AnchorOwnWindow, so a run's strand opens in a window of its own unless the spec names an anchor.
+// A hidden anchor is refused: reed registers a hidden strand without starting its command or giving it a pane, so its provider would never start.
 func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 	if s.Prompt == "" {
 		return fmt.Errorf("shuttle: spec.Prompt must not be empty")
@@ -215,6 +216,9 @@ func (s *Spec) validate(worktreeRoot string, cfg Config) error {
 
 	if s.Display.Anchor == "" {
 		s.Display.Anchor = render.AnchorOwnWindow
+	}
+	if s.Display.Anchor == render.AnchorHidden {
+		return fmt.Errorf("shuttle: spec.Display.Anchor %q cannot run: reed registers a hidden strand without starting its command or giving it a pane, so the provider never starts; use %q, with KeepViewer set to leave the viewer where it is", render.AnchorHidden, render.AnchorOwnWindow)
 	}
 
 	return nil

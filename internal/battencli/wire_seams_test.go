@@ -19,7 +19,6 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymcwd"
 	"github.com/Knatte18/loomyard/internal/parentlock"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
-	"github.com/Knatte18/loomyard/internal/proc"
 	"github.com/Knatte18/loomyard/internal/shedadapters"
 	"github.com/Knatte18/loomyard/internal/shedengine"
 	"github.com/Knatte18/loomyard/internal/shedrun"
@@ -410,15 +409,7 @@ func TestReadAgentActivity_ReadsLiveRunsAndTheWaitMarker(t *testing.T) {
 	if err := os.MkdirAll(registry, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A registry entry for the live run's session, proven alive by this test process, where the platform reads a process start time.
-	wantState, wantCause := "unknown", "liveness-unproven"
-	if procStart, ok := proc.StartTime(os.Getpid()); ok {
-		entry := fmt.Sprintf(`{"pid":%d,"sessionId":"sess-1","procStart":%q}`, os.Getpid(), procStart)
-		if err := os.WriteFile(filepath.Join(registry, "live.json"), []byte(entry), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		wantState, wantCause = "idle-stalled", "no-output"
-	}
+	wantState, wantCause := "idle-stalled", "no-output"
 
 	taskLocation := &lymcwd.Location{RepoName: "example", HubPath: t.TempDir(), WorktreeName: "task", AnchorRel: "."}
 	runsRoot := filepath.Join(taskLocation.AnchorPath(), ".lym", "shuttle")

@@ -38,7 +38,6 @@ const (
 	SessionCauseContradiction    = "contradiction"
 	SessionCauseAsk              = "ask"
 	SessionCauseProcessGone      = "process-gone"
-	SessionCauseLivenessUnproven = "liveness-unproven"
 	SessionCauseEventsUnreadable = "events-unreadable"
 	SessionCauseNoSignal         = "no-signal"
 	SessionCauseNoState          = "no-state"
@@ -112,7 +111,7 @@ type SessionFold struct {
 	// sessionStartAt is the time of the newest session-start signal; zero when none arrived or it had no time.
 	sessionStartAt time.Time
 
-	// derived is the state the signals alone give, before the facts' liveness and readability take precedence.
+	// derived is the state the signals alone give, before a dead process and an unreadable events file take precedence.
 	derived    SessionState
 	hasDerived bool
 	// derivedFromTurnEnd is true while derived is the judgment of the newest turn end.
@@ -278,7 +277,8 @@ func (f *SessionFold) derivedIsAskReleasedBy(interruptAt time.Time) bool {
 	return interruptAt.IsZero() || f.derived.Since.IsZero() || !interruptAt.Before(f.derived.Since)
 }
 
-// settle sets the current state: the first of a process-ending session end, a dead process, an unproven liveness, an unreadable events file and an empty signal history that applies, else the signal-derived state.
+// settle sets the current state: the first of a process-ending session end, a dead process, an unreadable events file and an empty signal history that applies, else the signal-derived state.
+// An unproven liveness settles nothing, so an engine that cannot prove its process alive still reads the turn state its signals give.
 // A state that keeps the current state's name and cause keeps its Since.
 func (f *SessionFold) settle(facts SessionFacts) {
 	var settled SessionState
@@ -287,8 +287,6 @@ func (f *SessionFold) settle(facts SessionFacts) {
 		settled = f.derived
 	case facts.Liveness == LivenessDead:
 		settled = SessionState{Name: SessionDead, Cause: SessionCauseProcessGone, Since: facts.ReadAt}
-	case facts.Liveness == LivenessUnproven:
-		settled = SessionState{Name: SessionUnknown, Cause: SessionCauseLivenessUnproven, Since: facts.ReadAt}
 	case facts.EventsUnreadable:
 		settled = SessionState{Name: SessionUnknown, Cause: SessionCauseEventsUnreadable, Since: facts.ReadAt}
 	case !f.hasNewest:

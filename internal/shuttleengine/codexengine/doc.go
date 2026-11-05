@@ -18,7 +18,7 @@
 // Hooks given by `-c` append a stamp line and the payload of SessionStart, UserPromptSubmit, Stop and PermissionRequest to the run's events file, and PostToolUse touches the activity stamp.
 // A Stop is the turn end and carries the reply; an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
 // The rollout's newest token_count gives the context size.
-// Codex keeps no session registry, so liveness reads unproven.
+// Codex keeps no session registry, so liveness reads unproven, and the session state follows the hook signals and the interrupt marker alone.
 //
 // The pane readings follow the spike's table: the `›` composer, the `Working (… esc to interrupt)` busy line and the folder-trust prompt, whose accept presses nothing unless the option sits by the caret.
 // A send pastes the text and leaves the Enter to shuttle's guarded send, since Codex drops an Enter typed inside a burst of characters.

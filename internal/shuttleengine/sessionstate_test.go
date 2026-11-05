@@ -82,10 +82,23 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionUnknown, SessionCauseEventsUnreadable, readAt)},
 		},
 		{
-			name:        "an unproven liveness outranks the signals and an unreadable file",
+			name:            "an unproven liveness leaves a running turn busy",
+			steps:           []step{{[]SessionSignal{turnStart(1)}, factsWith(unproven)}},
+			wantState:       state(SessionBusy, SessionCauseTurn, at(1)),
+			wantRunningTurn: true,
+			wantHistory:     []SessionState{state(SessionBusy, SessionCauseTurn, at(1))},
+		},
+		{
+			name:        "an unproven liveness leaves an interrupted turn idle-stalled on the interrupt",
+			steps:       []step{{[]SessionSignal{sessionStart(1, SessionStartStartup), turnStart(2)}, factsWith(unproven, func(f *SessionFacts) { f.Interrupted, f.InterruptAt = true, at(50) })}},
+			wantState:   state(SessionIdleStalled, SessionCauseInterrupt, at(50)),
+			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1)), state(SessionBusy, SessionCauseTurn, at(2)), state(SessionIdleStalled, SessionCauseInterrupt, at(50))},
+		},
+		{
+			name:        "an unreadable events file outranks the signals under an unproven liveness",
 			steps:       []step{{[]SessionSignal{turnStart(1)}, factsWith(unproven, unreadable)}},
-			wantState:   state(SessionUnknown, SessionCauseLivenessUnproven, readAt),
-			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionUnknown, SessionCauseLivenessUnproven, readAt)},
+			wantState:   state(SessionUnknown, SessionCauseEventsUnreadable, readAt),
+			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionUnknown, SessionCauseEventsUnreadable, readAt)},
 		},
 		{
 			name:        "a dead process outranks the signals, stamped with the reading",
@@ -100,7 +113,7 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionDead, SessionCauseProcessGone, readAt)},
 		},
 		{
-			name:        "a process-ending session end outranks even an unproven liveness",
+			name:        "a process-ending session end reads dead under an unproven liveness",
 			steps:       []step{{[]SessionSignal{turnStart(1), sessionEnd(2, "logout", true)}, factsWith(unproven)}},
 			wantState:   state(SessionDead, "logout", at(2)),
 			wantHistory: []SessionState{state(SessionBusy, SessionCauseTurn, at(1)), state(SessionDead, "logout", at(2))},
@@ -158,10 +171,10 @@ func TestSessionFold(t *testing.T) {
 			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1)), state(SessionDead, SessionCauseProcessGone, readAt)},
 		},
 		{
-			name:        "an unproven liveness outranks idle-fresh",
+			name:        "an unproven liveness leaves idle-fresh",
 			steps:       []step{{[]SessionSignal{sessionStart(1, SessionStartStartup)}, factsWith(unproven)}},
-			wantState:   state(SessionUnknown, SessionCauseLivenessUnproven, readAt),
-			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1)), state(SessionUnknown, SessionCauseLivenessUnproven, readAt)},
+			wantState:   state(SessionIdleFresh, SessionCauseSessionStart, at(1)),
+			wantHistory: []SessionState{state(SessionIdleFresh, SessionCauseSessionStart, at(1))},
 		},
 		{
 			name:        "a clear session end is unknown with its reason until the next signal",

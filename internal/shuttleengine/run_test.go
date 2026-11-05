@@ -2447,6 +2447,7 @@ func TestScanPaneForNeedle(t *testing.T) {
 // TestSend_WaitsForIdleSession drives the idle wait of Run.Send, and of Runner.Send in one row, over an engine with the idle reading.
 // The pane turns idle at a fake-clock time, or never; an unmatched turn start in the events file holds a send against an idle pane until the override, an interrupt report or a later turn end releases it.
 // Nothing is typed before the wait ends, and a session that stays busy fails with ErrSessionBusy carrying the pane's last lines.
+// A row with no events reads no signal, so the pane decides; a row with events reads the hook-derived state.
 //
 // It is not parallel: logcapture redirects the process-global logger.
 func TestSend_WaitsForIdleSession(t *testing.T) {
@@ -2463,10 +2464,9 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		interrupted      bool
 		// progress is what the engine reads of any turn start.
 		progress TurnProgress
-		// reading gives the engine a live process, so the hook-derived readiness reading decides instead of the pane;
-		// reader also gives it an input-box reader, for a row that fails before anything is typed.
-		reading, reader bool
-		viaRunner       bool
+		// reader gives the engine an input-box reader, for a row that fails before anything is typed.
+		reader    bool
+		viaRunner bool
 		// recordless, with viaRunner, builds the runner's fixture without a run record naming the strand.
 		recordless bool
 		// activeQueue and activityErr script the fake reed's operator-activity answers.
@@ -2508,14 +2508,14 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		{name: "draft that never clears fails busy", reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the pane is not idle", "a half-typed draft"}, wantDraft: true},
 		{name: "failed final capture is said so", idleAfter: never, busyFrame: "working", failCaptureAfter: 59 * time.Second, wantBusy: []string{"the final pane capture failed"}},
 		{name: "a busy pane under a clock that never advances fails busy at the poll count", idleAfter: never, busyFrame: "working", frozen: true, wantBusy: []string{"the pane is not idle"}},
-		{name: "unmatched turn start is released by the idle override", events: "START\n", reading: true, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
-		{name: "unmatched turn start is released by an interrupt report", events: "START\n", reading: true, interrupted: true},
-		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", reading: true, idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
-		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantReason: "the input box holds a draft", wantDraft: true},
+		{name: "unmatched turn start is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "unmatched turn start is released by an interrupt report", events: "START\n", interrupted: true},
+		{name: "unmatched turn start against a busy pane fails busy with the reading's reason", events: "START\n", idleAfter: never, busyFrame: "working", wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
+		{name: "draft in the box fails busy with the reading's reason", events: "START\nSTOP:done\n", reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantReason: "the input box holds a draft", wantDraft: true},
 		{name: "an active operator holds the write until it goes quiet", activeQueue: []bool{true, true, true, false}, wantTypedMin: time.Second, wantTypedMax: 3 * time.Second},
 		{name: "an operator active through the whole window fails busy naming the activity", activeQueue: []bool{true}, wantBusy: []string{"the operator typed in this pane within the last 5 s"}, wantReason: "the operator typed in this pane"},
-		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantDraft: true},
-		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reading: true, reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ ", wantActivityWarns: 1},
+		{name: "an unreadable activity query still holds on a draft", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reader: true, idleAfter: never, busyFrame: "earlier output\n❯ a half-typed draft", wantBusy: []string{"the input box holds a draft", "a half-typed draft"}, wantDraft: true},
+		{name: "an unreadable activity query holds nothing over an empty box", activityErr: errors.New("list-clients failed"), events: "START\nSTOP:done\n", reader: true, idleAfter: time.Millisecond, busyFrame: "IDLE\n❯ ", wantActivityWarns: 1},
 		{
 			name:             "an activity query that reads again after failing logs its recovery",
 			activityErrQueue: []error{errors.New("list-clients failed"), errors.New("list-clients failed"), nil},
@@ -2523,14 +2523,11 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 		},
 		{name: "turn end after the turn start releases at once", events: "START\nSTOP:done\n"},
 		{name: "api error turn end counts as a turn end", events: "START\nAPIERR\n"},
-		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", reading: true, idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
-		{name: "unmatched turn start under an unknown reading is released by the idle override", events: "START\n", wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
-		{name: "an in-flight turn start holds an idle pane past the override", events: "START\n", reading: true, progress: TurnInFlight, wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
-		{name: "an in-flight turn start under an unknown reading holds past the override", events: "START\n", progress: TurnInFlight, wantBusy: []string{"has no turn end"}},
-		{name: "a reported interrupt releases an in-flight turn start at once", events: "START\n", reading: true, interrupted: true, progress: TurnInFlight},
-		{name: "an over reading still releases by the idle override", events: "START\n", reading: true, progress: TurnOver, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
-		{name: "a session start after an in-flight turn start releases by the idle override", events: "START\nSESSIONSTART:resume\n", reading: true, progress: TurnInFlight, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
-		{name: "a session start after an in-flight turn start under an unknown reading releases by the idle override", events: "START\nSESSIONSTART:resume\n", progress: TurnInFlight, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "a hook turn end beside a pane needle types at once", events: "START\nSTOP:done\n", idleAfter: time.Second, busyFrame: "working (esc to interrupt)\n❯ "},
+		{name: "an in-flight turn start holds an idle pane past the override", events: "START\n", progress: TurnInFlight, wantBusy: []string{"a turn is running"}, wantReason: "a turn is running"},
+		{name: "a reported interrupt releases an in-flight turn start at once", events: "START\n", interrupted: true, progress: TurnInFlight},
+		{name: "an over reading still releases by the idle override", events: "START\n", progress: TurnOver, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
+		{name: "a session start after an in-flight turn start releases by the idle override", events: "START\nSESSIONSTART:resume\n", progress: TurnInFlight, wantTypedMin: turnStartIdleOverride, wantTypedMax: 15 * time.Second, wantWarns: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2559,9 +2556,6 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 			idle.StartupScript = []StartupState{StartupReady}
 			idle.interrupted = tt.interrupted
 			idle.progress = tt.progress
-			if tt.reading {
-				idle.liveness = LivenessAlive
-			}
 			cfg := Config{StartupTimeoutS: 30, RunTimeoutMin: 5, SendReadyTimeoutS: 60}
 
 			var err error
@@ -2639,7 +2633,7 @@ func TestSend_WaitsForIdleSession(t *testing.T) {
 }
 
 // strayRow is one Send into a pane whose input box starts holding box, driven over a strayPasteEngine.
-// hook gives the engine a live process and a finished turn, so the hook-derived reading decides; otherwise the pane does.
+// hook seeds a finished turn in the events file, so the hook-derived reading decides; otherwise the file holds no signal and the pane does.
 // keepOnClear makes the clear leave the box as it is, active scripts the operator-activity answers, and wantClears is how many C-u keys the send plays.
 // A row with wantBusy fails with ErrSessionBusy naming each fragment and pastes nothing; any other row pastes "hello" once.
 type strayRow struct {
@@ -2659,7 +2653,7 @@ func checkStraySend(t *testing.T, row *strayRow) {
 	clock := newFakeClock(time.Date(2026, 10, 8, 8, 0, 0, 0, time.UTC))
 	base := &fakeReed{StatusQueue: liveStrandStatus(true), ActiveQueue: row.active}
 	reed := &tuiReed{fakeReed: base, clock: clock, box: row.box, keepOnClear: row.keepOnClear}
-	engine := &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: true}, alive: row.hook}
+	engine := &strayPasteEngine{pasteEngine: &pasteEngine{tuiEngine: newTUIEngine(), pasteSubmits: true}}
 	events := ""
 	if row.hook {
 		events = "START\nSTOP:done\n"

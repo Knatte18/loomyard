@@ -893,8 +893,8 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 		initialScope string
 		// addAt adds a hub entry once the clock passes it, zero for never; appendAt appends a turn end to the events file; resumeAt resumes the oldest live entry, zero for never.
 		addAt, appendAt, resumeAt time.Duration
-		// busyFor keeps the pane busy that long from the start.
-		busyFor time.Duration
+		// activeFor keeps an operator active in the pane that long from the start.
+		activeFor time.Duration
 		// entry builds the rig's gate entry; evals counts its closure runs, and add adds a hub entry at the rig's clock.
 		entry func(evals *int, add func()) GateEntry
 		// wantEvalsAtResume and wantSendsAtResume are the closure runs and typed texts when the resume happens, -1 for unchecked.
@@ -952,8 +952,8 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 			wantEvalsAtResume: 1, wantSendsAtResume: 1, wantSends: []string{pendingLine, pendingLine}, wantAttempts: -1,
 		},
 		{
-			name: "a re-prompt left unsent by a busy pane is not retried while covered", cfg: Config{SendReadyTimeoutS: 1}, events: "STOP:turn1\n",
-			runnerSlug: "slug", addAt: 2 * time.Second, busyFor: 3 * time.Second, resumeAt: 7 * time.Second,
+			name: "a re-prompt left unsent by an active operator is not retried while covered", cfg: Config{SendReadyTimeoutS: 1}, events: "STOP:turn1\n",
+			runnerSlug: "slug", addAt: 2 * time.Second, activeFor: 3 * time.Second, resumeAt: 7 * time.Second,
 			entry:             func(evals *int, _ func()) GateEntry { return failing(evals) },
 			wantEvalsAtResume: -1, wantSendsAtResume: 0, wantAttempts: 1,
 		},
@@ -994,7 +994,7 @@ func TestGate_HoldsItsBoundaryWhileCovered(t *testing.T) {
 				named.Name = tt.statusName
 				rig.reed.StatusQueue = []reedengine.StatusResult{{Strands: []reedengine.StrandStatus{named}}}
 			}
-			rig.reed.busyUntil = rig.start.Add(tt.busyFor)
+			rig.reed.activeUntil = rig.start.Add(tt.activeFor)
 			rig.run.runner.SetPause(pauserecord.Geometry{RecordPath: path, Slug: tt.runnerSlug})
 			if tt.initialScope != "" {
 				addLiveEntry(t, path, tt.initialScope, rig.start)
@@ -1133,8 +1133,8 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  Config
-		// busyFor and swallowEnterFor keep the pane busy, or swallow its Enters, for that long from the start.
-		busyFor, swallowEnterFor time.Duration
+		// activeFor and swallowEnterFor keep an operator active in the pane, or swallow its Enters, for that long from the start.
+		activeFor, swallowEnterFor time.Duration
 		// startAt, when positive, is when the writer begins a new turn.
 		startAt time.Duration
 		// wantSends is the SendText count: -1 means more than one.
@@ -1153,8 +1153,8 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		wantHeldInfo bool
 	}{
 		{
-			name: "a busy re-prompt is re-sent once the pane idles", cfg: Config{SendReadyTimeoutS: 1},
-			busyFor: 5 * time.Second, wantSends: 1, wantAttempts: 1, wantTypedMin: 5 * time.Second, wantHeldInfo: true,
+			name: "a re-prompt held by an active operator is re-sent once the operator goes quiet", cfg: Config{SendReadyTimeoutS: 1},
+			activeFor: 5 * time.Second, wantSends: 1, wantAttempts: 1, wantTypedMin: 5 * time.Second, wantHeldInfo: true,
 		},
 		{
 			name: "an unlanded re-prompt is re-sent into the box its failed send cleared", cfg: Config{SubmitConfirmTimeoutS: 1},
@@ -1162,16 +1162,16 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 		},
 		{
 			name: "a writer turn starting meanwhile cancels the pending re-send", cfg: Config{SendReadyTimeoutS: 1},
-			busyFor: never, startAt: 4 * time.Second, wantSends: 0, wantAttempts: 0, wantNoEvalAfterStart: true,
+			activeFor: never, startAt: 4 * time.Second, wantSends: 0, wantAttempts: 0, wantNoEvalAfterStart: true,
 		},
 		{
 			// Each busy send waits out its 1 s idle window and a 1 s tick follows, so the retries run until the 30 s deadline ends the loop.
 			name: "a re-prompt that stays undelivered is retried until the run deadline", cfg: Config{SendReadyTimeoutS: 1},
-			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndAtLeast: 30 * time.Second, wantHeldInfo: true,
+			activeFor: never, wantSends: 0, wantAttempts: 0, wantEndAtLeast: 30 * time.Second, wantHeldInfo: true,
 		},
 		{
 			name: "a re-prompt with little time left ends its idle wait by the run deadline", cfg: Config{SendReadyTimeoutS: 60},
-			busyFor: never, wantSends: 0, wantAttempts: 0, wantEndBy: 10 * time.Second,
+			activeFor: never, wantSends: 0, wantAttempts: 0, wantEndBy: 10 * time.Second,
 		},
 		{
 			name: "a re-prompt with little time left ends its submit window by the run deadline", cfg: Config{SubmitConfirmTimeoutS: 60},
@@ -1183,7 +1183,7 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 			buf := logcapture.CaptureVerbose(t)
 
 			rig := newGateRig(t, tt.cfg, "STOP:turn1\n")
-			rig.reed.busyUntil = rig.start.Add(tt.busyFor)
+			rig.reed.activeUntil = rig.start.Add(tt.activeFor)
 			rig.reed.swallowEnterUntil = rig.start.Add(tt.swallowEnterFor)
 			if tt.wantEndBy > 0 {
 				rig.run.deadline = rig.start.Add(3 * time.Second)
@@ -1193,6 +1193,7 @@ func TestGate_UnsentRepromptRetries(t *testing.T) {
 				rig.clock.onSleep = func(now time.Time) {
 					if callsAtStart < 0 && now.Sub(rig.start) >= tt.startAt {
 						callsAtStart = rig.gateCalls
+						rig.reed.working = true
 						appendEventsLine(t, rig.eventsPath, "START")
 					}
 				}

@@ -111,13 +111,20 @@ func TestSpec_Validate(t *testing.T) {
 			},
 		},
 		{
-			name: "anchor passes through when set",
-			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorHidden}},
+			name: "own-window anchor passes through when set",
+			spec: Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}},
 			check: func(t *testing.T, s *Spec) {
-				if s.Display.Anchor != render.AnchorHidden {
-					t.Errorf("Display.Anchor = %q, want unchanged %q", s.Display.Anchor, render.AnchorHidden)
+				if want := (render.Display{Anchor: render.AnchorOwnWindow, KeepViewer: true}); s.Display != want {
+					t.Errorf("Display = %+v, want unchanged %+v", s.Display, want)
 				}
 			},
+		},
+		{
+			// Reed starts no command for a hidden strand, so the run could only die at startup.
+			name:      "hidden anchor rejected, naming why and the own-window way forward",
+			spec:      Spec{Prompt: "do the thing", OutputFiles: []string{"out.md"}, Display: render.Display{Anchor: render.AnchorHidden}},
+			wantErr:   true,
+			wantErrIn: `without starting its command or giving it a pane, so the provider never starts; use "own-window"`,
 		},
 		{
 			name: "empty effort stays empty",
