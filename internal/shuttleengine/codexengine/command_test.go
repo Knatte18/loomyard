@@ -50,31 +50,41 @@ func TestBuildLaunchCmd(t *testing.T) {
 }
 
 // TestHookSettings pins one setting per recorded hook in order, then one PreToolUse setting holding every guard entry when guards are given, then the activity hook on every tool, each running the command for the run's events file.
+// A creel delivery swaps the Stop setting for the merged creel Stop command and the async idle waiter, and adds the creel mail hook after the activity hook.
 func TestHookSettings(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 
 	events := "/run/events.jsonl"
-	recorded := []string{
-		hookSetting(hookEventSessionStart, hookEntry("", recordingCommand(hookEventSessionStart, events))),
-		hookSetting(hookEventUserPromptSubmit, hookEntry("", recordingCommand(hookEventUserPromptSubmit, events))),
-		hookSetting(hookEventStop, hookEntry("", recordingCommand(hookEventStop, events))),
-		hookSetting(hookEventPermissionRequest, hookEntry("", recordingCommand(hookEventPermissionRequest, events))),
-	}
-	activity := hookSetting(hookEventPostToolUse, hookEntry("*", activityCommand(events)))
+	sessionStart := hookSetting(hookEventSessionStart, hookEntry("", recordingCommand(hookEventSessionStart, events)))
+	promptSubmit := hookSetting(hookEventUserPromptSubmit, hookEntry("", recordingCommand(hookEventUserPromptSubmit, events)))
+	permission := hookSetting(hookEventPermissionRequest, hookEntry("", recordingCommand(hookEventPermissionRequest, events)))
+	recorded := []string{sessionStart, promptSubmit, hookSetting(hookEventStop, hookEntry("", recordingCommand(hookEventStop, events))), permission}
+	activityEntry := hookEntry("*", activityCommand(events))
+	activity := hookSetting(hookEventPostToolUse, activityEntry)
 	guards := installedGuards(nil, guardInputs{})
+	creel := creelDelivery{flagDir: "/hub/flags", home: "/h", bin: "codex"}
+	waiter := asyncHookEntry(creelWaitHookCommand(creel), creelWaitTimeoutSeconds)
 	tests := []struct {
 		name   string
 		guards []shellguard.Row
+		creel  creelDelivery
 		want   []string
 	}{
-		{"NoGuards", nil, append(append([]string{}, recorded...), activity)},
-		{"Guards", guards, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
+		{"NoGuards", nil, creelDelivery{}, append(append([]string{}, recorded...), activity)},
+		{"Guards", guards, creelDelivery{}, append(append([]string{}, recorded...), hookSetting(hookEventPreToolUse, guardEntries(guards)...), activity)},
+		{"Creel", nil, creel, []string{
+			sessionStart,
+			promptSubmit,
+			hookSetting(hookEventStop, hookEntry("", creelStopHookCommand(creel.flagDir, events)), waiter),
+			permission,
+			hookSetting(hookEventPostToolUse, activityEntry, hookEntry("*", creelMailHookCommand(creel.flagDir))),
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := hookSettings(events, tt.guards)
+			got := hookSettings(events, tt.guards, tt.creel)
 			if len(got) != len(tt.want) {
 				t.Fatalf("hookSettings() = %d settings; want %d", len(got), len(tt.want))
 			}
@@ -93,6 +103,9 @@ func TestHookSettings(t *testing.T) {
 	}
 	if got, want := activityCommand(events), `touch '/run/activity-stamp'; printf '{}\n'`; got != want {
 		t.Errorf("activityCommand() = %s; want %s", got, want)
+	}
+	if want := `{hooks=[{type="command",command="CODEX_HOME='/h' LYM_CODEX_BINARY='codex' lym creel hook-wait codex",async=true,timeout=86400}]}`; waiter != want {
+		t.Errorf("idle waiter entry = %s; want %s", waiter, want)
 	}
 }
 

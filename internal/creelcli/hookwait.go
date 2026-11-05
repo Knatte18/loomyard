@@ -11,14 +11,15 @@ import (
 
 	"github.com/Knatte18/loomyard/internal/clihelp"
 	"github.com/Knatte18/loomyard/internal/creelengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// hookWaitVerb is the hidden verb's name, which the Claude engine's waiter hook spells.
+// hookWaitVerb is the hidden verb's name, which the waiter hook of a strand's engine spells.
 const hookWaitVerb = "hook-wait"
 
 // hookWaitCmd builds the `hook-wait` subcommand, hidden because only a strand's idle waiter hook runs it.
-// It prints nothing to standard output; on a ring it writes the claimed mail to standard error as the engine's wake text, acknowledges it and exits with the engine's wake code, and every other end exits 0 printing nothing.
+// It prints nothing to standard output; on a ring it wakes the session with the claimed mail, acknowledges it and exits with the engine's wake code, and every other end exits 0 printing nothing.
 func hookWaitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:         hookWaitVerb + " <engine>",
@@ -30,7 +31,9 @@ caller strand's idle waiter open on the daemon, with no timeout of its own: the
 hook entry's timeout bounds it. When the daemon wakes the idle strand with its
 mail, hook-wait writes the claimed [creel] lines to standard error as the
 engine's wake text, acknowledges them and exits with the engine's wake code, 2
-for Claude, which wakes the session with the mail. The wait is never resumed
+for Claude, which wakes the session with the mail. An engine no hook exit wakes,
+Codex, starts the woken turn with the lines itself before they are
+acknowledged, and hook-wait then exits 0. The wait is never resumed
 once a ring reached it. A call from a subagent or fork, a waiter a newer one
 superseded, an unreachable daemon, any refusal, a ring whose lines could not be
 written and a ring whose acknowledgement could not be sent exit 0 and print
@@ -57,8 +60,22 @@ func hookWaitExit(wakeCode int, wroteLines bool, err error) int {
 	return wakeCode
 }
 
+// wakeSession wakes the idle session whose waiter hook input is payload with text, the claimed mail lines, and returns the exit code hook-wait ends with.
+// An engine that starts the woken turn itself is asked to, and ends the hook with 0; any other has its wake text written to stderr and ends it with its wake code.
+// An error means the session was not woken, so the caller leaves the mail unread.
+func wakeSession(renderer shuttleengine.ToolBoundaryContextRenderer, payload []byte, text string, stderr io.Writer) (int, error) {
+	if waker, ok := renderer.(shuttleengine.IdleWaker); ok {
+		return 0, waker.WakeIdle(payload, text)
+	}
+	out, code := renderer.RewakeOutput(text)
+	if _, err := stderr.Write(out); err != nil {
+		return 0, err
+	}
+	return code, nil
+}
+
 // hookWait holds the caller strand's idle waiter and returns the exit code the command sets.
-// On a ring it writes the claimed mail to standard error as the engine's wake text before the client acknowledges it, so a write that fails leaves the mail unread.
+// On a ring it wakes the session with the claimed mail before the client acknowledges it, so a wake that fails leaves the mail unread.
 func hookWait(cmd *cobra.Command, engine string) int {
 	renderer, ok := shuttleengines.ToolBoundaryRenderer(engine)
 	if !ok {
@@ -83,8 +100,8 @@ func hookWait(cmd *cobra.Command, engine string) int {
 		for i, msg := range resp.Messages {
 			lines[i] = creelengine.MessageLine(msg)
 		}
-		stderr, code := renderer.RewakeOutput(strings.Join(lines, "\n"))
-		if _, err := cmd.ErrOrStderr().Write(stderr); err != nil {
+		code, err := wakeSession(renderer, payload, strings.Join(lines, "\n"), cmd.ErrOrStderr())
+		if err != nil {
 			return err
 		}
 		wakeCode, wroteLines = code, true

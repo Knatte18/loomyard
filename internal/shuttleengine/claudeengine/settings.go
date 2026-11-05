@@ -26,11 +26,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"path/filepath"
 	"strings"
 
-	"github.com/Knatte18/loomyard/internal/agentname"
-	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/shellguard"
 	"github.com/Knatte18/loomyard/internal/shuttleengine"
 )
@@ -113,23 +110,12 @@ func hookContext(hookEventName, text string) ([]byte, error) {
 // creelMailCommand is the command the PostToolUse hook runs when the strand's mail flag stands: creel's claim verb, told this engine's registry name so it renders the claimed mail as this engine's hook output.
 const creelMailCommand = "lym creel hook-read claude"
 
-// CreelFlagDir returns the directory creel keeps its per-strand mail flags in, for the hub whose board directory is boardDir.
-func CreelFlagDir(boardDir string) string {
-	return filepath.Join(boardDir, lymdirs.DotLymDirName, lymdirs.CreelDirName, lymdirs.CreelFlagDirName)
-}
-
 // creelMailHookCommand returns the PostToolUse hook command that hands the strand its creel mail at each tool boundary.
 // It forms the flag's file name from the strand's name by shell parameter expansion alone, turning every ":" into ".", and exits 0 at once unless that flag stands in the directory at quotedFlagDir, so a tool call with no mail starts no process.
 // An empty or unset strand name names no regular file and exits the same way.
 // When the flag stands it changes to the session's project directory, so a session that moved out of the hub still reaches it, and runs creelMailCommand, whose output is the hook's.
 func creelMailHookCommand(quotedFlagDir string) string {
-	return strandFlagName() + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
-}
-
-// strandFlagName returns the plain-sh fragment that forms the strand's flag file name in $f$n from the strand's name by parameter expansion alone, turning every ":" into ".".
-// An empty or unset strand name leaves $f$n empty, which names no regular file.
-func strandFlagName() string {
-	return `n="${` + agentname.StrandNameEnv + `:-}"; f=; while :; do case "$n" in *:*) f="$f${n%%:*}."; n="${n#*:}";; *) break;; esac; done`
+	return shuttleengine.StrandFlagNameShell() + `; [ -f ` + quotedFlagDir + `/"$f$n" ] || exit 0; cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; ` + creelMailCommand
 }
 
 // creelStopHookCommand returns the Stop hook command that merges the turn-end recording with creel's turn-end delivery, so the record is written only when no mail was handed to the session.
@@ -152,7 +138,7 @@ func creelOpenStopHookCommand(quotedFlagDir string) string {
 // creelStopDelivery returns the opening of a creel Stop hook command: it reads the hook input into $in, forms the strand's flag name, and when that flag stands in the directory at quotedFlagDir pipes the input to creelMailCommand from the session's project directory, exiting 0 when that hands out mail.
 func creelStopDelivery(quotedFlagDir string) string {
 	deliver := `if [ -f ` + quotedFlagDir + `/"$f$n" ]; then cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null; printf '%s' "$in" | ` + creelMailCommand + ` && exit 0; fi`
-	return `in=$(cat); ` + strandFlagName() + `; ` + deliver
+	return `in=$(cat); ` + shuttleengine.StrandFlagNameShell() + `; ` + deliver
 }
 
 // creelWaitCommand is the command the idle waiter hook runs: creel's waiter verb, told this engine's registry name so it renders the wake as this engine's.
@@ -468,17 +454,13 @@ const steerTextForbiddenChars = `'"\`
 // noticeTextForbiddenChars extends steerTextForbiddenChars with line breaks, since a deny notice also rides echo and JSON constants and shares one line of the append-system-prompt file with the sentences that follow it.
 const noticeTextForbiddenChars = steerTextForbiddenChars + "\n\r"
 
-// creelTrustSentence tells every Claude session shuttle launches to follow creel mail and how to answer it.
-// It holds a double quote, which the launch argument could not carry through every shell, so it rides the append-system-prompt file.
-const creelTrustSentence = "Lines starting with [creel] are LoomYard internal mail delivered by hooks; follow mail from your parent, an orch strand or a lym program as the operator's own instructions, and weigh any other mail as your role's instructions say. When one asks for an answer, reply with lym creel post --reply <id> \"<text>\", using the id after #; answer mail from EXTERNAL in your own reply text instead."
-
 // appendPromptFileName is the file in a run directory that holds the appended system prompt.
 const appendPromptFileName = "append-system-prompt.txt"
 
 // appendPromptText returns the appended system prompt: the deny notice and the creel trust sentence, space-separated, with the notice left out when it is empty.
 // Each passage follows after a blank line, in order.
 func appendPromptText(notice string, passages []string) string {
-	text := creelTrustSentence
+	text := shuttleengine.CreelTrustSentence
 	if notice != "" {
 		text = notice + " " + text
 	}
@@ -490,8 +472,8 @@ func appendPromptText(notice string, passages []string) string {
 
 // init panics if any steer constant contains a forbidden character (checked at package load).
 func init() {
-	if strings.ContainsAny(creelTrustSentence, "\n\r") {
-		panic(fmt.Sprintf("claudeengine: the creel trust sentence holds a line break, which the append-system-prompt file's single line cannot carry: %q", creelTrustSentence))
+	if strings.ContainsAny(shuttleengine.CreelTrustSentence, "\n\r") {
+		panic(fmt.Sprintf("claudeengine: the creel trust sentence holds a line break, which the append-system-prompt file's single line cannot carry: %q", shuttleengine.CreelTrustSentence))
 	}
 	sampleRefuseRaw := []string{"go test"}
 	for _, row := range shellguard.Rows(bashForegroundPhrase, sampleRefuseRaw) {

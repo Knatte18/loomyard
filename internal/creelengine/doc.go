@@ -81,7 +81,7 @@
 // A reply to an EXTERNAL sender, which only a waiting `post --wait-reply` receives and no claim hands out, keeps a 64 KiB cap on its body.
 // A claim never hands out a message an older binary stored whose line is past 10,000 UTF-16 units, the cap Claude Code keeps of one hook field; it stays for `lym creel read` and raises no mail flag.
 //
-// The pane path types notices and reminders only into a pane-mail strand, one whose session runs without creel's hook delivery, as a Claude session launched before that delivery, a Codex session or a hand-added strand does;
+// The pane path types notices and reminders only into a pane-mail strand, one whose session runs without creel's hook delivery, as a Claude session launched before that delivery, a Codex session opened with `lym shuttle open` or a hand-added strand does;
 // a strand marked `CreelHooks` gets its mail through its hooks, and only queued injects are typed into its pane.
 // A notice is a message from any sender but an agent strand, a program or EXTERNAL, whose body is at most 4 KiB.
 // It is carried in full in its own line, typed when the receiver is idle, `[creel] #<id> from "<sender>": <body>`, with every run of line breaks and other control characters turned into one space.

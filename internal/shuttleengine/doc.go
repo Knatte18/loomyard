@@ -27,7 +27,7 @@
 // StandingPassages returns the instruction passages heddle's layers hold for a session of an engine and a strand role, read through the reader InstallPassageReader installs for the process;
 // it returns none outside a hub, with no reader installed or when the reader fails, which is logged at Warn, so a launch never waits on the store.
 // An engine appends them to the system prompt it launches with, and shuttle itself parses no store.
-// Requirement support, fork audit, the outstanding-fork reading, resume-context rendering, creel hook delivery (the hook-input parse, the hook output and the wake output), instruction files and the check after startup are optional capabilities beside Engine, which an engine without them lacks.
+// Requirement support, fork audit, the outstanding-fork reading, resume-context rendering, creel hook delivery (the hook-input parse, the hook output and the wake output), the idle wake of a provider no hook exit wakes, instruction files and the check after startup are optional capabilities beside Engine, which an engine without them lacks.
 // A ForkSubagents run whose engine cannot audit forks finishes with its classified result, a nil ForkAudit and an error, and keeps its run directory.
 // Spec.Requires lists what a run requires of its engine, and a ForkSubagents spec requires fork support without listing it.
 // Start checks it right after resolving the spec's engine, and attach checks it against the engine the run's record names unless every output file is already on disk.

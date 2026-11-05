@@ -23,6 +23,7 @@
 // the resume line starts no Codex, since Codex mints its session id at the first turn.
 //
 // Hooks given by `-c` append a stamp line and the payload of SessionStart, UserPromptSubmit, Stop and PermissionRequest to the run's events file, and PostToolUse touches the activity stamp.
+// The prompt file opens with the creel trust sentence, after the deny notice, since Codex reads a hook's block reason as a failed tool call unless its instructions say `[creel]` lines are mail.
 // A Stop is the turn end and carries the reply; an interrupt fires no Stop, so a newest turn_aborted in the rollout the payloads name marks the turn interrupted.
 // The rollout's token_count events give the context size, from the newest event's latest call, and the session usage (UsageReader), from the newest event's running total.
 // The session usage splits input net of its cached part, cache-read, cache-write and output, with a total that names no cache-write reading it as zero; the reasoning tokens are already in the output.
@@ -39,10 +40,25 @@
 // A skill `<plugin>:<name>` is a file the model reads: the load line names the newest version's skills/<name>/SKILL.md under codex.yaml's skill_roots by absolute path,
 // and a tool call of the load turn naming that tail in the rollout reads the skill loaded; a skill under no root is reported unknown.
 //
+// A run whose engine is told a hub board directory carries creel's hook delivery and is marked CreelHooks, so creel hands its mail over at the session's boundaries and wakes it when idle.
+// A second PostToolUse entry, after the activity hook, forms the strand's flag name from `$LYM_STRAND_NAME` and, only when that flag stands in the hub's creel flag directory, runs `lym creel hook-read codex`;
+// with no flag it prints the empty hook output and starts no process.
+// The Stop recording becomes one merged command: when the flag stands it pipes the payload to `lym creel hook-read codex` and exits 0 when that handed out mail, recording no turn end, since the block continues the turn;
+// otherwise it appends the Stop record as before.
+// HookOutput hands mail over as `{"decision":"block","reason":<mail>}`, which Codex takes at the next step after a tool call and at once after a turn end, and shows the operator as `Blocked by hook`.
+// It drops the echo of mail an idle wake handed over, since the operator already saw that wake as a user line and Codex would show the echo beside the reason.
+// A block after a tool call makes Codex read that call as failed, so the session may run it once more.
+// The Stop setting also carries the idle waiter as a second, async entry with a timeout of 86400 seconds: `lym creel hook-wait codex`, with CODEX_HOME and LYM_CODEX_BINARY set on its command.
+// No exit of a Codex hook wakes an idle session, so when creel rings the waiter it calls WakeIdle, which runs `codex queue --thread <session_id> --message <mail>` with the session id of the Stop payload, before creel marks the mail read;
+// the queued line starts a turn the operator sees as a user message.
+// A failed queue leaves the mail unread, and creel's bell, typed into the pane, wakes the session instead.
+// An engine told no board directory, a standalone run, keeps the plain Stop recording and adds no creel hook.
+//
 // OpenLaunch opens a named interactive session with no prompt, for `lym shuttle open`: it validates the model choice and readies the lym home as Prepare does,
 // and its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer.
 // The line keeps the network access, so an opened session reaches creel too, and appends no exit record, since an opened session has no events file.
+// An opened session carries no creel hooks either, since it has no prompt file to hold the creel trust sentence, so it is a pane-mail strand.
 // Its resume line is empty, so a revive starts no Codex and Runner.Open's chain ends the strand.
 //
-// The engine has no fork audit, no transcript reading and no creel hooks.
+// The engine has no fork audit and no transcript reading.
 package codexengine

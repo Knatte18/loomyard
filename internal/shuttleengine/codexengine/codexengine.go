@@ -81,14 +81,15 @@ func validateChoice(choice shuttleengine.ModelChoice, permissionMode string, cod
 // A gate config that fails to load refuses the launch.
 // It reads the checkout the anchor sits in and refuses under Codex rules there, all before anything is written.
 // It then readies the lym home, trusting the worktree root and a linked worktree's main checkout root, and writes prompt.md into runDir.
-// The prompt file opens with the deny notice announcing each installed shell guard row and the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
+// The prompt file opens with the deny notice announcing each installed shell guard row and the creel trust sentence, then the standing passages heddle holds for engine codex and the spec's role, then the spec's prompt.
 // The launch line carries a PreToolUse hook per installed row, and the writable roots readyHome returns.
+// An engine told a board directory adds creel's hook delivery over that hub's flag directory and marks the launch CreelHooks; an engine told none, a standalone run, adds none.
 // One root is the records checkout, so the session writes its report through the anchor's `.lym` and `_lym` links.
 // Another is the checkout's git dirs, so the session can commit.
 // The rest are codex.yaml's writable_roots that exist, such as a build cache the session's tools fill.
 // A spec that names skills launches with the skill-load line as its first turn and returns the prompt pointer as Launch.PromptLine, for shuttle to send after the skills load.
 // The launch line turns on the sandbox's network access, so the session reaches the creel daemon's socket, and appends the exit record to the run's events file once Codex exits.
-// The launch records session starts, carries no creel hooks and names no session id, since Codex mints its own at the first turn.
+// The launch records session starts and names no session id, since Codex mints its own at the first turn.
 func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengine.Config) (shuttleengine.Launch, error) {
 	codex, err := loadConfigOrRefuse(c.dirs)
 	if err != nil {
@@ -126,6 +127,10 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 
 	sh := shell.ForGOOS()
 	eventsPath := filepath.Join(absRunDir, "events.jsonl")
+	var creel creelDelivery
+	if c.dirs.Board != "" {
+		creel = creelDelivery{flagDir: shuttleengine.CreelFlagDir(c.dirs.Board), home: home, bin: codexBinary(codex)}
+	}
 	return shuttleengine.Launch{
 		Cmd: buildLaunchCmd(sh, launchLine{
 			bin:           codexBinary(codex),
@@ -133,13 +138,14 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 			writableRoots: writableRoots,
 			model:         spec.Model,
 			effort:        spec.Effort,
-			hooks:         hookSettings(eventsPath, guards),
+			hooks:         hookSettings(eventsPath, guards, creel),
 			firstTurn:     firstTurn,
 			eventsPath:    eventsPath,
 		}),
 		ResumeCmd:            buildResumeCmd(sh),
 		PromptLine:           promptLine,
 		RecordsSessionStarts: true,
+		CreelHooks:           creel.flagDir != "",
 	}, nil
 }
 
@@ -147,7 +153,8 @@ func (c *Codex) Prepare(runDir string, spec shuttleengine.Spec, cfg shuttleengin
 // It validates the model choice and the permission mode and readies the lym home as Prepare does, refusing under Codex rules before anything is written.
 // Its line runs Codex with no hooks and no first turn, so the session carries no shell guard and waits at its composer, and the pane's shell goes on to Runner.Open's chain when Codex exits.
 // The line turns on the sandbox's network access as a run's does, so an opened session reaches the creel daemon's socket too.
-// It writes nothing into dir, carries no creel hooks and names no session id.
+// It writes nothing into dir and names no session id.
+// It carries no creel hooks, since the session has no prompt file to hold the creel trust sentence and Codex reads a hook's block as a failed tool call without it, so the strand gets its mail by the pane path.
 // Its resume line is empty: Codex mints the session id at the first turn, so a revive starts no Codex and the chain after it ends the strand.
 func (c *Codex) OpenLaunch(_ string, spec shuttleengine.OpenSpec, _ shuttleengine.Config) (shuttleengine.Launch, error) {
 	codex, err := loadConfigOrRefuse(c.dirs)
@@ -214,13 +221,13 @@ func (c *Codex) readyHome(codex Config) (home string, writableRoots []string, er
 	return homes.lym, append(writableRoots, configured...), nil
 }
 
-// promptText returns the prompt file's text: the deny notice, each passage, then prompt, separated by blank lines, with an empty notice left out.
+// promptText returns the prompt file's text: the deny notice and the creel trust sentence space-separated, each passage, then prompt, separated by blank lines, with an empty notice left out.
 func promptText(notice string, passages []string, prompt string) string {
-	var parts []string
+	head := shuttleengine.CreelTrustSentence
 	if notice != "" {
-		parts = append(parts, notice)
+		head = notice + " " + head
 	}
-	return strings.Join(append(append(parts, passages...), prompt), "\n\n")
+	return strings.Join(append(append([]string{head}, passages...), prompt), "\n\n")
 }
 
 // PromptCacheLifetime returns zero: Codex states no warm lifetime for its prompt cache, so a caller keeps nothing warm.

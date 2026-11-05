@@ -21,7 +21,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/lymdirs"
 	"github.com/Knatte18/loomyard/internal/pauserecord"
 	"github.com/Knatte18/loomyard/internal/reedengine"
-	"github.com/Knatte18/loomyard/internal/shuttleengine/claudeengine"
+	"github.com/Knatte18/loomyard/internal/shuttleengine"
 	"github.com/Knatte18/loomyard/internal/testkit/logcapture"
 	"github.com/Knatte18/loomyard/internal/testkit/tiergate"
 )
@@ -441,7 +441,7 @@ func TestCreelGeometry(t *testing.T) {
 		t.Errorf("CreelGeometry(%q) = %+v; want %+v", hub, got, want)
 	}
 	// A Claude strand's mail hook tests flags in the directory its engine derives from the board directory alone.
-	if hookDir := claudeengine.CreelFlagDir(fabricengine.BoardDir(hub)); got.FlagDir != hookDir {
+	if hookDir := shuttleengine.CreelFlagDir(fabricengine.BoardDir(hub)); got.FlagDir != hookDir {
 		t.Errorf("CreelGeometry(%q).FlagDir = %q; want the Claude hook's %q", hub, got.FlagDir, hookDir)
 	}
 

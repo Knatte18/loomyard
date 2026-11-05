@@ -390,7 +390,7 @@ func TestPrepare_AppendSystemPromptMatchesDenyNotice(t *testing.T) {
 							t.Errorf("ask=%v python=%v interactive=%v fork=%v: %s = %q; want no --append-system-prompt argument", denyAsk, denyPython, interactive, fork, name, cmd)
 						}
 					}
-					want := creelTrustSentence
+					want := shuttleengine.CreelTrustSentence
 					if notice != "" {
 						want = notice + " " + want
 					}
@@ -515,7 +515,7 @@ func TestPrepare_LogsResolvedPromptCacheTTL(t *testing.T) {
 // It installs the process-wide passage reader and captures the logger, so it does not run in parallel.
 func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	tiergate.Require(t, 0)
-	sentences := creelTrustSentence
+	sentences := shuttleengine.CreelTrustSentence
 	tests := []struct {
 		name string
 		// board is the told Bolt checkout; empty means a session outside a hub.

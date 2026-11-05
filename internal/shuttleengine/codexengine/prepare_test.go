@@ -39,8 +39,8 @@ func readRecord(t *testing.T, home string) trustRecord {
 // The line is built from the lym home, the model and effort, and the writable roots:
 // the told records checkout (none when the engine is told none), the git dirs of a linked worktree or a plain clone, then the configured roots that exist.
 // It carries the run's hooks with a guard per row the python switch and the publish guard install, and the prompt pointer.
-// It also pins the resume line that exits, recorded session starts, no creel hooks and no session id.
-// The prompt file holds the deny notice and the spec's prompt.
+// It also pins the resume line that exits, recorded session starts, no creel hooks for an engine told no board, and no session id.
+// The prompt file holds the deny notice, the creel trust sentence and the spec's prompt.
 func TestPrepare_Launch(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -115,7 +115,7 @@ func TestPrepare_Launch(t *testing.T) {
 					writableRoots: wantRoots,
 					model:         "gpt-6-astra",
 					effort:        "medium",
-					hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
+					hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
 					firstTurn:     launchPointer(promptPath),
 					eventsPath:    filepath.Join(runDir, "events.jsonl"),
 				}),
@@ -125,8 +125,8 @@ func TestPrepare_Launch(t *testing.T) {
 			if !reflect.DeepEqual(launch, want) {
 				t.Errorf("Prepare() launch = %+v; want %+v", launch, want)
 			}
-			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+"\n\nreview the plan" {
-				t.Errorf("prompt.md = %q, %v; want the deny notice and the spec's prompt", got, err)
+			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+" "+shuttleengine.CreelTrustSentence+"\n\nreview the plan" {
+				t.Errorf("prompt.md = %q, %v; want the deny notice, the creel trust sentence and the spec's prompt", got, err)
 			}
 			if warnings.String() != "" {
 				t.Errorf("warnings = %q; want none", warnings)
@@ -161,7 +161,7 @@ func TestPrepare_ExpandsHomeInWritableRoots(t *testing.T) {
 		bin:           "codex",
 		home:          repo.lymHome,
 		writableRoots: append(repo.wantGitDirs(anchor), cache),
-		hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{})),
+		hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creelDelivery{}),
 		firstTurn:     launchPointer(promptPath),
 		eventsPath:    filepath.Join(runDir, "events.jsonl"),
 	})
@@ -224,14 +224,14 @@ func TestPrepare_InstallsGuardsFromItsInputs(t *testing.T) {
 				bin:           "codex",
 				home:          repo.lymHome,
 				writableRoots: repo.wantGitDirs(anchor),
-				hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards),
+				hooks:         hookSettings(filepath.Join(runDir, "events.jsonl"), guards, creelDelivery{}),
 				firstTurn:     launchPointer(promptPath),
 				eventsPath:    filepath.Join(runDir, "events.jsonl"),
 			})
 			if launch.Cmd != wantCmd {
 				t.Errorf("Prepare() launch line = %q; want %q", launch.Cmd, wantCmd)
 			}
-			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+"\n\np" {
+			if got, err := os.ReadFile(promptPath); err != nil || string(got) != denyNotice(guards)+" "+shuttleengine.CreelTrustSentence+"\n\np" {
 				t.Errorf("prompt.md = %q, %v; want the deny notice of the installed rows and the prompt", got, err)
 			}
 		})
@@ -263,7 +263,7 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 		t.Fatalf("Prepare() error: %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(runDir, "prompt.md"))
-	if want := denyNotice(installedGuards(nil, guardInputs{})) + "\n\nfirst passage\n\nsecond passage\n\nthe prompt"; err != nil || string(got) != want {
+	if want := denyNotice(installedGuards(nil, guardInputs{})) + " " + shuttleengine.CreelTrustSentence + "\n\nfirst passage\n\nsecond passage\n\nthe prompt"; err != nil || string(got) != want {
 		t.Errorf("prompt.md = %q, %v; want %q", got, err, want)
 	}
 	if want := []string{"codex", "code-review-assist"}; !reflect.DeepEqual(asked, want) {
@@ -271,6 +271,39 @@ func TestPrepare_AppendsStandingPassages(t *testing.T) {
 	}
 	if got, want := readRecord(t, repo.lymHome).Roots, []string{repo.mainRoot, anchor}; !reflect.DeepEqual(got, want) {
 		t.Errorf("fixture lym home trust roots = %v; want %v", got, want)
+	}
+}
+
+// TestPrepare_CreelHooksInAHub pins that an engine told a board directory marks the launch CreelHooks.
+// The launch carries the creel Stop and PostToolUse settings over that hub's flag directory.
+// The idle waiter is set to queue under the launch's lym home and the Codex executable codex.yaml names.
+func TestPrepare_CreelHooksInAHub(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+
+	repo := newRepoFixture(t)
+	anchor, _ := repo.addWorktree(t, "wt")
+	engine, _ := newEngine(anchor)
+	board := t.TempDir()
+	repo.writeCodexConfig(t, configengine.ConfigFile(board, "codex"), "binary: /opt/codex/bin/codex-custom\n")
+	engine.dirs.Board = board
+	runDir := t.TempDir()
+
+	launch, err := engine.Prepare(runDir, shuttleengine.Spec{Prompt: "p"}, shuttleengine.Config{})
+	if err != nil {
+		t.Fatalf("Prepare() error: %v", err)
+	}
+	if !launch.CreelHooks {
+		t.Error("Prepare() CreelHooks = false; want true for an engine told a board")
+	}
+	creel := creelDelivery{flagDir: shuttleengine.CreelFlagDir(board), home: repo.lymHome, bin: "/opt/codex/bin/codex-custom"}
+	settings := hookSettings(filepath.Join(runDir, "events.jsonl"), installedGuards(nil, guardInputs{}), creel)
+	for _, setting := range settings {
+		if strings.HasPrefix(setting, "hooks."+hookEventStop+"=") || strings.HasPrefix(setting, "hooks."+hookEventPostToolUse+"=") {
+			if quoted := shell.ForGOOS().Quote(setting); !strings.Contains(launch.Cmd, quoted) {
+				t.Errorf("Prepare() launch line = %q; want it to hold the creel setting %s", launch.Cmd, quoted)
+			}
+		}
 	}
 }
 

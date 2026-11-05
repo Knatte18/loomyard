@@ -337,7 +337,7 @@ func TestRecordReaders(t *testing.T) {
 	}
 }
 
-// TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does and that an unknown name renders none.
+// TestToolBoundaryRenderer pins that the claude entry renders the hook output as the engine does, that the codex entry renders one and wakes an idle session itself, and that an unknown name renders none.
 func TestToolBoundaryRenderer(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
@@ -350,6 +350,10 @@ func TestToolBoundaryRenderer(t *testing.T) {
 	want, wantErr := claudeengine.New().HookOutput(shuttleengine.HookEventStop, "mail", "")
 	if err != nil || wantErr != nil || string(got) != string(want) {
 		t.Errorf("HookOutput = %s, %v; want the engine's %s", got, err, want)
+	}
+	codex, ok := ToolBoundaryRenderer("codex")
+	if _, wakes := codex.(shuttleengine.IdleWaker); !ok || !wakes {
+		t.Errorf("ToolBoundaryRenderer(codex) = %T, %v; want a renderer that is an IdleWaker", codex, ok)
 	}
 	if _, ok := ToolBoundaryRenderer("nope"); ok {
 		t.Error("ToolBoundaryRenderer(nope) found one; want none")

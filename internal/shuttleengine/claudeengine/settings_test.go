@@ -681,7 +681,7 @@ func TestPrepare_CreelMailHookFollowsTheBoardDirectory(t *testing.T) {
 	tiergate.Require(t, 0)
 	t.Parallel()
 	boardDir := t.TempDir()
-	flagDir := CreelFlagDir(boardDir)
+	flagDir := shuttleengine.CreelFlagDir(boardDir)
 	if runtime.GOOS == "windows" {
 		posixFlagDir, err := shuttleengine.PosixPath(flagDir)
 		if err != nil {
@@ -783,7 +783,7 @@ func TestPrepare_WritesArtifactsAndReturnsConsistentLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read append-system-prompt.txt: %v", err)
 	}
-	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + creelTrustSentence; string(appendPromptBytes) != want {
+	if want := buildDenyNotice(false, shuttleengine.Config{}, claude, false, false) + " " + shuttleengine.CreelTrustSentence; string(appendPromptBytes) != want {
 		t.Errorf("append-system-prompt.txt = %q; want the deny notice and the trust sentence %q", appendPromptBytes, want)
 	}
 

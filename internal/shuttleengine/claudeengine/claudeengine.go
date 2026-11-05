@@ -269,7 +269,7 @@ func (c *Claude) creelFlagDirForHook() (string, error) {
 	if c.dirs.Board == "" {
 		return "", nil
 	}
-	flagDir := CreelFlagDir(c.dirs.Board)
+	flagDir := shuttleengine.CreelFlagDir(c.dirs.Board)
 	if runtime.GOOS != "windows" {
 		return flagDir, nil
 	}

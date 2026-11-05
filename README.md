@@ -113,12 +113,12 @@ The orch steps in only when a run halts: dobby tells it, and it fixes what it ca
    Every agent runs in an interactive terminal as a [Claude Code](https://claude.ai/code) session, with its skills, hooks and subagents, and you can attach to any of them with `lym reed attach` and watch.
 5. **Messaging through hooks.**
    `creel`, the hub's message service, delivers messages into running agent sessions.
-   It uses Claude Code's hooks, commands Claude Code runs at fixed points such as after each tool call.
+   It uses Claude Code's hooks, commands Claude Code runs at fixed points such as after each tool call, and Codex's hooks in the same way for a Codex run.
    The senders are the orch, other agents and `lym` itself.
 6. **A long-lived orch.**
    A watcher clears or compacts the orch's context before the window fills, so the orch session continues past one context window.
 
-Under development: `creel` messages to Codex sessions, as part of the Codex support.
+Under trial: `creel` messages to Codex sessions through Codex's hooks, as part of the Codex support.
 Planned: a Slack integration for `creel`.
 
 ## Measurements from its own runs

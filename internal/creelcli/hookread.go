@@ -16,7 +16,7 @@ import (
 	"github.com/Knatte18/loomyard/internal/shuttleengines"
 )
 
-// hookReadVerb is the hidden verb's name, which the Claude engine's hooks spell.
+// hookReadVerb is the hidden verb's name, which the hooks of a strand's engine spell.
 const hookReadVerb = "hook-read"
 
 // hookReadTimeout bounds the verb's call to the daemon, since the provider holds the session at the tool boundary until its hook ends.

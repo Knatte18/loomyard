@@ -263,6 +263,14 @@ type ToolBoundaryContextRenderer interface {
 	RewakeOutput(text string) (stderr []byte, exitCode int)
 }
 
+// IdleWaker is an optional capability beside ToolBoundaryContextRenderer, for a provider whose idle session no hook's exit wakes.
+// Its idle waiter hook starts the woken turn itself, in place of writing RewakeOutput's text.
+type IdleWaker interface {
+	// WakeIdle starts a turn carrying text in the idle session the waiter hook's input payload names.
+	// An error means no turn was started.
+	WakeIdle(payload []byte, text string) error
+}
+
 // BatchingHookVerb is the name of the hidden `lym shuttle` verb an engine's after-tool-call hook runs to nudge its session back to batching its calls.
 const BatchingHookVerb = "hook-batching"
 

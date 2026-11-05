@@ -543,7 +543,7 @@ func checkOpenCreelFiles(t *testing.T, launch shuttleengine.Launch, dir, boardDi
 			}
 		}
 	}
-	flagDir := CreelFlagDir(boardDir)
+	flagDir := shuttleengine.CreelFlagDir(boardDir)
 	if runtime.GOOS == "windows" {
 		posixFlagDir, err := shuttleengine.PosixPath(flagDir)
 		if err != nil {

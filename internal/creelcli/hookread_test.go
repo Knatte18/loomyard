@@ -1,8 +1,9 @@
-// hookread_test.go pins the exit decision of the hidden hook-read verb, which only a hook-driven CLI run reaches in pieces.
+// hookread_test.go pins the exit decisions of the hidden hook-read and hook-wait verbs and hook-wait's wake, which only a hook-driven CLI run reaches in pieces.
 
 package creelcli
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 
@@ -36,6 +37,68 @@ func TestHookWaitExit(t *testing.T) {
 			t.Parallel()
 			if got := hookWaitExit(2, tt.wroteLines, tt.err); got != tt.want {
 				t.Errorf("hookWaitExit(2, %v, %v) = %d; want %d", tt.wroteLines, tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+// rewakeRenderer is an engine whose idle waiter wakes the session by writing the text to stderr and exiting 2.
+type rewakeRenderer struct{}
+
+func (rewakeRenderer) HookInput([]byte) (shuttleengine.HookInput, error) {
+	return shuttleengine.HookInput{}, nil
+}
+
+func (rewakeRenderer) HookOutput(shuttleengine.HookEvent, string, string) ([]byte, error) {
+	return nil, nil
+}
+
+func (rewakeRenderer) RewakeOutput(text string) ([]byte, int) { return []byte(text + "\n"), 2 }
+
+// queueingRenderer is an engine whose idle waiter starts the woken turn itself; it records what it was asked to wake with and answers err.
+type queueingRenderer struct {
+	rewakeRenderer
+	err     error
+	payload string
+	text    string
+}
+
+func (r *queueingRenderer) WakeIdle(payload []byte, text string) error {
+	r.payload, r.text = string(payload), text
+	return r.err
+}
+
+// TestWakeSession pins hook-wait's wake of a rung session.
+// An engine woken by a hook's exit gets its wake text on stderr and its wake code.
+// An engine that wakes the session itself is handed the hook payload and the mail and ends the hook with 0.
+// Its failure is returned so the mail stays unread.
+func TestWakeSession(t *testing.T) {
+	tiergate.Require(t, 0)
+	t.Parallel()
+	payload, mail := []byte(`{"session_id":"thread-1"}`), "[creel] #1\n[creel] #2"
+	failure := errors.New("codex queue failed")
+	tests := []struct {
+		name       string
+		renderer   shuttleengine.ToolBoundaryContextRenderer
+		wantCode   int
+		wantStderr string
+		wantErr    error
+		wantWaked  bool
+	}{
+		{name: "WokenByTheHookExit", renderer: rewakeRenderer{}, wantCode: 2, wantStderr: mail + "\n"},
+		{name: "WakesItself", renderer: &queueingRenderer{}, wantWaked: true},
+		{name: "WakeFails", renderer: &queueingRenderer{err: failure}, wantErr: failure, wantWaked: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var stderr bytes.Buffer
+			code, err := wakeSession(tt.renderer, payload, mail, &stderr)
+			if code != tt.wantCode || !errors.Is(err, tt.wantErr) || stderr.String() != tt.wantStderr {
+				t.Errorf("wakeSession() = %d, %v with stderr %q; want %d, %v with stderr %q", code, err, stderr.String(), tt.wantCode, tt.wantErr, tt.wantStderr)
+			}
+			if queueing, ok := tt.renderer.(*queueingRenderer); ok && (queueing.payload != string(payload) || queueing.text != mail) {
+				t.Errorf("WakeIdle got (%q, %q); want (%q, %q)", queueing.payload, queueing.text, payload, mail)
 			}
 		})
 	}
